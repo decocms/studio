@@ -1,0 +1,481 @@
+================================================================================
+INVESTIGATION TOOLS & INFRASTRUCTURE — MASTER INVENTORY
+================================================================================
+
+LOADED REPOSITORY: decocms/studio
+  Location: /app/repo/
+  Connection ID: conn_viS0AjFZ1cffE5x13DQU_
+
+================================================================================
+1. CLICKHOUSE STATS LAKE CONNECTION
+================================================================================
+
+Connection ID:     conn_la7-Xv8sU9RrenfUmiPIf
+Purpose:           Observability data lake (OTel events + CDN metrics)
+Type:              Read-only ClickHouse HTTP client
+Default View:      studio_monitoring_logs (application tool execution logs)
+Tenant Scoping:    organization_id filter on every query
+
+================================================================================
+2. INFRASTRUCTURE & SCHEMA FILES (decocms/studio)
+================================================================================
+
+FILE: /app/repo/apps/mesh/src/monitoring/clickhouse-setup.md
+  Purpose:     Manual ClickHouse provisioning guide
+  Contains:    View DDL, schema contract, performance tuning, multi-node scaling
+  Lines:       174
+  Key Sections:
+    - Step 1 (line 44): Verify otel_logs schema
+    - Step 2 (line 59): Create studio_monitoring_logs view [COPY THIS DDL]
+    - Step 3 (line 101): Sanity check query
+    - Step 3 (line 157): Performance tuning (bloom filters)
+
+FILE: /app/repo/apps/mesh/src/monitoring/schema.ts
+  Purpose:     OTel log attributes & monitoring row schema
+  Contains:    MonitoringRow interface, attribute key constants, conversion funcs
+  Lines:       191
+  Key Types:
+    - MONITORING_LOG_ATTR (line 80): All studio.monitoring.* keys
+    - MonitoringRow interface (line 42): Dashboard row shape
+    - logRecordToMonitoringRow() (line 112): OTel → row conversion
+
+FILE: /app/repo/apps/mesh/src/monitoring/query-engine.ts
+  Purpose:     QueryEngine abstraction (QueryRunner for ClickHouse/DuckDB)
+  Contains:    Interface defs, GCS config, DuckDB tuning
+  Lines:       443
+  Key Interfaces:
+    - QueryEngine (line 13): { query(sql, params?) → Promise<Row[]> }
+    - DuckDBGcsConfig (line 38): S3-compatible bucket access
+    - DuckDBTuning (line 65): Memory/threading knobs for embedded DB
+
+FILE: /app/repo/apps/mesh/src/monitoring/query-engine.test.ts
+  Purpose:     Tests + working examples of query patterns
+  Contains:    Real query examples, assert patterns
+
+FILE: /app/repo/apps/mesh/src/storage/monitoring-sql.ts
+  Purpose:     Dashboard SQL queries (ClickHouse & DuckDB dialects)
+  Contains:    Parameterized queries, validation, aggregation logic
+  Lines:       2201
+  Key Sections:
+    - ALLOWED_GROUP_BY_COLUMNS (line 68): connection_id, user_id, tool_name, virtual_mcp_id
+    - validateGroupByColumn() (line 76): Whitelist check
+    - validateJsonPath() (line 87): Safe property filtering
+    - intervalToSQL() (line 131): Bucketing (5m, 1h, 1d)
+    - sqlMonitoringStorage (line ~300): Main query builder
+
+FILE: /app/repo/apps/mesh/src/observability/index.ts
+  Purpose:     OpenTelemetry setup (exporters, samplers, instrumentations)
+  Contains:    OTLP exporter config, sampling rules, span/log processors
+  Lines:       709
+  Key Config:
+    - HEAD_SAMPLER_RATIO = 1.0 (line 65): 100% sampling (all errors reach HyperDX)
+    - MONITORING_SPAN_NAME (line 18): "mcp.proxy.callTool"
+    - SampledLogRecordProcessor (line 69): Non-error logs sampled; ERROR always pass
+
+FILE: /app/repo/apps/mesh/src/storage/monitoring-sql.ts (type defs)
+  Purpose:     MonitoringLog, MonitoringStorage interface
+  Contains:    Storage trait definition for pluggable backends
+
+================================================================================
+3. LOCAL CONFIGURATION
+================================================================================
+
+FILE: /app/repo/.deco/tools/.endpoint.json
+  Purpose:     Studio's local MCP connection endpoint
+  Contains:    Virtual MCP URL, auth token, org ID
+  Format:      JSON endpoint for delegating to other agents
+  Example:
+    {
+      "url": "http://localhost:3000/mcp/virtual-mcp/vir_...",
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "x-org-id": "<org-uuid>"
+      },
+      "expiresAt": <unix-ms>
+    }
+
+================================================================================
+4. INVESTIGATION TOOLS (PROVIDED BY AGENT PLATFORM, NOT IN REPO)
+================================================================================
+
+These tools are available in your agent context. They interrogate the upstream
+observability system (Grafana, Prometheus, CDN analytics, error tracking).
+
+CATEGORY: Service & Site Health
+  SERVICE_DETAIL(service)
+    ↳ RPS, p50/p95/p99, error rate, top errors, pod health
+    ↳ Returns: errorRatio5xx, p95Ms, requestsByRoute, perServicePeaks
+  
+  GRAFANA_SITE_DETAIL(site, windowSec=300)
+    ↳ Per-site drill-down: health warnings, traffic, latency, CPU/mem, pods, restarts
+    ↳ Returns: warning flags (NotReady/Pending/OOM/elevated5xx), cost, 1h/24h deltas
+  
+  GRAFANA_SITE_PODS(site, windowSec=300)
+    ↳ Per-pod breakdown: ready/notReady, phase, restarts, CPU/mem, age
+  
+  GRAFANA_TIMESERIES(metric, windowMin=60, stepSec=60, namespace=optional)
+    ↳ Metric time series (rps, errorRate, p50/p95/p99, cpuCores, memBytes, restartsPerMin)
+    ↳ Returns: [{ bucket, value }] ~window/step points
+  
+  GRAFANA_RECENT_EVENTS(namespace, windowMin=60, stepSec=~60)
+    ↳ K8s state changes: pod restarts, OOM kills, scale changes, running-status flips
+    ↳ Returns: [{ type, pod, container, count, bucket_timestamp }]
+  
+  GRAFANA_QUERY_PROMQL(expr, range=false, windowMin=60, stepSec=60)
+    ↳ Raw PromQL against cluster Prometheus (instant or range query)
+
+CATEGORY: Application Errors
+  LIST_TOP_ERRORS(lastMinutes=1440, limit=10, rankBy="recency-weighted")
+    ↳ Top errors in last N minutes with per-service breakdown
+    ↳ Returns: shortId (10-char prefix), body, status, count, livePeak
+  
+  ERROR_DETAIL(errorId, lastMinutes=1440)
+    ↳ Full error drill-down: lifecycle, sparkline, per-service peaks, requestContext
+    ↳ Returns: stack, first/last seen, status, time-bucketed counts, HTTP methods/URLs
+  
+  SEARCH_ERRORS(query, activeOnly=false, limit=10)
+    ↳ Free-text substring match on error body/stack
+    ↳ Returns: matching errors with id, body, status, count, services
+  
+  INVESTIGATE_ERROR(errorId, summary, findings, actions, status, reengageIfAbove, serviceId)
+    ↳ Open investigation on an error; record findings, actions, verdicts
+    ↳ Call this AFTER you've diagnosed the error
+  
+  RESPOND_TO_EVENT(target, outcome, note, details)
+    ↳ Record investigation verdict on a trigger event
+    ↳ Outcomes: "snooze", "expected", "fixed", "watching"
+
+CATEGORY: CDN & Edge Analytics
+  CDN_DAILY_OVERVIEW(siteIds, startDate, endDate)
+    ↳ Per-site daily summary: cdn_requests, 4xx/5xx counts, error rate, cache hit, traffic
+  
+  CDN_USAGE(siteIds, granularity="hour", statusCode, minStatusCode, maxStatusCode,
+            since, until, limit=10000)
+    ↳ CDN usage by status_code, method, cache_status, country (hourly or daily)
+  
+  CDN_TOP_URLS_DAILY(siteIds, startDate, endDate, statusCode, minStatusCode, 
+                     maxStatusCode, limit=500)
+    ↳ Top URLs per day: status, method, cache_status, requests, bandwidth, latency
+  
+  CDN_RAW_REQUESTS(hosts, statusCode, minStatusCode, maxStatusCode, since, until, limit=500)
+    ↳ Per-request rows from raw_cloudflare (2-day retention)
+    ↳ Returns: ClientRequestHost, Status, Method, EdgeEndTimestamp, Upstream.latency, etc.
+  
+  CDN_RAW_FIREWALL(hosts, action, since, until, limit=500)
+    ↳ WAF/firewall events (RuleID, Description, Action, EdgeResponseStatus, ASN, Country)
+
+CATEGORY: Alert Quality & Tuning
+  ALERT_QUALITY(days=7)
+    ↳ Grade alerts sent over a window against confirmed outcomes
+    ↳ Returns: fired, wontfix rate, actionability, flaps, recall-guarded recommendations
+  
+  APPLY_THRESHOLD_RECOMMENDATION(serviceId, field, toValue, direction, fromValue, 
+                                 reason, windowDays)
+    ↳ Apply a threshold change from ALERT_QUALITY (ONLY after human approval)
+    ↳ Fields: minErrorCount, minServiceErrors, minLatencyMs
+
+CATEGORY: Search & Analysis (OTel tables)
+  SEARCH_EVENTS(source="logs" | "spans", q, attrFilters, severities, statusCodes,
+                since, until, limit=100)
+    ↳ Full-text search in otel_logs or otel_traces
+    ↳ Returns: matching events (newest first) with attributes, labels
+  
+  SEARCH_HISTOGRAM(source="logs" | "spans", q, attrFilters, severities, statusCodes,
+                   since, until, buckets=60, intervalSeconds)
+    ↳ Time-bucketed event counts (for search histogram UI)
+    ↳ Returns: [{ bucket, count }]
+  
+  SEARCH_FACETS(source="logs" | "spans", q, attrFilters, severities, statusCodes,
+                since, until, topK=15)
+    ↳ Top values per facetable field (ServiceName, Severity, SpanName)
+
+CATEGORY: Investigation History
+  GET_INVESTIGATION(investigationId)
+    ↳ Read one investigation by ID (all findings + feedback)
+  
+  LIST_INVESTIGATIONS(status, limit=100, offset=0)
+    ↳ List all your investigations, newest first
+    ↳ Status: "investigating" | "monitoring" | "resolved" | "wontfix" | "inconclusive"
+  
+  RECORD_INVESTIGATION_FEEDBACK(investigationId, verdict, summary, findings, prUrl, 
+                                status, metadata, repliesToEntryId)
+    ↳ Append feedback to an investigation
+    ↳ Verdict: "pr_opened", "fixed", "not_code_related", "different_cause", 
+              "could_not_reproduce", "no_action"
+
+CATEGORY: Infrastructure & Context
+  GET_CURRENT_TIMESTAMP()
+    ↳ Server clock (ISO + epoch ms) — anchor time windows here, not your clock
+  
+  MONITORED_NAMESPACES(includeInactive=false, kind="site" | "control_plane")
+    ↳ Which (cluster, namespace) pairs are watched + how they map to services
+  
+  CONTROL_PLANE_HEALTH()
+    ↳ Health of first-party infra (istio, knative, deco-studio, mcp-server, …)
+    ↳ Returns: per-namespace running pods, restart rate, OOMs, crashes, CPU/mem
+  
+  COST_ASSESSMENT()
+    ↳ Cost & right-sizing per nodepool and namespace
+    ↳ Returns: verdict (fine/right_size/investigate), monthly $, addressable savings
+
+CATEGORY: Raw ClickHouse Queries
+  CLICKHOUSE_QUERY(sql, params)
+    ↳ Raw SQL against ClickHouse (for when canned tools don't cover it)
+    ↳ Tables: raw_cloudflare, otel_logs, otel_traces, raw_cloudflare_firewall, …
+    ↳ Important: Always filter raw_cloudflare by exact ClientRequestHost + EdgeEndTimestamp
+
+================================================================================
+5. AVAILABLE CLICKHOUSE TABLES (Via Stats Lake: conn_la7)
+================================================================================
+
+TABLE: studio_monitoring_logs (view)
+  Scope:     Studio's own tool execution (not service/site-level)
+  Schema:    Flattened OTel log records
+  Columns:
+    - id, timestamp, organization_id, connection_id, connection_title
+    - tool_name, input (JSON), output (JSON)
+    - is_error, error_message, duration_ms
+    - user_id, request_id, user_agent, virtual_mcp_id, properties (JSON)
+  Filter:    ServiceName = 'studio' AND type IN ('tool_call', 'llm_call')
+  Query Example:
+    SELECT timestamp, tool_name, duration_ms, is_error
+    FROM studio_monitoring_logs
+    WHERE organization_id = '<org>'
+      AND timestamp >= now() - INTERVAL 7 DAY
+    ORDER BY timestamp DESC
+    LIMIT 1000;
+
+TABLE: raw_cloudflare (partitioned)
+  Scope:     CDN edge requests (Cloudflare analytics)
+  Columns:   ClientRequestHost, EdgeEndTimestamp, Status, CacheStatus, Country, 
+             Upstream.latency, ResponseBytes, RequestBytes, RayID, Method, etc.
+  Partition: ClientRequestHost (must use = or IN, not LIKE)
+             EdgeEndTimestamp (must specify range, not just date)
+  Query Constraint:
+    WHERE ClientRequestHost = 'exact.domain.com'
+      AND EdgeEndTimestamp >= '2026-07-23 12:00:00'
+      AND EdgeEndTimestamp < '2026-07-23 13:00:00'
+  Example (p95 latency per minute):
+    SELECT
+      toStartOfMinute(EdgeEndTimestamp) AS bucket,
+      Status,
+      quantile(0.95)(Upstream.latency) AS p95_ms,
+      count() AS requests
+    FROM raw_cloudflare
+    WHERE ClientRequestHost = 'sites-otica-isabela.com'
+      AND EdgeEndTimestamp >= now() - INTERVAL 1 HOUR
+    GROUP BY bucket, Status
+    ORDER BY bucket DESC;
+
+TABLE: otel_logs (partitioned by Timestamp)
+  Scope:     OpenTelemetry log records (all services, all types)
+  Columns:   Timestamp, SpanId, ServiceName, LogAttributes (Map<String, String>),
+             SeverityText, Body, TraceId, ResourceAttributes, …
+  Filtering: By ServiceName (e.g., 'studio', 'api', 'worker', …)
+             By LogAttributes['key'] (all application logs)
+             By Timestamp (partitioned; fast range filter)
+  Example (count errors per service per minute):
+    SELECT
+      toStartOfMinute(Timestamp) AS bucket,
+      ServiceName,
+      count() AS error_count
+    FROM otel_logs
+    WHERE SeverityText IN ('ERROR', 'FATAL')
+      AND Timestamp >= now() - INTERVAL 1 HOUR
+    GROUP BY bucket, ServiceName
+    ORDER BY bucket DESC;
+
+TABLE: raw_cloudflare_firewall (partitioned by timestamp)
+  Scope:     WAF (Web Application Firewall) events
+  Columns:   ClientRequestHost, Timestamp, RuleID, Description, Action (block/log/challenge/…),
+             EdgeResponseStatus, ASN, Country, RayID, …
+  Example (count blocked requests by rule):
+    SELECT
+      Description,
+      Action,
+      count() AS event_count,
+      array_distinct(groupArray(Country)) AS countries
+    FROM raw_cloudflare_firewall
+    WHERE ClientRequestHost = 'sites-otica-isabela.com'
+      AND Timestamp >= now() - INTERVAL 24 HOUR
+      AND Action = 'block'
+    GROUP BY Description, Action
+    ORDER BY event_count DESC;
+
+TABLE: otel_traces (optional, via OTEL_COLLECTOR)
+  Scope:     Distributed tracing spans (request latency, service graph, etc.)
+  Columns:   TraceId, SpanId, ParentSpanId, ServiceName, SpanName, Duration, 
+             Status, StartTime, Attributes, …
+
+================================================================================
+6. QUERYING TIPS FOR sites-otica-isabela & Service ID 57
+================================================================================
+
+Domain/Host:       sites-otica-isabela (assume domain is something like sites-otica-isabela.com)
+Service ID:        57
+Monitoring Status: Site is likely active (has CDN traffic); Service ID 57 maps to it in the system
+
+CDN EDGE INVESTIGATION:
+  1. Check if domain is registered:
+     SELECT DISTINCT ClientRequestHost FROM raw_cloudflare 
+     WHERE ClientRequestHost ILIKE '%otica-isabela%' LIMIT 5;
+  
+  2. Get hourly traffic + error rate:
+     SELECT
+       toStartOfHour(EdgeEndTimestamp) AS hour,
+       Status,
+       count() AS requests,
+       quantile(0.95)(Upstream.latency) AS p95_ms
+     FROM raw_cloudflare
+     WHERE ClientRequestHost = 'farmrio.com.br'  -- or actual domain
+       AND EdgeEndTimestamp >= toDate(now()) - 7
+     GROUP BY hour, Status
+     ORDER BY hour DESC, requests DESC;
+
+STUDIO TOOL EXECUTION (if you're debugging tool calls during a spike):
+  SELECT
+    toStartOfInterval(timestamp, INTERVAL 5 MINUTE) AS bucket,
+    tool_name,
+    sum(is_error) AS errors,
+    count() AS total,
+    round(quantile(0.95)(duration_ms), 2) AS p95_duration_ms
+  FROM studio_monitoring_logs
+  WHERE organization_id = '<org>'
+    AND timestamp >= now() - INTERVAL 2 HOUR
+    AND connection_title ILIKE '%otica-isabela%'
+  GROUP BY bucket, tool_name
+  ORDER BY bucket DESC;
+
+APPLICATION ERRORS (if you know Service ID 57):
+  Use ERROR_DETAIL(errorId) and SERVICE_DETAIL(service=57) tools first.
+  If you need raw logs:
+    SELECT timestamp, Body, SeverityText, TraceId
+    FROM otel_logs
+    WHERE ServiceName = 'sites-otica-isabela'  -- or mapped service name
+      AND SeverityText IN ('ERROR', 'FATAL')
+      AND Timestamp >= now() - INTERVAL 1 HOUR
+    ORDER BY Timestamp DESC
+    LIMIT 1000;
+
+WAF EVENTS (if there's a spike in 403/429):
+  SELECT
+    Timestamp,
+    RuleID,
+    Description,
+    Action,
+    Country,
+    count() AS count
+  FROM raw_cloudflare_firewall
+  WHERE ClientRequestHost = 'exact.domain.com'
+    AND Timestamp >= now() - INTERVAL 1 HOUR
+  GROUP BY Timestamp, RuleID, Description, Action, Country
+  ORDER BY Timestamp DESC, count DESC;
+
+================================================================================
+7. INVESTIGATION CHECKLIST
+================================================================================
+
+When you get a latency spike alert for sites-otica-isabela:
+
+[ ] 1. Call SERVICE_DETAIL("sites-otica-isabela" or 57)
+       → Capture: p95Ms, errorRate, requestRate, topErrors, serviceId (if needed)
+
+[ ] 2. Call GRAFANA_SITE_DETAIL("otica-isabela", windowSec=600)
+       → Check: NotReady pods, Pending, OOMs, recent restarts, CPU/mem spikes
+
+[ ] 3. Call GRAFANA_TIMESERIES("p95", namespace="sites-otica-isabela", windowMin=60)
+       → Visualize: Is it a brief spike or sustained?
+
+[ ] 4. Call GRAFANA_RECENT_EVENTS("sites-otica-isabela", windowMin=60)
+       → Detect: Crashes, restarts, scale changes that correlate with spike
+
+[ ] 5. Call CDN_DAILY_OVERVIEW([serviceId])
+       → Check: Cache hit rate, 4xx/5xx, upstream errors
+
+[ ] 6. Call CDN_RAW_REQUESTS(hosts=["sites-otica-isabela.com"], since=now()-1h)
+       → Sample: Status distribution, upstream latency percentiles, top countries
+
+[ ] 7. Call LIST_TOP_ERRORS(lastMinutes=60)
+       → Check: Any new/spiking application errors in the same window?
+
+[ ] 8. If errors found, call ERROR_DETAIL(errorId)
+       → Get: Stack trace, when it started, which services it hit
+
+[ ] 9. If infrastructure looks clean, query studio_monitoring_logs
+       → Check: Did monitoring tools themselves run slow/fail during the spike?
+
+[ ] 10. Record verdict with RESPOND_TO_EVENT(target="57", outcome, note, details)
+        ↳ outcome: "investigating" | "expected" | "fixed" | "watching"
+
+================================================================================
+8. EXACT FILE PATHS (in loaded repo /app/repo/)
+================================================================================
+
+CORE MONITORING INFRASTRUCTURE:
+  /app/repo/apps/mesh/src/monitoring/                     [core dir]
+    ├── clickhouse-setup.md                               [setup guide + view DDL]
+    ├── schema.ts                                         [OTel attrs + row types]
+    ├── query-engine.ts                                   [QueryEngine interface]
+    ├── query-engine.test.ts                              [tests + examples]
+    ├── ndjson-log-exporter.ts                            [OTel log → NDJSON writer]
+    ├── ndjson-trace-exporter.ts                          [OTel trace → NDJSON]
+    ├── ndjson-metric-exporter.ts                         [OTel metric → NDJSON]
+    ├── logger.ts                                         [monitoring logger]
+    └── truncate-string.ts                                [utility]
+
+STORAGE & QUERIES:
+  /app/repo/apps/mesh/src/storage/
+    ├── monitoring-sql.ts                                 [dashboard SQL queries]
+    ├── monitoring-xdb.ts                                 [XDB storage impl]
+    ├── monitoring-ndjson.ts                              [NDJSON storage impl]
+    └── ports.ts                                          [MonitoringStorage interface]
+
+OBSERVABILITY:
+  /app/repo/apps/mesh/src/observability/
+    ├── index.ts                                          [OTel setup + samplers]
+    ├── instrumentations/fetch.ts                         [fetch instrumentation]
+    └── instrumentations/                                 [other auto-instruments]
+
+CONFIGURATION:
+  /app/repo/.deco/tools/.endpoint.json                    [MCP endpoint config]
+
+DOCS & REFERENCES:
+  /app/repo/apps/mesh/README.md                           [mesh architecture]
+  /app/repo/README.md                                     [studio overview]
+  /app/repo/AGENTS.md                                     [agents + connections]
+
+================================================================================
+9. SUMMARY TABLE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Investigation Layer  │ Tool / File             │ Data Coverage          │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Application Level    │ SERVICE_DETAIL          │ Grafana metrics        │
+│                      │ ERROR_DETAIL            │ App errors (HyperDX)   │
+│                      │ INVESTIGATE_ERROR       │ Investigation history  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Infrastructure Level │ GRAFANA_SITE_DETAIL     │ Pod health, restarts   │
+│                      │ GRAFANA_SITE_PODS       │ Per-pod metrics        │
+│                      │ GRAFANA_TIMESERIES      │ Historical metrics     │
+│                      │ GRAFANA_RECENT_EVENTS   │ K8s state changes      │
+├─────────────────────────────────────────────────────────────────────────┤
+│ CDN / Edge Level     │ CDN_DAILY_OVERVIEW      │ Daily cdn requests     │
+│                      │ CDN_TOP_URLS_DAILY      │ Top URLs by day        │
+│                      │ CDN_RAW_REQUESTS        │ Per-request rows       │
+│                      │ CDN_RAW_FIREWALL        │ WAF events             │
+├─────────────────────────────────────────────────────────────────────────┤
+│ OTel / Logs          │ SEARCH_EVENTS           │ otel_logs + otel_traces│
+│                      │ SEARCH_ERRORS           │ Error substring match  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Studio Monitoring    │ studio_monitoring_logs  │ Tool execution logs    │
+│                      │ DB: ClickHouse view     │ (via CLICKHOUSE_QUERY) │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Alert Quality        │ ALERT_QUALITY           │ Alert grading + recs   │
+│                      │ APPLY_THRESHOLD_        │ Threshold tuning       │
+│                      │   RECOMMENDATION        │                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+Remember: Call GET_CURRENT_TIMESTAMP() to anchor time windows, not your clock.
+================================================================================
