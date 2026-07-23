@@ -82,6 +82,9 @@ worker:
     requests:
       cpu: "1"
       memory: 1Gi
+    limits:
+      cpu: "1.5"
+      memory: 1Gi
   autoscaling:
     enabled: true
     minReplicas: 2
@@ -106,6 +109,7 @@ nginx:
       cpu: "500m"
       memory: "128Mi"
     limits:
+      cpu: "1"
       memory: "256Mi"
   securityContext:
     runAsNonRoot: true

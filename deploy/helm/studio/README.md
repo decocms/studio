@@ -63,8 +63,9 @@ worker:
 ```
 
 The main pod requests 2 CPU cores total by default: 500m for nginx and 750m for
-each Bun API container. The chart requires PostgreSQL for this split topology so
-API and worker pods share the DBOS run queue.
+each Bun API container, with limits matching requests + headroom (1 CPU per
+container). The chart requires PostgreSQL for this split topology so API and
+worker pods share the DBOS run queue.
 
 ## Prerequisites
 
