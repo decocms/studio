@@ -130,4 +130,10 @@ export const reports = {
   "reports.signalDeck.shareOnLinkedIn": "Compartilhar no LinkedIn",
   "reports.signalDeck.shareOnX": "Compartilhar no X",
   "reports.signalDeck.viewFullDiagnostic": "Ver diagnóstico completo",
+  "reports.commerceBanner.storeDefault": "your store",
+  "reports.commerceBanner.generatingTitle": "Generating your diagnostic",
+  "reports.commerceBanner.readyTitle": "Your report is ready",
+  "reports.commerceBanner.generatingSubtitle":
+    "Analyzing {store}. This takes a few minutes.",
+  "reports.commerceBanner.readySubtitle": "See the full analysis of {store}.",
 } as const;

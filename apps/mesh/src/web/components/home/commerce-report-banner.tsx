@@ -28,6 +28,7 @@ import {
   type CommerceReportBannerStatus,
   deriveCommerceReportBannerStatus,
 } from "@/web/hooks/commerce-diagnostic-status";
+import { useT } from "@/web/i18n/use-t";
 
 /** The tilted miniature report page bleeding out of the banner's bottom
  *  edge. Pure decoration (aria-hidden); `generating` swaps the score ring
@@ -129,8 +130,9 @@ function BannerShell({
   host: string | null;
   onOpen: () => void;
 }) {
+  const t = useT();
   const generating = status === "generating";
-  const store = host ?? "sua loja";
+  const store = host ?? t("reports.commerceBanner.storeDefault");
 
   return (
     <button
@@ -156,13 +158,13 @@ function BannerShell({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-base font-medium leading-6 text-foreground sm:text-lg">
             {generating
-              ? "Gerando seu diagnóstico"
-              : "Seu relatório está pronto"}
+              ? t("reports.commerceBanner.generatingTitle")
+              : t("reports.commerceBanner.readyTitle")}
           </span>
           <span className="truncate text-sm text-muted-foreground">
             {generating
-              ? `Analisando ${store}. Isso leva alguns minutos.`
-              : `Veja a análise completa de ${store}.`}
+              ? t("reports.commerceBanner.generatingSubtitle", { store })
+              : t("reports.commerceBanner.readySubtitle", { store })}
           </span>
         </div>
         <div

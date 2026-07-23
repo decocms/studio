@@ -132,4 +132,10 @@ export const reports = {
   "reports.signalDeck.shareOnLinkedIn": "Compartilhar no LinkedIn",
   "reports.signalDeck.shareOnX": "Compartilhar no X",
   "reports.signalDeck.viewFullDiagnostic": "Ver diagnóstico completo",
+  "reports.commerceBanner.storeDefault": "sua loja",
+  "reports.commerceBanner.generatingTitle": "Gerando seu diagnóstico",
+  "reports.commerceBanner.readyTitle": "Seu relatório está pronto",
+  "reports.commerceBanner.generatingSubtitle":
+    "Analisando {store}. Isso leva alguns minutos.",
+  "reports.commerceBanner.readySubtitle": "Veja a análise completa de {store}.",
 } satisfies Record<keyof typeof reportsEn, string>;
