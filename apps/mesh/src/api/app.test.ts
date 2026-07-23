@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isSsoExemptPath } from "./app";
+import { isSsoExemptPath, resolveCorsOrigin } from "./app";
 
 describe("isSsoExemptPath", () => {
   test("exempts the legacy unscoped oauth-proxy mount", () => {
@@ -25,5 +25,50 @@ describe("isSsoExemptPath", () => {
   test("does not exempt other org-scoped routes", () => {
     expect(isSsoExemptPath("/api/acme-corp/connections")).toBe(false);
     expect(isSsoExemptPath("/api/acme-corp/mcp/conn_123")).toBe(false);
+  });
+});
+
+describe("resolveCorsOrigin", () => {
+  const ctx = {
+    baseUrl: "https://studio.example.com",
+    requestOrigin: "https://studio.example.com",
+  };
+
+  test("reflects localhost and 127.0.0.1 regardless of port", () => {
+    expect(resolveCorsOrigin("http://localhost:4000", ctx)).toBe(
+      "http://localhost:4000",
+    );
+    expect(resolveCorsOrigin("http://127.0.0.1:4000", ctx)).toBe(
+      "http://127.0.0.1:4000",
+    );
+  });
+
+  test("rejects a hostname that merely contains 'localhost'", () => {
+    expect(resolveCorsOrigin("http://localhost.evil.com", ctx)).toBeNull();
+    expect(resolveCorsOrigin("http://evil-127.0.0.1.com", ctx)).toBeNull();
+  });
+
+  test("reflects the configured baseUrl's origin", () => {
+    expect(resolveCorsOrigin("https://studio.example.com", ctx)).toBe(
+      "https://studio.example.com",
+    );
+  });
+
+  test("falls back to the request's own origin when baseUrl is unset", () => {
+    const noBaseUrl = {
+      baseUrl: undefined,
+      requestOrigin: "https://self-hosted.internal",
+    };
+    expect(resolveCorsOrigin("https://self-hosted.internal", noBaseUrl)).toBe(
+      "https://self-hosted.internal",
+    );
+  });
+
+  test("rejects an arbitrary cross-site origin", () => {
+    expect(resolveCorsOrigin("https://evil.example", ctx)).toBeNull();
+  });
+
+  test("rejects a malformed origin", () => {
+    expect(resolveCorsOrigin("not-a-url", ctx)).toBeNull();
   });
 });
