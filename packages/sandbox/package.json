@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.22.5",
+  "version": "1.22.6",
   "private": true,
   "type": "module",
   "description": "Sandbox runtime for isolated Studio tool execution",
