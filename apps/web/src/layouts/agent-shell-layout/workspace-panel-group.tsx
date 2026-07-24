@@ -222,18 +222,24 @@ export function WorkspacePanelGroup({
       <div className="flex min-w-0 flex-1 items-center justify-center">
         <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
       </div>
-      {/* shrink-0: the right actions (Edit / Submit / Publish / ⋯) are the
-          highest-priority controls — they hold their size and are never
-          clipped; the selector and tab group yield instead. Measured so the
-          tab count knows how much room is actually left for it. */}
-      <div
-        ref={rightRef}
-        className="flex shrink-0 items-center justify-end gap-1"
-      >
+      {/* Right side. The wrapper is shrinkable so the branch selector inside it
+          can yield BEFORE the centered address bar (which is `flex-1` — basis 0,
+          so it shrinks last). The branch sits in its own `min-w-0` slot and
+          truncates first; the actions cluster stays `shrink-0` (Edit / Submit /
+          Publish / ⋯ never clip) and is what `rightRef` measures, so the tab
+          count budget is unaffected by the branch label's width. */}
+      <div className="flex min-w-0 shrink items-center justify-end gap-1">
         {!chatOpen && newChatCrumb}
-        {branchSelector}
-        <MainPanelHeaderEndSlot />
-        {publishActions}
+        <div className="flex min-w-0 shrink items-center justify-end">
+          {branchSelector}
+        </div>
+        <div
+          ref={rightRef}
+          className="flex shrink-0 items-center justify-end gap-1"
+        >
+          <MainPanelHeaderEndSlot />
+          {publishActions}
+        </div>
       </div>
     </PanelHeader>
   );

@@ -190,38 +190,19 @@ export function BranchPicker({
                 aria-label={label}
                 disabled={disabled}
                 className={cn(
-                  "font-mono shrink min-w-0 max-w-[200px]",
+                  "font-mono shrink min-w-0 max-w-[200px] gap-1.5",
                   isHeader
-                    ? "gap-1.5 text-xs"
-                    : cn(
-                        "text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-                        disabled
-                          ? "gap-0"
-                          : "gap-0 @[320px]/chat-bottom:gap-1.5",
-                      ),
+                    ? "text-xs"
+                    : "text-xs text-muted-foreground hover:text-foreground",
                 )}
               >
                 <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
-                <span
-                  className={cn(
-                    "min-w-0 truncate",
-                    isHeader
-                      ? ""
-                      : "transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
-                  )}
-                >
-                  {label}
-                </span>
+                {/* Show the branch name (truncated) so the branch in use is
+                    visible at a glance. Below `lg` (< 1024px) collapse to an
+                    icon-only button — the name stays available via the tooltip. */}
+                <span className="min-w-0 truncate max-lg:hidden">{label}</span>
                 {!disabled && (
-                  <ChevronDown
-                    size={12}
-                    className={cn(
-                      "opacity-60 shrink-0",
-                      isHeader
-                        ? ""
-                        : "hidden @[320px]/chat-bottom:inline-block",
-                    )}
-                  />
+                  <ChevronDown size={12} className="opacity-60 shrink-0" />
                 )}
               </Button>
             </PopoverTrigger>
