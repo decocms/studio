@@ -189,7 +189,7 @@ function NoConfigsEmpty() {
         </p>
       </div>
       <Button asChild size="sm" className="mt-2">
-        <Link to="/$org/settings/files" params={{ org: org.slug }}>
+        <Link to="/$org/files" params={{ org: org.slug }}>
           {t("filePicker.filePickerDialog.configureABucket")}
         </Link>
       </Button>
