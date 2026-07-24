@@ -346,6 +346,23 @@ describe("git routes", () => {
     });
   });
 
+  it("diff POST rejects an empty base string as invalid input", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "base is required when provided",
+    });
+  });
+
   it("publish appends operator co-author trailer", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
