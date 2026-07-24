@@ -7,6 +7,7 @@ import {
   buildSandboxStartArgs,
   deriveOthersThreadLabel,
   computeOthersThreadGate,
+  deriveStartError,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
@@ -259,6 +260,62 @@ describe("deriveOthersThreadLabel", () => {
         title: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe("deriveStartError", () => {
+  const base = {
+    mutationError: null,
+    phase: null,
+    startPending: false,
+  } as const;
+
+  test("no error, no failed phase → null (still booting)", () => {
+    expect(deriveStartError(base)).toBeNull();
+  });
+
+  test("mutation rejection wins → surfaces the decoded error", () => {
+    const mutationError = { code: null, message: "boom" };
+    expect(deriveStartError({ ...base, mutationError })).toEqual(mutationError);
+  });
+
+  test("terminal claim-failed phase → errored (the infinite-loading fix)", () => {
+    // Regression: a terminal claim failure arrives on the SSE lifecycle stream,
+    // never as a SANDBOX_START rejection, so the preview used to spin on
+    // "starting" forever. It must surface as a terminal error instead.
+    expect(
+      deriveStartError({
+        ...base,
+        phase: {
+          kind: "failed",
+          reason: "scheduling-timeout",
+          message: "no capacity",
+        },
+      }),
+    ).toEqual({ code: null, message: "no capacity" });
+  });
+
+  test("failed phase while a start is in flight → null (keep booting overlay)", () => {
+    expect(
+      deriveStartError({
+        ...base,
+        phase: { kind: "failed", reason: "unknown", message: "x" },
+        startPending: true,
+      }),
+    ).toBeNull();
+  });
+
+  test("non-terminal phase (still provisioning) → null", () => {
+    expect(
+      deriveStartError({
+        ...base,
+        phase: { kind: "pulling-image", since: 0 },
+      }),
+    ).toBeNull();
+  });
+
+  test("ready phase → null", () => {
+    expect(deriveStartError({ ...base, phase: { kind: "ready" } })).toBeNull();
   });
 });
 

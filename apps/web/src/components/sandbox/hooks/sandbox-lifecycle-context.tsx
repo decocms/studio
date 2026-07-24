@@ -11,9 +11,13 @@
  * consolidation logic without crossing the no-mocks line.
  */
 
-import type { PreviewState } from "@/components/sandbox/preview/preview-state";
+import type {
+  PreviewState,
+  SandboxStartError,
+} from "@/components/sandbox/preview/preview-state";
 import type { DrawerStatus } from "@/components/sandbox/preview/drawer/status-pill";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "./sandbox-events-context";
 import {
   selectVmEntry,
   type BranchMapEntryLike,
@@ -119,6 +123,28 @@ export function buildSandboxStartArgs(
   if (branch) args.branch = branch;
   if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
   return args;
+}
+
+/** Terminal SANDBOX_START error to surface (→ `errored` preview state), or null
+ *  while still booting. Two independent sources feed the same terminal state:
+ *   - a rejected SANDBOX_START mutation (GitHub-not-auth, non-retryable server error);
+ *   - a terminal claim-`failed` phase on the SSE lifecycle stream (K8s
+ *     scheduling/image-pull failure, or the synthetic "lifecycle watcher ended"
+ *     failure from lifecycle.ts).
+ *  The phase-failed source never rejects the mutation, so without it
+ *  computePreviewState pins to "starting" forever (the infinite-loading bug).
+ *  Gate the phase path on no start in flight so an in-progress retry/self-heal
+ *  reprovision keeps the booting overlay instead of flashing errored. */
+export function deriveStartError(args: {
+  mutationError: SandboxStartError | null;
+  phase: ClaimPhase | null;
+  startPending: boolean;
+}): SandboxStartError | null {
+  if (args.mutationError) return args.mutationError;
+  if (args.phase?.kind === "failed" && !args.startPending) {
+    return { code: null, message: args.phase.message };
+  }
+  return null;
 }
 
 export function computeDrawerStatus(state: PreviewState): DrawerStatus {
@@ -294,10 +320,14 @@ export function SandboxLifecycleProvider({
       !!branch &&
       sandboxUserStop.isStopped(virtualMcpId, branch));
   const appPaused = events.status.state === "paused";
-  const startError =
-    startVm.isError && startVm.error
-      ? decodeSandboxStartError(startVm.error.message)
-      : null;
+  const startError = deriveStartError({
+    mutationError:
+      startVm.isError && startVm.error
+        ? decodeSandboxStartError(startVm.error.message)
+        : null,
+    phase: events.phase,
+    startPending: startVm.isPending || sharedLifecyclePending,
+  });
   const previewState = computePreviewState({
     previewUrl,
     appPaused,
