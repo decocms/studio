@@ -30,7 +30,8 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -205,6 +206,21 @@ export function SandboxEventsProvider({
 }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
+
+  // Fast Preview renders via the daemon with NO dev server, so the
+  // dev-server-gated `.deco/*` reload path below would never fire. Track it (as
+  // a ref, so the SSE closure reads the latest without reconnecting) to still
+  // fire a reload on a Blocks save. We deliberately do NOT invalidate the
+  // decofile query in that mode — the daemon reads `.deco/blocks/*` straight
+  // from disk, and a refetch could revert an optimistic edit against a committed
+  // `blocks.gen.json`.
+  const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
+  const fastPreviewActive =
+    !!sanitizeProductionUrl(vmcp?.metadata?.productionUrl) &&
+    vmcp?.metadata?.fastPreview === true;
+  const fastPreviewActiveRef = useRef(fastPreviewActive);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep the SSE closure reading the latest value without reconnecting
+  fastPreviewActiveRef.current = fastPreviewActive;
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
@@ -421,15 +437,16 @@ export function SandboxEventsProvider({
             const isDecoFile =
               filePath.startsWith(".deco/") || filePath.includes("/.deco/");
             if (isDecoFile) {
-              // Only act while the dev server is running. When it's down
-              // (crashed/paused — the state the committed-snapshot fallback
-              // supports editing in), `blocks.gen.json` is a stale build
-              // artifact the dev server can't regenerate, so invalidating +
-              // refetching it would overwrite the optimistic cache update from
-              // useSaveBlock/useDeleteBlock and the edit would visibly revert.
-              // Leave the optimistic cache as the source of truth; the
-              // lifecycle→running transition re-invalidates onto the live routes.
-              if (prevLifecyclePhase !== "running") return;
+              // Act when the dev server is running OR Fast Preview is on (which
+              // renders via the daemon with no dev server). Otherwise
+              // (crashed/paused — committed-snapshot editing) `blocks.gen.json`
+              // is a stale build artifact the dev server can't regenerate, so
+              // invalidating + refetching it would overwrite the optimistic
+              // cache update from useSaveBlock/useDeleteBlock and the edit would
+              // visibly revert; leave the optimistic cache as the source of
+              // truth until the lifecycle→running transition re-invalidates.
+              const devServerRunning = prevLifecyclePhase === "running";
+              if (!devServerRunning && !fastPreviewActiveRef.current) return;
               // Turn on the preview's loading overlay immediately — before the
               // debounce below — so the pending refresh feels instant instead of
               // only appearing once the reload finally fires.
@@ -451,15 +468,20 @@ export function SandboxEventsProvider({
               if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
               decofileDebounceTimer = setTimeout(() => {
                 decofileDebounceTimer = null;
-                void queryClient.invalidateQueries({
-                  queryKey: KEYS.decofile(cacheKey),
-                });
-                // Reload the preview iframe once the rebuild has landed — HMR
+                // Only refetch the decofile when the dev server is running (the
+                // live `/.decofile` route reflects the write). In Fast Preview
+                // the daemon serves the render straight from disk, so skip the
+                // refetch (it would revert an optimistic edit) and just reload.
+                if (devServerRunning) {
+                  void queryClient.invalidateQueries({
+                    queryKey: KEYS.decofile(cacheKey),
+                  });
+                }
+                // Reload the preview iframe once the write has landed — HMR
                 // won't reflect a decofile edit, so this is the only thing that
                 // refreshes the rendered page after a Blocks save (or an
-                // external/agent `.deco/` write). Debounced with the
-                // invalidation above so it fires after the dev server rebuilds,
-                // not against the stale pre-rebuild page.
+                // external/agent `.deco/` write). Debounced so it fires after
+                // the write lands ("save → refresh").
                 for (const fn of reloadHandlers.current) {
                   try {
                     fn();

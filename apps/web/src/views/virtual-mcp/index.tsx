@@ -32,10 +32,6 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@deco/ui/components/radio-group.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -80,6 +76,8 @@ import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/sub
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { ProductionUrlField } from "@/components/sandbox/runtime-card/production-url-field";
+import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
+import { PublishPolicyField } from "./publish-policy-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -1052,89 +1050,52 @@ function VirtualMcpDetailViewWithData({
             {/* Development agent section (link a dev counterpart) */}
             <DevAgentSetup virtualMcp={virtualMcp} />
 
-            {/* Publishing section (code agents only) */}
-            {hasGithubRepo && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-sm font-medium text-foreground">
-                    {t("virtualMcp.virtualMcp.publishing")}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("virtualMcp.virtualMcp.publishingDescription")}
-                  </p>
-                </div>
-                <Card className="p-6">
-                  <CardContent className="p-0">
-                    <Controller
-                      name="metadata.publishPolicy"
-                      control={form.control}
-                      render={({ field }) => (
-                        <RadioGroup
-                          value={field.value ?? "smart"}
-                          onValueChange={(value) => {
-                            field.onChange(value);
-                            flushAndSave();
-                          }}
-                          className="gap-4"
-                        >
-                          {(
-                            [
-                              {
-                                value: "smart",
-                                label: t(
-                                  "virtualMcp.virtualMcp.publishPolicySmart",
-                                ),
-                                description: t(
-                                  "virtualMcp.virtualMcp.publishPolicySmartDescription",
-                                ),
-                              },
-                              {
-                                value: "code-review",
-                                label: t(
-                                  "virtualMcp.virtualMcp.publishPolicyCodeReview",
-                                ),
-                                description: t(
-                                  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription",
-                                ),
-                              },
-                              {
-                                value: "open",
-                                label: t(
-                                  "virtualMcp.virtualMcp.publishPolicyOpen",
-                                ),
-                                description: t(
-                                  "virtualMcp.virtualMcp.publishPolicyOpenDescription",
-                                ),
-                              },
-                            ] as const
-                          ).map((option) => (
-                            <label
-                              key={option.value}
-                              htmlFor={`publish-policy-${option.value}`}
-                              className="flex cursor-pointer items-start gap-3"
-                            >
-                              <RadioGroupItem
-                                id={`publish-policy-${option.value}`}
-                                value={option.value}
-                                className="mt-0.5"
-                              />
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-medium text-foreground">
-                                  {option.label}
-                                </span>
-                                <span className="text-sm text-muted-foreground">
-                                  {option.description}
-                                </span>
-                              </div>
-                            </label>
-                          ))}
-                        </RadioGroup>
-                      )}
-                    />
-                  </CardContent>
-                </Card>
+            {/* CMS section — Fast Preview + Publishing (how CMS/code changes
+                reach the live site). Publishing is code-agent only. */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium text-foreground">
+                  {t("sandbox.cmsSettings.title")}
+                </h2>
               </div>
-            )}
+              <Card className="p-6 gap-5">
+                <CardContent className="p-0 space-y-6">
+                  {/* Preview — preview URL + the Fast Preview switch it gates
+                      (a URL is required for Fast Preview to take effect). */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-sm font-medium text-foreground">
+                        {t("sandbox.cmsSettings.preview.title")}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {t("sandbox.cmsSettings.preview.description")}
+                      </p>
+                    </div>
+                    <ProductionUrlField control={form.control} />
+                    <FastPreviewField
+                      control={form.control}
+                      productionUrl={form.watch("metadata.productionUrl")}
+                    />
+                  </div>
+                  {hasGithubRepo && (
+                    <div className="space-y-4 border-t border-border pt-6">
+                      <div className="flex flex-col gap-1">
+                        <h3 className="text-sm font-medium text-foreground">
+                          {t("virtualMcp.virtualMcp.publishing")}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {t("virtualMcp.virtualMcp.publishingDescription")}
+                        </p>
+                      </div>
+                      <PublishPolicyField
+                        control={form.control}
+                        onCommit={flushAndSave}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
 
             {/* Sandbox section */}
             <div className="flex flex-col gap-3">
@@ -1146,7 +1107,6 @@ function VirtualMcpDetailViewWithData({
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
-                  <ProductionUrlField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}

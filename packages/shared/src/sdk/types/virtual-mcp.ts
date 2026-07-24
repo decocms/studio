@@ -606,6 +606,23 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
   );
 
 /**
+ * Reusable `metadata.fastPreview` field. When true — and `productionUrl` is set —
+ * the CMS preview renders the current working-tree draft instantly against the
+ * production deployment's `/live/previews` route (pushing the draft decofile as
+ * a per-request override) instead of waiting for the sandbox dev server to boot.
+ * The gate requires BOTH the flag and a production URL, so a bare flag with no
+ * URL is inert. The instant render is static (no hydration/navigation); the
+ * sandbox surface takes over for interactivity once it's up.
+ */
+const fastPreviewMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "Enable Fast Preview: render the draft instantly against productionUrl's /live/previews route while the sandbox boots. Requires productionUrl to be set to take effect.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -682,6 +699,7 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
         ),
+      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -788,6 +806,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
         ),
+      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .nullable()
@@ -875,6 +894,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
         ),
+      fastPreview: fastPreviewMetadataField,
     })
     .loose()
     .nullable()
