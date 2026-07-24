@@ -404,7 +404,6 @@ export const sandbox = {
   "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
-  "sandbox.preview.hardReload": "Recarregamento forçado",
   "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
   "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",

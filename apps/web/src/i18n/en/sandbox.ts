@@ -389,7 +389,6 @@ export const sandbox = {
   "sandbox.preview.failedToCopyUrl": "Failed to copy URL",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
   "sandbox.preview.globalComponents": "Global components",
-  "sandbox.preview.hardReload": "Hard Reload",
   "sandbox.preview.invalidPageBlockKey": "Invalid page block key",
   "sandbox.preview.moreOptions": "More options",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
