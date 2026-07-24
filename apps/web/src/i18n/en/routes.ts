@@ -145,6 +145,9 @@ export const routes = {
   "routes.commerceOnboarding.connectModal.quote":
     "I was grinning ear to ear, because we had already spotted all of it, we just didn't know what to do next... you brought a really meaningful perspective on the next steps.",
   "routes.commerceOnboarding.connectModal.quoteAuthor": "Ágata Esteves",
+  "routes.commerceOnboarding.connectModal.trustRevoke": "Revoke anytime",
+  "routes.commerceOnboarding.connectModal.trustEncrypted": "Encrypted",
+  "routes.commerceOnboarding.connectModal.trustNeverSold": "Never sold",
   "routes.commerceOnboarding.companionSection.title":
     "Connect your tools to see the full diagnostic",
   "routes.commerceOnboarding.companionSection.loadError":
