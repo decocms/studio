@@ -108,6 +108,8 @@ services:
       DECOCMS_LOCAL_MODE: "true"
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
+      # Bound a silent recovered run inside rollout-churn's terminal poll.
+      RUN_IDLE_TIMEOUT_MS: "120000"
       # External S3 → ensureServices skips embedded MinIO (survives restarts).
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: studio-dev
