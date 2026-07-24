@@ -3,7 +3,10 @@ import { VIRTUAL_MCP_PLUGIN_CONFIG_GET } from "./plugin-config-get";
 
 function makeCtx(opts: {
   organizationId: string;
-  connections: Record<string, { id: string; organization_id: string }>;
+  connections: Record<
+    string,
+    { id: string; organization_id: string; connection_type?: string }
+  >;
 }) {
   const get = mock(async () => ({
     id: "vpc_1",
@@ -52,7 +55,13 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_GET", () => {
   it("returns the config for a virtual MCP within the caller's own organization", async () => {
     const { ctx, get } = makeCtx({
       organizationId: "org-a",
-      connections: { vmcp_a: { id: "vmcp_a", organization_id: "org-a" } },
+      connections: {
+        vmcp_a: {
+          id: "vmcp_a",
+          organization_id: "org-a",
+          connection_type: "VIRTUAL",
+        },
+      },
     });
 
     const result = await VIRTUAL_MCP_PLUGIN_CONFIG_GET.handler(
@@ -62,5 +71,29 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_GET", () => {
 
     expect(result.config?.virtualMcpId).toBe("vmcp_a");
     expect(get).toHaveBeenCalledWith("vmcp_a", "code-execution");
+  });
+
+  it("returns null for a virtualMcpId that points at a non-virtual connection", async () => {
+    // Regression: leftover plugin config rows keyed by a non-virtual
+    // connection (data written before VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE
+    // started rejecting non-virtual connections) must not be surfaced here.
+    const { ctx, get } = makeCtx({
+      organizationId: "org-a",
+      connections: {
+        conn_a: {
+          id: "conn_a",
+          organization_id: "org-a",
+          connection_type: "HTTP",
+        },
+      },
+    });
+
+    const result = await VIRTUAL_MCP_PLUGIN_CONFIG_GET.handler(
+      { virtualMcpId: "conn_a", pluginId: "code-execution" },
+      ctx,
+    );
+
+    expect(result.config).toBeNull();
+    expect(get).not.toHaveBeenCalled();
   });
 });
