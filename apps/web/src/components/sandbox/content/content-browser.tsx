@@ -32,14 +32,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
-import {
-  SELF_MCP_ALIAS_ID,
-  parseBranchMap,
-  useMCPClient,
-  useProjectContext,
-} from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
-import { authClient } from "@/lib/auth-client";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -69,13 +63,7 @@ import { listAvailableSections } from "@/components/sections-editor/section-cata
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import {
-  sandboxUserStop,
-  useSandboxStart,
-  type SandboxStartArgs,
-} from "@/components/sandbox/hooks/use-sandbox-start";
-import { computePreviewState } from "@/components/sandbox/preview/preview-state";
-import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
 import {
   buildDuplicatePage,
@@ -258,59 +246,24 @@ export interface ContentBrowserProps {
 
 export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const inset = useInsetContext();
-  const { data: session } = authClient.useSession();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
 
   const virtualMcpId = inset?.entity?.id ?? null;
-  const userId = session?.user?.id;
-  const metadata = inset?.entity?.metadata;
-  const branchMap =
-    userId && branch
-      ? parseBranchMap(metadata?.sandboxMap?.[userId]?.[branch])
-      : {};
-  const branchMapEntries = Object.values(branchMap);
-  const vmEntry =
-    branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
-    branchMapEntries[0];
-  const previewUrl = vmEntry?.previewUrl ?? null;
 
   const vmEvents = useSandboxEvents();
+  // Resolve the sandbox from the shared lifecycle context — the same source
+  // Preview reads. A thread-scoped repo bound by `load_repo` lives on the
+  // thread (not the agent entity), and the lifecycle provider already merges
+  // that in. Reading `inset.entity.metadata.sandboxMap` directly would miss it
+  // and strand Content on "starting" for the ephemeral Decopilot agent.
+  const lifecycle = useSandboxLifecycle();
+  const previewUrl = lifecycle.previewUrl;
+  const sandboxState = lifecycle.previewState;
 
-  const mcpClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: inset?.entity?.organization_id ?? "",
-    orgSlug: org.slug,
-  });
-  const startVm = useSandboxStart(mcpClient);
-
-  const triggerStart = () => {
-    if (!virtualMcpId) return;
-    const args: SandboxStartArgs = { virtualMcpId };
-    if (branch) args.branch = branch;
-    startVm.mutate(args);
-  };
-
-  // Mirror Preview's state machine so both tabs agree on what the
-  // sandbox is doing. Without this Content would always show "starting"
-  // even when the sandbox is suspended.
-  const userStopped =
-    !!virtualMcpId &&
-    !!branch &&
-    sandboxUserStop.isStopped(virtualMcpId, branch);
-  const sandboxState = computePreviewState({
-    previewUrl,
-    appPaused: vmEvents.status.state === "paused",
-    userStopped,
-    startError:
-      startVm.isError && startVm.error
-        ? decodeSandboxStartError(startVm.error.message)
-        : null,
-  });
-
-  // The others-thread gate only applies on the Preview surface (which owns
-  // auto-start); Content is gated behind lifecycle.phase === "running" and
-  // never passes `othersThreadGate`, so this state is unreachable here.
+  // Another member's thread, not yet acknowledged: blank the editor rather
+  // than booting their sandbox — the confirmation gate lives on Preview. This
+  // also narrows `sandboxState` for SandboxStateRenderer below.
   if (sandboxState.kind === "othersThread") return null;
 
   if (sandboxState.kind !== "iframe") {
@@ -319,7 +272,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
         state={sandboxState}
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
-        onStart={triggerStart}
+        onStart={lifecycle.start}
         connectionsHref={`/${org.slug}/settings/connections`}
       />
     );
