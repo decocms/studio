@@ -1893,6 +1893,16 @@ export function SectionsEditor({
     // so reordering/deleting/duplicating variants here would land that stale
     // write on the wrong (or now-missing) variant.
     cancelPendingRuleSaves();
+    // Also cancel a pending section-field autosave — it captures a section
+    // index at schedule time and writes into the *current* variant's
+    // `rawSections[index]` (read fresh via latestRef) when it fires.
+    // Reordering/deleting/duplicating a page variant here can shift which
+    // variant is active, so a still-pending timer would land its stale write
+    // on the wrong variant's section.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const current = fullPageData.sections;
     if (!current || typeof current !== "object" || Array.isArray(current))
