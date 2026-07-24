@@ -216,4 +216,11 @@ describe("resolveShutdownDrainMs", () => {
     expect(resolveShutdownDrainMs("worker", forceExitMs, "5000")).toBe(5_000);
     expect(resolveShutdownDrainMs("api", forceExitMs, "0")).toBe(0);
   });
+
+  it("falls back to the computed default on a malformed override instead of skipping the drain", () => {
+    expect(resolveShutdownDrainMs("api", forceExitMs, "not-a-number")).toBe(
+      69_000,
+    );
+    expect(resolveShutdownDrainMs("api", forceExitMs, "-100")).toBe(69_000);
+  });
 });

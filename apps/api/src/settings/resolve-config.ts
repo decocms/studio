@@ -29,9 +29,14 @@ export function resolveShutdownDrainMs(
   forceExitMs: number,
   envOverride: string | undefined,
 ): number {
-  return Number(
-    envOverride ?? (role === "worker" ? 0 : Math.floor(forceExitMs * 0.6)),
-  );
+  const fallback = role === "worker" ? 0 : Math.floor(forceExitMs * 0.6);
+  if (envOverride === undefined || envOverride === "") return fallback;
+  // A malformed override must fall back to the computed default rather than
+  // silently becoming 0 (NaN/negative both collapse to a 0ms sleep) — that
+  // would skip the drain this function exists for and reintroduce the CF 520s
+  // described above.
+  const value = Number(envOverride);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function toBool(value: string | undefined): boolean {
