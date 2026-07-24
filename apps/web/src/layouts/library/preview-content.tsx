@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
+import { SeeInLibraryLink } from "./see-in-library-link";
 import { useT } from "@/i18n/use-t.ts";
 import {
   FilePreview,
@@ -44,6 +45,8 @@ export interface LibraryPreviewProps {
   /** Browse-grammar path of the open file ("<volume>/<path...>"). */
   previewPath: string;
   onClose: () => void;
+  /** Render a "See in library" link (set when previewing outside the Library). */
+  showSeeInLibrary?: boolean;
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -65,6 +68,7 @@ function CloseButton({ onClose }: { onClose: () => void }) {
 export function LibraryFilePreview({
   previewPath,
   onClose,
+  showSeeInLibrary = false,
   variant,
 }: LibraryPreviewProps & { variant: LibraryPreviewVariant }) {
   const t = useT();
@@ -74,6 +78,10 @@ export function LibraryFilePreview({
   const downloadUrl = useOrgFsDownloadUrl(volume ?? "");
   const filename = basename(filePath);
   const isDialog = variant === "dialog";
+
+  const seeInLibrary = showSeeInLibrary ? (
+    <SeeInLibraryLink previewPath={previewPath} />
+  ) : null;
 
   const file =
     entry && entry.kind === "file"
@@ -109,6 +117,7 @@ export function LibraryFilePreview({
                 effectivePublic={entry.effectivePublic ?? false}
                 url={window.location.origin + file.downloadUrl}
               />
+              {seeInLibrary}
               {isDialog ? (
                 <div className="w-8 shrink-0" />
               ) : (

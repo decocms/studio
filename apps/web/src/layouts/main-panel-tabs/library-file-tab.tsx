@@ -22,5 +22,11 @@ export function LibraryFileTab({ path }: { path: string }) {
       }),
       replace: true,
     });
-  return <LibraryPreviewPanel previewPath={path} onClose={onClose} />;
+  return (
+    <LibraryPreviewPanel
+      previewPath={path}
+      onClose={onClose}
+      showSeeInLibrary
+    />
+  );
 }

@@ -30,6 +30,7 @@ export function OrgFilePreviewMount() {
           },
         })
       }
+      showSeeInLibrary
     />
   );
 }
