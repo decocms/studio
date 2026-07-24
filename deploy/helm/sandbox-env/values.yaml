@@ -7,17 +7,21 @@
 # needs to use the operator — every resource name is suffixed with
 # `envName` so multiple releases coexist in `agent-sandbox-system`.
 #
-# Cross-chart wiring lives under `mesh.*`: tell this chart where the studio
+# DEPRECATED NAME — cross-chart wiring remains under `mesh.*` so existing
+# releases keep upgrading safely. These values identify the Studio release; a
+# future chart major may rename the key to `studio.*`.
+#
+# Tell this chart where the studio
 # release for THIS environment runs so the RBAC RoleBinding, NetworkPolicy
 # ingress selector, and preview HTTPRoute backendRef can reach it. There is
 # no runtime coupling back the other way — studio consumes nothing from
 # this chart at install time; it simply talks to the operator's CRDs and
 # the daemon Service the operator creates per SandboxClaim.
 #
-# Mesh side: the studio install for THIS environment must point its runner
+# Studio side: the install for THIS environment must point its runner
 # at the env-suffixed SandboxTemplate by setting
 #   STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>
-# in the studio chart's `configMap.meshConfig`. Without that override mesh
+# in the studio chart's `configMap.meshConfig`. Without that override Studio
 # falls back to "studio-sandbox" (no suffix) and claim creation will fail
 # with "sandboxtemplate not found".
 
@@ -40,16 +44,22 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.20.0"
+  tag: "1.22.6"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.
+# memory request = observed p95 of per-pod peak working-set (~2Gi over 7d;
+# 2d raw p90 2.2Gi, p95 2.4Gi). It was 1Gi — but busy pods spend ~100% of
+# their life above 1Gi, so the scheduler bin-packed on a request less than
+# half of real usage and prod nodes hit memory-pressure eviction (never
+# per-pod OOM: 0 pods reach the 4Gi limit). Sizing the request to real p95
+# stops the node-pressure evictions at the cost of lower packing density.
 resources:
   requests:
     cpu: 500m
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: "2"
     memory: 4Gi
@@ -138,7 +148,7 @@ netinit:
 
 # ── sandbox-pod scheduling ─────────────────────────────────────────────
 # Pin sandbox pods to a dedicated NodePool so a container escape lands on
-# a node that has no mesh / postgres / NATS / OTel pods on it. Pair with a
+# a node that has no Studio / Postgres / NATS / OTel pods on it. Pair with a
 # Karpenter NodePool that taints + labels matching nodes; see README.md
 # for the snippet. Empty defaults run sandbox pods on whatever the
 # scheduler picks.
@@ -196,7 +206,7 @@ dnsConfig:
 # filesystem volumes (skills + outputs + home) at /app/org/* via
 # WebDAV→rclone, propagated into the unprivileged sandbox container
 # (Bidirectional → HostToContainer). The mount config arrives post-bind:
-# mesh POSTs it to the daemon's /_sandbox/orgfs-config, which relays it onto
+# Studio POSTs it to the daemon's /_sandbox/orgfs-config, which relays it onto
 # the shared /run/orgfs control volume the sidecar watches (warm-pool claims
 # reject spec.env, so boot env can't carry it).
 #
@@ -210,9 +220,9 @@ dnsConfig:
 #
 # disableFsSidecar (opt-out, default false): a DEBUG escape hatch — drops
 # the sidecar + its mounts entirely and restores userns remap
-# (hostUsers: false). The mesh side still teaches `org/` paths, so this is
+# (hostUsers: false). The Studio side still teaches `org/` paths, so this is
 # for low-level pod/mount debugging, not a supported org-fs-off mode. NOT
-# used in prod. (Mirror the mesh-side DISABLE_ORGFS_MOUNTS flag, which
+# used in prod. (Mirror the Studio-side DISABLE_ORGFS_MOUNTS flag, which
 # skips minting the mount config without removing the sidecar.)
 disableFsSidecar: false
 
@@ -324,16 +334,16 @@ warmPool:
 # ── preview URL gateway (optional) ─────────────────────────────────────
 # Wildcard preview-URL ingress. Renders an Istio Gateway (HTTPS, terminates
 # `*.<domain>`) + a cert-manager Certificate. Per-claim HTTPRoutes are NOT
-# rendered here — the mesh runner mints one HTTPRoute per SandboxClaim in
+# rendered here — the Studio runner mints one HTTPRoute per SandboxClaim in
 # `agent-sandbox-system` and tears it down on claim delete, so each preview
-# URL routes directly to its sandbox Service:9000. Mesh is no longer in
+# URL routes directly to its sandbox Service:9000. Studio is no longer in
 # the data path; it only writes the routing config.
 #
 # Wiring on the studio side (chart-deco-studio configMap.meshConfig):
 #   STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.<domain>"
 #   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-<envName>"
 #   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "<previewGateway.namespace>"
-# Without those, mesh falls back to in-process proxying via its own Service
+# Without those, Studio falls back to in-process proxying via its own Service
 # (the previous design). That fallback also requires a separate cluster-wide
 # HTTPRoute that this chart no longer creates.
 #
@@ -349,7 +359,7 @@ previewGateway:
   # ambient/sidecar default to "istio". Confirm with
   # `kubectl get gatewayclasses` before flipping enabled=true.
   gatewayClassName: "istio"
-  # Namespace where the Gateway + HTTPRoute land. Mesh's existing gateway
+  # Namespace where the Gateway + HTTPRoute land. Studio's existing gateway
   # typically lives in `istio-system`; some setups use a dedicated
   # `gateway` ns. The cert Secret is created in the same ns.
   namespace: "istio-system"
@@ -387,22 +397,22 @@ previewGateway:
     annotations: {}
     labels: {}
 
-# ── mesh cross-references ──────────────────────────────────────────────
+# ── Studio cross-references (legacy `mesh.*` values key) ───────────────
 # Tells this chart where the chart-deco-studio release for THIS
 # environment runs so the RBAC RoleBinding, NetworkPolicy ingress
 # selector, and preview-Gateway HTTPRoute backendRef all point at it.
 # These values must match the namespace + release-name + service-port of
 # the studio install for the same env.
 mesh:
-  # Namespace where the studio release runs. The mesh ServiceAccount and
-  # mesh Service are looked up here.
+  # Namespace where the studio release runs. The Studio ServiceAccount and
+  # Service are looked up here.
   namespace: "deco-studio"
-  # Name of the mesh ServiceAccount that gets the RoleBinding allowing
+  # Name of the Studio ServiceAccount that gets the RoleBinding allowing
   # SandboxClaim CRUD + portforward against agent-sandbox-system.
   # Conventionally the studio release name (chart.fullname).
   serviceAccountName: "deco-studio"
   # DEPRECATED — removal target: chart 0.8.0. Per-claim HTTPRoutes are
-  # minted by mesh now, so the cluster-wide preview backendRef is gone
+  # minted by Studio now, so the cluster-wide preview backendRef is gone
   # and these three keys are unused. Kept one minor to not break overrides.
   serviceName: "deco-studio"
   servicePort: 80
@@ -432,7 +442,7 @@ housekeeper:
   ttlSecondsAfterFinished: 300
 
   # Empty = use env-scoped defaults from the housekeeper{Claim,Pod}Selector
-  # helpers. Override during phased rollout (before mesh propagates
+  # helpers. Override during phased rollout (before Studio propagates
   # STUDIO_ENV) — the env-scoped default matches zero claims without the
   # label. README has the unscoped copy-paste.
   claimSelector: ""

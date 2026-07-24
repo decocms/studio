@@ -28,11 +28,11 @@ import type {
   UIMessageChunk,
   UIMessageStreamWriter,
 } from "ai";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import type { ConnectionsBlockTool } from "./connections-block";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { ModelsConfig } from "../types";
-import type { MeshProvider } from "./mesh-provider";
+import type { StudioProvider } from "./studio-provider";
 import type { CodingWorkspacePromptInput } from "../coding-workspace-prompt";
 
 /**
@@ -96,7 +96,7 @@ export interface RunEngineArgs {
     delegationTargetIds?: string[] | null;
   };
   mcpClient: Client;
-  provider: MeshProvider;
+  provider: StudioProvider;
   models: ModelsConfig;
   messages: ModelMessage[];
   abortSignal: AbortSignal;

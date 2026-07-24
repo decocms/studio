@@ -41,7 +41,7 @@ A unit test may mock **exactly one module function** at the boundary if all of t
 - The "downstream" used in the success path is real, just in-process (e.g. the MCP SDK's bridge transport — a real client and server connected without going over the network).
 - The assertion is on a JS class, timing, or in-memory state — not on a wire response.
 
-Example: `apps/mesh/src/mcp-clients/lazy-client.test.ts` mocks `./client.clientFromConnection` to inject failures, uses a real MCP server via in-process bridge transport for the success path, and asserts `CircuitOpenError` + fail-fast timing. Migrating it to Playwright would mean: hit `/api/:org/mcp/:connectionId` repeatedly while toggling a test MCP server's failure injection, observing the proxy's HTTP status code (no `CircuitOpenError` class), losing timing precision under workers-in-parallel, and risking cross-test pollution of the module-global circuit map.
+Example: `apps/api/src/mcp-clients/lazy-client.test.ts` mocks `./client.clientFromConnection` to inject failures, uses a real MCP server via in-process bridge transport for the success path, and asserts `CircuitOpenError` + fail-fast timing. Migrating it to Playwright would mean: hit `/api/:org/mcp/:connectionId` repeatedly while toggling a test MCP server's failure injection, observing the proxy's HTTP status code (no `CircuitOpenError` class), losing timing precision under workers-in-parallel, and risking cross-test pollution of the module-global circuit map.
 
 This is a genuine exception, not a loophole. It is for one boundary mock guarding a class/timing assertion — *not* for "I didn't want to set up a real fixture." Mocking your whole `storage` interface never qualifies.
 
@@ -123,16 +123,16 @@ These are not part of the default test loop. They run on dedicated CI workflows.
 ```bash
 # Unit (pure logic) + storage-integration both run under bun test locally.
 bun test                                         # everything bun-test can run
-bun test apps/mesh/src/encryption                # subset
+bun test apps/api/src/encryption                 # subset
 
 # A single storage-integration file needs a real DATABASE_URL pointing at Postgres
 # (CI provisions postgres:16; locally point it at your dev DB).
-bun test apps/mesh/src/storage/threads.integration.test.ts
+bun test apps/api/src/storage/threads.integration.test.ts
 
 # E2E
-bun run --cwd=apps/mesh test:e2e                 # all e2e
-bun run --cwd=apps/mesh test:e2e:ui              # interactive UI
-bun run --cwd=apps/mesh test:e2e some-spec       # filter by name
+bun run --cwd=packages/e2e test:e2e              # all e2e
+bun run --cwd=packages/e2e test:e2e:ui           # interactive UI
+bun run --cwd=packages/e2e test:e2e some-spec    # filter by name
 
 # Resilience / multi-pod (requires Docker)
 ./tests/resilience/run.sh
@@ -155,9 +155,8 @@ Adding a test is just choosing the right filename — it auto-routes.
 
 ## Examples
 
-- Good unit test: [`apps/mesh/src/encryption/credential-vault.test.ts`](apps/mesh/src/encryption/credential-vault.test.ts)
-- Good storage-integration test: [`apps/mesh/src/storage/threads.integration.test.ts`](apps/mesh/src/storage/threads.integration.test.ts)
+- Good unit test: [`apps/api/src/encryption/credential-vault.test.ts`](apps/api/src/encryption/credential-vault.test.ts)
+- Good storage-integration test: [`apps/api/src/storage/threads.integration.test.ts`](apps/api/src/storage/threads.integration.test.ts)
 - Good e2e spec: [`packages/e2e/tests/connection-create.spec.ts`](packages/e2e/tests/connection-create.spec.ts)
 </content>
 </invoke>
-

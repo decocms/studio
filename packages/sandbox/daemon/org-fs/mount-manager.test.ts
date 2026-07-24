@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type InvalidatorFactory,
@@ -107,7 +107,7 @@ async function waitUntil(cond: () => boolean, timeoutMs = 1000) {
 const config = (
   mounts: { volume: string; path: string }[],
 ): OrgFsMountConfig => ({
-  baseUrl: "http://mesh.invalid",
+  baseUrl: "http://studio.invalid",
   orgSlug: "acme",
   token: "tok",
   mounts,

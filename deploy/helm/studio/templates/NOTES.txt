@@ -24,5 +24,5 @@
   Watch reconciliation: kubectl -n {{ .Release.Namespace }} get clickhousecluster,keepercluster -w
   The monitoring dashboard reads the studio_monitoring_logs VIEW — provision it
   once after the collector starts writing otel_logs (see
-  apps/mesh/src/monitoring/clickhouse-setup.md in the Studio repo).
+  apps/api/src/monitoring/clickhouse-setup.md in the Studio repo).
 {{- end }}

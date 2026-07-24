@@ -9,7 +9,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rebaseOntoBase } from "./rebase-onto-base";
+import {
+  RebaseBaseBranchNotFoundError,
+  rebaseOntoBase,
+} from "./rebase-onto-base";
 
 function setupConflictingRepo(): {
   repoDir: string;
@@ -120,6 +123,20 @@ describe("rebaseOntoBase", () => {
         .toString()
         .trim();
       expect(mainAfter).toBe(mainBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("throws RebaseBaseBranchNotFoundError for a base branch missing on origin", () => {
+    const { repoDir, cleanup } = setupConflictingRepo();
+    try {
+      expect(() =>
+        rebaseOntoBase(repoDir, "does-not-exist", { asUser: false }),
+      ).toThrow(RebaseBaseBranchNotFoundError);
+      expect(() =>
+        rebaseOntoBase(repoDir, "does-not-exist", { asUser: false }),
+      ).toThrow(/Base branch 'does-not-exist' not found on origin/);
     } finally {
       cleanup();
     }

@@ -130,7 +130,7 @@ spec:
                   fieldPath: metadata.name
             - name: POD_NAME
               value: "$(POD_NAME_BASE)-{{ $api.portName }}"
-            - name: MESH_DISPATCH_ROLE
+            - name: STUDIO_DISPATCH_ROLE
               value: "api"
             {{- if $.Values.terminationGracePeriodSeconds }}
             - name: SHUTDOWN_GRACE_SECONDS

@@ -79,7 +79,7 @@ function makeStateStore(): RunnerStateStoreOps & {
         handle: row.handle,
         state: row.state,
         updatedAt: new Date(),
-        id: { userId: "u1", projectRef: "ref" },
+        id: { scope: "user", userId: "u1", projectRef: "ref" },
       };
     },
     async put(
@@ -103,6 +103,7 @@ function makeStateStore(): RunnerStateStoreOps & {
 // ---- Tests ------------------------------------------------------------------
 
 const SANDBOX_ID: SandboxId = {
+  scope: "user",
   userId: "u1",
   projectRef: "agent:org:vmcp:deco/test-branch",
 };

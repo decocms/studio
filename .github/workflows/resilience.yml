@@ -7,7 +7,7 @@ on:
     # Skip pushes to main that only touch the version bump, CI/workflow config,
     # or docs — none need this heavy suite re-run.
     paths-ignore:
-      - "apps/mesh/package.json"
+      - "apps/api/package.json"
       - ".github/**"
       - "apps/docs/**"
       - "**/*.md"

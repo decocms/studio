@@ -1,8 +1,10 @@
-import { sleep } from "@decocms/std";
+import { SUBMODULE_HOST_RE } from "@decocms/shared/sdk/types/virtual-mcp";
+import { sleep } from "@decocms/shared/std";
 import { existsSync, readdirSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { isSyntheticBranch } from "../constants";
+import { SANDBOX_BASE_BRANCH } from "../git/checkout-branch";
 import { isValidRemoteBranchName } from "../git/ref-name";
 import {
   formatCommand,
@@ -160,8 +162,8 @@ async function runNetworkStepCapture(
  * then can't compute ahead/behind vs base and the header falsely reports
  * "Up to date" until a background fetch happens to populate the base ref.
  *
- * Fetch the remote's default branch (shallow, matching the Case-1 default
- * clone) and point `origin/HEAD` at it so divergence-vs-base is computable
+ * Fetch `main` (shallow, matching the sandbox base clone) and point
+ * `origin/HEAD` at it so divergence-vs-base is computable
  * from the moment the sandbox comes online. Best-effort: a failure here leaves
  * the working tree intact and only delays the base ref to the next fetch, so
  * we warn rather than abort the whole clone.
@@ -177,36 +179,11 @@ async function runNetworkStepCapture(
 async function fetchBaseBranch(
   askpassPath: string,
   dir: string,
-  cloneUrl: string,
   branchOnRemote: string,
   deps: CloneDeps,
 ): Promise<void> {
-  const { code, output } = await runNetworkStepCapture(
-    git(["ls-remote", "--symref", cloneUrl, "HEAD"], askpassPath),
-    deps,
-  );
-  if (code !== 0) {
-    deps.onChunk(
-      "setup",
-      `\r\n[clone] warning: could not resolve remote default branch; divergence vs base unavailable until next fetch\r\n`,
-    );
-    return;
-  }
-  // "ref: refs/heads/main\tHEAD"
-  const base = output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null;
-  if (!base || base === branchOnRemote) return;
-  // `base` comes from remote-controlled ls-remote output and flows into a
-  // `git fetch`/`symbolic-ref` argv below. The argv/env representation makes
-  // shell injection impossible, but ref-format garbage (and flag-shaped
-  // names) still has no business reaching git — shared allowlist, same as
-  // the checkout path (git/ref-name.ts).
-  if (!isValidRemoteBranchName(base)) {
-    deps.onChunk(
-      "setup",
-      `\r\n[clone] warning: refusing unsafe base branch name ${JSON.stringify(base)}; divergence vs base unavailable until next fetch\r\n`,
-    );
-    return;
-  }
+  const base = SANDBOX_BASE_BRANCH;
+  if (base === branchOnRemote) return;
 
   const fetchCode = await runNetworkStep(
     git(
@@ -247,15 +224,14 @@ export interface CloneResult {
   /** Exit code — 0 on success. */
   code: number;
   /**
-   * Deferred, best-effort fetch of the remote's default branch (+ the
-   * origin/HEAD pointer) so `computeBranchDivergence` can report ahead/behind
-   * vs base. Split off the clone critical path: it's 1-2 network round trips
-   * (`ls-remote --symref` + `fetch`) that only feed the divergence header, so
-   * the orchestrator runs it in the background once the working tree is ready
-   * rather than blocking install+start behind it (the header just shows its
-   * "unavailable until next fetch" state for a beat). Absent when no base
+   * Deferred, best-effort fetch of `main` (+ the origin/HEAD pointer) so
+   * `computeBranchDivergence` can report ahead/behind
+   * vs base. Split off the clone critical path: the extra fetch only feeds the
+   * divergence header, so the orchestrator runs it once the working tree is
+   * ready rather than blocking install+start behind it (the header just shows
+   * its "unavailable until next fetch" state for a beat). Absent when no base
    * fetch is warranted (target branch absent on remote → local fork; or the
-   * target IS the default branch). `onChunk` is injected by the caller because
+   * target IS `main`). `onChunk` is injected by the caller because
    * the clone's own log tee is closed by the time this runs.
    */
   fetchBase?: (
@@ -268,10 +244,6 @@ export interface CloneResult {
 // file form makes shell injection impossible, but a host with a slash, `@`,
 // whitespace, or control chars would corrupt the insteadOf prefix or the
 // credential URL — so allow only a bare hostname with an optional port.
-// Duplicated (not imported) because the daemon can't depend on mesh-sdk — keep
-// in sync with `SUBMODULE_HOST_RE` in packages/mesh-sdk/src/types/virtual-mcp.ts.
-const VALID_SUBMODULE_HOST = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-
 /**
  * Exported for unit tests. Validates + dedupes submodule credentials by host
  * (last write wins), returning the git-credential-store file lines for the
@@ -283,7 +255,7 @@ export function prepareSubmoduleCredentials(
   const invalidHosts: string[] = [];
   const tokenByHost = new Map<string, string>();
   for (const c of credentials) {
-    if (!VALID_SUBMODULE_HOST.test(c.host)) {
+    if (!SUBMODULE_HOST_RE.test(c.host)) {
       invalidHosts.push(c.host);
       continue;
     }
@@ -425,7 +397,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   // gives deterministic semantics that replace the old silent "try fetch,
   // fall through on any failure" probe:
   //   0   → branch exists on origin → clone it directly with --branch
-  //   2   → origin reachable but branch absent → clone default, fork locally
+  //   2   → origin reachable but branch absent → clone main, fork locally
   //   any → real failure → surface to caller
   let branchOnRemote: string | null = null;
   let branchToForkLocally: string | null = null;
@@ -454,7 +426,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     } else if (probe === LS_REMOTE_NO_MATCH) {
       deps.onChunk(
         "setup",
-        `[clone] branch '${branch}' not on remote; cloning default and forking locally\r\n`,
+        `[clone] branch '${branch}' not on remote; cloning main and forking locally\r\n`,
       );
       branchToForkLocally = branch;
     } else {
@@ -471,7 +443,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   const deferBaseFetch =
     (branchOnRemoteForFetch: string) =>
     (onChunk: (source: "setup", data: string) => void) =>
-      fetchBaseBranch(askpassPath, dir, cloneUrl, branchOnRemoteForFetch, {
+      fetchBaseBranch(askpassPath, dir, branchOnRemoteForFetch, {
         ...deps,
         onChunk,
       });
@@ -524,7 +496,9 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
       if (resolved && isValidRemoteBranchName(resolved))
         defaultBranch = resolved;
     }
-    const branchToTrack = branchOnRemote ?? defaultBranch;
+    const branchToTrack =
+      branchOnRemote ??
+      (branchToForkLocally ? SANDBOX_BASE_BRANCH : defaultBranch);
     const fetchRef = branchToTrack
       ? `+refs/heads/${branchToTrack}:refs/remotes/origin/${branchToTrack}`
       : "HEAD";
@@ -573,7 +547,14 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     );
   }
 
-  const cloneCmd = cloneCommand({ cloneUrl, dir, branchOnRemote, askpassPath });
+  const branchToClone =
+    branchOnRemote ?? (branchToForkLocally ? SANDBOX_BASE_BRANCH : null);
+  const cloneCmd = cloneCommand({
+    cloneUrl,
+    dir,
+    branchOnRemote: branchToClone,
+    askpassPath,
+  });
   const cloneCode = await runNetworkStep(cloneCmd, deps);
   if (cloneCode !== 0) return { code: cloneCode };
   if (branchToForkLocally) {

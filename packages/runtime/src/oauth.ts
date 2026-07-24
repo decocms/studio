@@ -175,6 +175,16 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
       );
     }
 
+    if (!isValidRedirectUri(redirectUri)) {
+      return Response.json(
+        {
+          error: "invalid_request",
+          error_description: `Invalid redirect_uri: ${redirectUri}`,
+        },
+        { status: 400 },
+      );
+    }
+
     if (responseType !== "code") {
       return Response.json(
         {

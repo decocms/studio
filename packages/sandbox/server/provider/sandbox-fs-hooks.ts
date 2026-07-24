@@ -10,15 +10,15 @@
  *
  * The `DaemonUnreachableError` sentinel, the `daemonRequest` proxy wrapper, and
  * the call-level retry layer are moved verbatim from
- * `apps/mesh/src/harnesses/decopilot/built-in-tools/vm-tools/index.ts` (where
+ * `apps/api/src/harnesses/decopilot/built-in-tools/vm-tools/index.ts` (where
  * they used to live in-tool). The richer LLM-visible read/write/edit/grep/glob/
  * bash *tools* (truncation, image-queueing, html-buffer mirroring) stay in the
  * harness and call these flat hooks.
  *
  * The hook payload shapes mirror `HarnessDeps`'s `EditOp`/`BashOpts`/
- * `BashResult`/`GrepOpts`/`GrepHit` (apps/mesh/src/harnesses/harness-deps.ts) so
+ * `BashResult`/`GrepOpts`/`GrepHit` (`packages/harness/src/harness-deps.ts`) so
  * the cluster bag can wire `deps.onRead = hooks.onRead`, etc. They are declared
- * locally here because `packages/` may not import the `apps/mesh` tree
+ * locally here because packages may not import an `apps/*` tree
  * (ban-cross-tree-imports).
  */
 
@@ -295,7 +295,7 @@ async function daemonRequest(
  * skipped.
  *
  * The file-explorer UI has an equivalent `parseGrepContent` in
- * `apps/mesh/src/web/components/sandbox/preview/file-explorer/utils.ts` —
+ * `apps/web/src/components/sandbox/preview/file-explorer/utils.ts` —
  * same wire shape, kept separate because packages can't import app code.
  * Update both if the shape changes.
  */

@@ -5,7 +5,11 @@ import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { protectedBranches } from "../git/protect-branch";
-import { rebaseOntoBase } from "../git/rebase-onto-base";
+import {
+  RebaseBaseBranchNotFoundError,
+  RebaseBlockedError,
+  rebaseOntoBase,
+} from "../git/rebase-onto-base";
 import {
   cloneUrlHasCredentials,
   syncOriginRemote,
@@ -116,6 +120,8 @@ export interface GitStatusFile {
   path: string;
   index: string;
   working_dir: string;
+  /** Pre-rename path, present only for R/C entries. */
+  origPath?: string;
 }
 
 export interface GitStatusResult {
@@ -132,7 +138,7 @@ export interface GitStatusResult {
   current: string | null;
   tracking: string | null;
   detached: boolean;
-  /** Default branch (e.g. main) from origin/HEAD. */
+  /** Sandbox base branch (`main`). */
   base: string;
   /** Commits on branch not in origin/<base>. */
   aheadOfBase: number;
@@ -142,6 +148,18 @@ export interface GitStatusResult {
   headSha: string;
   /** Commits on HEAD not in origin/<current branch>. */
   unpushed: number;
+}
+
+/**
+ * The requested base branch doesn't exist on origin (typo, deleted branch) —
+ * a client/data condition, not a server fault, so the route maps it to 400
+ * instead of a raw 500.
+ */
+class BaseBranchNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BaseBranchNotFoundError";
+  }
 }
 
 export interface GitDiffEntry {
@@ -274,7 +292,14 @@ async function computeDiff(repoDir: string): Promise<GitDiffResult> {
       const index = file?.index ?? " ";
       const working = file?.working_dir ?? " ";
       const isDeleted = index === "D" || working === "D";
-      const head = await readRefFileAsync(repoDir, "HEAD", filePath);
+      // A renamed file's HEAD content lives under its pre-rename path — reading
+      // HEAD:filePath would 404 (the new name never existed at HEAD) and the
+      // rename would render as a brand-new file with no "from" content.
+      const head = await readRefFileAsync(
+        repoDir,
+        "HEAD",
+        file?.origPath ?? filePath,
+      );
       const isNew =
         (index === "?" && working === "?") ||
         index === "A" ||
@@ -355,7 +380,9 @@ export async function computeDiffAgainstBase(
     }
 
     if (!resolveLocally(upstream)) {
-      throw new Error(`Base branch '${base}' not found on origin`);
+      throw new BaseBranchNotFoundError(
+        `Base branch '${base}' not found on origin`,
+      );
     }
 
     if (hasValidHeadSha && resolveLocally(`${headSha}^{commit}`)) {
@@ -435,7 +462,9 @@ function formatGitError(err: unknown): string {
 let emptyHooksDir: string | null = null;
 function getEmptyHooksDir(): string {
   if (!emptyHooksDir) {
-    emptyHooksDir = mkdtempSync(path.join(tmpdir(), "mesh-sandbox-no-hooks-"));
+    emptyHooksDir = mkdtempSync(
+      path.join(tmpdir(), "studio-sandbox-no-hooks-"),
+    );
   }
   return emptyHooksDir;
 }
@@ -451,14 +480,34 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   ];
 }
 
+/** A discard request path that escapes the repo — a client/data condition, not a server fault. */
+class InvalidDiscardPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDiscardPathError";
+  }
+}
+
+/**
+ * publish() refused because of the sandbox's current git state (detached HEAD,
+ * or the checked-out branch is protected) — a conflict with the request, not a
+ * server fault, so the route maps it to 409 like repoNotReadyResponse().
+ */
+class PublishBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublishBlockedError";
+  }
+}
+
 function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   const abs = safePath(deps.appRoot, deps.repoDir, userPath);
   if (!abs) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   const rel = path.relative(deps.repoDir, abs);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   return rel;
 }
@@ -518,14 +567,14 @@ export function publish(
   }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot publish from a detached HEAD");
+    throw new PublishBlockedError("Cannot publish from a detached HEAD");
   }
   // The pre-push hook (protect-branch.ts) also guards this, but the push below
   // runs with --no-verify and skips it — so the block MUST live in code too.
   // Refuse before committing so we never leave a stray commit on a protected
   // branch either. Changes reach the default branch via PR, never a direct push.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new PublishBlockedError(
       `Refusing to push to protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
@@ -620,8 +669,22 @@ function discard(deps: GitDeps, filepaths: string[]): void {
   const status = computeWorkingTreeStatus(repoDir);
   const toRestore: string[] = [];
   const toDelete: string[] = [];
+  // A renamed file's new path never existed at HEAD, so the isNew check below
+  // would treat it as untracked and unlink it outright — losing the content
+  // entirely, since the original path is already gone from the working tree
+  // too. Discarding a rename must instead restore the original file from HEAD
+  // and unstage + drop the new path.
+  const toRestoreFromHead: string[] = [];
+  const renamedNewPaths: string[] = [];
 
   for (const fp of validated) {
+    const origPath = status.files.find((f) => f.path === fp)?.origPath;
+    if (origPath) {
+      toRestoreFromHead.push(origPath);
+      renamedNewPaths.push(fp);
+      toDelete.push(fp);
+      continue;
+    }
     const isNew =
       status.not_added.includes(fp) ||
       status.created.includes(fp) ||
@@ -630,6 +693,13 @@ function discard(deps: GitDeps, filepaths: string[]): void {
     else toRestore.push(fp);
   }
 
+  if (toRestoreFromHead.length > 0) {
+    // Unstage the rename's "new path added" side before restoring the
+    // original — otherwise it survives in the index even after the working
+    // tree file below is deleted.
+    runGit(repoDir, ["reset", "--", ...renamedNewPaths]);
+    runGit(repoDir, ["checkout", "HEAD", "--", ...toRestoreFromHead]);
+  }
   if (toRestore.length > 0) {
     runGit(repoDir, ["checkout", "--", ...toRestore]);
   }
@@ -673,13 +743,24 @@ export function makeGitDiffHandler(deps: GitDeps) {
             base?: string;
             headSha?: string;
           };
-          const rawBase = typeof body.base === "string" ? body.base.trim() : "";
+          // If base is provided but empty after trim, that's a client error.
+          if ("base" in body) {
+            const rawBase =
+              typeof body.base === "string" ? body.base.trim() : "";
+            if (!rawBase) {
+              return jsonResponse(
+                { error: "base is required when provided" },
+                400,
+              );
+            }
+            base = rawBase;
+          }
           const rawHead =
             typeof body.headSha === "string" ? body.headSha.trim() : "";
-          if (rawBase) base = rawBase;
           if (rawHead) headSha = rawHead;
-        } catch {
-          // Empty body → working-tree diff.
+        } catch (e) {
+          if (e instanceof Response) throw e; // Re-throw early-exit responses
+          // Unparseable body → working-tree diff.
         }
       }
 
@@ -688,7 +769,11 @@ export function makeGitDiffHandler(deps: GitDeps) {
         : await computeDiff(deps.repoDir);
       return jsonResponse(result);
     } catch (err) {
+      if (err instanceof Response) return err; // Handle early-exit responses
       if (err instanceof InvalidRemoteBranchNameError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
+      if (err instanceof BaseBranchNotFoundError) {
         return jsonResponse({ error: err.message }, 400);
       }
       return jsonResponse(
@@ -719,6 +804,11 @@ export function makeGitPublishHandler(deps: GitDeps) {
       if (err instanceof InvalidDecofileBlockError) {
         return jsonResponse({ error: err.message }, 400);
       }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault.
+      if (err instanceof PublishBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
+      }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
@@ -736,13 +826,20 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
     const filepaths = body.filepaths;
-    if (!Array.isArray(filepaths) || filepaths.length === 0) {
+    if (
+      !Array.isArray(filepaths) ||
+      filepaths.length === 0 ||
+      !filepaths.every((fp) => typeof fp === "string" && fp.trim().length > 0)
+    ) {
       return jsonResponse({ error: "filepaths is required" }, 400);
     }
     try {
       discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
+      if (err instanceof InvalidDiscardPathError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         500,
@@ -775,6 +872,17 @@ export function makeGitRebaseHandler(deps: GitDeps) {
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
         return jsonResponse({ error: err.message }, 400);
+      }
+      // The requested base branch doesn't exist on origin — a client/data
+      // condition, not a server fault (mirrors BaseBranchNotFoundError in the
+      // diff-against-base path above).
+      if (err instanceof RebaseBaseBranchNotFoundError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault (mirrors publish() above).
+      if (err instanceof RebaseBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
       }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }

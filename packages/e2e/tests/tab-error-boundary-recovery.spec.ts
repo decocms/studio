@@ -7,7 +7,7 @@
  * See spec at docs/superpowers/specs/2026-06-03-sandbox-drawer-everywhere-design.md.
  *
  * Trigger: dev-only `window.__forceTabError = <activeTab>` hook in
- * apps/mesh/src/web/layouts/main-panel-tabs/index.tsx's TabBody.
+ * apps/web/src/layouts/main-panel-tabs/index.tsx's TabBody.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/test";
@@ -73,7 +73,7 @@ test.describe("tab error boundary recovers on tab switch", () => {
     );
 
     // Error boundary fallback is visible — matches the default fallback text
-    // in apps/mesh/src/web/components/error-boundary.tsx.
+    // in apps/web/src/components/error-boundary.tsx.
     await expect(page.getByText(/something went wrong/i)).toBeVisible({
       timeout: 15_000,
     });
@@ -104,6 +104,15 @@ test.describe("tab error boundary recovers on tab switch", () => {
       (window as unknown as { __forceTabError?: string }).__forceTabError =
         "settings";
     });
+
+    // The terminal drawer is opt-in (hidden by default; enabled via the preview
+    // ⋯ menu, persisted at `preview-terminal-visible:<virtualMcpId>` — see
+    // terminal-visibility.tsx). Seed it on so the drawer chrome renders and we
+    // can assert it survives a crashed tab body.
+    await page.addInitScript(
+      (key) => localStorage.setItem(key, JSON.stringify({ visible: true })),
+      `preview-terminal-visible:${agentId}`,
+    );
 
     await page.goto(
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,

@@ -21,11 +21,11 @@ if [ "$branch_checkout" = "1" ]; then
       main_worktree=$(dirname "$git_common_dir")
 
       # Copy .env from main worktree only if it doesn't already exist here
-      if [ -f "$main_worktree/apps/mesh/.env" ] && [ ! -f "$(pwd)/apps/mesh/.env" ]; then
+      if [ -f "$main_worktree/apps/api/.env" ] && [ ! -f "$(pwd)/apps/api/.env" ]; then
         echo "🔧 Copying .env to new worktree..."
-        mkdir -p "$(pwd)/apps/mesh"
-        cp "$main_worktree/apps/mesh/.env" "$(pwd)/apps/mesh/.env"
-        echo "✓ .env copied to $(pwd)/apps/mesh/.env"
+        mkdir -p "$(pwd)/apps/api"
+        cp "$main_worktree/apps/api/.env" "$(pwd)/apps/api/.env"
+        echo "✓ .env copied to $(pwd)/apps/api/.env"
       fi
     fi
   fi

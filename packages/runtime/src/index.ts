@@ -11,6 +11,10 @@ import { createOAuthHandlers } from "./oauth.ts";
 export { OAuthInvalidGrantError } from "./oauth.ts";
 import { State } from "./state.ts";
 import {
+  resolveStudioUrl,
+  synchronizeStudioEnvironmentAliases,
+} from "./studio-context.ts";
+import {
   createMCPServer,
   type CreateMCPServerOptions,
   MCPServer,
@@ -60,14 +64,41 @@ export interface DefaultEnv<
   TSchema extends z.ZodTypeAny = any,
   TBindings extends BindingRegistry = BindingRegistry,
 > {
+  STUDIO_REQUEST_CONTEXT: RequestContext<TSchema, TBindings>;
+  /** @deprecated Use `STUDIO_REQUEST_CONTEXT` instead. */
   MESH_REQUEST_CONTEXT: RequestContext<TSchema, TBindings>;
+  STUDIO_APP_DEPLOYMENT_ID: string;
+  /** @deprecated Use `STUDIO_APP_DEPLOYMENT_ID` instead. */
   MESH_APP_DEPLOYMENT_ID: string;
   IS_LOCAL: boolean;
+  STUDIO_URL?: string;
+  /** @deprecated Use `STUDIO_URL` instead. */
   MESH_URL?: string;
+  STUDIO_RUNTIME_TOKEN?: string;
+  /** @deprecated Use `STUDIO_RUNTIME_TOKEN` instead. */
   MESH_RUNTIME_TOKEN?: string;
+  STUDIO_APP_NAME?: string;
+  /** @deprecated Use `STUDIO_APP_NAME` instead. */
   MESH_APP_NAME?: string;
   [key: string]: unknown;
 }
+
+type RuntimeInjectedEnvKey =
+  | "STUDIO_REQUEST_CONTEXT"
+  | "MESH_REQUEST_CONTEXT"
+  | "STUDIO_APP_DEPLOYMENT_ID"
+  | "MESH_APP_DEPLOYMENT_ID";
+
+/**
+ * Environment accepted by the outer fetch handler before request-scoped values
+ * are injected. Both canonical and legacy names are optional at this boundary;
+ * handlers receive a complete `DefaultEnv`.
+ */
+export type RuntimeFetchEnv<TEnv = DefaultEnv> = Omit<
+  TEnv,
+  Extract<RuntimeInjectedEnvKey, keyof TEnv>
+> &
+  Partial<Pick<TEnv, Extract<RuntimeInjectedEnvKey, keyof TEnv>>>;
 
 export interface BindingsObject {
   bindings?: Binding[];
@@ -120,6 +151,8 @@ export interface RequestContext<
 > {
   state: ResolvedBindings<z.infer<TSchema>, TBindings>;
   token: string;
+  studioUrl: string;
+  /** @deprecated Use `studioUrl` instead. */
   meshUrl: string;
   authorization?: string | null;
   ensureAuthenticated: (options?: {
@@ -131,6 +164,15 @@ export interface RequestContext<
   organizationName?: string;
   organizationSlug?: string;
 }
+
+export type RequestContextInput<
+  TSchema extends z.ZodTypeAny = any,
+  TBindings extends BindingRegistry = BindingRegistry,
+> = Omit<RequestContext<TSchema, TBindings>, "studioUrl" | "meshUrl"> & {
+  studioUrl?: string;
+  /** @deprecated Use `studioUrl` instead. */
+  meshUrl?: string;
+};
 
 const withDefaultBindings = ({
   env,
@@ -188,36 +230,44 @@ export const withBindings = <TEnv>({
   url,
   authToken,
 }: {
-  env: TEnv;
+  env: RuntimeFetchEnv<TEnv>;
   server: MCPServer<TEnv, any, any>;
-  // token is x-mesh-token
-  tokenOrContext?: string | RequestContext;
+  // token is the canonical x-studio-token or legacy x-mesh-token wire header
+  tokenOrContext?: string | RequestContextInput;
   // authToken is the authorization header
   authToken?: string | null;
   url?: string;
 }): TEnv => {
-  const env = _env as DefaultEnv<any>;
+  const env = _env as unknown as DefaultEnv<any>;
+  synchronizeStudioEnvironmentAliases(env);
   const authorization = authToken ? authToken.split(" ")[1] : undefined;
 
-  let context;
+  let context: RequestContext<any>;
   if (typeof tokenOrContext === "string") {
     const decoded = decodeJwt(tokenOrContext);
     // Support both new JWT format (fields directly on payload) and legacy format (nested in metadata)
     const metadata =
       (decoded.metadata as {
         state?: Record<string, unknown>;
+        studioUrl?: string;
         meshUrl?: string;
         connectionId?: string;
         organizationId?: string;
         organizationName?: string;
         organizationSlug?: string;
       }) ?? {};
+    const studioUrl = resolveStudioUrl({
+      studioUrl:
+        (decoded.studioUrl as string | undefined) ?? metadata.studioUrl,
+      meshUrl: (decoded.meshUrl as string | undefined) ?? metadata.meshUrl,
+    });
 
     context = {
       authorization,
       state: decoded.state ?? metadata.state ?? {},
       token: tokenOrContext,
-      meshUrl: (decoded.meshUrl as string) ?? metadata.meshUrl,
+      studioUrl,
+      meshUrl: studioUrl,
       connectionId: (decoded.connectionId as string) ?? metadata.connectionId,
       organizationId:
         (decoded.organizationId as string) ?? metadata.organizationId,
@@ -228,19 +278,29 @@ export const withBindings = <TEnv>({
       ensureAuthenticated: AUTHENTICATED(decoded.user ?? decoded.sub),
     } as RequestContext<any>;
   } else if (typeof tokenOrContext === "object") {
-    context = tokenOrContext;
+    context = tokenOrContext as RequestContext<any>;
     const decoded = decodeJwt(tokenOrContext.token);
     // Support both new JWT format (fields directly on payload) and legacy format (nested in metadata)
     const metadata =
       (decoded.metadata as {
         state?: Record<string, unknown>;
+        studioUrl?: string;
         meshUrl?: string;
         connectionId?: string;
         organizationId?: string;
         organizationName?: string;
         organizationSlug?: string;
       }) ?? {};
+    const studioUrl =
+      resolveStudioUrl(context) ??
+      resolveStudioUrl({
+        studioUrl:
+          (decoded.studioUrl as string | undefined) ?? metadata.studioUrl,
+        meshUrl: (decoded.meshUrl as string | undefined) ?? metadata.meshUrl,
+      });
     const appName = decoded.appName as string | undefined;
+    context.studioUrl = studioUrl as string;
+    context.meshUrl = studioUrl as string;
     context.authorization ??= authorization;
     context.callerApp = appName;
     context.connectionId ??=
@@ -257,6 +317,7 @@ export const withBindings = <TEnv>({
       state: {},
       authorization,
       token: undefined,
+      studioUrl: undefined,
       meshUrl: undefined,
       connectionId: undefined,
       ensureAuthenticated: () => {
@@ -265,6 +326,7 @@ export const withBindings = <TEnv>({
     } as unknown as RequestContext<any>;
   }
 
+  env.STUDIO_REQUEST_CONTEXT = context;
   env.MESH_REQUEST_CONTEXT = context;
   context.state = initializeBindings(context);
 
@@ -300,7 +362,7 @@ export const withRuntime = <
 >(
   userFns: UserDefaultExport<TUserEnv, TSchema, TBindings>,
 ) => {
-  const server = createMCPServer<TUserEnv, TSchema, TBindings>(userFns);
+  const server = createMCPServer<TUserEnv, TSchema, TBindings, TEnv>(userFns);
   const corsOptions = userFns.cors ?? DEFAULT_CORS_OPTIONS;
   const oauth = userFns.oauth;
   const oauthHandlers = oauth ? createOAuthHandlers(oauth) : null;
@@ -396,7 +458,8 @@ export const withRuntime = <
   };
 
   return {
-    fetch: async (req: Request, env: TEnv, ctx?: any) => {
+    fetch: async (req: Request, inputEnv: RuntimeFetchEnv<TEnv>, ctx?: any) => {
+      const env = inputEnv as TEnv;
       if (new URL(req.url).pathname === "/_healthcheck") {
         return new Response("OK", { status: 200 });
       }
@@ -410,7 +473,10 @@ export const withRuntime = <
         authToken: req.headers.get("authorization") ?? null,
         env: { ...process.env, ...env },
         server,
-        tokenOrContext: req.headers.get("x-mesh-token") ?? undefined,
+        tokenOrContext:
+          req.headers.get("x-studio-token") ??
+          req.headers.get("x-mesh-token") ??
+          undefined,
         url: req.url,
       });
 

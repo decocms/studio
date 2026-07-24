@@ -1,5 +1,5 @@
 import { sha256Hex } from "@decocms/harness/offload-messages";
-import { retry } from "@decocms/std";
+import { retry } from "@decocms/shared/std";
 
 /** Max size of an offloaded messages blob (bound to a realistic harness input,
  *  not a generic 500MiB transfer). Module-local — only used by the fetcher

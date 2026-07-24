@@ -2,7 +2,9 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
-version: 0.12.3
+# 0.12.4: chart-managed API/worker dispatch roles now use
+# STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
+version: 0.12.4
 appVersion: "latest"
 
 dependencies:

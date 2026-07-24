@@ -30,7 +30,7 @@
  * should not construct this — see MountManager (mounting is then skipped).
  */
 
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { detachMountAsync } from "./detach-mount";
 import type { MountHandle, Mounter } from "./mount-manager";
 

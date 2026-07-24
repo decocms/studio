@@ -16,9 +16,9 @@ on:
       - main
     # Skip pushes to main that only touch the version bump, CI/workflow config,
     # or docs — none need the suite re-run (PRs already validated them, and the
-    # [release] bump is owned by release-mesh).
+    # [release] bump is owned by release-studio).
     paths-ignore:
-      - "apps/mesh/package.json"
+      - "apps/api/package.json"
       - ".github/**"
       - "apps/docs/**"
       - "**/*.md"
@@ -43,7 +43,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # Push to main runs everything — except the [release]: version-bump
-            # commit, which only touches the version string. release-mesh picks
+            # commit, which only touches the version string. release-studio picks
             # that commit up on its own push trigger and cuts the release.
             case "$HEAD_MSG" in
               '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
@@ -52,10 +52,9 @@ jobs:
             exit 0
           fi
           set +e
-          FILES=$(gh api --paginate \
+          if ! FILES=$(gh api --paginate \
             "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
-            --jq '.[].filename')
-          if [ $? -ne 0 ]; then
+            --jq '.[].filename'); then
             echo "Could not list PR files — running to be safe."
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -108,7 +107,7 @@ jobs:
         run: bun install
 
       - name: Run migrations
-        run: bun run --cwd=apps/mesh migrate
+        run: bun run --cwd=apps/api migrate
 
       # Backs the s3-service integration test. The test creates its own bucket
       # in beforeAll, so this only needs the server up. Shared composite action
@@ -135,4 +134,4 @@ jobs:
             echo "::group::$f"
             bun test "$f"
             echo "::endgroup::"
-          done < <(find apps/mesh -name '*.integration.test.ts' | sort)
+          done < <(find apps/api -name '*.integration.test.ts' | sort)

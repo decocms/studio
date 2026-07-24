@@ -8,8 +8,8 @@ on:
     branches: [main]
     paths:
       - "packages/sandbox/daemon/org-fs/**"
-      - "apps/mesh/src/file-storage/mount/**"
-      - "packages/std/**"
+      - "apps/api/src/file-storage/mount/**"
+      - "packages/shared/**"
       - "deploy/helm/sandbox-env/orgfs-sidecar/**"
       - "deploy/helm/sandbox-env/values.yaml"
       - ".github/workflows/release-orgfs-sidecar.yaml"
@@ -68,7 +68,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          # Repo-root context: the image bundles TS from packages/ + apps/mesh.
+          # Repo-root context: the image bundles TS from packages/ + apps/api.
           context: .
           file: ./deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile
           push: true

@@ -160,31 +160,29 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ## Project Structure
 
-```
-├── apps/
-│   ├── mesh/                # Full-stack deco Studio (Hono API + Vite/React)
-│   │   ├── src/
-│   │   │   ├── api/         # Hono HTTP + MCP proxy routes
-│   │   │   ├── auth/        # Better Auth (OAuth + API keys)
-│   │   │   ├── core/        # StudioContext, AccessControl, defineTool
-│   │   │   ├── tools/       # Built-in MCP management tools
-│   │   │   ├── storage/     # Kysely DB adapters
-│   │   │   ├── event-bus/   # Pub/sub event delivery system
-│   │   │   ├── encryption/  # Token vault & credential management
-│   │   │   ├── observability/  # OpenTelemetry tracing & metrics
-│   │   │   └── web/         # React 19 admin UI
-│   │   └── migrations/      # Kysely database migrations
-│   └── docs/                # Astro documentation site
-│
-└── packages/
-    ├── bindings/            # Core MCP bindings and connection abstractions
-    ├── runtime/             # MCP proxy, OAuth, and runtime utilities
-    ├── ui/                  # Shared React components (shadcn-based)
-    ├── std/                 # Isomorphic async primitives (sleep, retry, backoff)
-    ├── sandbox/             # Isolated per-agent containerized environments
-    ├── mesh-sdk/            # SDK for external apps integrating with Studio
-    └── create-deco/         # Project scaffolding (npm create deco)
-```
+### Applications
+
+| Workspace | Purpose |
+| --- | --- |
+| [`apps/api`](./apps/api/README.md) | Hono API, authentication, tools, storage, migrations, and the `deco` CLI |
+| [`apps/docs`](./apps/docs/README.md) | Astro documentation site |
+| [`apps/web`](./apps/web/README.md) | Vite and React 19 administration interface |
+
+### Packages
+
+| Workspace | Purpose |
+| --- | --- |
+| [`packages/bindings`](./packages/bindings/README.md) | Runtime-validated MCP capability contracts |
+| [`packages/create-deco`](./packages/create-deco/README.md) | `npm create deco` project scaffolding CLI |
+| [`packages/e2e`](./packages/e2e/README.md) | Black-box Playwright suite for Studio |
+| [`packages/harness`](./packages/harness/README.md) | Agent harness contracts and adapters |
+| [`packages/mcp-utils`](./packages/mcp-utils/README.md) | MCP proxy, gateway, aggregation, and sandbox primitives |
+| [`packages/runtime`](./packages/runtime/README.md) | Runtime helpers for MCP servers, OAuth, tools, and triggers |
+| [`packages/sandbox`](./packages/sandbox/README.md) | Agent sandbox lifecycle, daemon, dispatch, and proxy implementation |
+| [`packages/shared`](./packages/shared/README.md) | Private isomorphic contracts, SDK utilities, and async primitives |
+| [`packages/tunnel`](./packages/tunnel/README.md) | NATS-backed streaming HTTP transport |
+| [`packages/typegen`](./packages/typegen/README.md) | Typed client generator for Studio Virtual MCPs |
+| [`packages/ui`](./packages/ui/README.md) | Internal React design system |
 
 ---
 
@@ -192,19 +190,19 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ```bash
 bun install          # Install dependencies
-bun run dev          # Run dev server (client + API)
+bun run dev          # Run the web app and API
 bun test             # Run tests
 bun run check        # Type check
 bun run lint         # Lint
 bun run fmt          # Format
 ```
 
-### Studio commands (from `apps/mesh/`)
+### App-specific commands
 
 ```bash
-bun run dev:client     # Vite dev server (port 4000)
-bun run dev:server     # Hono server with hot reload
-bun run migrate        # Run database migrations
+bun run --cwd=apps/web dev          # Vite dev server (port 4000)
+bun run --cwd=apps/api dev:server   # Hono server with hot reload
+bun run --cwd=apps/api migrate      # Run database migrations
 ```
 
 ### Worktrees
@@ -234,7 +232,7 @@ docker compose -f deploy/docker-compose/docker-compose.yml up
 docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
 
 # Bun
-bun run build:client && bun run build:server && bun run start
+bun run build:studio && bun run --cwd=apps/api start
 
 # Kubernetes (Helm)
 helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio --version <version> -n deco-studio --create-namespace

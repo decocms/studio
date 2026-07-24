@@ -94,3 +94,36 @@ describe("OAuth /token refresh handler", () => {
     expect(body.refresh_token).toBe("rt2");
   });
 });
+
+describe("OAuth /authorize handler", () => {
+  it("rejects a redirect_uri with a non-https, non-local scheme", async () => {
+    const handlers = createOAuthHandlers(baseConfig());
+
+    const response = await handlers.handleAuthorize(
+      new Request(
+        "https://mcp.example.com/authorize?response_type=code&redirect_uri=" +
+          encodeURIComponent("http://attacker.example.com/callback"),
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("invalid_request");
+  });
+
+  it("accepts an https redirect_uri and redirects to the upstream authorization URL", async () => {
+    const handlers = createOAuthHandlers(baseConfig());
+
+    const response = await handlers.handleAuthorize(
+      new Request(
+        "https://mcp.example.com/authorize?response_type=code&redirect_uri=" +
+          encodeURIComponent("https://client.example.com/callback"),
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "https://upstream.example.com/authorize",
+    );
+  });
+});

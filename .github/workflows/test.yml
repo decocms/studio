@@ -6,9 +6,9 @@ on:
       - main
     # Skip pushes to main that only touch the version bump, CI/workflow config,
     # or docs — none need the suite re-run (PRs already validated them, and the
-    # [release] bump is owned by release-mesh).
+    # [release] bump is owned by release-studio).
     paths-ignore:
-      - "apps/mesh/package.json"
+      - "apps/api/package.json"
       - ".github/**"
       - "apps/docs/**"
       - "**/*.md"
@@ -35,7 +35,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # Push to main runs everything — except the [release]: version-bump
-            # commit, which only touches the version string. release-mesh picks
+            # commit, which only touches the version string. release-studio picks
             # that commit up on its own push trigger and cuts the release.
             case "$HEAD_MSG" in
               '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
@@ -44,10 +44,9 @@ jobs:
             exit 0
           fi
           set +e
-          FILES=$(gh api --paginate \
+          if ! FILES=$(gh api --paginate \
             "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
-            --jq '.[].filename')
-          if [ $? -ne 0 ]; then
+            --jq '.[].filename'); then
             echo "Could not list PR files — running to be safe."
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -143,27 +142,10 @@ jobs:
         run: bun install
 
       - name: Run tests
-        run: |
-          # Tests are split by filename convention:
-          #   *.test.ts             → unit (here)
-          #   *.integration.test.ts → .github/workflows/storage-integration.yml
-          #   *.e2e.test.ts         → reserved for the sandbox-daemon workflow
-          # See TESTING.md for the decision tree.
-          #
-          # One bun process per file: cleanest isolation, doesn't share
-          # ports/sockets/DB pools between files. Bun 1.3.14's teardown
-          # fixes mean we no longer need the signal-tolerance branches
-          # we had on 1.3.5 — a real test failure is now the only way
-          # bun exits non-zero.
-          set -e
-          while IFS= read -r f; do
-            echo "::group::$f"
-            bun test "$f"
-            echo "::endgroup::"
-          done < <(find apps/mesh/src apps/mesh/migrations packages \
-            \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-            ! -name '*.integration.test.ts' \
-            ! -name '*.e2e.test.ts')
+        # The root command discovers the same filename-based unit tier and runs
+        # each file in an isolated Bun process. Integration, daemon E2E, and
+        # Playwright suites remain owned by their dedicated workflows.
+        run: bun run test
 
   build:
     needs: changes
@@ -182,13 +164,19 @@ jobs:
         run: bun install
 
       - name: Build server bundle
-        run: bun run --cwd=apps/mesh build:server
+        run: bun run --cwd=apps/api build:server
 
       - name: Verify bundle outputs
         run: |
-          test -f apps/mesh/dist/server/server.js
-          test -f apps/mesh/dist/server/migrate.js
-          test -f apps/mesh/dist/server/cli.js
+          test -f apps/api/dist/server/server.js
+          test -f apps/api/dist/server/migrate.js
+          test -f apps/api/dist/server/cli.js
+
+      - name: Build web app
+        run: bun run --cwd=apps/web build
+
+      - name: Verify web output
+        run: test -f apps/web/dist/index.html
 
       - name: Run knip
         run: bun run knip
@@ -228,7 +216,7 @@ jobs:
             -e PROXY_PORT=9000 \
             -e DAEMON_NO_AUTOSTART=1 \
             studio-sandbox:ci
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
               echo "ok"
               exit 0

@@ -16,7 +16,7 @@ import type { APIRequestContext } from "@playwright/test";
 /**
  * Inlined contract: an org is archived when its `metadata.archived === true`.
  * Owned here (not imported from app source) so the black-box suite stays
- * decoupled — see the app's `src/core/org-archived.ts`.
+ * decoupled — see `@decocms/shared/organization/org-archived`.
  */
 function isOrgArchived(
   org: { metadata?: unknown } | null | undefined,
@@ -62,7 +62,7 @@ function generateTestUser(overrides?: { email?: string; name?: string }) {
 /**
  * POST /api/auth/sign-up/email and resolve the auto-created org slug.
  *
- * Better Auth's signup hook (apps/mesh/src/auth/index.ts databaseHooks)
+ * Better Auth's signup hook (`apps/api/src/auth/index.ts` databaseHooks)
  * creates an org synchronously before the response returns, so a follow-up
  * call to organization/list is guaranteed to see it.
  *

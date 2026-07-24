@@ -7,6 +7,16 @@
 
 import type { TriggerState, TriggerStorage } from "./triggers.ts";
 
+/** Guards against malformed/partial state crossing the Studio KV HTTP boundary. */
+function isTriggerState(value: unknown): value is TriggerState {
+  if (!value || typeof value !== "object") return false;
+  const { credentials, activeTriggerTypes } = value as Record<string, unknown>;
+  if (!Array.isArray(activeTriggerTypes)) return false;
+  if (!credentials || typeof credentials !== "object") return false;
+  const { callbackUrl, callbackToken } = credentials as Record<string, unknown>;
+  return typeof callbackUrl === "string" && typeof callbackToken === "string";
+}
+
 // ============================================================================
 // StudioKV — backed by Studio's /api/kv endpoint
 // ============================================================================
@@ -31,8 +41,8 @@ interface StudioKVOptions {
  * const triggers = createTriggers({
  *   definitions: [...],
  *   storage: new StudioKV({
- *     url: process.env.MESH_URL!,
- *     apiKey: process.env.MESH_API_KEY!,
+ *     url: process.env.STUDIO_URL!,
+ *     apiKey: process.env.STUDIO_API_KEY!,
  *   }),
  * });
  * ```
@@ -67,8 +77,24 @@ export class StudioKV implements TriggerStorage {
       return null;
     }
 
-    const body = (await res.json()) as { value?: TriggerState };
-    return body.value ?? null;
+    let body: { value?: unknown };
+    try {
+      body = (await res.json()) as { value?: unknown };
+    } catch (err) {
+      console.error(`[StudioKV] GET returned unparseable JSON:`, err);
+      return null;
+    }
+
+    if (body.value == null) return null;
+
+    if (!isTriggerState(body.value)) {
+      console.error(
+        `[StudioKV] GET returned malformed trigger state for connection=${connectionId}`,
+      );
+      return null;
+    }
+
+    return body.value;
   }
 
   async set(connectionId: string, state: TriggerState): Promise<void> {

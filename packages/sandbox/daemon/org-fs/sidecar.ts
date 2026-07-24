@@ -19,7 +19,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { type OrgFsMountConfig, parseOrgFsConfig } from "./config";
 
 /** The MountManager surface the sidecar drives (structural, for tests). */

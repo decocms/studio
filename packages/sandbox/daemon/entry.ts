@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { join } from "node:path";
 import { bumpActivity } from "./activity";
 import { requireToken } from "./auth";
@@ -475,7 +475,7 @@ const lookupDispatchHarness = (id: string, input: unknown) => {
   // db, vault, or aiProviders — they only need tracer/meter for OTel
   // and metadata for span attributes. The cluster's richer StudioContext
   // is structurally compatible with this shape (see
-  // `apps/mesh/src/core/harness-context.ts`).
+  // `apps/api/src/core/harness-context.ts`).
   const harnessInput = input as HarnessStreamInput;
   const ctx: HarnessContext = {
     tracer: dispatchTracer,

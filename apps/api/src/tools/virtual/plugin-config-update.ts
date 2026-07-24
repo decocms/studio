@@ -1,0 +1,149 @@
+/**
+ * VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE Tool
+ *
+ * Update or create plugin configuration for a virtual MCP
+ */
+
+import { z } from "zod";
+import { defineTool } from "../../core/define-tool";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/studio-context";
+import {
+  createDevAssetsConnectionEntity,
+  isDevAssetsConnection,
+  usesLocalObjectStorage,
+} from "../connection/dev-assets";
+import { getBaseUrl } from "../../core/server-constants";
+
+const serializedPluginConfigSchema = z.object({
+  id: z.string(),
+  virtualMcpId: z.string(),
+  pluginId: z.string(),
+  connectionId: z.string().nullable(),
+  settings: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
+  name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE" as const,
+  description:
+    "Set or update a plugin's configuration for a specific virtual MCP.",
+  annotations: {
+    title: "Update Virtual MCP Plugin Config",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: z.object({
+    virtualMcpId: z.string().describe("Virtual MCP ID"),
+    pluginId: z.string().describe("Plugin ID"),
+    connectionId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("MCP connection to bind"),
+    settings: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .optional()
+      .describe("Plugin-specific settings"),
+  }),
+
+  outputSchema: z.object({
+    config: serializedPluginConfigSchema,
+  }),
+
+  handler: async (input, ctx) => {
+    // Require authentication
+    requireAuth(ctx);
+    const organization = requireOrganization(ctx);
+
+    // Check authorization
+    await ctx.access.check();
+
+    const { virtualMcpId, pluginId, connectionId, settings } = input;
+    const userId = getUserId(ctx);
+
+    const parentConnection =
+      await ctx.storage.connections.findById(virtualMcpId);
+    if (!parentConnection) {
+      throw new Error(`Connection not found: ${virtualMcpId}`);
+    }
+    // `ctx.access.check()` only verifies the caller's permissions in
+    // `ctx.organization` — without this, a caller could target another org's
+    // virtual MCP by ID and bind/reconfigure its plugin.
+    if (parentConnection.organization_id !== organization.id) {
+      throw new Error(`Connection not found: ${virtualMcpId}`);
+    }
+
+    const connectionExists = connectionId
+      ? await ctx.storage.connections.findById(connectionId)
+      : null;
+    // Same tenant boundary for the connection being bound: an existing
+    // connection from another org must not be adoptable into this org's
+    // plugin config.
+    if (
+      connectionId &&
+      connectionExists &&
+      connectionExists.organization_id !== organization.id
+    ) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
+
+    if (
+      connectionId &&
+      parentConnection.organization_id &&
+      !connectionExists &&
+      usesLocalObjectStorage()
+    ) {
+      if (
+        isDevAssetsConnection(connectionId, parentConnection.organization_id)
+      ) {
+        if (!userId) {
+          throw new Error("User ID required to create dev-assets connection");
+        }
+        const devAssetsConnection = createDevAssetsConnectionEntity(
+          parentConnection.organization_id,
+          getBaseUrl(),
+        );
+        await ctx.storage.connections.create({
+          ...devAssetsConnection,
+          organization_id: parentConnection.organization_id,
+          created_by: userId,
+        });
+      }
+    }
+
+    const config = await ctx.storage.virtualMcpPluginConfigs.upsert(
+      virtualMcpId,
+      pluginId,
+      {
+        connectionId,
+        settings,
+      },
+    );
+
+    return {
+      config: {
+        id: config.id,
+        virtualMcpId: config.virtualMcpId,
+        pluginId: config.pluginId,
+        connectionId: config.connectionId,
+        settings: config.settings,
+        createdAt:
+          config.createdAt instanceof Date
+            ? config.createdAt.toISOString()
+            : config.createdAt,
+        updatedAt:
+          config.updatedAt instanceof Date
+            ? config.updatedAt.toISOString()
+            : config.updatedAt,
+      },
+    };
+  },
+});

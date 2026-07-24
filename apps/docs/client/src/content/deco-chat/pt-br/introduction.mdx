@@ -29,7 +29,7 @@ Escolha uma opção:
 ### Opção A: setup local com um comando (npx)
 
 ```bash
-npx @decocms/mesh
+bunx decostudio
 ```
 
 ### Opção B: setup local com Docker Compose
@@ -55,8 +55,8 @@ open http://localhost:3000
 ### Opção C: rodar a partir do código (source)
 
 ```bash
-git clone https://github.com/decocms/mesh.git
-cd mesh
+git clone https://github.com/decocms/studio.git
+cd studio
 bun install
 bun run dev
 ```
@@ -68,19 +68,20 @@ bun run dev
 SECRET=$(openssl rand -base64 32)
 
 # 2. Instale o chart com o secret gerado
-helm install deco-mcp-mesh . \
-  --namespace deco-mcp-mesh \
+helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio \
+  --version <version> \
+  --namespace deco-studio \
   --create-namespace \
   --set secret.BETTER_AUTH_SECRET="$SECRET"
 
 # 3. Aguarde os pods ficarem prontos
 kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=deco-mcp-mesh \
-  -n deco-mcp-mesh \
+  -l app.kubernetes.io/instance=deco-studio \
+  -n deco-studio \
   --timeout=300s
 
 # 4. Acesse via port-forward
-kubectl port-forward svc/deco-mcp-mesh 8080:80 -n deco-mcp-mesh
+kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 ```
 
 A aplicação ficará disponível em `http://localhost:8080`.
@@ -153,5 +154,5 @@ MCP te dá uma interface padrão. O deco CMS fornece o **control plane** ao redo
 
 Se você usa o admin SaaS atual em `admin.decocms.com` (ainda suportado, em breve descontinuado), comece por aqui:
 
-- **[Para AI Builders](/pt-br/getting-started/ai-builders)**
-- **[Para Desenvolvedores](/pt-br/getting-started/developers)**
+- **[Para AI Builders](/deco-chat/pt-br/getting-started/ai-builders)**
+- **[Para Desenvolvedores](/deco-chat/pt-br/getting-started/developers)**

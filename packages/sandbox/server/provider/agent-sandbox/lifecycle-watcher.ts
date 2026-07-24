@@ -38,7 +38,7 @@
  */
 
 import { type KubeConfig } from "@kubernetes/client-node";
-import { delay, exponentialBackoffWithJitter } from "@decocms/std";
+import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { K8S_CONSTANTS } from "./constants";
 import { kubeFetch, readNdJson } from "./client";
 import type { SandboxResource } from "./client";

@@ -6,7 +6,7 @@ import { createMCPServer, type AppContext } from "./tools.ts";
 describe("createMCPServer tools", () => {
   it("passes vault bootstrap data to onInstall", async () => {
     const vault = {
-      baseUrl: "https://mesh.example.com",
+      baseUrl: "https://studio.example.com",
       org: "test-org",
       subjectConnectionId: "conn_subject",
       token: "studio_wlt_test",
@@ -22,17 +22,21 @@ describe("createMCPServer tools", () => {
       },
     });
 
+    const requestContext = {
+      state: {},
+      token: "runtime-token",
+      studioUrl: "https://studio.example.com",
+      meshUrl: "https://studio.example.com",
+      ensureAuthenticated: () => undefined,
+      connectionId: "conn_subject",
+    };
     const runtimeContext = {
       env: {
+        STUDIO_APP_DEPLOYMENT_ID: "deployment_123",
         MESH_APP_DEPLOYMENT_ID: "deployment_123",
         IS_LOCAL: true,
-        MESH_REQUEST_CONTEXT: {
-          state: {},
-          token: "runtime-token",
-          meshUrl: "https://mesh.example.com",
-          ensureAuthenticated: () => undefined,
-          connectionId: "conn_subject",
-        },
+        STUDIO_REQUEST_CONTEXT: requestContext,
+        MESH_REQUEST_CONTEXT: requestContext,
       },
       ctx: { waitUntil: () => {} },
     } satisfies AppContext;
@@ -54,7 +58,7 @@ describe("createMCPServer tools", () => {
 
   it("passes vault bootstrap data to onChange", async () => {
     const vault = {
-      baseUrl: "https://mesh.example.com",
+      baseUrl: "https://studio.example.com",
       org: "test-org",
       subjectConnectionId: "conn_subject",
       token: "studio_wlt_test",
@@ -70,17 +74,21 @@ describe("createMCPServer tools", () => {
       },
     });
 
+    const requestContext = {
+      state: {},
+      token: "runtime-token",
+      studioUrl: "https://studio.example.com",
+      meshUrl: "https://studio.example.com",
+      ensureAuthenticated: () => undefined,
+      connectionId: "conn_subject",
+    };
     const runtimeContext = {
       env: {
+        STUDIO_APP_DEPLOYMENT_ID: "deployment_123",
         MESH_APP_DEPLOYMENT_ID: "deployment_123",
         IS_LOCAL: true,
-        MESH_REQUEST_CONTEXT: {
-          state: {},
-          token: "runtime-token",
-          meshUrl: "https://mesh.example.com",
-          ensureAuthenticated: () => undefined,
-          connectionId: "conn_subject",
-        },
+        STUDIO_REQUEST_CONTEXT: requestContext,
+        MESH_REQUEST_CONTEXT: requestContext,
       },
       ctx: { waitUntil: () => {} },
     } satisfies AppContext;

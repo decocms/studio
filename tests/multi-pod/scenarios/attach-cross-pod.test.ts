@@ -34,9 +34,9 @@
  * coverage of all three.
  *
  * ── unified-control-plane T9 extension ────────────────────────────────
- * This cluster's `docker-compose.yml` pins every mesh pod to
+ * This cluster's `docker-compose.yml` pins every Studio pod to
  * `STUDIO_SANDBOX_PROVIDER=agent-sandbox` (see that file's comment on the
- * `mesh-1` service), so `resolveDispatchTarget` short-circuits every
+ * the first service), so `resolveDispatchTarget` short-circuits every
  * dispatch in this suite to HOSTED execution — this test already drives a
  * hosted streaming turn through the (now v4) gate: dispatch →
  * `hostedHarnessWorkflow` (detached, not awaited) → `consumeRunProjection`
@@ -67,7 +67,7 @@ import {
 
 registerTestHooks();
 
-// Encoded in the prompt — mesh strips request headers before calling
+// Encoded in the prompt — Studio strips request headers before calling
 // the provider, so hints live in the message text instead. mock-ai
 // parses "slow:NxMS" to mean N chunks at M ms intervals.
 const MOCK_HINT = "slow:5x500"; // ~2.5s total run
@@ -75,7 +75,7 @@ const MOCK_HINT = "slow:5x500"; // ~2.5s total run
 /** Collect SSE payloads from /attach until `predicate` is satisfied or
  *  the timeout fires. Aborts the underlying request on either outcome. */
 async function collectAttachUntil(
-  pod: (typeof PODS)["MESH_2"],
+  pod: (typeof PODS)["STUDIO_2"],
   orgSlug: string,
   threadId: string,
   apiKey: string,
@@ -113,11 +113,11 @@ async function collectAttachUntil(
 
 describe("cross-pod /attach", () => {
   test("attach on non-POST pods receives buffered chunks from the live run", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
     const { threadId } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
@@ -135,7 +135,7 @@ describe("cross-pod /attach", () => {
     };
 
     const postRes = await postJson(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       `/api/${session.orgSlug}/decopilot/threads/${threadId}/messages`,
       messageBody,
       { auth: { apiKey: session.apiKey } },
@@ -151,7 +151,7 @@ describe("cross-pod /attach", () => {
     // mock's first chunk-delay tick, the test attaches would still
     // see chunk-1 live via `"new"` and the bug wouldn't manifest.
     await collectAttachUntil(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session.orgSlug,
       threadId,
       session.apiKey,
@@ -168,7 +168,7 @@ describe("cross-pod /attach", () => {
     // happy path).
     const [pod2Joined, pod3Joined] = await Promise.all([
       collectAttachUntil(
-        PODS.MESH_2,
+        PODS.STUDIO_2,
         session.orgSlug,
         threadId,
         session.apiKey,
@@ -176,7 +176,7 @@ describe("cross-pod /attach", () => {
         15_000,
       ),
       collectAttachUntil(
-        PODS.MESH_3,
+        PODS.STUDIO_3,
         session.orgSlug,
         threadId,
         session.apiKey,

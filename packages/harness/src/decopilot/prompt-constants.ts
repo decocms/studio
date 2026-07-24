@@ -1,4 +1,4 @@
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/shared/sdk";
 export { DEFAULT_THREAD_TITLE } from "../thread-title";
 
 export const DEFAULT_WINDOW_SIZE = 50;

@@ -20,8 +20,8 @@ operation that attaches a run's context to an existing sandbox.
 | Runtime path | How run context reaches the workspace |
 | --- | --- |
 | Desktop `/dispatch` | The sandbox daemon receives the dispatch envelope and invokes the catalog-sync hook. |
-| Hosted Decopilot with `agent-sandbox` | Mesh provisions or reuses the sandbox, then calls `/_sandbox/tools/sync`. Thread identity is also sent on filesystem and exec calls so the daemon can repoint run-specific links. |
-| Hosted Claude Code and Codex | The harness runs on the Mesh side with its own working directory; it does not currently use the sandbox filesystem. |
+| Hosted Decopilot with `agent-sandbox` | Studio provisions or reuses the sandbox, then calls `/_sandbox/tools/sync`. Thread identity is also sent on filesystem and exec calls so the daemon can repoint run-specific links. |
+| Hosted Claude Code and Codex | The harness runs on the Studio side with its own working directory; it does not currently use the sandbox filesystem. |
 
 This is not three catalog implementations. Catalog fetching and file writing
 remain daemon-owned. The smell is the set of topology-specific triggers and
@@ -146,4 +146,3 @@ The refactor is complete only when black-box tests cover:
 - Blocking the initial tool-catalog feature on a larger lifecycle refactor.
 - Claiming identical filesystem behavior for runtimes that do not share a
   sandbox workspace.
-

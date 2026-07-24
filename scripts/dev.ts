@@ -12,7 +12,7 @@ const child = Bun.spawn(
   [
     "bun",
     "run",
-    join(repoRoot, "apps/mesh/src/cli.ts"),
+    join(repoRoot, "apps/api/src/cli.ts"),
     "dev",
     "--local-sandbox-provider",
     ...process.argv.slice(2),

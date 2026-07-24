@@ -29,7 +29,7 @@ services:
   # Mock OpenAI-compatible AI provider. Scenarios that need to drive the
   # decopilot dispatch pipeline (POST /messages → streamText → JetStream
   # pump → /attach tail) point an `openai-compatible` credential at this
-  # service via `http://mock-ai:9000/v1`. No external port — only mesh
+  # service via `http://mock-ai:9000/v1`. No external port — only Studio
   # pods talk to it.
   mock-ai:
     build:
@@ -45,13 +45,13 @@ services:
       start_period: 5s
 
   # External S3 (object store). Runs as its OWN container so it survives a
-  # mesh pod SIGKILL+restart — the rollout-churn scenario needs pods to reboot
-  # cleanly, and mesh's DECOCMS_LOCAL_MODE otherwise spawns an embedded MinIO
+  # Studio pod SIGKILL+restart — the rollout-churn scenario needs pods to reboot
+  # cleanly, and Studio's DECOCMS_LOCAL_MODE otherwise spawns an embedded MinIO
   # *child* that dies with the container and races/crashes on reprovision. With
   # S3_ENDPOINT + bucket + creds set below, ensureServices takes the external
   # path (skipMinio) and never manages an embedded instance. Also faithful to
   # prod, which uses external S3. No healthcheck: the minio server image ships
-  # no curl/wget/shell to probe with, and mesh's provisionMinioBucket already
+  # no curl/wget/shell to probe with, and Studio's provisionMinioBucket already
   # retries the startup ECONNREFUSED race.
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -60,14 +60,14 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
 
-  # Migrations run once before any mesh pod starts. Pods themselves skip the
+  # Migrations run once before any Studio pod starts. Pods themselves skip the
   # migration step (we override the entrypoint with a direct start command) to
   # avoid races on parallel boot.
   migrate:
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
-    working_dir: /app/apps/mesh
+    working_dir: /app/apps/api
     command: ["bun", "run", "migrate"]
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
@@ -75,7 +75,9 @@ services:
       postgres:
         condition: service_healthy
 
-  mesh-1: &mesh
+  # Legacy service identities are part of the resilience-test control contract;
+  # Keep the legacy service names stable while the production apps use Studio naming.
+  mesh-1: &studio
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
@@ -85,7 +87,7 @@ services:
     # come back before the assertion fires). A genuine boot crash is
     # surfaced via the healthcheck, not papered over by a restart.
     restart: "no"
-    working_dir: /app/apps/mesh
+    working_dir: /app/apps/api
     # Bypass the Dockerfile entrypoint (which runs `bun run migrate` before
     # exec'ing the CLI) AND pass `--skip-migrations` so the CLI's own boot
     # migration is suppressed too. Without the flag each of the three pods
@@ -93,7 +95,7 @@ services:
     # service. The `migrate` service is the single source of truth for
     # schema state; pods read-only at boot.
     command: ["bun", "run", "src/cli.ts", "--no-tui", "--skip-migrations"]
-    environment: &mesh-env
+    environment: &studio-env
       NODE_ENV: production
       PORT: "3000"
       HOST: 0.0.0.0
@@ -106,6 +108,8 @@ services:
       DECOCMS_LOCAL_MODE: "true"
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
+      # Bound a silent recovered run inside rollout-churn's terminal poll.
+      RUN_IDLE_TIMEOUT_MS: "120000"
       # External S3 → ensureServices skips embedded MinIO (survives restarts).
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: studio-dev
@@ -121,10 +125,10 @@ services:
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name
-    # ("mesh-1"), so scenarios that need to identify the dispatch owner
+    # (the first service), so scenarios that need to identify the dispatch owner
     # (e.g. pod-death-dbos-replay) can map straight from a thread row
     # to a docker compose target without an extra UUID-to-service hop.
-    # Mesh defaults this to a random UUID when unset.
+    # Studio defaults this to a random UUID when unset.
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,17 +145,17 @@ services:
       start_period: 60s
       retries: 20
 
-  # mesh-2 and mesh-3 wait for the previous pod to be healthy before
-  # starting. This serializes *first-boot* DBOS migrations: even with
-  # mesh's own --skip-migrations, DBOS still runs its system-schema
+  # Each additional Studio service waits for the previous pod to be healthy
+  # before starting. This serializes *first-boot* DBOS migrations: even with
+  # Studio's own --skip-migrations, DBOS still runs its system-schema
   # migrations on `DBOS.launch()` and three parallel boots race on
   # inserts into `dbos.dbos_migrations` (unique-constraint violations
   # crash pods 2/3). Once the schema exists, subsequent boots are
   # idempotent — restarting a single pod mid-test stays fast.
   mesh-2:
-    <<: *mesh
+    <<: *studio
     environment:
-      <<: *mesh-env
+      <<: *studio-env
       POD_NAME: mesh-2
     ports:
       - "127.0.0.1:13002:3000"
@@ -168,9 +172,9 @@ services:
         condition: service_healthy
 
   mesh-3:
-    <<: *mesh
+    <<: *studio
     environment:
-      <<: *mesh-env
+      <<: *studio-env
       POD_NAME: mesh-3
     ports:
       - "127.0.0.1:13003:3000"

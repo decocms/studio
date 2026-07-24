@@ -21,6 +21,30 @@ export interface RebaseOntoBaseOptions {
   operator?: OperatorIdentity;
 }
 
+/**
+ * rebaseOntoBase() refused because of the sandbox's current git state (detached
+ * HEAD, or the checked-out branch is protected) — a conflict with the request,
+ * not a server fault, so the route maps it to 409 like PublishBlockedError.
+ */
+export class RebaseBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebaseBlockedError";
+  }
+}
+
+/**
+ * The requested base branch doesn't exist on origin (typo, deleted branch) —
+ * a client/data condition, not a server fault, mirroring
+ * BaseBranchNotFoundError in routes/git.ts's diff-against-base path.
+ */
+export class RebaseBaseBranchNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebaseBaseBranchNotFoundError";
+  }
+}
+
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
 }
@@ -108,7 +132,9 @@ function abortRebase(repoDir: string): void {
 let emptyHooksDir: string | null = null;
 function getEmptyHooksDir(): string {
   if (!emptyHooksDir) {
-    emptyHooksDir = mkdtempSync(path.join(tmpdir(), "mesh-sandbox-no-hooks-"));
+    emptyHooksDir = mkdtempSync(
+      path.join(tmpdir(), "studio-sandbox-no-hooks-"),
+    );
   }
   return emptyHooksDir;
 }
@@ -326,18 +352,24 @@ function rebaseOntoBaseInner(
 
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot rebase from a detached HEAD");
+    throw new RebaseBlockedError("Cannot rebase from a detached HEAD");
   }
   // Same guard as publish() (protect-branch.ts): this ends in a force-push,
   // which is even more destructive than a normal push, so a sandbox sitting
   // on main/master/default must never reach it.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new RebaseBlockedError(
       `Refusing to rebase and force-push protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
 
-  runGit(repoDir, ["fetch", "-p", "origin", base, branch]);
+  // Fetch base and branch as separate requests: `git fetch <a> <b>` fails the
+  // whole command if either ref is missing on origin, which would otherwise
+  // turn a bad `base` (typo, deleted branch) into a raw fetch error before we
+  // get a chance to report it as RebaseBaseBranchNotFoundError below, and would
+  // also skip fetching `branch` (needed for the force-push lease).
+  tryGit(repoDir, ["fetch", "-p", "origin", base]);
+  runGit(repoDir, ["fetch", "-p", "origin", branch]);
   const leaseSha = remoteBranchSha(repoDir, branch);
 
   tryGit(repoDir, [
@@ -351,7 +383,9 @@ function rebaseOntoBaseInner(
 
   const upstream = `origin/${base}`;
   if (tryGit(repoDir, ["rev-parse", "--verify", upstream]) === null) {
-    throw new Error(`Base branch '${base}' not found on origin`);
+    throw new RebaseBaseBranchNotFoundError(
+      `Base branch '${base}' not found on origin`,
+    );
   }
 
   commitBeforeRebase(repoDir, operator);

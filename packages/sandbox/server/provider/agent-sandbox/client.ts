@@ -20,7 +20,7 @@
  * "ensure ready" flows live on the runner, not here.
  */
 
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import {
   type KubeConfig,
   type V1Status as V1StatusUpstream,
@@ -591,7 +591,7 @@ export async function applyHttpRoute(
   route: HttpRoute,
 ): Promise<void> {
   const query = new URLSearchParams({
-    fieldManager: SSA_FIELD_MANAGER,
+    fieldManager: LEGACY_SSA_FIELD_MANAGER,
     force: "true",
   });
   const path = `${httpRoutePath(namespace, route.metadata.name)}?${query}`;
@@ -653,11 +653,12 @@ export const HTTPROUTE_CONSTANTS = {
  * studio restarts) is what lets the second SSA see "I already own ports[]"
  * and treat it as a no-op rather than a conflict.
  */
-const SSA_FIELD_MANAGER = "mesh-sandbox-runner";
+// Retained so Kubernetes keeps recognizing fields owned by existing releases.
+const LEGACY_SSA_FIELD_MANAGER = "mesh-sandbox-runner";
 
 /**
- * Server-Side Apply a single named port onto a core Service. Establishes
- * `mesh-sandbox-runner` as the field manager for `spec.ports[name=daemon]`,
+ * Server-Side Apply a single named port onto a core Service. The legacy field
+ * manager owns `spec.ports[name=daemon]`,
  * which prevents the operator's reconciler from silently reverting the
  * field on its next pass.
  *
@@ -720,7 +721,7 @@ export async function ensureServicePort(
     },
   };
   const query = new URLSearchParams({
-    fieldManager: SSA_FIELD_MANAGER,
+    fieldManager: LEGACY_SSA_FIELD_MANAGER,
     force: "true",
   });
   const path = `/api/v1/namespaces/${encodeURIComponent(namespace)}/services/${encodeURIComponent(serviceName)}?${query}`;

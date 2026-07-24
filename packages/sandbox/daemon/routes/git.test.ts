@@ -1,7 +1,9 @@
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -217,6 +219,19 @@ describe("git routes", () => {
     expect(body.diffs["README.md"]?.to).toContain("hello world");
   });
 
+  it("diff shows the original content for a renamed file, not null", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["mv", "README.md", "GUIDE.md"], { cwd: repoDir, asUser: false });
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/diff"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      diffs: Record<string, { from: string | null; to: string | null }>;
+    };
+    expect(body.diffs["GUIDE.md"]?.from).toContain("hello");
+    expect(body.diffs["GUIDE.md"]?.to).toContain("hello");
+  });
+
   it("diff against base returns committed branch changes", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
@@ -315,6 +330,39 @@ describe("git routes", () => {
     });
   });
 
+  it("diff POST returns 400 (not 500) when the base branch isn't on origin", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "does-not-exist" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base branch 'does-not-exist' not found on origin",
+    });
+  });
+
+  it("diff POST rejects an empty base string as invalid input", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "base is required when provided",
+    });
+  });
+
   it("publish appends operator co-author trailer", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
@@ -387,6 +435,21 @@ describe("git routes", () => {
       asUser: false,
     });
     expect(log.trim()).toBe("init");
+  });
+
+  it("publish route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "from main" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
   });
 
   it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
@@ -646,10 +709,69 @@ describe("git routes", () => {
       }),
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });
+  });
+
+  it("discard returns 400 (not 500) when filepaths contains a non-string entry", async () => {
+    const { appRoot, repoDir } = initRepo();
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["README.md", 123] }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "filepaths is required" });
+  });
+
+  it("discard returns 400 (not 500) when filepaths contains an empty string", async () => {
+    const { appRoot, repoDir } = initRepo();
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: [""] }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "filepaths is required" });
+  });
+
+  it("discard on a renamed file restores the original instead of deleting both", async () => {
+    const { appRoot, repoDir } = initRepo();
+    writeFileSync(join(repoDir, "old.txt"), "important content\n");
+    gitSync(["add", "old.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add old.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["mv", "old.txt", "new.txt"], { cwd: repoDir, asUser: false });
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["new.txt"] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(existsSync(join(repoDir, "new.txt"))).toBe(false);
+    expect(existsSync(join(repoDir, "old.txt"))).toBe(true);
+    expect(readFileSync(join(repoDir, "old.txt"), "utf8")).toBe(
+      "important content\n",
+    );
+    expect(
+      gitSync(["status", "--porcelain=v1"], {
+        cwd: repoDir,
+        asUser: false,
+      }).trim(),
+    ).toBe("");
   });
 
   it("rebase rejects invalid base branch names", async () => {
@@ -666,5 +788,48 @@ describe("git routes", () => {
     expect(await res.json()).toEqual({
       error: "Invalid base branch name: --upload-pack=evil",
     });
+  });
+
+  it("rebase route returns 400 (not 500) when the base branch isn't on origin", async () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    const bareOrigin = mkdtempSync(join(tmpdir(), "git-route-origin-"));
+    gitSync(["init", "--bare", bareOrigin], { cwd: bareOrigin, asUser: false });
+    gitSync(["remote", "add", "origin", bareOrigin], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    gitSync(["push", "-u", "origin", "feature/x"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "does-not-exist" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base branch 'does-not-exist' not found on origin",
+    });
+  });
+
+  it("rebase route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "main" }),
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
   });
 });

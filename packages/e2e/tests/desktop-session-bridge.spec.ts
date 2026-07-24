@@ -1,5 +1,5 @@
 /**
- * `POST /api/auth/desktop/session-from-oauth` — the mesh-side bridge that
+ * `POST /api/auth/desktop/session-from-oauth` — the Studio-side bridge that
  * closes the desktop system-browser (Google/GitHub/SAML) login gap: an MCP
  * OAuth access token satisfies org-scoped `/api/:org/*` routes but is
  * rejected by Better Auth's native session endpoints (`get-session`,

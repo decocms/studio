@@ -1,57 +1,128 @@
 # @decocms/e2e
 
-Black-box end-to-end suite. Spin the server, hit it over **real HTTP** (and, for
-the app, assert against the **real Postgres**), and check responses. The suite is
-a **contract**, not a unit of the app: it must run identically against any
-implementation of that contract, so the app could be rewritten — even in another
-language — and these tests still hold.
+Exercises Studio as a black-box contract across real HTTP, browser, database,
+and messaging boundaries.
 
-Run it with `bun run --cwd=packages/e2e test:e2e`. The Playwright config spawns
-the app's dev server from `apps/mesh` (`webServer.cwd`) — the suite's only tie to
-the app, and it's a process boundary (spawn + HTTP), not a code import. Locally
-you need Postgres + NATS up; in CI those are provided as services and the DB is
-addressed via `DATABASE_URL` (see `.github/workflows/e2e.yml`).
+| Attribute | Value |
+| --- | --- |
+| Workspace | `@decocms/e2e` (`packages/e2e`) |
+| Kind | Playwright end-to-end suite |
+| Runtime | Bun, Playwright, and Chromium |
+| Distribution | Private workspace package |
 
-## Isolation rule (enforced)
+## Overview
 
-Files here may import **only**:
+This suite starts the Studio API and web applications as separate processes,
+uses their public interfaces, and asserts on observable behavior. It does not
+import application implementation code, so the same contract can survive an
+internal rewrite.
 
-- relative specifiers (intra-package fixtures/pages/specs),
-- `node:*` builtins,
-- the explicit dependency allowlist:
-  `@playwright/test`, `pg`, `zod`, `@modelcontextprotocol/sdk`,
-  `@nats-io/jetstream`, `@nats-io/transport-node`, `@nats-io/nats-core`,
-  `@decocms/std`, `@decocms/tunnel`, `@decocms/sandbox`, `@decocms/harness`.
+Tests cover browser flows, raw HTTP APIs, Postgres state, NATS-based protocols,
+MCP servers, desktop-link behavior, and optional S3-backed object storage.
 
-Everything else is **denied by default** — in particular the `@/` mesh alias, any
-reach-in to an app's `src` tree, and any workspace package **not** on the list
-(so app code migrating into `packages/` over time cannot silently widen the
-test's surface).
+## Responsibilities
 
-Two enforcement layers:
+- Verify user-visible flows in Chromium.
+- Verify HTTP, authentication, authorization, and MCP wire contracts.
+- Assert persisted state against the same Postgres used by the API.
+- Exercise NATS and desktop-link protocols through standalone test drivers.
+- Protect tenant isolation and concurrency behavior under parallel execution.
 
-1. **`plugins/ban-e2e-app-imports.js`** (oxlint, `error`) — the import wall.
-2. **`tsconfig.json`** here overrides `paths: {}`, so the aliases don't resolve at
-   the type level either.
+## Usage
 
-**Do not silence the lint.** If a black-box test genuinely needs a value, either
-**inline the expected shape** (a test owning its contract is correct, not
-duplication — a divergence from the app is a wire-contract regression *signal*) or
-add the dependency to **both** this `package.json` and the plugin allowlist, with
-justification.
+This package is private and has no import surface.
 
-## Parallelism rule
+Install dependencies and the browser from the repository root:
 
-`fullyParallel` is safe because every test owns its tenant: assert only on the
-per-test org / user / thread / run. **Never** assert on a value shared across runs
-(global counts, singletons). The one global namespace is **email domain**
-(`auto-domain-join` specs) — use a unique domain per run. The Playwright worker
-count is effectively the **Postgres connection budget** (each worker opens a `pg`
-client alongside the app's pool); raising it requires re-checking `max_connections`.
+```bash
+bun install
+bun run --cwd=packages/e2e playwright install chromium
+```
 
-## Why TypeScript + Playwright (not Hurl)
+Ensure Postgres and NATS are available, then run:
 
-One suite, one runner: Playwright's `APIRequestContext` covers raw HTTP, the
-browser covers UI specs, and `pg` covers DB assertions. Hurl was evaluated and
-rejected — it can't query a database, consume SSE streams, or speak NATS, which
-the suite needs.
+```bash
+bun run --cwd=packages/e2e test:e2e
+```
+
+The Playwright configuration starts the commerce mock, API, and web app. Set
+`DATABASE_URL` and `NATS_URL` when they are not discoverable through the local
+Studio services. Tests that require production-style object storage also need
+the `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and
+`S3_SECRET_ACCESS_KEY` variables; they skip when S3 is unavailable.
+
+## Architecture
+
+`playwright.config.ts` runs the commerce-upgrade mock, `apps/api`, and
+`apps/web` as three `webServer` processes. The applications stay behind process
+and HTTP boundaries.
+
+`tests/` owns wire-level and browser contracts. `fixtures/` provides standalone
+HTTP, authentication, Postgres, NATS, MCP, and relay drivers. `pages/` contains
+small page objects for repeated browser interactions.
+
+Playwright's `APIRequestContext` covers HTTP, Chromium covers UI behavior, and
+`pg` handles real database assertions. A single runner can therefore test SSE,
+NATS-assisted flows, browser state, and persistence together.
+
+## Development
+
+Run commands from the repository root:
+
+```bash
+bun run --cwd=packages/e2e check
+bun run --cwd=packages/e2e test:e2e
+bun run --cwd=packages/e2e test:e2e:ui
+```
+
+Run one specification with:
+
+```bash
+bun run --cwd=packages/e2e test:e2e -- tests/org-scoped-routing.spec.ts
+```
+
+Playwright writes the HTML report under `packages/e2e/playwright-report/`.
+
+## Boundaries
+
+Imports are denied by default. Test files may use relative imports, `node:*`
+built-ins, and dependencies explicitly allowed by both `package.json` and
+`plugins/ban-e2e-app-imports.js`.
+
+The suite must not import an `@/` alias, any `apps/*/src` module, or an
+unapproved `@decocms/*` workspace. `tsconfig.json` sets `paths: {}` so app
+aliases also fail at type-check time.
+
+Do not silence the import rule. If a test needs a wire value, inline the
+expected contract. If a new package dependency is genuinely necessary, add it
+to both this package's manifest and the plugin allowlist with a justification.
+
+Every database assertion must be tenant-scoped. Tests own unique users,
+organizations, threads, and runs; they do not rely on global counts or shared
+singletons.
+
+## Parallelism and infrastructure
+
+The suite uses `fullyParallel`. CI caps Playwright at four workers because each
+worker opens a Postgres client alongside the application pool. Treat the worker
+count as part of the database connection budget.
+
+Email domain is the one shared namespace used by auto-domain-join behavior, so
+those tests generate a unique domain for every run.
+
+CI supplies PostgreSQL, NATS with JetStream, and MinIO. Local runs can use
+Studio's service tooling; S3-specific specifications skip unless their four S3
+variables are present.
+
+## Why Playwright
+
+Playwright provides browser automation, raw HTTP requests, retries, traces, and
+one test lifecycle around external Postgres and NATS clients. A command-only
+HTTP runner cannot cover the database, SSE, messaging, and browser contracts
+that this suite owns.
+
+## Related documentation
+
+- [Testing policy](../../TESTING.md)
+- [Repository guidelines](../../AGENTS.md)
+- [E2E workflow](../../.github/workflows/e2e.yml)
