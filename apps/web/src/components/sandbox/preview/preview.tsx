@@ -608,6 +608,30 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
 
+  // Fast Preview refresh: the draft is embedded in the iframe URL
+  // (`instantDraftUrl`), so a Blocks edit (which optimistically updates the
+  // decofile → a new URL) refreshes the preview only if the frame navigates
+  // there. The shared reload path can't `.reload()` a cross-origin frame, so
+  // drive it explicitly — set the frame's `src` whenever the instant URL
+  // changes. `instantDraftUrl` changes only when the decofile does, and block
+  // writes are already debounced (useDebouncedSaveBlock), so this is naturally
+  // rate-limited. The ref guard makes the first paint (React already set `src`)
+  // and unrelated re-renders no-ops.
+  const lastInstantDraftUrlRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on decofile change; .reload() throws cross-origin
+  useEffect(() => {
+    if (display.mode !== "production" || !instantDraftUrl || !iframeSrc) return;
+    if (lastInstantDraftUrlRef.current === instantDraftUrl) return;
+    lastInstantDraftUrlRef.current = instantDraftUrl;
+    const iframe = previewIframeRef.current;
+    // Skip when React already applied the new src (avoids a double load); only
+    // force-navigate when the DOM is still on the stale URL.
+    if (iframe && iframe.getAttribute("src") !== iframeSrc) {
+      beginNavigation();
+      iframe.src = iframeSrc;
+    }
+  }, [instantDraftUrl, iframeSrc, display.mode]);
+
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
   // terminal) that talk to the daemon's HTTP API and don't need a dev server.
