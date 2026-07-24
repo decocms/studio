@@ -6,6 +6,7 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { TaskBoardItemPrSchema } from "./schema";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
@@ -122,7 +123,9 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     "with live state (title, open/closed, draft, merged) fetched from GitHub.",
   annotations: {
     title: "Get Task Board Item Pull Requests",
-    readOnlyHint: true,
+    // Not read-only: as a side effect it moves a task to Done when it observes a
+    // merged PR (see the reconcile below). Idempotent — converges to Done.
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     // Reaches out to GitHub for live PR state.
@@ -158,6 +161,31 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
         };
       }),
     );
+
+    // ponytail: reconcile-on-view — there's no GitHub PR webhook, so a merged PR
+    // only advances the card to Done when someone opens this modal. Upgrade path:
+    // a `pull_request` webhook calling the same forward move. Best-effort; a
+    // failure must never break the read. Forward-only (never un-does Done).
+    if (prs.some((p) => p.merged)) {
+      try {
+        const item = await ctx.storage.taskBoard.getById(
+          taskBoardItemId,
+          organizationId,
+        );
+        if (item && item.status !== "done") {
+          const updated = await ctx.storage.taskBoard.update(
+            taskBoardItemId,
+            organizationId,
+            { status: "done" },
+            item.updatedBy,
+          );
+          emitTaskBoardUpdated(organizationId, updated);
+        }
+      } catch (err) {
+        console.error("[task-board] merge→done reconcile failed", err);
+      }
+    }
+
     return { prs };
   },
 });
