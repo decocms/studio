@@ -4,7 +4,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowUpRight } from "@untitledui/icons";
 
-type MeetingCtaPlacement = "visual_card" | "mobile_banner";
+type MeetingCtaPlacement = "visual_card";
 
 const SCHEDULE_MEETING_URLS: Record<string, string> = {
   "pt-BR": "https://decocms.com/agendar",
@@ -172,74 +172,5 @@ export function ScheduleMeetingVisual({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * Mobile counterpart of {@link ScheduleMeetingVisual}. On small screens the
- * split disappears, so this is a compact, tappable banner that opens the
- * scheduling flow directly — quieter than the full card, still inviting.
- */
-export function ScheduleMeetingBanner({
-  className,
-  href,
-  orgId,
-}: {
-  className?: string;
-  href?: string;
-  orgId?: string;
-}) {
-  const t = useT();
-  const alt = t("routes.commerceOnboarding.scheduleMeeting.expertAlt");
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        track("commerce_onboarding_meeting_cta_clicked", {
-          placement: "mobile_banner" satisfies MeetingCtaPlacement,
-          organization_id: orgId,
-        })
-      }
-      className={cn(
-        "flex items-center gap-3 rounded-xl border border-border bg-card p-3 card-shadow transition-colors hover:bg-accent",
-        className,
-      )}
-    >
-      <span
-        className="relative flex shrink-0 items-center"
-        style={{ height: 32, width: 32 + 2 * Math.round(32 * 0.7) }}
-      >
-        {TEAM_PHOTOS.map((photo, i) => (
-          <span
-            key={photo}
-            className="absolute block h-8 w-8 overflow-hidden rounded-full border-2 border-card"
-            style={{
-              left: i * Math.round(32 * 0.7),
-              zIndex: TEAM_PHOTOS.length - i,
-            }}
-          >
-            <img
-              src={photo}
-              alt={alt}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-        ))}
-        <span
-          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-success"
-          aria-hidden
-          style={{ zIndex: TEAM_PHOTOS.length + 1 }}
-        />
-      </span>
-      {/* Mobile-only banner: compact single line (the desktop
-          ScheduleMeetingVisual keeps the full headline + description). */}
-      <span className="flex-1 text-sm font-medium leading-tight text-foreground">
-        {t("routes.commerceOnboarding.scheduleMeeting.headline")}
-      </span>
-      <ArrowUpRight size={16} className="shrink-0 text-muted-foreground" />
-    </a>
   );
 }

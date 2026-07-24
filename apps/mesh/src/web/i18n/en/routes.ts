@@ -139,8 +139,12 @@ export const routes = {
     "Something went wrong generating your report. Try again in a moment.",
   "routes.commerceOnboarding.connectModal.openingReport": "Opening report...",
   "routes.commerceOnboarding.connectModal.connectToolToContinue":
-    "Connect a tool to continue",
+    "Connect your analytics to continue",
   "routes.commerceOnboarding.connectModal.viewFullReport": "View full report",
+  "routes.commerceOnboarding.connectModal.close": "Close",
+  "routes.commerceOnboarding.connectModal.quote":
+    "I was grinning ear to ear, because we had already spotted all of it, we just didn't know what to do next... you brought a really meaningful perspective on the next steps.",
+  "routes.commerceOnboarding.connectModal.quoteAuthor": "Ágata Esteves",
   "routes.commerceOnboarding.companionSection.title":
     "Connect your tools to see the full diagnostic",
   "routes.commerceOnboarding.companionSection.loadError":

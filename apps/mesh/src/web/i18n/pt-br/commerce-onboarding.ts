@@ -15,6 +15,8 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.disconnectedSuccess":
     "{title} desconectado",
   "commerceOnboarding.companionCard.editConfiguration": "Editar configuração",
+  "commerceOnboarding.companionCard.finishSetup": "Concluir configuração",
+  "commerceOnboarding.companionCard.required": "Obrigatório",
   "commerceOnboarding.companionCard.grantAccessDescription":
     "Conceda acesso ao nosso leitor e informe o identificador",
   "commerceOnboarding.githubConfigForm.cancel": "Cancelar",

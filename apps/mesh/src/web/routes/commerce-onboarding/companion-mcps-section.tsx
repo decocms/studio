@@ -20,14 +20,14 @@ interface CompanionOrg {
 // so the layout can't drift between the three — see CompanionMcpsSectionSkeleton
 // and CompanionMcpsSectionError.
 const SECTION_CONTAINER_CLASS =
-  "flex min-h-0 flex-1 flex-col gap-4 md:grid md:flex-none md:gap-4";
+  "flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-6";
 
 function SectionIntro() {
   const t = useT();
   // Matches the onboarding title scale (CommerceHeader / auth screen use the
   // same text-2xl font-medium leading-8).
   return (
-    <h1 className="text-lg font-medium leading-6 text-foreground lg:text-2xl lg:leading-8">
+    <h1 className="text-lg font-medium leading-6 text-foreground lg:text-xl lg:leading-7">
       {t("routes.commerceOnboarding.companionSection.title")}
     </h1>
   );
@@ -35,7 +35,7 @@ function SectionIntro() {
 
 function CompanionCardSkeletons() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="flex flex-col gap-4">
       {[0, 1, 2, 3].map((i) => (
         <CompanionCardSkeleton key={i} />
       ))}
@@ -167,10 +167,22 @@ function CompanionMcpsSectionContent({
     string | null
   >(null);
 
-  // Nothing required, or at least one connected → the report CTA may proceed.
-  // Called during render (derived from query data, not an effect) so the
-  // parent's button re-enables the same render pass a source connects.
-  onReadinessChange?.(cards.length === 0 || cards.some((c) => c.satisfied));
+  // A source counts toward the report only when it's linked AND usable (a VTEX
+  // linked with no credentials, or GitHub with no repo, does NOT count).
+  const isReady = (c: (typeof cards)[number]) => c.satisfied && c.configured;
+  const requiredCards = cards.filter((c) => c.required);
+  const enhancedCards = cards.filter((c) => !c.required);
+
+  // Analytics (and any required source) MUST be ready before continuing. When
+  // the resolved set has no required source, fall back to "any source ready"
+  // so a config that never offers Analytics can't trap the user. Derived during
+  // render (not an effect) so the parent's button re-enables the same pass a
+  // source becomes ready.
+  const ready =
+    requiredCards.length > 0
+      ? requiredCards.every(isReady)
+      : cards.length === 0 || cards.some(isReady);
+  onReadinessChange?.(ready);
 
   // Empty: nothing to connect → render nothing (the parent footer still shows
   // the report CTA).
@@ -179,6 +191,39 @@ function CompanionMcpsSectionContent({
   }
 
   const busy = connectingFieldKey !== null || disconnectingFieldKey !== null;
+
+  const renderCard = (card: (typeof cards)[number]) => {
+    const handleConnect = async () => {
+      const connected = await connect(card);
+      if (connected) {
+        setAutoOpenConfigFieldKey(card.fieldKey);
+      }
+    };
+    return (
+      <CompanionCard
+        key={card.fieldKey}
+        card={card}
+        connecting={connectingFieldKey === card.fieldKey}
+        disconnecting={disconnectingFieldKey === card.fieldKey}
+        disabled={
+          busy &&
+          connectingFieldKey !== card.fieldKey &&
+          disconnectingFieldKey !== card.fieldKey
+        }
+        org={org}
+        selfClient={selfClient}
+        siteUrl={siteUrl}
+        autoOpenConfigFieldKey={autoOpenConfigFieldKey}
+        onAutoOpenConfigHandled={() =>
+          setAutoOpenConfigFieldKey((current) =>
+            current === card.fieldKey ? null : current,
+          )
+        }
+        onConnect={() => void handleConnect()}
+        onDisconnect={() => void disconnect(card)}
+      />
+    );
+  };
 
   return (
     // Mobile: fill the parent's remaining height — the header + intro copy stay
@@ -199,40 +244,10 @@ function CompanionMcpsSectionContent({
             {connectError}
           </p>
         )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {cards.map((card) => {
-            const handleConnect = async () => {
-              const connected = await connect(card);
-              if (connected) {
-                setAutoOpenConfigFieldKey(card.fieldKey);
-              }
-            };
-
-            return (
-              <CompanionCard
-                key={card.fieldKey}
-                card={card}
-                connecting={connectingFieldKey === card.fieldKey}
-                disconnecting={disconnectingFieldKey === card.fieldKey}
-                disabled={
-                  busy &&
-                  connectingFieldKey !== card.fieldKey &&
-                  disconnectingFieldKey !== card.fieldKey
-                }
-                org={org}
-                selfClient={selfClient}
-                siteUrl={siteUrl}
-                autoOpenConfigFieldKey={autoOpenConfigFieldKey}
-                onAutoOpenConfigHandled={() =>
-                  setAutoOpenConfigFieldKey((current) =>
-                    current === card.fieldKey ? null : current,
-                  )
-                }
-                onConnect={() => void handleConnect()}
-                onDisconnect={() => void disconnect(card)}
-              />
-            );
-          })}
+        {/* Single list, required source(s) first — the "Obrigatório" pill on the
+            card carries the must-vs-optional distinction (no section headers). */}
+        <div className="flex flex-col gap-4">
+          {[...requiredCards, ...enhancedCards].map(renderCard)}
         </div>
       </ScrollReveal>
     </div>

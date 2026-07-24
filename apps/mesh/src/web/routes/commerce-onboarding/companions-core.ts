@@ -49,7 +49,17 @@ export interface CompanionCardModel {
   /** Curated business-area tag (e.g. "Funil"); null for plain cards. */
   area: string | null;
   bullets: string[];
+  /** The binding is linked to a connection (or SA-verified). Note: linked does
+   *  NOT imply usable — see {@link CompanionCardModel.configured}. */
   satisfied: boolean;
+  /** The linked binding has everything it needs to produce data (credentials
+   *  entered, repo/property picked, or SA-verified). A card can be `satisfied`
+   *  but not `configured` — e.g. VTEX linked with no account yet — in which case
+   *  it must read as "needs configuration", never "connected". */
+  configured: boolean;
+  /** This source is mandatory for a useful report; the rest only enrich it.
+   *  Drives the required/optional grouping and the continue gate. */
+  required: boolean;
   candidateConnectionId: string | null;
   linkedConnectionId: string | null;
   configurationState: Record<string, unknown> | null;
@@ -65,6 +75,47 @@ export interface CompanionCardModel {
 /** Providers connected through the shared-SA lane, keyed by binding type
  *  (e.g. "google-analytics"), from the commerce-discovery status endpoint. */
 export type SaBindings = Record<string, { resource: string | null }>;
+
+/** Binding types a merchant MUST connect for the report to be worth anything —
+ *  analytics is the baseline data source, everything else only enriches it.
+ *  Cards for these render under "Required" and gate the continue button. */
+export const REQUIRED_BINDING_TYPES: ReadonlySet<string> = new Set([
+  "google-analytics",
+]);
+
+/**
+ * Whether a linked binding actually has what it needs to produce data. A
+ * binding can be "linked" (its connection id is written into the CD state) yet
+ * unusable: VTEX linked with no account/credentials, GitHub linked with no repo
+ * picked, GA/GSC linked via OAuth with no property/site chosen. A shared-SA
+ * binding is always configured — the verification IS the configuration.
+ *
+ * `companionConfig` is the linked companion connection's configuration_state;
+ * `cdConfig` is the Commerce Discovery connection's configuration_state (where
+ * the free-standing `github_repo` lives).
+ */
+export function isCompanionConfigured(args: {
+  bindingType: string;
+  boundVia: "oauth" | "sa" | null;
+  companionConfig: Record<string, unknown> | null | undefined;
+  cdConfig: Record<string, unknown> | null | undefined;
+}): boolean {
+  if (args.boundVia === "sa") return true;
+  const { companionConfig, cdConfig } = args;
+  switch (args.bindingType) {
+    case "vtex":
+      return isMeaningfulConfigValue(companionConfig?.accountName);
+    case "google-analytics":
+      return isMeaningfulConfigValue(companionConfig?.propertyId);
+    case "google-search-console":
+      return isMeaningfulConfigValue(companionConfig?.siteUrl);
+    case "github":
+      return isMeaningfulConfigValue(cdConfig?.github_repo);
+    default:
+      // Bindings with no post-link config step are usable as soon as linked.
+      return true;
+  }
+}
 
 type ComparisonWhere = { field: string[]; operator: "in"; value: string[] };
 type WhereExpr =
@@ -315,6 +366,14 @@ export function buildCompanionCards(args: {
       : saBinding
         ? "sa"
         : null;
+    const configured =
+      satisfied &&
+      isCompanionConfigured({
+        bindingType: req.bindingType,
+        boundVia,
+        companionConfig: linkedConnection?.configuration_state ?? null,
+        cdConfig: args.configurationState ?? null,
+      });
     cards.push({
       fieldKey: req.fieldKey,
       bindingType: req.bindingType,
@@ -328,6 +387,8 @@ export function buildCompanionCards(args: {
       area: curatedEntry?.area ?? null,
       bullets: curatedEntry?.bullets ?? [],
       satisfied,
+      configured,
+      required: REQUIRED_BINDING_TYPES.has(req.bindingType),
       candidateConnectionId: satisfied
         ? null
         : linkedConnectionId
