@@ -40,21 +40,43 @@ export function useUserModelPreferences(): UserModelPreferences {
   return data ?? EMPTY_PREFS;
 }
 
+/**
+ * Set a single chat tier's override (null resets it to the org default). Takes
+ * one tier at a time and merges optimistically against the cache in `onMutate`
+ * — so two quick edits to different tiers chain off each other instead of the
+ * second rebuilding from a stale render snapshot and clobbering the first. The
+ * server does a full-replace of `tiers`, so `mutationFn` sends the merged cache.
+ */
 export function useUpdateUserModelPreferences() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const key = KEYS.userModelPreferences(org.id);
 
   return useMutation({
-    mutationFn: async (prefs: UserModelPreferences) => {
+    mutationFn: async (_patch: { tier: ChatTier; slot: ModelSlot | null }) => {
+      // onMutate already merged the patch into the cache — send that.
+      const next =
+        queryClient.getQueryData<UserModelPreferences>(key) ?? EMPTY_PREFS;
       const payload = (await studio.call(
         "USER_MODEL_PREFERENCES_UPDATE",
-        prefs,
+        next,
       )) as UserModelPreferences;
-      return payload ?? prefs;
+      return payload ?? next;
+    },
+    onMutate: ({ tier, slot }) => {
+      const prev = queryClient.getQueryData<UserModelPreferences>(key);
+      const base = prev ?? EMPTY_PREFS;
+      queryClient.setQueryData<UserModelPreferences>(key, {
+        tiers: { ...base.tiers, [tier]: slot },
+      });
+      return { prev };
+    },
+    onError: (_err, _patch, ctx) => {
+      queryClient.setQueryData(key, ctx?.prev ?? EMPTY_PREFS);
     },
     onSuccess: (payload) => {
-      queryClient.setQueryData(KEYS.userModelPreferences(org.id), payload);
+      queryClient.setQueryData(key, payload);
     },
   });
 }

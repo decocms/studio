@@ -132,7 +132,7 @@ export function UserModelPreferencesDialog({
   const update = useUpdateUserModelPreferences();
 
   const setTier = (tier: ChatTier, slot: ModelSlot | null) => {
-    update.mutate({ tiers: { ...user.tiers, [tier]: slot } });
+    update.mutate({ tier, slot });
   };
 
   return (
