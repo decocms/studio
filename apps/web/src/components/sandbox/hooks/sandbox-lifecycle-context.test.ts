@@ -10,6 +10,7 @@ import {
   deriveStartError,
   isRetryableClaimFailure,
   shouldAutoRetryClaim,
+  reconcileClaimRetryEpisode,
   MAX_CLAIM_AUTO_RETRIES,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
@@ -399,6 +400,34 @@ describe("shouldAutoRetryClaim", () => {
     expect(shouldAutoRetryClaim({ ...base, autoStartBlocked: true })).toBe(
       false,
     );
+  });
+});
+
+describe("reconcileClaimRetryEpisode", () => {
+  test("same branch → returns the same reference (no reset)", () => {
+    const prev = { branch: "main", count: 2, handled: true };
+    expect(reconcileClaimRetryEpisode(prev, "main")).toBe(prev);
+  });
+
+  test("different branch → fresh budget", () => {
+    // Regression: the lifecycle provider outlives a task switch, so a budget
+    // exhausted by one branch's failed boot must not carry over and silently
+    // skip auto-retry for a different branch's fresh boot.
+    const prev = { branch: "main", count: 2, handled: true };
+    expect(reconcileClaimRetryEpisode(prev, "feature-x")).toEqual({
+      branch: "feature-x",
+      count: 0,
+      handled: false,
+    });
+  });
+
+  test("null → a real branch resets too", () => {
+    const prev = { branch: null, count: 1, handled: false };
+    expect(reconcileClaimRetryEpisode(prev, "main")).toEqual({
+      branch: "main",
+      count: 0,
+      handled: false,
+    });
   });
 });
 
