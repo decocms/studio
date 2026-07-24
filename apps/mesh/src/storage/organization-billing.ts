@@ -264,6 +264,70 @@ export class OrganizationBillingStorage {
     });
   }
 
+  /** Resolve the org behind a Stripe subscription (webhook events carry
+   *  Stripe ids, not ours). One row per org keeps this a cheap scan. */
+  async getBillingByStripeSubscriptionId(
+    stripeSubscriptionId: string,
+  ): Promise<OrganizationBillingRow | null> {
+    const row = await this.db
+      .selectFrom("organization_billing")
+      .select(["organization_id"])
+      .where("stripe_subscription_id", "=", stripeSubscriptionId)
+      .executeTakeFirst();
+    return row ? this.getBilling(row.organization_id) : null;
+  }
+
+  /**
+   * Platform write from the Stripe webhook handlers: subscription identity /
+   * status / period end. Never touches seats or legacy — webhooks only ever
+   * narrate what Stripe already committed.
+   */
+  async updateStripeState(
+    organizationId: string,
+    patch: {
+      stripeCustomerId?: string;
+      stripeSubscriptionId?: string;
+      status?: string;
+      currentPeriodEnd?: Date | null;
+    },
+  ): Promise<boolean> {
+    const result = await this.db
+      .updateTable("organization_billing")
+      .set({
+        ...(patch.stripeCustomerId !== undefined && {
+          stripe_customer_id: patch.stripeCustomerId,
+        }),
+        ...(patch.stripeSubscriptionId !== undefined && {
+          stripe_subscription_id: patch.stripeSubscriptionId,
+        }),
+        ...(patch.status !== undefined && { status: patch.status }),
+        ...(patch.currentPeriodEnd !== undefined && {
+          current_period_end: patch.currentPeriodEnd,
+        }),
+        updated_at: new Date(),
+      })
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
+  }
+
+  /**
+   * Mark a benefit sync pending outside a seat change (Stripe webhooks: the
+   * grant amount is recomputed from live state at delivery, so the marker is
+   * all a billing event needs to write). Pass a DETERMINISTIC referenceId for
+   * cycle events (e.g. the invoice id) so replays collapse at the gateway.
+   */
+  async markBenefitsPending(
+    organizationId: string,
+    referenceId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("organization_billing")
+      .set({ benefits_reference_id: referenceId, updated_at: new Date() })
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
   /**
    * Confirm a delivered grant: clear the pending marker iff it still holds
    * THIS reference (CAS) — a newer seat change may have replaced it, and that

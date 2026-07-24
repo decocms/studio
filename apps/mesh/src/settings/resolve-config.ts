@@ -205,6 +205,7 @@ export function resolveConfig(
       envVars.STUDIO_SEAT_ALLOWANCE_CENTS,
       500,
     ),
+    stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

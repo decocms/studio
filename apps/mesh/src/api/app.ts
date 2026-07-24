@@ -96,6 +96,7 @@ import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
+import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1342,6 +1343,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Report shell stays public so authentication can happen inline, while all
   // report data and scan operations behind this proxy require a user session.
   app.route("/api/_reports", reportsRoutes);
+
+  // Stripe webhook (per-seat billing): signature-authed, no session — the
+  // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
+  app.route("/api/_stripe", stripeWebhookRoutes);
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
