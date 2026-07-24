@@ -111,6 +111,82 @@ export function planReportScheduleSync(state: {
   return { desired, disarm: state.armedReportUrl, arm: desired };
 }
 
+/** Injectable seams for executeReportScheduleSync — production defaults are
+ *  the real storage/client; integration tests swap `schedule` for a
+ *  recording/failing fake while keeping the REAL Postgres storage. */
+export interface ReportScheduleSyncDeps {
+  storage: () => OrganizationBillingStorage;
+  schedule: typeof setReportSchedule;
+  configured: () => boolean;
+}
+
+/**
+ * The syncReportSchedule step body (extracted so the execution path — the
+ * load-bearing disarm-then-arm ordering, the permanent-4xx handling, the
+ * in-step pending-ref re-check — is testable without DBOS).
+ */
+export async function executeReportScheduleSync(
+  organizationId: string,
+  referenceId: string,
+  deps: ReportScheduleSyncDeps = {
+    storage,
+    schedule: setReportSchedule,
+    configured: reportsClientConfigured,
+  },
+): Promise<void> {
+  if (!deps.configured()) return;
+  const s = deps.storage();
+  const [billing, paidSeatUserIds] = await Promise.all([
+    s.getBilling(organizationId),
+    s.listPaidSeatUserIds(organizationId),
+  ]);
+  if ((billing?.benefitsReferenceId ?? null) !== referenceId) return;
+  const plan = planReportScheduleSync({
+    paidSeatCount: effectivePaidSeatCount(billing, paidSeatUserIds.length),
+    includedReportUrl: billing?.includedReportUrl ?? null,
+    armedReportUrl: billing?.armedReportUrl ?? null,
+  });
+  if (!plan.disarm && !plan.arm) return;
+  // 4xx from the reports service is permanent (host unknown/unowned) —
+  // retrying would poison this workflow AND every future delivery that
+  // shares the pending marker. Disarm: the schedule is already gone over
+  // there, proceed. Arm: log loudly, record nothing armed, and let the
+  // next choice change re-attempt.
+  if (plan.disarm) {
+    try {
+      await deps.schedule({
+        host: plan.disarm,
+        organizationId,
+        enabled: false,
+      });
+    } catch (err) {
+      if (!isPermanentReportsFailure(err)) throw err;
+      console.error(
+        "reports disarm permanently rejected (treating as disarmed):",
+        { organizationId, host: plan.disarm, err: String(err) },
+      );
+    }
+  }
+  if (plan.arm) {
+    try {
+      await deps.schedule({ host: plan.arm, organizationId, enabled: true });
+    } catch (err) {
+      if (!isPermanentReportsFailure(err)) throw err;
+      console.error(
+        "reports arm permanently rejected — weekly run NOT armed:",
+        {
+          organizationId,
+          host: plan.arm,
+          err: String(err),
+        },
+      );
+      await s.setArmedReportUrl(organizationId, null);
+      return;
+    }
+  }
+  await s.setArmedReportUrl(organizationId, plan.desired);
+}
+
 async function syncOrgBenefitsWorkflowFn(
   organizationId: string,
   referenceId: string,
@@ -154,67 +230,7 @@ async function syncOrgBenefitsWorkflowFn(
   // change's workflow. (A sub-second interleaving between this read and the
   // arm call remains possible; the next delivery converges it.)
   await DBOS.runStep(
-    async () => {
-      if (!reportsClientConfigured()) return;
-      const s = storage();
-      const [billing, paidSeatUserIds] = await Promise.all([
-        s.getBilling(organizationId),
-        s.listPaidSeatUserIds(organizationId),
-      ]);
-      if ((billing?.benefitsReferenceId ?? null) !== referenceId) return;
-      const plan = planReportScheduleSync({
-        paidSeatCount: effectivePaidSeatCount(billing, paidSeatUserIds.length),
-        includedReportUrl: billing?.includedReportUrl ?? null,
-        armedReportUrl: billing?.armedReportUrl ?? null,
-      });
-      if (!plan.disarm && !plan.arm) return;
-      // 4xx from the reports service is permanent (host unknown/unowned) —
-      // retrying would poison this workflow AND every future delivery that
-      // shares the pending marker. Disarm: the schedule is already gone over
-      // there, proceed. Arm: log loudly, record nothing armed, and let the
-      // next choice change re-attempt.
-      if (plan.disarm) {
-        try {
-          await setReportSchedule({
-            host: plan.disarm,
-            organizationId,
-            enabled: false,
-          });
-        } catch (err) {
-          if (!isPermanentReportsFailure(err)) throw err;
-          console.error(
-            "reports disarm permanently rejected (treating as disarmed):",
-            {
-              organizationId,
-              host: plan.disarm,
-              err: String(err),
-            },
-          );
-        }
-      }
-      if (plan.arm) {
-        try {
-          await setReportSchedule({
-            host: plan.arm,
-            organizationId,
-            enabled: true,
-          });
-        } catch (err) {
-          if (!isPermanentReportsFailure(err)) throw err;
-          console.error(
-            "reports arm permanently rejected — weekly run NOT armed:",
-            {
-              organizationId,
-              host: plan.arm,
-              err: String(err),
-            },
-          );
-          await s.setArmedReportUrl(organizationId, null);
-          return;
-        }
-      }
-      await s.setArmedReportUrl(organizationId, plan.desired);
-    },
+    () => executeReportScheduleSync(organizationId, referenceId),
     { name: "syncReportSchedule", retriesAllowed: true, maxAttempts: 5 },
   );
 

@@ -17,7 +17,7 @@ export function reportsClientConfigured(): boolean {
   return !!getSettings().reportsInternalApiKey;
 }
 
-class ReportsClientError extends Error {
+export class ReportsClientError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
@@ -57,7 +57,7 @@ async function post(
   if (!res.ok) {
     throw new ReportsClientError(
       res.status,
-      `reports ${path} failed (${res.status}): ${JSON.stringify(parsed)}`,
+      `reports ${path} failed (${res.status}): ${JSON.stringify(parsed).slice(0, 500)}`,
     );
   }
   return parsed;
