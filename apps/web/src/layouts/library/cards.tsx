@@ -223,17 +223,32 @@ function CardShell({
   onOpen,
   children,
   className,
+  draggable,
+  onDragStart,
+  onContextMenu,
+  onDragOver,
+  onDrop,
+  onDragLeave,
 }: {
   onOpen: () => void;
   children: React.ReactNode;
   className?: string;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
 }) {
+  const [isDragOver, setIsDragOver] = useState(false);
+
   // A real <button> can't wrap the actions dropdown (nested buttons), so the
   // card is a click-and-keyboard div.
   return (
     <div
       role="button"
       tabIndex={0}
+      draggable={draggable}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -241,8 +256,26 @@ function CardShell({
           onOpen();
         }
       }}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+      onDragOver={(e) => {
+        onDragOver?.(e);
+        if (onDrop) {
+          e.preventDefault();
+          setIsDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        onDragLeave?.(e);
+        setIsDragOver(false);
+      }}
+      onDrop={(e) => {
+        onDrop?.(e);
+        setIsDragOver(false);
+      }}
       className={cn(
         "group/card flex cursor-pointer flex-col gap-3 rounded-2xl border border-border bg-background p-4 text-left transition-colors hover:border-border hover:bg-muted/40",
+        isDragOver && onDrop && "border-primary bg-primary/5",
         className,
       )}
     >
@@ -311,6 +344,10 @@ export function FolderCard({
   onOpen,
   onShare,
   onDelete,
+  draggable,
+  onDragStart,
+  onContextMenu,
+  onDrop,
 }: {
   name: string;
   meta?: string;
@@ -324,10 +361,20 @@ export function FolderCard({
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
 }) {
   const t = useT();
   return (
-    <CardShell onOpen={onOpen}>
+    <CardShell
+      onOpen={onOpen}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+      onDrop={onDrop}
+    >
       <CardHeader
         icon={
           <FolderIcon
@@ -363,6 +410,9 @@ export function FileCard({
   onOpen,
   onShare,
   onDelete,
+  draggable,
+  onDragStart,
+  onContextMenu,
 }: {
   filename: string;
   updatedAt: string;
@@ -373,10 +423,18 @@ export function FileCard({
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
   return (
-    <CardShell onOpen={onOpen}>
+    <CardShell
+      onOpen={onOpen}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+    >
       <CardHeader
         icon={
           <FileTypeIcon filename={filename} className="h-8 w-6.5 shrink-0" />
@@ -416,6 +474,9 @@ export function SkillCard({
   onBrowse,
   onShare,
   onDelete,
+  draggable,
+  onDragStart,
+  onContextMenu,
 }: {
   dirName: string;
   updatedAt: string;
@@ -427,6 +488,9 @@ export function SkillCard({
   onBrowse: () => void;
   onShare?: () => void;
   onDelete?: () => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
   const { data } = useQuery({
@@ -438,7 +502,12 @@ export function SkillCard({
   const meta = data ? parseSkillMd(data) : null;
 
   return (
-    <CardShell onOpen={onOpen}>
+    <CardShell
+      onOpen={onOpen}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+    >
       <CardHeader
         icon={
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -480,6 +549,9 @@ export function BrandCard({
   onOpen,
   onBrowse,
   onDelete,
+  draggable,
+  onDragStart,
+  onContextMenu,
 }: {
   dirName: string;
   updatedAt: string;
@@ -489,6 +561,9 @@ export function BrandCard({
   /** Open the underlying folder listing. */
   onBrowse: () => void;
   onDelete?: () => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
   const { data } = useQuery({
@@ -504,7 +579,12 @@ export function BrandCard({
     : [];
 
   return (
-    <CardShell onOpen={onOpen}>
+    <CardShell
+      onOpen={onOpen}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+    >
       <CardHeader
         icon={
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

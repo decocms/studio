@@ -482,7 +482,7 @@ export function useOrgFsSetShareMode(volume: string) {
   });
 }
 
-/** Upload/mkdir/delete; each invalidates the whole volume's listings+usage. */
+/** Upload/mkdir/delete/move; each invalidates the whole volume's listings+usage. */
 export function useOrgFsMutations(volume: string) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -542,5 +542,16 @@ export function useOrgFsMutations(volume: string) {
     onSuccess: invalidate,
   });
 
-  return { upload, mkdir, remove };
+  const move = useMutation({
+    mutationFn: async (input: { from: string; to: string }) => {
+      await fsFetch(fsUrl(org.slug, volume, "move"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+    },
+    onSuccess: invalidate,
+  });
+
+  return { upload, mkdir, remove, move };
 }

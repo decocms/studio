@@ -425,6 +425,9 @@ export function VolumeView({
   onOpenBrand,
   onShare,
   onDelete,
+  onDragStart,
+  onContextMenu,
+  onMove,
 }: {
   location: LibraryLocation;
   onOpenDir: (path: string) => void;
@@ -433,6 +436,9 @@ export function VolumeView({
   onOpenBrand: (brandPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
+  onDragStart?: (path: string) => void;
+  onContextMenu?: (path: string, kind: "file" | "dir") => void;
+  onMove?: (fromPath: string, toDir: string) => void;
 }) {
   const t = useT();
   const volume = location.volume ?? "";
@@ -510,6 +516,16 @@ export function VolumeView({
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                onDragStart={(ev) => {
+                  onDragStart?.(e.path);
+                  ev.dataTransfer.effectAllowed = "move";
+                  ev.dataTransfer.setData("text/plain", e.path);
+                }}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  onContextMenu?.(e.path, "dir");
+                }}
               />
             ))}
           </CardsGrid>
@@ -528,6 +544,16 @@ export function VolumeView({
                 onOpen={() => onOpenBrand(browsePathFor(location, e.path))}
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                onDragStart={(ev) => {
+                  onDragStart?.(e.path);
+                  ev.dataTransfer.effectAllowed = "move";
+                  ev.dataTransfer.setData("text/plain", e.path);
+                }}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  onContextMenu?.(e.path, "dir");
+                }}
               />
             ))}
           </CardsGrid>
@@ -547,6 +573,23 @@ export function VolumeView({
                 onOpen={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                onDragStart={(ev) => {
+                  onDragStart?.(e.path);
+                  ev.dataTransfer.effectAllowed = "move";
+                  ev.dataTransfer.setData("text/plain", e.path);
+                }}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  onContextMenu?.(e.path, "dir");
+                }}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  const fromPath = ev.dataTransfer.getData("text/plain");
+                  if (fromPath && onMove) {
+                    onMove(fromPath, e.path);
+                  }
+                }}
               />
             ))}
           </CardsGrid>
@@ -566,6 +609,16 @@ export function VolumeView({
                 onOpen={() => onOpenFile(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                onDragStart={(ev) => {
+                  onDragStart?.(e.path);
+                  ev.dataTransfer.effectAllowed = "move";
+                  ev.dataTransfer.setData("text/plain", e.path);
+                }}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  onContextMenu?.(e.path, "file");
+                }}
               />
             ))}
           </CardsGrid>

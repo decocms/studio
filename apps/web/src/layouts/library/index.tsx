@@ -147,6 +147,12 @@ export function LibraryPage({
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{
+    path: string;
+    kind: "file" | "dir";
+  } | null>(null);
+  const [renameName, setRenameName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   // Depth counter so dragenter/leave bubbling from child cards doesn't flicker.
@@ -158,7 +164,7 @@ export function LibraryPage({
     ? null
     : (location.volume ?? "uploads");
   const uploadDir = location.volume ? location.dirPath : "";
-  const { upload, mkdir } = useOrgFsMutations(uploadVolume ?? "uploads");
+  const { upload, mkdir, move } = useOrgFsMutations(uploadVolume ?? "uploads");
   // Deletes can target any volume (the root feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
@@ -252,6 +258,51 @@ export function LibraryPage({
     }
   }
 
+  async function handleRename() {
+    if (!renameTarget) return;
+    const newName = renameName.trim();
+    if (!newName || newName === basename(renameTarget.path)) {
+      setRenameOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+      return;
+    }
+    try {
+      const dir = renameTarget.path.includes("/")
+        ? renameTarget.path.slice(0, renameTarget.path.lastIndexOf("/"))
+        : "";
+      const newPath = dir ? `${dir}/${newName}` : newName;
+      await move.mutateAsync({ from: renameTarget.path, to: newPath });
+      toast.success(t("library.library.renamed", { name: newName }));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.renameFailed"),
+      );
+    } finally {
+      setRenameOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+    }
+  }
+
+  async function handleMove(fromPath: string, toDir: string) {
+    try {
+      const fromName = basename(fromPath);
+      const newPath = toDir ? `${toDir}/${fromName}` : fromName;
+      await move.mutateAsync({ from: fromPath, to: newPath });
+      toast.success(
+        t("library.library.moved", {
+          name: fromName,
+          destination: toDir || t("library.library.theLibrary"),
+        }),
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.moveFailed"),
+      );
+    }
+  }
+
   function refresh() {
     for (const v of VOLUMES) {
       queryClient.invalidateQueries({
@@ -268,6 +319,12 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
+  function handleContextMenuEmpty(e: React.MouseEvent) {
+    if (!isRoot || location.readOnly || !uploadVolume) return;
+    e.preventDefault();
+    setNewFolderOpen(true);
+  }
+
   return (
     <div
       className="relative h-full"
@@ -275,6 +332,7 @@ export function LibraryPage({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onContextMenu={handleContextMenuEmpty}
     >
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm">
@@ -401,6 +459,12 @@ export function LibraryPage({
               onOpenBrand={onOpenBrand}
               onShare={setShareTarget}
               onDelete={setPendingDelete}
+              onContextMenu={(path, kind) => {
+                setRenameTarget({ path, kind });
+                setRenameName(basename(path));
+                setRenameOpen(true);
+              }}
+              onMove={handleMove}
             />
           )}
         </div>
@@ -458,6 +522,41 @@ export function LibraryPage({
               onClick={() => void handleCreateFolder()}
             >
               {t("library.library.create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {renameTarget &&
+                t("library.library.renameTitle", {
+                  name: basename(renameTarget.path),
+                })}
+            </DialogTitle>
+            <DialogDescription>
+              {t("library.library.renameDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={renameName}
+            onChange={(e) => setRenameName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleRename();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>
+              {t("library.library.cancel")}
+            </Button>
+            <Button
+              disabled={!renameName.trim() || move.isPending}
+              onClick={() => void handleRename()}
+            >
+              {t("library.library.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
