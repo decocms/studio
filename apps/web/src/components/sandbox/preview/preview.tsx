@@ -1042,7 +1042,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </div>
 
         {pagesOpen && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
+          <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
             <div className="px-2 h-10 flex items-center gap-2 border-b">
               <SearchLg
                 size={14}
