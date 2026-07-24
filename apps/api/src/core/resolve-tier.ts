@@ -1,5 +1,8 @@
 import type { StudioContext } from "@/core/studio-context";
-import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  ChatTierSchema,
+  type SimpleModeTier,
+} from "@decocms/shared/organization/schema";
 import {
   pickSimpleModeDefaults,
   type AiProviderKey,
@@ -28,6 +31,22 @@ export interface ResolvedTier {
   credentialId: string;
   modelId: string;
   modelMeta: ModelMetadata;
+}
+
+export interface ResolveTierOptions {
+  /**
+   * Layer the caller's personal chat-tier override (USER_MODEL_PREFERENCES)
+   * on top of the org slot. Opt-in, and only ever honored for fast/smart/
+   * thinking.
+   *
+   * Off by default because most `resolveTier` callers are not "this user's
+   * chat": automations run as their creator, and the task-board super agent,
+   * background tools, commit-message suggestion and review judge all resolve a
+   * tier on someone's behalf. An admin who sets an automation to "smart" must
+   * not have it silently change model when its creator later edits a personal
+   * chat preference. Interactive chat (decopilot/routes.ts) opts in.
+   */
+  applyUserPrefs?: boolean;
 }
 
 const METADATA_FETCH_TIMEOUT_MS = 5_000;
@@ -93,6 +112,7 @@ function metaFromCatalogEntry(
 export async function resolveTier(
   ctx: StudioContext,
   tier: SimpleModeTier,
+  opts?: ResolveTierOptions,
 ): Promise<ResolvedTier> {
   const orgId = ctx.organization?.id;
   if (!orgId) throw new Error("resolveTier called without an organization");
@@ -100,18 +120,17 @@ export async function resolveTier(
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const orgSlot = settings?.simple_mode?.tiers?.[tier] ?? null;
 
-  // Per-user override (chat tiers only) takes precedence over the org default.
-  // Only fast/smart/thinking are user-overridable; for other tiers this is
-  // always null and resolution falls straight through to the org slot.
+  // Per-user override, opt-in and chat-tiers-only (see ResolveTierOptions).
+  // Skipping the read entirely when it can't win also keeps a dispatch from
+  // issuing three throwaway queries for image/web_search/deep_research.
   const userId = ctx.auth?.user?.id;
-  const userPrefs = userId
-    ? await ctx.storage.userModelPreferences.get(userId, orgId)
-    : null;
-  const userTiers = userPrefs?.tiers as
-    | Record<string, SimpleModeModelSlot | null | undefined>
-    | undefined;
-  const isChatTier = tier === "fast" || tier === "smart" || tier === "thinking";
-  const userSlot = isChatTier ? (userTiers?.[tier] ?? null) : null;
+  const chatTier = ChatTierSchema.safeParse(tier);
+  const userSlot =
+    opts?.applyUserPrefs && chatTier.success && userId
+      ? ((await ctx.storage.userModelPreferences.get(userId, orgId))?.tiers?.[
+          chatTier.data
+        ] ?? null)
+      : null;
 
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
 

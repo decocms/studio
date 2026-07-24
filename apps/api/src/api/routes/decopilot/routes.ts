@@ -249,7 +249,9 @@ async function resolvePerRequestModels(
   }
 
   const [chat, image, webSearch, deepResearch] = await Promise.all([
-    resolveTier(ctx, tier ?? "smart"),
+    // The only opt-in site for per-user chat-tier overrides: this is the
+    // interactive chat request, dispatched as the caller themselves.
+    resolveTier(ctx, tier ?? "smart", { applyUserPrefs: true }),
     tryResolveTier(ctx, "image"),
     tryResolveTier(ctx, "web_search"),
     tryResolveTier(ctx, "deep_research"),

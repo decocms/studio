@@ -184,9 +184,32 @@ describe("resolveTier", () => {
         ],
       },
     });
-    const result = await resolveTier(ctx, "smart");
+    const result = await resolveTier(ctx, "smart", { applyUserPrefs: true });
     expect(result.modelId).toBe("user-model");
     expect(result.modelMeta.title).toBe("User Model");
+  });
+
+  it("ignores the user override unless the caller opts in", async () => {
+    // Automations, the task-board super agent, background tools, the
+    // commit-message suggester and the review judge all resolve tiers without
+    // `applyUserPrefs` — none of them may follow a personal chat preference.
+    const ctx = makeCtx({
+      tiers: { smart: { keyId: "k1", modelId: "org-model" } },
+      userTiers: { smart: { keyId: "k1", modelId: "user-model" } },
+      providerKeys: [
+        { id: "k1", providerId: "anthropic", createdAt: "2026-01-01" },
+      ],
+      models: {
+        k1: [
+          { modelId: "org-model", title: "Org Model" },
+          { modelId: "user-model", title: "User Model" },
+        ],
+      },
+    });
+    const result = await resolveTier(ctx, "smart");
+    expect(result.modelId).toBe("org-model");
+    // The preferences row must not even be read on the default path.
+    expect(ctx.storage.userModelPreferences.get).not.toHaveBeenCalled();
   });
 
   it("falls back to the org slot when the user override key is stale", async () => {
@@ -200,7 +223,7 @@ describe("resolveTier", () => {
         k_live: [{ modelId: "org-model", title: "Org Model" }],
       },
     });
-    const result = await resolveTier(ctx, "smart");
+    const result = await resolveTier(ctx, "smart", { applyUserPrefs: true });
     expect(result.credentialId).toBe("k_live");
     expect(result.modelId).toBe("org-model");
   });
@@ -222,7 +245,7 @@ describe("resolveTier", () => {
         ],
       },
     });
-    const result = await resolveTier(ctx, "image");
+    const result = await resolveTier(ctx, "image", { applyUserPrefs: true });
     expect(result.modelId).toBe("org-image-model");
   });
 
