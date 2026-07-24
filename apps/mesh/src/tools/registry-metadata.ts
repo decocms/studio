@@ -74,6 +74,8 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_SEATS_GET",
   "ORGANIZATION_SEATS_SET",
+  "ORGANIZATION_BILLING_CHECKOUT_START",
+  "ORGANIZATION_SEATS_PREVIEW",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -418,6 +420,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Set members' seats (paid/free)",
     category: "Organizations",
     dangerous: true,
+  },
+  {
+    name: "ORGANIZATION_BILLING_CHECKOUT_START",
+    description: "Start the seat subscription checkout",
+    category: "Organizations",
+    dangerous: true,
+  },
+  {
+    name: "ORGANIZATION_SEATS_PREVIEW",
+    description: "Preview a seat change's prorated charge",
+    category: "Organizations",
   },
   // Connection tools
   {
@@ -1199,9 +1212,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
       // Seats live on the members page and change who the org pays for —
-      // same trust tier as adding/removing the member itself.
+      // same trust tier as adding/removing the member itself. Checkout and
+      // preview are the money half of the same surface.
       "ORGANIZATION_SEATS_GET",
       "ORGANIZATION_SEATS_SET",
+      "ORGANIZATION_BILLING_CHECKOUT_START",
+      "ORGANIZATION_SEATS_PREVIEW",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

@@ -1,8 +1,9 @@
 /**
- * Stripe webhook intake for per-seat self-serve billing (phase 3 — the
- * checkout/portal creator that sets metadata.orgId is phase 4; until it
- * ships AND the deployment sets STRIPE_WEBHOOK_SECRET, this module is
- * dormant).
+ * Stripe webhook intake for per-seat self-serve billing. The checkout
+ * creator that sets metadata.orgId is ORGANIZATION_BILLING_CHECKOUT_START
+ * (tools/organization/billing-checkout.ts); the customer portal (cancel /
+ * card update) is still future work. On deployments without
+ * STRIPE_WEBHOOK_SECRET this module is dormant.
  *
  * The webhook is the SOURCE OF TRUTH writer for organization_billing's
  * subscription state. Stripe guarantees neither delivery order nor
@@ -22,7 +23,7 @@
  *    customer/subscription to the org (metadata.orgId, set by our checkout
  *    creator) once payment_status is "paid"; status active, grant. Refuses
  *    legacy / non-self-serve orgs and rebinding over a live different
- *    subscription.
+ *    subscription (the refused-but-paid orphan subscription is canceled).
  *  - customer.subscription.updated → mirror status + current period end.
  *  - customer.subscription.deleted → status canceled + unbind; grant
  *    recomputes to 0 (the sync workflow zeroes self_serve orgs whose
@@ -30,6 +31,12 @@
  *  - invoice.paid → THE MONTHLY CLOCK: refresh period end + re-grant with
  *    referenceId = invoice id, which is what makes the gateway allowance
  *    reset per billing cycle (no cron anywhere).
+ *
+ * Payment-success events (checkout completion, invoice.paid) additionally
+ * RECONCILE the subscription quantity onto the paid-seat rows — the
+ * self-healing loop for a SEATS_SET whose Stripe mirror failed or whose
+ * pending_if_incomplete update expired. Success anchors only: reconciling on
+ * failure events would loop charge attempts on a failing card.
  *
  * Payload compat: API version 2025-03-31 (Basil) moved invoice.subscription
  * under invoice.parent.subscription_details and the subscription's
@@ -47,6 +54,12 @@ import {
   OrganizationBillingStorage,
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
+import {
+  cancelSubscription,
+  reconcileSeatQuantity,
+  StripeApiError,
+} from "./stripe-api";
+import { hasChargeableSubscription } from "./subscription-state";
 import { enqueueBenefitsSync } from "./sync-org-benefits";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
@@ -199,7 +212,14 @@ function nextWatermark(
 }
 
 export type HandledStripeEvent =
-  | { handled: false; reason: string }
+  | {
+      handled: false;
+      reason: string;
+      /** A LIVE subscription the customer paid for that we refused to bind
+       *  (rebind guard) — the route wrapper cancels it so nothing keeps
+       *  charging a card that bought no service. */
+      orphanSubscriptionId?: string;
+    }
   | { handled: true; organizationId: string; benefitsReferenceId?: string };
 
 /**
@@ -257,6 +277,7 @@ export async function applyStripeEvent(
         return {
           handled: false,
           reason: "org already bound to another subscription",
+          orphanSubscriptionId: subscriptionId,
         };
       }
       if (isStale(event, billing)) {
@@ -342,6 +363,44 @@ export async function applyStripeEvent(
   }
 }
 
+/** Events that prove the customer's card WORKS — the only anchors we let
+ *  trigger a quantity reconciliation (re-applying a quantity can charge; a
+ *  failure-path anchor would loop charge attempts on a failing card). */
+const RECONCILE_EVENT_TYPES = new Set([
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "invoice.paid",
+]);
+
+/**
+ * Converge Stripe's subscription quantity onto the org's seat rows. This is
+ * the self-healing half of the SEATS_SET mirror: rows commit before the
+ * Stripe call there, so a failed/pending proration (declined card, expired
+ * pending_update, pod death mid-request) leaves quantity < rows — every paid
+ * invoice re-converges it, monthly at worst. Fail-soft: a miss is retried by
+ * the next cycle's event.
+ */
+async function reconcileQuantityWithRows(
+  storage: OrganizationBillingStorage,
+  organizationId: string,
+): Promise<void> {
+  const [billing, paidSeatUserIds] = await Promise.all([
+    storage.getBilling(organizationId),
+    storage.listPaidSeatUserIds(organizationId),
+  ]);
+  if (!hasChargeableSubscription(billing)) return;
+  const corrected = await reconcileSeatQuantity({
+    subscriptionId: billing.stripeSubscriptionId,
+    targetQuantity: paidSeatUserIds.length,
+  });
+  if (corrected) {
+    console.error("stripe webhook: reconciled diverged seat quantity", {
+      organizationId,
+      targetQuantity: paidSeatUserIds.length,
+    });
+  }
+}
+
 /** Route-facing wrapper: apply + durable benefit delivery (fail-soft — the
  *  pending marker is committed, the scheduled sweep covers a lost enqueue). */
 export async function processStripeEvent(
@@ -358,6 +417,32 @@ export async function processStripeEvent(
       );
     } catch (err) {
       console.error("Failed to enqueue benefit sync (sweep covers):", err);
+    }
+  }
+  if (result.handled && RECONCILE_EVENT_TYPES.has(event.type)) {
+    try {
+      await reconcileQuantityWithRows(storage, result.organizationId);
+    } catch (err) {
+      console.error("Failed to reconcile seat quantity (next cycle):", err);
+    }
+  }
+  // The customer PAID for this subscription and the org refused it — cancel
+  // so it stops charging. NOT fail-soft: the route 200-acks refusals (no
+  // Stripe redelivery), so a transient cancel failure must escape to the
+  // route's 500 to make Stripe redeliver this refusal and retry the cancel.
+  // Already-gone (400 canceled / 404 missing) is success.
+  if (!result.handled && result.orphanSubscriptionId) {
+    try {
+      await cancelSubscription(result.orphanSubscriptionId);
+      console.error("stripe webhook: canceled orphan subscription", {
+        subscriptionId: result.orphanSubscriptionId,
+        eventId: event.id,
+      });
+    } catch (err) {
+      const alreadyGone =
+        err instanceof StripeApiError &&
+        (err.status === 400 || err.status === 404);
+      if (!alreadyGone) throw err;
     }
   }
   return result;

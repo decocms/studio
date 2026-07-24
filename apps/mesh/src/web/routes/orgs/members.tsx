@@ -418,16 +418,17 @@ function OrgMembersContent() {
 
   // Per-seat billing: staged toggles applied in one batch. The column only
   // renders when the org actually has seats (billing row exists and is not
-  // legacy); toggling is enabled for invoiced (contract) orgs — self-serve
-  // waits for the Stripe checkout flow.
+  // legacy); toggling is enabled for invoiced (contract) orgs — the backend
+  // self-serve path (checkout + prorated apply) exists but its UI is the
+  // frontend follow-up.
   const { data: seatState } = useOrganizationSeats();
   const setSeatsMutation = useSetSeats();
   const [stagedSeats, setStagedSeats] = useState<Record<string, SeatKind>>({});
   // Column only for orgs EXPLICITLY put on invoiced (contract) billing — the
   // per-org opt-in is the rollout switch. Without this, any org created after
   // the billing migration (legacy=false, self_serve by default) would grow a
-  // disabled Seat column before checkout/paywall exist. self_serve gets the
-  // column with the Stripe flow (phase 3).
+  // disabled Seat column before the checkout/paywall UI exists. self_serve
+  // gets the column with the checkout UI follow-up (backend already live).
   const seatsApply =
     !!seatState?.billing &&
     !seatState.billing.legacy &&

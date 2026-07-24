@@ -206,6 +206,8 @@ export function resolveConfig(
       500,
     ),
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
+    stripeSecretKey: envVars.STRIPE_SECRET_KEY,
+    stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
