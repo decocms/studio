@@ -14,12 +14,20 @@
  * (oauth/github-mint) and the web import flow (github-repo-picker) can import it.
  */
 
-/** Least-privilege permission set minted for an imported agent's repo token. */
+/**
+ * Least-privilege permission set minted for an imported agent's repo token.
+ *
+ * `checks: read` lets the PR panel's Checks tab read CI check runs
+ * (`GET /commits/{sha}/check-runs`); without it the GitHub App installation
+ * token gets `403 Resource not accessible by integration`. The backing GitHub
+ * App must also grant Checks (read) or the mint fails with 422.
+ */
 export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   contents: "write",
   metadata: "read",
   pull_requests: "write",
   issues: "write",
+  checks: "read",
 };
 
 /** The repo grant metadata stored at `connection.metadata.repoScope`. */

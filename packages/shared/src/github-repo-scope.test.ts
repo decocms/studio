@@ -7,6 +7,24 @@ import {
   type RepoScopeRecipe,
 } from "./github-repo-scope";
 
+describe("GITHUB_SCOPED_PERMISSIONS", () => {
+  it("includes checks:read so the PR panel can read CI check runs", () => {
+    // Without this, the minted GitHub App installation token gets
+    // `403 Resource not accessible by integration` on
+    // GET /commits/{sha}/check-runs. See github-repo-scope.ts.
+    expect(GITHUB_SCOPED_PERMISSIONS.checks).toBe("read");
+  });
+
+  it("keeps the write scopes the PR/sandbox flows depend on", () => {
+    expect(GITHUB_SCOPED_PERMISSIONS).toMatchObject({
+      contents: "write",
+      metadata: "read",
+      pull_requests: "write",
+      issues: "write",
+    });
+  });
+});
+
 describe("getRepoScope", () => {
   it("returns the grant metadata for a refreshable repoScope without sourceConnectionId", () => {
     const recipe = {
