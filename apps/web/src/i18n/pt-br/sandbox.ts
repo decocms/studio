@@ -519,9 +519,18 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanente ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Tipo",
   "sandbox.redirectEditor.typeTemporary": "Temporário ({status})",
+  "sandbox.cmsSettings.title": "CMS",
+  "sandbox.cmsSettings.preview.title": "Preview",
+  "sandbox.cmsSettings.preview.description":
+    "Veja suas alterações antes de publicá-las.",
+  "sandbox.cmsSettings.fastPreview.label": "Preview Rápido",
+  "sandbox.cmsSettings.fastPreview.description":
+    "Pré-visualize alterações no seu servidor de preview em vez do sandbox.",
+  "sandbox.cmsSettings.fastPreview.needsProductionUrl":
+    "Defina um servidor de preview acima para ativar o Preview Rápido.",
   "sandbox.productionUrlField.description":
-    "Exibida no preview enquanto o servidor de desenvolvimento inicia, para você já visualizar e editar.",
-  "sandbox.productionUrlField.label": "URL de produção",
+    "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
+  "sandbox.productionUrlField.label": "Servidor de preview",
   "sandbox.productionUrlField.placeholder": "https://exemplo.com",
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",

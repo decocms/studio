@@ -41,6 +41,16 @@ export interface PreviewDisplayInput {
   progressStatus: PhaseStatus;
   /** Live production URL to fall back to while waking, or `null` if unknown. */
   productionUrl: string | null;
+  /**
+   * Fast Preview is on (its switch is enabled AND a production URL is set). When
+   * true the `production` surface renders the actual working-tree draft (via
+   * `/live/previews`), so it IS the preview — not a published-site stopgap. That
+   * changes what the "waking" pill tracks: only the *sandbox* coming up (no
+   * handle yet), NOT the dev server inside it finishing (install/start). When
+   * false, the pill stays up until the dev server is routable, since the
+   * production surface is only the published fallback.
+   */
+  fastPreviewActive: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -53,7 +63,8 @@ const NONE: PreviewDisplay = {
 export function resolvePreviewDisplay(
   input: PreviewDisplayInput,
 ): PreviewDisplay {
-  const { previewState, progressStatus, productionUrl } = input;
+  const { previewState, progressStatus, productionUrl, fastPreviewActive } =
+    input;
 
   // Suspended / errored / othersThread all render their own dedicated card
   // (the last one is a confirmation gate on a teammate's branch) — hand the
@@ -71,7 +82,17 @@ export function resolvePreviewDisplay(
   // longer in progress: `done` (running) serves the live app, `failed`/`crashed`
   // serves the daemon's auto-reloading status page — both belong in the iframe,
   // not behind a "waking" pill.
-  if (previewState.kind === "iframe" && progressStatus !== "doing") {
+  //
+  // Fast Preview NEVER uses the sandbox for previewing: it renders everything on
+  // the preview server (via `/live/previews`), so we skip this swap entirely and
+  // stay on the `production` branch below for the whole lifecycle — even once the
+  // dev server is up. (We still wait for the sandbox *itself* — the FS/handle —
+  // because content is read from its `blocks.gen.json`; that's the pill below.)
+  if (
+    !fastPreviewActive &&
+    previewState.kind === "iframe" &&
+    progressStatus !== "doing"
+  ) {
     return {
       mode: "sandbox",
       iframeBase: previewState.previewUrl,
@@ -80,14 +101,21 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // Still booting (fresh boot with no previewUrl yet, or a warming iframe).
-  // Prefer the live production site so the user sees their site immediately.
+  // Show the preview server. Two modes converge here:
+  //  - Fast Preview ON: this is the *only* surface — the preview server renders
+  //    the draft via `/live/previews` for the whole session; no swap to sandbox.
+  //    The pill tracks only the sandbox *itself* coming up (handle exists), since
+  //    once the FS is readable the draft can render; the dev server is irrelevant.
+  //  - Fast Preview OFF: this is a temporary stopgap (the published site) shown
+  //    while the sandbox boots; the pill stays up until the dev server is routable
+  //    and the `sandbox` swap above takes over.
   if (productionUrl) {
+    const sandboxUp = previewState.kind === "iframe";
     return {
       mode: "production",
       iframeBase: productionUrl,
       showBlockingOverlay: false,
-      showWakingPill: true,
+      showWakingPill: fastPreviewActive ? !sandboxUp : true,
     };
   }
 

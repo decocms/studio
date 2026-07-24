@@ -9,6 +9,7 @@ import { startCmsTour } from "@/components/cms-tour/cms-tour";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
+import { buildPreviewLabel } from "./preview-label";
 import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -74,7 +75,10 @@ import {
 } from "@/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
-import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url";
+import {
+  buildGlobalSectionPreviewUrl,
+  buildInstantPagePreviewUrl,
+} from "@/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -421,15 +425,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.productionUrl` at import time (deco.cx reports the real domain,
   // which can be a custom one — so we store it rather than guess it). Used as a
-  // Lovable-style fallback: while the sandbox dev server is still waking, paint
-  // the published site in the iframe (non-blocking) instead of a blank overlay,
-  // then swap to the sandbox preview once it's up. `null` (no field, or a site
+  // Lovable-style fallback while the sandbox dev server is still waking
+  // (non-blocking) instead of a blank overlay, then swapped for the sandbox
+  // preview once it's up. It doubles as the always-on render surface for the
+  // instant draft preview (`instantDraftUrl` below), which pushes the draft
+  // decofile to its `/live/previews` route so the user sees unpublished edits —
+  // not the published page — during the wait. `null` (no field, or a site
   // imported before this was persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
   const productionUrl =
     inset?.entity?.id === virtualMcpId
       ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
       : null;
+
+  // Fast Preview (opt-in switch in CMS settings): render the draft against
+  // `productionUrl` instead of the published site while the sandbox boots.
+  // Requires BOTH the switch and a production URL — a bare flag is inert
+  // (nothing to render against), and `productionUrl` is non-null only for this
+  // agent's entity, so reading `metadata.fastPreview` off the same object is
+  // safe.
+  const fastPreviewEnabled =
+    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -441,9 +457,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewState,
     progressStatus: progress.status,
     productionUrl,
+    fastPreviewActive: fastPreviewEnabled,
   });
   const previewSurfaceActive = display.mode !== "none";
   const showBootingOverlay = display.showBlockingOverlay;
+
+  // Instant draft preview (gated by the Fast Preview switch): while the sandbox
+  // is still booting, render the CURRENT working-tree draft of the page against
+  // the always-on production deployment via `/live/previews`, pushing the
+  // decofile as a per-request override. The decofile is available pre-boot
+  // (committed-snapshot path in `useDecofile`), so the user sees their
+  // unpublished edits immediately with no boot wait and no sandbox. `null` (Fast
+  // Preview off, no page matched, or decofile too large for the URL) → fall back
+  // to the plain published route below. This static render has no
+  // hydration/navigation; the sandbox surface takes over for those once it's up
+  // (the `sandbox` branch above).
+  const instantDraftUrl =
+    fastPreviewEnabled &&
+    display.mode === "production" &&
+    decofile &&
+    currentPageKey
+      ? buildInstantPagePreviewUrl({
+          baseUrl: display.iframeBase!,
+          pageBlockKey: currentPageKey,
+          path: resolvedPath,
+          decofile,
+        })
+      : null;
 
   const iframeSrc =
     display.mode === "sandbox"
@@ -456,10 +496,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         )
       : display.mode === "production"
         ? // Production is a different origin: no sandbox-only overrides
-          // (directPreviewUrl / variant matcher) apply. Load the current path
-          // best-effort; the published site serves its own committed pages.
+          // (directPreviewUrl / variant matcher) apply. Prefer the instant draft
+          // render; else load the current path best-effort against the published
+          // site (which serves its own committed pages).
           withDeviceHint(
-            new URL(resolvedPath, display.iframeBase!).href,
+            instantDraftUrl ?? new URL(resolvedPath, display.iframeBase!).href,
             previewDeviceSize,
           )
         : null;
@@ -778,17 +819,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const previewLabel = (() => {
-    if (!previewUrl) return t("sandbox.preview.noServerRunning");
-    if (activeGlobalSection) return activeGlobalSection.name;
-    try {
-      const url = new URL(previewUrl);
-      const path = resolvedPath === "/" ? "" : resolvedPath;
-      return `${url.host}${path}`;
-    } catch {
-      return previewUrl;
-    }
-  })();
+  // Domain shown in the URL bar follows what's actually in the iframe
+  // (`display.iframeBase`) — production under Fast Preview, the sandbox
+  // otherwise — so the label never drifts from the rendered page.
+  const previewLabel = buildPreviewLabel({
+    iframeBase: display.iframeBase,
+    resolvedPath,
+    activeGlobalSectionName: activeGlobalSection?.name ?? null,
+    noServerLabel: t("sandbox.preview.noServerRunning"),
+  });
 
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
@@ -1179,23 +1218,28 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         )}
       </div>
       {/* View controls (refresh · page · open-in-new) stay grouped after the
-          Edit action, which leads the group above. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            aria-label={t("sandbox.preview.openInNewTab")}
-            onClick={() => {
-              const url = iframeSrc ?? display.iframeBase;
-              if (url) window.open(url, "_blank", "noopener");
-            }}
-          >
-            <LinkExternal01 size={16} />
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t("sandbox.preview.openInNewTab")}
-        </TooltipContent>
-      </Tooltip>
+          Edit action, which leads the group above. Open-in-new-tab only makes
+          sense for a real sandbox iframe — the production / Fast Preview surface
+          is a cross-origin published site or an ephemeral `/live/previews` draft
+          URL, neither of which is a stable link to hand out. */}
+      {display.mode === "sandbox" && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              aria-label={t("sandbox.preview.openInNewTab")}
+              onClick={() => {
+                const url = iframeSrc ?? display.iframeBase;
+                if (url) window.open(url, "_blank", "noopener");
+              }}
+            >
+              <LinkExternal01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t("sandbox.preview.openInNewTab")}
+          </TooltipContent>
+        </Tooltip>
+      )}
     </div>
   ) : null;
 

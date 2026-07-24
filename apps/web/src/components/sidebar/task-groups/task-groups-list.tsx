@@ -292,14 +292,21 @@ export function TaskGroupsList({
   };
 
   // New thread: always target the currently selected agent (the active
-  // thread's agent, else decopilot). To avoid piling up empties, focus an
-  // existing empty "New chat" for that agent (verified to have no messages)
-  // instead of spawning another.
+  // thread's agent, else decopilot) AND inherit the branch of the active thread
+  // so the new chat lands on the same sandbox/branch. To avoid piling up
+  // empties, focus an existing empty "New chat" for that agent AND branch
+  // (verified to have no messages) instead of spawning another — reusing one on
+  // a different branch would silently switch the user's branch.
   const handleNewThread = async () => {
     const currentAgentId = activeAgentId ?? decopilotId;
+    const currentBranch =
+      allThreads.find((t) => t.id === activeTaskId)?.branch ?? null;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     const candidate = myThreadsAll.find(
-      (t) => t.virtual_mcp_id === currentAgentId && t.title === "New chat",
+      (t) =>
+        t.virtual_mcp_id === currentAgentId &&
+        t.title === "New chat" &&
+        (t.branch ?? null) === currentBranch,
     );
     if (candidate && (await isThreadEmpty(candidate.id))) {
       closeAfterNavigation();
@@ -307,7 +314,7 @@ export function TaskGroupsList({
       return;
     }
     closeAfterNavigation();
-    createNewTask(currentAgentId);
+    createNewTask(currentAgentId, currentBranch);
   };
 
   const { state: sidebarState, isMobile, toggleSidebar } = useSidebar();

@@ -15,7 +15,7 @@
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { resolveDefaultTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useThreadActions } from "@/components/chat/store/hooks";
+import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,6 +193,7 @@ export function useWorkspaceLayoutState(
     taskId?: string;
   };
   const { create } = useThreadActions();
+  const { threads } = useThreads();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
   const mainParam = search.main === 0 ? "0" : search.main;
@@ -276,13 +277,17 @@ export function useWorkspaceLayoutState(
     if (update) navigateSearch(update, { replace: true });
   };
 
-  // The server assigns the default branch for the new thread.
+  // Inherit the branch of the thread the user is currently viewing, so a new
+  // chat lands on the same sandbox/branch (not the shared default). Branchless /
+  // unknown → omit and let the server assign the default.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
+    const branch = threads.find((t) => t.id === taskId)?.branch ?? null;
     try {
       await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
+        ...(branch ? { branch } : {}),
       });
     } catch {
       // Toast already fired by useCollectionActions; navigate anyway so the

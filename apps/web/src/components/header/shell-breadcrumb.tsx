@@ -235,16 +235,25 @@ export function NewChatCrumb() {
     ? (search.virtualmcpid ?? decopilotId)
     : decopilotId;
 
+  // A new chat inherits the branch of the thread being viewed, so it lands on
+  // the same sandbox/branch. `null` on the home/agentless route (no active
+  // thread) → server default.
+  const currentBranch =
+    (params.taskId
+      ? threads.find((t) => t.id === params.taskId)?.branch
+      : null) ?? null;
+
   const handleNewChat = () => {
     const existing = findReusableNewChat(
       threads,
       activeAgentId,
       session?.user?.id,
+      currentBranch,
     );
     if (existing) {
       setTaskId(existing.id, activeAgentId);
     } else {
-      void createNewTask(activeAgentId);
+      void createNewTask(activeAgentId, currentBranch);
     }
   };
 

@@ -21,10 +21,18 @@ import type { Task } from "@/components/chat/task/types";
  * resolver, the repo switcher, …) reuses this so re-selecting an agent focuses
  * its empty chat instead of minting another.
  */
+/**
+ * `branch` is optional. Pass it (including `null` for a branchless thread) from
+ * a "New chat on the branch I'm viewing" action to only reuse an empty chat on
+ * that same branch — reusing one on a different branch would silently switch the
+ * user's branch. OMIT it (`undefined`) for "open agent X" flows, which have no
+ * current branch to inherit and should reuse the agent's empty chat regardless.
+ */
 export function findReusableNewChat(
   threads: Task[],
   agentId: string,
   userId: string | undefined,
+  branch?: string | null,
 ): Task | undefined {
   return threads.find(
     (t) =>
@@ -32,6 +40,7 @@ export function findReusableNewChat(
       t.virtual_mcp_id === agentId &&
       t.created_by === userId &&
       t.title === "New chat" &&
-      !t.harness_id,
+      !t.harness_id &&
+      (branch === undefined || (t.branch ?? null) === branch),
   );
 }
