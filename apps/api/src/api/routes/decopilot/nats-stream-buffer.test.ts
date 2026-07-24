@@ -203,6 +203,64 @@ describe("NatsStreamBuffer", () => {
     expect(streamAddMock).toHaveBeenCalledTimes(1);
   });
 
+  it("init retries a transient JS-API timeout instead of wedging js=null", async () => {
+    // Regression: a single startup timeout on the JS-API handshake used to
+    // leave `this.js` null for the pod's whole life (init only re-ran on a
+    // reconnect that never came), failing every run at publishRawChunk.
+    let attempts = 0;
+    const streamInfoMock = mock(() => {
+      attempts += 1;
+      if (attempts === 1) return Promise.reject(new Error("timeout"));
+      return Promise.resolve({});
+    });
+    const mockJsm = {
+      streams: {
+        info: streamInfoMock,
+        update: mock(() => Promise.resolve({})),
+        add: mock(() => Promise.resolve({})),
+      },
+    };
+    const publishMock = mock(() => Promise.resolve({ seq: 1 }));
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({ publish: publishMock }) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
+    });
+
+    await buffer.init();
+
+    // Retried past the transient failure and then wired up a live client.
+    expect(streamInfoMock).toHaveBeenCalledTimes(2);
+    const ok = await buffer.publishRawChunk("thrd_x", {
+      type: "text",
+    } as never);
+    expect(ok).toBe(true);
+    expect(publishMock).toHaveBeenCalled();
+  });
+
+  it("init does NOT retry a non-transient (semantic) error", async () => {
+    const getJetStreamManager = mock(() =>
+      Promise.resolve({
+        streams: {
+          info: mock(() => Promise.reject(new Error("invalid stream config"))),
+          update: mock(() => Promise.resolve({})),
+          add: mock(() => Promise.resolve({})),
+        },
+      }),
+    );
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({}) as never,
+      getJetStreamManager: getJetStreamManager as never,
+    });
+
+    await expect(buffer.init()).rejects.toThrow();
+    // Failed fast: exactly one attempt, no exponential-backoff loop.
+    expect(getJetStreamManager).toHaveBeenCalledTimes(1);
+  });
+
   describe("createTailStream", () => {
     function encodeMsg(payload: unknown): DeferredMsg {
       return { data: new TextEncoder().encode(JSON.stringify(payload)) };
