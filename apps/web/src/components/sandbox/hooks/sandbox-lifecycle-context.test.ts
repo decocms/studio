@@ -8,6 +8,9 @@ import {
   deriveOthersThreadLabel,
   computeOthersThreadGate,
   deriveStartError,
+  isRetryableClaimFailure,
+  shouldAutoRetryClaim,
+  MAX_CLAIM_AUTO_RETRIES,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
@@ -268,6 +271,9 @@ describe("deriveStartError", () => {
     mutationError: null,
     phase: null,
     startPending: false,
+    // Default to exhausted so the failed-phase tests assert the terminal
+    // surfacing; the not-exhausted (keep-booting) case is tested explicitly.
+    claimRetryExhausted: true,
   } as const;
 
   test("no error, no failed phase → null (still booting)", () => {
@@ -279,7 +285,7 @@ describe("deriveStartError", () => {
     expect(deriveStartError({ ...base, mutationError })).toEqual(mutationError);
   });
 
-  test("terminal claim-failed phase → errored (the infinite-loading fix)", () => {
+  test("terminal claim-failed phase, retries exhausted → errored", () => {
     // Regression: a terminal claim failure arrives on the SSE lifecycle stream,
     // never as a SANDBOX_START rejection, so the preview used to spin on
     // "starting" forever. It must surface as a terminal error instead.
@@ -293,6 +299,20 @@ describe("deriveStartError", () => {
         },
       }),
     ).toEqual({ code: null, message: "no capacity" });
+  });
+
+  test("failed phase with auto-retry budget left → null (keep booting overlay)", () => {
+    expect(
+      deriveStartError({
+        ...base,
+        phase: {
+          kind: "failed",
+          reason: "scheduling-timeout",
+          message: "no capacity",
+        },
+        claimRetryExhausted: false,
+      }),
+    ).toBeNull();
   });
 
   test("failed phase while a start is in flight → null (keep booting overlay)", () => {
@@ -316,6 +336,69 @@ describe("deriveStartError", () => {
 
   test("ready phase → null", () => {
     expect(deriveStartError({ ...base, phase: { kind: "ready" } })).toBeNull();
+  });
+});
+
+describe("isRetryableClaimFailure", () => {
+  test("infra-transient reasons are retryable", () => {
+    expect(isRetryableClaimFailure("scheduling-timeout")).toBe(true);
+    expect(isRetryableClaimFailure("reconciler-error")).toBe(true);
+    expect(isRetryableClaimFailure("claim-never-created")).toBe(true);
+    expect(isRetryableClaimFailure("unknown")).toBe(true);
+  });
+
+  test("bad-image / crash-loop are NOT retryable (fail identically)", () => {
+    expect(isRetryableClaimFailure("image-pull-backoff")).toBe(false);
+    expect(isRetryableClaimFailure("crash-loop-backoff")).toBe(false);
+  });
+});
+
+describe("shouldAutoRetryClaim", () => {
+  const base = {
+    failedReason: "scheduling-timeout" as const,
+    attempts: 0,
+    isPending: false,
+    userStopped: false,
+    autoStartBlocked: false,
+    alreadyHandled: false,
+  };
+
+  test("retryable failure, budget left, not handled → true", () => {
+    expect(shouldAutoRetryClaim(base)).toBe(true);
+  });
+
+  test("not a failed phase (null reason) → false", () => {
+    expect(shouldAutoRetryClaim({ ...base, failedReason: null })).toBe(false);
+  });
+
+  test("non-retryable reason → false", () => {
+    expect(
+      shouldAutoRetryClaim({ ...base, failedReason: "image-pull-backoff" }),
+    ).toBe(false);
+  });
+
+  test("budget exhausted → false", () => {
+    expect(
+      shouldAutoRetryClaim({ ...base, attempts: MAX_CLAIM_AUTO_RETRIES }),
+    ).toBe(false);
+  });
+
+  test("start already in flight → false", () => {
+    expect(shouldAutoRetryClaim({ ...base, isPending: true })).toBe(false);
+  });
+
+  test("this episode already handled → false (fires once per episode)", () => {
+    expect(shouldAutoRetryClaim({ ...base, alreadyHandled: true })).toBe(false);
+  });
+
+  test("user stopped → false", () => {
+    expect(shouldAutoRetryClaim({ ...base, userStopped: true })).toBe(false);
+  });
+
+  test("blocked on another member's thread → false", () => {
+    expect(shouldAutoRetryClaim({ ...base, autoStartBlocked: true })).toBe(
+      false,
+    );
   });
 });
 
