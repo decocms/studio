@@ -1,5 +1,9 @@
 import type { ConnectionEntity } from "@/sdk";
-import { GITHUB_SCOPED_PERMISSIONS } from "@decocms/shared/github-repo-scope";
+import {
+  GITHUB_SCOPED_PERMISSIONS,
+  isChecksPermissionRejected,
+  permissionsWithoutChecks,
+} from "@decocms/shared/github-repo-scope";
 
 type McpCallTool = (req: {
   name: string;
@@ -61,15 +65,7 @@ export async function provisionRepoScopedGithubConnection(params: {
     orgShared,
   } = params;
 
-  const mintRes = (await githubCallTool({
-    name: "MINT_REPO_TOKEN",
-    arguments: {
-      installationId,
-      owner,
-      repo,
-      permissions: GITHUB_SCOPED_PERMISSIONS,
-    },
-  })) as {
+  type MintResult = {
     isError?: boolean;
     structuredContent?: {
       token?: string;
@@ -83,6 +79,27 @@ export async function provisionRepoScopedGithubConnection(params: {
     };
     content?: Array<{ type?: string; text?: string }>;
   };
+  const mintWith = (permissions: Record<string, string>) =>
+    githubCallTool({
+      name: "MINT_REPO_TOKEN",
+      arguments: { installationId, owner, repo, permissions },
+    }) as Promise<MintResult>;
+
+  // Try the full set (incl. checks:read for the PR Checks tab). If the deployed
+  // github-mcp still predates the `checks` allowlist it hard-rejects the mint;
+  // fall back to a checks-less token so importing the repo keeps working until
+  // that deploy lands. The stored recipe records whichever set was granted.
+  let grantedPermissions: Record<string, string> = GITHUB_SCOPED_PERMISSIONS;
+  let mintRes = await mintWith(grantedPermissions);
+  if (
+    mintRes.isError &&
+    isChecksPermissionRejected(
+      mintRes.content?.find((c) => c.type === "text")?.text,
+    )
+  ) {
+    grantedPermissions = permissionsWithoutChecks(GITHUB_SCOPED_PERMISSIONS);
+    mintRes = await mintWith(grantedPermissions);
+  }
   const minted = mintRes.structuredContent;
   if (mintRes.isError || !minted?.token) {
     const detail = mintRes.content?.find((c) => c.type === "text")?.text;
@@ -149,7 +166,7 @@ export async function provisionRepoScopedGithubConnection(params: {
             repositoryId,
             owner,
             repo,
-            permissions: GITHUB_SCOPED_PERMISSIONS,
+            permissions: grantedPermissions,
             grantProvider: "github-mcp",
           },
         },

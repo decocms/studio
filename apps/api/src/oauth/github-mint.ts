@@ -19,6 +19,8 @@ import {
 } from "@/oauth/token-refresh";
 import {
   getRepoScope,
+  isChecksPermissionRejected,
+  permissionsWithoutChecks,
   type RepoScopeRecipe,
 } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
@@ -66,18 +68,34 @@ async function mintRepoToken(
   // injected as the bearer either way (the gate needs the user-to-server token).
   const client = await clientFromConnection(orgConn, ctx, true);
   try {
-    const res = (await client.callTool({
-      name: "MINT_REPO_TOKEN",
-      arguments: {
-        installationId: recipe.installationId,
-        owner: recipe.owner,
-        repo: recipe.repo,
-        permissions: recipe.permissions,
-      },
-    })) as {
+    type MintResult = {
       isError?: boolean;
       structuredContent?: { token?: string; expiresAt?: string };
+      content?: Array<{ type?: string; text?: string }>;
     };
+    const mintWith = (permissions: Record<string, string>) =>
+      client.callTool({
+        name: "MINT_REPO_TOKEN",
+        arguments: {
+          installationId: recipe.installationId,
+          owner: recipe.owner,
+          repo: recipe.repo,
+          permissions,
+        },
+      }) as Promise<MintResult>;
+
+    // Fall back to a checks-less mint when the deployed github-mcp predates the
+    // `checks` allowlist and hard-rejects it — keeps existing tokens refreshing
+    // until that deploy lands.
+    let res = await mintWith(recipe.permissions);
+    if (
+      res.isError &&
+      isChecksPermissionRejected(
+        res.content?.find((c) => c.type === "text")?.text,
+      )
+    ) {
+      res = await mintWith(permissionsWithoutChecks(recipe.permissions));
+    }
 
     const token = res.structuredContent?.token;
     if (res.isError || !token) {

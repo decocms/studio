@@ -3,7 +3,9 @@ import {
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
+  isChecksPermissionRejected,
   isOrgSharedConnection,
+  permissionsWithoutChecks,
   type RepoScopeRecipe,
 } from "./github-repo-scope";
 
@@ -21,6 +23,45 @@ describe("GITHUB_SCOPED_PERMISSIONS", () => {
       metadata: "read",
       pull_requests: "write",
       issues: "write",
+    });
+  });
+});
+
+describe("isChecksPermissionRejected", () => {
+  it("matches the deco/mcp-github checks-not-allowed mint error", () => {
+    expect(
+      isChecksPermissionRejected(
+        'Permission "checks" is not allowed. This tool only mints repo-scoped ' +
+          "code access (contents, metadata, pull_requests, issues).",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated errors or empty input", () => {
+    expect(
+      isChecksPermissionRejected('Permission "issues" is not allowed.'),
+    ).toBe(false);
+    expect(isChecksPermissionRejected("Repository is not accessible.")).toBe(
+      false,
+    );
+    expect(isChecksPermissionRejected(null)).toBe(false);
+    expect(isChecksPermissionRejected(undefined)).toBe(false);
+  });
+});
+
+describe("permissionsWithoutChecks", () => {
+  it("drops only the checks key and leaves the rest intact", () => {
+    expect(permissionsWithoutChecks(GITHUB_SCOPED_PERMISSIONS)).toEqual({
+      contents: "write",
+      metadata: "read",
+      pull_requests: "write",
+      issues: "write",
+    });
+  });
+
+  it("is a no-op when checks is absent", () => {
+    expect(permissionsWithoutChecks({ contents: "write" })).toEqual({
+      contents: "write",
     });
   });
 });

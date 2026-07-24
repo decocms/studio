@@ -30,6 +30,28 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   checks: "read",
 };
 
+/**
+ * Detects the deco/mcp-github mint error raised when the deployed server's
+ * permission allowlist predates `checks` (it hard-rejects any permission
+ * outside contents/metadata/pull_requests/issues). Lets callers fall back to a
+ * checks-less mint so provisioning keeps working until the github-mcp deploy
+ * that allowlists `checks` lands — the two repos deploy independently.
+ */
+export function isChecksPermissionRejected(
+  message: string | null | undefined,
+): boolean {
+  if (!message) return false;
+  return /permission\s+"?checks"?\s+is not allowed/i.test(message);
+}
+
+/** A copy of a permission map with the `checks` key removed. */
+export function permissionsWithoutChecks(
+  permissions: Record<string, string>,
+): Record<string, string> {
+  const { checks: _checks, ...rest } = permissions;
+  return rest;
+}
+
 /** The repo grant metadata stored at `connection.metadata.repoScope`. */
 export interface RepoScopeRecipe {
   /** Legacy org mcp-github connection used to mint before refreshable grants. */
