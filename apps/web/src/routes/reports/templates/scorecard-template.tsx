@@ -73,7 +73,9 @@ function rivalDisplay(name?: string): string {
 }
 
 // Favicon tile size — vh-capped on mobile so 4+ rows fit short viewports.
-const FAV_CLS = "h-[min(2rem,3.4svh)] w-[min(2rem,3.4svh)] sm:h-8 sm:w-8";
+// Bumped from 2rem so the rival's brand reads louder on the rows that actually
+// have a comparison (Guilherme: "muito mais foco na logo do concorrente").
+const FAV_CLS = "h-[min(2.5rem,4svh)] w-[min(2.5rem,4svh)] sm:h-10 sm:w-10";
 // Sort key: what you lead first, ties/neutral next, what you're behind on last.
 const rank = (t?: string) => (t === "good" ? 0 : t === "bad" ? 2 : 1);
 
