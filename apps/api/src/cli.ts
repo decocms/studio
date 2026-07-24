@@ -16,6 +16,7 @@ import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
 import { resolveTui } from "./cli/resolve-tui";
+import { parsePositiveIntFlag } from "./cli/parse-positive-int-flag";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -226,10 +227,20 @@ if (command === "backfill-assets") {
     );
     process.exit(1);
   }
+  let batch = 500;
+  let limit: number | undefined;
+  try {
+    batch = parsePositiveIntFlag("batch", values.batch) ?? 500;
+    limit = parsePositiveIntFlag("limit", values.limit);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+
   const code = await backfillThreadAssetsCommand({
     dryRun: values["dry-run"] === true,
-    batch: values.batch ? Number(values.batch) : 500,
-    limit: values.limit ? Number(values.limit) : undefined,
+    batch,
+    limit,
     baseUrl: values["base-url"],
     org: values.org as string | undefined,
     target: targetArg as "all" | "threads" | "connections" | "organizations",
