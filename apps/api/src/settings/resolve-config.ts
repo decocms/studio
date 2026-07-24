@@ -19,6 +19,24 @@ function resolveDispatchRole(raw: string | undefined): DispatchRole {
     : "all";
 }
 
+const NODE_ENVS = new Set<Settings["nodeEnv"]>([
+  "production",
+  "development",
+  "test",
+]);
+
+/**
+ * Normalize `NODE_ENV`; anything unknown coerces to safe "development" rather
+ * than silently flowing an unvalidated string into `nodeEnv === "production"`
+ * checks that gate production-only behavior (e.g. sandbox `isProduction`).
+ */
+function resolveNodeEnv(raw: string | undefined): Settings["nodeEnv"] {
+  const value = (raw ?? "").trim();
+  return NODE_ENVS.has(value as Settings["nodeEnv"])
+    ? (value as Settings["nodeEnv"])
+    : "development";
+}
+
 // The shutdown drain only exists to outlast NLB ip-target deregistration of the
 // frontdoor HTTP listener. "worker" pods aren't frontdoor targets (no
 // `decocms.com/frontdoor` label), so draining just steals the grace budget
@@ -137,7 +155,7 @@ export function resolveConfig(
 
   const localMode = flags.localMode;
   const nodeEnv: Settings["nodeEnv"] =
-    flags.nodeEnv || (envVars.NODE_ENV as Settings["nodeEnv"]) || "development";
+    flags.nodeEnv || resolveNodeEnv(envVars.NODE_ENV);
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
   const natsTunnelPublicEnabled =
