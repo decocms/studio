@@ -1843,6 +1843,14 @@ export function SectionsEditor({
     // firing after this mutation would clobber the newly-saved data with an
     // outdated variants array.
     cancelPendingRuleSaves();
+    // Also cancel a pending section-field autosave — it rebuilds
+    // `variants[latestVariantIndex]` from a `decofile` snapshot read at fire
+    // time, which may still predate this save's result, so a stale timer would
+    // clobber the newly-appended variant with an outdated variants array.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
