@@ -111,7 +111,7 @@ function byteResponse(
     // origin so nested frame-ancestors checks pass — but re-enables
     // credentialed same-origin API calls from member HTML.
     headers["Content-Security-Policy"] =
-      "sandbox allow-scripts allow-modals allow-same-origin";
+      "sandbox allow-scripts allow-modals allow-same-origin allow-downloads";
   }
   return c.body(Buffer.from(bytes), 200, headers);
 }
