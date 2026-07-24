@@ -51,6 +51,7 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { useWorkspaceLayoutState } from "@/hooks/use-layout-state";
+import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useT } from "@/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
@@ -431,6 +432,14 @@ function AgentInsetProvider() {
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
   const ensureState = useEnsureTask(params.taskId ?? "", virtualMcpId);
+
+  // Read-only teammate threads: pull the current metadata (githubRepo /
+  // sandboxMap bound by load_repo after the panel snapshot) so the preview
+  // doesn't render "no source" / miss the owner's sandbox. No-op for own
+  // threads. Must run before the early returns (Rules of Hooks).
+  useRefreshViewedThreadMetadata(
+    ensureState.status === "ready" ? ensureState.task : null,
+  );
 
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
