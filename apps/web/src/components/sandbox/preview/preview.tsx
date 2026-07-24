@@ -747,12 +747,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     beginNavigation();
   });
 
-  const handleHardReload = () => {
-    if (!previewIframeRef.current || !iframeSrc) return;
-    const sep = iframeSrc.includes("?") ? "&" : "?";
-    previewIframeRef.current.src = `${iframeSrc}${sep}_r=${Date.now()}`;
-  };
-
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
@@ -1202,7 +1196,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Overflow menu (⋯) — sits on the right, beside the publish actions. Renders
   // whenever there's at least one available action: the Terminal toggle is
   // always available (so it stays reachable during boot, before the iframe is
-  // up), while reload / copy / SEO items are gated on the preview being live.
+  // up), while copy / SEO items are gated on the preview being live.
   const moreMenu =
     showPreviewToolbar || terminal ? (
       <div className="flex shrink-0 items-center">
@@ -1217,20 +1211,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            {/* The CMS/Blocks toggle also lives here so it stays reachable when
-                the center toolbar (its primary home) collapses at narrow widths
-                — the ⋯ menu is in the always-present end slot. */}
-            {showPreviewToolbar && (
-              <>
-                <DropdownMenuItem onClick={() => toggleEditingMode("blocks")}>
-                  <Edit05 size={14} />
-                  {blocksActive
-                    ? t("sandbox.preview.exitEditor")
-                    : t("sandbox.preview.editContent")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
             {terminal && (
               <DropdownMenuItem
                 onClick={() => terminal.setVisible(!terminal.visible)}
@@ -1244,9 +1224,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {showPreviewToolbar && (
               <>
                 {terminal && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={handleHardReload}>
-                  {t("sandbox.preview.hardReload")}
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleCopyUrl}>
                   {t("sandbox.preview.copyCurrentUrl")}
                 </DropdownMenuItem>
