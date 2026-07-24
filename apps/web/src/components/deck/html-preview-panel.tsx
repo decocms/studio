@@ -69,7 +69,7 @@ export function HtmlPreviewPanel({
           ref={editor.iframeRef}
           src={src}
           onLoad={() => setReadySrc(src)}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-downloads"
           className={cn(
             "absolute inset-0 block h-full w-full bg-white",
             "transition-opacity ease-out",

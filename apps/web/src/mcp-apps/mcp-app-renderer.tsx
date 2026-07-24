@@ -164,7 +164,7 @@ function MCPAppFrame({
       <iframe
         ref={iframeRef}
         srcDoc={html}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
         className={cn("w-full h-full border-0", isLoading && "invisible")}
         title={`MCP App: ${toolName ?? uri}`}
       />
