@@ -1,3 +1,9 @@
+# FILENAME IS LOAD-BEARING: npm publishes `decocms` via OIDC trusted publishing
+# (see publish-npm below — no NODE_AUTH_TOKEN, --provenance only). npm binds the
+# trusted publisher to this exact workflow filename, so renaming this file breaks
+# publishing with a `404 PUT … no permission`. Renaming it studio→mesh in #5120
+# is what broke it. To rename, first update the decocms trusted-publisher config
+# on npmjs.org to the new filename.
 name: Release Studio
 
 on:

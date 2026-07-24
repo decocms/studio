@@ -40,7 +40,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # GitOps: tell deco-apps-cd to bump the chart version. Mirrors the image path
-  # in release-studio.yaml — we do NOT write into that repo from here, we fire a
+  # in release-mesh.yaml — we do NOT write into that repo from here, we fire a
   # `studio-chart-bump` repository_dispatch and its own bump-studio-chart.yml
   # self-commits (rewriting Chart.yaml + regenerating Chart.lock + the vendored
   # tgz). Without this, chart bumps were manual and stranded the lock/tgz,

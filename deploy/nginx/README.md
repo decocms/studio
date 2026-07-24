@@ -24,7 +24,7 @@ settings.
 
 ## Image release
 
-`.github/workflows/release-studio.yaml` publishes the nginx image as a first-class
+`.github/workflows/release-mesh.yaml` publishes the nginx image as a first-class
 release artifact alongside the Bun API image:
 
 ```text

@@ -4,7 +4,7 @@
  * scratch directory and invoking the `deco` bin's `--version`.
  *
  * Why this exists (and lives in scripts/ instead of inline in the
- * release-studio.yaml workflow): `bun build --target bun` emits ESM
+ * release-mesh.yaml workflow): `bun build --target bun` emits ESM
  * `from "pkg"` for every externalized node_modules import. The bundle
  * eagerly resolves those at load time, BEFORE any subcommand runs. If
  * the bundler externalized a package but @vercel/nft never traced +
