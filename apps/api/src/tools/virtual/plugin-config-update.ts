@@ -6,7 +6,11 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/studio-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/studio-context";
 import {
   createDevAssetsConnectionEntity,
   isDevAssetsConnection,
@@ -57,6 +61,7 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
   handler: async (input, ctx) => {
     // Require authentication
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
 
     // Check authorization
     await ctx.access.check();
@@ -69,10 +74,26 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
     if (!parentConnection) {
       throw new Error(`Connection not found: ${virtualMcpId}`);
     }
+    // `ctx.access.check()` only verifies the caller's permissions in
+    // `ctx.organization` — without this, a caller could target another org's
+    // virtual MCP by ID and bind/reconfigure its plugin.
+    if (parentConnection.organization_id !== organization.id) {
+      throw new Error(`Connection not found: ${virtualMcpId}`);
+    }
 
     const connectionExists = connectionId
       ? await ctx.storage.connections.findById(connectionId)
       : null;
+    // Same tenant boundary for the connection being bound: an existing
+    // connection from another org must not be adoptable into this org's
+    // plugin config.
+    if (
+      connectionId &&
+      connectionExists &&
+      connectionExists.organization_id !== organization.id
+    ) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
 
     if (
       connectionId &&

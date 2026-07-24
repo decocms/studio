@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 const serializedPluginConfigSchema = z.object({
   id: z.string(),
@@ -41,11 +41,24 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_GET = defineTool({
   handler: async (input, ctx) => {
     // Require authentication
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
 
     // Check authorization
     await ctx.access.check();
 
     const { virtualMcpId, pluginId } = input;
+
+    // `ctx.access.check()` only verifies the caller's permissions in
+    // `ctx.organization` — it doesn't know `virtualMcpId` belongs to it, so a
+    // caller could otherwise read another org's plugin config by ID.
+    const parentConnection =
+      await ctx.storage.connections.findById(virtualMcpId);
+    if (
+      !parentConnection ||
+      parentConnection.organization_id !== organization.id
+    ) {
+      return { config: null };
+    }
 
     const config = await ctx.storage.virtualMcpPluginConfigs.get(
       virtualMcpId,
