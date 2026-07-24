@@ -28,7 +28,6 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SORTABLE_DROP_ANIMATION } from "@/web/lib/dnd-drop-animation.ts";
 import { useT } from "@/web/i18n/use-t.ts";
 import {
   GRID_COLS,
@@ -155,10 +154,17 @@ export function TileBoard({
       {/* Portal to body so the overlay's `position: fixed` resolves against
           the viewport, not the workspace PanelCard's `transform:
           translateZ(0)` containing block (which would drop the dragged tile
-          below the cursor). */}
+          below the cursor).
+
+          No drop animation here (unlike the sortable lists): the board's own
+          BoardTile already CSS-transitions left/top/width/height/opacity over
+          200ms on drop and fades opacity-30 → 100, so an overlay drop
+          animation would race that transition and ghost. The one-frame blink
+          the shared animation fixes also can't occur here — the source tile
+          stays at opacity-30 during drag, never fully hidden. */}
       {createPortal(
         <DragOverlay
-          dropAnimation={SORTABLE_DROP_ANIMATION}
+          dropAnimation={null}
           style={{
             width:
               activeTile && dragState
