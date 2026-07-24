@@ -117,9 +117,19 @@ function readStatusFiles(repoDir: string): StatusFile[] {
   return files;
 }
 
+// git's fixed set of unmerged-path codes from `git status --porcelain`. "AA"
+// (both sides added the same path) and "DD" (both sides deleted it) contain
+// no "U" — a plain `.includes("U")` check silently drops them, leaving the
+// conflict unresolved and unnoticed until `rebase --continue` rejects it.
+const UNMERGED_STATUSES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+
+function isUnmerged(f: StatusFile): boolean {
+  return UNMERGED_STATUSES.has(`${f.index}${f.working_dir}`);
+}
+
 function getConflictedFiles(repoDir: string): string[] {
   return readStatusFiles(repoDir)
-    .filter((f) => `${f.index}${f.working_dir}`.includes("U"))
+    .filter(isUnmerged)
     .map((f) => f.path);
 }
 
@@ -187,7 +197,7 @@ function resolveConflictFile(repoDir: string, summary: StatusFile): void {
     runGit(repoDir, ["add", "--", filePath]);
     return;
   }
-  if (xy === "UD") {
+  if (xy === "UD" || xy === "DD") {
     runGit(repoDir, ["rm", "-f", "--", filePath]);
     return;
   }
@@ -242,9 +252,7 @@ function resolveConflictsRecursively(
   }
 
   const files = readStatusFiles(repoDir);
-  const conflicted = files.filter((f) =>
-    `${f.index}${f.working_dir}`.includes("U"),
-  );
+  const conflicted = files.filter(isUnmerged);
 
   for (const summary of conflicted) {
     resolveConflictFile(repoDir, summary);
