@@ -119,7 +119,7 @@ function toBoolWithDefault(
  * Determine if a URL points to a non-local host (i.e., an external service).
  * Returns the URL string if external, null if local or not set.
  */
-function externalUrlOrNull(url: string | undefined): string | null {
+export function externalUrlOrNull(url: string | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url);

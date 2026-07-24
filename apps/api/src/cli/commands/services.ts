@@ -4,19 +4,7 @@
  * Replaces scripts/dev-services-cli.ts with a proper CLI subcommand.
  * Plain console output — no Ink UI needed for these one-shot commands.
  */
-function externalUrlOrNull(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname;
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-      return null;
-    }
-    return url;
-  } catch {
-    return null;
-  }
-}
+import { externalUrlOrNull } from "../../settings/resolve-config";
 
 export interface ServicesOptions {
   subcommand: string;
