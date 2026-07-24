@@ -245,6 +245,11 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
+    topupFeePercent: toPositiveIntegerOrDefault(
+      "STUDIO_TOPUP_FEE_PERCENT",
+      envVars.STUDIO_TOPUP_FEE_PERCENT,
+      15,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
@@ -299,9 +304,14 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
-    commerceDiscoveryInternalApiUrl:
+    // New name first, legacy Commerce Discovery envs as fallback — one
+    // setting, so prod migrates secrets whenever convenient without a
+    // coordinated deploy. Drop the fallback once the CD envs are renamed.
+    reportsInternalApiUrl:
+      envVars.REPORTS_INTERNAL_API_URL ??
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_URL,
-    commerceDiscoveryInternalApiKey:
+    reportsInternalApiKey:
+      envVars.REPORTS_INTERNAL_API_KEY ??
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the

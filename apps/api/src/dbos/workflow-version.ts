@@ -55,4 +55,4 @@
  * (`cancelThreadGateHead` + `cancelHostedHarness`, `routes.ts`) is the
  * user-facing recovery: cancel the stranded gate/child and re-send.
  */
-export const DBOS_WORKFLOW_VERSION = "4";
+export const DBOS_WORKFLOW_VERSION = "5";

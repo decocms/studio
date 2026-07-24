@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isConnectionClaimedForSite,
   normalizeReportsSiteUrl,
+  siteUrlToHost,
 } from "./site-url.ts";
 
 describe("normalizeReportsSiteUrl", () => {
@@ -134,5 +135,23 @@ describe("isConnectionClaimedForSite", () => {
     expect(isConnectionClaimedForSite("not-a-url", "https://a.com")).toBe(
       false,
     );
+  });
+});
+
+describe("siteUrlToHost", () => {
+  test("returns the bare lowercased host, dropping scheme/path/port", () => {
+    expect(siteUrlToHost("https://Shop.Example.com/deck?x=1")).toBe(
+      "shop.example.com",
+    );
+    // The reports service keys diagnostics by bare host — a port would be a
+    // key that never matches.
+    expect(siteUrlToHost("shop.example.com:8443")).toBe("shop.example.com");
+  });
+
+  test("rejects non-http schemes, trailing dots, and dotless hosts", () => {
+    expect(siteUrlToHost("ftp://shop.example.com")).toBeNull();
+    expect(siteUrlToHost("shop.example.com.")).toBeNull();
+    expect(siteUrlToHost("localhost")).toBeNull();
+    expect(siteUrlToHost("not a url")).toBeNull();
   });
 });

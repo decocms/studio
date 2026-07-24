@@ -42,7 +42,7 @@ const commerceMockKey = "e2e-commerce-key";
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 const webServerCommand = `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev`;
 
 export default defineConfig({

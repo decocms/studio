@@ -18,14 +18,22 @@
  * early). The gateway REBASES per grant — a mid-cycle seat change refreshes
  * the cycle's allowance, the plan's accepted slack.
  *
- * TODO(billing/4.1): second benefit — reports weekly-run schedule for
- * included_report_url — joins the workflow once the reports endpoint exists.
+ * Second benefit — the weekly report run: the workflow converges the reports
+ * service onto the org's choice (included_report_url) whenever the effective
+ * seat count allows it (≥ 1), disarming the previously-armed site on a
+ * choice change (armed_report_url tracks what's live over there).
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import { getDb } from "@/database";
 import { getSettings } from "../settings";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
+import { gatewayAdminConfigured, postGatewayAdmin } from "./gateway-admin";
+import {
+  isPermanentReportsFailure,
+  reportsClientConfigured,
+  setReportSchedule,
+} from "./reports-client";
 import { subscriptionInGoodStanding } from "./subscription-state";
 
 const MICROS_PER_CENT = 10_000;
@@ -54,10 +62,12 @@ export function effectivePaidSeatCount(
   return subscriptionInGoodStanding(billing) ? paidSeatCount : 0;
 }
 
-/** Whether this deployment can deliver benefits at all (self-hosted can't). */
-export function benefitsSyncEnabled(): boolean {
-  const settings = getSettings();
-  return settings.aiGatewayEnabled && !!settings.aiGatewayAdminToken;
+/** Whether ANY benefit is deliverable on this deployment — the gate for
+ *  marking a change pending (a marker no workflow can ever clear is a
+ *  permanently "stale" sweep row). Each workflow step re-checks its own
+ *  benefit's config and skips independently. */
+export function anyBenefitDeliverable(): boolean {
+  return gatewayAdminConfigured() || reportsClientConfigured();
 }
 
 function storage(): OrganizationBillingStorage {
@@ -69,26 +79,112 @@ async function grantAllowance(
   paidSeatCount: number,
   referenceId: string,
 ): Promise<void> {
-  const settings = getSettings();
-  const res = await fetch(`${settings.aiGatewayUrl}/api/admin/allowance`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${settings.aiGatewayAdminToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  await postGatewayAdmin(
+    "/api/admin/allowance",
+    {
       orgId: organizationId,
       amountMicros: computeAllowanceMicros(
         paidSeatCount,
-        settings.seatAllowanceCents,
+        getSettings().seatAllowanceCents,
       ),
       referenceId,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`gateway allowance grant failed (${res.status}): ${body}`);
+    },
+    "gateway allowance grant",
+  );
+}
+
+/**
+ * Pure decision for the weekly-run convergence: what to disarm/arm to move
+ * the reports service from `armedReportUrl` to the org's effective choice.
+ * Disarm-then-arm ordering is load-bearing — a choice change (A → B) must
+ * never leak A's weekly billed run.
+ */
+export function planReportScheduleSync(state: {
+  paidSeatCount: number;
+  includedReportUrl: string | null;
+  armedReportUrl: string | null;
+}): { desired: string | null; disarm: string | null; arm: string | null } {
+  const desired = state.paidSeatCount >= 1 ? state.includedReportUrl : null;
+  if (desired === state.armedReportUrl) {
+    return { desired, disarm: null, arm: null };
   }
+  return { desired, disarm: state.armedReportUrl, arm: desired };
+}
+
+/** Injectable seams for executeReportScheduleSync — production defaults are
+ *  the real storage/client; integration tests swap `schedule` for a
+ *  recording/failing fake while keeping the REAL Postgres storage. */
+export interface ReportScheduleSyncDeps {
+  storage: () => OrganizationBillingStorage;
+  schedule: typeof setReportSchedule;
+  configured: () => boolean;
+}
+
+/**
+ * The syncReportSchedule step body (extracted so the execution path — the
+ * load-bearing disarm-then-arm ordering, the permanent-4xx handling, the
+ * in-step pending-ref re-check — is testable without DBOS).
+ */
+export async function executeReportScheduleSync(
+  organizationId: string,
+  referenceId: string,
+  deps: ReportScheduleSyncDeps = {
+    storage,
+    schedule: setReportSchedule,
+    configured: reportsClientConfigured,
+  },
+): Promise<void> {
+  if (!deps.configured()) return;
+  const s = deps.storage();
+  const [billing, paidSeatUserIds] = await Promise.all([
+    s.getBilling(organizationId),
+    s.listPaidSeatUserIds(organizationId),
+  ]);
+  if ((billing?.benefitsReferenceId ?? null) !== referenceId) return;
+  const plan = planReportScheduleSync({
+    paidSeatCount: effectivePaidSeatCount(billing, paidSeatUserIds.length),
+    includedReportUrl: billing?.includedReportUrl ?? null,
+    armedReportUrl: billing?.armedReportUrl ?? null,
+  });
+  if (!plan.disarm && !plan.arm) return;
+  // 4xx from the reports service is permanent (host unknown/unowned) —
+  // retrying would poison this workflow AND every future delivery that
+  // shares the pending marker. Disarm: the schedule is already gone over
+  // there, proceed. Arm: log loudly, record nothing armed, and let the
+  // next choice change re-attempt.
+  if (plan.disarm) {
+    try {
+      await deps.schedule({
+        host: plan.disarm,
+        organizationId,
+        enabled: false,
+      });
+    } catch (err) {
+      if (!isPermanentReportsFailure(err)) throw err;
+      console.error(
+        "reports disarm permanently rejected (treating as disarmed):",
+        { organizationId, host: plan.disarm, err: String(err) },
+      );
+    }
+  }
+  if (plan.arm) {
+    try {
+      await deps.schedule({ host: plan.arm, organizationId, enabled: true });
+    } catch (err) {
+      if (!isPermanentReportsFailure(err)) throw err;
+      console.error(
+        "reports arm permanently rejected — weekly run NOT armed:",
+        {
+          organizationId,
+          host: plan.arm,
+          err: String(err),
+        },
+      );
+      await s.setArmedReportUrl(organizationId, null);
+      return;
+    }
+  }
+  await s.setArmedReportUrl(organizationId, plan.desired);
 }
 
 async function syncOrgBenefitsWorkflowFn(
@@ -116,10 +212,26 @@ async function syncOrgBenefitsWorkflowFn(
   if (state.pendingRef !== referenceId) return { delivered: false };
 
   await DBOS.runStep(
-    () => grantAllowance(organizationId, state.paidSeatCount, referenceId),
+    async () => {
+      if (!gatewayAdminConfigured()) return;
+      await grantAllowance(organizationId, state.paidSeatCount, referenceId);
+    },
     // Generous budget: the grant is gateway-idempotent per referenceId, and
     // this is money owed to the customer — outlast a gateway deploy window.
     { name: "grantAllowance", retriesAllowed: true, maxAttempts: 8 },
+  );
+
+  // Weekly-run benefit: converge the reports service onto the org's choice.
+  // State is re-read INSIDE the step: the workflow-start snapshot can be
+  // minutes stale (grantAllowance's retry budget, crash recovery replaying
+  // checkpointed output), and acting on it can arm a superseded choice with
+  // no pending marker left to correct it. In-step reads re-execute on every
+  // retry/recovery, and the pending-ref re-check hands off to the newer
+  // change's workflow. (A sub-second interleaving between this read and the
+  // arm call remains possible; the next delivery converges it.)
+  await DBOS.runStep(
+    () => executeReportScheduleSync(organizationId, referenceId),
+    { name: "syncReportSchedule", retriesAllowed: true, maxAttempts: 5 },
   );
 
   await DBOS.runStep(
@@ -132,7 +244,7 @@ async function syncOrgBenefitsWorkflowFn(
 
 /** Sweep: re-enqueue deliveries whose pending marker went stale. */
 async function benefitsSyncSweepFn(): Promise<void> {
-  if (!benefitsSyncEnabled()) return;
+  if (!anyBenefitDeliverable()) return;
   const pending = await DBOS.runStep(
     () =>
       storage().listBenefitsPending(

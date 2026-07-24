@@ -82,6 +82,9 @@ export interface Settings {
   /** The $20/seat/month multi-currency price (created in the Stripe
    *  dashboard); quantity = the org's paid-seat count. */
   stripeSeatPriceId: string | undefined;
+  /** Fee on AI-credit top-ups, percent (default 15 — parity with the
+   *  gateway's legacy checkout being migrated off). */
+  topupFeePercent: number;
 
   // Feature Flags
   enableDecoImport: boolean;
@@ -139,8 +142,11 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
-  commerceDiscoveryInternalApiUrl: string | undefined;
-  commerceDiscoveryInternalApiKey: string | undefined;
+  /** Reports service internal API (the service historically named "Commerce
+   *  Discovery" — REPORTS_INTERNAL_API_URL, with the legacy
+   *  COMMERCE_DISCOVERY_INTERNAL_API_URL env still honored as fallback). */
+  reportsInternalApiUrl: string | undefined;
+  reportsInternalApiKey: string | undefined;
 
   // Managed asset storage (the shared deco tenant bucket). Used by `managed`
   // file configs: studio mints prefix-scoped STS credentials per site slug via

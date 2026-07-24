@@ -17,6 +17,7 @@
  */
 
 import { getSettings } from "../settings";
+import { getUsdToBrl, toUsdCreditCents } from "./exchange-rate";
 
 const BASE_URL = "https://api.stripe.com/v1";
 
@@ -176,6 +177,88 @@ export async function previewSeatChange(input: {
     amountDueCents: preview.amount_due ?? 0,
     currency: preview.currency ?? "usd",
   };
+}
+
+/**
+ * AI-credit top-up (one-time payment, migrating off the gateway's own Stripe
+ * so the org has ONE customer/card). The buyer pays amountCents (in usd or
+ * brl) + the fee; the gateway is credited the USD-equivalent creditCents by
+ * the webhook — price parity with the gateway's legacy checkout (15% fee,
+ * same AwesomeAPI live rate for BRL). The FX rate is locked at session
+ * creation: `metadata.creditCents` carries the converted USD amount, so the
+ * webhook credits exactly what the buyer saw regardless of when it lands.
+ */
+export function computeTopUpChargeCents(
+  amountCents: number,
+  feePercent: number,
+): number {
+  return Math.round(amountCents * (1 + feePercent / 100));
+}
+
+export async function createTopUpCheckoutSession(input: {
+  organizationId: string;
+  /** Amount in the PAYMENT currency's cents (BRL centavos for brl). */
+  amountCents: number;
+  currency: "usd" | "brl";
+  feePercent: number;
+  customerId: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ url: string }> {
+  const chargeCents = computeTopUpChargeCents(
+    input.amountCents,
+    input.feePercent,
+  );
+  const creditCents = toUsdCreditCents(
+    input.amountCents,
+    input.currency,
+    await getUsdToBrl(),
+  );
+  const label =
+    input.currency === "brl"
+      ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
+      : `Studio AI credits ($${(input.amountCents / 100).toFixed(2)})`;
+  const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    params: {
+      mode: "payment",
+      // Reuse the org's saved customer when it exists (same card as the
+      // seat subscription); otherwise Checkout creates a guest payment.
+      ...(input.customerId && { customer: input.customerId }),
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: input.currency,
+            unit_amount: chargeCents,
+            product_data: { name: label },
+          },
+        },
+      ],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      metadata: {
+        kind: "topup",
+        orgId: input.organizationId,
+        creditCents,
+      },
+    },
+  });
+  if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
+  return { url: session.url };
+}
+
+/** Self-serve management surface (card, invoices, cancellation) — Stripe's
+ *  hosted Customer Portal; we never build billing UI for what Stripe hosts. */
+export async function createBillingPortalSession(input: {
+  customerId: string;
+  returnUrl: string;
+}): Promise<{ url: string }> {
+  const session = await stripeRequest<{ url?: string }>(
+    "/billing_portal/sessions",
+    { params: { customer: input.customerId, return_url: input.returnUrl } },
+  );
+  if (!session.url) throw new StripeApiError(500, "portal session lacks url");
+  return { url: session.url };
 }
 
 /** Commit the seat change on Stripe: prorated difference charged immediately

@@ -172,7 +172,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     });
 
     // The MCP URL must target the same instance as the internal API — in
-    // staging COMMERCE_DISCOVERY_INTERNAL_API_URL overrides the host, so the
+    // staging REPORTS_INTERNAL_API_URL (or the legacy CD env) overrides the host, so the
     // CD connection must point there too, not at the hardcoded prod constant.
     const mcpUrl = resolveCommerceDiscoveryMcpUrl();
 

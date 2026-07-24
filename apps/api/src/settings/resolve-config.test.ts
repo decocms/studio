@@ -288,3 +288,50 @@ describe("resolveShutdownDrainMs", () => {
     expect(resolveShutdownDrainMs("api", forceExitMs, "-100")).toBe(69_000);
   });
 });
+
+describe("resolveConfig reports internal API env rename", () => {
+  it("prefers the new REPORTS_INTERNAL_API_* names over the legacy CD names", () => {
+    const result = resolveConfig(flags, {
+      REPORTS_INTERNAL_API_URL: "https://reports-new.example.com",
+      REPORTS_INTERNAL_API_KEY: "new-key",
+      COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
+      COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
+    });
+
+    expect(result.settings.reportsInternalApiUrl).toBe(
+      "https://reports-new.example.com",
+    );
+    expect(result.settings.reportsInternalApiKey).toBe("new-key");
+  });
+
+  it("falls back to the legacy COMMERCE_DISCOVERY_INTERNAL_* names", () => {
+    const result = resolveConfig(flags, {
+      COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
+      COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
+    });
+
+    expect(result.settings.reportsInternalApiUrl).toBe(
+      "https://reports-old.example.com",
+    );
+    expect(result.settings.reportsInternalApiKey).toBe("old-key");
+  });
+});
+
+describe("resolveConfig topup fee percent", () => {
+  it("defaults to 15", () => {
+    expect(resolveConfig(flags, {}).settings.topupFeePercent).toBe(15);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "20" }).settings
+        .topupFeePercent,
+    ).toBe(20);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "free" }),
+    ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
+  });
+});

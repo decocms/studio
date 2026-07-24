@@ -11,7 +11,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
 import { OrganizationBillingStorage } from "@/storage/organization-billing";
 import {
-  benefitsSyncEnabled,
+  anyBenefitDeliverable,
   enqueueBenefitsSync,
 } from "@/billing/sync-org-benefits";
 import { Permission } from "@/storage/types";
@@ -107,7 +107,7 @@ export async function releaseSeat(
     organizationId,
     userId,
     changedBy,
-    { markBenefitsPending: benefitsSyncEnabled() },
+    { markBenefitsPending: anyBenefitDeliverable() },
   );
   if (!released || !benefitsReferenceId) return;
   try {

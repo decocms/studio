@@ -75,13 +75,13 @@ describe("fetchCommerceDiscoveryAuth", () => {
         },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 
@@ -306,13 +306,13 @@ describe("triggerCommerceDiscoveryRun", () => {
         { siteUrl: "https://example.com", orgId: "org_123" },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 });
@@ -456,13 +456,13 @@ describe("bindCommerceDiscoveryResource", () => {
         },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 });

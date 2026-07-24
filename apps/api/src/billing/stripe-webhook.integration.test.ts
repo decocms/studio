@@ -362,4 +362,113 @@ describe("applyStripeEvent", () => {
     );
     expect(unhandled.handled).toBe(false);
   });
+
+  it("top-up: paid payment-mode checkout returns the gateway credit intent", async () => {
+    const before = await storage.getBilling(ORG_LEGACY);
+    const result = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_1",
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG_LEGACY, creditCents: "1000" },
+      }),
+    );
+    // Deliberately allowed for LEGACY orgs — credits are orthogonal to seats.
+    expect(result).toEqual({
+      handled: true,
+      organizationId: ORG_LEGACY,
+      topUp: { creditCents: 1000, referenceId: "stripe-topup:cs_topup_1" },
+    });
+    // No billing-row writes: top-ups never touch subscription state.
+    expect(await storage.getBilling(ORG_LEGACY)).toEqual(before);
+  });
+
+  it("top-up: unpaid sessions and bad metadata are acked no-ops", async () => {
+    const unpaid = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_2",
+        mode: "payment",
+        payment_status: "unpaid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(unpaid.handled).toBe(false);
+
+    const badAmount = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_3",
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "-5" },
+      }),
+    );
+    expect(badAmount.handled).toBe(false);
+
+    // A topup-kind session in subscription mode is malformed — rejected.
+    const wrongMode = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_4",
+        mode: "subscription",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(wrongMode.handled).toBe(false);
+
+    // No session id ⇒ no deterministic dedupe key ⇒ a credit intent here
+    // could double-credit on redelivery. Acked no-op instead.
+    const noId = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(noId.handled).toBe(false);
+  });
+
+  it("top-up: async_payment_succeeded yields the SAME referenceId as completed — the double-credit defense for delayed payment methods", async () => {
+    const session = {
+      id: "cs_topup_async",
+      mode: "payment",
+      payment_status: "unpaid",
+      metadata: { kind: "topup", orgId: ORG, creditCents: "2500" },
+    };
+    // Delayed method: completed fires while unpaid — no credit intent yet.
+    const completed = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", session),
+    );
+    expect(completed.handled).toBe(false);
+
+    // Payment confirms later via async_payment_succeeded.
+    const confirmed = await applyStripeEvent(
+      storage,
+      event("checkout.session.async_payment_succeeded", {
+        ...session,
+        payment_status: "paid",
+      }),
+    );
+    expect(confirmed).toEqual({
+      handled: true,
+      organizationId: ORG,
+      topUp: { creditCents: 2500, referenceId: "stripe-topup:cs_topup_async" },
+    });
+
+    // A redelivered completed event that is NOW paid mints the same
+    // referenceId — the gateway ledger dedupes the replay to a no-op.
+    const replay = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        ...session,
+        payment_status: "paid",
+      }),
+    );
+    expect(replay).toEqual(confirmed);
+  });
 });

@@ -188,4 +188,47 @@ describe("OrganizationBillingStorage", () => {
     expect(billing?.status).toBe("none");
     expect(await storage.getBilling("org_without_billing")).toBeNull();
   });
+
+  it("setIncludedReportUrl commits choice + pending marker in ONE update; unmarked writes leave a pending ref untouched; missing row updates nothing", async () => {
+    const { updated, benefitsReferenceId } = await storage.setIncludedReportUrl(
+      ORG,
+      "shop.example.com",
+      { markBenefitsPending: true },
+    );
+    expect(updated).toBe(true);
+    expect(benefitsReferenceId).not.toBeNull();
+    const billing = await storage.getBilling(ORG);
+    expect(billing?.includedReportUrl).toBe("shop.example.com");
+    expect(billing?.benefitsReferenceId).toBe(benefitsReferenceId);
+
+    // markBenefitsPending: false — the choice changes, but a pending ref from
+    // an undelivered change is NOT silently superseded.
+    const second = await storage.setIncludedReportUrl(ORG, null, {
+      markBenefitsPending: false,
+    });
+    expect(second.updated).toBe(true);
+    expect(second.benefitsReferenceId).toBeNull();
+    const after = await storage.getBilling(ORG);
+    expect(after?.includedReportUrl).toBeNull();
+    expect(after?.benefitsReferenceId).toBe(benefitsReferenceId);
+
+    // Missing billing row: updated=false so the tool can refuse loudly.
+    const missing = await storage.setIncludedReportUrl(
+      "org_without_billing",
+      "x.example.com",
+      { markBenefitsPending: true },
+    );
+    expect(missing.updated).toBe(false);
+
+    await storage.clearBenefitsPending(ORG, benefitsReferenceId as string);
+  });
+
+  it("setArmedReportUrl round-trips and clears", async () => {
+    await storage.setArmedReportUrl(ORG, "shop.example.com");
+    expect((await storage.getBilling(ORG))?.armedReportUrl).toBe(
+      "shop.example.com",
+    );
+    await storage.setArmedReportUrl(ORG, null);
+    expect((await storage.getBilling(ORG))?.armedReportUrl).toBeNull();
+  });
 });
