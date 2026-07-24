@@ -216,6 +216,9 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extracting brand context",
   "routes.onboarding.uploadOrgLogo": "Upload organization logo",
   "routes.onboarding.welcomeTitle": "Welcome to deco",
+  "routes.projectAppView.unavailableDescription":
+    "It may have been removed from the connection. Choose another view to continue.",
+  "routes.projectAppView.unavailableTitle": "This view is no longer available",
   "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the report",
   "routes.reports.failedToLoadReportDescription":
     "Check your connection and try again.",

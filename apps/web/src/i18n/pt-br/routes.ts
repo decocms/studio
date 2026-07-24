@@ -221,6 +221,10 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extraindo contexto de marca",
   "routes.onboarding.uploadOrgLogo": "Fazer upload do logotipo da organização",
   "routes.onboarding.welcomeTitle": "Bem-vindo ao deco",
+  "routes.projectAppView.unavailableDescription":
+    "Ela pode ter sido removida da conexão. Escolha outra visualização para continuar.",
+  "routes.projectAppView.unavailableTitle":
+    "Esta visualização não está mais disponível",
   "routes.reports.failedToLoadReportAriaLabel":
     "Não foi possível carregar o relatório",
   "routes.reports.failedToLoadReportDescription":
