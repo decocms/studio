@@ -20,7 +20,6 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
-import { useParams } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";
 import {
   FilePreview,
@@ -36,7 +35,6 @@ import {
 } from "@/hooks/use-org-fs";
 import { FileShareButton } from "./file-share-button";
 import { basename, parseLibraryPath } from "./location";
-import { SeeInLibraryLink } from "./see-in-library-link";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
 
@@ -46,8 +44,6 @@ export interface LibraryPreviewProps {
   /** Browse-grammar path of the open file ("<volume>/<path...>"). */
   previewPath: string;
   onClose: () => void;
-  /** Render a "See in library" link (set when previewing outside the Library). */
-  showSeeInLibrary?: boolean;
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -69,7 +65,6 @@ function CloseButton({ onClose }: { onClose: () => void }) {
 export function LibraryFilePreview({
   previewPath,
   onClose,
-  showSeeInLibrary = false,
   variant,
 }: LibraryPreviewProps & { variant: LibraryPreviewVariant }) {
   const t = useT();
@@ -78,13 +73,7 @@ export function LibraryFilePreview({
   const { data: entry, isPending } = useOrgFsStat(volume, filePath);
   const downloadUrl = useOrgFsDownloadUrl(volume ?? "");
   const filename = basename(filePath);
-  const { org } = useParams({ strict: false }) as { org?: string };
   const isDialog = variant === "dialog";
-
-  const seeInLibrary =
-    showSeeInLibrary && org ? (
-      <SeeInLibraryLink org={org} previewPath={previewPath} />
-    ) : null;
 
   const file =
     entry && entry.kind === "file"
@@ -120,7 +109,6 @@ export function LibraryFilePreview({
                 effectivePublic={entry.effectivePublic ?? false}
                 url={window.location.origin + file.downloadUrl}
               />
-              {seeInLibrary}
               {isDialog ? (
                 <div className="w-8 shrink-0" />
               ) : (
@@ -159,7 +147,6 @@ export function LibraryFilePreview({
             </span>
           )}
         </div>
-        {seeInLibrary}
         {file && (
           <>
             <FileShareButton

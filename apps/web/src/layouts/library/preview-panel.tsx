@@ -18,14 +18,12 @@ import {
 export function LibraryPreviewPanel({
   previewPath,
   onClose,
-  showSeeInLibrary = false,
 }: LibraryPreviewProps) {
   return (
     <div className="flex h-full w-full flex-col bg-background">
       <LibraryFilePreview
         previewPath={previewPath}
         onClose={onClose}
-        showSeeInLibrary={showSeeInLibrary}
         variant="panel"
       />
     </div>

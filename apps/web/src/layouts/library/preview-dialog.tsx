@@ -14,7 +14,6 @@ import {
 export function LibraryPreviewDialog({
   previewPath,
   onClose,
-  showSeeInLibrary = false,
 }: LibraryPreviewProps) {
   return (
     <Dialog
@@ -27,7 +26,6 @@ export function LibraryPreviewDialog({
         <LibraryFilePreview
           previewPath={previewPath}
           onClose={onClose}
-          showSeeInLibrary={showSeeInLibrary}
           variant="dialog"
         />
       </DialogContent>
