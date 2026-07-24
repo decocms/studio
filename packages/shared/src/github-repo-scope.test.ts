@@ -28,11 +28,20 @@ describe("GITHUB_SCOPED_PERMISSIONS", () => {
 });
 
 describe("isChecksPermissionRejected", () => {
-  it("matches the deco/mcp-github checks-not-allowed mint error", () => {
+  it("matches the github-mcp allowlist rejection", () => {
     expect(
       isChecksPermissionRejected(
         'Permission "checks" is not allowed. This tool only mints repo-scoped ' +
           "code access (contents, metadata, pull_requests, issues).",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches the GitHub 422 raised when the installation lacks Checks", () => {
+    expect(
+      isChecksPermissionRejected(
+        "Repository is not in this installation, or the requested permissions " +
+          "exceed what the GitHub App was granted.",
       ),
     ).toBe(true);
   });

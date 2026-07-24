@@ -84,10 +84,13 @@ async function mintRepoToken(
         },
       }) as Promise<MintResult>;
 
-    // Fall back to a checks-less mint when the deployed github-mcp predates the
-    // `checks` allowlist and hard-rejects it — keeps existing tokens refreshing
-    // until that deploy lands.
-    let res = await mintWith(recipe.permissions);
+    // Self-heal legacy connections on their ~1h re-mint: always request
+    // checks:read (even if the stored recipe predates it) so the token gains
+    // check-run access without a re-install. Fall back to the checks-less recipe
+    // when checks isn't available yet (github-mcp allowlist skew, or the
+    // installation hasn't granted Checks → 422).
+    const desiredPermissions = { ...recipe.permissions, checks: "read" };
+    let res = await mintWith(desiredPermissions);
     if (
       res.isError &&
       isChecksPermissionRejected(

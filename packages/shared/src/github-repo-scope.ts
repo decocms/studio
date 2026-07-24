@@ -31,17 +31,24 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
 };
 
 /**
- * Detects the deco/mcp-github mint error raised when the deployed server's
- * permission allowlist predates `checks` (it hard-rejects any permission
- * outside contents/metadata/pull_requests/issues). Lets callers fall back to a
- * checks-less mint so provisioning keeps working until the github-mcp deploy
- * that allowlists `checks` lands — the two repos deploy independently.
+ * Detects a mint failure caused specifically by requesting `checks`, so callers
+ * can retry without it. Two distinct upstreams produce this:
+ *   1. github-mcp's own allowlist predating `checks` — it hard-rejects with
+ *      `Permission "checks" is not allowed` (deploy-window skew).
+ *   2. GitHub itself, when the App installation hasn't granted Checks — the
+ *      mint 422s, surfaced as `...the requested permissions exceed what the
+ *      GitHub App was granted`.
+ * Either way the safe move is a checks-less retry; if the real problem were
+ * unrelated (e.g. repo not in the installation), that retry fails identically.
  */
 export function isChecksPermissionRejected(
   message: string | null | undefined,
 ): boolean {
   if (!message) return false;
-  return /permission\s+"?checks"?\s+is not allowed/i.test(message);
+  return (
+    /permission\s+"?checks"?\s+is not allowed/i.test(message) ||
+    /permissions exceed what the github app/i.test(message)
+  );
 }
 
 /** A copy of a permission map with the `checks` key removed. */
