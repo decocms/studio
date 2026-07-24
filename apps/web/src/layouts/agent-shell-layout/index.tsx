@@ -44,6 +44,7 @@ import {
 } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { withoutLegacyAgentSandboxEntries } from "@/lib/agent-sandbox-map";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -136,7 +137,7 @@ function NewTaskBridge({
 function VmEventsBridge({
   virtualMcpId,
   hasActiveGithubRepo,
-  sandboxMap,
+  sandboxMap: agentRowSandboxMap,
   children,
 }: {
   virtualMcpId: string;
@@ -144,6 +145,10 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
+  // The agent row is not authoritative for `agent-sandbox` — that kind resolves
+  // from the session registry below, and a leftover entry here would suppress
+  // auto-start while pointing at a reaped sandbox. See the helper.
+  const sandboxMap = withoutLegacyAgentSandboxEntries(agentRowSandboxMap);
   const { currentBranch, activeTask } = useChatTask();
   const { org } = useProjectContext();
   const { pendingSandboxProviderKind } = useChatPrefs();
