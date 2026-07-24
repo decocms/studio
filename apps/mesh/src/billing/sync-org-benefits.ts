@@ -81,8 +81,12 @@ async function syncOrgBenefitsWorkflowFn(
   organizationId: string,
   referenceId: string,
 ): Promise<{ delivered: boolean }> {
-  // Read live state: the CURRENT pending ref and paid count. If a newer seat
-  // change replaced the ref, that change's own workflow owns delivery — exit.
+  // Read live state: the CURRENT pending ref and the EFFECTIVE paid count.
+  // If a newer seat change replaced the ref, that change's own workflow owns
+  // delivery — exit. self_serve orgs whose subscription isn't in good
+  // standing (canceled/none) grant 0 regardless of seat flags: seats describe
+  // WHO is paid-for, the subscription is whether anyone is paying at all.
+  // invoiced (contract) orgs have no Stripe status — their seats always count.
   const state = await DBOS.runStep(
     async () => {
       const s = storage();
@@ -90,9 +94,13 @@ async function syncOrgBenefitsWorkflowFn(
         s.getBilling(organizationId),
         s.listPaidSeatUserIds(organizationId),
       ]);
+      const subscriptionGood =
+        billing?.billingMode !== "self_serve" ||
+        billing.status === "active" ||
+        billing.status === "past_due";
       return {
         pendingRef: billing?.benefitsReferenceId ?? null,
-        paidSeatCount: paidSeatUserIds.length,
+        paidSeatCount: subscriptionGood ? paidSeatUserIds.length : 0,
       };
     },
     { name: "readSeatState", retriesAllowed: true, maxAttempts: 3 },

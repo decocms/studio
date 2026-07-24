@@ -75,6 +75,10 @@ export interface Settings {
   /** Monthly AI-gateway allowance per PAID SEAT, in cents (default $5). */
   seatAllowanceCents: number;
 
+  // Stripe (per-seat self-serve billing). Absent → the webhook route 503s and
+  // no checkout can be created; invoiced/legacy orgs are unaffected.
+  stripeWebhookSecret: string | undefined;
+
   // Feature Flags
   enableDecoImport: boolean;
   /** Per-seat billing enforcement (STUDIO_BILLING_ENFORCED). Default OFF —
