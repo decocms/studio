@@ -3,7 +3,10 @@ import { VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE } from "./plugin-config-update";
 
 function makeCtx(opts: {
   organizationId: string;
-  connections: Record<string, { id: string; organization_id: string }>;
+  connections: Record<
+    string,
+    { id: string; organization_id: string; connection_type?: string }
+  >;
 }) {
   const upsert = mock(async () => ({
     id: "vpc_1",
@@ -40,7 +43,11 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     const { ctx, upsert } = makeCtx({
       organizationId: "org-a",
       connections: {
-        vmcp_other: { id: "vmcp_other", organization_id: "org-b" },
+        vmcp_other: {
+          id: "vmcp_other",
+          organization_id: "org-b",
+          connection_type: "VIRTUAL",
+        },
       },
     });
 
@@ -58,7 +65,11 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     const { ctx, upsert } = makeCtx({
       organizationId: "org-a",
       connections: {
-        vmcp_a: { id: "vmcp_a", organization_id: "org-a" },
+        vmcp_a: {
+          id: "vmcp_a",
+          organization_id: "org-a",
+          connection_type: "VIRTUAL",
+        },
         conn_other: { id: "conn_other", organization_id: "org-b" },
       },
     });
@@ -77,6 +88,31 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 
+  it("rejects a virtualMcpId that points at a non-virtual connection", async () => {
+    // Regression: `virtualMcpId` was only checked for org ownership, so any
+    // regular connection the caller owns (HTTP/SSE/STDIO) could be passed in
+    // and get a nonsensical plugin config row attached to it.
+    const { ctx, upsert } = makeCtx({
+      organizationId: "org-a",
+      connections: {
+        conn_a: {
+          id: "conn_a",
+          organization_id: "org-a",
+          connection_type: "HTTP",
+        },
+      },
+    });
+
+    await expect(
+      VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE.handler(
+        { virtualMcpId: "conn_a", pluginId: "code-execution" },
+        ctx,
+      ),
+    ).rejects.toThrow(/not found/i);
+
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects a connectionId that does not exist instead of hitting the FK constraint", async () => {
     // Regression: a non-existent, non-dev-assets connectionId used to fall
     // through to virtualMcpPluginConfigs.upsert(), which would surface as a
@@ -84,7 +120,11 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     const { ctx, upsert } = makeCtx({
       organizationId: "org-a",
       connections: {
-        vmcp_a: { id: "vmcp_a", organization_id: "org-a" },
+        vmcp_a: {
+          id: "vmcp_a",
+          organization_id: "org-a",
+          connection_type: "VIRTUAL",
+        },
       },
     });
 
@@ -106,7 +146,11 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     const { ctx, upsert } = makeCtx({
       organizationId: "org-a",
       connections: {
-        vmcp_a: { id: "vmcp_a", organization_id: "org-a" },
+        vmcp_a: {
+          id: "vmcp_a",
+          organization_id: "org-a",
+          connection_type: "VIRTUAL",
+        },
         conn_a: { id: "conn_a", organization_id: "org-a" },
       },
     });

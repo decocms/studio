@@ -80,6 +80,12 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
     if (parentConnection.organization_id !== organization.id) {
       throw new Error(`Connection not found: ${virtualMcpId}`);
     }
+    // This tool only manages plugin config for virtual MCPs — without this,
+    // a caller could pass any regular connection ID they own as
+    // `virtualMcpId` and attach nonsensical plugin config to it.
+    if (parentConnection.connection_type !== "VIRTUAL") {
+      throw new Error(`Connection not found: ${virtualMcpId}`);
+    }
 
     const connectionExists = connectionId
       ? await ctx.storage.connections.findById(connectionId)
