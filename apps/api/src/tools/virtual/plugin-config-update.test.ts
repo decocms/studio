@@ -77,6 +77,31 @@ describe("VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE", () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 
+  it("rejects a connectionId that does not exist instead of hitting the FK constraint", async () => {
+    // Regression: a non-existent, non-dev-assets connectionId used to fall
+    // through to virtualMcpPluginConfigs.upsert(), which would surface as a
+    // raw FK constraint-violation error rather than a clean "not found".
+    const { ctx, upsert } = makeCtx({
+      organizationId: "org-a",
+      connections: {
+        vmcp_a: { id: "vmcp_a", organization_id: "org-a" },
+      },
+    });
+
+    await expect(
+      VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE.handler(
+        {
+          virtualMcpId: "vmcp_a",
+          pluginId: "code-execution",
+          connectionId: "conn_missing",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/not found/i);
+
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   it("allows updating a plugin config within the caller's own organization", async () => {
     const { ctx, upsert } = makeCtx({
       organizationId: "org-a",

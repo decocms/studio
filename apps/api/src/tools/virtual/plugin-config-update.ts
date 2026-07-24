@@ -99,24 +99,26 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
       connectionId &&
       parentConnection.organization_id &&
       !connectionExists &&
-      usesLocalObjectStorage()
+      usesLocalObjectStorage() &&
+      isDevAssetsConnection(connectionId, parentConnection.organization_id)
     ) {
-      if (
-        isDevAssetsConnection(connectionId, parentConnection.organization_id)
-      ) {
-        if (!userId) {
-          throw new Error("User ID required to create dev-assets connection");
-        }
-        const devAssetsConnection = createDevAssetsConnectionEntity(
-          parentConnection.organization_id,
-          getBaseUrl(),
-        );
-        await ctx.storage.connections.create({
-          ...devAssetsConnection,
-          organization_id: parentConnection.organization_id,
-          created_by: userId,
-        });
+      if (!userId) {
+        throw new Error("User ID required to create dev-assets connection");
       }
+      const devAssetsConnection = createDevAssetsConnectionEntity(
+        parentConnection.organization_id,
+        getBaseUrl(),
+      );
+      await ctx.storage.connections.create({
+        ...devAssetsConnection,
+        organization_id: parentConnection.organization_id,
+        created_by: userId,
+      });
+    } else if (connectionId && !connectionExists) {
+      // Otherwise a non-existent connectionId would hit the DB's FK
+      // constraint on virtual_mcp_plugin_configs.connection_id and surface as
+      // a raw constraint-violation error instead of a clean, expected one.
+      throw new Error(`Connection not found: ${connectionId}`);
     }
 
     const config = await ctx.storage.virtualMcpPluginConfigs.upsert(
