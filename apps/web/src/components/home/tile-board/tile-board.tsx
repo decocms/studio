@@ -27,6 +27,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "@/i18n/use-t.ts";
 import {
   GRID_COLS,
@@ -150,25 +151,39 @@ export function TileBoard({
           </BoardTile>
         ))}
       </div>
-      <DragOverlay
-        dropAnimation={null}
-        style={{
-          width:
-            activeTile && dragState
-              ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
-              : undefined,
-          height:
-            activeTile && dragState
-              ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
-              : undefined,
-        }}
-      >
-        {activeTile && (
-          <div className="bg-card card-shadow rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
-            <TileErrorBoundary>{renderTile(activeTile)}</TileErrorBoundary>
-          </div>
-        )}
-      </DragOverlay>
+      {/* Portal to body so the overlay's `position: fixed` resolves against
+          the viewport, not the workspace PanelCard's `transform:
+          translateZ(0)` containing block (which would drop the dragged tile
+          below the cursor).
+
+          No drop animation here (unlike the sortable lists): the board's own
+          BoardTile already CSS-transitions left/top/width/height/opacity over
+          200ms on drop and fades opacity-30 → 100, so an overlay drop
+          animation would race that transition and ghost. The one-frame blink
+          the shared animation fixes also can't occur here — the source tile
+          stays at opacity-30 during drag, never fully hidden. */}
+      {createPortal(
+        <DragOverlay
+          dropAnimation={null}
+          style={{
+            width:
+              activeTile && dragState
+                ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
+                : undefined,
+            height:
+              activeTile && dragState
+                ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
+                : undefined,
+          }}
+        >
+          {activeTile && (
+            <div className="bg-card card-shadow rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
+              <TileErrorBoundary>{renderTile(activeTile)}</TileErrorBoundary>
+            </div>
+          )}
+        </DragOverlay>,
+        document.body,
+      )}
     </DndContext>
   );
 }

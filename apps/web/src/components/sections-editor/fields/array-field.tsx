@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -19,6 +20,7 @@ import {
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import {
@@ -503,16 +505,23 @@ export function ArrayField({
               </div>
             </SortableContext>
 
-            <DragOverlay dropAnimation={null}>
-              {activeLabel ? (
-                <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
-                  <ArrayRowContent
-                    labelText={activeLabel}
-                    imageSrc={activeImage}
-                  />
-                </div>
-              ) : null}
-            </DragOverlay>
+            {/* Portal to body so the overlay's `position: fixed` resolves
+                against the viewport, not the workspace PanelCard's
+                `transform: translateZ(0)` containing block (which would drop
+                the dragged row below the cursor). */}
+            {createPortal(
+              <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
+                {activeLabel ? (
+                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
+                    <ArrayRowContent
+                      labelText={activeLabel}
+                      imageSrc={activeImage}
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>,
+              document.body,
+            )}
           </DndContext>
         </div>
       )}

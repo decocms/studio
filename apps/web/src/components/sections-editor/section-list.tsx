@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@deco/ui/lib/utils.js";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -550,22 +552,29 @@ export function SectionList({
           </div>
         </SortableContext>
 
-        <DragOverlay dropAnimation={null}>
-          {activeSection ? (
-            <div
-              className={cn(
-                "cursor-grabbing shadow-lg ring-1 ring-border/60",
-                sectionRowClassName(activeSection, false),
-              )}
-            >
-              <SectionRowContent
-                section={activeSection}
-                raw={activeRaw}
-                meta={meta}
-              />
-            </div>
-          ) : null}
-        </DragOverlay>
+        {/* Portal to body so the overlay's `position: fixed` resolves against
+            the viewport, not the workspace PanelCard's `transform:
+            translateZ(0)` containing block (which would drop the dragged row
+            below the cursor). */}
+        {createPortal(
+          <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
+            {activeSection ? (
+              <div
+                className={cn(
+                  "cursor-grabbing shadow-lg ring-1 ring-border/60",
+                  sectionRowClassName(activeSection, false),
+                )}
+              >
+                <SectionRowContent
+                  section={activeSection}
+                  raw={activeRaw}
+                  meta={meta}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
       <Button
         type="button"
