@@ -149,7 +149,7 @@ function useFlipToBackground(toolCallId: string): () => Promise<void> {
   const { taskId: threadId } = useChatTask();
   const { org } = useProjectContext();
   return async () => {
-    await fetch(
+    const res = await fetch(
       `/api/${encodeURIComponent(org.slug)}/decopilot/flip/${encodeURIComponent(threadId)}`,
       {
         method: "POST",
@@ -158,6 +158,9 @@ function useFlipToBackground(toolCallId: string): () => Promise<void> {
         body: JSON.stringify({ toolCallId }),
       },
     );
+    // A non-2xx response won't reject fetch on its own — surface it so the
+    // button resets instead of sitting on "Moving to background…" forever.
+    if (!res.ok) throw new Error(`flip failed: ${res.status}`);
   };
 }
 
