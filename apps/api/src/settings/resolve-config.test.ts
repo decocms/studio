@@ -200,6 +200,26 @@ describe("resolveConfig Studio environment aliases", () => {
   });
 });
 
+describe("resolveConfig NODE_ENV", () => {
+  it("defaults to development when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.nodeEnv).toBe("development");
+  });
+
+  it("accepts a valid NODE_ENV", () => {
+    const result = resolveConfig(flags, { NODE_ENV: "production" });
+
+    expect(result.settings.nodeEnv).toBe("production");
+  });
+
+  it("coerces an unrecognized NODE_ENV to development instead of passing it through", () => {
+    const result = resolveConfig(flags, { NODE_ENV: "Production" });
+
+    expect(result.settings.nodeEnv).toBe("development");
+  });
+});
+
 describe("resolveShutdownDrainMs", () => {
   const forceExitMs = 115_000;
 
