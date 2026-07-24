@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { resolveConfig, resolveShutdownDrainMs } from "./resolve-config";
+import {
+  describeEncryptionKeyForLog,
+  resolveConfig,
+  resolveShutdownDrainMs,
+} from "./resolve-config";
 import type { CliFlags } from "./types";
 
 const flags: CliFlags = {
@@ -231,6 +235,32 @@ describe("resolveConfig NODE_ENV", () => {
     const result = resolveConfig(flags, { NODE_ENV: "Production" });
 
     expect(result.settings.nodeEnv).toBe("development");
+  });
+});
+
+describe("describeEncryptionKeyForLog", () => {
+  it("reports the deterministic-fallback message when unset", () => {
+    expect(describeEncryptionKeyForLog("")).toBe(
+      "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production",
+    );
+  });
+
+  it("never includes the raw secret for a short key", () => {
+    const message = describeEncryptionKeyForLog("shortkey");
+
+    expect(message).not.toContain("shortkey");
+    expect(message).toContain("***");
+  });
+
+  it("masks the middle of a long key, keeping only its edges", () => {
+    const message = describeEncryptionKeyForLog(
+      "a-much-longer-encryption-key-value",
+    );
+
+    expect(message).not.toContain("a-much-longer-encryption-key-value");
+    expect(message).toBe(
+      "[settings] ENCRYPTION_KEY is set (a-mu..alue, 34 chars)",
+    );
   });
 });
 

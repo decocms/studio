@@ -57,6 +57,19 @@ export function resolveShutdownDrainMs(
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+/**
+ * Startup log line for `ENCRYPTION_KEY` — reports whether it's set and how
+ * long it is (useful for spotting misconfiguration) WITHOUT leaking the
+ * actual secret into stdout/log aggregators.
+ */
+export function describeEncryptionKeyForLog(ek: string): string {
+  if (!ek) {
+    return "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production";
+  }
+  const masked = ek.length <= 8 ? "***" : `${ek.slice(0, 4)}..${ek.slice(-4)}`;
+  return `[settings] ENCRYPTION_KEY is set (${masked}, ${ek.length} chars)`;
+}
+
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
