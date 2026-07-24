@@ -28,6 +28,7 @@ import { createConnection, createServer } from "net";
 import { arch, platform } from "os";
 import { dirname, join } from "path";
 import type { ServiceInputs, ServiceOutputs } from "../settings/types";
+import { resolveS3ForcePathStyle } from "../settings/resolve-config";
 import {
   buildNatsOperatorArtifacts,
   buildNatsServerConf,
@@ -884,16 +885,6 @@ export function minioDownloadUrl(os: string, arch: string): string {
   return `https://dl.min.io/server/minio/release/${osName}-${archName}/${artifact}`;
 }
 
-/**
- * Resolve external-S3 path-style addressing from the env. Mirrors
- * resolve-config.ts's default EXACTLY (unset/empty/"true"/"1" → true) so the
- * in-process `buildSettings` path (deco serve / deco dev) agrees with the
- * bundled-prod `initSettingsFromEnv` path. Pure (no IO) so it is unit-testable.
- */
-function externalForcePathStyleFromEnv(raw: string | undefined): boolean {
-  return raw === undefined || raw === "" || raw === "true" || raw === "1";
-}
-
 function minioBinaryPath(home: string): string {
   return join(servicesDir(home), "minio", "bin", `minio${EXE_EXT}`);
 }
@@ -1566,20 +1557,12 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       port: portFromUrl(process.env.S3_ENDPOINT!, MINIO_DEFAULT_PORT),
       owner: "external",
     });
-    // For external S3, mirror resolve-config.ts's default so the in-process
-    // `buildSettings` path (deco serve / deco dev) agrees with the bundled-prod
-    // `initSettingsFromEnv` path: an unset/empty S3_FORCE_PATH_STYLE means
-    // path-style (true). A custom S3-compatible store (MinIO/Ceph) needs this;
-    // real AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false.
-    const externalForcePathStyle = externalForcePathStyleFromEnv(
-      process.env.S3_FORCE_PATH_STYLE,
-    );
     s3 = {
       endpoint: process.env.S3_ENDPOINT!,
       bucket: process.env.S3_BUCKET!,
       accessKeyId: process.env.S3_ACCESS_KEY_ID!,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
-      forcePathStyle: externalForcePathStyle,
+      forcePathStyle: resolveS3ForcePathStyle(process.env.S3_FORCE_PATH_STYLE),
     };
   } else if (!skipMinio) {
     const minioInfo = await ensureMinio(inputs.home);
