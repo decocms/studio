@@ -1,6 +1,12 @@
 import { Suspense } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { setCollectionToastTranslations } from "@decocms/mesh-sdk";
+import { isPaidSeatError } from "@/web/components/paywall/is-paid-seat-error";
+import { openPaidSeatPaywall } from "@/web/components/paywall/paid-seat-store";
 
 import { AuthConfigProvider } from "@/web/providers/auth-config-provider";
 import { BetterAuthUIProvider } from "@/web/providers/better-auth-ui-provider";
@@ -19,6 +25,18 @@ import { Toaster } from "sonner";
 import { useT } from "@/web/i18n/use-t";
 
 const queryClient = new QueryClient({
+  // A free seat that attempts any paid mutation gets a `[PAID_SEAT_REQUIRED]`
+  // 403 from the backend. Intercept it globally here — instead of leaving each
+  // call site to toast a raw error — and open the paywall dialog. Chat spends
+  // don't flow through react-query, so those are handled separately in the
+  // chat highlight stack.
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      if (error instanceof Error && isPaidSeatError(error)) {
+        openPaidSeatPaywall();
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
       // Data is fresh for 1 minute by default

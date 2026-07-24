@@ -5,6 +5,7 @@ import { FloatingReleaseCard } from "@/web/components/release-channel/floating-r
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { VersionCheckDialog } from "@/web/components/version-check-dialog";
 import { LanguageAnnouncementDialog } from "@/web/components/language-announcement-dialog";
+import { PaidSeatPaywallHost } from "@/web/components/paywall/paid-seat-paywall-host";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -368,6 +369,10 @@ function ShellLayoutContent() {
       />
 
       <LanguageAnnouncementDialog />
+
+      {/* Paid-seat paywall: opened by the global MutationCache when a free
+          seat's write is rejected with a [PAID_SEAT_REQUIRED] error. */}
+      <PaidSeatPaywallHost />
     </ShellProjectProvider>
   );
 }

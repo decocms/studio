@@ -20,6 +20,7 @@ import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
+import { PaidSeatDialog } from "../../paywall/paid-seat-dialog";
 import { DesktopOfflineBanner } from "../desktop-offline-banner";
 import { useHighlightFlags } from "./use-highlight-count";
 import { parseErrorMessage } from "./parse-error-message";
@@ -299,6 +300,10 @@ export function ChatHighlight() {
 
   if (flags.isCreditExhausted) {
     return <CreditsExhaustedBanner onDismiss={clearError} />;
+  }
+
+  if (flags.isPaidSeatRequired) {
+    return <PaidSeatDialog onDismiss={clearError} />;
   }
 
   const { showError, showWarning, hasApprovals } = flags;

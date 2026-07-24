@@ -17,10 +17,12 @@ import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
 import { isCreditError } from "../is-credit-error";
+import { isPaidSeatError } from "../../paywall/is-paid-seat-error";
 import { useChatStream } from "../context";
 
 export interface HighlightFlags {
   isCreditExhausted: boolean;
+  isPaidSeatRequired: boolean;
   hasTodos: boolean;
   showError: boolean;
   showWarning: boolean;
@@ -42,6 +44,7 @@ export interface DeriveHighlightFlagsInput {
 
 const EMPTY_FLAGS: HighlightFlags = {
   isCreditExhausted: false,
+  isPaidSeatRequired: false,
   hasTodos: false,
   showError: false,
   showWarning: false,
@@ -60,6 +63,11 @@ export function deriveHighlightFlags(
   // Credit-exhausted is a modal, not a stacked card.
   if (!isStreaming && error && isCreditError(error)) {
     return { ...EMPTY_FLAGS, isCreditExhausted: true };
+  }
+
+  // Paid-seat-required is likewise a modal, not a stacked card.
+  if (!isStreaming && error && isPaidSeatError(error)) {
+    return { ...EMPTY_FLAGS, isPaidSeatRequired: true };
   }
 
   const lastMessage = messages.at(-1);
@@ -110,6 +118,7 @@ export function deriveHighlightFlags(
 
   return {
     isCreditExhausted: false,
+    isPaidSeatRequired: false,
     hasTodos: todos.length > 0,
     showError,
     showWarning,
@@ -147,7 +156,7 @@ export function useHighlightFlags(): HighlightFlags {
  */
 export function useHighlightCount(): number {
   const flags = useHighlightFlags();
-  if (flags.isCreditExhausted) return 0;
+  if (flags.isCreditExhausted || flags.isPaidSeatRequired) return 0;
   return (
     Number(flags.hasTodos) +
     Number(flags.showError) +

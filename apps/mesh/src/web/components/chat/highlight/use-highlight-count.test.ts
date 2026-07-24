@@ -7,6 +7,7 @@ import {
 
 const noFlags: HighlightFlags = {
   isCreditExhausted: false,
+  isPaidSeatRequired: false,
   hasTodos: false,
   showError: false,
   showWarning: false,
@@ -57,6 +58,27 @@ describe("deriveHighlightFlags", () => {
         error: err,
       }),
     ).toEqual({ ...noFlags, isCreditExhausted: true });
+  });
+
+  test("paid-seat error → isPaidSeatRequired true, all other flags false", () => {
+    // isPaidSeatError checks for `[PAID_SEAT_REQUIRED]` prefix.
+    const err = new Error("[PAID_SEAT_REQUIRED] this action needs a paid seat");
+    expect(
+      deriveHighlightFlags({
+        ...baseInput,
+        error: err,
+      }),
+    ).toEqual({ ...noFlags, isPaidSeatRequired: true });
+  });
+
+  test("paid-seat error while streaming → showError false", () => {
+    expect(
+      deriveHighlightFlags({
+        ...baseInput,
+        error: new Error("[PAID_SEAT_REQUIRED] nope"),
+        isStreaming: true,
+      }),
+    ).toEqual(noFlags);
   });
 
   test("finishReason 'length' (not streaming, no error) → showWarning true", () => {

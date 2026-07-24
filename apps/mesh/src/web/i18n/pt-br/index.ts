@@ -34,6 +34,7 @@ import { sandbox } from "./sandbox.ts";
 import type { TranslationKey } from "../en/index.ts";
 import { announcements } from "./announcements.ts";
 import { settings } from "./settings.ts";
+import { paywall } from "./paywall.ts";
 
 export const ptBR = {
   ...virtualMcp,
@@ -71,4 +72,5 @@ export const ptBR = {
   ...sandbox,
   ...settings,
   ...announcements,
+  ...paywall,
 } satisfies Record<TranslationKey, string>;
