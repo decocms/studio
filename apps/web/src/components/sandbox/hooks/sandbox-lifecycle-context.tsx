@@ -17,7 +17,7 @@ import type {
 } from "@/components/sandbox/preview/preview-state";
 import type { DrawerStatus } from "@/components/sandbox/preview/drawer/status-pill";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "./sandbox-events-context";
+import type { ClaimFailureReason, ClaimPhase } from "./sandbox-events-context";
 import {
   selectVmEntry,
   type BranchMapEntryLike,
@@ -125,6 +125,58 @@ export function buildSandboxStartArgs(
   return args;
 }
 
+/** How many times to auto-reprovision after a *retryable* terminal claim
+ *  failure before giving up and surfacing the errored card. 2 auto-retries =
+ *  3 total attempts (the original boot + 2). */
+export const MAX_CLAIM_AUTO_RETRIES = 2;
+
+/** Terminal claim failures worth auto-reprovisioning: the failure is on the
+ *  infra side and a fresh claim can plausibly land differently.
+ *   - `scheduling-timeout` — no node had capacity; Karpenter may have added one.
+ *   - `reconciler-error` — transient control-plane hiccup.
+ *   - `claim-never-created` — the claim write itself was lost; re-issue it.
+ *   - `unknown` — the synthetic "lifecycle watcher ended" (lifecycle.ts): the
+ *     watch died, not necessarily the boot; a fresh attempt is worth one shot.
+ *  Excluded (retrying fails identically, so surface immediately):
+ *   - `image-pull-backoff` — the image is bad/missing.
+ *   - `crash-loop-backoff` — the container's own code crashes on start. */
+const CLAIM_AUTO_RETRYABLE_REASONS: ReadonlySet<ClaimFailureReason> = new Set([
+  "scheduling-timeout",
+  "reconciler-error",
+  "claim-never-created",
+  "unknown",
+]);
+
+export function isRetryableClaimFailure(reason: ClaimFailureReason): boolean {
+  return CLAIM_AUTO_RETRYABLE_REASONS.has(reason);
+}
+
+export interface ShouldAutoRetryClaimArgs {
+  /** The terminal failure reason, or null when the phase isn't `failed`. */
+  failedReason: ClaimFailureReason | null;
+  /** Auto-retries already fired for this boot. */
+  attempts: number;
+  isPending: boolean;
+  userStopped: boolean;
+  autoStartBlocked: boolean;
+  /** Guard so a single failed episode fires exactly one retry (re-armed when the
+   *  phase leaves `failed`). Without it the persistent `failed` phase would
+   *  re-fire every render once the mutation settles. */
+  alreadyHandled: boolean;
+}
+
+export function shouldAutoRetryClaim(args: ShouldAutoRetryClaimArgs): boolean {
+  return (
+    args.failedReason !== null &&
+    isRetryableClaimFailure(args.failedReason) &&
+    args.attempts < MAX_CLAIM_AUTO_RETRIES &&
+    !args.isPending &&
+    !args.userStopped &&
+    !args.autoStartBlocked &&
+    !args.alreadyHandled
+  );
+}
+
 /** Terminal SANDBOX_START error to surface (→ `errored` preview state), or null
  *  while still booting. Two independent sources feed the same terminal state:
  *   - a rejected SANDBOX_START mutation (GitHub-not-auth, non-retryable server error);
@@ -134,14 +186,21 @@ export function buildSandboxStartArgs(
  *  The phase-failed source never rejects the mutation, so without it
  *  computePreviewState pins to "starting" forever (the infinite-loading bug).
  *  Gate the phase path on no start in flight so an in-progress retry/self-heal
- *  reprovision keeps the booting overlay instead of flashing errored. */
+ *  reprovision keeps the booting overlay instead of flashing errored.
+ *  `claimRetryExhausted` holds the booting overlay while bounded auto-retry
+ *  still has budget for a retryable failure — see shouldAutoRetryClaim. */
 export function deriveStartError(args: {
   mutationError: SandboxStartError | null;
   phase: ClaimPhase | null;
   startPending: boolean;
+  claimRetryExhausted: boolean;
 }): SandboxStartError | null {
   if (args.mutationError) return args.mutationError;
-  if (args.phase?.kind === "failed" && !args.startPending) {
+  if (
+    args.phase?.kind === "failed" &&
+    !args.startPending &&
+    args.claimRetryExhausted
+  ) {
     return { code: null, message: args.phase.message };
   }
   return null;
@@ -293,6 +352,12 @@ export function SandboxLifecycleProvider({
   // branch-keyed (VmEventsBridge) dedup refs).
   const autoStartAttemptedForBranchRef = useRef<Set<string>>(new Set());
   const reprovisionedForVmIdRef = useRef<string | null>(null);
+  // Bounded auto-retry of retryable terminal claim failures (see
+  // shouldAutoRetryClaim). `count` is the budget for this boot; `handled`
+  // fires exactly one retry per failed episode (re-armed when phase leaves
+  // `failed`). Both reset on a user-driven retry().
+  const claimRetryCountRef = useRef(0);
+  const claimFailureHandledRef = useRef(false);
 
   // Derived values, recomputed each render.
   // Cast: parseBranchMap returns SandboxRecord where sandboxProviderKind is
@@ -320,6 +385,15 @@ export function SandboxLifecycleProvider({
       !!branch &&
       sandboxUserStop.isStopped(virtualMcpId, branch));
   const appPaused = events.status.state === "paused";
+  const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
+  // A retryable claim failure keeps the booting overlay (deriveStartError
+  // returns null) while bounded auto-retry still has budget; once exhausted (or
+  // for a non-retryable reason) it surfaces the errored card.
+  const claimRetryExhausted =
+    !failedPhase ||
+    !isRetryableClaimFailure(failedPhase.reason) ||
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only budget probe; incremented inside the effect after firing
+    claimRetryCountRef.current >= MAX_CLAIM_AUTO_RETRIES;
   const startError = deriveStartError({
     mutationError:
       startVm.isError && startVm.error
@@ -327,6 +401,7 @@ export function SandboxLifecycleProvider({
         : null,
     phase: events.phase,
     startPending: startVm.isPending || sharedLifecyclePending,
+    claimRetryExhausted,
   });
   const previewState = computePreviewState({
     previewUrl,
@@ -427,6 +502,57 @@ export function SandboxLifecycleProvider({
     setCurrentTaskBranch,
   ]);
 
+  // Auto-retry: a *retryable* terminal claim failure (capacity/scheduling/
+  // control-plane hiccup — not a bad image or crash-loop) reprovisions in place
+  // a bounded number of times before falling through to the errored card, so
+  // the common transient-infra failure self-heals without a user click.
+  const claimRetryEligible = shouldAutoRetryClaim({
+    failedReason: failedPhase?.reason ?? null,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only budget probe; incremented inside the effect after firing
+    attempts: claimRetryCountRef.current,
+    isPending: startVm.isPending || sharedLifecyclePending,
+    userStopped,
+    autoStartBlocked,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only episode guard; set inside the effect after firing
+    alreadyHandled: claimFailureHandledRef.current,
+  });
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges the SSE failed phase into a one-shot bounded reprovision
+  useEffect(() => {
+    if (!failedPhase) {
+      // Left the failed state (new claim in progress / ready) → re-arm so the
+      // next distinct failure episode can fire its own retry.
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- re-arm episode guard when phase leaves `failed`
+      claimFailureHandledRef.current = false;
+      return;
+    }
+    if (!claimRetryEligible || !virtualMcpId) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mark this episode handled so it fires exactly once
+    claimFailureHandledRef.current = true;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- consume one retry from the boot budget
+    claimRetryCountRef.current += 1;
+    const args = buildSandboxStartArgs(
+      virtualMcpId,
+      branch,
+      sandboxProviderKind,
+    );
+    startVmMutate(args, {
+      onSuccess: (data) => {
+        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+      },
+      onError: (err) => {
+        console.error("[sandbox-lifecycle] claim auto-retry failed:", err);
+      },
+    });
+  }, [
+    failedPhase,
+    claimRetryEligible,
+    virtualMcpId,
+    branch,
+    sandboxProviderKind,
+    startVmMutate,
+    setCurrentTaskBranch,
+  ]);
+
   // User-driven actions.
   const start = () => {
     if (!virtualMcpId) return;
@@ -483,6 +609,10 @@ export function SandboxLifecycleProvider({
     autoStartAttemptedForBranchRef.current = new Set();
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so self-heal can fire on next gone
     reprovisionedForVmIdRef.current = null;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- fresh auto-retry budget for the user-driven attempt
+    claimRetryCountRef.current = 0;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- re-arm the failed-episode guard
+    claimFailureHandledRef.current = false;
     startVmReset();
     start();
   };
