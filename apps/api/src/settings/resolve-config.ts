@@ -123,7 +123,9 @@ function externalUrlOrNull(url: string | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname;
+    // `URL#hostname` keeps the brackets for a bracketed IPv6 host (e.g.
+    // "[::1]"), so strip them before comparing against the bare loopback form.
+    const host = parsed.hostname.replace(/^\[|\]$/g, "");
     if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
       return null;
     }
