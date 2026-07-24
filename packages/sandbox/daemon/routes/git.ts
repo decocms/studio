@@ -829,7 +829,7 @@ export function makeGitDiscardHandler(deps: GitDeps) {
     if (
       !Array.isArray(filepaths) ||
       filepaths.length === 0 ||
-      !filepaths.every((fp) => typeof fp === "string")
+      !filepaths.every((fp) => typeof fp === "string" && fp.trim().length > 0)
     ) {
       return jsonResponse({ error: "filepaths is required" }, 400);
     }
