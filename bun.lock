@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.122.3",
+      "version": "4.122.12",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -271,6 +271,16 @@
         "ai": ">=6.0.0",
       },
     },
+    "packages/loop": {
+      "name": "@decocms/loop",
+      "version": "0.1.0",
+      "bin": {
+        "loop": "./dist/cli.js",
+      },
+      "devDependencies": {
+        "@decocms/shared": "workspace:*",
+      },
+    },
     "packages/mcp-utils": {
       "name": "@decocms/mcp-utils",
       "version": "1.1.0",
@@ -289,7 +299,7 @@
     },
     "packages/runtime": {
       "name": "@decocms/runtime",
-      "version": "2.3.4",
+      "version": "2.3.5",
       "dependencies": {
         "@cloudflare/workers-types": "^4.20250617.0",
         "@decocms/bindings": "^1.0.7",
@@ -310,7 +320,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.22.4",
+      "version": "1.22.5",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -700,6 +710,8 @@
     "@decocms/e2e": ["@decocms/e2e@workspace:packages/e2e"],
 
     "@decocms/harness": ["@decocms/harness@workspace:packages/harness"],
+
+    "@decocms/loop": ["@decocms/loop@workspace:packages/loop"],
 
     "@decocms/mcp-utils": ["@decocms/mcp-utils@workspace:packages/mcp-utils"],
 
