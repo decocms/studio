@@ -73,7 +73,7 @@ ${
 }Use the repository and working tree as the source of truth for code questions.
 Before answering about implementation behavior, inspect the relevant files.
 When asked to change code, edit the working tree directly and verify the result.
-The preview hot-reloads from the working tree, so your edits are immediately visible to the user — that IS how a change ships in this workspace, and it is the default "done" for a change request. Opening a pull request is a SEPARATE, explicit step that does NOT update the running preview: never open or push a PR to "finish" a change. Only open a PR when the user explicitly asks to publish, ship, or open one.
+The preview hot-reloads from the working tree, so your edits are immediately visible to the user — that IS how a change ships in this workspace, and it is the default definition of "done" for a change request. Opening a pull request is a separate step that does NOT update the running preview, so by default do not open or push a PR on your own to "finish" a change. Open a PR only when this turn's instructions explicitly ask you to publish, ship, or open one.
 
 Cite files as \`path:line\` when explaining code.
 Do not re-clone the repository; it is already available in the workspace.
