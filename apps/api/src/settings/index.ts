@@ -54,7 +54,7 @@ function initSettingsFromEnv(): void {
   _settings = Object.freeze({
     ...config.settings,
     databaseUrl:
-      envVars.DATABASE_URL ??
+      envVars.DATABASE_URL ||
       "postgresql://postgres:postgres@localhost:5432/postgres",
     natsUrls: (envVars.NATS_URL || "nats://localhost:4222")
       .split(",")
