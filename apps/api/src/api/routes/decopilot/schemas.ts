@@ -16,7 +16,11 @@ const UIMessageSchema = z.looseObject({
 });
 
 const MemoryConfigSchema = z.object({
-  windowSize: z.number().default(DEFAULT_WINDOW_SIZE),
+  // Flows straight into a DB query LIMIT (`Memory.loadHistory` →
+  // `listMessages`/`loadWindow`) with no other bound — an unvalidated huge or
+  // negative value would either force-load a thread's entire history on every
+  // turn or blow up the query at the DB layer.
+  windowSize: z.number().int().min(1).max(500).default(DEFAULT_WINDOW_SIZE),
   thread_id: z.string(),
 });
 
