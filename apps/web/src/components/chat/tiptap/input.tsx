@@ -247,6 +247,8 @@ export function TiptapInput({
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+          "[&_.ProseMirror_p.is-editor-empty:first-child::before]:w-full",
+          "[&_.ProseMirror_p.is-editor-empty:first-child::before]:break-words",
           disabled && "cursor-not-allowed opacity-70",
           disabled && "[&_.ProseMirror]:cursor-not-allowed",
         )}
