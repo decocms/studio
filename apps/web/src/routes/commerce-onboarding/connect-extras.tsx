@@ -1,4 +1,5 @@
 import { useT } from "@/i18n/use-t.ts";
+import { Lock01, ReverseLeft, SlashCircle01 } from "@untitledui/icons";
 
 /**
  * Right-hand panel of the connect modal: a customer quote over a full-bleed
@@ -38,6 +39,49 @@ export function ConnectQuotePanel() {
           {t("routes.commerceOnboarding.connectModal.quoteAuthor")}
         </span>
       </figcaption>
+    </div>
+  );
+}
+
+/**
+ * Data-safety reassurances pinned to the bottom of the connect modal's right
+ * panel. Every claim here is deliberately conservative and verifiable against
+ * the Terms + Privacy Policy: connections can be revoked at any time (Privacy
+ * §7), data is encrypted in transit and tokens at rest (Privacy §11), and
+ * Customer Content is never sold (Terms/Privacy §6). We intentionally do NOT
+ * claim "read-only" — agents open PRs and take actions, so that would overstate
+ * the guarantee. Rendered over the photo + scrim, so all text is white.
+ */
+export function ConnectTrustSignals() {
+  const t = useT();
+  const items = [
+    {
+      Icon: ReverseLeft,
+      label: t("routes.commerceOnboarding.connectModal.trustRevoke"),
+    },
+    {
+      Icon: Lock01,
+      label: t("routes.commerceOnboarding.connectModal.trustEncrypted"),
+    },
+    {
+      Icon: SlashCircle01,
+      label: t("routes.commerceOnboarding.connectModal.trustNeverSold"),
+    },
+  ];
+  return (
+    <div className="relative flex flex-col gap-2.5 text-white">
+      <div className="h-px w-full bg-white/15" />
+      <ul className="mt-1 flex flex-col gap-2.5">
+        {items.map(({ Icon, label }) => (
+          <li
+            key={label}
+            className="flex items-center gap-2.5 text-[13px] leading-tight text-white/70"
+          >
+            <Icon className="size-4 shrink-0 opacity-85" />
+            {label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

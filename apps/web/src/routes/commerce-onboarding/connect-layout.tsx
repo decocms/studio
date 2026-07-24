@@ -2,7 +2,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ChevronRight, X } from "@untitledui/icons";
 import type { ReactNode } from "react";
-import { ConnectQuotePanel } from "./connect-extras.tsx";
+import { ConnectQuotePanel, ConnectTrustSignals } from "./connect-extras.tsx";
 
 /**
  * Shared chrome for the commerce connect step, used by BOTH the live
@@ -78,7 +78,7 @@ export function ConnectLayout({
       </div>
 
       {/* Right: full-bleed brand-photo quote panel (desktop only). */}
-      <aside className="relative hidden shrink-0 overflow-hidden lg:flex lg:w-[440px] lg:flex-col lg:justify-center lg:p-14">
+      <aside className="relative hidden shrink-0 overflow-hidden lg:flex lg:w-[440px] lg:flex-col lg:p-14">
         <img
           src="https://decoims.com/image?src=decocms%2F8191643a-1947-4c30-afb4-36b8073c90fb%2Fbg-quote.png&quality=original&fit=cover&width=880"
           alt=""
@@ -86,8 +86,13 @@ export function ConnectLayout({
         />
         {/* Scrim keeps the white quote legible over the brighter parts. */}
         <div className="absolute inset-0 bg-black/20" />
-        <div className="relative z-10">
+        {/* Quote centers in the space above the trust signals, which pin to the
+            bottom (equal flex spacers above/below the quote). */}
+        <div className="relative z-10 flex h-full flex-col">
+          <div className="flex-1" />
           <ConnectQuotePanel />
+          <div className="flex-1" />
+          <ConnectTrustSignals />
         </div>
       </aside>
     </div>
