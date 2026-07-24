@@ -78,6 +78,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SEATS_PREVIEW",
   "ORGANIZATION_BILLING_PORTAL",
   "ORGANIZATION_INCLUDED_REPORT_SET",
+  "ORGANIZATION_REPORT_RUN_PAID",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -443,6 +444,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "ORGANIZATION_INCLUDED_REPORT_SET",
     description: "Choose the subscription's included weekly report site",
     category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_REPORT_RUN_PAID",
+    description: "Trigger a paid report run (billed in AI credits)",
+    category: "Organizations",
+    dangerous: true,
   },
   // Connection tools
   {
@@ -1232,6 +1239,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_SEATS_PREVIEW",
       "ORGANIZATION_BILLING_PORTAL",
       "ORGANIZATION_INCLUDED_REPORT_SET",
+      "ORGANIZATION_REPORT_RUN_PAID",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

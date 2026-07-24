@@ -8,6 +8,9 @@ describe("DBOS_WORKFLOW_VERSION", () => {
   });
 
   it("is the current pinned version", () => {
-    expect(DBOS_WORKFLOW_VERSION).toBe("4");
+    // 5: syncOrgBenefitsWorkflow gained the syncReportSchedule step (and
+    // readSeatState's recorded output grew) — in-flight v4 instances are
+    // deliberately stranded, correct per the pinning design.
+    expect(DBOS_WORKFLOW_VERSION).toBe("5");
   });
 });

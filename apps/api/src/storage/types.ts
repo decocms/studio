@@ -1233,6 +1233,14 @@ export interface OrganizationBillingTable {
     string | null | undefined,
     string | null
   >;
+  /** Which site's weekly run is CURRENTLY armed on the reports service
+   *  (migration 143) — maintained by the benefits-sync workflow so a choice
+   *  change can disarm the old site. */
+  armed_report_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Pending benefit-sync marker (migration 141): non-null = a gateway
    *  allowance grant for the latest seat change hasn't been confirmed.
    *  Written in the SAME transaction as the seat change; the value is the

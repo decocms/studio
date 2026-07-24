@@ -81,6 +81,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_SEATS_PREVIEW,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
   OrganizationTools.ORGANIZATION_INCLUDED_REPORT_SET,
+  OrganizationTools.ORGANIZATION_REPORT_RUN_PAID,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,

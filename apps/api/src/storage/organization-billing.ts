@@ -23,6 +23,7 @@ function toBillingRow(
     stripeSubscriptionId: row.stripe_subscription_id,
     currentPeriodEnd: row.current_period_end,
     includedReportUrl: row.included_report_url,
+    armedReportUrl: row.armed_report_url,
     benefitsReferenceId: row.benefits_reference_id,
     lastStripeEventAt: row.last_stripe_event_at,
   };
@@ -37,6 +38,9 @@ export interface OrganizationBillingRow {
   stripeSubscriptionId: string | null;
   currentPeriodEnd: Date | null;
   includedReportUrl: string | null;
+  /** Weekly run currently ARMED on the reports service (vs the CHOICE in
+   *  includedReportUrl) — written only by the benefits-sync workflow. */
+  armedReportUrl: string | null;
   /** Non-null = a gateway allowance grant is pending for the latest seat
    *  change (the value is the grant's gateway idempotency key). */
   benefitsReferenceId: string | null;
@@ -300,6 +304,19 @@ export class OrganizationBillingStorage {
       updated: (result.numUpdatedRows ?? 0n) > 0n,
       benefitsReferenceId,
     };
+  }
+
+  /** Record what the benefits-sync workflow last armed on the reports
+   *  service. Workflow-only write (see armed_report_url). */
+  async setArmedReportUrl(
+    organizationId: string,
+    armedReportUrl: string | null,
+  ): Promise<void> {
+    await this.db
+      .updateTable("organization_billing")
+      .set({ armed_report_url: armedReportUrl })
+      .where("organization_id", "=", organizationId)
+      .execute();
   }
 
   /** Resolve the org behind a Stripe subscription (webhook events carry

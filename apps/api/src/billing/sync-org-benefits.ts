@@ -18,14 +18,17 @@
  * early). The gateway REBASES per grant — a mid-cycle seat change refreshes
  * the cycle's allowance, the plan's accepted slack.
  *
- * TODO(billing/4.1): second benefit — reports weekly-run schedule for
- * included_report_url — joins the workflow once the reports endpoint exists.
+ * Second benefit — the weekly report run: the workflow converges the reports
+ * service onto the org's choice (included_report_url) whenever the effective
+ * seat count allows it (≥ 1), disarming the previously-armed site on a
+ * choice change (armed_report_url tracks what's live over there).
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import { getDb } from "@/database";
 import { getSettings } from "../settings";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
+import { reportsClientConfigured, setReportSchedule } from "./reports-client";
 import { subscriptionInGoodStanding } from "./subscription-state";
 
 const MICROS_PER_CENT = 10_000;
@@ -109,6 +112,8 @@ async function syncOrgBenefitsWorkflowFn(
       return {
         pendingRef: billing?.benefitsReferenceId ?? null,
         paidSeatCount: effectivePaidSeatCount(billing, paidSeatUserIds.length),
+        includedReportUrl: billing?.includedReportUrl ?? null,
+        armedReportUrl: billing?.armedReportUrl ?? null,
       };
     },
     { name: "readSeatState", retriesAllowed: true, maxAttempts: 3 },
@@ -120,6 +125,34 @@ async function syncOrgBenefitsWorkflowFn(
     // Generous budget: the grant is gateway-idempotent per referenceId, and
     // this is money owed to the customer — outlast a gateway deploy window.
     { name: "grantAllowance", retriesAllowed: true, maxAttempts: 8 },
+  );
+
+  // Weekly-run benefit: converge the reports service onto the org's choice.
+  // Disarm-then-arm so a choice change (A → B) can't leak A's weekly billed
+  // run; both endpoints are idempotent, so step retries are safe. Skipped
+  // when the reports client isn't configured (self-hosted).
+  await DBOS.runStep(
+    async () => {
+      if (!reportsClientConfigured()) return;
+      const desired = state.paidSeatCount >= 1 ? state.includedReportUrl : null;
+      if (desired === state.armedReportUrl) return;
+      if (state.armedReportUrl) {
+        await setReportSchedule({
+          host: state.armedReportUrl,
+          organizationId,
+          enabled: false,
+        });
+      }
+      if (desired) {
+        await setReportSchedule({
+          host: desired,
+          organizationId,
+          enabled: true,
+        });
+      }
+      await storage().setArmedReportUrl(organizationId, desired);
+    },
+    { name: "syncReportSchedule", retriesAllowed: true, maxAttempts: 5 },
   );
 
   await DBOS.runStep(
