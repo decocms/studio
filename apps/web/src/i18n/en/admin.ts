@@ -1,4 +1,28 @@
 export const admin = {
+  "admin.copyAgent.agentStep": "2. Agent to copy",
+  "admin.copyAgent.agentSummary": "{connections} connections",
+  "admin.copyAgent.connectionsCopied": "Connections created in the target org",
+  "admin.copyAgent.copiedSummary":
+    "{connections} connections copied, {reused} built-in connections reused, {secrets} secrets copied, {prompts} kickstart prompts copied.",
+  "admin.copyAgent.copiedTitle": 'Copied "{title}" into {org}',
+  "admin.copyAgent.copyAction": 'Copy "{agent}" to {org}',
+  "admin.copyAgent.copyActionIdle": "Copy agent",
+  "admin.copyAgent.copyFailed": "Failed to copy the agent",
+  "admin.copyAgent.copySucceeded": "Agent copied",
+  "admin.copyAgent.credentialWarning":
+    "Access tokens, OAuth config and secrets are copied into the target org.",
+  "admin.copyAgent.failedLoadAgents": "Failed to load agents",
+  "admin.copyAgent.intro":
+    "Copy an agent into another organization with its system prompt, the connections it uses, and their credentials. Built-in connections are pointed at the target org's own; anything that cannot travel is listed after the copy.",
+  "admin.copyAgent.noAgents": "This organization has no agents.",
+  "admin.copyAgent.noOrgs": "No organizations found.",
+  "admin.copyAgent.noPrompt": "no system prompt",
+  "admin.copyAgent.pickSourceFirst": "Pick a source organization first.",
+  "admin.copyAgent.searchOrgs": "Search by name or slug...",
+  "admin.copyAgent.skippedTitle": "{count} things did not come along",
+  "admin.copyAgent.sourceStep": "1. Source organization",
+  "admin.copyAgent.tab": "Copy agent",
+  "admin.copyAgent.targetStep": "3. Target organization",
   "admin.layout.adminDashboard": "Admin Dashboard",
   "admin.layout.adminDashboardArea": "the admin dashboard",
   "admin.layout.emailVerificationRequired":

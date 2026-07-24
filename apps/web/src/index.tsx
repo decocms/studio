@@ -136,10 +136,17 @@ const adminOrgsRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
 });
 
+const adminCopyAgentRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/copy-agent",
+  component: lazyRouteComponent(() => import("./routes/admin/copy-agent.tsx")),
+});
+
 const adminLayoutWithChildren = adminLayout.addChildren([
   adminIndexRoute,
   adminUsersRoute,
   adminOrgsRoute,
+  adminCopyAgentRoute,
 ]);
 
 // ============================================

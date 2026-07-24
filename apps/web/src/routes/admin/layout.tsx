@@ -10,6 +10,7 @@ import { useT } from "@/i18n/use-t.ts";
 const TABS = [
   { to: "/_admin/users", labelKey: "admin.layout.usersTab" },
   { to: "/_admin/orgs", labelKey: "admin.layout.organizationsTab" },
+  { to: "/_admin/copy-agent", labelKey: "admin.copyAgent.tab" },
 ] as const;
 
 function AdminTabs() {

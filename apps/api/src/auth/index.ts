@@ -115,7 +115,7 @@ const scopes = Object.values(getToolsByCategory())
 
 /**
  * Deployment admin user IDs, resolved lazily from `deploymentAdminEmails` by
- * the `/api/_admin/*` middleware (apps/api/src/api/routes/admin.ts) on each
+ * the `/api/_admin/*` middleware (apps/api/src/api/routes/admin/index.ts) on each
  * verified admin's first request. Better Auth's admin plugin shallow-spreads
  * the options object it's given at plugin-init time, so `adminUserIds` below
  * keeps a reference to THIS array — `hasPermission` (better-auth 1.4.22,

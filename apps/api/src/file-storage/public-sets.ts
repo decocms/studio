@@ -13,11 +13,9 @@
 
 import { z } from "zod";
 import { getSettings } from "../settings";
-import { getObjectStorageS3Service } from "../object-storage/factory";
-import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
-import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import type { StudioContext } from "../core/studio-context";
-import { OrgFs } from "./org-fs";
+import { buildOrgFs } from "./build-org-fs";
+import type { OrgFs } from "./org-fs";
 
 export const ORG_FS_PUBLIC_ORG_ID = "org_orgfs_public_skills";
 const PUBLIC_VOLUME_PREFIX = "public-";
@@ -121,15 +119,7 @@ export function getPublicSets(): PublicSkillSetSource[] {
   return resolvePublicSets(getSettings().orgFsPublicSetsJson);
 }
 
-/**
- * An OrgFs bound to the shared public scope (mirrors the per-org rebind in
- * resolve-org-from-path.ts — like there, missing S3 falls back to the dev
- * object storage, so this always returns a working instance).
- */
+/** An OrgFs bound to the shared public scope. */
 export function buildPublicOrgFs(ctx: StudioContext): OrgFs {
-  const s3Service = getObjectStorageS3Service();
-  const storage = s3Service
-    ? createBoundObjectStorage(s3Service, ORG_FS_PUBLIC_ORG_ID)
-    : new DevObjectStorage(ORG_FS_PUBLIC_ORG_ID, ctx.baseUrl);
-  return new OrgFs(storage, ctx.storage.orgFsEntries, ORG_FS_PUBLIC_ORG_ID);
+  return buildOrgFs(ctx, ORG_FS_PUBLIC_ORG_ID);
 }

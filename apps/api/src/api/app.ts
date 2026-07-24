@@ -1365,7 +1365,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
-  // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
+  // external callers — see fenceRawAdminSurface's doc in routes/admin/index.ts for
   // why this must exist whenever deploymentAdminUserIds does.
   app.all("/api/auth/admin/*", fenceRawAdminSurface);
 

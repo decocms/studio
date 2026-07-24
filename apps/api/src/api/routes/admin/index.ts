@@ -27,6 +27,8 @@ import { getDb } from "@/database";
 import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
+import { isStudioPackAgent } from "@decocms/shared/sdk";
+import { CopyAgentError, copyAgentToOrg } from "./copy-agent";
 
 /**
  * Mount path for the deployment-admin surface. Single source of truth: app.ts
@@ -376,6 +378,100 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  /**
+   * The agents an org owns, for the copy picker. Studio Pack agents are
+   * excluded: they are provisioned per-org by the platform, so the target
+   * already has its own and `copyAgentToOrg` rejects them.
+   */
+  app.get("/orgs/:orgId/agents", async (c) => {
+    const ctx = c.get("studioContext");
+    const agents = await ctx.storage.virtualMcps.list(c.req.param("orgId"));
+
+    return c.json({
+      agents: agents
+        .filter((agent) => !isStudioPackAgent(agent.id))
+        .map((agent) => ({
+          id: agent.id,
+          title: agent.title,
+          description: agent.description,
+          icon: agent.icon,
+          updatedAt: agent.updated_at,
+          connectionCount: agent.connections.length,
+          // The picker shows whether an agent has a prompt at all; the prompt
+          // itself can be long and this list is not the place to ship it.
+          hasInstructions: Boolean(agent.metadata?.instructions?.trim()),
+        })),
+    });
+  });
+
+  app.post("/agents/:agentId/copy", async (c) => {
+    const agentId = c.req.param("agentId");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      targetOrgId?: unknown;
+    };
+    const targetOrgId =
+      typeof body.targetOrgId === "string" ? body.targetOrgId.trim() : "";
+    if (!targetOrgId) {
+      return c.json({ error: "targetOrgId is required" }, 400);
+    }
+
+    const ctx = c.get("studioContext");
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    let result: Awaited<ReturnType<typeof copyAgentToOrg>>;
+    try {
+      result = await copyAgentToOrg(ctx, {
+        agentId,
+        targetOrgId,
+        // Attribute the new rows to the REAL admin, not an impersonated
+        // identity — same reasoning as the audit trail below.
+        actorUserId: actorId,
+      });
+    } catch (error) {
+      if (error instanceof CopyAgentError) {
+        return c.json({ error: error.message }, error.status);
+      }
+      throw error;
+    }
+
+    // Copying credentials into another tenant is the highest-blast-radius
+    // action on this surface after impersonation — it gets the same durable
+    // stdout trail plus a PostHog event.
+    auditAdminAction("agent_copy", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      source_agent_id: agentId,
+      source_organization_id: result.sourceOrgId,
+      target_organization_id: result.targetOrgId,
+      copied_agent_id: result.agentId,
+      copied_connection_ids: result.copiedConnections.map((x) => x.targetId),
+      copied_secret_count: result.copiedSecrets,
+      skipped_count: result.skipped.length,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_agent_copied",
+      groups: { organization: result.targetOrgId },
+      properties: {
+        actor_user_id: actorId,
+        source_agent_id: agentId,
+        source_organization_id: result.sourceOrgId,
+        target_organization_id: result.targetOrgId,
+        copied_agent_id: result.agentId,
+        copied_connection_count: result.copiedConnections.length,
+        copied_secret_count: result.copiedSecrets,
+        skipped_count: result.skipped.length,
+      },
+    });
+
+    return c.json(result);
   });
 
   return app;

@@ -1,6 +1,32 @@
 import type { admin as adminEn } from "../en/admin.ts";
 
 export const admin = {
+  "admin.copyAgent.agentStep": "2. Agente a copiar",
+  "admin.copyAgent.agentSummary": "{connections} conexões",
+  "admin.copyAgent.connectionsCopied":
+    "Conexões criadas na organização destino",
+  "admin.copyAgent.copiedSummary":
+    "{connections} conexões copiadas, {reused} conexões nativas reaproveitadas, {secrets} segredos copiados, {prompts} prompts iniciais copiados.",
+  "admin.copyAgent.copiedTitle": '"{title}" copiado para {org}',
+  "admin.copyAgent.copyAction": 'Copiar "{agent}" para {org}',
+  "admin.copyAgent.copyActionIdle": "Copiar agente",
+  "admin.copyAgent.copyFailed": "Falha ao copiar o agente",
+  "admin.copyAgent.copySucceeded": "Agente copiado",
+  "admin.copyAgent.credentialWarning":
+    "Tokens de acesso, configuração OAuth e segredos são copiados para a organização destino.",
+  "admin.copyAgent.failedLoadAgents": "Falha ao carregar agentes",
+  "admin.copyAgent.intro":
+    "Copie um agente para outra organização com seu system prompt, as conexões que ele usa e as credenciais delas. Conexões nativas apontam para as da própria organização destino; tudo que não pode ser copiado é listado após a cópia.",
+  "admin.copyAgent.noAgents": "Esta organização não tem agentes.",
+  "admin.copyAgent.noOrgs": "Nenhuma organização encontrada.",
+  "admin.copyAgent.noPrompt": "sem system prompt",
+  "admin.copyAgent.pickSourceFirst":
+    "Escolha primeiro a organização de origem.",
+  "admin.copyAgent.searchOrgs": "Buscar por nome ou slug...",
+  "admin.copyAgent.skippedTitle": "{count} itens não foram copiados",
+  "admin.copyAgent.sourceStep": "1. Organização de origem",
+  "admin.copyAgent.tab": "Copiar agente",
+  "admin.copyAgent.targetStep": "3. Organização destino",
   "admin.layout.adminDashboard": "Painel de Administração",
   "admin.layout.adminDashboardArea": "o painel de administração",
   "admin.layout.emailVerificationRequired":
