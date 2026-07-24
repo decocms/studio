@@ -356,24 +356,6 @@ const orgIndexRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
-// Library (/$org/files) — the org filesystem browser. Static segment, so it
-// outranks the /$taskId param route. `path` is the browse location
-// ("<volume>/<dir...>", "" = root); `preview` is an open file's path;
-// `skill` is an open skill dir's path (Claude Code skill preview).
-const librarySearchSchema = z.object({
-  path: z.string().optional(),
-  preview: z.string().optional(),
-  skill: z.string().optional(),
-});
-
-const libraryRoute = createRoute({
-  getParentRoute: () => orgShellLayout,
-  path: "/files",
-  validateSearch: librarySearchSchema,
-  pendingComponent: ShellRouteLoading,
-  component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
-});
-
 // Task board (/$org/board) — org-owned task board. `task` deep-links a
 // specific card's modal open (used by the "open in board" button from a
 // linked chat).
@@ -525,14 +507,6 @@ const settingsSecretsRoute = createRoute({
   ),
 });
 
-const settingsFilesRoute = createRoute({
-  getParentRoute: () => settingsLayout,
-  path: "/files",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/files.tsx"),
-  ),
-});
-
 const settingsBucketsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/buckets",
@@ -636,7 +610,6 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
   settingsSecretsRoute,
-  settingsFilesRoute,
   settingsBucketsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
@@ -651,7 +624,6 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
-  libraryRoute,
   boardRoute,
   agentShellWithChildren,
 ]);

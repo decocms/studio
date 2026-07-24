@@ -20,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
-import { useParams } from "@tanstack/react-router";
+import { SeeInLibraryLink } from "./see-in-library-link";
 import { useT } from "@/i18n/use-t.ts";
 import {
   FilePreview,
@@ -36,7 +36,6 @@ import {
 } from "@/hooks/use-org-fs";
 import { FileShareButton } from "./file-share-button";
 import { basename, parseLibraryPath } from "./location";
-import { SeeInLibraryLink } from "./see-in-library-link";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
 
@@ -78,13 +77,11 @@ export function LibraryFilePreview({
   const { data: entry, isPending } = useOrgFsStat(volume, filePath);
   const downloadUrl = useOrgFsDownloadUrl(volume ?? "");
   const filename = basename(filePath);
-  const { org } = useParams({ strict: false }) as { org?: string };
   const isDialog = variant === "dialog";
 
-  const seeInLibrary =
-    showSeeInLibrary && org ? (
-      <SeeInLibraryLink org={org} previewPath={previewPath} />
-    ) : null;
+  const seeInLibrary = showSeeInLibrary ? (
+    <SeeInLibraryLink previewPath={previewPath} />
+  ) : null;
 
   const file =
     entry && entry.kind === "file"
@@ -159,7 +156,6 @@ export function LibraryFilePreview({
             </span>
           )}
         </div>
-        {seeInLibrary}
         {file && (
           <>
             <FileShareButton

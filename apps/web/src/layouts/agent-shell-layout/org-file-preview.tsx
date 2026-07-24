@@ -21,7 +21,6 @@ export function OrgFilePreviewMount() {
   return (
     <LibraryPreviewDialog
       previewPath={preview}
-      showSeeInLibrary
       onClose={() =>
         navigate({
           to: ".",
@@ -31,6 +30,7 @@ export function OrgFilePreviewMount() {
           },
         })
       }
+      showSeeInLibrary
     />
   );
 }

@@ -1,37 +1,40 @@
 /**
- * "See in library" — jumps to a file's folder in the Library page, with the
- * file itself opened in preview. Shown only when a file is previewed away
- * from the Library (over a chat conversation: the mobile dialog and the
- * desktop main-panel tab). Shared by preview-dialog and preview-panel.
+ * "See in library" — opens the Library panel in the chat view, with the
+ * file's folder navigated to and the file itself opened in preview.
+ * Shown only when a file is previewed away from the Library (over a chat
+ * conversation).
  */
 
 import { Button } from "@deco/ui/components/button.tsx";
 import { Folder } from "@untitledui/icons";
-import { Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 
-export function SeeInLibraryLink({
-  org,
-  previewPath,
-}: {
-  org: string;
-  previewPath: string;
-}) {
+export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
+  const navigate = useNavigate();
   const parentPath = previewPath.split("/").slice(0, -1).join("/");
+
+  const handleClick = () => {
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        main: `library:${parentPath}`,
+        preview: previewPath,
+        skill: undefined,
+        brand: undefined,
+      }),
+    });
+  };
+
   return (
     <Button
       variant="ghost"
       size="sm"
-      asChild
+      onClick={handleClick}
       className="shrink-0 gap-1.5 text-xs text-muted-foreground"
     >
-      <Link
-        to="/$org/files"
-        params={{ org }}
-        search={{ path: parentPath, preview: previewPath }}
-      >
-        <Folder size={14} />
-        See in library
-      </Link>
+      <Folder size={14} />
+      See in library
     </Button>
   );
 }

@@ -1,6 +1,4 @@
 import { Suspense, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { useProjectContext } from "@/sdk";
 import {
   AlertCircle,
   Check,
@@ -173,7 +171,6 @@ function PickerBody({
 }
 
 function NoConfigsEmpty() {
-  const { org } = useProjectContext();
   const t = useT();
   return (
     <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
@@ -188,11 +185,6 @@ function NoConfigsEmpty() {
           {t("filePicker.filePickerDialog.noBucketDescription")}
         </p>
       </div>
-      <Button asChild size="sm" className="mt-2">
-        <Link to="/$org/settings/files" params={{ org: org.slug }}>
-          {t("filePicker.filePickerDialog.configureABucket")}
-        </Link>
-      </Button>
     </div>
   );
 }

@@ -94,6 +94,44 @@ function locationOf(volume: string, path: string, orgSlug: string): string {
   return dir ? `${volLabel}/${dir}` : volLabel;
 }
 
+/** Create drag-drop handlers for a library entry. */
+function makeDragHandlers(
+  path: string,
+  kind: "file" | "dir",
+  callbacks: {
+    onDragStart?: (path: string) => void;
+    onContextMenu?: (path: string, kind: "file" | "dir") => void;
+    onDrop?: (fromPath: string, toPath: string) => void;
+  },
+) {
+  return {
+    onDragStart: (ev: React.DragEvent) => {
+      callbacks.onDragStart?.(path);
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("application/x-studio-library-path", path);
+    },
+    onContextMenu: (ev: React.MouseEvent) => {
+      ev.preventDefault();
+      callbacks.onContextMenu?.(path, kind);
+    },
+    onDrop: callbacks.onDrop
+      ? (ev: React.DragEvent) => {
+          ev.preventDefault();
+          const fromPath = ev.dataTransfer.getData(
+            "application/x-studio-library-path",
+          );
+          if (
+            fromPath &&
+            fromPath !== path &&
+            !path.startsWith(fromPath + "/")
+          ) {
+            callbacks.onDrop!(fromPath, path);
+          }
+        }
+      : undefined,
+  };
+}
+
 export interface PendingDelete {
   volume: string;
   path: string;
@@ -425,6 +463,9 @@ export function VolumeView({
   onOpenBrand,
   onShare,
   onDelete,
+  onDragStart,
+  onContextMenu,
+  onMove,
 }: {
   location: LibraryLocation;
   onOpenDir: (path: string) => void;
@@ -433,6 +474,9 @@ export function VolumeView({
   onOpenBrand: (brandPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
+  onDragStart?: (path: string) => void;
+  onContextMenu?: (path: string, kind: "file" | "dir") => void;
+  onMove?: (fromPath: string, toDir: string) => void;
 }) {
   const t = useT();
   const volume = location.volume ?? "";
@@ -510,6 +554,11 @@ export function VolumeView({
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>
@@ -528,6 +577,11 @@ export function VolumeView({
                 onOpen={() => onOpenBrand(browsePathFor(location, e.path))}
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>
@@ -547,6 +601,12 @@ export function VolumeView({
                 onOpen={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                  onDrop: onMove,
+                })}
               />
             ))}
           </CardsGrid>
@@ -566,6 +626,11 @@ export function VolumeView({
                 onOpen={() => onOpenFile(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
+                draggable={!location.readOnly}
+                {...makeDragHandlers(e.path, "file", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>

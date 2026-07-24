@@ -759,20 +759,3 @@ export function BrandPreviewDialog({
 }
 
 /** Desktop: right-side panel (consistent with file previews). */
-export function BrandPreviewPanel({
-  brandPath,
-  onClose,
-}: {
-  brandPath: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      <BrandPreviewContent
-        brandPath={brandPath}
-        onClose={onClose}
-        variant="panel"
-      />
-    </div>
-  );
-}

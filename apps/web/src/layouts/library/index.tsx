@@ -18,13 +18,11 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import {
   Eye,
-  Palette,
   Plus,
   RefreshCw01,
   SearchLg,
   Upload01,
   XClose,
-  Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -47,24 +45,14 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { FileTypeIcon } from "@/components/file-type-icon";
-import { Toolbar } from "@/layouts/agent-shell-layout/toolbar";
-import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/resizable";
-import { BrandPreviewDialog, BrandPreviewPanel } from "./brand-preview";
+import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
-import { LibraryPreviewPanel } from "./preview-panel";
-import { SkillPreviewDialog, SkillPreviewPanel } from "./skill-preview";
+import { SkillPreviewDialog } from "./skill-preview";
 import {
   Breadcrumbs,
   type PendingDelete,
@@ -147,6 +135,12 @@ export function LibraryPage({
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{
+    path: string;
+    kind: "file" | "dir";
+  } | null>(null);
+  const [renameName, setRenameName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   // Depth counter so dragenter/leave bubbling from child cards doesn't flicker.
@@ -158,7 +152,7 @@ export function LibraryPage({
     ? null
     : (location.volume ?? "uploads");
   const uploadDir = location.volume ? location.dirPath : "";
-  const { upload, mkdir } = useOrgFsMutations(uploadVolume ?? "uploads");
+  const { upload, mkdir, move } = useOrgFsMutations(uploadVolume ?? "uploads");
   // Deletes can target any volume (the root feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
@@ -252,6 +246,57 @@ export function LibraryPage({
     }
   }
 
+  async function handleRename() {
+    if (!renameTarget) return;
+    const newName = renameName.trim();
+    if (
+      !newName ||
+      newName.includes("/") ||
+      newName.includes("..") ||
+      newName === basename(renameTarget.path)
+    ) {
+      setRenameOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+      return;
+    }
+    try {
+      const dir = renameTarget.path.includes("/")
+        ? renameTarget.path.slice(0, renameTarget.path.lastIndexOf("/"))
+        : "";
+      const newPath = dir ? `${dir}/${newName}` : newName;
+      await move.mutateAsync({ from: renameTarget.path, to: newPath });
+      const displayName = newName.replace(/[<>]/g, "");
+      toast.success(t("library.library.renamed", { name: displayName }));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.renameFailed"),
+      );
+    } finally {
+      setRenameOpen(false);
+      setRenameTarget(null);
+      setRenameName("");
+    }
+  }
+
+  async function handleMove(fromPath: string, toDir: string) {
+    try {
+      const fromName = basename(fromPath);
+      const newPath = toDir ? `${toDir}/${fromName}` : fromName;
+      await move.mutateAsync({ from: fromPath, to: newPath });
+      toast.success(
+        t("library.library.moved", {
+          name: fromName,
+          destination: toDir || t("library.library.theLibrary"),
+        }),
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.moveFailed"),
+      );
+    }
+  }
+
   function refresh() {
     for (const v of VOLUMES) {
       queryClient.invalidateQueries({
@@ -268,6 +313,12 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
+  function handleContextMenuEmpty(e: React.MouseEvent) {
+    if (!isRoot || location.readOnly || !uploadVolume) return;
+    e.preventDefault();
+    setNewFolderOpen(true);
+  }
+
   return (
     <div
       className="relative h-full"
@@ -275,6 +326,7 @@ export function LibraryPage({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onContextMenu={handleContextMenuEmpty}
     >
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm">
@@ -401,6 +453,12 @@ export function LibraryPage({
               onOpenBrand={onOpenBrand}
               onShare={setShareTarget}
               onDelete={setPendingDelete}
+              onContextMenu={(path, kind) => {
+                setRenameTarget({ path, kind });
+                setRenameName(basename(path));
+                setRenameOpen(true);
+              }}
+              onMove={handleMove}
             />
           )}
         </div>
@@ -463,6 +521,50 @@ export function LibraryPage({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={renameOpen}
+        onOpenChange={(open) => {
+          setRenameOpen(open);
+          if (!open) {
+            setRenameTarget(null);
+            setRenameName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {renameTarget &&
+                t("library.library.renameTitle", {
+                  name: basename(renameTarget.path),
+                })}
+            </DialogTitle>
+            <DialogDescription>
+              {t("library.library.renameDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={renameName}
+            onChange={(e) => setRenameName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleRename();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>
+              {t("library.library.cancel")}
+            </Button>
+            <Button
+              disabled={!renameName.trim() || move.isPending}
+              onClick={() => void handleRename()}
+            >
+              {t("library.library.rename")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ShareDialog
         target={shareTarget}
         onOpenChange={(open) => {
@@ -498,125 +600,5 @@ export function LibraryPage({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  );
-}
-
-export default function Library() {
-  const isMobile = useIsMobile();
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as {
-    preview?: string;
-    skill?: string;
-    brand?: string;
-  };
-  const clearParam = (key: "preview" | "skill" | "brand") =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        [key]: undefined,
-      }),
-    });
-
-  // One right-side panel at a time; preview wins, then skill, then brand —
-  // matching the dialog precedence in LibraryPage.
-  const right = search.preview
-    ? {
-        key: "preview" as const,
-        path: search.preview,
-        panel: (
-          <LibraryPreviewPanel
-            previewPath={search.preview}
-            onClose={() => clearParam("preview")}
-          />
-        ),
-      }
-    : search.skill
-      ? {
-          key: "skill" as const,
-          path: search.skill,
-          panel: (
-            // Keyed per skill so switching entries remounts (no stale state).
-            <SkillPreviewPanel
-              key={search.skill}
-              skillPath={search.skill}
-              onClose={() => clearParam("skill")}
-            />
-          ),
-        }
-      : search.brand
-        ? {
-            key: "brand" as const,
-            path: search.brand,
-            panel: (
-              // Keyed per brand so switching entries remounts the editor.
-              <BrandPreviewPanel
-                key={search.brand}
-                brandPath={search.brand}
-                onClose={() => clearParam("brand")}
-              />
-            ),
-          }
-        : null;
-
-  if (isMobile) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        <ErrorBoundary>
-          <LibraryPage />
-        </ErrorBoundary>
-      </div>
-    );
-  }
-
-  // Desktop: chat-style two-panel group — Library on the left and, when a
-  // file is open (`?preview=`), its preview as a tab-like panel on the right.
-  return (
-    <ResizablePanelGroup
-      direction="horizontal"
-      className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0"
-    >
-      <ResizablePanel order={1} minSize={30} defaultSize={55}>
-        <div className="h-full p-0.5 pt-0.25">
-          <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-            <ErrorBoundary>
-              <LibraryPage />
-            </ErrorBoundary>
-          </div>
-        </div>
-      </ResizablePanel>
-      {right && (
-        <>
-          {/* Mirror the chat: the open preview surfaces as a pill in the
-              shared top-right tab slot; clicking it closes the panel. */}
-          <Toolbar.Tabs>
-            <HeaderTabButton
-              title={basename(right.path)}
-              icon={{
-                kind: "component",
-                Component: (props) =>
-                  right.key === "preview" ? (
-                    <FileTypeIcon filename={basename(right.path)} {...props} />
-                  ) : right.key === "skill" ? (
-                    <Zap {...props} />
-                  ) : (
-                    <Palette {...props} />
-                  ),
-              }}
-              active
-              onClick={() => clearParam(right.key)}
-            />
-          </Toolbar.Tabs>
-          <ResizableHandle className="bg-sidebar" />
-          <ResizablePanel order={2} minSize={25} defaultSize={45}>
-            <div className="h-full p-0.5 pt-0.25">
-              <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-                <ErrorBoundary>{right.panel}</ErrorBoundary>
-              </div>
-            </div>
-          </ResizablePanel>
-        </>
-      )}
-    </ResizablePanelGroup>
   );
 }
