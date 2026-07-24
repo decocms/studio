@@ -26,6 +26,7 @@ import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import { getDb } from "@/database";
 import { getSettings } from "../settings";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
+import { subscriptionInGoodStanding } from "./subscription-state";
 
 const MICROS_PER_CENT = 10_000;
 /** Fast path is instant; anything pending past this is a failed delivery. */
@@ -43,18 +44,14 @@ export function computeAllowanceMicros(
 /**
  * self_serve orgs grant 0 while the subscription isn't in good standing
  * (canceled/none — past_due is grace): seats describe WHO is paid-for, the
- * subscription is whether anyone is paying at all. invoiced (contract) orgs
- * have no Stripe status, and orgs predating billing rows fail open — their
- * seats always count.
+ * subscription is whether anyone is paying at all (subscriptionInGoodStanding
+ * — the same predicate the middleware seat gate uses).
  */
 export function effectivePaidSeatCount(
   billing: { billingMode: string; status: string } | null,
   paidSeatCount: number,
 ): number {
-  if (!billing || billing.billingMode !== "self_serve") return paidSeatCount;
-  return billing.status === "active" || billing.status === "past_due"
-    ? paidSeatCount
-    : 0;
+  return subscriptionInGoodStanding(billing) ? paidSeatCount : 0;
 }
 
 /** Whether this deployment can deliver benefits at all (self-hosted can't). */

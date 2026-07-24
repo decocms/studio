@@ -289,9 +289,12 @@ describe("applyStripeEvent", () => {
         metadata: { orgId: ORG_BASIL },
       }),
     );
+    // The refusal names the orphan so the route wrapper can cancel the
+    // subscription the customer just paid for.
     expect(rebind).toEqual({
       handled: false,
       reason: "org already bound to another subscription",
+      orphanSubscriptionId: "sub_evil",
     });
     expect((await storage.getBilling(ORG_BASIL))?.stripeSubscriptionId).toBe(
       "sub_b1",

@@ -1,8 +1,10 @@
 /**
  * Per-seat billing hooks: the org's billing identity + who holds paid seats
  * (ORGANIZATION_SEATS_GET), and the staged-changes apply
- * (ORGANIZATION_SEATS_SET — invoiced orgs only until the Stripe checkout
- * path lands). Seats are monetization, orthogonal to roles.
+ * (ORGANIZATION_SEATS_SET — the backend also handles self-serve orgs, but
+ * this UI still exposes the toggle to invoiced orgs only; the self-serve
+ * checkout/preview surface is the frontend follow-up). Seats are
+ * monetization, orthogonal to roles.
  */
 
 import { useProjectContext } from "@decocms/mesh-sdk";

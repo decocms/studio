@@ -27,6 +27,14 @@ describe("toStripeForm", () => {
     expect(form.get("d")).toBe("false");
   });
 
+  test("empty arrays and nested null/undefined encode to nothing", () => {
+    const form = toStripeForm({
+      items: [],
+      nested: { keep: "x", drop: undefined, gone: null },
+    });
+    expect([...form.keys()]).toEqual(["nested[keep]"]);
+  });
+
   test("encodes the seat-change preview shape (nested items in details)", () => {
     const form = toStripeForm({
       subscription: "sub_1",

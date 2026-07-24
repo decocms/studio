@@ -16,9 +16,9 @@ import { z } from "zod";
 import {
   createSeatCheckoutSession,
   previewSeatChange,
-  StripeApiError,
 } from "../../billing/stripe-api";
-import { getBaseUrl } from "../../core/server-constants";
+import { hasChargeableSubscription } from "../../billing/subscription-state";
+import { getPublicUrl } from "../../core/server-constants";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 
@@ -65,6 +65,18 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
         "This organization already has an active subscription — seat changes apply directly.",
       );
     }
+    // A BOUND subscription blocks checkout even when status isn't active:
+    // past_due (dunning) and unpaid/paused (mapped to canceled WITHOUT
+    // unbinding) all mean a live subscription still exists on Stripe — a
+    // second checkout would charge the customer for a subscription the
+    // webhook then refuses to bind (orphan). Recovery is Stripe-side: settle
+    // the invoice (invoice.paid reactivates) or let Stripe delete the
+    // subscription (deleted unbinds, and checkout opens up again).
+    if (billing.stripeSubscriptionId) {
+      throw new Error(
+        "This organization still has a subscription on file — settle or cancel it before starting a new checkout.",
+      );
+    }
     const quantity = paidSeatUserIds.length;
     if (quantity < 1) {
       throw new Error(
@@ -72,19 +84,16 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
       );
     }
 
-    const membersUrl = `${getBaseUrl()}/${encodeURIComponent(orgSlug)}/members`;
-    try {
-      const { url } = await createSeatCheckoutSession({
-        organizationId,
-        quantity,
-        successUrl: `${membersUrl}?checkout=success`,
-        cancelUrl: `${membersUrl}?checkout=canceled`,
-      });
-      return { url, quantity };
-    } catch (err) {
-      if (err instanceof StripeApiError) throw new Error(err.message);
-      throw err;
-    }
+    // getPublicUrl: the browser follows these from Stripe's domain, so they
+    // must be externally reachable, never a localhost fallback.
+    const membersUrl = `${getPublicUrl()}/${encodeURIComponent(orgSlug)}/members`;
+    const { url } = await createSeatCheckoutSession({
+      organizationId,
+      quantity,
+      successUrl: `${membersUrl}?checkout=success`,
+      cancelUrl: `${membersUrl}?checkout=canceled`,
+    });
+    return { url, quantity };
   },
 });
 
@@ -119,23 +128,13 @@ export const ORGANIZATION_SEATS_PREVIEW = defineTool({
 
     const billing =
       await ctx.storage.organizationBilling.getBilling(organizationId);
-    if (
-      !billing ||
-      billing.billingMode !== "self_serve" ||
-      billing.status !== "active" ||
-      !billing.stripeSubscriptionId
-    ) {
+    if (!hasChargeableSubscription(billing)) {
       throw new Error("Seat previews need an active self-serve subscription.");
     }
 
-    try {
-      return await previewSeatChange({
-        subscriptionId: billing.stripeSubscriptionId,
-        quantity: input.quantity,
-      });
-    } catch (err) {
-      if (err instanceof StripeApiError) throw new Error(err.message);
-      throw err;
-    }
+    return await previewSeatChange({
+      subscriptionId: billing.stripeSubscriptionId,
+      quantity: input.quantity,
+    });
   },
 });

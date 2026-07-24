@@ -58,29 +58,41 @@ export function toStripeForm(
   return out;
 }
 
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function stripeRequest<T>(
   path: string,
-  params: Record<string, unknown>,
+  init?: {
+    method?: "GET" | "POST" | "DELETE";
+    params?: Record<string, unknown>;
+  },
 ): Promise<T> {
   const key = getSettings().stripeSecretKey;
-  if (!key) throw new StripeApiError(503, "STRIPE_SECRET_KEY not configured");
+  // Config-missing messages are deliberately generic: they surface to org
+  // admins through tool errors — actionable, without echoing env var names.
+  if (!key) throw new StripeApiError(503, "billing is not configured");
+  const body = init?.params ? toStripeForm(init.params).toString() : undefined;
   const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
+    method: init?.method ?? (body ? "POST" : "GET"),
     headers: {
       Authorization: `Bearer ${key}`,
-      "Content-Type": "application/x-www-form-urlencoded",
+      ...(body && { "Content-Type": "application/x-www-form-urlencoded" }),
     },
-    body: toStripeForm(params).toString(),
+    body,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const parsed = (await res.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
   if (!res.ok) {
     const message =
-      ((body.error as Record<string, unknown> | undefined)?.message as
+      ((parsed.error as Record<string, unknown> | undefined)?.message as
         | string
         | undefined) ?? `HTTP ${res.status}`;
     throw new StripeApiError(res.status, message);
   }
-  return body as T;
+  return parsed as T;
 }
 
 /** First subscribe: Checkout collects + saves the card; afterwards every
@@ -93,17 +105,19 @@ export async function createSeatCheckoutSession(input: {
 }): Promise<{ url: string }> {
   const priceId = getSettings().stripeSeatPriceId;
   if (!priceId) {
-    throw new StripeApiError(503, "STRIPE_SEAT_PRICE_ID not configured");
+    throw new StripeApiError(503, "billing is not configured");
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: input.quantity }],
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
-    // orgId on BOTH the session (checkout.session.completed) and the
-    // subscription (defense in depth for subscription-keyed lookups).
-    metadata: { orgId: input.organizationId },
-    subscription_data: { metadata: { orgId: input.organizationId } },
+    params: {
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: input.quantity }],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      // orgId on BOTH the session (checkout.session.completed) and the
+      // subscription (defense in depth for subscription-keyed lookups).
+      metadata: { orgId: input.organizationId },
+      subscription_data: { metadata: { orgId: input.organizationId } },
+    },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
   return { url: session.url };
@@ -111,23 +125,32 @@ export async function createSeatCheckoutSession(input: {
 
 interface StripeSubscription {
   id: string;
-  items: { data: Array<{ id: string; quantity?: number }> };
+  items: {
+    data: Array<{ id: string; quantity?: number; price?: { id?: string } }>;
+  };
 }
 
-async function getSubscriptionItem(
+/**
+ * The org's SEAT item on its subscription: matched by the configured seat
+ * price so a dashboard-added second item (a future addon) can never get its
+ * quantity silently rewritten by a seat change. Falls back to a sole item
+ * only when no price is configured.
+ */
+async function getSeatItem(
   subscriptionId: string,
-): Promise<{ itemId: string }> {
-  const key = getSettings().stripeSecretKey;
-  if (!key) throw new StripeApiError(503, "STRIPE_SECRET_KEY not configured");
-  const res = await fetch(`${BASE_URL}/subscriptions/${subscriptionId}`, {
-    headers: { Authorization: `Bearer ${key}` },
-  });
-  const body = (await res.json().catch(() => ({}))) as StripeSubscription &
-    Record<string, unknown>;
-  if (!res.ok) throw new StripeApiError(res.status, "subscription not found");
-  const itemId = body.items?.data?.[0]?.id;
-  if (!itemId) throw new StripeApiError(500, "subscription has no items");
-  return { itemId };
+): Promise<{ itemId: string; quantity: number }> {
+  const sub = await stripeRequest<StripeSubscription>(
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+  );
+  const items = sub.items?.data ?? [];
+  const priceId = getSettings().stripeSeatPriceId;
+  const item = priceId
+    ? items.find((i) => i.price?.id === priceId)
+    : items.length === 1
+      ? items[0]
+      : undefined;
+  if (!item) throw new StripeApiError(500, "subscription has no seat item");
+  return { itemId: item.id, quantity: item.quantity ?? 0 };
 }
 
 /** The inline recompute behind the Apply button: what the org pays NOW for
@@ -136,15 +159,17 @@ export async function previewSeatChange(input: {
   subscriptionId: string;
   quantity: number;
 }): Promise<{ amountDueCents: number; currency: string }> {
-  const { itemId } = await getSubscriptionItem(input.subscriptionId);
+  const { itemId } = await getSeatItem(input.subscriptionId);
   const preview = await stripeRequest<{
     amount_due?: number;
     currency?: string;
   }>("/invoices/create_preview", {
-    subscription: input.subscriptionId,
-    subscription_details: {
-      items: [{ id: itemId, quantity: input.quantity }],
-      proration_behavior: "always_invoice",
+    params: {
+      subscription: input.subscriptionId,
+      subscription_details: {
+        items: [{ id: itemId, quantity: input.quantity }],
+        proration_behavior: "always_invoice",
+      },
     },
   });
   return {
@@ -160,10 +185,53 @@ export async function applySeatQuantity(input: {
   subscriptionId: string;
   quantity: number;
 }): Promise<void> {
-  const { itemId } = await getSubscriptionItem(input.subscriptionId);
-  await stripeRequest(`/subscriptions/${input.subscriptionId}`, {
-    items: [{ id: itemId, quantity: input.quantity }],
-    proration_behavior: "always_invoice",
-    payment_behavior: "pending_if_incomplete",
+  const { itemId } = await getSeatItem(input.subscriptionId);
+  await stripeRequest(
+    `/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
+    {
+      params: {
+        items: [{ id: itemId, quantity: input.quantity }],
+        proration_behavior: "always_invoice",
+        payment_behavior: "pending_if_incomplete",
+      },
+    },
+  );
+}
+
+/** Cancel a subscription outright. Used for orphans: a checkout that
+ *  completed for an org already bound to a different subscription — the
+ *  customer paid, the webhook refused the bind, nothing should keep billing. */
+export async function cancelSubscription(
+  subscriptionId: string,
+): Promise<void> {
+  await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: "DELETE",
   });
+}
+
+/**
+ * Converge the subscription quantity onto the seat rows (the truth of WHO is
+ * paid-for). Called from webhook anchors that prove the card WORKS
+ * (invoice.paid, checkout completion) — never from failure paths, so a
+ * declined proration can't loop charge attempts. No-op when they already
+ * match. Returns whether a correction was pushed.
+ */
+export async function reconcileSeatQuantity(input: {
+  subscriptionId: string;
+  targetQuantity: number;
+}): Promise<boolean> {
+  if (input.targetQuantity < 1) return false; // zero-seat = cancellation flow, not a quantity
+  const { itemId, quantity } = await getSeatItem(input.subscriptionId);
+  if (quantity === input.targetQuantity) return false;
+  await stripeRequest(
+    `/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
+    {
+      params: {
+        items: [{ id: itemId, quantity: input.targetQuantity }],
+        proration_behavior: "always_invoice",
+        payment_behavior: "pending_if_incomplete",
+      },
+    },
+  );
+  return true;
 }

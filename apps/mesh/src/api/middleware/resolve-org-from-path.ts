@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler } from "hono";
+import { subscriptionInGoodStanding } from "../../billing/subscription-state";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
@@ -244,13 +245,19 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       // A paid-seat row only UNLOCKS while someone is actually paying: for
       // self_serve orgs the subscription must be in good standing (staged
       // seats before the first checkout, or after cancellation, don't grant
-      // access) — same semantics as effectivePaidSeatCount on the grant side.
-      // invoiced (contract) orgs have no Stripe status; their rows count.
+      // access) — subscriptionInGoodStanding, the SAME predicate the grant
+      // side (effectivePaidSeatCount) keys on, so access and allowance can't
+      // drift. A null billing row passes the predicate, but billing_legacy is
+      // null then too, so the gate stays off regardless.
       if (billingEnforced) {
-        const subscriptionGood =
-          membership.billing_mode !== "self_serve" ||
-          membership.billing_status === "active" ||
-          membership.billing_status === "past_due";
+        const subscriptionGood = subscriptionInGoodStanding(
+          membership.billing_mode && membership.billing_status
+            ? {
+                billingMode: membership.billing_mode,
+                status: membership.billing_status,
+              }
+            : null,
+        );
         ctx.access.setSeatGated(
           membership.billing_legacy === false &&
             !(membership.has_paid_seat === true && subscriptionGood),

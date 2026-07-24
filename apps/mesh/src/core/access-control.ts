@@ -78,6 +78,21 @@ export class PaidSeatRequiredError extends ForbiddenError {
  */
 const SEAT_GATE_READ_RESOURCES: ReadonlySet<string> = new Set(["ORG_FS_READ"]);
 
+/**
+ * Mutating billing-bootstrap tools a seat-gated caller must still reach: on a
+ * fresh self-serve org NOBODY holds an unlocking seat yet (staged seats don't
+ * unlock until a subscription is paying), so gating these would deadlock the
+ * subscribe flow — the admin could never stage seats or start the checkout
+ * that ends the gating. Only the seat gate is bypassed; the permission check
+ * below still applies (these live under members:manage — admins/owners only).
+ * Read-only billing tools (SEATS_GET, SEATS_PREVIEW) already pass via
+ * readOnlyHint.
+ */
+const SEAT_GATE_BOOTSTRAP_TOOLS: ReadonlySet<string> = new Set([
+  "ORGANIZATION_SEATS_SET",
+  "ORGANIZATION_BILLING_CHECKOUT_START",
+]);
+
 // ============================================================================
 // AccessControl Class
 // ============================================================================
@@ -210,6 +225,7 @@ export class AccessControl {
     if (
       this.seatGated &&
       !this.toolReadOnly &&
+      !(this.toolName && SEAT_GATE_BOOTSTRAP_TOOLS.has(this.toolName)) &&
       !(
         resourcesToCheck.length > 0 &&
         resourcesToCheck.every((r) => SEAT_GATE_READ_RESOURCES.has(r))

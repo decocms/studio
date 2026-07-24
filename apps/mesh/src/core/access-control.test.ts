@@ -486,6 +486,51 @@ describe("AccessControl", () => {
       );
     });
 
+    it("lets billing-bootstrap tools through for a gated admin — but only past the gate, not past permissions", async () => {
+      // A fresh self-serve org gates EVERYONE (no paying subscription yet) —
+      // staging seats and starting checkout must stay reachable or nobody can
+      // ever subscribe. The permission layer still applies.
+      const ac = new AccessControl(
+        "user_1",
+        "ORGANIZATION_BILLING_CHECKOUT_START",
+        createMockBoundAuth({ self: ["ORGANIZATION_BILLING_CHECKOUT_START"] }),
+        "user",
+      );
+      ac.setSeatGated(true);
+      ac.setToolReadOnly(false);
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+
+      const acSeats = new AccessControl(
+        "user_1",
+        "ORGANIZATION_SEATS_SET",
+        createMockBoundAuth({ self: ["ORGANIZATION_SEATS_SET"] }),
+        "user",
+      );
+      acSeats.setSeatGated(true);
+      acSeats.setToolReadOnly(false);
+      await acSeats.check();
+      expect(acSeats.granted()).toBe(true);
+
+      // Bypass is gate-only: without the permission, the check still 403s.
+      const acNoPerm = new AccessControl(
+        "user_1",
+        "ORGANIZATION_SEATS_SET",
+        createMockBoundAuth({}),
+        "user",
+      );
+      acNoPerm.setSeatGated(true);
+      acNoPerm.setToolReadOnly(false);
+      // Plain permission 403 — NOT the paid-seat paywall error.
+      const err = await acNoPerm.check().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(ForbiddenError);
+      expect(err).not.toBeInstanceOf(PaidSeatRequiredError);
+      expect(acNoPerm.granted()).toBe(false);
+    });
+
     it("changes nothing when the gate is off (flag off / legacy / paid seat)", async () => {
       const ac = new AccessControl(
         "user_1",

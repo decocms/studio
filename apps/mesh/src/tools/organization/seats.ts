@@ -21,6 +21,7 @@
 
 import { z } from "zod";
 import { applySeatQuantity, StripeApiError } from "../../billing/stripe-api";
+import { hasChargeableSubscription } from "../../billing/subscription-state";
 import {
   benefitsSyncEnabled,
   enqueueBenefitsSync,
@@ -135,10 +136,10 @@ export const ORGANIZATION_SEATS_SET = defineTool({
         "This organization is on the legacy plan — seats do not apply.",
       );
     }
-    const mirrorToStripe =
-      billing.billingMode === "self_serve" &&
-      billing.status === "active" &&
-      !!billing.stripeSubscriptionId;
+    // Narrowed once here: the id survives past the setSeats call below.
+    const stripeSubscriptionId = hasChargeableSubscription(billing)
+      ? billing.stripeSubscriptionId
+      : null;
 
     let result: Awaited<
       ReturnType<typeof ctx.storage.organizationBilling.setSeats>
@@ -162,13 +163,17 @@ export const ORGANIZATION_SEATS_SET = defineTool({
 
     // Mirror the new count onto the Stripe subscription (prorated difference
     // charged on the saved card). AFTER the rows: seat rows are the truth of
-    // WHO; the quantity is derived and idempotent-absolute, so a failure here
-    // is retried by simply re-applying (same rows → same target quantity).
-    // Surfaced as an error so the UI knows the charge didn't happen.
-    if (mirrorToStripe && result.applied.length > 0) {
+    // WHO; the quantity is derived and idempotent-absolute. Deliberately NOT
+    // gated on `applied.length` — a re-apply whose rows are already right
+    // (all no-ops) is exactly the retry after a failed mirror, and it must
+    // still reach Stripe or "apply again to retry the charge" would be a lie.
+    // Surfaced as an error so the UI knows the charge didn't happen. The
+    // webhook additionally reconciles quantity↔rows on every paid invoice,
+    // so a divergence self-heals even if nobody retries.
+    if (stripeSubscriptionId) {
       try {
         await applySeatQuantity({
-          subscriptionId: billing.stripeSubscriptionId as string,
+          subscriptionId: stripeSubscriptionId,
           quantity: result.paidSeatCount,
         });
       } catch (err) {
