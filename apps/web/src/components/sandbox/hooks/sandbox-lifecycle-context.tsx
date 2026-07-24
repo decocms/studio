@@ -177,6 +177,34 @@ export function shouldAutoRetryClaim(args: ShouldAutoRetryClaimArgs): boolean {
   );
 }
 
+/** The bounded auto-retry budget for one boot episode (see shouldAutoRetryClaim). */
+export interface ClaimRetryEpisode {
+  branch: string | null;
+  count: number;
+  handled: boolean;
+}
+
+export const INITIAL_CLAIM_RETRY_EPISODE: ClaimRetryEpisode = {
+  branch: null,
+  count: 0,
+  handled: false,
+};
+
+/** Resets the auto-retry budget when the active branch changes. The
+ *  lifecycle provider is NOT remounted on a task switch (it lives above
+ *  Chat.ActiveTaskProvider), so without this a budget exhausted by one
+ *  branch's failed boot would carry over and silently skip auto-retry for
+ *  an unrelated branch's fresh boot. Returns `prev` unchanged (same
+ *  reference) when the branch hasn't changed, so callers can skip the
+ *  state update. */
+export function reconcileClaimRetryEpisode(
+  prev: ClaimRetryEpisode,
+  branch: string | null,
+): ClaimRetryEpisode {
+  if (prev.branch === branch) return prev;
+  return { branch, count: 0, handled: false };
+}
+
 /** Terminal SANDBOX_START error to surface (→ `errored` preview state), or null
  *  while still booting. Two independent sources feed the same terminal state:
  *   - a rejected SANDBOX_START mutation (GitHub-not-auth, non-retryable server error);
@@ -355,9 +383,19 @@ export function SandboxLifecycleProvider({
   // Bounded auto-retry of retryable terminal claim failures (see
   // shouldAutoRetryClaim). `count` is the budget for this boot; `handled`
   // fires exactly one retry per failed episode (re-armed when phase leaves
-  // `failed`). Both reset on a user-driven retry().
-  const claimRetryCountRef = useRef(0);
-  const claimFailureHandledRef = useRef(false);
+  // `failed`). Both reset on a user-driven retry(), and reconciled against
+  // the active branch below (see reconcileClaimRetryEpisode) since this
+  // provider outlives a task switch.
+  const [claimRetryEpisodeState, setClaimRetryEpisodeState] = useState(
+    INITIAL_CLAIM_RETRY_EPISODE,
+  );
+  const claimRetryEpisode = reconcileClaimRetryEpisode(
+    claimRetryEpisodeState,
+    branch,
+  );
+  if (claimRetryEpisode !== claimRetryEpisodeState) {
+    setClaimRetryEpisodeState(claimRetryEpisode);
+  }
 
   // Derived values, recomputed each render.
   // Cast: parseBranchMap returns SandboxRecord where sandboxProviderKind is
@@ -392,8 +430,7 @@ export function SandboxLifecycleProvider({
   const claimRetryExhausted =
     !failedPhase ||
     !isRetryableClaimFailure(failedPhase.reason) ||
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only budget probe; incremented inside the effect after firing
-    claimRetryCountRef.current >= MAX_CLAIM_AUTO_RETRIES;
+    claimRetryEpisode.count >= MAX_CLAIM_AUTO_RETRIES;
   const startError = deriveStartError({
     mutationError:
       startVm.isError && startVm.error
@@ -508,28 +545,31 @@ export function SandboxLifecycleProvider({
   // the common transient-infra failure self-heals without a user click.
   const claimRetryEligible = shouldAutoRetryClaim({
     failedReason: failedPhase?.reason ?? null,
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only budget probe; incremented inside the effect after firing
-    attempts: claimRetryCountRef.current,
+    attempts: claimRetryEpisode.count,
     isPending: startVm.isPending || sharedLifecyclePending,
     userStopped,
     autoStartBlocked,
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only episode guard; set inside the effect after firing
-    alreadyHandled: claimFailureHandledRef.current,
+    alreadyHandled: claimRetryEpisode.handled,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges the SSE failed phase into a one-shot bounded reprovision
   useEffect(() => {
     if (!failedPhase) {
       // Left the failed state (new claim in progress / ready) → re-arm so the
-      // next distinct failure episode can fire its own retry.
-      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- re-arm episode guard when phase leaves `failed`
-      claimFailureHandledRef.current = false;
+      // next distinct failure episode can fire its own retry. Bails out (same
+      // reference) when already re-armed, so this doesn't cause a render loop.
+      setClaimRetryEpisodeState((prev) =>
+        prev.handled ? { ...prev, handled: false } : prev,
+      );
       return;
     }
     if (!claimRetryEligible || !virtualMcpId) return;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mark this episode handled so it fires exactly once
-    claimFailureHandledRef.current = true;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- consume one retry from the boot budget
-    claimRetryCountRef.current += 1;
+    // Mark this episode handled (fires exactly once) and consume one retry
+    // from this branch's boot budget.
+    setClaimRetryEpisodeState((prev) => ({
+      ...prev,
+      handled: true,
+      count: prev.count + 1,
+    }));
     const args = buildSandboxStartArgs(
       virtualMcpId,
       branch,
@@ -609,10 +649,8 @@ export function SandboxLifecycleProvider({
     autoStartAttemptedForBranchRef.current = new Set();
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so self-heal can fire on next gone
     reprovisionedForVmIdRef.current = null;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- fresh auto-retry budget for the user-driven attempt
-    claimRetryCountRef.current = 0;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- re-arm the failed-episode guard
-    claimFailureHandledRef.current = false;
+    // Fresh auto-retry budget for the user-driven attempt.
+    setClaimRetryEpisodeState({ branch, count: 0, handled: false });
     startVmReset();
     start();
   };
