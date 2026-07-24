@@ -2,7 +2,6 @@ import { IntegrationIcon } from "@/web/components/integration-icon";
 import { KEYS } from "@/web/lib/query-keys";
 import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Dialog,
   DialogContent,
@@ -18,12 +17,7 @@ import {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  CheckCircle,
-  LinkBroken01,
-  Loading01,
-  Settings01,
-} from "@untitledui/icons";
+import { LinkBroken01, Loading01, Settings01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
@@ -31,6 +25,12 @@ import {
   getConfigurationSummaryEntries,
   shouldAutoOpenCompanionConfig,
 } from "./companions-core.ts";
+import {
+  CompanionCardView,
+  ConfigureAction,
+  ConnectAction,
+  ConnectedAction,
+} from "./companion-card-view.tsx";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
 import { SaBindingForm } from "./companion-forms/sa-binding-form.tsx";
 import {
@@ -56,8 +56,50 @@ export function CompanionCardSkeleton() {
   );
 }
 
-const AREA_BADGE_CLASS =
-  "rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground";
+/** Ghost unlink button — reverts a linked source back to "Connect" so a wrong
+ *  or stale link can be replaced. */
+function UnlinkButton({
+  title,
+  disconnecting,
+  disabled,
+  onDisconnect,
+}: {
+  title: string;
+  disconnecting: boolean;
+  disabled: boolean;
+  onDisconnect: () => void;
+}) {
+  const t = useT();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+          disabled={disabled || disconnecting}
+          onClick={onDisconnect}
+          aria-label={t(
+            "commerceOnboarding.companionCard.disconnectAriaLabel",
+            {
+              title,
+            },
+          )}
+        >
+          {disconnecting ? (
+            <Loading01 size={16} className="animate-spin" />
+          ) : (
+            <LinkBroken01 size={16} />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {t("commerceOnboarding.companionCard.disconnect")}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function CompanionCard({
   card,
@@ -84,7 +126,6 @@ export function CompanionCard({
   autoOpenConfigFieldKey: string | null;
   onAutoOpenConfigHandled: () => void;
 }) {
-  const t = useT();
   const linkedConnectionId = card.linkedConnectionId;
   // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
   // when the card was actually satisfied via OAuth (has a companion connection).
@@ -92,6 +133,10 @@ export function CompanionCard({
     | BindProvider
     | undefined;
   const useSaFlow = !!saProvider && card.boundVia !== "oauth";
+  // Linked but not usable yet (no credentials / no repo / no property) — must
+  // read as "needs setup", never "Connected". Only the OAuth/config-form lane
+  // can hit this; SA bindings are configured the moment they verify.
+  const needsConfig = card.satisfied && !card.configured;
 
   const action =
     useSaFlow && saProvider ? (
@@ -104,13 +149,10 @@ export function CompanionCard({
         onOAuthInstead={onConnect}
         disabled={disabled}
         connecting={connecting}
+        primary={card.required}
       />
     ) : card.satisfied && linkedConnectionId ? (
       <div className="flex items-center justify-end gap-1 sm:justify-start">
-        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <CheckCircle size={16} className="text-success" />{" "}
-          {t("commerceOnboarding.companionCard.connected")}
-        </span>
         {/* Own Suspense boundary: CompanionConfiguration opens the companion's
             own MCP client (useMCPClient → useSuspenseQuery). Isolating it keeps
             a connecting companion from reverting the whole grid to skeletons. */}
@@ -121,95 +163,44 @@ export function CompanionCard({
             selfClient={selfClient}
             connectionId={linkedConnectionId}
             contextSiteUrl={siteUrl}
-            autoOpen={shouldAutoOpenCompanionConfig({
-              autoOpenFieldKey: autoOpenConfigFieldKey,
-              card,
-            })}
+            variant={needsConfig ? "configure" : "gear"}
+            disabled={disabled}
+            autoOpen={
+              needsConfig ||
+              shouldAutoOpenCompanionConfig({
+                autoOpenFieldKey: autoOpenConfigFieldKey,
+                card,
+              })
+            }
             onAutoOpenHandled={onAutoOpenConfigHandled}
           />
         </Suspense>
-        {/* Unlink to revalidate: reverts the card to "Conectar" so a wrong or
-            stale link (e.g. a repo-scoped GitHub connection) can be replaced. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 text-muted-foreground hover:text-destructive"
-              disabled={disabled || disconnecting}
-              onClick={onDisconnect}
-              aria-label={t(
-                "commerceOnboarding.companionCard.disconnectAriaLabel",
-                { title: card.title },
-              )}
-            >
-              {disconnecting ? (
-                <Loading01 size={16} className="animate-spin" />
-              ) : (
-                <LinkBroken01 size={16} />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t("commerceOnboarding.companionCard.disconnect")}
-          </TooltipContent>
-        </Tooltip>
+        <UnlinkButton
+          title={card.title}
+          disconnecting={disconnecting}
+          disabled={disabled}
+          onDisconnect={onDisconnect}
+        />
       </div>
     ) : (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="sm:w-full"
-        disabled={disabled || connecting}
-        onClick={onConnect}
-        aria-label={t("commerceOnboarding.companionCard.connectAriaLabel", {
-          title: card.title,
-        })}
-      >
-        {connecting ? (
-          <Loading01 size={16} className="animate-spin" />
-        ) : (
-          t("commerceOnboarding.companionCard.connect")
-        )}
-      </Button>
+      <ConnectAction
+        connecting={connecting}
+        disabled={disabled}
+        title={card.title}
+        primary={card.required}
+        onConnect={onConnect}
+      />
     );
 
   return (
-    // Responsive: a compact horizontal row on mobile (icon · text · action),
-    // a vertical tile in the desktop grid (sm+). The old inline "Configuração"
-    // block lives in the gear's dialog so a connected card stays compact.
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 sm:h-full sm:flex-col sm:items-stretch sm:p-4">
-      {/* Icon row: on the desktop tile the badge sits top-right, centered with
-          the icon. Mobile is a compact list row (icon · name · action) — the
-          area tag and benefit line are dropped there to keep it dense. */}
-      <div className="shrink-0 sm:flex sm:w-full sm:items-center sm:justify-between sm:gap-2">
-        <IntegrationIcon
-          icon={card.icon}
-          name={card.title}
-          size="sm"
-          fit="contain"
-          className="shrink-0 p-1.5"
-        />
-        {card.area && (
-          <span className={cn("hidden sm:inline-block", AREA_BADGE_CLASS)}>
-            {card.area}
-          </span>
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{card.title}</p>
-        {card.headline && (
-          <p className="hidden text-sm leading-5 text-muted-foreground sm:mt-0.5 sm:line-clamp-2 sm:block">
-            {card.headline}
-          </p>
-        )}
-      </div>
-
-      <div className="shrink-0 sm:mt-auto sm:w-full sm:pt-1">{action}</div>
-    </div>
+    <CompanionCardView
+      icon={card.icon}
+      title={card.title}
+      headline={card.headline}
+      required={card.required && !card.satisfied}
+      attention={needsConfig}
+      action={action}
+    />
   );
 }
 
@@ -227,6 +218,7 @@ function SaConnectAction({
   onOAuthInstead,
   disabled,
   connecting,
+  primary,
 }: {
   card: CompanionCardModel;
   provider: BindProvider;
@@ -236,6 +228,7 @@ function SaConnectAction({
   onOAuthInstead: () => void;
   disabled: boolean;
   connecting: boolean;
+  primary?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -249,50 +242,38 @@ function SaConnectAction({
   return (
     <>
       {card.satisfied ? (
-        <div className="flex items-center justify-end gap-1 sm:justify-start">
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <CheckCircle size={16} className="text-success" />{" "}
-            {t("commerceOnboarding.companionCard.connected")}
-          </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0"
-                onClick={() => setOpen(true)}
-                aria-label={t(
-                  "commerceOnboarding.companionCard.configureAriaLabel",
-                  { title: card.title },
-                )}
-              >
-                <Settings01 size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {t("commerceOnboarding.companionCard.editConfiguration")}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <ConnectedAction
+          controls={
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0"
+                  onClick={() => setOpen(true)}
+                  aria-label={t(
+                    "commerceOnboarding.companionCard.configureAriaLabel",
+                    { title: card.title },
+                  )}
+                >
+                  <Settings01 size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("commerceOnboarding.companionCard.editConfiguration")}
+              </TooltipContent>
+            </Tooltip>
+          }
+        />
       ) : (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="sm:w-full"
-          disabled={disabled || connecting}
-          onClick={() => setOpen(true)}
-          aria-label={t("commerceOnboarding.companionCard.connectAriaLabel", {
-            title: card.title,
-          })}
-        >
-          {connecting ? (
-            <Loading01 size={16} className="animate-spin" />
-          ) : (
-            t("commerceOnboarding.companionCard.connect")
-          )}
-        </Button>
+        <ConnectAction
+          connecting={connecting}
+          disabled={disabled}
+          title={card.title}
+          primary={primary}
+          onConnect={() => setOpen(true)}
+        />
       )}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -341,6 +322,10 @@ interface CompanionConfigurationProps {
   selfClient: Client;
   connectionId: string;
   contextSiteUrl?: string;
+  /** "gear" = quiet edit button for a configured source; "configure" = amber
+   *  "finish setup" button for a linked-but-unconfigured one. */
+  variant: "gear" | "configure";
+  disabled: boolean;
   autoOpen: boolean;
   onAutoOpenHandled: () => void;
 }
@@ -359,6 +344,8 @@ function CompanionConfiguration({
   selfClient,
   connectionId,
   contextSiteUrl,
+  variant,
+  disabled,
   autoOpen,
   onAutoOpenHandled,
 }: CompanionConfigurationProps) {
@@ -418,13 +405,21 @@ function CompanionConfiguration({
     },
   });
 
-  // No config form for this binding → nothing to open; skip the gear entirely.
+  // No config form for this binding → nothing to open. A "configure" variant
+  // still needs a visible trigger, so it degrades to a quiet gear-less noop
+  // only when there's genuinely nothing to configure.
   if (!FormComponent) {
     return null;
   }
 
-  return (
-    <>
+  const trigger =
+    variant === "configure" ? (
+      <ConfigureAction
+        disabled={disabled}
+        title={card.title}
+        onConfigure={() => setDialogOpen(true)}
+      />
+    ) : (
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -447,6 +442,11 @@ function CompanionConfiguration({
             : t("commerceOnboarding.companionCard.configure")}
         </TooltipContent>
       </Tooltip>
+    );
+
+  return (
+    <>
+      {trigger}
 
       <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-lg">

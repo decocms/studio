@@ -3,9 +3,11 @@ import {
   buildCompanionCards,
   buildRegistryWhere,
   getConfigurationSummaryEntries,
+  isCompanionConfigured,
   matchGscSite,
   mergeBindingValue,
   parseBindingRequirements,
+  REQUIRED_BINDING_TYPES,
   resolveCandidate,
   shouldAutoOpenCompanionConfig,
   toPropertyOptions,
@@ -205,6 +207,80 @@ describe("unwrapToolResult", () => {
   });
 });
 
+describe("isCompanionConfigured", () => {
+  it("treats an SA-verified binding as always configured", () => {
+    expect(
+      isCompanionConfigured({
+        bindingType: "google-analytics",
+        boundVia: "sa",
+        companionConfig: null,
+        cdConfig: null,
+      }),
+    ).toBe(true);
+  });
+  it("requires a VTEX account name (linked ≠ usable)", () => {
+    expect(
+      isCompanionConfigured({
+        bindingType: "vtex",
+        boundVia: "oauth",
+        companionConfig: null,
+        cdConfig: null,
+      }),
+    ).toBe(false);
+    expect(
+      isCompanionConfigured({
+        bindingType: "vtex",
+        boundVia: "oauth",
+        companionConfig: { accountName: "electrolux" },
+        cdConfig: null,
+      }),
+    ).toBe(true);
+  });
+  it("requires a picked property/site for OAuth GA4/GSC", () => {
+    expect(
+      isCompanionConfigured({
+        bindingType: "google-analytics",
+        boundVia: "oauth",
+        companionConfig: {},
+        cdConfig: null,
+      }),
+    ).toBe(false);
+    expect(
+      isCompanionConfigured({
+        bindingType: "google-search-console",
+        boundVia: "oauth",
+        companionConfig: { siteUrl: "sc-domain:loja.com" },
+        cdConfig: null,
+      }),
+    ).toBe(true);
+  });
+  it("reads GitHub's repo from the CD connection state", () => {
+    expect(
+      isCompanionConfigured({
+        bindingType: "github",
+        boundVia: "oauth",
+        companionConfig: null,
+        cdConfig: { github_repo: "deco/site" },
+      }),
+    ).toBe(true);
+    expect(
+      isCompanionConfigured({
+        bindingType: "github",
+        boundVia: "oauth",
+        companionConfig: null,
+        cdConfig: {},
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("REQUIRED_BINDING_TYPES", () => {
+  it("marks analytics as the required source and others as optional", () => {
+    expect(REQUIRED_BINDING_TYPES.has("google-analytics")).toBe(true);
+    expect(REQUIRED_BINDING_TYPES.has("vtex")).toBe(false);
+  });
+});
+
 describe("buildCompanionCards", () => {
   const item = (id: string, name: string) => ({
     id,
@@ -285,6 +361,23 @@ describe("buildCompanionCards", () => {
     expect(cards[0]!.configurationState).toEqual({
       accountName: "electrolux",
     });
+    // Linked AND has its account → usable.
+    expect(cards[0]!.configured).toBe(true);
+  });
+  it("marks a linked VTEX with no account as satisfied-but-not-configured", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "VTEX_STORE", bindingType: "vtex" }],
+      itemsById: { "deco/vtex": item("deco/vtex", "VTEX") },
+      itemsByName: {},
+      // Linked connection exists but carries no accountName yet.
+      connections: [{ id: "c_vtex", app_name: "vtex", status: "active" }],
+      configurationState: { VTEX_STORE: { __type: "vtex", value: "c_vtex" } },
+      curated,
+    });
+    expect(cards[0]!.satisfied).toBe(true);
+    expect(cards[0]!.configured).toBe(false);
+    // VTEX is an enhancement, not the required source.
+    expect(cards[0]!.required).toBe(false);
   });
   it("treats configuration_state links to missing org connections as connectable", () => {
     const cards = buildCompanionCards({

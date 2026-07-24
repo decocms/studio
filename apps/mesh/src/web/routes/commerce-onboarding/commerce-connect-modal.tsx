@@ -1,8 +1,6 @@
 import { normalizeReportsSiteUrl, siteUrlToHost } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { authClient } from "@/web/lib/auth-client";
 import { useT } from "@/web/i18n/use-t.ts";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
@@ -31,13 +29,8 @@ import {
   CompanionMcpsSection,
   CompanionMcpsSectionSkeleton,
 } from "./companion-mcps-section.tsx";
-import {
-  buildScheduleMeetingUrl,
-  ScheduleMeetingBanner,
-  ScheduleMeetingVisual,
-} from "./schedule-meeting.tsx";
+import { ConnectFooterButton, ConnectLayout } from "./connect-layout.tsx";
 import { parseSelfToolResult } from "./self-tool-result.ts";
-import { SiteBadge } from "./site-badge.tsx";
 
 /**
  * Blocking commerce-onboarding connections step, rendered as a modal OVER the
@@ -130,9 +123,7 @@ function CommerceConnectModalContent({
   onComplete: () => void;
 }) {
   const t = useT();
-  const [preferences] = usePreferences();
   const { org } = useProjectContext();
-  const { data: session } = authClient.useSession();
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -191,12 +182,6 @@ function CommerceConnectModalContent({
     retry: false,
   });
 
-  const meetingUrl = buildScheduleMeetingUrl({
-    siteUrl,
-    email: session?.user?.email,
-    locale: preferences.language,
-  });
-
   const openReport = async () => {
     setRunError(null);
     // The onboarding-completion intent: the click, not the report render.
@@ -251,60 +236,43 @@ function CommerceConnectModalContent({
     onComplete();
   };
 
+  const ready = hasConnectedSource;
+
   return (
-    // Mobile: single flex column (header → scrolling cards → pinned footer with
-    // the compact meeting banner + CTA). lg+: two columns — the connect column
-    // on the left, the full meeting card on the right (the original split), with
-    // the banner hidden since the card carries it. The left column always owns
-    // the scroll + pinned CTA so the CTA stays reachable at short window heights.
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      {/* Left column — matches the old page's bg-sidebar content panel. The
-          companion section owns its own scroll (title pinned, cards scroll), so
-          it goes here directly as the flex-1 child; no extra scroll wrapper. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:gap-6 lg:bg-sidebar lg:p-10">
-        {siteHost ? <SiteBadge host={siteHost} /> : null}
-        <CompanionMcpsSection
-          org={org}
-          cdConnectionId={connectionId}
-          siteUrl={siteUrl}
-          onReadinessChange={setHasConnectedSource}
-        />
-        <div className="flex shrink-0 flex-col gap-3">
-          <ScheduleMeetingBanner
-            href={meetingUrl}
-            orgId={org.id}
-            className="lg:hidden"
-          />
+    <ConnectLayout
+      siteHost={siteHost}
+      footer={
+        <>
           {runError ? (
             <p className="text-sm leading-5 text-destructive" role="alert">
               {runError}
             </p>
           ) : null}
-          <Button
-            type="button"
-            size="xl"
-            className="w-full rounded-2xl text-base font-medium whitespace-normal h-auto py-3"
+          <ConnectFooterButton
+            ready={ready}
+            pending={runMutation.isPending}
+            label={
+              runMutation.isPending
+                ? t("routes.commerceOnboarding.connectModal.openingReport")
+                : !ready
+                  ? t(
+                      "routes.commerceOnboarding.connectModal.connectToolToContinue",
+                    )
+                  : t("routes.commerceOnboarding.connectModal.viewFullReport")
+            }
             onClick={() => void openReport()}
-            disabled={runMutation.isPending || !hasConnectedSource}
           >
-            {runMutation.isPending
-              ? t("routes.commerceOnboarding.connectModal.openingReport")
-              : !hasConnectedSource
-                ? t(
-                    "routes.commerceOnboarding.connectModal.connectToolToContinue",
-                  )
-                : t("routes.commerceOnboarding.connectModal.viewFullReport")}
-            {!runMutation.isPending && hasConnectedSource ? (
-              <ArrowRight size={18} />
-            ) : null}
-          </Button>
-        </div>
-      </div>
-      {/* Right panel — the old page's right side: divider, distinct bg-muted
-          background, and the meeting card centered in the middle. Desktop only. */}
-      <aside className="hidden lg:flex lg:w-[380px] lg:shrink-0 lg:items-center lg:justify-center lg:overflow-y-auto lg:border-l lg:border-border lg:bg-muted">
-        <ScheduleMeetingVisual href={meetingUrl} orgId={org.id} />
-      </aside>
-    </div>
+            <ArrowRight size={18} />
+          </ConnectFooterButton>
+        </>
+      }
+    >
+      <CompanionMcpsSection
+        org={org}
+        cdConnectionId={connectionId}
+        siteUrl={siteUrl}
+        onReadinessChange={setHasConnectedSource}
+      />
+    </ConnectLayout>
   );
 }
