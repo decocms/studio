@@ -135,6 +135,17 @@ export function externalUrlOrNull(url: string | undefined): string | null {
   }
 }
 
+/**
+ * Whether S3 access should force path-style addressing. Unset/empty defaults
+ * to path-style (needed by custom S3-compatible stores like MinIO/Ceph); real
+ * AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false. Shared
+ * with `ensure-services.ts`'s external-S3 branch so the in-process
+ * `buildSettings` path and the bundled-prod `initSettingsFromEnv` path agree.
+ */
+export function resolveS3ForcePathStyle(raw: string | undefined): boolean {
+  return raw === undefined || raw === "" || raw === "true" || raw === "1";
+}
+
 const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
   "agent-sandbox",
   "user-desktop",
@@ -270,11 +281,7 @@ export function resolveConfig(
     s3Region: envVars.S3_REGION || "auto",
     s3AccessKeyId: envVars.S3_ACCESS_KEY_ID,
     s3SecretAccessKey: envVars.S3_SECRET_ACCESS_KEY,
-    s3ForcePathStyle:
-      envVars.S3_FORCE_PATH_STYLE === undefined ||
-      envVars.S3_FORCE_PATH_STYLE === "" ||
-      envVars.S3_FORCE_PATH_STYLE === "true" ||
-      envVars.S3_FORCE_PATH_STYLE === "1",
+    s3ForcePathStyle: resolveS3ForcePathStyle(envVars.S3_FORCE_PATH_STYLE),
 
     // Monitoring object storage (OTLP-JSON over GCS). Raw env passthrough;
     // fallback to s3* is applied at the context-factory consumption point.
