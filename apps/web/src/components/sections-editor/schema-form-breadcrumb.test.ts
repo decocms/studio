@@ -5,6 +5,7 @@ import {
   breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
   consumedBreadcrumbPrefix,
+  headerBackTargetIndex,
   fieldDisplayLabel,
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
@@ -34,6 +35,27 @@ describe("breadcrumbsForHeaderClick", () => {
       "Global Sections",
       "Analytics",
     ]);
+  });
+});
+
+describe("headerBackTargetIndex", () => {
+  test("targets the parent of the last crumb by default", () => {
+    // [page, section] → back exits the section (index 0).
+    expect(headerBackTargetIndex(2, { isMultivariateSectionTop: false })).toBe(
+      0,
+    );
+    // [page, section, field] → back returns to the section top (index 1).
+    expect(headerBackTargetIndex(3, { isMultivariateSectionTop: false })).toBe(
+      1,
+    );
+  });
+
+  test("exits the section from a multivariate section top", () => {
+    // [page, section, variant] would resolve to index 1 (the redundant section
+    // crumb, a no-op). Back must exit the section instead.
+    expect(headerBackTargetIndex(3, { isMultivariateSectionTop: true })).toBe(
+      0,
+    );
   });
 });
 
