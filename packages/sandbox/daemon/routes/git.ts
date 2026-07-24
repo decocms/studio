@@ -743,13 +743,24 @@ export function makeGitDiffHandler(deps: GitDeps) {
             base?: string;
             headSha?: string;
           };
-          const rawBase = typeof body.base === "string" ? body.base.trim() : "";
+          // If base is provided but empty after trim, that's a client error.
+          if ("base" in body) {
+            const rawBase =
+              typeof body.base === "string" ? body.base.trim() : "";
+            if (!rawBase) {
+              return jsonResponse(
+                { error: "base is required when provided" },
+                400,
+              );
+            }
+            base = rawBase;
+          }
           const rawHead =
             typeof body.headSha === "string" ? body.headSha.trim() : "";
-          if (rawBase) base = rawBase;
           if (rawHead) headSha = rawHead;
-        } catch {
-          // Empty body → working-tree diff.
+        } catch (e) {
+          if (e instanceof Response) throw e; // Re-throw early-exit responses
+          // Unparseable body → working-tree diff.
         }
       }
 
@@ -758,6 +769,7 @@ export function makeGitDiffHandler(deps: GitDeps) {
         : await computeDiff(deps.repoDir);
       return jsonResponse(result);
     } catch (err) {
+      if (err instanceof Response) return err; // Handle early-exit responses
       if (err instanceof InvalidRemoteBranchNameError) {
         return jsonResponse({ error: err.message }, 400);
       }
