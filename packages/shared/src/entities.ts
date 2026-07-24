@@ -67,6 +67,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
+  | "qa"
+  | "ready_for_release"
+  | "deploy"
   | "done";
 
 export type TaskBoardItemPriority =

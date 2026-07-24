@@ -51,6 +51,11 @@ export class OrganizationSettingsStorage
           : record.flags
         : null,
       main_agent_id: record.main_agent_id ?? null,
+      task_board: record.task_board
+        ? typeof record.task_board === "string"
+          ? JSON.parse(record.task_board)
+          : record.task_board
+        : null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -68,6 +73,7 @@ export class OrganizationSettingsStorage
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
+        | "task_board"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -88,6 +94,9 @@ export class OrganizationSettingsStorage
       ? JSON.stringify(data.default_home_agents)
       : null;
     const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
+    const taskBoardJson = data?.task_board
+      ? JSON.stringify(data.task_board)
+      : null;
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -99,6 +108,7 @@ export class OrganizationSettingsStorage
         default_home_agents: defaultHomeAgentsJson,
         flags: flagsJson,
         main_agent_id: data?.main_agent_id ?? null,
+        task_board: taskBoardJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -120,6 +130,7 @@ export class OrganizationSettingsStorage
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
+          task_board: taskBoardJson ? taskBoardJson : undefined,
           updatedAt: now,
         }),
       )
@@ -137,6 +148,7 @@ export class OrganizationSettingsStorage
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
         main_agent_id: data?.main_agent_id ?? null,
+        task_board: data?.task_board ?? null,
         createdAt: now,
         updatedAt: now,
       };

@@ -173,6 +173,29 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
+/** One board column in the org's task-board config. `stage` maps the column
+ *  onto the canonical 5-stage lifecycle so run-driven automation (todo →
+ *  in_progress → in_review) keeps working over custom columns. */
+export interface TaskBoardColumnConfig {
+  /** Stable id. The default columns use their stage name as id. */
+  id: string;
+  /** Display label. Null for a default column — the UI uses its i18n label. */
+  name: string | null;
+  stage: TaskBoardItemStatus;
+  /** When enabled, a task entering this column enqueues an agent run on it.
+   *  `agentId` is a virtual MCP id; null = the org's Super Agent. */
+  automation?: { enabled: boolean; agentId: string | null };
+}
+
+/** Per-org task board configuration (`organization_settings.task_board`).
+ *  Null (row or field) = the default simple board. */
+export interface TaskBoardSettingsConfig {
+  /** Custom column set, in board order. Null = the default 5 columns. */
+  columns: TaskBoardColumnConfig[] | null;
+  sprintsEnabled?: boolean;
+  releasesEnabled?: boolean;
+}
+
 export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
@@ -185,6 +208,7 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
+  task_board: JsonObject<TaskBoardSettingsConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -198,6 +222,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
+  task_board: TaskBoardSettingsConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1578,11 +1603,20 @@ export interface OrgSite {
   updatedAt: string;
 }
 
+/**
+ * Canonical delivery-lifecycle stage of a task. The 5 original values plus the
+ * richer tail (qa/ready_for_release/deploy) so external trackers can map their
+ * statuses into distinct positions. Stored in the plain-text `status` column
+ * (no DB enum) — see TASK_BOARD_STAGES for the ordered ladder.
+ */
 export type TaskBoardItemStatus =
   | "triage"
   | "todo"
   | "in_progress"
   | "in_review"
+  | "qa"
+  | "ready_for_release"
+  | "deploy"
   | "done";
 
 export type TaskBoardItemPriority =
@@ -1624,10 +1658,176 @@ export interface TaskBoardItemTable {
   >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
+  /** Per-org sequential number, the task's short key ("#42"). Assigned
+   *  max(seq)+1 per org at create; backfilled for existing rows. Nullable so a
+   *  row written before the column existed (or by an un-reloaded server) never
+   *  hard-fails a read — the UI just omits the key until it's assigned. */
+  seq: ColumnType<number | null, number | undefined, number>;
+  /** Custom-column placement. Null = derive the column from `status` (the
+   *  first configured column with that stage — the default board's case). */
+  column_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Free-form labels (jsonb string array). */
+  tags: ColumnType<string[] | null, string | undefined, string>;
+  sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  release_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Column whose automation last enqueued a run for this task — the guard
+   *  that keeps a run-driven bounce (QA reopens → finishes → In Review again)
+   *  from re-triggering the same column's agent forever. Cleared on a human
+   *  column move. */
+  automation_column_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A comment on a task board item. One level of replies via `parent_id`. */
+export interface TaskBoardCommentTable {
+  id: string;
+  organization_id: string;
+  task_board_item_id: string;
+  parent_id: string | null;
+  body: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A file/image attached to a task (or to one of its comments). Bytes live in
+ *  `data` (size-capped at the tool layer) and are served by an org-scoped
+ *  route, never inlined into tool outputs. */
+export interface TaskBoardAttachmentTable {
+  id: string;
+  organization_id: string;
+  task_board_item_id: string;
+  comment_id: string | null;
+  filename: string;
+  mime_type: string;
+  size: number;
+  data: Uint8Array;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export type TaskBoardSprintState = "planned" | "active" | "closed";
+
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  state: ColumnType<TaskBoardSprintState, TaskBoardSprintState, string>;
+  start_date: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  end_date: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface TaskBoardReleaseTable {
+  id: string;
+  organization_id: string;
+  title: string;
+  notes: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** One entry in a task's change timeline. */
+export type TaskBoardActivityKind =
+  | "created"
+  | "status_changed"
+  | "assignee_changed"
+  | "sprint_changed";
+
+export interface TaskBoardActivityTable {
+  id: string;
+  organization_id: string;
+  task_board_item_id: string;
+  kind: string;
+  /** User id, or a sentinel ("system" / SUPER_AGENT_ASSIGNEE_ID). */
+  actor_id: string | null;
+  data: ColumnType<
+    Record<string, unknown> | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface TaskBoardActivity {
+  id: string;
+  taskBoardItemId: string;
+  kind: TaskBoardActivityKind;
+  actorId: string | null;
+  /** Event payload — e.g. { from, to } for a status/assignee/sprint change. */
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskBoardComment {
+  id: string;
+  taskBoardItemId: string;
+  parentId: string | null;
+  body: string;
+  attachments: TaskBoardAttachmentMeta[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Attachment identity + metadata — bytes are served by the org-scoped
+ *  `/task-board/attachments/:id` route. */
+export interface TaskBoardAttachmentMeta {
+  id: string;
+  taskBoardItemId: string;
+  commentId: string | null;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface TaskBoardSprint {
+  id: string;
+  name: string;
+  state: TaskBoardSprintState;
+  startDate: string | null;
+  endDate: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface TaskBoardRelease {
+  id: string;
+  title: string;
+  notes: string | null;
+  createdBy: string;
+  createdAt: string;
 }
 
 /** One processed task-board import request: PK (organization_id, run_id).
@@ -1705,6 +1905,20 @@ export interface TaskBoardItem {
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
+  /** Per-org sequential number — the task's short key. Null only for a legacy
+   *  row not yet assigned one (the UI omits the key then). */
+  seq: number | null;
+  /** Custom-column placement; null = derive from `status`. */
+  columnId: string | null;
+  tags: string[];
+  sprintId: string | null;
+  releaseId: string | null;
+  /** Sender-minted external identity (e.g. `jira:PROJ-123`, `diag:...`). Set by
+   *  an importing connector/sync; exposed read-only so the same connector can
+   *  correlate a board task back to its source and write changes upstream. */
+  externalKey: string | null;
+  /** Automation re-trigger guard — internal, not exposed by tool schemas. */
+  automationColumnId: string | null;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   createdBy: string;
@@ -1867,6 +2081,11 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_item_prs: TaskBoardItemPrTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  task_board_comments: TaskBoardCommentTable;
+  task_board_attachments: TaskBoardAttachmentTable;
+  task_board_sprints: TaskBoardSprintTable;
+  task_board_releases: TaskBoardReleaseTable;
+  task_board_activity: TaskBoardActivityTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

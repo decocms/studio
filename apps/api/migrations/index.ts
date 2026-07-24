@@ -148,6 +148,9 @@ import * as migration146organizationmainagent from "./146-organization-main-agen
 import * as migration147dropagentsandboxtables from "./147-drop-agent-sandbox-tables.ts";
 import * as migration148orgflags from "./148-org-flags.ts";
 import * as migration149taskboarditemsortorder from "./149-task-board-item-sort-order.ts";
+import * as migration150taskboardfeatures from "./150-task-board-features.ts";
+import * as migration151taskboarditemseq from "./151-task-board-item-seq.ts";
+import * as migration152taskboardactivity from "./152-task-board-activity.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -321,6 +324,9 @@ const migrations: Record<string, Migration> = {
   "147-drop-agent-sandbox-tables": migration147dropagentsandboxtables,
   "148-org-flags": migration148orgflags,
   "149-task-board-item-sort-order": migration149taskboarditemsortorder,
+  "150-task-board-features": migration150taskboardfeatures,
+  "151-task-board-item-seq": migration151taskboarditemseq,
+  "152-task-board-activity": migration152taskboardactivity,
 };
 
 export default migrations;

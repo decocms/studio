@@ -12,13 +12,18 @@ import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Calendar,
+  Check,
   Columns03,
   HelpCircle,
   Lightning01,
   List,
   Loading01,
   Plus,
+  Rocket01,
+  RefreshCw01,
+  Trash03,
   UserPlus01,
+  X,
 } from "@untitledui/icons";
 import {
   Popover,
@@ -49,16 +54,26 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  columnForItem,
+  columnLabel,
+  formatSprintRange,
+  formatTaskKey,
+  generateSprintWeeks,
   insertSortOrder,
+  labelDotColor,
   isTaskBlocked,
+  movePayload,
   primaryThread,
   PRIORITY_CONFIG,
+  sprintStateLabelKey,
+  sprintStateTone,
+  sprintWeekState,
   STATUS_CONFIG,
-  STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
+  useBoardColumns,
+  type BoardColumn,
   type TaskBoardItem,
   type TaskBoardItemPriority,
-  type TaskBoardItemStatus,
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
@@ -79,7 +94,16 @@ import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/components/chat/types";
-import { useReportsOnly } from "@/hooks/use-organization-settings";
+import {
+  useReportsOnly,
+  useTaskBoardSettings,
+} from "@/hooks/use-organization-settings";
+import {
+  useTaskBoardReleaseActions,
+  useTaskBoardReleases,
+} from "@/hooks/use-task-board-releases";
+import { Input } from "@deco/ui/components/input.tsx";
+import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { BacklogPaywallBanner } from "./backlog-paywall";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -276,11 +300,26 @@ export function TaskBoardPage() {
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
-  // Status a newly-created task should start in (set by a lane's "+"); null for
-  // the generic "New task" button.
-  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
-    null,
+  // Column a newly-created task should start in (set by a lane's "+"); null
+  // for the generic "New task" button.
+  const [createColumn, setCreateColumn] = useState<BoardColumn | null>(null);
+
+  // Org board configuration: custom columns and the sprint/release toggles.
+  const boardSettings = useTaskBoardSettings();
+  const columns = useBoardColumns();
+  const sprintsEnabled = boardSettings?.sprintsEnabled ?? false;
+  const releasesEnabled = boardSettings?.releasesEnabled ?? false;
+  // "all" | "backlog" (no sprint) | a sprint id. Sprint list + management live
+  // in SprintControl; the board only tracks the current scope for filtering.
+  const [sprintScope, setSprintScope] = useState<string>("all");
+  // Release picking: a toolbar toggle turns cards into a multi-select; the
+  // floating bar below creates the release from the selection.
+  const releaseActions = useTaskBoardReleaseActions();
+  const [releaseMode, setReleaseMode] = useState(false);
+  const [releaseSelection, setReleaseSelection] = useState<Set<string>>(
+    new Set(),
   );
+  const [releaseDialogOpen, setReleaseDialogOpen] = useState(false);
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
@@ -357,19 +396,38 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  const visibleItems = items.filter((item) =>
-    taskMatchesFilters(item, filters),
+  const matchesSprint = (item: TaskBoardItem) => {
+    if (!sprintsEnabled || sprintScope === "all") return true;
+    if (sprintScope === "backlog") return item.sprintId === null;
+    return item.sprintId === sprintScope;
+  };
+  const visibleItems = items.filter(
+    (item) => taskMatchesFilters(item, filters) && matchesSprint(item),
   );
+  const allTags = [...new Set(items.flatMap((i) => i.tags))].sort();
+
+  const toggleReleaseSelection = (id: string) => {
+    setReleaseSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const exitReleaseMode = () => {
+    setReleaseMode(false);
+    setReleaseSelection(new Set());
+  };
 
   const openCreate = () => {
     setEditingItem(null);
-    setCreateStatus(null);
+    setCreateColumn(null);
     setDialogOpen(true);
   };
 
-  const openCreateInLane = (status: TaskBoardItemStatus) => {
+  const openCreateInLane = (column: BoardColumn) => {
     setEditingItem(null);
-    setCreateStatus(status);
+    setCreateColumn(column);
     setDialogOpen(true);
   };
 
@@ -390,7 +448,7 @@ export function TaskBoardPage() {
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingItem(null);
-    setCreateStatus(null);
+    setCreateColumn(null);
     clearDeepLink();
   };
 
@@ -406,7 +464,8 @@ export function TaskBoardPage() {
     // Full-width so each region's scroll container spans the whole panel — the
     // max-width lives on the *content* inside (header + lanes), so the mouse can
     // sit in the empty margins on wide monitors and still scroll the board.
-    <div className="flex min-h-0 flex-1 flex-col">
+    // Relative: anchors the release-mode floating action bar.
+    <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Header — capped + centered to the same width as the board content so
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
@@ -427,6 +486,7 @@ export function TaskBoardPage() {
                 <TaskFiltersDrawer
                   filters={filters}
                   members={members}
+                  tags={allTags}
                   onChange={setFilters}
                 />
               </div>
@@ -434,10 +494,15 @@ export function TaskBoardPage() {
                 <TaskFiltersBar
                   filters={filters}
                   members={members}
+                  tags={allTags}
                   onChange={setFilters}
                 />
               </div>
             </>
+          )}
+
+          {sprintsEnabled && (
+            <SprintControl value={sprintScope} onChange={setSprintScope} />
           )}
 
           <div className="ml-auto flex items-center gap-2">
@@ -486,12 +551,18 @@ export function TaskBoardPage() {
       ) : layout === "board" ? (
         <Lanes
           items={visibleItems}
+          columns={columns}
           members={members}
           memberByUserId={memberByUserId}
-          onOpen={openTask}
+          releasesEnabled={releasesEnabled}
+          onNewRelease={() => setReleaseMode(true)}
+          releaseSelection={releaseMode ? releaseSelection : null}
+          onOpen={
+            releaseMode ? (item) => toggleReleaseSelection(item.id) : openTask
+          }
           onCreate={openCreateInLane}
-          onMove={(id, status, sortOrder) =>
-            actions.update.mutate({ id, status, sortOrder })
+          onMove={(id, column, sortOrder) =>
+            actions.update.mutate({ id, ...movePayload(column), sortOrder })
           }
           onAssign={(id, userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
@@ -534,16 +605,58 @@ export function TaskBoardPage() {
         </div>
       )}
 
+      {releaseMode && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 card-shadow">
+            <span className="text-sm text-muted-foreground">
+              {t("taskBoard.taskBoard.releaseSelectedCount", {
+                count: String(releaseSelection.size),
+              })}
+            </span>
+            <Button
+              size="sm"
+              disabled={releaseSelection.size === 0}
+              onClick={() => setReleaseDialogOpen(true)}
+            >
+              <Rocket01 size={16} />
+              {t("taskBoard.taskBoard.createReleaseButton")}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={exitReleaseMode}>
+              <X size={16} />
+              {t("taskBoard.taskBoard.cancelReleaseButton")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <CreateReleaseDialog
+        open={releaseDialogOpen}
+        onOpenChange={setReleaseDialogOpen}
+        count={releaseSelection.size}
+        isPending={releaseActions.create.isPending}
+        onCreate={(title, notes) =>
+          releaseActions.create.mutate(
+            { title, notes: notes || null, taskIds: [...releaseSelection] },
+            {
+              onSuccess: () => {
+                setReleaseDialogOpen(false);
+                exitReleaseMode();
+              },
+            },
+          )
+        }
+      />
+
       <TaskBoardItemDialog
         key={
           modalOpen
-            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
+            ? (activeItem?.id ?? `new-${createColumn?.id ?? "default"}`)
             : "closed"
         }
         open={modalOpen}
         onClose={closeDialog}
         item={activeItem ?? undefined}
-        defaultStatus={createStatus ?? undefined}
+        defaultColumn={createColumn ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutGithub(input.assigneeId)) {
@@ -665,8 +778,12 @@ function LayoutToggle({
 
 function Lanes({
   items,
+  columns,
   members,
   memberByUserId,
+  releasesEnabled,
+  onNewRelease,
+  releaseSelection,
   onOpen,
   onCreate,
   onMove,
@@ -674,16 +791,23 @@ function Lanes({
   onAssign,
 }: {
   items: TaskBoardItem[];
+  columns: BoardColumn[];
   members: Member[];
   memberByUserId: Map<string, Member>;
+  /** Show the trailing Releases column (org setting). */
+  releasesEnabled: boolean;
+  /** Enter release-select mode from the column's "New release" action. */
+  onNewRelease: () => void;
+  /** Non-null in release-select mode — the currently selected task ids. */
+  releaseSelection: Set<string> | null;
   onOpen: (item: TaskBoardItem) => void;
-  onCreate: (status: TaskBoardItemStatus) => void;
-  onMove: (id: string, status: TaskBoardItemStatus, sortOrder: number) => void;
+  onCreate: (column: BoardColumn) => void;
+  onMove: (id: string, column: BoardColumn, sortOrder: number) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
   const t = useT();
-  const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
+  const [overLane, setOverLane] = useState<string | null>(null);
   // Which card the dragged one would land before, within `overLane` — null
   // means "at the end of the lane". Drives both the drop math and the
   // insertion-line indicator.
@@ -691,7 +815,9 @@ function Lanes({
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Re-run FLIP whenever a card's lane or ordering changes.
-  const signature = items.map((t) => `${t.id}:${t.status}`).join(",");
+  const signature = items
+    .map((i) => `${i.id}:${columnForItem(i, columns).id}`)
+    .join(",");
   useFlipLanes(boardRef, signature);
 
   return (
@@ -706,16 +832,19 @@ function Lanes({
       {/* Padding lives on the capped row (not the scroll container) so its left
           edge matches the header's max-w + px exactly. */}
       <div className="mx-auto flex w-full max-w-[1680px] gap-3 px-4 pt-6 pb-16 sm:px-8">
-        {STATUSES.map((status) => {
-          const laneItems = items.filter((t) => t.status === status);
-          const config = STATUS_CONFIG[status];
+        {columns.map((column) => {
+          const laneItems = items.filter(
+            (i) => columnForItem(i, columns).id === column.id,
+          );
+          const config = STATUS_CONFIG[column.stage];
           const LaneIcon = config.icon;
+          const label = columnLabel(column, t);
           return (
             <div
-              key={status}
+              key={column.id}
               onDragOver={(e) => {
                 e.preventDefault();
-                setOverLane(status);
+                setOverLane(column.id);
                 // Only reached when not over a card (cards stop propagation),
                 // i.e. the empty area below the last card — drop at the end.
                 setDropBeforeId(null);
@@ -732,7 +861,7 @@ function Lanes({
                 if (id) {
                   onMove(
                     id,
-                    status,
+                    column,
                     insertSortOrder(laneItems, dropBeforeId, id),
                   );
                 }
@@ -741,7 +870,7 @@ function Lanes({
               }}
               className={cn(
                 "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
-                overLane === status && "bg-muted/50",
+                overLane === column.id && "bg-muted/50",
               )}
             >
               {/* Sticky so the column header stays visible while the cards
@@ -752,20 +881,28 @@ function Lanes({
                   className={cn("shrink-0", config.iconClassName)}
                 />
                 <span className="text-sm font-medium text-foreground">
-                  {t(config.labelKey)}
+                  {label}
                 </span>
                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                   {laneItems.length}
                 </span>
+                {column.automation?.enabled && (
+                  <span
+                    title={t("taskBoard.taskBoard.columnAutomationHint")}
+                    className="flex items-center text-primary"
+                  >
+                    <Lightning01 size={13} />
+                  </span>
+                )}
                 <button
                   type="button"
                   aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                    lane: t(config.labelKey),
+                    lane: label,
                   })}
                   title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-                    lane: t(config.labelKey),
+                    lane: label,
                   })}
-                  onClick={() => onCreate(status)}
+                  onClick={() => onCreate(column)}
                   className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <Plus size={15} />
@@ -775,7 +912,7 @@ function Lanes({
                 {laneItems.map((item) => (
                   <Fragment key={item.id}>
                     <DropDivider
-                      show={overLane === status && dropBeforeId === item.id}
+                      show={overLane === column.id && dropBeforeId === item.id}
                     />
                     <TaskCard
                       item={item}
@@ -790,6 +927,7 @@ function Lanes({
                           : undefined
                       }
                       members={members}
+                      selected={releaseSelection?.has(item.id) ?? null}
                       onOpen={() => onOpen(item)}
                       onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
                       onAssign={
@@ -800,7 +938,7 @@ function Lanes({
                       onDragOverCard={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setOverLane(status);
+                        setOverLane(column.id);
                         const rect = e.currentTarget.getBoundingClientRect();
                         const before = e.clientY - rect.top < rect.height / 2;
                         if (before) {
@@ -820,6 +958,13 @@ function Lanes({
             </div>
           );
         })}
+        {releasesEnabled && (
+          <ReleasesLane
+            items={items}
+            selecting={releaseSelection !== null}
+            onNewRelease={onNewRelease}
+          />
+        )}
       </div>
     </div>
   );
@@ -839,11 +984,156 @@ function DropDivider({ show }: { show: boolean }) {
   );
 }
 
+/**
+ * The board's trailing Releases column: each release is a card grouping the
+ * tasks stamped with it (ai-services panel's "a release is a card of the
+ * shipped issues"). "New release" enters card-select mode; the floating bar
+ * then composes the release from the selection.
+ */
+function ReleasesLane({
+  items,
+  selecting,
+  onNewRelease,
+}: {
+  items: TaskBoardItem[];
+  selecting: boolean;
+  onNewRelease: () => void;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const { releases } = useTaskBoardReleases(true);
+  const actions = useTaskBoardReleaseActions();
+
+  const tasksByRelease = new Map<string, TaskBoardItem[]>();
+  for (const it of items) {
+    if (!it.releaseId) continue;
+    const list = tasksByRelease.get(it.releaseId);
+    if (list) list.push(it);
+    else tasksByRelease.set(it.releaseId, [it]);
+  }
+
+  return (
+    <div className="flex w-[300px] shrink-0 flex-col rounded-xl p-1">
+      <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
+        <Rocket01 size={15} className="shrink-0 text-primary" />
+        <span className="text-sm font-medium text-foreground">
+          {t("taskBoard.taskBoard.releasesMenuLabel")}
+        </span>
+        <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+          {releases.length}
+        </span>
+        {!selecting && (
+          <button
+            type="button"
+            aria-label={t("taskBoard.taskBoard.newReleaseButton")}
+            title={t("taskBoard.taskBoard.newReleaseButton")}
+            onClick={onNewRelease}
+            className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Plus size={15} />
+          </button>
+        )}
+      </div>
+      <div className="flex min-h-12 flex-col gap-2 pt-1">
+        {releases.length === 0 ? (
+          <div className="px-2 py-3 text-xs text-muted-foreground/70">
+            {t("taskBoard.taskBoard.noReleases")}
+          </div>
+        ) : (
+          releases.map((r) => {
+            const tasks = tasksByRelease.get(r.id) ?? [];
+            return (
+              <div
+                key={r.id}
+                className="group flex flex-col gap-2 rounded-xl bg-card p-3 card-shadow"
+              >
+                <div className="flex items-center gap-2">
+                  <Rocket01 size={14} className="shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                    {r.title}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {formatTimeAgo(new Date(r.createdAt))}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t(
+                      "taskBoard.taskBoard.deleteReleaseAriaLabel",
+                      {
+                        title: r.title,
+                      },
+                    )}
+                    onClick={() => actions.remove.mutate(r.id)}
+                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  >
+                    <Trash03 size={13} />
+                  </button>
+                </div>
+                {r.notes && (
+                  <p className="line-clamp-2 whitespace-pre-line text-xs text-muted-foreground">
+                    {r.notes}
+                  </p>
+                )}
+                <div className="flex flex-col gap-1 border-t border-border pt-2">
+                  {tasks.length === 0 ? (
+                    <span className="text-xs text-muted-foreground/70">
+                      {t("taskBoard.taskBoard.releaseNoTasks")}
+                    </span>
+                  ) : (
+                    tasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center gap-1.5 text-xs"
+                      >
+                        {formatTaskKey(org.slug, task.seq) && (
+                          <span className="shrink-0 font-mono text-muted-foreground/70">
+                            {formatTaskKey(org.slug, task.seq)}
+                          </span>
+                        )}
+                        <span className="min-w-0 truncate text-foreground">
+                          {task.title}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Label chips for a card/row — colored dot per label, first 3 plus "+N". */
+function TagChips({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  const shown = tags.slice(0, 3);
+  const extra = tags.length - shown.length;
+  return (
+    <>
+      {shown.map((tag) => (
+        <span key={tag} className={PILL}>
+          <span className={cn("size-2 rounded-full", labelDotColor(tag))} />
+          {tag}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span className={PILL} title={tags.slice(3).join(", ")}>
+          +{extra}
+        </span>
+      )}
+    </>
+  );
+}
+
 function TaskCard({
   item,
   assignee,
   assignedBy,
   members,
+  selected,
   onOpen,
   onAutoFix,
   onAssign,
@@ -853,15 +1143,19 @@ function TaskCard({
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
+  /** Non-null in release-select mode: whether this card is picked. */
+  selected: boolean | null;
   onOpen: () => void;
   onAutoFix?: () => void;
   onAssign?: (userId: string | null) => void;
   onDragOverCard?: (e: DragEvent<HTMLButtonElement>) => void;
 }) {
   const t = useT();
+  const { org } = useProjectContext();
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
   const lastMessage = primaryThread(item)?.lastMessage;
+  const taskKey = formatTaskKey(org.slug, item.seq);
 
   const showAutoFix =
     onAutoFix &&
@@ -880,9 +1174,18 @@ function TaskCard({
       }}
       onDragOver={onDragOverCard}
       onClick={onOpen}
-      className="group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing"
+      className={cn(
+        "group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing",
+        selected && "ring-2 ring-primary",
+      )}
       title={item.title}
     >
+      {taskKey && (
+        <span className="font-mono text-[11px] text-muted-foreground/70">
+          {taskKey}
+        </span>
+      )}
+
       <div className="flex items-start gap-2">
         <StatusIcon
           size={16}
@@ -908,13 +1211,15 @@ function TaskCard({
 
       {(isTaskBlocked(item) ||
         item.priority !== "none" ||
-        Boolean(item.dueDate)) && (
+        item.dueDate ||
+        item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
           {item.priority !== "none" && (
             <PriorityPill priority={item.priority} />
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
+          <TagChips tags={item.tags} />
         </div>
       )}
 
@@ -946,8 +1251,10 @@ function ListRow({
   assignedBy?: Member;
   onOpen: () => void;
 }) {
+  const { org } = useProjectContext();
   const config = STATUS_CONFIG[item.status];
   const StatusIcon = config.icon;
+  const taskKey = formatTaskKey(org.slug, item.seq);
   return (
     <button
       type="button"
@@ -955,6 +1262,11 @@ function ListRow({
       className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
     >
       <StatusIcon size={16} className={cn("shrink-0", config.iconClassName)} />
+      {taskKey && (
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+          {taskKey}
+        </span>
+      )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {item.title}
       </span>
@@ -969,6 +1281,9 @@ function ListRow({
           <DueDatePill iso={item.dueDate} />
         </span>
       )}
+      <span className="hidden items-center gap-1.5 sm:inline-flex">
+        <TagChips tags={item.tags} />
+      </span>
       <AssigneeDisplay
         item={item}
         assignee={assignee}
@@ -978,5 +1293,167 @@ function ListRow({
         {formatTimeAgo(new Date(item.createdAt))}
       </span>
     </button>
+  );
+}
+
+/** Sprint scope selector — filter the board by week (sprint). Sprints are the
+ *  system-defined calendar weeks (current/upcoming/previous); you pick one, you
+ *  never create them. */
+function SprintControl({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const weeks = generateSprintWeeks();
+
+  const label =
+    value === "all"
+      ? t("taskBoard.taskBoard.sprintAll")
+      : value === "backlog"
+        ? t("taskBoard.taskBoard.sprintBacklog")
+        : formatSprintRange(value);
+
+  const selectScope = (next: string) => {
+    onChange(next);
+    setOpen(false);
+  };
+
+  const scopeRow =
+    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted";
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors",
+            value !== "all"
+              ? "border-transparent bg-accent text-foreground"
+              : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          )}
+        >
+          <RefreshCw01 size={14} className="shrink-0" />
+          <span className="max-w-[12rem] truncate">{label}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="max-h-80 w-72 overflow-y-auto p-1"
+      >
+        <button
+          type="button"
+          className={scopeRow}
+          onClick={() => selectScope("all")}
+        >
+          <Check
+            size={14}
+            className={cn("shrink-0", value !== "all" && "opacity-0")}
+          />
+          {t("taskBoard.taskBoard.sprintAll")}
+        </button>
+        <button
+          type="button"
+          className={scopeRow}
+          onClick={() => selectScope("backlog")}
+        >
+          <Check
+            size={14}
+            className={cn("shrink-0", value !== "backlog" && "opacity-0")}
+          />
+          {t("taskBoard.taskBoard.sprintBacklog")}
+        </button>
+        <div className="my-1 h-px bg-border" />
+        {weeks.map((week) => {
+          const state = sprintWeekState(week);
+          return (
+            <button
+              key={week}
+              type="button"
+              className={scopeRow}
+              onClick={() => selectScope(week)}
+            >
+              <Check
+                size={14}
+                className={cn("shrink-0", value !== week && "opacity-0")}
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {formatSprintRange(week)}
+              </span>
+              <span className={cn("shrink-0 text-xs", sprintStateTone(state))}>
+                {t(sprintStateLabelKey(state))}
+              </span>
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Title + notes for a new release built from the selected cards. */
+function CreateReleaseDialog({
+  open,
+  onOpenChange,
+  count,
+  isPending,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  count: number;
+  isPending: boolean;
+  onCreate: (title: string, notes: string) => void;
+}) {
+  const t = useT();
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {t("taskBoard.taskBoard.createReleaseTitle")}
+          </DialogTitle>
+          <DialogDescription>
+            {t("taskBoard.taskBoard.createReleaseDescription", {
+              count: String(count),
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={t("taskBoard.taskBoard.releaseTitlePlaceholder")}
+            autoFocus
+          />
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={t("taskBoard.taskBoard.releaseNotesPlaceholder")}
+            rows={4}
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            disabled={!title.trim() || isPending}
+            onClick={() => onCreate(title.trim(), notes.trim())}
+            className="gap-2"
+          >
+            {isPending ? (
+              <Loading01 size={16} className="animate-spin" />
+            ) : (
+              <Rocket01 size={16} />
+            )}
+            {t("taskBoard.taskBoard.createReleaseButton")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

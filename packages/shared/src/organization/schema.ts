@@ -142,6 +142,47 @@ export const OrgFlagsSchema = z.object({
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 
 /**
+ * Task board settings — matches TaskBoardSettingsConfig from storage/types.ts.
+ * Columns map onto the canonical 5-stage lifecycle so run-driven status
+ * automation keeps working over custom columns.
+ */
+export const TaskBoardColumnConfigSchema = z.object({
+  id: z.string().min(1),
+  /** Display label. Null for a default column (the UI uses its i18n label). */
+  name: z.string().min(1).nullable(),
+  stage: z.enum([
+    "triage",
+    "todo",
+    "in_progress",
+    "in_review",
+    "qa",
+    "ready_for_release",
+    "deploy",
+    "done",
+  ]),
+  automation: z
+    .object({
+      enabled: z.boolean(),
+      /** Virtual MCP id to run when a task enters this column; null = the
+       *  org's Super Agent. */
+      agentId: z.string().nullable(),
+    })
+    .optional(),
+});
+
+export const TaskBoardSettingsConfigSchema = z.object({
+  /** Custom column set, in board order. Null = the default 5 columns. */
+  columns: z.array(TaskBoardColumnConfigSchema).min(1).nullable(),
+  sprintsEnabled: z.boolean().optional(),
+  releasesEnabled: z.boolean().optional(),
+});
+
+export type TaskBoardSettingsConfig = z.infer<
+  typeof TaskBoardSettingsConfigSchema
+>;
+export type TaskBoardColumnConfig = z.infer<typeof TaskBoardColumnConfigSchema>;
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({

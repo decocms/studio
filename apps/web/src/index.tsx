@@ -485,6 +485,14 @@ const settingsConnectRoute = createRoute({
   ),
 });
 
+const settingsBoardRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/board",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/board.tsx"),
+  ),
+});
+
 const settingsBrandContextRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/brand-context",
@@ -609,6 +617,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,
+  settingsBoardRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
   settingsSecretsRoute,

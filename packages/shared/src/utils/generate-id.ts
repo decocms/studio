@@ -23,7 +23,12 @@ type IdPrefixes =
   | "vpc"
   | "tile"
   | "fcfg"
-  | "board";
+  | "board"
+  | "cmt"
+  | "att"
+  | "sprint"
+  | "rel"
+  | "act";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

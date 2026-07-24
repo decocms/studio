@@ -21,6 +21,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
+import { reactToColumnEntry } from "./column-automation";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
   TASK_BOARD_ITEM_DELETED_EVENT,
@@ -29,13 +30,19 @@ import {
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
 
-/** Board lane order — a transition only moves a card forward, never back. */
+/** Canonical stage order — a run-driven transition only moves forward, never
+ *  back. The tail stages (qa/ready_for_release/deploy) sit between review and
+ *  done; nothing auto-advances into them (they're human/sync-driven), but the
+ *  ranks keep a later human move from being clobbered by a late run event. */
 const RANK: Record<TaskBoardItemStatus, number> = {
   triage: 0,
   todo: 1,
   in_progress: 2,
   in_review: 3,
-  done: 4,
+  qa: 4,
+  ready_for_release: 5,
+  deploy: 6,
+  done: 7,
 };
 
 /** Push a task board item change to every SSE listener on its org. */
@@ -129,7 +136,25 @@ export async function advanceTaskBoardForRun(
         { status },
         ctx.auth?.user?.id ?? current.updatedBy,
       );
+      // Timeline entry for the agent-driven move (actor "system"). Best-effort.
+      await ctx.storage.taskBoard
+        .recordActivity({
+          organizationId: orgId,
+          taskBoardItemId: itemId,
+          kind: "status_changed",
+          actorId: "system",
+          data: { from: current.status, to: status },
+        })
+        .catch((err) =>
+          console.error("[task-board] activity log write failed", err),
+        );
       emitTaskBoardUpdated(orgId, item);
+      // A run-driven advance can land in an automated column too (e.g. a QA
+      // agent on In Review) — the automation stamp guards against loops.
+      await reactToColumnEntry(ctx, item, {
+        status: current.status,
+        columnId: current.columnId,
+      });
     }
   } catch (err) {
     console.error("[task-board] run transition failed", err);

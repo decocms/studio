@@ -9,6 +9,8 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToColumnEntry } from "./column-automation";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -28,8 +30,18 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
+    /** Custom-column placement (must belong to the org's board settings and
+     *  match `status`'s stage — pass both together). */
+    columnId: z.string().nullable().optional(),
+    tags: z.array(z.string().min(1).max(60)).max(20).optional(),
+    sprintId: z.string().nullable().optional(),
   }),
-  outputSchema: z.object({ item: TaskBoardItemSchema }),
+  outputSchema: z.object({
+    item: TaskBoardItemSchema,
+    /** Present when the task was delegated to the Super Agent but its run
+     *  couldn't start (e.g. no AI model configured) — surfaced to the user. */
+    superAgentError: z.string().optional(),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -57,13 +69,27 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       dueDate: input.dueDate ?? null,
+      columnId: delegatedToSuperAgent ? null : input.columnId,
+      tags: input.tags,
+      sprintId: input.sprintId ?? null,
       by: getUserId(ctx)!,
+    });
+
+    await recordTaskActivity(ctx, {
+      organizationId,
+      taskBoardItemId: item.id,
+      kind: "created",
+      actorId: getUserId(ctx)!,
     });
 
     // Broadcast the new card so every open board adds it live, no polling.
     emitTaskBoardUpdated(organizationId, item);
-    await reactToSuperAgentDelegation(ctx, item);
+    const superAgentError = await reactToSuperAgentDelegation(ctx, item);
+    // A task created straight into an automated column enqueues its agent.
+    if (!delegatedToSuperAgent) {
+      await reactToColumnEntry(ctx, item, null);
+    }
 
-    return { item };
+    return { item, superAgentError: superAgentError ?? undefined };
   },
 });
