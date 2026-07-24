@@ -13,7 +13,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     await env.close();
   });
 
-  it("assigns staging when the vMCP has a github repo", async () => {
+  it("isolates the thread on its own thread:<id> branch when the vMCP has a github repo", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -39,7 +39,9 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    expect(result.item.branch).toBe("staging");
+    // Per-thread synthetic branch (includes the repo connection id), never the
+    // shared `staging` branch — concurrent chats must not share a working branch.
+    expect(result.item.branch).toBe(`thread:${result.item.id}/conn_x`);
     expect(result.item.virtual_mcp_id).toBe(vmcp.id);
   });
 
@@ -119,7 +121,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(result.item.branch).toBeNull();
   });
 
-  it("uses staging instead of a warm sandboxMap branch", async () => {
+  it("uses its own thread:<id> branch instead of a warm sandboxMap branch", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -163,7 +165,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    expect(result.item.branch).toBe("staging");
+    expect(result.item.branch).toBe(`thread:${result.item.id}/conn_x`);
   });
 
   it("is idempotent: creating with the same id twice returns the same row", async () => {

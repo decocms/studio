@@ -47,16 +47,14 @@ import {
   detectRepoRuntime,
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
-import {
-  DEFAULT_WORKSPACE_BRANCH,
-  PACKAGE_MANAGER_CONFIG,
-} from "@decocms/shared/runtime-defaults";
+import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   getThreadGithubRepo,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
+  threadBranch,
   threadIdFromBranch,
 } from "./thread-repo";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
@@ -128,7 +126,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted, the handler uses the shared `staging` branch. The resolved branch is returned in the response so callers can persist it.",
+        "Optional git branch to check out. When omitted, the handler derives the thread's own synthetic `thread:<id>` branch from the thread context; with neither a branch nor a thread it errors rather than defaulting to a shared branch. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
@@ -148,7 +146,19 @@ export const SANDBOX_START = defineTool({
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
     await ctx.access.check();
-    const resolvedBranch = input.branch ?? DEFAULT_WORKSPACE_BRANCH;
+    // Prefer the caller's branch; otherwise isolate on the thread's own
+    // synthetic `thread:<id>` branch (same per-thread scheme as thread creation
+    // and `load_repo`) so a branchless start never lands on a shared working
+    // branch. There is deliberately NO default-to-`staging` fallback: a shared
+    // branch must be an explicit choice, never something we silently drift into.
+    const resolvedBranch =
+      input.branch ??
+      (ctx.metadata?.threadId ? threadBranch(ctx.metadata.threadId) : null);
+    if (!resolvedBranch) {
+      throw new Error(
+        "SANDBOX_START requires an explicit `branch` or a thread context; refusing to default to a shared branch.",
+      );
+    }
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.

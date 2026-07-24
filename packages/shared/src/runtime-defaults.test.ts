@@ -1,14 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import {
   DEFAULT_BASE_BRANCH,
-  DEFAULT_WORKSPACE_BRANCH,
   PACKAGE_MANAGER_CONFIG,
   type PackageManager,
 } from "./runtime-defaults";
 
 describe("PACKAGE_MANAGER_CONFIG", () => {
-  it("keeps shared sandbox work on staging and publishes to main", () => {
-    expect(DEFAULT_WORKSPACE_BRANCH).toBe("staging");
+  it("publishes sandbox work back to main", () => {
     expect(DEFAULT_BASE_BRANCH).toBe("main");
   });
 

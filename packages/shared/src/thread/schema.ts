@@ -131,7 +131,7 @@ export const ThreadCreateDataSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server uses the shared staging branch.",
+      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server isolates the thread on its own synthetic `thread:<id>` branch.",
     ),
 });
 

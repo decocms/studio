@@ -209,12 +209,14 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  threadId?: string;
 }): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
     virtualMcp,
     updateSpy = mock(async () => {}),
+    threadId,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -300,7 +302,7 @@ function makeCtx(overrides: {
       createCounter: () => ({ add: () => {} }),
     } as never,
     baseUrl: "https://studio.example.com",
-    metadata: { requestId: "req_1", timestamp: new Date() },
+    metadata: { requestId: "req_1", timestamp: new Date(), threadId },
     objectStorage: null as never,
     aiProviders: null as never,
     createMCPProxy: null as never,
@@ -582,20 +584,34 @@ describe("SANDBOX_START", () => {
     expect(result.isNewVm).toBe(false);
   });
 
-  it("uses staging when input.branch is omitted and threads it into the ref", async () => {
+  it("errors instead of defaulting to a shared branch when input.branch is omitted and there is no thread context", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
+    await expect(
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx),
+    ).rejects.toThrow(
+      "SANDBOX_START requires an explicit `branch` or a thread context",
+    );
+    // Never provisioned a sandbox on a silent shared-branch default.
+    expect(mockEnsure).not.toHaveBeenCalled();
+  });
+
+  it("derives the thread's own thread:<id> branch when input.branch is omitted but a thread is in context", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp, threadId: "t_42" });
+
     const result = await SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx);
 
-    expect(result.branch).toBe("staging");
+    // Per-thread isolation, never the shared `staging` branch.
+    expect(result.branch).toBe("thread:t_42");
     const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
     expect(id.projectRef).toBe(
       composeSandboxRef({
         orgId: ORG_ID,
         virtualMcpId: VMCP_ID,
-        branch: result.branch,
+        branch: "thread:t_42",
       }),
     );
   });

@@ -5,7 +5,9 @@
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
  *   1. Honor `data.branch` when provided.
- *   2. Otherwise use the shared `staging` branch.
+ *   2. Otherwise isolate the chat on its own synthetic `thread:<id>` branch
+ *      (the same per-thread scheme `load_repo` uses), so concurrent chats never
+ *      share a working branch.
  *
  * Threads created on a vMCP without a githubRepo always get `branch = null`.
  *
@@ -26,7 +28,7 @@ import {
   ThreadEntitySchema,
 } from "@decocms/shared/thread/schema";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_WORKSPACE_BRANCH } from "@decocms/shared/runtime-defaults";
+import { threadBranch } from "../sandbox/thread-repo";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -85,7 +87,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     const metadata = vmcp.metadata as GithubRepoMeta | null | undefined;
     const githubRepo = metadata?.githubRepo;
     const branch = githubRepo
-      ? (data.branch ?? DEFAULT_WORKSPACE_BRANCH)
+      ? (data.branch ?? threadBranch(taskId, githubRepo.connectionId))
       : null;
 
     const result = await ctx.storage.threads.create({
