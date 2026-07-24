@@ -30,10 +30,14 @@ function extractPartText(payload: unknown): string | null {
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
 /**
- * Should a repo-less task advance to In Review now that a thread finished? True
- * iff it's In Progress, has at least one thread, none of them loaded a repo, and
- * every thread's run has reached a terminal status. Repo-backed tasks are left
- * alone — they ride the PR-open → In Review path instead. Pure — unit-tested.
+ * Should a task advance to In Review now that a thread finished? True iff it's
+ * In Progress, has at least one thread, and every thread's run has reached a
+ * terminal status. Repo-backed tasks advance here too: the PR-open hook moves
+ * them earlier (mid-run, real-time) when it fires, but thread-finish is the
+ * backstop so a task doesn't sit in In Progress forever when PR detection misses
+ * (shell alias, script wrapper, or a PR opened by any other means). RANK keeps
+ * this from moving a card backward, and a re-prompt reopens it. Pure —
+ * unit-tested.
  */
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
@@ -41,7 +45,6 @@ export function shouldAdvanceToReview(item: {
 }): boolean {
   if (item.status !== "in_progress") return false;
   if (item.threads.length === 0) return false;
-  if (item.threads.some((t) => t.hasPreview)) return false;
   return item.threads.every(
     (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
   );

@@ -43,13 +43,13 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(false);
   });
 
-  it("leaves repo-backed tasks alone — the PR path owns their in_review move", () => {
+  it("advances a repo-backed task on thread-finish too (backstop for missed PR detection)", () => {
     expect(
       shouldAdvanceToReview({
         status: "in_progress",
         threads: [thread("completed", true)],
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("only fires from in_progress, not from other lanes", () => {
