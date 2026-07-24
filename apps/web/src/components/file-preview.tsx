@@ -199,7 +199,7 @@ export function FilePreview({ file }: { file: PreviewableFile }) {
         <iframe
           src={file.downloadUrl}
           title={file.filename}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-downloads"
           className="block h-full w-full bg-white"
         />
       );
