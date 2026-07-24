@@ -25,6 +25,20 @@ describe("resolveConfig sandbox provider kind", () => {
 
     expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
   });
+
+  it("trims surrounding whitespace/newlines instead of throwing", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_SANDBOX_PROVIDER: "agent-sandbox\n",
+    });
+
+    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+  });
+
+  it("still throws for a genuinely unknown value", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_SANDBOX_PROVIDER: "bogus" }),
+    ).toThrow(/Unknown STUDIO_SANDBOX_PROVIDER/);
+  });
 });
 
 describe("resolveConfig NATS tunnel settings", () => {
