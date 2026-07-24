@@ -27,6 +27,8 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { SORTABLE_DROP_ANIMATION } from "@/web/lib/dnd-drop-animation.ts";
 import { useT } from "@/web/i18n/use-t.ts";
 import {
   GRID_COLS,
@@ -150,25 +152,32 @@ export function TileBoard({
           </BoardTile>
         ))}
       </div>
-      <DragOverlay
-        dropAnimation={null}
-        style={{
-          width:
-            activeTile && dragState
-              ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
-              : undefined,
-          height:
-            activeTile && dragState
-              ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
-              : undefined,
-        }}
-      >
-        {activeTile && (
-          <div className="bg-card card-shadow rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
-            <TileErrorBoundary>{renderTile(activeTile)}</TileErrorBoundary>
-          </div>
-        )}
-      </DragOverlay>
+      {/* Portal to body so the overlay's `position: fixed` resolves against
+          the viewport, not the workspace PanelCard's `transform:
+          translateZ(0)` containing block (which would drop the dragged tile
+          below the cursor). */}
+      {createPortal(
+        <DragOverlay
+          dropAnimation={SORTABLE_DROP_ANIMATION}
+          style={{
+            width:
+              activeTile && dragState
+                ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
+                : undefined,
+            height:
+              activeTile && dragState
+                ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
+                : undefined,
+          }}
+        >
+          {activeTile && (
+            <div className="bg-card card-shadow rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
+              <TileErrorBoundary>{renderTile(activeTile)}</TileErrorBoundary>
+            </div>
+          )}
+        </DragOverlay>,
+        document.body,
+      )}
     </DndContext>
   );
 }

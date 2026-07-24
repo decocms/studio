@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { SORTABLE_DROP_ANIMATION } from "@/web/lib/dnd-drop-animation.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -457,16 +459,23 @@ export function PageVariantTabs({
           </div>
         </SortableContext>
 
-        <DragOverlay dropAnimation={null}>
-          {activeEntry ? (
-            <PageVariantRowPreview
-              variant={activeEntry.variant}
-              decofile={decofile}
-              meta={meta}
-              matchers={matchers}
-            />
-          ) : null}
-        </DragOverlay>
+        {/* Portal to body so the overlay's `position: fixed` resolves against
+            the viewport, not the workspace PanelCard's `transform:
+            translateZ(0)` containing block (which would drop the dragged tab
+            below the cursor). */}
+        {createPortal(
+          <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
+            {activeEntry ? (
+              <PageVariantRowPreview
+                variant={activeEntry.variant}
+                decofile={decofile}
+                meta={meta}
+                matchers={matchers}
+              />
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
     </div>
   );

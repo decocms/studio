@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { SORTABLE_DROP_ANIMATION } from "@/web/lib/dnd-drop-animation.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Tooltip,
@@ -410,22 +412,29 @@ export function SectionVariantList({
           </div>
         </SortableContext>
 
-        <DragOverlay dropAnimation={null}>
-          {activeEntry ? (
-            <div
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-2.5 shadow-lg ring-1 ring-border/60 cursor-grabbing",
-                VARIANT_SELECTED_ROW_CLASS,
-              )}
-            >
-              <VariantRowContent
-                label={activeEntry.label}
-                canDelete={canDelete}
-                dragging
-              />
-            </div>
-          ) : null}
-        </DragOverlay>
+        {/* Portal to body so the overlay's `position: fixed` resolves against
+            the viewport, not the workspace PanelCard's `transform:
+            translateZ(0)` containing block (which would drop the dragged row
+            below the cursor). */}
+        {createPortal(
+          <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
+            {activeEntry ? (
+              <div
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-2.5 shadow-lg ring-1 ring-border/60 cursor-grabbing",
+                  VARIANT_SELECTED_ROW_CLASS,
+                )}
+              >
+                <VariantRowContent
+                  label={activeEntry.label}
+                  canDelete={canDelete}
+                  dragging
+                />
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
     </div>
   );
