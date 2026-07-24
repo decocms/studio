@@ -450,4 +450,13 @@ export const chat = {
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
   "chat.mention.noItemsFound": "Nenhum item encontrado",
+  "chat.modelPreferences.title": "Seus modelos",
+  "chat.modelPreferences.description":
+    "Escolha qual modelo cada nível usa para você. Isso altera apenas os seus chats — o padrão da organização permanece o mesmo.",
+  "chat.modelPreferences.openLabel": "Escolher seus modelos",
+  "chat.modelPreferences.pickModel": "Escolher modelo",
+  "chat.modelPreferences.reset": "Redefinir",
+  "chat.modelPreferences.usingOrgDefault": "Usando o padrão da organização",
+  "chat.modelPreferences.orgDefaultIs": "Padrão da organização: {model}",
+  "chat.modelPreferences.autoPicked": "escolhido automaticamente",
 } satisfies Record<keyof typeof chatEn, string>;

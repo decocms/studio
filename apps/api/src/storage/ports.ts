@@ -31,6 +31,7 @@ import type {
   OrganizationTag,
   Thread,
   ThreadMessage,
+  UserModelPreferences,
 } from "./types";
 
 export type ThreadUpdateData = Partial<Thread> & {
@@ -311,6 +312,22 @@ export interface OrganizationSettingsStoragePort {
       >
     >,
   ): Promise<OrganizationSettings>;
+}
+
+// ============================================================================
+// User Model Preferences Storage Port
+// ============================================================================
+
+export interface UserModelPreferencesStoragePort {
+  get(
+    userId: string,
+    organizationId: string,
+  ): Promise<UserModelPreferences | null>;
+  upsert(
+    userId: string,
+    organizationId: string,
+    prefs: UserModelPreferences,
+  ): Promise<UserModelPreferences>;
 }
 
 // ============================================================================

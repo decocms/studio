@@ -157,6 +157,21 @@ export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
 }
 
+export type ChatTier = "fast" | "smart" | "thinking";
+
+/** Per-user override of the chat tier → model mapping (see resolveTier). */
+export interface UserModelPreferences {
+  tiers: Partial<Record<ChatTier, SimpleModeModelSlot | null>>;
+}
+
+export interface UserModelPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  tiers: JsonObject<UserModelPreferences["tiers"]>;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
@@ -1794,6 +1809,7 @@ export interface Database extends PrivateRegistryDatabase {
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
+  user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)

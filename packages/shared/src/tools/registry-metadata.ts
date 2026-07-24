@@ -110,6 +110,8 @@ const ALL_TOOL_NAMES = [
   "API_KEY_DELETE",
   // User tools
   "USER_GET",
+  "USER_MODEL_PREFERENCES_GET",
+  "USER_MODEL_PREFERENCES_UPDATE",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -582,6 +584,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "USER_GET",
     description: "Get a user by id",
+    category: "Users",
+  },
+  {
+    name: "USER_MODEL_PREFERENCES_GET",
+    description: "Get the calling user's chat tier → model overrides",
+    category: "Users",
+  },
+  {
+    name: "USER_MODEL_PREFERENCES_UPDATE",
+    description: "Set the calling user's chat tier → model overrides",
     category: "Users",
   },
   // Thread tools

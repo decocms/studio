@@ -18,6 +18,7 @@ import {
   Cloud01,
   Lightning01,
   Monitor01,
+  Settings01,
   Stars01,
 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
@@ -30,6 +31,8 @@ import {
   type AgentMode,
 } from "./use-agent-mode";
 import { useChatPrefs, useOptionalChatTask } from "./context";
+import { useEffectiveSimpleMode } from "@/hooks/use-user-model-preferences";
+import { UserModelPreferencesDialog } from "./user-model-preferences-dialog";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import {
   type AgentOption,
@@ -328,6 +331,10 @@ export function TierTrigger() {
   const locked = taskCtx?.isThreadLocked ?? false;
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  // Effective config = org tiers with this user's overrides layered on. Drives
+  // the per-tier model name shown as each cloud row's subtitle.
+  const effectiveSimpleMode = useEffectiveSimpleMode();
 
   const getTierLabels = (): Record<ChatTier, string> => ({
     fast: t("chat.tierTrigger.tierFast"),
@@ -390,14 +397,21 @@ export function TierTrigger() {
     groups = [
       {
         key: "cloud",
-        rows: TIER_ORDER.map((t) => ({
-          key: `cloud-${t}`,
-          icon: tierIconFor(t),
-          title: tierLabels[t],
-          subtitle: resolveTierSubtitle("cloud-decopilot", t),
-          active: tier === t,
-          onSelect: () => setTier(t),
-        })),
+        rows: TIER_ORDER.map((t) => {
+          const modelName =
+            effectiveSimpleMode.tiers[t]?.title ??
+            effectiveSimpleMode.tiers[t]?.modelId;
+          return {
+            key: `cloud-${t}`,
+            icon: tierIconFor(t),
+            title: tierLabels[t],
+            // Show the concrete model backing this tier; fall back to the
+            // intent blurb before the org config has loaded.
+            subtitle: modelName ?? resolveTierSubtitle("cloud-decopilot", t),
+            active: tier === t,
+            onSelect: () => setTier(t),
+          };
+        }),
       },
     ];
   }
@@ -405,7 +419,7 @@ export function TierTrigger() {
   const localBrand = isLocal ? localHarnessBrand(pendingHarnessId) : null;
   const LocalBrandIcon = localBrand?.Icon;
 
-  return (
+  const pure = (
     <TierTriggerPure
       tier={tier}
       pillIcon={
@@ -419,5 +433,38 @@ export function TierTrigger() {
       groups={groups}
       header={hasLocal && !locked ? <RuntimeToggle /> : undefined}
     />
+  );
+
+  // Cloud mode: reveal a gear on hover that opens the per-user model picker.
+  // Local CLI tiers are fixed per harness, so there's nothing to override.
+  if (isLocal) return pure;
+
+  return (
+    <div className="group/tier inline-flex items-center min-w-0 shrink">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("chat.modelPreferences.openLabel")}
+            onClick={() => setPrefsOpen(true)}
+            className={cn(
+              "text-muted-foreground hover:text-foreground size-6 shrink-0 transition-opacity",
+              "opacity-0 pointer-events-none w-0 px-0",
+              "group-hover/tier:opacity-100 group-hover/tier:pointer-events-auto group-hover/tier:w-6",
+            )}
+          >
+            <Settings01 size={14} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("chat.modelPreferences.openLabel")}</TooltipContent>
+      </Tooltip>
+      {pure}
+      <UserModelPreferencesDialog
+        open={prefsOpen}
+        onOpenChange={setPrefsOpen}
+      />
+    </div>
   );
 }

@@ -436,4 +436,13 @@ export const chat = {
   "chat.webSearch.title": "Web search",
   "chat.mention.editPrompt": "Edit {name} prompt arguments",
   "chat.mention.noItemsFound": "No items found",
+  "chat.modelPreferences.title": "Your models",
+  "chat.modelPreferences.description":
+    "Pick which model each tier uses for you. This only changes your chats — the organization default stays the same.",
+  "chat.modelPreferences.openLabel": "Choose your models",
+  "chat.modelPreferences.pickModel": "Pick model",
+  "chat.modelPreferences.reset": "Reset",
+  "chat.modelPreferences.usingOrgDefault": "Using organization default",
+  "chat.modelPreferences.orgDefaultIs": "Organization default: {model}",
+  "chat.modelPreferences.autoPicked": "auto-picked",
 } as const;
