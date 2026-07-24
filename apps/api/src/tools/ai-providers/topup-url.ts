@@ -42,13 +42,13 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
     // Single-Stripe migration (3.7): when this deployment owns billing
     // (Stripe secret + gateway admin — the credit MUST be deliverable) the
     // deco top-up goes through the MESH checkout: one Stripe customer, one
-    // card, the webhook credits the gateway. USD only for now — BRL keeps
-    // using the gateway's legacy checkout (its live FX conversion) until we
-    // take on FX; the gateway Stripe module is deleted only after that.
+    // card, the webhook credits the gateway. BRL is charged in centavos and
+    // credited as its USD equivalent (live rate locked at session creation —
+    // exchange-rate.ts, ported from the gateway's legacy checkout). The
+    // legacy fallback below dies with ai-gateway#15.
     const settings = getSettings();
     if (
       input.providerId === "deco" &&
-      input.currency === "usd" &&
       settings.stripeSecretKey &&
       gatewayAdminConfigured() &&
       org.slug
