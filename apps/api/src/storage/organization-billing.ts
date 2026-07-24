@@ -273,6 +273,35 @@ export class OrganizationBillingStorage {
     });
   }
 
+  /** The one site whose weekly report re-run the subscription includes.
+   *  null clears the choice (and — via the benefits sync — the schedule).
+   *  The benefit-sync intent commits in the SAME update (house invariant:
+   *  a crash after commit can never lose the propagation). */
+  async setIncludedReportUrl(
+    organizationId: string,
+    includedReportUrl: string | null,
+    opts?: { markBenefitsPending?: boolean },
+  ): Promise<{ updated: boolean; benefitsReferenceId: string | null }> {
+    const benefitsReferenceId = opts?.markBenefitsPending
+      ? crypto.randomUUID()
+      : null;
+    const result = await this.db
+      .updateTable("organization_billing")
+      .set({
+        included_report_url: includedReportUrl,
+        ...(benefitsReferenceId && {
+          benefits_reference_id: benefitsReferenceId,
+        }),
+        updated_at: new Date(),
+      })
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return {
+      updated: (result.numUpdatedRows ?? 0n) > 0n,
+      benefitsReferenceId,
+    };
+  }
+
   /** Resolve the org behind a Stripe subscription (webhook events carry
    *  Stripe ids, not ours; migration 142's unique index guarantees at most
    *  one org per subscription). */

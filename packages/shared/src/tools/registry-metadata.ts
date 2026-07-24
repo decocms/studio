@@ -76,6 +76,8 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SEATS_SET",
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_SEATS_PREVIEW",
+  "ORGANIZATION_BILLING_PORTAL",
+  "ORGANIZATION_INCLUDED_REPORT_SET",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -430,6 +432,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_SEATS_PREVIEW",
     description: "Preview a seat change's prorated charge",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_BILLING_PORTAL",
+    description: "Open the Stripe billing portal",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_INCLUDED_REPORT_SET",
+    description: "Choose the subscription's included weekly report site",
     category: "Organizations",
   },
   // Connection tools
@@ -1218,6 +1230,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_SEATS_SET",
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_SEATS_PREVIEW",
+      "ORGANIZATION_BILLING_PORTAL",
+      "ORGANIZATION_INCLUDED_REPORT_SET",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

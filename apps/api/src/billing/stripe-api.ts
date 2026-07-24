@@ -178,6 +178,20 @@ export async function previewSeatChange(input: {
   };
 }
 
+/** Self-serve management surface (card, invoices, cancellation) — Stripe's
+ *  hosted Customer Portal; we never build billing UI for what Stripe hosts. */
+export async function createBillingPortalSession(input: {
+  customerId: string;
+  returnUrl: string;
+}): Promise<{ url: string }> {
+  const session = await stripeRequest<{ url?: string }>(
+    "/billing_portal/sessions",
+    { params: { customer: input.customerId, return_url: input.returnUrl } },
+  );
+  if (!session.url) throw new StripeApiError(500, "portal session lacks url");
+  return { url: session.url };
+}
+
 /** Commit the seat change on Stripe: prorated difference charged immediately
  *  on the saved card (always_invoice); pending_if_incomplete keeps the
  *  subscription consistent if the bank demands 3DS. */
