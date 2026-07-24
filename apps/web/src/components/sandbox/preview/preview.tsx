@@ -85,6 +85,7 @@ import {
   type VisualEditorPayload,
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
+import { buildSessionReplayScript } from "./session-replay-script";
 import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
@@ -117,6 +118,7 @@ import {
 import { PathParamInput } from "./path-param-input";
 import { manifestLoaderResolveTypes } from "@/components/sandbox/content/runnable-catalog";
 import { track } from "@/lib/posthog-client";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
@@ -207,6 +209,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const workspace = useBlocksPreviewWorkspace();
   // Toggles the bottom terminal drawer (null on surfaces without the provider).
   const terminal = useTerminalVisibility();
+  // PostHog project (key/host) for cross-origin session replay in the preview
+  // iframe; null when PostHog isn't configured for this deployment.
+  const posthogConfig = usePublicConfig().posthog;
 
   const goToTab = (main: string) => {
     navigate({
@@ -668,6 +673,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const origin = previewOrigin(previewUrl);
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
+  };
+
+  // Bootstrap PostHog session replay inside the sandbox preview so the
+  // cross-origin deco site is stitched into the parent's recording (rrweb
+  // skips cross-origin iframes otherwise). Reuses the `visual-editor::activate`
+  // channel the sandbox bootstrap already exposes (`new Function(script)()`) —
+  // present ONLY in sandbox previews, so this never runs against the
+  // production fallback. Re-sent on every onLoad because each in-iframe
+  // navigation is a fresh document; the script self-guards against double init.
+  const injectSessionReplay = () => {
+    if (!posthogConfig) return;
+    const win = previewIframeRef.current?.contentWindow;
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
+    win.postMessage(
+      {
+        type: "visual-editor::activate",
+        script: buildSessionReplayScript(posthogConfig.key, posthogConfig.host),
+      },
+      origin,
+    );
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
@@ -1566,6 +1592,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         // skip the sandbox-only load handling (analytics, path sync,
                         // editor injection) — none of it applies to it.
                         if (display.mode !== "sandbox") return;
+                        // Stitch this deco site into the parent's session
+                        // replay (cross-origin — see session-replay-script.ts).
+                        injectSessionReplay();
                         // This is the VM dev-server preview (sandboxed running app),
                         // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                         track("vm_preview_loaded", {

@@ -207,6 +207,14 @@ export function initPostHog(key: string, host: string) {
     session_recording: {
       maskAllInputs: true,
       blockClass: "ph-no-capture",
+      // Stitch the sandbox Preview iframe (a cross-origin deco site on
+      // *.preview-studio.decocms.com) into this document's recording. rrweb
+      // only records same-origin iframes by default, so without this the
+      // preview canvas shows up as a blank rectangle in replays. The child
+      // side is bootstrapped by buildSessionReplayScript(), injected ONLY into
+      // the sandbox preview (never the production fallback) — see
+      // components/sandbox/preview/session-replay-script.ts.
+      recordCrossOriginIframes: true,
       maskCapturedNetworkRequestFn: (request) => ({
         ...request,
         ...(typeof request.name === "string"
