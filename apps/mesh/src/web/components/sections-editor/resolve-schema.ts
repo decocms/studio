@@ -99,6 +99,14 @@ const MAX_BUILD_PROPERTY_DEPTH = 8;
  */
 const MAX_ANYOF_EAGER_SCHEMA_BRANCHES = 40;
 
+/**
+ * Definition key for the "pick any section" union (mirrors the meta composer's
+ * `SECTION_REF_DEF_KEY`). Section-typed props (`children`, `fallback`, …) `$ref`
+ * this; not every meta materializes the def, so {@link resolveSchema} falls back
+ * to `root.sections` when it's missing.
+ */
+const SECTION_REF_DEF_KEY = "__SECTION_REF__";
+
 function isArraySchemaBranch(schema: RawSchema): boolean {
   const t = schema.type;
   return t === "array" || (Array.isArray(t) && t.includes("array"));
@@ -282,7 +290,20 @@ export function resolveSchema(
       return (root[rootKey] as RawSchema | undefined) ?? {};
     }
     const key = ref.split("/").pop() ?? "";
-    return (defs[key] as RawSchema | undefined) ?? {};
+    const def = defs[key] as RawSchema | undefined;
+    if (def) return def;
+    // `__SECTION_REF__` is the "pick any section" union that Section-typed fields
+    // (e.g. NotFoundChallenge's `children`/`fallback`) point at. It's an alias
+    // the meta composer materializes FROM `root.sections.anyOf`, so metas that
+    // aren't self-contained (raw generateMeta output, or a snapshot baked by a
+    // CLI/runtime version that didn't emit the def) reference it without ever
+    // defining it. Fall back to the section registry so the field renders the
+    // section picker instead of collapsing to an empty object (blank field, no
+    // way to pick a section).
+    if (key === SECTION_REF_DEF_KEY) {
+      return (root.sections as RawSchema | undefined) ?? {};
+    }
+    return {};
   };
 
   let schemaRoot: RawSchema;

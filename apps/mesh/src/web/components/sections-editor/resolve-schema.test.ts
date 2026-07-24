@@ -906,6 +906,112 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
   });
 });
 
+describe("resolveSchema – __SECTION_REF__ falls back to root.sections", () => {
+  /**
+   * Regression: a Section-typed prop (`children`/`fallback` on
+   * NotFoundChallenge) `$ref`s `#/definitions/__SECTION_REF__`, but the meta is
+   * not self-contained — the def is never materialized; the "pick any section"
+   * union lives only at `schema.root.sections.anyOf`. Older/uncomposed metas
+   * (raw generateMeta output, or a snapshot from a CLI version that didn't bake
+   * the def) look exactly like this. Without the fallback, the field resolved to
+   * an empty `object` — a blank field the user can't pick a section in, so the
+   * form appears to stop after the first prop.
+   */
+  function sectionRefWithoutDefMeta(sectionCount: number): LiveMeta {
+    const definitions: Record<string, unknown> = {};
+    const sectionsAnyOf: Array<{ $ref: string; inputSchema?: string }> = [];
+
+    for (let i = 0; i < sectionCount; i++) {
+      const rt = `site/sections/S${i}.tsx`;
+      const wrapperKey = `W${i}`;
+      const propsKey = `P${i}`;
+      // The real deco shape: each entry is a `$ref` with an `inputSchema` sibling.
+      sectionsAnyOf.push({
+        $ref: `#/definitions/${wrapperKey}`,
+        inputSchema: `#/definitions/${propsKey}`,
+      });
+      definitions[wrapperKey] = {
+        title: rt,
+        allOf: [{ $ref: `#/definitions/${propsKey}` }],
+        properties: { __resolveType: { type: "string", enum: [rt] } },
+      };
+      definitions[propsKey] = {
+        type: "object",
+        properties: { title: { type: "string", title: "Title" } },
+      };
+    }
+
+    // The section that hosts the two Section-typed props.
+    definitions.Host = {
+      type: "object",
+      properties: {
+        page: { type: "string", title: "Integration" },
+        children: {
+          $ref: "#/definitions/__SECTION_REF__",
+          title: "On Product Found",
+        },
+        fallback: {
+          $ref: "#/definitions/__SECTION_REF__",
+          title: "On Product Not Found",
+        },
+      },
+    };
+
+    return {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Host.tsx": { $ref: "#/definitions/Host" },
+          },
+        },
+      },
+      // NOTE: no `definitions.__SECTION_REF__` — only `root.sections.anyOf`.
+      schema: { definitions, root: { sections: { anyOf: sectionsAnyOf } } },
+    };
+  }
+
+  test("Section fields render the section picker instead of an empty object", () => {
+    const meta = sectionRefWithoutDefMeta(110);
+    const resolved = resolveSchema("site/sections/Host.tsx", meta);
+
+    for (const field of ["children", "fallback"] as const) {
+      const prop = resolved?.properties?.[field];
+      expect(prop?.type).toBe("block-ref");
+      // Every section is offered as an option (selector works).
+      expect(prop?.anyOfRefs?.length).toBe(110);
+      // Oversized section union stays lazy — no eager per-branch schema.
+      expect(prop?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(true);
+    }
+  });
+
+  test("still resolves to empty when neither the def nor root.sections exist", () => {
+    // No fallback available → the field genuinely has nothing to resolve to.
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Host.tsx": { $ref: "#/definitions/Host" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Host: {
+            type: "object",
+            properties: {
+              children: { $ref: "#/definitions/__SECTION_REF__" },
+            },
+          },
+        },
+      },
+    };
+    const children = resolveSchema("site/sections/Host.tsx", meta)?.properties
+      ?.children;
+    expect(children?.type).toBe("object");
+    expect(children?.anyOfRefs).toBeUndefined();
+  });
+});
+
 describe("resolveSchema – inline object unions (A | B) render as a choice", () => {
   // Mirrors deco's real output for `(Location | Map)[]`: an anyOf of two
   // inlined object branches with titles, no $ref / __resolveType / discriminator.
