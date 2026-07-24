@@ -2,7 +2,7 @@
  * Lint plugin enforcing the harness-extraction dependency DAG
  * (spec 2026-06-11-harness-extraction-design.md §12 step 0).
  *
- *   - Any file under `packages/`        → no `@/...` specifiers, no `apps/mesh` reach-ins.
+ *   - Any file under `packages/`        → no `@/...` specifiers, no `apps/*` reach-ins.
  *   - Any file under `packages/harness/` → additionally no `@aws-sdk/*` nor `@/core/studio-context`.
  *   - Files outside `packages/` are not checked.
  */
@@ -16,8 +16,8 @@ function inHarnessPackage(filename) {
     filename.startsWith("packages/harness/")
   );
 }
-function reachesAppsMesh(spec) {
-  return spec === "apps/mesh" || spec.includes("apps/mesh/");
+function reachesAppsTree(spec) {
+  return /(^|\/)apps\/[^/]+(\/|$)/.test(spec);
 }
 function isAtAlias(spec) {
   return spec.startsWith("@/");
@@ -47,15 +47,15 @@ const banCrossTreeImportsRule = {
         }
         context.report({
           node: src,
-          message: `Cross-tree import banned: "${spec}" — packages/ code must not use the "@/" mesh path alias (spec §12 step 0). Use a workspace package specifier instead.`,
+          message: `Cross-tree import banned: "${spec}" — packages/ code must not use an app-local "@/" path alias (spec §12 step 0). Use a workspace package specifier instead.`,
         });
         return;
       }
 
-      if (reachesAppsMesh(spec)) {
+      if (reachesAppsTree(spec)) {
         context.report({
           node: src,
-          message: `Cross-tree import banned: "${spec}" — packages/ code must not reach into the apps/mesh tree (spec §12 step 0). Depend on a workspace package instead.`,
+          message: `Cross-tree import banned: "${spec}" — packages/ code must not reach into an apps/* tree (spec §12 step 0). Depend on a workspace package instead.`,
         });
         return;
       }

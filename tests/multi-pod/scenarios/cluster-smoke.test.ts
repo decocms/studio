@@ -5,7 +5,7 @@
  * failure before we trust any higher-level scenario:
  *
  *   1. All three pods respond to /health/live independently.
- *      → compose works, ports map, mesh boots, migrations ran once.
+ *      → compose works, ports map, Studio boots, migrations ran once.
  *
  *   2. /health/ready agrees on the *same* nats and postgres dependencies.
  *      → all pods see the same shared infra (not three independent stacks).
@@ -45,9 +45,9 @@ describe("cluster smoke", () => {
   });
 
   test("session created on pod-1 is recognized on pod-2 and pod-3", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
+    const session = await bootstrapSession(PODS.STUDIO_1);
 
-    for (const pod of [PODS.MESH_2, PODS.MESH_3]) {
+    for (const pod of [PODS.STUDIO_2, PODS.STUDIO_3]) {
       const res = await fetchOn(pod, "/api/auth/get-session", {
         auth: { cookie: session.cookie },
       });

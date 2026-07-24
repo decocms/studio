@@ -1,6 +1,7 @@
 {
   "name": "@decocms/harness",
   "version": "2.6.3",
+  "private": true,
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -30,8 +31,7 @@
     "@ai-sdk/google": "^3.0.83",
     "@ai-sdk/openai": "^3.0.73",
     "@ai-sdk/provider": "^3.0.10",
-    "@decocms/mesh-sdk": "workspace:*",
-    "@decocms/std": "workspace:*",
+    "@decocms/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@openrouter/ai-sdk-provider": "^2.9.1",
     "@opentelemetry/api": "^1.9.0",

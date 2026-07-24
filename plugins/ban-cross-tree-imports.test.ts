@@ -51,14 +51,14 @@ describe("ban-cross-tree-imports", () => {
     expect(msgs[0]).toContain("@/");
   });
 
-  test("bans relative apps/mesh reach-in from a packages/ file", async () => {
+  test("bans relative apps/api reach-in from a packages/ file", async () => {
     const f = fixture(
       "packages/sandbox/y.ts",
-      `import { p } from "../../../../apps/mesh/src/harnesses/offload-messages";\nexport const b = p;\n`,
+      `import { p } from "../../../../apps/api/src/harnesses/offload-messages";\nexport const b = p;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(1);
-    expect(msgs[0]).toContain("apps/mesh");
+    expect(msgs[0]).toContain("apps/api");
   });
 
   test("bans @aws-sdk/* only inside packages/harness/", async () => {
@@ -79,9 +79,9 @@ describe("ban-cross-tree-imports", () => {
     expect(await lint(f)).toEqual([]);
   });
 
-  test("ignores apps/mesh source files entirely", async () => {
+  test("ignores apps/api source files entirely", async () => {
     const f = fixture(
-      "apps/mesh/src/z.ts",
+      "apps/api/src/z.ts",
       `import { q } from "@/core/studio-context";\nexport const e = q;\n`,
     );
     expect(await lint(f)).toEqual([]);
@@ -101,7 +101,7 @@ describe("ban-cross-tree-imports", () => {
     const f = fixture(
       "packages/sandbox/reexport.ts",
       `export { r } from "@/core/server-constants";\n` +
-        `export const load = () => import("../../../apps/mesh/src/x");\n` +
+        `export const load = () => import("../../../apps/web/src/x");\n` +
         `export * from "@/core/utils";\n`,
     );
     const msgs = await lint(f);

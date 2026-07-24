@@ -59,9 +59,9 @@ cd - && bun run /tmp/toolrun/bulk.ts
 
 ```ts
 // /tmp/toolrun/bulk.ts
-import { createMeshClient } from "@decocms/typegen";
+import { createStudioClient } from "@decocms/typegen";
 
-const client = createMeshClient(); // discovers .deco/tools/.endpoint.json
+const client = createStudioClient(); // discovers .deco/tools/.endpoint.json
 const rows: { email: string }[] = JSON.parse(
   await Bun.file("input.json").text(),
 );

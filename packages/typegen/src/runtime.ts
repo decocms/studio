@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { discoverEndpoint, withMcpId } from "./endpoint.js";
-import type { MeshClient, MeshClientOptions, ToolMap } from "./index.js";
+import type { StudioClient, StudioClientOptions, ToolMap } from "./index.js";
 
 const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
@@ -14,7 +14,7 @@ const DEFAULT_BASE_URL = "https://studio.decocms.com";
  * Resolved inside `getClient` (not at construction) so a reconnect after
  * `close()` re-reads a refreshed endpoint file.
  */
-function resolveTarget(opts: MeshClientOptions): {
+function resolveTarget(opts: StudioClientOptions): {
   url: URL;
   headers: Record<string, string>;
 } {
@@ -46,7 +46,7 @@ function resolveTarget(opts: MeshClientOptions): {
   }
   if (!opts.mcpId) {
     throw new Error(
-      "createMeshClient: no target — pass mcpId (with an api key), an endpoint, or run inside a sandbox with .deco/tools/.endpoint.json",
+      "createStudioClient: no target — pass mcpId (with an api key), an endpoint, or run inside a sandbox with .deco/tools/.endpoint.json",
     );
   }
   const base = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -57,15 +57,18 @@ function resolveTarget(opts: MeshClientOptions): {
 }
 
 /** @internal - overrideable constructors for testing */
-export interface MeshClientDeps {
+export interface StudioClientDeps {
   Client: typeof Client;
   Transport: typeof StreamableHTTPClientTransport;
 }
 
-export function createMeshClient<T extends ToolMap = ToolMap>(
-  opts: MeshClientOptions = {},
-  /** @internal */ _deps?: Partial<MeshClientDeps>,
-): MeshClient<T> {
+/** @deprecated Use `StudioClientDeps`. */
+export type MeshClientDeps = StudioClientDeps;
+
+export function createStudioClient<T extends ToolMap = ToolMap>(
+  opts: StudioClientOptions = {},
+  /** @internal */ _deps?: Partial<StudioClientDeps>,
+): StudioClient<T> {
   const ClientCtor = _deps?.Client ?? Client;
   const TransportCtor = _deps?.Transport ?? StreamableHTTPClientTransport;
 
@@ -97,9 +100,9 @@ export function createMeshClient<T extends ToolMap = ToolMap>(
     return connectPromise;
   }
 
-  return new Proxy({} as MeshClient<T>, {
+  return new Proxy({} as StudioClient<T>, {
     get(_target, toolName: string) {
-      // Without this, `await createMeshClient(...)` treats the proxy as a
+      // Without this, `await createStudioClient(...)` treats the proxy as a
       // thenable (since `.then` resolves to a function), calls it as
       // `then(resolve, reject)`, and — since that call is really a tool
       // invocation that never touches `resolve`/`reject` — the await hangs
@@ -138,4 +141,12 @@ export function createMeshClient<T extends ToolMap = ToolMap>(
       };
     },
   });
+}
+
+/** @deprecated Use `createStudioClient`. */
+export function createMeshClient<T extends ToolMap = ToolMap>(
+  opts: StudioClientOptions = {},
+  /** @internal */ deps?: Partial<StudioClientDeps>,
+): StudioClient<T> {
+  return createStudioClient<T>(opts, deps);
 }

@@ -222,11 +222,11 @@ export async function generateClientCode(
       : `export interface Tools {\n${toolEntries.join("\n")}\n}`;
 
   const code = `${BANNER}
-import { createMeshClient } from "@decocms/typegen";
+import { createStudioClient } from "@decocms/typegen";
 
 ${toolsInterface}
 
-export const client = createMeshClient<Tools>({
+export const client = createStudioClient<Tools>({
   mcpId: "${mcpId}",
   apiKey: process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY,
   baseUrl: process.env.STUDIO_BASE_URL ?? process.env.MESH_BASE_URL,

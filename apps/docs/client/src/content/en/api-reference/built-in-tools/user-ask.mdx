@@ -385,13 +385,13 @@ Tool calls follow the standard AI SDK tool call protocol:
 ### Implementation Location
 
 **Server-side definition:**
-- `/apps/mesh/src/api/routes/decopilot/built-in-tools/user-ask.ts`
+- `/apps/api/src/api/routes/decopilot/built-in-tools/user-ask.ts`
 
 **Client-side UI:**
-- `/apps/mesh/src/web/components/chat/highlight.tsx`
+- `/apps/web/src/components/chat/highlight.tsx`
 
 **Type definitions:**
-- `/apps/mesh/src/web/components/chat/types.ts` (UserAskToolPart)
+- `/apps/web/src/components/chat/types.ts` (UserAskToolPart)
 
 <Callout type="info">
   Built-in tools are automatically registered with the Decopilot API and available in all chat sessions without additional configuration.

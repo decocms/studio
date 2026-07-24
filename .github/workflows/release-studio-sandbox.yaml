@@ -33,8 +33,8 @@ jobs:
       - name: Read sandbox version
         id: version
         run: |
-          VERSION=$(python3 -c "import json; print(json.load(open('packages/sandbox/package.json'))['version'])")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION="$(python3 -c "import json; print(json.load(open('packages/sandbox/package.json'))['version'])")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -53,10 +53,10 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://${{ env.REGISTRY }}/v2/${{ env.IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
           if [ "${STATUS}" = "200" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Image ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} already exists — skipping push. Bump packages/sandbox/package.json to publish."
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Bun
@@ -103,7 +103,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Multi-arch to match every sibling image (mesh, orgfs-sidecar,
+          # Multi-arch to match every sibling image (Studio API, orgfs-sidecar,
           # sandbox-netinit, s3-sync). Without arm64 the sandbox can't run
           # natively on Apple Silicon / arm64 nodes. buildx emulates arm64 via
           # the runner's preinstalled binfmt, same as orgfs-sidecar.
@@ -149,7 +149,7 @@ jobs:
     if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'
     runs-on: ubuntu-latest
     # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT (admin on
-    # decocms/deco-apps-cd), same token release-mesh uses. The bump is a
+    # decocms/deco-apps-cd), same token release-studio uses. The bump is a
     # convenience and must never red the release: absent token → no-op, job passes.
     env:
       DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}

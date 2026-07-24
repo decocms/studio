@@ -4,9 +4,8 @@
  *
  * Capability gating = hook ABSENCE (the dependent tool is simply not built).
  * `modelProvider` is intentionally NOT a hook: it is derived inside the harness
- * from HarnessStreamInput model sources. Lives under apps/mesh/src/harnesses/
- * for now (step 1a); moves to @decocms/harness in step 3. The supporting payload
- * shapes are intentionally MINIMAL — only the HOOK SURFACE is pinned here.
+ * from HarnessStreamInput model sources. The supporting payload shapes are
+ * intentionally MINIMAL — only the HOOK SURFACE is pinned here.
  */
 
 export interface EditOp {

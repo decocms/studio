@@ -29,6 +29,7 @@ chart-deco-studio:
     ENCRYPTION_KEY: "local-dev-encryption-key-change-me"
 
   configMap:
+    # Legacy chart values key retained for upgrade compatibility.
     meshConfig:
       BASE_URL: "http://studio.localhost"
       BETTER_AUTH_URL: "http://studio.localhost"
@@ -43,9 +44,9 @@ chart-deco-studio:
       STUDIO_ENV: "local"
       STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-local"
       # Shared sentinel token — MUST equal sandbox-env.sentinel.token below.
-      # Its presence flips mesh into warm-pool mode: claims are created with
+      # Its presence flips Studio into warm-pool mode: claims are created with
       # `warmpool: "default"` + empty env and the daemon token is rotated
-      # post-bind. Without it mesh cold-provisions (`warmpool: "none"`) and
+      # post-bind. Without it Studio cold-provisions (`warmpool: "none"`) and
       # injects DAEMON_TOKEN via claim env, which the SandboxTemplate rejects
       # ("environment variable override is not allowed ... DAEMON_TOKEN") →
       # claim never goes Ready → the sandbox never connects. LOCAL fixed value.
@@ -93,11 +94,12 @@ chart-deco-studio:
 sandbox-env:
   envName: "local"
   # Shared warm-pool sentinel token — MUST equal STUDIO_SANDBOX_SENTINEL_TOKEN
-  # in the Studio meshConfig above. An explicit value lets both charts agree
-  # without extracting the auto-generated Secret. LOCAL fixed value.
+  # in the legacy Studio meshConfig key above. An explicit value lets both
+  # charts agree without extracting the auto-generated Secret. LOCAL fixed value.
   sentinel:
     token: "local-dev-sandbox-sentinel-token-change-me"
   mesh:
+    # Legacy sandbox-env values key retained for upgrade compatibility.
     namespace: "deco-studio"          # where Studio (and its SA) runs
     serviceAccountName: "deco-studio"  # must equal the Studio SA above
     podSelectorLabels:
@@ -106,7 +108,7 @@ sandbox-env:
   # First multi-arch studio-sandbox tag (arm64 + amd64).
   image:
     tag: "1.17.3"
-  # Local: previews via mesh in-process proxy (no Gateway API / cert-manager).
+  # Local: previews via Studio's in-process proxy (no Gateway API / cert-manager).
   previewGateway:
     enabled: false
   # Pre-warmed sandbox pool ON — one pod, zero cold-start on the first sandbox.

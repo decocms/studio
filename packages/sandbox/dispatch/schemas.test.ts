@@ -56,7 +56,7 @@ describe("harnessStreamInputSchema (v3)", () => {
         },
       },
       mcp: {
-        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        url: "https://studio.example.com/mcp/virtual-mcp/agent-1",
         headers: { Authorization: "Bearer token" },
         expiresAt: 9999999999000,
       },
@@ -137,7 +137,7 @@ describe("harnessStreamInputSchema (v3)", () => {
         },
       },
       mcp: {
-        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        url: "https://studio.example.com/mcp/virtual-mcp/agent-1",
         headers: { Authorization: "Bearer fixture" },
         expiresAt: 9999999999000,
       },
@@ -376,7 +376,7 @@ describe("harnessStreamInputSchema (v3)", () => {
       ...minimalV3,
       mcpSource: {
         kind: "http",
-        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        url: "https://studio.example.com/mcp/virtual-mcp/agent-1",
         headers: { Authorization: "Bearer fixture" },
         expiresAt: 9999999999000,
       },
@@ -390,7 +390,7 @@ describe("harnessStreamInputSchema (v3)", () => {
       ...minimalV3,
       objectStorageSource: {
         kind: "http",
-        baseUrl: "https://mesh.example.com/api/acme/object-storage",
+        baseUrl: "https://studio.example.com/api/acme/object-storage",
         headers: { Authorization: "Bearer fixture" },
         expiresAt: 9999999999000,
       },

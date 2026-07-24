@@ -14,7 +14,7 @@ Renders:
 - `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
-  per-claim HTTPRoutes are minted by the mesh runner, not by this chart)
+  per-claim HTTPRoutes are minted by the Studio runner, not by this chart)
 - `CronJob` + scoped RBAC for idle-claim cleanup (optional)
 
 Requires the [`sandbox-operator`](../sandbox-operator/) chart to already be
@@ -35,14 +35,14 @@ installed (it ships the CRDs + controller).
 - The Studio release must explicitly set
   `STUDIO_SANDBOX_PROVIDER=agent-sandbox`. The default provider is the user's
   linked desktop and is not a production cluster configuration.
-- The studio release for THIS environment must point its mesh runner at
+- The Studio release for THIS environment must point its runner at
   the env-suffixed SandboxTemplate by setting
   `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>` in the studio
   chart's `configMap.meshConfig`. Without that override the runner falls
   back to `studio-sandbox` (no suffix) and claim creation fails with
   `sandboxtemplate not found`.
 - The studio release must also set `STUDIO_ENV=<envName>` (same envName)
-  so mesh stamps `studio.decocms.com/env=<envName>` on every SandboxClaim,
+  so Studio stamps `studio.decocms.com/env=<envName>` on every SandboxClaim,
   pod, and HTTPRoute it creates. The housekeeper's default selectors
   scope sweeps to that env label — without it the housekeeper matches
   zero claims and reaps nothing. Set it for every new installation even when
@@ -98,7 +98,7 @@ Published as an OCI artifact at
 ```bash
 helm install sandbox-env-staging \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
-  --version 0.9.6 \
+  --version 0.9.13 \
   --namespace agent-sandbox-system \
   --set envName=staging \
   --set mesh.namespace=deco-studio-staging \
@@ -123,7 +123,7 @@ configMap:
     # The next three values are required only when previewGateway.enabled=true.
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
     # Per-claim HTTPRoute attaches to this Gateway. Both required whenever
-    # previewGateway.enabled=true — without them mesh falls back to its
+    # previewGateway.enabled=true — without them Studio falls back to its
     # in-process preview proxy, which the chart no longer wires up.
     # NAMESPACE must match `previewGateway.namespace` from the chart values
     # (no default — different gateway controllers live in different
@@ -159,7 +159,7 @@ spec:
   source:
     repoURL: ghcr.io/decocms/studio/charts
     chart: sandbox-env
-    targetRevision: 0.9.6
+    targetRevision: 0.9.13
     helm:
       values: |
         envName: staging
@@ -188,7 +188,7 @@ values file:
 ```bash
 helm upgrade sandbox-env-staging \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
-  --version 0.9.6 \
+  --version 0.9.13 \
   --namespace agent-sandbox-system \
   --reset-then-reuse-values \
   --set housekeeper.enabled=true
@@ -202,7 +202,7 @@ re-render from scratch, not a merge.
 ```
 sandbox-env/
 ├── Chart.yaml
-├── values.yaml                          # tunables + envName + mesh.* cross-refs
+├── values.yaml                          # tunables + envName + legacy mesh.* cross-refs
 ├── examples/
 │   └── values-kind.yaml                 # local dev overrides
 └── templates/
@@ -212,15 +212,19 @@ sandbox-env/
     ├── sandbox-warm-pool.yaml           # SandboxWarmPool (optional)
     ├── sandbox-warmpool-hpa.yaml         # Warm-pool HPA (optional)
     ├── sandbox-sentinel-secret.yaml      # Initial daemon token
-    ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to mesh SA
+    ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to Studio SA
     ├── sandbox-preview-cert.yaml        # cert-manager Certificate (optional)
-    ├── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by mesh
+    ├── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by Studio
     └── sandbox-housekeeper.yaml         # Idle cleanup CronJob + RBAC (optional)
 ```
 
 ## Values
 
 See `values.yaml` for the full set. The most-tuned ones:
+
+> Compatibility: `mesh.*` is the legacy public values key for references to
+> the Studio release. It remains supported so existing values files continue
+> to upgrade safely; a future chart major may rename it to `studio.*`.
 
 | Key | Default | Notes |
 | --- | --- | --- |

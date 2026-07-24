@@ -1,10 +1,10 @@
-# Shared SandboxTemplate consumed by every SandboxClaim the mesh runner
+# Shared SandboxTemplate consumed by every SandboxClaim the Studio runner
 # creates for THIS environment. Resource ceilings come from values.resources.
 #
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
 # default. The template *name* is suffixed with envName so multiple
-# environments' SandboxTemplates coexist; mesh in this env must reference
+# environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
@@ -18,7 +18,7 @@ spec:
   # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
   # all claim env to come from the template. We bake a *sentinel* bearer
   # token (rendered into a Secret by sandbox-sentinel-secret.yaml) and
-  # rotate to a per-claim token post-bind via mesh's first
+  # rotate to a per-claim token post-bind via Studio's first
   # POST /_sandbox/config call. envVarsInjectionPolicy stays Allowed
   # so single-env deploys that haven't yet adopted the sentinel can still
   # provision cold (warmpool=none) with claim env.
@@ -41,7 +41,7 @@ spec:
       {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
-        # its own pods. Mesh runner stamps the same value via
+        # its own pods. The Studio runner stamps the same value via
         # SandboxClaim.additionalPodMetadata (driven by
         # STUDIO_SANDBOX_TEMPLATE_NAME pointing at the env-suffixed
         # template) — keep these in lockstep.

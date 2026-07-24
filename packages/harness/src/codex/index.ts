@@ -26,7 +26,7 @@
  * `isPlanMode` — all three are forwarded here. `rmcpClient`,
  * `sandboxPolicy`, and the timeout settings are baked-in defaults of
  * `createCodexModel` itself (see
- * `apps/mesh/src/ai-providers/coding-agents/codex/index.ts`) and not
+ * `packages/harness/src/codex/model/index.ts`) and not
  * options the call site controls.
  *
  * The harness yields raw `UIMessageChunk` — including the
@@ -145,7 +145,7 @@ export const codexHarnessFactory: HarnessFactory = {
         //
         //    Note the transport key is `transport` (not `type`) — this
         //    matches the `createCodexModel` signature at
-        //    `apps/mesh/src/ai-providers/coding-agents/codex/index.ts`
+        //    `packages/harness/src/codex/model/index.ts`
         //    line 18, where http servers are normalized to the codex
         //    SDK's `httpHeaders` shape internally.
         const { model, provider } = createCodexModel(
@@ -158,7 +158,7 @@ export const codexHarnessFactory: HarnessFactory = {
           //    `streamText` validates the prompt via Zod in
           //    `standardizePrompt` and expects `ModelMessage[]`
           //    (`content: ...`), not `UIMessage[]` (`parts: [...]`).
-          //    See `apps/mesh/src/harnesses/cli-message-prep.ts` for
+          //    See `packages/harness/src/cli-message-prep.ts` for
           //    details — a previous `as never` cast hid this mismatch
           //    and would have thrown `InvalidPromptError` at runtime.
           const messages = await prepCliMessages([input.userMessage]);

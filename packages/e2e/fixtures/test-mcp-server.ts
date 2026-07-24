@@ -115,7 +115,7 @@ export async function startTestMcpServer(
 
   // Build a fresh server per request — the streamable transport is designed
   // to be one-shot in stateless mode, mirroring how studio's /mcp/self mounts
-  // (see apps/mesh/src/api/routes/self.ts).
+  // (see apps/api/src/api/routes/self.ts).
   const buildServer = (): McpServer => {
     const server = new McpServer({ name: "test-mcp", version: "1.0.0" });
     for (const tool of tools) {

@@ -7,13 +7,13 @@
  *      (the e2e workflow boots a postgres:16 service on :5432 and sets
  *      it). When present, we use it verbatim — no state.json lookup.
  *
- *   2. Local dev: `bun run --cwd=apps/mesh dev` boots embedded-postgres
+ *   2. Local dev: `bun run --cwd=apps/api dev` boots embedded-postgres
  *      on a **dynamic** port and writes pid+port to
  *      `<home>/services/postgres/state.json`. Home defaults to
  *      `<cwd>/.deco/` (CLI default) or `~/deco/` (`deco services up`),
  *      with `DATA_DIR` / `DECOCMS_HOME` overriding. We walk a few
  *      candidate locations because the dev server's CWD differs from
- *      Playwright's (apps/mesh).
+ *      Playwright's (`packages/e2e`).
  *
  * Tests connect with the `pg` driver — no mocks. Seeding state for a
  * scenario hits the same Postgres the dev server is talking to.
@@ -36,13 +36,13 @@ function candidateHomes(): string[] {
   if (explicit) candidates.push(explicit);
   // `deco dev` writes data to <cwd>/.deco/ where cwd is wherever the dev server
   // was launched. Playwright now runs from `packages/e2e` but spawns the dev
-  // server from `apps/mesh` (webServer.cwd), so for each ancestor of cwd check
-  // both `<dir>/.deco` and `<dir>/apps/mesh/.deco` (covers repo-root and
-  // apps/mesh launches alike). CI sets DATABASE_URL, so none of this runs there.
+  // API from `apps/api` (webServer.cwd), so for each ancestor of cwd check both
+  // `<dir>/.deco` and `<dir>/apps/api/.deco` (covers repo-root and apps/api
+  // launches alike). CI sets DATABASE_URL, so none of this runs there.
   let dir = process.cwd();
   for (let i = 0; i < 5; i++) {
     candidates.push(join(dir, ".deco"));
-    candidates.push(join(dir, "apps", "mesh", ".deco"));
+    candidates.push(join(dir, "apps", "api", ".deco"));
     const parent = join(dir, "..");
     if (parent === dir) break;
     dir = parent;
@@ -70,7 +70,7 @@ function readDevDbPort(): number {
   }
   throw new Error(
     `Dev postgres state.json not found. Looked in:\n  ${tried.join("\n  ")}\n` +
-      `Start the dev server first (\`bun run --cwd=apps/mesh dev\` or \`deco services up\`), or set DATABASE_URL.`,
+      `Start the API first (\`bun run --cwd=apps/api dev\` or \`deco services up\`), or set DATABASE_URL.`,
   );
 }
 

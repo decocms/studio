@@ -5,7 +5,7 @@
  * (`links.dispatch.<userSub>`) → daemon over WS → studio pod (reply inbox)
  * → HTTP client.
  *
- * This scenario exercises the mesh side of that path using the existing
+ * This scenario exercises the Studio API side of that path using the existing
  * resilience harness (single studio pod + Toxiproxy). Because the harness
  * does not include a link-daemon container, we drive the studio MCP API
  * directly and verify:
@@ -24,13 +24,13 @@
  * proxy for `studio:3000` (so the daemon WS can be severed independently from
  * the NATS path). The tests below validate the studio/NATS half of the dispatch
  * path only. Daemon-side reconnect behaviour is covered by the unit tests in
- * `apps/mesh/src/link-daemon/reconnect-backoff.test.ts` and
- * `apps/mesh/src/link-daemon/cluster-connection.test.ts`.
+ * `apps/api/src/link-daemon/reconnect-backoff.test.ts` and
+ * `apps/api/src/link-daemon/cluster-connection.test.ts`.
  *
  * TODO: add a `link-daemon` service to the resilience docker-compose and a
  * Toxiproxy proxy for `studio:3000` so we can also assert:
  *   - The daemon's WebSocket closes when the studio pod crashes (not affected
- *     by NATS, which is mesh↔mesh only).
+ *     by NATS, which is API-pod↔API-pod only).
  *   - The daemon reconnects per `reconnect-backoff.ts` after studio restarts.
  */
 

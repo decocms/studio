@@ -61,7 +61,7 @@ import {
   buildTurnRelayBody,
 } from "../fixtures/relay-chunks";
 import { publishRelayBody } from "../fixtures/relay-nats";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 // The auto-titler gates on the thread title being this exact default; import
 // the source constant so the gating cases stay in lockstep if it ever changes.
 import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";

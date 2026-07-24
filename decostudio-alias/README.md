@@ -173,9 +173,9 @@ docker run -p 3000:3000 -v studio-data:/app/data ghcr.io/decocms/studio/studio:l
 # Bun (from source)
 git clone https://github.com/decocms/studio.git
 cd studio && bun install
-bun run --cwd=apps/mesh build:client
-bun run --cwd=apps/mesh build:server
-bun run --cwd=apps/mesh start
+bun run --cwd=apps/web build
+bun run --cwd=apps/api build:server
+bun run --cwd=apps/api start
 
 # Kubernetes (Helm)
 helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio \

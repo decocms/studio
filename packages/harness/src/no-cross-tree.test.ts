@@ -3,7 +3,7 @@ import { Glob } from "bun";
 
 // Extraction exit gate: @decocms/harness is the portable harness package and
 // MUST stay free of the studio app tree. Any `@/` alias or relative reach into
-// `apps/mesh` would re-couple the package to the cluster and (since the package
+// an `apps/*` tree would re-couple the package to the cluster and (since the package
 // tsconfig has no `@/` paths) break `tsc` — this guard catches it explicitly,
 // including transitive relative escapes that a path-alias check would miss.
 //
@@ -11,10 +11,10 @@ import { Glob } from "bun";
 // package is also `@decocms/sandbox`-free by design — the sandbox glue lives in
 // studio (cluster-sandbox-fs.ts) / the daemon, never here.
 const BANNED =
-  /from\s+["'](?:@\/|(?:\.\.\/)+(?:apps\/mesh|app\/)|@decocms\/sandbox)/;
+  /from\s+["'](?:@\/|(?:\.\.\/)+(?:apps\/[^/]+|app\/)|@decocms\/sandbox)/;
 
 describe("@decocms/harness is cross-tree-free", () => {
-  it("has no `@/`, apps/mesh, or @decocms/sandbox imports", async () => {
+  it("has no `@/`, apps/*, or @decocms/sandbox imports", async () => {
     const root = new URL("./", import.meta.url).pathname;
     const offenders: string[] = [];
     for await (const rel of new Glob("**/*.ts").scan(root)) {

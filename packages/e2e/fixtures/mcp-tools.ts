@@ -7,7 +7,7 @@
  * test MCP server (see `test-mcp-server.ts`). This module wraps the
  * JSON-RPC dance so callers don't repeat the envelope.
  *
- * The server-side handler at `apps/mesh/src/api/routes/self.ts` builds a
+ * The server-side handler at `apps/api/src/api/routes/self.ts` builds a
  * fresh MCP server per request, so each call is self-contained — no
  * explicit `initialize` handshake is needed when `Accept: application/json`
  * is set (the JSON-response mode in the SDK's streamable HTTP transport).

@@ -258,6 +258,16 @@ describe("daemon e2e: exec", () => {
         (
           await bootstrapRepo(d, repo.url, {
             application: { packageManager: { name: "npm" } },
+            // The exec contract needs a discovered npm script, not registry
+            // access. Keep this empty fixture hermetic: npm otherwise performs
+            // first-run audit/update checks that intermittently wait on the
+            // registry for the entire Windows hook timeout.
+            env: {
+              npm_config_audit: "false",
+              npm_config_fund: "false",
+              npm_config_offline: "true",
+              npm_config_update_notifier: "false",
+            },
           })
         ).status,
       ).toBe(200);

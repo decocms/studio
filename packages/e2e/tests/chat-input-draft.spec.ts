@@ -227,7 +227,7 @@ test.describe("chat input draft persistence", () => {
   // viewports where they overlap, and the close-button dismiss path is
   // animation-racy. Pre-seeding kills the dialog at the source.
   //
-  // If a release is added to `apps/mesh/src/web/lib/release-feed.ts`, add
+  // If a release is added to `apps/web/src/lib/release-feed.ts`, add
   // its id here too — otherwise the next id (`RELEASES[0]`) will surface
   // as a popover and re-introduce the failure.
   test.beforeEach(async ({ authedPage }) => {

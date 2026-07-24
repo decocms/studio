@@ -6,8 +6,8 @@ import { createTriggers, type TriggerStorage } from "./triggers.ts";
 const mockCtx = (connectionId?: string) =>
   ({
     env: connectionId
-      ? { MESH_REQUEST_CONTEXT: { connectionId } }
-      : { MESH_REQUEST_CONTEXT: {} },
+      ? { STUDIO_REQUEST_CONTEXT: { connectionId } }
+      : { STUDIO_REQUEST_CONTEXT: {} },
     ctx: { waitUntil: () => {} },
   }) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -92,7 +92,7 @@ describe("createTriggers", () => {
         type: "github.push",
         params: { repo: "owner/repo" },
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "test-token-123",
       },
       runtimeContext: mockCtx("conn-1"),
@@ -107,7 +107,7 @@ describe("createTriggers", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://mesh.example.com/api/trigger-callback",
+      "https://studio.example.com/api/trigger-callback",
       expect.objectContaining({
         method: "POST",
         headers: {
@@ -139,7 +139,7 @@ describe("createTriggers", () => {
         type: "github.push",
         params: {},
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "token-multi",
       },
       runtimeContext: mockCtx("conn-multi"),
@@ -183,7 +183,7 @@ describe("createTriggers", () => {
         type: "github.push",
         params: {},
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "token-cleanup",
       },
       runtimeContext: mockCtx("conn-cleanup"),
@@ -229,7 +229,7 @@ describe("createTriggers", () => {
         type: "github.push",
         params: {},
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "token-err",
       },
       runtimeContext: mockCtx("conn-err"),
@@ -298,7 +298,7 @@ describe("createTriggers with storage", () => {
         type: "github.push",
         params: {},
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "persisted-token",
       },
       runtimeContext: mockCtx("conn-persist"),
@@ -320,7 +320,7 @@ describe("createTriggers with storage", () => {
         type: "github.push",
         params: {},
         enabled: true,
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "to-delete",
       },
       runtimeContext: mockCtx("conn-del"),
@@ -342,7 +342,7 @@ describe("createTriggers with storage", () => {
     // Simulate prior session: write state directly to storage
     storage.data.set("conn-restart", {
       credentials: {
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "restored-token",
       },
       activeTriggerTypes: ["github.push"],
@@ -359,7 +359,7 @@ describe("createTriggers with storage", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://mesh.example.com/api/trigger-callback",
+      "https://studio.example.com/api/trigger-callback",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer restored-token",
@@ -376,7 +376,7 @@ describe("createTriggers with storage", () => {
     // Simulate prior session: "github.push" was already active
     storage.data.set("conn-enable-restart", {
       credentials: {
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "prior-token",
       },
       activeTriggerTypes: ["github.push"],
@@ -419,7 +419,7 @@ describe("createTriggers with storage", () => {
     // Simulate prior session
     storage.data.set("conn-disable-restart", {
       credentials: {
-        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
         callbackToken: "stale-token",
       },
       activeTriggerTypes: ["github.push"],

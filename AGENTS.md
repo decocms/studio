@@ -18,10 +18,10 @@ Studio is an open-source control plane for Model Context Protocol (MCP) traffic.
 bun run dev
 
 # Start Studio client only (Vite dev server on port 4000)
-bun run --cwd=apps/mesh dev:client
+bun run --cwd=apps/web dev
 
 # Start Studio server only (Hono with hot reload)
-bun run --cwd=apps/mesh dev:server
+bun run --cwd=apps/api dev:server
 
 # Run documentation site locally
 bun run docs:dev
@@ -65,11 +65,11 @@ Resilience tests use Docker Compose with Toxiproxy to simulate infrastructure fa
 
 ### Database
 ```bash
-# Run Kysely migrations (from apps/mesh/)
-bun run --cwd=apps/mesh migrate
+# Run Kysely migrations (from apps/api/)
+bun run --cwd=apps/api migrate
 
 # Run Better Auth schema migrations
-bun run --cwd=apps/mesh better-auth:migrate
+bun run --cwd=apps/api better-auth:migrate
 ```
 
 #### Querying local postgres during development
@@ -81,9 +81,9 @@ ps aux | grep "postgres -D" | grep -v grep
 # Look for -p <PORT> at the end of the command
 ```
 
-2. Run queries via a bun inline script (uses the `pg` package from apps/mesh):
+2. Run queries via a bun inline script (uses the `pg` package from apps/api):
 ```bash
-cat << 'EOF' | bun run --cwd apps/mesh -
+cat << 'EOF' | bun run --cwd apps/api -
 import pg from "pg";
 const client = new pg.Client("postgresql://postgres:postgres@localhost:<PORT>/postgres");
 await client.connect();
@@ -93,7 +93,7 @@ await client.end();
 EOF
 ```
 
-Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is required so bun resolves the `pg` dependency from the `apps/mesh` workspace.
+Replace `<PORT>` with the port found in step 1. The `--cwd apps/api` is required so bun resolves the `pg` dependency from the API workspace.
 
 ### Build & Deploy
 ```bash
@@ -101,20 +101,20 @@ Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is require
 bun run build:runtime
 
 # Build Studio client (production)
-bun run --cwd=apps/mesh build:client
+bun run --cwd=apps/web build
 
 # Build Studio server (bundle for deployment)
-bun run --cwd=apps/mesh build:server
+bun run --cwd=apps/api build:server
 
 # Run production build
-bun run --cwd=apps/mesh start
+bun run --cwd=apps/api start
 ```
 
 ## Architecture
 
 ### Core Abstractions
 
-**StudioContext** (`apps/mesh/src/core/studio-context.ts`)
+**StudioContext** (`apps/api/src/core/studio-context.ts`)
 The central runtime interface injected into all tools. Provides:
 - `auth`: Authentication state (user, session, organization)
 - `access`: Access control layer (RBAC checks)
@@ -125,7 +125,7 @@ The central runtime interface injected into all tools. Provides:
 
 Tools NEVER access HTTP objects, database drivers, or environment variables directly—all dependencies flow through StudioContext.
 
-**defineTool()** (`apps/mesh/src/core/define-tool.ts`)
+**defineTool()** (`apps/api/src/core/define-tool.ts`)
 Declarative API for creating type-safe, auditable MCP tools. Automatically provides:
 - Input/output validation (Zod schemas)
 - Authorization checking (`ctx.access.check()`)
@@ -150,9 +150,11 @@ export const EXAMPLE_TOOL = defineTool({
 
 ### Project Structure & Module Organization
 
-The workspace is managed via Bun workspaces. The main application lives in `apps/mesh/` and contains the full-stack Studio implementation (Hono API server + Vite/React client). Documentation site lives in `apps/docs/` (Astro-based).
+The workspace is managed via Bun workspaces. Studio is split into an independent
+Hono backend and Vite/React frontend. Documentation lives in `apps/docs/`
+(Astro-based).
 
-**apps/mesh/** - Main full-stack application
+**apps/api/** - Hono backend
 - `src/api/` - Hono HTTP routes + MCP proxy routes
 - `src/auth/` - Better Auth (OAuth 2.1 + SSO + API keys)
 - `src/core/` - StudioContext, AccessControl, defineTool
@@ -161,20 +163,23 @@ The workspace is managed via Bun workspaces. The main application lives in `apps
 - `src/event-bus/` - Pub/sub event delivery system (CloudEvents v1.0)
 - `src/encryption/` - Token vault & credential management
 - `src/observability/` - OpenTelemetry tracing & metrics
-- `src/web/` - React 19 admin UI (Vite + TanStack Router)
 - `migrations/` - Kysely database migrations
 
+**apps/web/** - React 19 admin UI (Vite + TanStack Router)
+
 **packages/** - Shared logic
+- `packages/shared/` - Private isomorphic contracts, browser-safe SDK utilities, and async primitives shared through explicit `@decocms/shared/*` subpaths
 - `packages/bindings/` - Core MCP bindings and connection abstractions (defines standardized interfaces)
 - `packages/runtime/` - Runtime utilities for MCP proxy, OAuth, and tools
 - `packages/ui/` - Shared React components (shadcn-based design system)
 - `packages/create-deco/` - Project scaffolding tool (npm init)
 
-Database migrations live in `apps/mesh/migrations/`, code quality plugins in `plugins/`, and infrastructure/deploy configs in `deploy/`.
+Database migrations live in `apps/api/migrations/`, code quality plugins in
+`plugins/`, and infrastructure/deploy configs in `deploy/`.
 
 ### Key Architectural Patterns
 
-**Virtual MCPs** (`apps/mesh/src/tools/virtual/`)
+**Virtual MCPs** (`apps/api/src/tools/virtual/`)
 Runtime strategies modeled as Virtual MCPs—different ways of exposing tools through one endpoint:
 - Full-context: expose all tools (simple, deterministic)
 - Smart selection: narrow toolset before execution
@@ -189,7 +194,7 @@ Standardized interfaces that MCPs can implement (similar to TypeScript interface
 - Well-known bindings: collections (CRUD), models (AI providers), event bus, event subscriber
 - Uses `createBindingChecker()` for runtime verification
 
-**Event Bus** (`apps/mesh/src/event-bus/`)
+**Event Bus** (`apps/api/src/event-bus/`)
 Pub/sub system between connections following CloudEvents v1.0 spec:
 - At-least-once delivery with exponential backoff (1s to 1hr, max 20 attempts)
 - Scheduled delivery (`deliverAt`) and recurring events (`cron`)
@@ -199,12 +204,12 @@ Pub/sub system between connections following CloudEvents v1.0 spec:
 #### Event Bus Files
 - `packages/bindings/src/well-known/event-bus.ts` - EVENT_BUS_BINDING (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, CANCEL, ACK)
 - `packages/bindings/src/well-known/event-subscriber.ts` - EVENT_SUBSCRIBER_BINDING (ON_EVENTS)
-- `apps/mesh/src/event-bus/` - EventBus implementation and worker
-- `apps/mesh/src/event-bus/polling.ts` - Timer-based PollingStrategy (safety net for scheduled/cron delivery)
-- `apps/mesh/src/event-bus/nats-notify.ts` - NatsNotifyStrategy (immediate wake-up via NATS)
-- `apps/mesh/src/storage/event-bus.ts` - Database operations
-- `apps/mesh/src/tools/eventbus/` - MCP tools (publish, subscribe, unsubscribe, list, cancel, ack)
-- `apps/mesh/migrations/008-event-bus.ts` - Database schema
+- `apps/api/src/event-bus/` - EventBus implementation and worker
+- `apps/api/src/event-bus/polling.ts` - Timer-based PollingStrategy (safety net for scheduled/cron delivery)
+- `apps/api/src/event-bus/nats-notify.ts` - NatsNotifyStrategy (immediate wake-up via NATS)
+- `apps/api/src/storage/event-bus.ts` - Database operations
+- `apps/api/src/tools/eventbus/` - MCP tools (publish, subscribe, unsubscribe, list, cancel, ack)
+- `apps/api/migrations/008-event-bus.ts` - Database schema
 
 #### Event Bus MCP Tools
 - `EVENT_PUBLISH` - Publish events (supports `deliverAt` for scheduled, `cron` for recurring)
@@ -256,8 +261,8 @@ The worker doesn't poll internally - it relies on a NotifyStrategy to trigger pr
 Uses **Kysely ORM** with embedded PostgreSQL (via `embedded-postgres` package) for local development and standard PostgreSQL for production.
 - Database URL: `DATABASE_URL` environment variable (defaults to `postgresql://postgres:postgres@localhost:5432/postgres`)
 - Local data directory: `~/deco/services/postgres/data`
-- Schema types: `apps/mesh/src/storage/types.ts`
-- Operations organized by domain: `apps/mesh/src/storage/`
+- Schema types: `apps/api/src/storage/types.ts`
+- Operations organized by domain: `apps/api/src/storage/`
 - Multi-tenancy: Workspace/project isolation for config, credentials, policies, audit logs
 - Migrations use Kysely's migration system combined with Better Auth migrations
 
@@ -270,16 +275,16 @@ Database schema key concepts:
 
 **Better Auth** for authentication:
 - OAuth 2.1, SSO, API keys
-- Config: `apps/mesh/auth-config.json` (example: `auth-config.example.json`)
+- Config: `apps/api/auth-config.json` (example: `auth-config.example.json`)
 
-**AccessControl** (`apps/mesh/src/core/access-control.ts`) for authorization:
+**AccessControl** (`apps/api/src/core/access-control.ts`) for authorization:
 - Organization/project-level RBAC
 - Fine-grained permissions per workspace/project
 - Connection-specific permissions (e.g., `{ "conn_<UUID>": ["SEND_MESSAGE"] }`)
 
 ### Observability
 
-**OpenTelemetry** (`apps/mesh/src/observability/`)
+**OpenTelemetry** (`apps/api/src/observability/`)
 - Full tracing for tools, workflows, and UI interactions
 - Metrics collection (Prometheus exporter)
 - Logging with OTLP exporter
@@ -287,10 +292,10 @@ Database schema key concepts:
 
 ## Coding Style & Naming Conventions
 
-### Async primitives — use `@decocms/std`, never hand-roll
+### Async primitives — use `@decocms/shared/std`, never hand-roll
 
-`@decocms/std` (`packages/std`) is the ONE canonical home for these — a small,
-zero-dependency, isomorphic (Node / Bun / browser) package ported from Deno std.
+`@decocms/shared/std` is the ONE canonical home for these — a small,
+zero-dependency, isomorphic (Node / Bun / browser) module ported from Deno std.
 It was consolidated from ~9 ad-hoc backoff copies and ~9 ad-hoc `sleep` copies.
 Do NOT write another `Math.min(base * 2 ** attempt, cap)` formula, jitter
 expression, `for`/`while` retry loop, `new Promise(r => setTimeout(r, ms))`, or
@@ -308,10 +313,11 @@ expression, `for`/`while` retry loop, `new Promise(r => setTimeout(r, ms))`, or
   (WebSocket/SSE reconnect, durable event delivery). `jitter`: `0` = none,
   `0.5` = equal `[exp/2, exp]`, `1` = full `[0, exp]`.
 
-All consumers (`apps/mesh` + packages) import via `@decocms/std`. If you think
-you need a new retry/sleep mechanism, you don't — extend the options or ask. The
-circuit breaker (`mcp-clients/circuit-breaker.ts`) is a different pattern (fault
-isolation) and is intentionally separate.
+All consumers (`apps/api`, `apps/web`, and packages) import via
+`@decocms/shared/std`. If you think you need a new retry/sleep mechanism, you
+don't — extend the options or ask. The circuit breaker
+(`mcp-clients/circuit-breaker.ts`) is a different pattern (fault isolation) and
+is intentionally separate.
 
 ### Style & Formatting
 - **Biome** enforces two-space indentation and double quotes
@@ -330,12 +336,12 @@ So a `thread`-named identifier can render "New chat" in a label; keep the code i
 
 ### Internationalization (i18n)
 
-The web UI (`apps/mesh/src/web`) is internationalized by a zero-dependency module at
-`apps/mesh/src/web/i18n/` — plain TS dictionaries, no library.
+The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
+`apps/web/src/i18n/` — plain TS dictionaries, no library.
 
-- **Never hardcode user-facing strings** in `apps/mesh/src/web` — JSX text, toasts,
+- **Never hardcode user-facing strings** in `apps/web/src` — JSX text, toasts,
   placeholders, `aria-label`s, tooltips, empty states all go through `t()`.
-- **Usage**: `const t = useT()` (`@/web/i18n/use-t.ts`) inside a component/hook, then
+- **Usage**: `const t = useT()` (`@/i18n/use-t.ts`) inside a component/hook, then
   `t("settings.title")` or `t("some.key", { name })` — `{name}` placeholders are interpolated.
 - **Dictionaries**: one file per feature domain in `i18n/en/` (e.g. `en/settings.ts`), flat
   keys namespaced by domain (`"settings.preferences.theme"`). English is the source of truth:
@@ -369,6 +375,8 @@ Located in `plugins/`:
 - `ban-use-effect.ts` - ban useEffect
 - `ban-memoization.ts` - ban useMemo/useCallback/memo
 - `ensure-tailwind-design-system-tokens.ts` - enforce Tailwind consistency
+- `ban-cross-tree-imports.js` - prevent packages from reaching into app source
+- `ban-web-server-imports.js` - enforce the `apps/web` ↛ `apps/api/src` boundary
 - `ban-e2e-app-imports.js` - deny-by-default import allowlist for the `packages/e2e` suite (see E2E isolation below)
 
 ### TypeScript
@@ -394,12 +402,13 @@ assert on responses. It must stay decoupled from the implementation so a compone
 (`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
 (swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The Studio suite lives in the
 dedicated `packages/e2e` (`@decocms/e2e`) workspace behind the same wall — its Playwright config
-spawns the app dev server from `apps/mesh` via `webServer.cwd` (a process boundary, not an import).
+spawns `apps/api` and `apps/web` as separate processes via `webServer.cwd`
+(process boundaries, not imports).
 
 Rules:
 - **No imports from `apps/*/src/**` and no `@/` app alias** in `packages/e2e`. Enforced by
   `plugins/ban-e2e-app-imports.js` (oxlint, `error`, deny-by-default) + a `paths: {}` override in
-  `packages/e2e/tsconfig.json`. Only a small explicit allowlist of published packages is permitted
+  `packages/e2e/tsconfig.json`. Only a small explicit allowlist of workspace packages is permitted
   (any unlisted `@decocms/*` is denied too, so app code creeping into `packages/` can't silently
   widen the test surface).
 - **Do not silence this lint.** If a test needs a value, either **inline the expected shape** (a
@@ -414,8 +423,8 @@ Rules:
 ## Working with Tools
 
 When creating new MCP tools:
-1. Use `defineTool()` from `apps/mesh/src/core/define-tool.ts`
-2. Place tools in appropriate domain folder under `apps/mesh/src/tools/`
+1. Use `defineTool()` from `apps/api/src/core/define-tool.ts`
+2. Place tools in appropriate domain folder under `apps/api/src/tools/`
 3. Always inject `StudioContext` as second parameter
 4. Call `await ctx.access.check()` for authorization
 5. Use `ctx.storage` for database operations (never access Kysely directly)
@@ -555,7 +564,7 @@ them in the **first** PR — they are the difference between "works in the demo"
 ## API Path Convention
 
 All org-scoped API routes use the canonical shape `/api/:org/...` where `:org` is the
-organization slug. The `resolveOrgFromPath` middleware (`apps/mesh/src/api/middleware/resolve-org-from-path.ts`)
+organization slug. The `resolveOrgFromPath` middleware (`apps/api/src/api/middleware/resolve-org-from-path.ts`)
 looks up the org by slug, verifies the authenticated principal is a member, and sets
 `ctx.organization`. Returns 404 for unknown slugs, 403 for non-members.
 
@@ -567,7 +576,7 @@ org-scoped paths**; new frontend code MUST NOT send `x-org-id` or `x-org-slug` h
 for migrated routes (the org slug is in the URL path).
 
 The aggregator that mounts every org-scoped sub-router lives at
-`apps/mesh/src/api/routes/org-scoped.ts`. Add new org-scoped routes there.
+`apps/api/src/api/routes/org-scoped.ts`. Add new org-scoped routes there.
 
 Org slugs are **immutable** — `ORGANIZATION_UPDATE` rejects slug changes — so URLs remain
 stable.
@@ -579,4 +588,3 @@ catch-all so the static segment wins over the slug param.
 ## License
 
 MIT License — see LICENSE.md for details.
-

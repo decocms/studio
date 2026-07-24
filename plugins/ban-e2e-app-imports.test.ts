@@ -57,7 +57,7 @@ describe("ban-e2e-app-imports", () => {
         `import { z } from "zod";\n` +
         `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";\n` +
         `import { jetstream } from "@nats-io/jetstream";\n` +
-        `import { sleep } from "@decocms/std";\n` +
+        `import { sleep } from "@decocms/shared/std";\n` +
         `import { encodeSubjectToken } from "@decocms/tunnel/subject";\n` +
         `import type { Capability } from "@decocms/sandbox/dispatch";\n` +
         `import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";\n` +
@@ -71,14 +71,14 @@ describe("ban-e2e-app-imports", () => {
   test("bans apps/*/src reach-ins", async () => {
     const f = fixture(
       "packages/e2e/fixtures/reach.ts",
-      `import { isOrgArchived } from "../../../apps/mesh/src/core/org-archived";\nexport const r = isOrgArchived;\n`,
+      `import { isOrgArchived } from "../../../apps/api/src/core/org-archived";\nexport const r = isOrgArchived;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(1);
     expect(msgs[0]).toContain("app source");
   });
 
-  test("bans the @/ mesh path alias", async () => {
+  test("bans an @/ app path alias", async () => {
     const f = fixture(
       "packages/e2e/fixtures/alias.ts",
       `import { workItemSchema } from "@/links/link-work-item";\nexport const w = workItemSchema;\n`,
@@ -112,7 +112,7 @@ describe("ban-e2e-app-imports", () => {
     const f = fixture(
       "packages/e2e/fixtures/reexport.ts",
       `export { r } from "@/core/server-constants";\n` +
-        `export const load = () => import("../../../apps/mesh/src/x");\n` +
+        `export const load = () => import("../../../apps/web/src/x");\n` +
         `export * from "react";\n`,
     );
     const msgs = await lint(f);
@@ -121,7 +121,7 @@ describe("ban-e2e-app-imports", () => {
 
   test("ignores files outside packages/e2e entirely", async () => {
     const f = fixture(
-      "apps/mesh/src/z.ts",
+      "apps/api/src/z.ts",
       `import { q } from "@/core/studio-context";\nexport const e = q;\n`,
     );
     expect(await lint(f)).toEqual([]);

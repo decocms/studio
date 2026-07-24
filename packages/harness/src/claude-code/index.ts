@@ -152,7 +152,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    `streamText` validates the prompt via Zod in
         //    `standardizePrompt` and expects `ModelMessage[]`
         //    (`content: ...`), not `UIMessage[]` (`parts: [...]`). See
-        //    `apps/mesh/src/harnesses/cli-message-prep.ts` for details —
+        //    `packages/harness/src/cli-message-prep.ts` for details —
         //    a previous `as never` cast hid this mismatch and would have
         //    thrown `InvalidPromptError` at runtime.
         const messages = await prepCliMessages([input.userMessage]);

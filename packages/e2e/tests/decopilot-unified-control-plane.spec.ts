@@ -29,7 +29,7 @@
  *   (`sandboxProviderKind: "agent-sandbox"`) message with no tier resolution
  *   path 400s with `TierUnavailableError` at POST time — before the gate
  *   ever dispatches (see `resolvePerRequestModels` → `resolveTier` in
- *   `apps/mesh/src/api/routes/decopilot/routes.ts`). The workaround (same
+ *   `apps/api/src/api/routes/decopilot/routes.ts`). The workaround (same
  *   one the thread-message-queue project used, and the one
  *   `tests/multi-pod/lib/setup.ts`'s `wireMockProvider` uses for the
  *   multi-pod cluster): create a real `ai_provider_keys` row via

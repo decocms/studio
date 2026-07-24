@@ -2,7 +2,7 @@
  * Org-scoped routing boundary tests.
  *
  * Migrates the routing-layer assertions from
- * apps/mesh/src/api/integration-org-scoped.test.ts to real Playwright
+ * apps/api/src/api/integration-org-scoped.test.ts to real Playwright
  * specs against real Better Auth + resolveOrgFromPath middleware:
  *
  *   - new path serves the route (200)

@@ -89,7 +89,7 @@ detected environment, then walk these. Record answers into a values file you'll
      grants; `default` → 403 "cannot create sandboxclaims").
    - a **shared sentinel token**: the SAME value in `sandbox-env.sentinel.token`
      and Studio's `STUDIO_SANDBOX_SENTINEL_TOKEN` (generate one: `openssl rand -hex 32`).
-     Missing → mesh cold-provisions and the template rejects `DAEMON_TOKEN`.
+     Missing → Studio cold-provisions and the template rejects `DAEMON_TOKEN`.
    - `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
      `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
    Preview URLs need the preview Gateway (prod) or the in-process proxy (local).
@@ -201,6 +201,10 @@ The chart is **lean**: it deploys Studio + NATS and expects **external** managed
 services. Configure them (never inline secrets in prod — use `externalSecret` or
 `secret.secretName`):
 
+The chart still calls its Studio environment map `configMap.meshConfig` for
+upgrade compatibility. Treat that name as deprecated; the values configure the
+Studio API.
+
 ```yaml
 database:
   url: "postgresql://user:pass@your-db:5432/studio"   # or via secret/externalSecret
@@ -261,8 +265,8 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | `insufficient storage resources` (NATS JetStream) | file store too small → raise `nats.config.jetstream.fileStore.pvc.size` (non-fatal) |
 | Sandbox pod `ImagePullBackOff` "no matching manifest for linux/arm64" | pinned a pre-1.17.3 `studio-sandbox` tag (amd64-only) → use ≥1.17.3 (multi-arch), which the umbrella already pins |
 | `SandboxClaim` create → `403 Forbidden ... serviceaccount:deco-studio:default cannot create` | Studio ran as SA `default` but sandbox RBAC is granted to SA `deco-studio` → set `serviceAccount.create: true` so Studio runs as `deco-studio` (the umbrella does this) |
-| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | mesh has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips mesh to warm-pool mode; the umbrella wires both) |
-| Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → the script creates it after ClickHouse + `otel_logs` are ready; if you ran raw helm, apply the DDL from `apps/mesh/src/monitoring/clickhouse-setup.md` |
+| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | Studio has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips Studio to warm-pool mode; the umbrella wires both) |
+| Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → the script creates it after ClickHouse + `otel_logs` are ready; if you ran raw helm, apply the DDL from `apps/api/src/monitoring/clickhouse-setup.md` |
 | ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install); the script does this — never do `--set clickhouse-cluster.enabled=false` on a live release |
 | `helm install` fails "must be installed into the 'agent-sandbox-system' namespace" | installing `sandbox-operator` as a subchart under another release namespace → set `sandbox-operator.allowForeignNamespace=true` (operator resources are pinned to agent-sandbox-system regardless); the umbrella does this |
 | `kind: SandboxTemplate` / CRD not found on install | operator's CRDs must exist before the CR → the operator ships them in `crds/` (installed before templates), so a single umbrella release works; standalone, install the operator + wait for the CRD first |

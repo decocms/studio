@@ -1,7 +1,7 @@
 {{- if .Values.worker.enabled }}
 {{/*
 Agent-loop worker Deployment. Same image / DB / auth as the main Deployment,
-but MESH_DISPATCH_ROLE=worker so it dequeues ONLY the agent/automation run
+but STUDIO_DISPATCH_ROLE=worker so it dequeues ONLY the agent/automation run
 queues. It carries a distinct `app.kubernetes.io/name` ("<name>-worker") so the
 main Deployment selector and the Service selector do NOT match its pods —
 workers never get LB/HTTP traffic; they only pull work from the DBOS queue.
@@ -106,7 +106,7 @@ spec:
             # Role: dequeue only the agent/automation run queues.
             - name: PORT
               value: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
-            - name: MESH_DISPATCH_ROLE
+            - name: STUDIO_DISPATCH_ROLE
               value: worker
             {{- if .Values.terminationGracePeriodSeconds }}
             - name: SHUTDOWN_GRACE_SECONDS

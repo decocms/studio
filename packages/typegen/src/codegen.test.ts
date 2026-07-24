@@ -83,11 +83,11 @@ describe("generateClientCode", () => {
     // Must have input/output subkeys
     expect(output).toContain("input:");
     expect(output).toContain("output:");
-    // Must import createMeshClient
+    // Must import createStudioClient
     expect(output).toContain('from "@decocms/typegen"');
-    // Must call createMeshClient with the mcpId
+    // Must call createStudioClient with the mcpId
     expect(output).toContain("vmc_abc123");
-    expect(output).toContain("createMeshClient<Tools>");
+    expect(output).toContain("createStudioClient<Tools>");
   });
 
   test("uses unknown for missing outputSchema", async () => {

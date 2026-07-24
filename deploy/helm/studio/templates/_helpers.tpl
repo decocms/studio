@@ -112,6 +112,7 @@ Resolves DATABASE_URL honoring database engine configuration.
 {{- if eq (lower (default "sqlite" .Values.database.engine)) "postgresql" -}}
 {{- required "database.url deve ser definido quando database.engine=postgresql" .Values.database.url | trim -}}
 {{- else -}}
+{{/* Historical filename retained so existing PVCs keep their database. */}}
 /app/data/mesh.db
 {{- end -}}
 {{- end }}
@@ -148,16 +149,21 @@ there must be a worker deployment to pick up run queues.
 {{- if ne $usesPostgresStr "true" }}
 {{- fail "chart-deco-studio: database.engine=postgresql is required for the split API/worker topology because workers and API pods must share the DBOS run queue. Provide DATABASE_URL via database.url, secret.secretName, or externalSecret." -}}
 {{- end }}
+{{- range $name := list "STUDIO_DISPATCH_ROLE" "MESH_DISPATCH_ROLE" }}
+{{- if hasKey $.Values.configMap.meshConfig $name }}
+{{- fail (printf "chart-deco-studio: configMap.meshConfig contains reserved variable %s; STUDIO_DISPATCH_ROLE is managed per container by the chart, and the legacy MESH_DISPATCH_ROLE alias must not be emitted by the chart." $name) -}}
+{{- end }}
+{{- end }}
 {{- range $env := .Values.env }}
 {{- $name := get $env "name" | default "" -}}
-{{- if or (eq $name "PORT") (eq $name "MESH_DISPATCH_ROLE") (eq $name "POD_NAME") (eq $name "POD_NAME_BASE") }}
-{{- fail (printf "chart-deco-studio: env contains reserved variable %s; API container PORT, MESH_DISPATCH_ROLE, POD_NAME, and POD_NAME_BASE are managed by the chart." $name) -}}
+{{- if or (eq $name "PORT") (eq $name "STUDIO_DISPATCH_ROLE") (eq $name "MESH_DISPATCH_ROLE") (eq $name "POD_NAME") (eq $name "POD_NAME_BASE") }}
+{{- fail (printf "chart-deco-studio: env contains reserved variable %s; API container PORT, STUDIO_DISPATCH_ROLE, POD_NAME, and POD_NAME_BASE are managed by the chart, and MESH_DISPATCH_ROLE is a legacy app-only alias." $name) -}}
 {{- end }}
 {{- end }}
 {{- range $env := .Values.worker.env }}
 {{- $name := get $env "name" | default "" -}}
-{{- if or (eq $name "PORT") (eq $name "MESH_DISPATCH_ROLE") }}
-{{- fail (printf "chart-deco-studio: worker.env contains reserved variable %s; worker PORT and MESH_DISPATCH_ROLE are managed by the chart." $name) -}}
+{{- if or (eq $name "PORT") (eq $name "STUDIO_DISPATCH_ROLE") (eq $name "MESH_DISPATCH_ROLE") }}
+{{- fail (printf "chart-deco-studio: worker.env contains reserved variable %s; worker PORT and STUDIO_DISPATCH_ROLE are managed by the chart, and MESH_DISPATCH_ROLE is a legacy app-only alias." $name) -}}
 {{- end }}
 {{- end }}
 {{- end }}

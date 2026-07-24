@@ -20,7 +20,7 @@
  *
  * The accumulator exposes two emission helpers that produce the exact
  * `messageMetadata.usage` shape the frontend expects (see
- * `packages/mesh-sdk/src/lib/usage.ts:UsageData`):
+ * `packages/shared/src/sdk/lib/usage.ts:UsageData`):
  *   - `buildStepUsage()` for `finish-step` chunks (cumulative through
  *     the current step, no `reasoningTokens` or sanitized provider
  *     metadata).
@@ -35,16 +35,15 @@
  * stays 0 — the UI then shows tokens instead of a dollar amount.
  */
 
-import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { sanitizeProviderMetadata } from "@decocms/shared/sdk";
 import type { LanguageModelUsage } from "ai";
 
 /**
  * Per-step cache-token accumulator. Mirrors
- * `apps/mesh/src/api/routes/decopilot/cache-instrumentation.ts:addCacheStep` —
- * inlined here so the package stays free of cluster-side dependencies.
- * Both implementations must stay in sync; the cluster's version is also
- * the source of truth for OTel attribute emission on the dispatch-run
- * path.
+ * `packages/harness/src/decopilot/cache-instrumentation.ts:addCacheStep` —
+ * inlined here so the accumulator stays independent of dispatch telemetry.
+ * Both implementations must stay in sync; the decopilot version is also the
+ * source of truth for OTel attribute emission on the dispatch-run path.
  */
 interface CacheAccumulator {
   read: number;

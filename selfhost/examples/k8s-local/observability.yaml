@@ -14,7 +14,7 @@
 # `OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh` does all three automatically.
 #
 # After the collector starts writing otel_logs, provision the
-# studio_monitoring_logs VIEW once — DDL in apps/mesh/src/monitoring/clickhouse-setup.md.
+# studio_monitoring_logs VIEW once — DDL in apps/api/src/monitoring/clickhouse-setup.md.
 
 chart-deco-studio:
   # ── ClickHouse operator (embedded; no cert-manager locally) ───────────────

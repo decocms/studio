@@ -1,4 +1,4 @@
-# Lefthook configuration for mesh monorepo
+# Lefthook configuration for the Studio monorepo
 # Install: npx lefthook install
 
 pre-commit:
@@ -11,4 +11,3 @@ pre-commit:
     lint:
       glob: "*.{ts,tsx,js,jsx}"
       run: bunx oxlint {staged_files}
-

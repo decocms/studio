@@ -10,7 +10,7 @@
 #
 # After the collector starts writing otel_logs, provision the
 # studio_monitoring_logs VIEW once — the DDL and the why live in
-# apps/mesh/src/monitoring/clickhouse-setup.md.
+# apps/api/src/monitoring/clickhouse-setup.md.
 
 clickhouse-operator:
   enabled: true
@@ -32,7 +32,7 @@ clickhouse-cluster:
       # WARNING: scaling replicas/shards also requires changing the table DDL
       # (ReplicatedMergeTree / Distributed) — the CR alone leaves data
       # unreplicated/undistributed. See "Scaling beyond a single node" in
-      # apps/mesh/src/monitoring/clickhouse-setup.md.
+      # apps/api/src/monitoring/clickhouse-setup.md.
       replicas: 1
       shards: 1
       dataVolumeClaimSpec:

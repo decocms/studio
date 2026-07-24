@@ -1,10 +1,10 @@
 import type { QuickJSContext, QuickJSHandle } from "quickjs-emscripten-core";
+import { scheduler } from "node:timers/promises";
 import { installConsole, type SandboxLog } from "./builtins/console.ts";
 import { createSandboxRuntime } from "./runtime.ts";
 import { inspect } from "./utils/error-handling.ts";
 import { PendingPromiseTracker, toQuickJS } from "./utils/to-quickjs.ts";
 import type { IClient } from "../client-like.ts";
-import { sleep } from "@decocms/std";
 
 function executePendingJobs(ctx: {
   runtime: { executePendingJobs: Function };
@@ -32,7 +32,10 @@ async function resolvePromiseWithJobPump(
   while (true) {
     executePendingJobs(ctx);
 
-    const raced = await Promise.race([hostPromise, sleep(0).then(() => null)]);
+    const raced = await Promise.race([
+      hostPromise,
+      scheduler.yield().then(() => null),
+    ]);
 
     if (raced !== null) {
       return raced;

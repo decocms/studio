@@ -110,7 +110,7 @@ function extractErrorParts(error: unknown): {
 /**
  * Whether an error is an account-level credit/billing rejection (402 and
  * friends). Shared by `sanitizeStreamError` (UI `[CREDITS]` tagging) and the
- * free-model fallback middleware (`mesh-provider.ts`) so the two never drift.
+ * free-model fallback middleware (`studio-provider.ts`) so the two never drift.
  */
 export function isCreditError(error: unknown): boolean {
   const { message, statusCode } = extractErrorParts(error);

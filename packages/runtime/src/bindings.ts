@@ -3,6 +3,7 @@ import type { MCPConnection } from "./connection.ts";
 import type { AgentBindingConfig, ResolvedAgentClient } from "./decopilot.ts";
 import type { RequestContext } from "./index.ts";
 import { type MCPClientFetchStub, MCPClient, type ToolBinder } from "./mcp.ts";
+import { resolveStudioUrl } from "./studio-context.ts";
 import { z } from "zod";
 
 type ClientContext = Omit<
@@ -229,13 +230,20 @@ export const isBinding = (v: unknown): v is Binding => {
 
 export const proxyConnectionForId = (
   connectionId: string,
-  ctx: Omit<ClientContext, "token"> & {
+  ctx: Omit<ClientContext, "token" | "studioUrl" | "meshUrl"> & {
     token?: string;
     cookie?: string;
-    meshUrl: string;
+    studioUrl?: string;
+    /** @deprecated Use `studioUrl` instead. */
+    meshUrl?: string;
   },
   appName?: string,
 ): MCPConnection => {
+  const studioUrl = resolveStudioUrl(ctx);
+  if (!studioUrl) {
+    throw new Error("proxyConnectionForId requires studioUrl");
+  }
+
   let headers: Record<string, string> | undefined = appName
     ? { "x-caller-app": appName }
     : undefined;
@@ -251,7 +259,7 @@ export const proxyConnectionForId = (
 
   return {
     type: "HTTP",
-    url: new URL(`/mcp/${connectionId}`, ctx.meshUrl).href,
+    url: new URL(`/mcp/${connectionId}`, studioUrl).href,
     token: ctx.token,
     headers,
   };
@@ -284,7 +292,11 @@ const createAgentProxy = (
   if (!orgSlug) {
     throw new Error("organizationSlug is required for agent bindings");
   }
-  const streamUrl = `${ctx.meshUrl}/api/${orgSlug}/decopilot/runtime/stream`;
+  const studioUrl = resolveStudioUrl(ctx);
+  if (!studioUrl) {
+    throw new Error("studioUrl is required for agent bindings");
+  }
+  const streamUrl = `${studioUrl}/api/${orgSlug}/decopilot/runtime/stream`;
 
   return {
     STREAM: async (params, opts) => {
@@ -340,11 +352,11 @@ export const initializeBindings = <
 };
 
 interface DefaultRegistry extends BindingRegistry {
-  "@deco/mesh": CollectionBinding<{ hello: string }, "MESH">;
+  "@deco/studio": CollectionBinding<{ hello: string }, "STUDIO">;
 }
 
 export interface XPTO {
-  MESH: Binding<"@deco/meh">;
+  STUDIO: Binding<"@deco/meh">;
 }
 
 export type XPTOResolved = ResolvedBindings<XPTO, DefaultRegistry>;
