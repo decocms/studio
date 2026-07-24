@@ -59,6 +59,7 @@ import {
   reconcileSeatQuantity,
   StripeApiError,
 } from "./stripe-api";
+import { creditGatewayTopUp } from "./gateway-admin";
 import { hasChargeableSubscription } from "./subscription-state";
 import { enqueueBenefitsSync } from "./sync-org-benefits";
 
@@ -220,7 +221,15 @@ export type HandledStripeEvent =
        *  charging a card that bought no service. */
       orphanSubscriptionId?: string;
     }
-  | { handled: true; organizationId: string; benefitsReferenceId?: string };
+  | {
+      handled: true;
+      organizationId: string;
+      benefitsReferenceId?: string;
+      /** A paid AI-credit top-up to forward to the gateway (route wrapper
+       *  credits it; a failure THROWS so Stripe redelivers — Stripe is the
+       *  retry queue, the gateway referenceId dedupe makes replays no-ops). */
+      topUp?: { creditCents: number; referenceId: string };
+    };
 
 /**
  * Apply one Stripe event to billing state. Pure-ish over the storage: returns
@@ -240,6 +249,32 @@ export async function applyStripeEvent(
     case "checkout.session.async_payment_succeeded": {
       const organizationId = s(rec(obj.metadata)?.orgId);
       if (!organizationId) return { handled: false, reason: "no orgId" };
+
+      // AI-credit top-up (mode=payment, metadata.kind=topup — set by our own
+      // checkout creator). Orthogonal to seats: NO billing-row writes, no
+      // watermark, and deliberately allowed for legacy orgs (credits always
+      // were). The gateway credit happens in the route wrapper.
+      if (s(rec(obj.metadata)?.kind) === "topup") {
+        if (obj.mode !== "payment") {
+          return { handled: false, reason: "topup with wrong mode" };
+        }
+        if (s(obj.payment_status) !== "paid") {
+          return { handled: false, reason: "payment not confirmed" };
+        }
+        const creditCents = Number(rec(obj.metadata)?.creditCents);
+        if (!Number.isInteger(creditCents) || creditCents <= 0) {
+          return { handled: false, reason: "bad topup metadata" };
+        }
+        return {
+          handled: true,
+          organizationId,
+          topUp: {
+            creditCents,
+            referenceId: `stripe-topup:${s(obj.id) ?? crypto.randomUUID()}`,
+          },
+        };
+      }
+
       if (obj.mode !== "subscription") {
         return { handled: false, reason: "not a subscription checkout" };
       }
@@ -408,6 +443,16 @@ export async function processStripeEvent(
 ): Promise<HandledStripeEvent> {
   const storage = new OrganizationBillingStorage(getDb().db);
   const result = await applyStripeEvent(storage, event);
+  // Top-up: forward the paid credits to the gateway. NOT fail-soft — a throw
+  // 500s the route so Stripe redelivers, and the gateway referenceId dedupe
+  // makes every replay a no-op. Stripe is the retry queue here.
+  if (result.handled && result.topUp) {
+    await creditGatewayTopUp({
+      organizationId: result.organizationId,
+      amountCents: result.topUp.creditCents,
+      referenceId: result.topUp.referenceId,
+    });
+  }
   if (result.handled && result.benefitsReferenceId) {
     try {
       await enqueueBenefitsSync(

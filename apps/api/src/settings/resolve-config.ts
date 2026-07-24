@@ -231,6 +231,11 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
+    topupFeePercent: toPositiveIntegerOrDefault(
+      "STUDIO_TOPUP_FEE_PERCENT",
+      envVars.STUDIO_TOPUP_FEE_PERCENT,
+      15,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

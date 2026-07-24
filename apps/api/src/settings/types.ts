@@ -82,6 +82,9 @@ export interface Settings {
   /** The $20/seat/month multi-currency price (created in the Stripe
    *  dashboard); quantity = the org's paid-seat count. */
   stripeSeatPriceId: string | undefined;
+  /** Fee on AI-credit top-ups, percent (default 15 — parity with the
+   *  gateway's legacy checkout being migrated off). */
+  topupFeePercent: number;
 
   // Feature Flags
   enableDecoImport: boolean;

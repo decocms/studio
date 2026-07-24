@@ -178,6 +178,63 @@ export async function previewSeatChange(input: {
   };
 }
 
+/**
+ * AI-credit top-up (one-time payment, migrating off the gateway's own Stripe
+ * so the org has ONE customer/card). The buyer pays creditCents + the fee;
+ * the gateway is credited creditCents by the webhook — price parity with the
+ * gateway's legacy checkout (15% fee). USD only: BRL keeps using the legacy
+ * gateway checkout until we take on FX (see AI_PROVIDER_TOPUP_URL).
+ */
+export function computeTopUpChargeCents(
+  creditCents: number,
+  feePercent: number,
+): number {
+  return Math.round(creditCents * (1 + feePercent / 100));
+}
+
+export async function createTopUpCheckoutSession(input: {
+  organizationId: string;
+  creditCents: number;
+  feePercent: number;
+  customerId: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ url: string }> {
+  const chargeCents = computeTopUpChargeCents(
+    input.creditCents,
+    input.feePercent,
+  );
+  const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    params: {
+      mode: "payment",
+      // Reuse the org's saved customer when it exists (same card as the
+      // seat subscription); otherwise Checkout creates a guest payment.
+      ...(input.customerId && { customer: input.customerId }),
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: chargeCents,
+            product_data: {
+              name: `Studio AI credits ($${(input.creditCents / 100).toFixed(2)})`,
+            },
+          },
+        },
+      ],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      metadata: {
+        kind: "topup",
+        orgId: input.organizationId,
+        creditCents: input.creditCents,
+      },
+    },
+  });
+  if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
+  return { url: session.url };
+}
+
 /** Self-serve management surface (card, invoices, cancellation) — Stripe's
  *  hosted Customer Portal; we never build billing UI for what Stripe hosts. */
 export async function createBillingPortalSession(input: {

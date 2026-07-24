@@ -362,4 +362,61 @@ describe("applyStripeEvent", () => {
     );
     expect(unhandled.handled).toBe(false);
   });
+
+  it("top-up: paid payment-mode checkout returns the gateway credit intent", async () => {
+    const before = await storage.getBilling(ORG_LEGACY);
+    const result = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_1",
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG_LEGACY, creditCents: "1000" },
+      }),
+    );
+    // Deliberately allowed for LEGACY orgs — credits are orthogonal to seats.
+    expect(result).toEqual({
+      handled: true,
+      organizationId: ORG_LEGACY,
+      topUp: { creditCents: 1000, referenceId: "stripe-topup:cs_topup_1" },
+    });
+    // No billing-row writes: top-ups never touch subscription state.
+    expect(await storage.getBilling(ORG_LEGACY)).toEqual(before);
+  });
+
+  it("top-up: unpaid sessions and bad metadata are acked no-ops", async () => {
+    const unpaid = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_2",
+        mode: "payment",
+        payment_status: "unpaid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(unpaid.handled).toBe(false);
+
+    const badAmount = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_3",
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "-5" },
+      }),
+    );
+    expect(badAmount.handled).toBe(false);
+
+    // A topup-kind session in subscription mode is malformed — rejected.
+    const wrongMode = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        id: "cs_topup_4",
+        mode: "subscription",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(wrongMode.handled).toBe(false);
+  });
 });

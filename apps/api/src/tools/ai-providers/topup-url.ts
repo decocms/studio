@@ -1,5 +1,8 @@
 import z from "zod";
+import { createTopUpCheckoutSession } from "../../billing/stripe-api";
+import { benefitsSyncEnabled } from "../../billing/sync-org-benefits";
 import { defineTool } from "../../core/define-tool";
+import { getBaseUrl } from "../../core/server-constants";
 import {
   requireAuth,
   requireOrganization,
@@ -8,6 +11,7 @@ import {
 import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
+import { getSettings } from "../../settings";
 
 export const AI_PROVIDER_TOPUP_URL = defineTool({
   name: "AI_PROVIDER_TOPUP_URL",
@@ -34,6 +38,33 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
 
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
+
+    // Single-Stripe migration (3.7): when this deployment owns billing
+    // (Stripe secret + gateway admin — the credit MUST be deliverable) the
+    // deco top-up goes through the MESH checkout: one Stripe customer, one
+    // card, the webhook credits the gateway. USD only for now — BRL keeps
+    // using the gateway's legacy checkout (its live FX conversion) until we
+    // take on FX; the gateway Stripe module is deleted only after that.
+    const settings = getSettings();
+    if (
+      input.providerId === "deco" &&
+      input.currency === "usd" &&
+      settings.stripeSecretKey &&
+      benefitsSyncEnabled() &&
+      org.slug
+    ) {
+      const billing = await ctx.storage.organizationBilling.getBilling(org.id);
+      const settingsUrl = `${getBaseUrl()}/${encodeURIComponent(org.slug)}/settings`;
+      const { url } = await createTopUpCheckoutSession({
+        organizationId: org.id,
+        creditCents: input.amountCents,
+        feePercent: settings.topupFeePercent,
+        customerId: billing?.stripeCustomerId ?? null,
+        successUrl: `${settingsUrl}?topup=success`,
+        cancelUrl: `${settingsUrl}?topup=canceled`,
+      });
+      return { url };
+    }
 
     const adapter = getProviders()[input.providerId];
     if (!adapter) {

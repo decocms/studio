@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toStripeForm } from "./stripe-api";
+import { computeTopUpChargeCents, toStripeForm } from "./stripe-api";
 
 describe("toStripeForm", () => {
   test("encodes nested objects and arrays in Stripe's bracket form", () => {
@@ -48,5 +48,17 @@ describe("toStripeForm", () => {
     expect(form.get("subscription_details[proration_behavior]")).toBe(
       "always_invoice",
     );
+  });
+});
+
+describe("computeTopUpChargeCents", () => {
+  test("adds the fee on top of the credited amount (gateway parity: 15%)", () => {
+    expect(computeTopUpChargeCents(1000, 15)).toBe(1150);
+    expect(computeTopUpChargeCents(10000, 15)).toBe(11500);
+    expect(computeTopUpChargeCents(1000, 0)).toBe(1000);
+  });
+
+  test("rounds to whole cents", () => {
+    expect(computeTopUpChargeCents(333, 15)).toBe(383); // 382.95 → 383
   });
 });
