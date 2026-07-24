@@ -10,7 +10,7 @@
  */
 
 import type { CliFlags, Settings } from "./types";
-import { resolveConfig } from "./resolve-config";
+import { describeEncryptionKeyForLog, resolveConfig } from "./resolve-config";
 import { setGlobalSettings } from "./index";
 
 export interface BuildResult {
@@ -27,11 +27,8 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
   // 2. Merge CLI flags + env vars + defaults
   const config = resolveConfig(flags, envVars);
 
-  // Log encryption key status on startup
-  const ek = config.settings.encryptionKey;
-  console.log(
-    `[settings] ENCRYPTION_KEY = ${JSON.stringify(ek)} (${ek.length} chars)`,
-  );
+  // Log encryption key status on startup (masked — never the raw secret)
+  console.log(describeEncryptionKeyForLog(config.settings.encryptionKey));
 
   // 3. Start services if needed
   const { ensureServices } = await import("../services/ensure-services");
