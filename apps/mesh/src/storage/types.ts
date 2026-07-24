@@ -1263,6 +1263,14 @@ export interface OrganizationBillingTable {
     string | null | undefined,
     string | null
   >;
+  /** High-water mark of the newest applied Stripe event's `created` time
+   *  (migration 142) — older webhook deliveries are skipped, so out-of-order
+   *  redeliveries can never regress subscription state. */
+  last_stripe_event_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

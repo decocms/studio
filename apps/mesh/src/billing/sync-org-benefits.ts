@@ -40,6 +40,23 @@ export function computeAllowanceMicros(
   return paidSeatCount * seatAllowanceCents * MICROS_PER_CENT;
 }
 
+/**
+ * self_serve orgs grant 0 while the subscription isn't in good standing
+ * (canceled/none — past_due is grace): seats describe WHO is paid-for, the
+ * subscription is whether anyone is paying at all. invoiced (contract) orgs
+ * have no Stripe status, and orgs predating billing rows fail open — their
+ * seats always count.
+ */
+export function effectivePaidSeatCount(
+  billing: { billingMode: string; status: string } | null,
+  paidSeatCount: number,
+): number {
+  if (!billing || billing.billingMode !== "self_serve") return paidSeatCount;
+  return billing.status === "active" || billing.status === "past_due"
+    ? paidSeatCount
+    : 0;
+}
+
 /** Whether this deployment can deliver benefits at all (self-hosted can't). */
 export function benefitsSyncEnabled(): boolean {
   const settings = getSettings();
@@ -81,12 +98,10 @@ async function syncOrgBenefitsWorkflowFn(
   organizationId: string,
   referenceId: string,
 ): Promise<{ delivered: boolean }> {
-  // Read live state: the CURRENT pending ref and the EFFECTIVE paid count.
+  // Read live state: the CURRENT pending ref and the EFFECTIVE paid count
+  // (effectivePaidSeatCount — subscription standing gates self_serve orgs).
   // If a newer seat change replaced the ref, that change's own workflow owns
-  // delivery — exit. self_serve orgs whose subscription isn't in good
-  // standing (canceled/none) grant 0 regardless of seat flags: seats describe
-  // WHO is paid-for, the subscription is whether anyone is paying at all.
-  // invoiced (contract) orgs have no Stripe status — their seats always count.
+  // delivery — exit.
   const state = await DBOS.runStep(
     async () => {
       const s = storage();
@@ -94,13 +109,9 @@ async function syncOrgBenefitsWorkflowFn(
         s.getBilling(organizationId),
         s.listPaidSeatUserIds(organizationId),
       ]);
-      const subscriptionGood =
-        billing?.billingMode !== "self_serve" ||
-        billing.status === "active" ||
-        billing.status === "past_due";
       return {
         pendingRef: billing?.benefitsReferenceId ?? null,
-        paidSeatCount: subscriptionGood ? paidSeatUserIds.length : 0,
+        paidSeatCount: effectivePaidSeatCount(billing, paidSeatUserIds.length),
       };
     },
     { name: "readSeatState", retriesAllowed: true, maxAttempts: 3 },

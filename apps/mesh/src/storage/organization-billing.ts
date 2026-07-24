@@ -8,8 +8,25 @@
  * tools, which gate on billing_mode.
  */
 
-import type { Kysely } from "kysely";
+import type { Kysely, Selectable } from "kysely";
 import type { Database } from "./types";
+
+function toBillingRow(
+  row: Selectable<Database["organization_billing"]>,
+): OrganizationBillingRow {
+  return {
+    organizationId: row.organization_id,
+    legacy: row.legacy,
+    billingMode: row.billing_mode,
+    status: row.status,
+    stripeCustomerId: row.stripe_customer_id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    currentPeriodEnd: row.current_period_end,
+    includedReportUrl: row.included_report_url,
+    benefitsReferenceId: row.benefits_reference_id,
+    lastStripeEventAt: row.last_stripe_event_at,
+  };
+}
 
 export interface OrganizationBillingRow {
   organizationId: string;
@@ -23,6 +40,9 @@ export interface OrganizationBillingRow {
   /** Non-null = a gateway allowance grant is pending for the latest seat
    *  change (the value is the grant's gateway idempotency key). */
   benefitsReferenceId: string | null;
+  /** Newest applied Stripe event's `created` time — the webhook skips
+   *  deliveries older than this so out-of-order events can't regress state. */
+  lastStripeEventAt: Date | null;
 }
 
 export type SeatKind = "paid" | "free";
@@ -61,18 +81,7 @@ export class OrganizationBillingStorage {
       .selectAll()
       .where("organization_id", "=", organizationId)
       .executeTakeFirst();
-    if (!row) return null;
-    return {
-      organizationId: row.organization_id,
-      legacy: row.legacy,
-      billingMode: row.billing_mode,
-      status: row.status,
-      stripeCustomerId: row.stripe_customer_id,
-      stripeSubscriptionId: row.stripe_subscription_id,
-      currentPeriodEnd: row.current_period_end,
-      includedReportUrl: row.included_report_url,
-      benefitsReferenceId: row.benefits_reference_id,
-    };
+    return row ? toBillingRow(row) : null;
   }
 
   /**
@@ -265,30 +274,38 @@ export class OrganizationBillingStorage {
   }
 
   /** Resolve the org behind a Stripe subscription (webhook events carry
-   *  Stripe ids, not ours). One row per org keeps this a cheap scan. */
+   *  Stripe ids, not ours; migration 142's unique index guarantees at most
+   *  one org per subscription). */
   async getBillingByStripeSubscriptionId(
     stripeSubscriptionId: string,
   ): Promise<OrganizationBillingRow | null> {
     const row = await this.db
       .selectFrom("organization_billing")
-      .select(["organization_id"])
+      .selectAll()
       .where("stripe_subscription_id", "=", stripeSubscriptionId)
       .executeTakeFirst();
-    return row ? this.getBilling(row.organization_id) : null;
+    return row ? toBillingRow(row) : null;
   }
 
   /**
    * Platform write from the Stripe webhook handlers: subscription identity /
-   * status / period end. Never touches seats or legacy — webhooks only ever
-   * narrate what Stripe already committed.
+   * status / period end, plus the pending benefit marker and the event
+   * high-water mark — ONE row update, so state and grant intent commit
+   * atomically (the webhook counterpart of setSeats' in-transaction marker).
+   * Never touches seats or legacy — webhooks only ever narrate what Stripe
+   * already committed. Pass a DETERMINISTIC benefitsReferenceId for cycle
+   * events (e.g. the invoice id) so replays collapse at the gateway.
    */
   async updateStripeState(
     organizationId: string,
     patch: {
       stripeCustomerId?: string;
-      stripeSubscriptionId?: string;
+      /** null = unbind (subscription deleted). */
+      stripeSubscriptionId?: string | null;
       status?: string;
       currentPeriodEnd?: Date | null;
+      benefitsReferenceId?: string;
+      lastStripeEventAt?: Date;
     },
   ): Promise<boolean> {
     const result = await this.db
@@ -304,28 +321,17 @@ export class OrganizationBillingStorage {
         ...(patch.currentPeriodEnd !== undefined && {
           current_period_end: patch.currentPeriodEnd,
         }),
+        ...(patch.benefitsReferenceId !== undefined && {
+          benefits_reference_id: patch.benefitsReferenceId,
+        }),
+        ...(patch.lastStripeEventAt !== undefined && {
+          last_stripe_event_at: patch.lastStripeEventAt,
+        }),
         updated_at: new Date(),
       })
       .where("organization_id", "=", organizationId)
       .executeTakeFirst();
     return (result.numUpdatedRows ?? 0n) > 0n;
-  }
-
-  /**
-   * Mark a benefit sync pending outside a seat change (Stripe webhooks: the
-   * grant amount is recomputed from live state at delivery, so the marker is
-   * all a billing event needs to write). Pass a DETERMINISTIC referenceId for
-   * cycle events (e.g. the invoice id) so replays collapse at the gateway.
-   */
-  async markBenefitsPending(
-    organizationId: string,
-    referenceId: string,
-  ): Promise<void> {
-    await this.db
-      .updateTable("organization_billing")
-      .set({ benefits_reference_id: referenceId, updated_at: new Date() })
-      .where("organization_id", "=", organizationId)
-      .execute();
   }
 
   /**
