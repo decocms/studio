@@ -10,6 +10,10 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
 import { OrganizationBillingStorage } from "@/storage/organization-billing";
+import {
+  benefitsSyncEnabled,
+  enqueueBenefitsSync,
+} from "@/billing/sync-org-benefits";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -94,11 +98,23 @@ export async function releaseSeat(
   changedBy: string,
 ): Promise<void> {
   const database = getDb();
-  await new OrganizationBillingStorage(database.db).releaseSeat(
+  const storage = new OrganizationBillingStorage(database.db);
+  // The paid-seat count changed, so the benefits it buys change too. The
+  // pending marker commits with the release; the DBOS workflow + scheduled
+  // sweep deliver the gateway grant durably. Enqueue is fail-soft — a failed
+  // enqueue is exactly what the sweep exists for.
+  const { released, benefitsReferenceId } = await storage.releaseSeat(
     organizationId,
     userId,
     changedBy,
+    { markBenefitsPending: benefitsSyncEnabled() },
   );
+  if (!released || !benefitsReferenceId) return;
+  try {
+    await enqueueBenefitsSync(organizationId, benefitsReferenceId, "apply");
+  } catch (err) {
+    console.error("Failed to enqueue benefit sync (sweep covers):", err);
+  }
 }
 
 /**

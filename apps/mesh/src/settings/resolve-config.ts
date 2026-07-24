@@ -199,6 +199,12 @@ export function resolveConfig(
     // AI Gateway
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
+    aiGatewayAdminToken: envVars.DECO_AI_GATEWAY_ADMIN_TOKEN,
+    seatAllowanceCents: toPositiveIntegerOrDefault(
+      "STUDIO_SEAT_ALLOWANCE_CENTS",
+      envVars.STUDIO_SEAT_ALLOWANCE_CENTS,
+      500,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
