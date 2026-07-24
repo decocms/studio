@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   computeAllowanceMicros,
   effectivePaidSeatCount,
+  planReportScheduleSync,
 } from "./sync-org-benefits";
 
 describe("computeAllowanceMicros", () => {
@@ -49,5 +50,71 @@ describe("effectivePaidSeatCount", () => {
 
   test("orgs predating billing rows fail open", () => {
     expect(effectivePaidSeatCount(null, 4)).toBe(4);
+  });
+});
+
+describe("planReportScheduleSync", () => {
+  test("first choice arms it (nothing to disarm)", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 2,
+        includedReportUrl: "a.example.com",
+        armedReportUrl: null,
+      }),
+    ).toEqual({ desired: "a.example.com", disarm: null, arm: "a.example.com" });
+  });
+
+  test("choice change disarms the old site before arming the new", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 2,
+        includedReportUrl: "b.example.com",
+        armedReportUrl: "a.example.com",
+      }),
+    ).toEqual({
+      desired: "b.example.com",
+      disarm: "a.example.com",
+      arm: "b.example.com",
+    });
+  });
+
+  test("clearing the choice disarms without re-arming", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 2,
+        includedReportUrl: null,
+        armedReportUrl: "a.example.com",
+      }),
+    ).toEqual({ desired: null, disarm: "a.example.com", arm: null });
+  });
+
+  test("converged state is a no-op", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 2,
+        includedReportUrl: "a.example.com",
+        armedReportUrl: "a.example.com",
+      }),
+    ).toEqual({ desired: "a.example.com", disarm: null, arm: null });
+  });
+
+  test("zero effective seats disarms even with a choice stored", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 0,
+        includedReportUrl: "a.example.com",
+        armedReportUrl: "a.example.com",
+      }),
+    ).toEqual({ desired: null, disarm: "a.example.com", arm: null });
+  });
+
+  test("zero seats and nothing armed is a no-op", () => {
+    expect(
+      planReportScheduleSync({
+        paidSeatCount: 0,
+        includedReportUrl: "a.example.com",
+        armedReportUrl: null,
+      }),
+    ).toEqual({ desired: null, disarm: null, arm: null });
   });
 });

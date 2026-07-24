@@ -418,5 +418,57 @@ describe("applyStripeEvent", () => {
       }),
     );
     expect(wrongMode.handled).toBe(false);
+
+    // No session id ⇒ no deterministic dedupe key ⇒ a credit intent here
+    // could double-credit on redelivery. Acked no-op instead.
+    const noId = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        mode: "payment",
+        payment_status: "paid",
+        metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
+      }),
+    );
+    expect(noId.handled).toBe(false);
+  });
+
+  it("top-up: async_payment_succeeded yields the SAME referenceId as completed — the double-credit defense for delayed payment methods", async () => {
+    const session = {
+      id: "cs_topup_async",
+      mode: "payment",
+      payment_status: "unpaid",
+      metadata: { kind: "topup", orgId: ORG, creditCents: "2500" },
+    };
+    // Delayed method: completed fires while unpaid — no credit intent yet.
+    const completed = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", session),
+    );
+    expect(completed.handled).toBe(false);
+
+    // Payment confirms later via async_payment_succeeded.
+    const confirmed = await applyStripeEvent(
+      storage,
+      event("checkout.session.async_payment_succeeded", {
+        ...session,
+        payment_status: "paid",
+      }),
+    );
+    expect(confirmed).toEqual({
+      handled: true,
+      organizationId: ORG,
+      topUp: { creditCents: 2500, referenceId: "stripe-topup:cs_topup_async" },
+    });
+
+    // A redelivered completed event that is NOW paid mints the same
+    // referenceId — the gateway ledger dedupes the replay to a no-op.
+    const replay = await applyStripeEvent(
+      storage,
+      event("checkout.session.completed", {
+        ...session,
+        payment_status: "paid",
+      }),
+    );
+    expect(replay).toEqual(confirmed);
   });
 });

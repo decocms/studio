@@ -261,8 +261,31 @@ export async function applyStripeEvent(
         if (s(obj.payment_status) !== "paid") {
           return { handled: false, reason: "payment not confirmed" };
         }
+        const sessionId = s(obj.id);
+        if (!sessionId) {
+          // No deterministic dedupe key — a random one would double-credit
+          // on redelivery (completed + async_payment_succeeded both land
+          // here). Sessions always carry ids; absence is malformed.
+          console.error("stripe webhook: topup session without id", {
+            eventId: event.id,
+            organizationId,
+          });
+          return { handled: false, reason: "topup session without id" };
+        }
         const creditCents = Number(rec(obj.metadata)?.creditCents);
         if (!Number.isInteger(creditCents) || creditCents <= 0) {
+          // Money was captured but the credit can't be computed — our own
+          // checkout creator wrote this metadata, so this is a bug. Loud but
+          // still 200-acked: throwing would redeliver a deterministic failure
+          // for days and risk Stripe pausing the whole endpoint.
+          console.error(
+            "stripe webhook: paid topup with bad metadata — credit NOT applied",
+            {
+              eventId: event.id,
+              organizationId,
+              creditCents: rec(obj.metadata)?.creditCents,
+            },
+          );
           return { handled: false, reason: "bad topup metadata" };
         }
         return {
@@ -270,7 +293,7 @@ export async function applyStripeEvent(
           organizationId,
           topUp: {
             creditCents,
-            referenceId: `stripe-topup:${s(obj.id) ?? crypto.randomUUID()}`,
+            referenceId: `stripe-topup:${sessionId}`,
           },
         };
       }

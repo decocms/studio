@@ -41,7 +41,8 @@ export const WellKnownOrgMCPId = {
 // migration. This is only the prod default: both the write/claim path
 // (auth-client.ts's .origin) and the read-path "Store Report" connection URL
 // (getWellKnownCommerceDiscoveryConnection below, via its connectionUrl param)
-// are overridable per-deploy through COMMERCE_DISCOVERY_INTERNAL_API_URL, so
+// are overridable per-deploy through REPORTS_INTERNAL_API_URL (or the legacy
+// COMMERCE_DISCOVERY_INTERNAL_API_URL), so
 // staging derives both from reports-stg.decocms.com instead.
 export const COMMERCE_DISCOVERY_MCP_URL =
   "https://reports.decocms.com/api/v2/mcp";

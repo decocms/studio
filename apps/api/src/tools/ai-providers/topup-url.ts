@@ -1,8 +1,8 @@
 import z from "zod";
+import { gatewayAdminConfigured } from "../../billing/gateway-admin";
 import { createTopUpCheckoutSession } from "../../billing/stripe-api";
-import { benefitsSyncEnabled } from "../../billing/sync-org-benefits";
 import { defineTool } from "../../core/define-tool";
-import { getBaseUrl } from "../../core/server-constants";
+import { getPublicUrl } from "../../core/server-constants";
 import {
   requireAuth,
   requireOrganization,
@@ -50,11 +50,13 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
       input.providerId === "deco" &&
       input.currency === "usd" &&
       settings.stripeSecretKey &&
-      benefitsSyncEnabled() &&
+      gatewayAdminConfigured() &&
       org.slug
     ) {
       const billing = await ctx.storage.organizationBilling.getBilling(org.id);
-      const settingsUrl = `${getBaseUrl()}/${encodeURIComponent(org.slug)}/settings`;
+      // getPublicUrl: the browser follows these from Stripe's domain, so they
+      // must be externally reachable, never a localhost fallback.
+      const settingsUrl = `${getPublicUrl()}/${encodeURIComponent(org.slug)}/settings`;
       const { url } = await createTopUpCheckoutSession({
         organizationId: org.id,
         creditCents: input.amountCents,

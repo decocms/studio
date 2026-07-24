@@ -23,7 +23,7 @@ import { z } from "zod";
 import { applySeatQuantity, StripeApiError } from "../../billing/stripe-api";
 import { hasChargeableSubscription } from "../../billing/subscription-state";
 import {
-  benefitsSyncEnabled,
+  anyBenefitDeliverable,
   enqueueBenefitsSync,
 } from "../../billing/sync-org-benefits";
 import { defineTool } from "../../core/define-tool";
@@ -152,7 +152,7 @@ export const ORGANIZATION_SEATS_SET = defineTool({
         organizationId,
         input.seats,
         changedBy,
-        { markBenefitsPending: benefitsSyncEnabled() },
+        { markBenefitsPending: anyBenefitDeliverable() },
       );
     } catch (err) {
       if (err instanceof SeatTargetNotMemberError) {

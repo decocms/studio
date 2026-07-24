@@ -16,26 +16,13 @@ import {
   StripeApiError,
 } from "../../billing/stripe-api";
 import {
-  benefitsSyncEnabled,
+  anyBenefitDeliverable,
   enqueueBenefitsSync,
 } from "../../billing/sync-org-benefits";
-import { getBaseUrl } from "../../core/server-constants";
+import { getPublicUrl } from "../../core/server-constants";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
-
-/**
- * Normalize user input to the bare host the reports service keys diagnostics
- * by ("https://Shop.Example.com/x" → "shop.example.com"). null = invalid.
- */
-export function normalizeSiteHost(raw: string): string | null {
-  try {
-    const candidate = raw.includes("://") ? raw : `https://${raw}`;
-    const host = new URL(candidate).hostname.toLowerCase();
-    return host.includes(".") ? host : null;
-  } catch {
-    return null;
-  }
-}
+import { requireAuth, requireOrganization } from "../../core/studio-context";
+import { siteUrlToHost } from "@decocms/shared/reports/site-url";
 
 export const ORGANIZATION_BILLING_PORTAL = defineTool({
   name: "ORGANIZATION_BILLING_PORTAL",
@@ -54,24 +41,31 @@ export const ORGANIZATION_BILLING_PORTAL = defineTool({
   handler: async (_input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    const organizationId = ctx.organization?.id;
-    const orgSlug = ctx.organization?.slug;
-    if (!organizationId || !orgSlug) {
+    const org = requireOrganization(ctx);
+    if (!org.slug) {
       throw new Error("Organization context required");
     }
 
-    const billing =
-      await ctx.storage.organizationBilling.getBilling(organizationId);
+    const billing = await ctx.storage.organizationBilling.getBilling(org.id);
     if (!billing?.stripeCustomerId) {
       throw new Error(
         "This organization has no billing account yet — subscribe first.",
+      );
+    }
+    // Same gate as checkout: deco-managed billing (legacy/contract) must not
+    // self-serve cancellation or card changes over a deco-owned customer.
+    if (billing.legacy || billing.billingMode !== "self_serve") {
+      throw new Error(
+        "This organization's billing is managed by deco — contact support.",
       );
     }
 
     try {
       return await createBillingPortalSession({
         customerId: billing.stripeCustomerId,
-        returnUrl: `${getBaseUrl()}/${encodeURIComponent(orgSlug)}/members`,
+        // getPublicUrl: the browser follows this from Stripe's domain, so it
+        // must be externally reachable, never a localhost fallback.
+        returnUrl: `${getPublicUrl()}/${encodeURIComponent(org.slug)}/members`,
       });
     } catch (err) {
       if (err instanceof StripeApiError) throw new Error(err.message);
@@ -105,20 +99,16 @@ export const ORGANIZATION_INCLUDED_REPORT_SET = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      throw new Error("Organization context required");
-    }
+    const org = requireOrganization(ctx);
 
-    const billing =
-      await ctx.storage.organizationBilling.getBilling(organizationId);
+    const billing = await ctx.storage.organizationBilling.getBilling(org.id);
     if (!billing || billing.legacy) {
       throw new Error(
         "This organization is on the legacy plan — included reports do not apply.",
       );
     }
 
-    const normalized = input.url === null ? null : normalizeSiteHost(input.url);
+    const normalized = input.url === null ? null : siteUrlToHost(input.url);
     if (input.url !== null && !normalized) {
       throw new Error(`"${input.url}" is not a valid site URL.`);
     }
@@ -127,9 +117,9 @@ export const ORGANIZATION_INCLUDED_REPORT_SET = defineTool({
     // allowance); the pending marker commits in the SAME update as the choice.
     const { updated, benefitsReferenceId } =
       await ctx.storage.organizationBilling.setIncludedReportUrl(
-        organizationId,
+        org.id,
         normalized,
-        { markBenefitsPending: benefitsSyncEnabled() },
+        { markBenefitsPending: anyBenefitDeliverable() },
       );
     if (!updated) {
       throw new Error("Organization billing row missing.");
@@ -138,7 +128,7 @@ export const ORGANIZATION_INCLUDED_REPORT_SET = defineTool({
     let benefitsSyncQueued = false;
     if (benefitsReferenceId) {
       try {
-        await enqueueBenefitsSync(organizationId, benefitsReferenceId, "apply");
+        await enqueueBenefitsSync(org.id, benefitsReferenceId, "apply");
         benefitsSyncQueued = true;
       } catch (err) {
         console.error("Failed to enqueue benefit sync (sweep covers):", err);

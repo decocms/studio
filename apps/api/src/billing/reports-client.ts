@@ -1,34 +1,50 @@
 /**
  * Reports-service internal client for the subscription benefits: the weekly
  * run switch and paid runs. Same service + master key as the Commerce
- * Discovery tools (see tools/reports/auth-client) — one setting, two env
- * names during the rename transition.
+ * Discovery tools — base-URL resolution is shared with
+ * tools/reports/auth-client so "configured" means the same thing everywhere:
+ * the key is required, the URL falls back to the well-known default.
+ *
+ * These are master-key endpoints: the reports service is the authority on
+ * whether `org_id` owns/claims `host` — mesh only validates the host's shape.
  */
 
 import { getSettings } from "../settings";
-
-function config(): { baseUrl: string; apiKey: string } | null {
-  const settings = getSettings();
-  const baseUrl = settings.reportsInternalApiUrl?.replace(/\/+$/, "");
-  const apiKey = settings.reportsInternalApiKey;
-  return baseUrl && apiKey ? { baseUrl, apiKey } : null;
-}
+import { resolveBaseUrl } from "../tools/reports/auth-client";
 
 /** Whether this deployment can reach the reports service at all. */
 export function reportsClientConfigured(): boolean {
-  return config() !== null;
+  return !!getSettings().reportsInternalApiKey;
+}
+
+class ReportsClientError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ReportsClientError";
+    this.status = status;
+  }
+}
+
+/** 4xx = the service rejected the request itself (unknown/unowned host, bad
+ *  input) — retrying the same call can never succeed. */
+export function isPermanentReportsFailure(err: unknown): boolean {
+  return (
+    err instanceof ReportsClientError && err.status >= 400 && err.status < 500
+  );
 }
 
 async function post(
   path: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const cfg = config();
-  if (!cfg) throw new Error("reports service not configured");
-  const res = await fetch(`${cfg.baseUrl}${path}`, {
+  const apiKey = getSettings().reportsInternalApiKey;
+  if (!apiKey) throw new Error("reports service not configured");
+  const res = await fetch(`${resolveBaseUrl({})}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${cfg.apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -39,7 +55,8 @@ async function post(
     unknown
   >;
   if (!res.ok) {
-    throw new Error(
+    throw new ReportsClientError(
+      res.status,
       `reports ${path} failed (${res.status}): ${JSON.stringify(parsed)}`,
     );
   }

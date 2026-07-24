@@ -4,7 +4,7 @@
  * Launched as a Playwright `webServer` so the studio server can complete
  * `COMMERCE_DISCOVERY_SETUP` end-to-end without reaching the real production
  * reports service (https://reports.decocms.com). The studio server is
- * pointed here via `COMMERCE_DISCOVERY_INTERNAL_API_URL` in the Playwright
+ * pointed here via `REPORTS_INTERNAL_API_URL` in the Playwright
  * config.
  *
  * Black-box: the studio server reaches this over HTTP only — no app imports.
