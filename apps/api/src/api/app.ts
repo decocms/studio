@@ -76,7 +76,6 @@ import {
   resolveLinkBearer,
 } from "./routes/decopilot/link-bearer-auth";
 import { createLinkSessionRoutes } from "./routes/links/session";
-import { createVmEventsRoutes } from "./routes/vm-events";
 import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
@@ -2124,22 +2123,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
   legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
   app.route("/api/deco-sites", legacyDecoSitesOrg);
-
-  // Unified VM events SSE — single auth-gated stream that emits pre-Ready
-  // lifecycle phases, then proxies the daemon's `/_sandbox/events` once
-  // the sandbox is up. Replaces the prior split between `/api/vm-lifecycle`
-  // and the browser's direct daemon EventSource.
-  // Legacy mount at /api/vm-events with deprecation log; the new
-  // /api/:org/vm-events mount is wired in a later task.
-  const legacyVmEvents = new Hono<{
-    Variables: { studioContext: StudioContext };
-  }>();
-  legacyVmEvents.use(
-    "*",
-    createLogDeprecatedRoute({ mountPath: "/api/vm-events" }),
-  );
-  legacyVmEvents.route("/", createVmEventsRoutes());
-  app.route("/api/vm-events", legacyVmEvents);
 
   // ============================================================================
   // Private Registry public routes (first-class feature)
