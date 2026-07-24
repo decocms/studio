@@ -5,21 +5,24 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "loop": "./src/cli.ts"
+    "loop": "./dist/cli.js"
   },
   "files": [
-    "src",
+    "dist",
     "skills",
     "templates"
   ],
   "scripts": {
-    "check": "tsc --noEmit"
+    "build": "bun build src/cli.ts --target bun --outfile dist/cli.js",
+    "prepublishOnly": "bun run build",
+    "check": "tsc --noEmit",
+    "test": "bun test"
   },
-  "dependencies": {
+  "devDependencies": {
     "@decocms/shared": "workspace:*"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "bun": ">=1.1.0"
   },
   "repository": {
     "type": "git",

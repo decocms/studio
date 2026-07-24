@@ -14,6 +14,11 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sleep } from "@decocms/shared/std";
+import {
+  type DomainRow,
+  isValidDomainName,
+  parseDomains,
+} from "./parse-domains";
 import { reconcilePrompt } from "./reconcile-prompt";
 
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,6 +38,10 @@ function repoRoot(): string {
 }
 
 function readDeclaration(root: string, domain: string): string {
+  if (!isValidDomainName(domain)) {
+    console.error(`invalid domain name "${domain}" (allowed: [a-z0-9_-])`);
+    process.exit(1);
+  }
   const dir = join(root, "domains", domain);
   if (!existsSync(join(dir, "DOMAIN.md"))) {
     console.error(`No declaration at domains/${domain}/DOMAIN.md`);
@@ -94,24 +103,9 @@ function run(domain: string): void {
   const declaration = readDeclaration(root, domain);
 
   // Lock: an open PR for this domain means a reconcile is already in flight.
-  const open = sh(
-    "gh",
-    [
-      "pr",
-      "list",
-      "--state",
-      "open",
-      "--label",
-      `loop:${domain}`,
-      "--json",
-      "url",
-      "--jq",
-      ".[].url",
-    ],
-    { cwd: root },
-  );
-  if (open) {
-    console.log(`skipped: open PR in flight for ${domain}\n${open}`);
+  const pr = openPrs(root).get(domain);
+  if (pr) {
+    console.log(`skipped: open PR in flight for ${domain}\n${pr.url}`);
     return;
   }
 
@@ -142,40 +136,36 @@ function run(domain: string): void {
     );
     if (res.status !== 0) process.exitCode = res.status ?? 1;
   } finally {
-    sh("git", ["worktree", "remove", "--force", worktree], { cwd: root });
+    // Cleanup must not mask the original error or abort a tick mid-batch —
+    // tolerate failures here; the tmpdir reaper gets stragglers eventually.
+    spawnSync("git", ["worktree", "remove", "--force", worktree], {
+      cwd: root,
+    });
     rmSync(worktree, { recursive: true, force: true });
     // If the agent pushed, the branch lives on the remote; drop the local ref.
     spawnSync("git", ["branch", "-D", branch], { cwd: root });
   }
 }
 
-interface DomainRow {
-  name: string;
-  owner: string;
-}
-
 function domains(root: string): DomainRow[] {
-  const index = readFileSync(join(root, "domains", "DOMAINS.md"), "utf8");
-  const rows: DomainRow[] = [];
-  for (const line of index.split("\n")) {
-    const m = line.match(
-      /^\|\s*\[([^\]]+)\]\([^)]*\)\s*\|[^|]*\|\s*@?(\S+)\s*\|/,
-    );
-    const [, name, owner] = m ?? [];
-    if (name && owner) rows.push({ name, owner });
-  }
-  return rows;
+  return parseDomains(
+    readFileSync(join(root, "domains", "DOMAINS.md"), "utf8"),
+  );
 }
 
 interface OpenPr {
   number: number;
   title: string;
+  url: string;
   createdAt: string;
   reviewDecision: string;
+  labels: { name: string }[];
   statusCheckRollup: { state?: string; status?: string; conclusion?: string }[];
 }
 
-function openPr(root: string, domain: string): OpenPr | null {
+// One gh call for ALL loop PRs (statusUi refreshes this every 15s — a call
+// per domain would eat GitHub API quota at 10+ domains).
+function openPrs(root: string): Map<string, OpenPr> {
   const out = sh(
     "gh",
     [
@@ -183,16 +173,23 @@ function openPr(root: string, domain: string): OpenPr | null {
       "list",
       "--state",
       "open",
-      "--label",
-      `loop:${domain}`,
+      "--limit",
+      "200",
       "--json",
-      "number,title,createdAt,reviewDecision,statusCheckRollup",
-      "--jq",
-      ".[0] // empty",
+      "number,title,url,createdAt,reviewDecision,labels,statusCheckRollup",
     ],
     { cwd: root },
   );
-  return out ? JSON.parse(out) : null;
+  const byDomain = new Map<string, OpenPr>();
+  for (const pr of JSON.parse(out || "[]") as OpenPr[]) {
+    for (const label of pr.labels ?? []) {
+      if (label.name.startsWith("loop:")) {
+        const domain = label.name.slice(5);
+        if (!byDomain.has(domain)) byDomain.set(domain, pr);
+      }
+    }
+  }
+  return byDomain;
 }
 
 function prAge(pr: OpenPr): string {
@@ -234,16 +231,25 @@ function tick(): void {
     console.log(`nothing to tick: no domains owned by @${me}`);
     return;
   }
-  for (const d of mine) run(d.name);
+  for (const d of mine) {
+    // One broken domain must not starve the rest of the batch.
+    try {
+      run(d.name);
+    } catch (e) {
+      console.error(`tick: ${d.name} failed: ${(e as Error).message}`);
+      process.exitCode = 1;
+    }
+  }
 }
 
 function domainTable(root: string): string[][] {
   const running = runningDomains();
+  const prs = openPrs(root);
   const table = [
     ["DOMAIN", "OWNER", "RUNNING", "IN-FLIGHT", "AGE", "CHECKS", "REVIEW"],
   ];
   for (const d of domains(root)) {
-    const pr = openPr(root, d.name);
+    const pr = prs.get(d.name);
     table.push([
       d.name,
       `@${d.owner}`,
@@ -279,7 +285,13 @@ async function statusUi(): Promise<void> {
     const schedule = existsSync(plist)
       ? `${label}  ${cronLoaded(label) ? "enabled" : "disabled"}  log: ${log}`
       : "none — `loop cron setup [minutes]` to schedule ticks";
-    const body = renderTable(domainTable(root));
+    // A flaky gh call (offline, rate limit) degrades the frame, not the TUI.
+    let body: string;
+    try {
+      body = renderTable(domainTable(root));
+    } catch (e) {
+      body = `ERROR refreshing: ${(e as Error).message.split("\n")[0]}`;
+    }
     const now = new Date().toLocaleTimeString();
     // \x1b[2J\x1b[H = clear screen + home; plain ANSI, no TUI framework
     console.log(
@@ -314,6 +326,10 @@ function cronLoaded(label: string): boolean {
   return res.status === 0;
 }
 
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function cron(sub: string | undefined, minutes: string | undefined): void {
   if (process.platform !== "darwin") {
     console.log(
@@ -332,19 +348,19 @@ function cron(sub: string | undefined, minutes: string | undefined): void {
       `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>${label}</string>
+  <key>Label</key><string>${xmlEscape(label)}</string>
   <key>ProgramArguments</key><array>
-    <string>${process.execPath}</string>
-    <string>${fileURLToPath(import.meta.url)}</string>
+    <string>${xmlEscape(process.execPath)}</string>
+    <string>${xmlEscape(fileURLToPath(import.meta.url))}</string>
     <string>tick</string>
   </array>
-  <key>WorkingDirectory</key><string>${root}</string>
+  <key>WorkingDirectory</key><string>${xmlEscape(root)}</string>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>${process.env.PATH ?? "/usr/bin:/bin"}</string>
+    <key>PATH</key><string>${xmlEscape(process.env.PATH ?? "/usr/bin:/bin")}</string>
   </dict>
   <key>StartInterval</key><integer>${interval}</integer>
-  <key>StandardOutPath</key><string>${log}</string>
-  <key>StandardErrorPath</key><string>${log}</string>
+  <key>StandardOutPath</key><string>${xmlEscape(log)}</string>
+  <key>StandardErrorPath</key><string>${xmlEscape(log)}</string>
 </dict></plist>
 `,
     );
@@ -361,7 +377,9 @@ function cron(sub: string | undefined, minutes: string | undefined): void {
       );
       process.exit(1);
     }
-    sh("launchctl", [sub === "on" ? "load" : "unload", plist]);
+    // Tolerate already-on/already-off: launchctl errors when the job is
+    // already in the requested state, which is a fine no-op for us.
+    spawnSync("launchctl", [sub === "on" ? "load" : "unload", plist]);
     console.log(`${label}: ${sub === "on" ? "enabled" : "disabled"}`);
   } else {
     if (!existsSync(plist)) {

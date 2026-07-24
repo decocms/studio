@@ -275,9 +275,9 @@
       "name": "@decocms/loop",
       "version": "0.1.0",
       "bin": {
-        "loop": "./src/cli.ts",
+        "loop": "./dist/cli.js",
       },
-      "dependencies": {
+      "devDependencies": {
         "@decocms/shared": "workspace:*",
       },
     },

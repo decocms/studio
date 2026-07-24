@@ -20,7 +20,9 @@ bunx @decocms/loop tick          # reconcile every domain you own (cron target)
 bunx @decocms/loop status        # inbox: in-flight PRs per domain, what needs you
 ```
 
-Requires `claude` (Claude Code) and `gh` on PATH.
+Requires **Bun** (the CLI ships as a bun-bundled `dist/cli.js`; built via
+`bun build`, and `bun build --compile` is the future path for standalone
+binaries), plus `claude` (Claude Code) and `gh` on PATH.
 
 ## Scheduling
 
@@ -46,6 +48,20 @@ merge, deactivation is removing the row. Whether it runs "manually" or
 "on a schedule" is just who invokes `run`: you, or your cron. Your daily
 driver is `status`: review the in-flight PRs it shows, merge or
 close-and-edit-the-declaration, and let the next tick pick up the next item.
+
+## Security model
+
+The reconciler runs `claude` headless with `--permission-mode
+bypassPermissions`, authenticated as **you** (your `gh` and Claude Code
+logins). Two consequences to internalize:
+
+- **A merged `DOMAIN.md` is a capability grant.** The declaration IS the
+  agent's instructions — anyone who can merge an edit to `domains/` directs
+  an agent holding your push/PR credentials. Review declaration PRs with the
+  same rigor as code, and `loop lint` them (the red-team pass exists for
+  exactly this).
+- **`~/.loop/*.log` captures full agent output** from scheduled ticks — treat
+  it like any local log that may contain sensitive command output.
 
 ## The contract
 
