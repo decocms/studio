@@ -6,13 +6,21 @@
  * enforces billing (STUDIO_BILLING_ENFORCED); a free seat is readonly. GET is
  * readOnlyHint so even free-seat members can render the members/billing page.
  *
- * SET currently applies only to `invoiced` (contract) orgs — their admins
- * toggle seats freely and the seat_change_log is the end-of-cycle invoicing
- * source. `self_serve` orgs get their SET path with the Stripe integration
- * (checkout/proration), and legacy orgs have no seats to manage.
+ * SET semantics by billing mode:
+ *  - `invoiced` (contract): applies directly; the seat_change_log is the
+ *    end-of-cycle invoicing source.
+ *  - `self_serve` WITHOUT an active subscription: applies directly too — seat
+ *    rows are the truth of WHO is paid-for, but grant nothing and unlock
+ *    nothing until a subscription exists (effectivePaidSeatCount and the seat
+ *    gate both zero them). Staging seats is what the first checkout charges.
+ *  - `self_serve` WITH an active subscription: applies rows, then mirrors the
+ *    new count onto the Stripe subscription quantity (prorated difference
+ *    charged immediately — the UI shows ORGANIZATION_SEATS_PREVIEW first).
+ *  - legacy orgs have no seats to manage.
  */
 
 import { z } from "zod";
+import { applySeatQuantity, StripeApiError } from "../../billing/stripe-api";
 import {
   benefitsSyncEnabled,
   enqueueBenefitsSync,
@@ -76,7 +84,7 @@ export const ORGANIZATION_SEATS_GET = defineTool({
 export const ORGANIZATION_SEATS_SET = defineTool({
   name: "ORGANIZATION_SEATS_SET",
   description:
-    "Set members' seats (paid/free). Currently available for invoiced (contract) organizations only; self-serve organizations change seats through checkout.",
+    "Set members' seats (paid/free). Invoiced organizations apply directly; self-serve organizations with an active subscription also charge the prorated difference on the saved card (preview it with ORGANIZATION_SEATS_PREVIEW first).",
   annotations: {
     title: "Set Organization Seats",
     readOnlyHint: false,
@@ -127,13 +135,10 @@ export const ORGANIZATION_SEATS_SET = defineTool({
         "This organization is on the legacy plan — seats do not apply.",
       );
     }
-    if (billing.billingMode !== "invoiced") {
-      // TODO(billing/phase-3): self_serve seat changes go through Stripe
-      // preview + prorated charge before they land here.
-      throw new Error(
-        "Self-serve seat changes require checkout, which is not available yet.",
-      );
-    }
+    const mirrorToStripe =
+      billing.billingMode === "self_serve" &&
+      billing.status === "active" &&
+      !!billing.stripeSubscriptionId;
 
     let result: Awaited<
       ReturnType<typeof ctx.storage.organizationBilling.setSeats>
@@ -153,6 +158,26 @@ export const ORGANIZATION_SEATS_SET = defineTool({
         throw new Error(err.message);
       }
       throw err;
+    }
+
+    // Mirror the new count onto the Stripe subscription (prorated difference
+    // charged on the saved card). AFTER the rows: seat rows are the truth of
+    // WHO; the quantity is derived and idempotent-absolute, so a failure here
+    // is retried by simply re-applying (same rows → same target quantity).
+    // Surfaced as an error so the UI knows the charge didn't happen.
+    if (mirrorToStripe && result.applied.length > 0) {
+      try {
+        await applySeatQuantity({
+          subscriptionId: billing.stripeSubscriptionId as string,
+          quantity: result.paidSeatCount,
+        });
+      } catch (err) {
+        const detail =
+          err instanceof StripeApiError ? err.message : "Stripe update failed";
+        throw new Error(
+          `Seats saved, but updating the subscription failed: ${detail}. Apply again to retry the charge.`,
+        );
+      }
     }
 
     // Fast-path enqueue. Fail-soft: the marker is committed, so a failed

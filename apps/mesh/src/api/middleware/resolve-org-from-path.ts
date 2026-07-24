@@ -192,6 +192,16 @@ export const resolveOrgFromPath: MiddlewareHandler<{
             .where("organization_id", "=", org.id)
             .as("billing_legacy"),
           eb
+            .selectFrom("organization_billing")
+            .select("billing_mode")
+            .where("organization_id", "=", org.id)
+            .as("billing_mode"),
+          eb
+            .selectFrom("organization_billing")
+            .select("status")
+            .where("organization_id", "=", org.id)
+            .as("billing_status"),
+          eb
             .exists(
               eb
                 .selectFrom("organization_paid_seat")
@@ -230,10 +240,20 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       // AccessControl.check() BEFORE the admin/owner bypass. `billing_legacy`
       // is null when the org has NO billing row: fail OPEN (treated as
       // legacy) so an org-creation hook failure can't brick an org.
+      //
+      // A paid-seat row only UNLOCKS while someone is actually paying: for
+      // self_serve orgs the subscription must be in good standing (staged
+      // seats before the first checkout, or after cancellation, don't grant
+      // access) — same semantics as effectivePaidSeatCount on the grant side.
+      // invoiced (contract) orgs have no Stripe status; their rows count.
       if (billingEnforced) {
+        const subscriptionGood =
+          membership.billing_mode !== "self_serve" ||
+          membership.billing_status === "active" ||
+          membership.billing_status === "past_due";
         ctx.access.setSeatGated(
           membership.billing_legacy === false &&
-            membership.has_paid_seat !== true,
+            !(membership.has_paid_seat === true && subscriptionGood),
         );
       }
     }

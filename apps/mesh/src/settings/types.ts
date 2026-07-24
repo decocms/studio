@@ -78,6 +78,10 @@ export interface Settings {
   // Stripe (per-seat self-serve billing). Absent → the webhook route 503s and
   // no checkout can be created; invoiced/legacy orgs are unaffected.
   stripeWebhookSecret: string | undefined;
+  stripeSecretKey: string | undefined;
+  /** The $20/seat/month multi-currency price (created in the Stripe
+   *  dashboard); quantity = the org's paid-seat count. */
+  stripeSeatPriceId: string | undefined;
 
   // Feature Flags
   enableDecoImport: boolean;

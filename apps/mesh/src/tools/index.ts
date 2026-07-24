@@ -77,6 +77,8 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
   OrganizationTools.ORGANIZATION_SEATS_GET,
   OrganizationTools.ORGANIZATION_SEATS_SET,
+  OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
+  OrganizationTools.ORGANIZATION_SEATS_PREVIEW,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
