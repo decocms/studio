@@ -1,5 +1,4 @@
 import {
-  parseBranchMap,
   useMCPClient,
   useProjectContext,
   useVirtualMCP,
@@ -31,6 +30,7 @@ import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
+import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
 import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
@@ -189,15 +189,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
   }
   if (!githubRepo) return null;
 
-  const branchMap =
-    userId && githubHeadBranch
-      ? parseBranchMap(vm?.metadata?.sandboxMap?.[userId]?.[githubHeadBranch])
-      : {};
-  const branchMapEntries = Object.values(branchMap);
-  const vmEntry =
-    branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
-    branchMapEntries[0];
-  const previewUrl = vmEntry?.previewUrl ?? null;
+  // Live preview URL comes from the sandbox lifecycle, not the raw vMCP
+  // sandboxMap. Hosted (agent-sandbox / shared-staging) sandboxes persist their
+  // previewUrl in `agentSandboxSessions`, which the lifecycle overlays onto the
+  // branch map; the raw `vm.metadata.sandboxMap` never carries it, so reading it
+  // here left "Visit preview" permanently disabled for those sandboxes.
+  const { previewUrl } = useSandboxLifecycle();
 
   const button = githubHeadBranch
     ? selectHeaderButton({
