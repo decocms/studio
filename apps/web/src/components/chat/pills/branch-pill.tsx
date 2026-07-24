@@ -54,8 +54,11 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
             )}
           >
             <GitBranch01 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {/* Always show the branch (truncated), even on the chat composer. */}
-            <span className="min-w-0 truncate">{branchLabel}</span>
+            {/* Show the branch (truncated); below `lg` (< 1024px) collapse to an
+                icon-only chip — the name stays available via the tooltip. */}
+            <span className="min-w-0 truncate max-lg:hidden">
+              {branchLabel}
+            </span>
           </span>
         </TooltipTrigger>
         <TooltipContent>

@@ -197,9 +197,10 @@ export function BranchPicker({
                 )}
               >
                 <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
-                {/* Always show the current branch (truncated) — not just an
-                    icon — so the branch in use is visible at a glance. */}
-                <span className="min-w-0 truncate">{label}</span>
+                {/* Show the branch name (truncated) so the branch in use is
+                    visible at a glance. Below `lg` (< 1024px) collapse to an
+                    icon-only button — the name stays available via the tooltip. */}
+                <span className="min-w-0 truncate max-lg:hidden">{label}</span>
                 {!disabled && (
                   <ChevronDown size={12} className="opacity-60 shrink-0" />
                 )}
