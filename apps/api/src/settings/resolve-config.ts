@@ -129,7 +129,8 @@ type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
 function resolveSandboxProviderKind(
   raw: string | undefined,
 ): SandboxProviderKind {
-  const kind = (raw && raw.length > 0 ? raw : "user-desktop") as
+  const trimmed = (raw ?? "").trim();
+  const kind = (trimmed.length > 0 ? trimmed : "user-desktop") as
     | LegacySandboxProviderKind
     | string;
   if (kind === "cluster") return "agent-sandbox";
