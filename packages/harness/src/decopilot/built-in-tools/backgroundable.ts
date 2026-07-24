@@ -22,6 +22,17 @@ export interface BackgroundDispatcher {
   }): Promise<{ jobId: string }>;
 }
 
+/** Subscribes a running foreground call so it can be flipped to the background
+ *  mid-flight. `flipped` resolves when the user requests the flip for this
+ *  toolCallId; `dispose` cleans up the subscription when the call ends. Wired by
+ *  the app to its flip-registry (cluster main turn); absent → no flip support,
+ *  a foreground call just runs inline. Only the generator branch honors it. */
+export interface FlipSubscription {
+  flipped: Promise<void>;
+  dispose(): void;
+}
+export type FlipSubscribe = (toolCallId: string) => FlipSubscription;
+
 export interface BackgroundStartedOutput {
   background: true;
   status: "started";
@@ -60,12 +71,19 @@ function startedHandle(jobId: string): BackgroundStartedOutput {
  * (e.g. subtask, which streams progress) stays a generator; a plain async tool
  * (e.g. generate_image) stays async — so neither's streaming/rendering changes.
  * Returns the inner tool unchanged when `dispatcher` is absent.
+ *
+ * With a `flip` subscriber, a FOREGROUND generator call can also be moved to the
+ * background mid-flight (the user clicking "run in background"): the inline run
+ * is aborted and the call takes its background branch, so the turn completes
+ * normally — with the started marker as the tool output — and the per-thread
+ * gate frees up. The lost in-flight work re-runs as the durable job.
  */
 export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
   toolName: string,
   baseSchema: S,
   innerTool: Tool,
   dispatcher: BackgroundDispatcher | null | undefined,
+  flip?: FlipSubscribe,
 ): Tool {
   if (!dispatcher) return innerTool;
 
@@ -84,16 +102,84 @@ export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
         options: ToolCallOptions,
       ) {
         const { background, ...rest } = input;
-        if (background) {
+        const startBackground = async function* () {
           const { jobId } = await dispatcher.start({
             toolName,
             input: rest,
             toolCallId: options.toolCallId,
           });
           yield startedHandle(jobId);
+        };
+        if (background) {
+          yield* startBackground();
           return;
         }
-        yield* innerExecute(rest, options) as AsyncIterable<unknown>;
+        const flipSub = flip?.(options.toolCallId);
+        if (!flipSub) {
+          yield* innerExecute(rest, options) as AsyncIterable<unknown>;
+          return;
+        }
+        // The inner run gets a CHILD abort signal so a flip stops only this
+        // subagent, not the whole parent turn (aborting the turn would cancel
+        // the very job we're about to start). The parent's own abort still
+        // forwards down — a real cancel aborts the inner and propagates.
+        const childAbort = new AbortController();
+        const onParentAbort = () => childAbort.abort();
+        options.abortSignal?.addEventListener("abort", onParentAbort, {
+          once: true,
+        });
+        const iter = (
+          innerExecute(rest, {
+            ...options,
+            abortSignal: childAbort.signal,
+          }) as AsyncIterable<unknown>
+        )[Symbol.asyncIterator]();
+        try {
+          let pending = iter.next();
+          // `tagged` is the raced view of `pending`; keep the handle so the flip
+          // branch can swallow its eventual rejection (the inner throws on abort)
+          // instead of leaking an unhandled rejection once we stop awaiting it.
+          let tagged = pending.then((r) => ({ kind: "next" as const, r }));
+          while (true) {
+            const ev = await Promise.race([
+              tagged,
+              flipSub.flipped.then(() => ({ kind: "flip" as const })),
+            ]);
+            if (ev.kind === "flip") {
+              // Stop the inline run and tear it down in the background — its
+              // `finally` releases the concurrency slot + closes the MCP client.
+              // We do NOT await teardown: a hung provider await must not stall
+              // the flip. Then take the background branch.
+              // ponytail: in the rare photo-finish where the run just completed,
+              // this re-runs it in the background (a few seconds wasted) rather
+              // than returning the just-ready result — never wrong, and cheaper
+              // than the drain-and-inspect that risks hanging on that await.
+              childAbort.abort();
+              tagged.catch(() => {}); // abandoned branch may reject on abort
+              void (async () => {
+                try {
+                  await pending;
+                } catch {
+                  /* aborted */
+                }
+                try {
+                  await iter.return?.(undefined);
+                } catch {
+                  /* ignore */
+                }
+              })();
+              yield* startBackground();
+              return;
+            }
+            if (ev.r.done) return;
+            yield ev.r.value;
+            pending = iter.next();
+            tagged = pending.then((r) => ({ kind: "next" as const, r }));
+          }
+        } finally {
+          options.abortSignal?.removeEventListener("abort", onParentAbort);
+          flipSub.dispose();
+        }
       }
     : async (input: Record<string, unknown>, options: ToolCallOptions) => {
         const { background, ...rest } = input;

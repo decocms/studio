@@ -105,6 +105,185 @@ describe("makeBackgroundable", () => {
     expect(out).toEqual({ ok: true });
   });
 
+  // --- flip-to-background (generator path) -------------------------------
+
+  /** A generator inner tool: yields `step 1`, then blocks until its abort
+   *  signal fires (simulating long-running work), recording the abort. */
+  function makeGeneratorInnerTool(onAbort?: () => void) {
+    return tool({
+      description: "inner-gen",
+      inputSchema: BASE,
+      execute: async function* (
+        _input: unknown,
+        { abortSignal }: { abortSignal?: AbortSignal },
+      ) {
+        yield { text: "step 1" };
+        await new Promise<void>((resolve) => {
+          if (abortSignal?.aborted) return resolve();
+          abortSignal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+        onAbort?.();
+        yield { text: "final", finishReason: "stop" };
+      },
+    });
+  }
+
+  /** A generator inner tool that completes on its own (no abort needed). */
+  function makeSelfCompletingGenTool() {
+    return tool({
+      description: "inner-gen-simple",
+      inputSchema: BASE,
+      execute: async function* () {
+        yield { text: "step 1" };
+        yield { text: "final", finishReason: "stop" };
+      },
+    });
+  }
+
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  type GenExec = (
+    input: unknown,
+    options: { toolCallId: string; abortSignal?: AbortSignal },
+  ) => AsyncGenerator<Record<string, unknown>>;
+
+  test("flip mid-stream aborts the inline run and returns a started handle", async () => {
+    let aborted = false;
+    const inner = makeGeneratorInnerTool(() => {
+      aborted = true;
+    });
+    const calls: Array<{ toolName: string; input: unknown }> = [];
+    const dispatcher: BackgroundDispatcher = {
+      start: async (req) => {
+        calls.push({ toolName: req.toolName, input: req.input });
+        return { jobId: "job-flip" };
+      },
+    };
+    const flipCtl = deferred();
+    let disposed = false;
+    const wrapped = makeBackgroundable(
+      "subtask",
+      BASE,
+      inner,
+      dispatcher,
+      () => ({ flipped: flipCtl.promise, dispose: () => (disposed = true) }),
+    );
+    const iter = (wrapped as unknown as { execute: GenExec }).execute(
+      { prompt: "dig" },
+      { toolCallId: "call-1" },
+    );
+
+    // First preview streams through untouched.
+    expect((await iter.next()).value).toEqual({ text: "step 1" });
+
+    // User flips: next pull should abort the inner and yield the started handle.
+    flipCtl.resolve();
+    const started = await iter.next();
+    expect(started.value.status).toBe("started");
+    expect(started.value.jobId).toBe("job-flip");
+    expect((await iter.next()).done).toBe(true);
+
+    // Re-ran as a durable job with `background`/flip stripped from the input.
+    expect(calls).toEqual([{ toolName: "subtask", input: { prompt: "dig" } }]);
+    expect(disposed).toBe(true);
+    // The inline run was aborted (its teardown is fire-and-forget).
+    await new Promise((r) => setTimeout(r, 0));
+    expect(aborted).toBe(true);
+  });
+
+  test("flip when the inner throws on abort (real subtask shape) still backgrounds cleanly", async () => {
+    // The real subtask generator throws AbortError out of its stream loop when
+    // aborted. The flip branch must swallow that (no unhandled rejection) and
+    // still return the started handle.
+    const inner = tool({
+      description: "inner-gen-throw",
+      inputSchema: BASE,
+      execute: async function* (
+        _input: unknown,
+        { abortSignal }: { abortSignal?: AbortSignal },
+      ) {
+        yield { text: "step 1" };
+        await new Promise<void>((_resolve, reject) => {
+          if (abortSignal?.aborted) return reject(new Error("aborted"));
+          abortSignal?.addEventListener(
+            "abort",
+            () => reject(new Error("aborted")),
+            { once: true },
+          );
+        });
+        yield { text: "unreached" };
+      },
+    });
+    const dispatcher: BackgroundDispatcher = {
+      start: async () => ({ jobId: "job-throw" }),
+    };
+    const flipCtl = deferred();
+    const wrapped = makeBackgroundable(
+      "subtask",
+      BASE,
+      inner,
+      dispatcher,
+      () => ({
+        flipped: flipCtl.promise,
+        dispose: () => {},
+      }),
+    );
+    const iter = (wrapped as unknown as { execute: GenExec }).execute(
+      { prompt: "dig" },
+      { toolCallId: "c" },
+    );
+    expect((await iter.next()).value).toEqual({ text: "step 1" });
+    flipCtl.resolve();
+    const started = await iter.next();
+    expect(started.value.status).toBe("started");
+    expect(started.value.jobId).toBe("job-throw");
+    expect((await iter.next()).done).toBe(true);
+    // Let the fire-and-forget teardown settle; no unhandled rejection should surface.
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  test("no flip: the generator runs to completion and never enqueues", async () => {
+    const inner = makeSelfCompletingGenTool();
+    let enqueued = false;
+    const dispatcher: BackgroundDispatcher = {
+      start: async () => {
+        enqueued = true;
+        return { jobId: "x" };
+      },
+    };
+    // A flip subscriber is wired but never triggered.
+    const flipCtl = deferred();
+    let disposed = false;
+    const wrapped = makeBackgroundable(
+      "subtask",
+      BASE,
+      inner,
+      dispatcher,
+      () => ({ flipped: flipCtl.promise, dispose: () => (disposed = true) }),
+    );
+    const iter = (wrapped as unknown as { execute: GenExec }).execute(
+      { prompt: "dig" },
+      { toolCallId: "c" },
+    );
+    const seen: unknown[] = [];
+    for await (const v of iter) seen.push(v);
+
+    expect(seen).toEqual([
+      { text: "step 1" },
+      { text: "final", finishReason: "stop" },
+    ]);
+    expect(enqueued).toBe(false);
+    expect(disposed).toBe(true);
+  });
+
   test("propagates dispatcher errors on background:true", async () => {
     const dispatcher: BackgroundDispatcher = {
       start: async () => {

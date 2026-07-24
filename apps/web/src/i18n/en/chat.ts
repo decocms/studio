@@ -363,6 +363,8 @@ export const chat = {
   "chat.shared.tokens": "tokens",
   "chat.subtask.errorLabel": "Error",
   "chat.subtask.failedWithError": "Subtask failed: {error}",
+  "chat.subtask.flipToBackground": "Run in background",
+  "chat.subtask.flipping": "Moving to background…",
   "chat.subtask.resultLabel": "Result",
   "chat.subtask.running": "Running…",
   "chat.subtask.runningInBackground": "Running in the background…",
