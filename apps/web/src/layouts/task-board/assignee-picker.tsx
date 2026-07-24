@@ -28,9 +28,7 @@ export function AssigneePickerContent({
         className="h-9"
       />
       <CommandList>
-        <CommandEmpty>
-          {t("taskBoard.taskDialog.noMembersFound")}
-        </CommandEmpty>
+        <CommandEmpty>{t("taskBoard.taskDialog.noMembersFound")}</CommandEmpty>
         <CommandGroup>
           <CommandItem
             value="Super Agent"
