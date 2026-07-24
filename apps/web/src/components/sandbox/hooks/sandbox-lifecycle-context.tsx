@@ -184,7 +184,7 @@ export interface ClaimRetryEpisode {
   handled: boolean;
 }
 
-export const INITIAL_CLAIM_RETRY_EPISODE: ClaimRetryEpisode = {
+const INITIAL_CLAIM_RETRY_EPISODE: ClaimRetryEpisode = {
   branch: null,
   count: 0,
   handled: false,
