@@ -75,6 +75,39 @@ services:
       postgres:
         condition: service_healthy
 
+  # Create S3 bucket that org-fs and public-sets-sync expect to exist. The app
+  # never auto-creates buckets; this ensures the bucket exists before pods start
+  # so public sets can sync without "The specified bucket does not exist" errors.
+  bucket-setup:
+    build:
+      context: ../../
+      dockerfile: tests/resilience/Dockerfile.studio
+    working_dir: /app
+    command:
+      - bun
+      - -e
+      - |
+        import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3";
+        const c = new S3Client({
+          endpoint: process.env.S3_ENDPOINT,
+          region: "auto",
+          credentials: {
+            accessKeyId: process.env.S3_ACCESS_KEY_ID,
+            secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+          },
+          forcePathStyle: true,
+        });
+        await c.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET }));
+        console.log("created bucket", process.env.S3_BUCKET);
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: studio-dev
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+    depends_on:
+      minio:
+        condition: service_started
+
   # Legacy service identities are part of the resilience-test control contract;
   # Keep the legacy service names stable while the production apps use Studio naming.
   mesh-1: &studio
@@ -138,6 +171,8 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+      bucket-setup:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3000/health/live'); if(!r.ok) process.exit(1)\""]
       interval: 5s
@@ -168,6 +203,8 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+      bucket-setup:
+        condition: service_completed_successfully
       mesh-1:
         condition: service_healthy
 
@@ -186,6 +223,8 @@ services:
       minio:
         condition: service_started
       migrate:
+        condition: service_completed_successfully
+      bucket-setup:
         condition: service_completed_successfully
       mesh-2:
         condition: service_healthy
