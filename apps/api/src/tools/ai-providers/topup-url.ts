@@ -59,7 +59,8 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
       const settingsUrl = `${getPublicUrl()}/${encodeURIComponent(org.slug)}/settings`;
       const { url } = await createTopUpCheckoutSession({
         organizationId: org.id,
-        creditCents: input.amountCents,
+        amountCents: input.amountCents,
+        currency: input.currency,
         feePercent: settings.topupFeePercent,
         customerId: billing?.stripeCustomerId ?? null,
         successUrl: `${settingsUrl}?topup=success`,
