@@ -25,6 +25,7 @@ import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
 import { startUpstreamProbe } from "./probe";
 import { makeProxyHandler } from "./proxy";
+import { makeFastPreviewHandler } from "./routes/fast-preview";
 import { jsonResponse } from "./routes/body-parser";
 import { makeBashHandler } from "./routes/bash";
 import {
@@ -450,6 +451,7 @@ const eventsH = makeEventsHandler({
 
 const idleH = makeIdleHandler();
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
+const fastPreviewH = makeFastPreviewHandler({ repoDir, store });
 
 // ─── Harness dispatch ──────────────────────────────────────────────────
 // Authenticated by the bearer `bootConfig.daemonToken` (see `./auth`). The
@@ -771,6 +773,11 @@ Bun.serve<WsProxyData, never>({
     if (method === "GET" && p === "/health") return healthH();
     if (sandboxMatch)
       return vmRouteH(req, method, sandboxMatch.suffix, sandboxMatch.prefix);
+    // Public Fast Preview render (draft against production; no dev server) —
+    // browser-reachable like the dev-server proxy, matched before it falls
+    // through to `proxyH` (which would need a running dev server).
+    if (method === "GET" && p === "/_deco/fast-preview")
+      return fastPreviewH(req);
     return proxyH(req);
   },
   websocket: {

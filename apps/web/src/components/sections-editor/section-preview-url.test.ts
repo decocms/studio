@@ -1,90 +1,57 @@
 import { describe, expect, it } from "bun:test";
-import {
-  buildInstantPagePreviewUrl,
-  INSTANT_PREVIEW_MAX_URL_LENGTH,
-} from "./section-preview-url";
+import { buildFastPreviewDaemonUrl } from "./section-preview-url";
 
-describe("buildInstantPagePreviewUrl", () => {
-  const decofile = {
-    "pages-home-abc": {
-      __resolveType: "website/pages/Page.tsx",
-      sections: [{ __resolveType: "site/sections/Hero.tsx" }],
-    },
-    "site/sections/Hero.tsx": { title: "Hi" },
-  };
-
-  it("targets /live/previews/<pageBlockKey> on the production origin", () => {
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com/some/path?ignored=1",
+describe("buildFastPreviewDaemonUrl", () => {
+  it("targets /_deco/fast-preview on the daemon (previewUrl) origin", () => {
+    const href = buildFastPreviewDaemonUrl({
+      previewUrl: "https://abc.deco.host/ignored?x=1",
       pageBlockKey: "pages-home-abc",
       path: "/",
-      decofile,
+      pathTemplate: "/",
+      nonce: 0,
     });
-    const url = new URL(href!);
-    expect(url.origin).toBe("https://shop.example.com");
-    // The block key is URL-encoded into the path segment.
-    expect(url.pathname).toBe("/live/previews/pages-home-abc");
+    const url = new URL(href);
+    expect(url.origin).toBe("https://abc.deco.host");
+    expect(url.pathname).toBe("/_deco/fast-preview");
   });
 
-  it("pushes the draft so the server can decode it back exactly", () => {
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com",
-      pageBlockKey: "pages-home-abc",
-      path: "/",
-      decofile,
-    });
-    // Mirror the server: `JSON.parse(decodeURIComponent(searchParams.get(...)))`.
-    const raw = new URL(href!).searchParams.get("__decofile");
-    expect(JSON.parse(decodeURIComponent(raw!))).toEqual(decofile);
-  });
-
-  it("encodes a block key that contains a slash", () => {
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com",
-      pageBlockKey: "site/pages/Landing.tsx",
-      path: "/lp",
-      decofile,
-    });
-    const url = new URL(href!);
-    expect(url.pathname).toBe(
-      `/live/previews/${encodeURIComponent("site/pages/Landing.tsx")}`,
+  it("passes the page block key, path, and pathTemplate as query params", () => {
+    const url = new URL(
+      buildFastPreviewDaemonUrl({
+        previewUrl: "https://abc.deco.host",
+        pageBlockKey: "site/pages/Landing.tsx",
+        path: "/lp/shoes",
+        pathTemplate: "/lp/:slug",
+        nonce: 3,
+      }),
     );
-    expect(url.searchParams.get("path")).toBe("/lp");
-    expect(url.searchParams.get("pathTemplate")).toBe("/lp");
+    expect(url.searchParams.get("component")).toBe("site/pages/Landing.tsx");
+    expect(url.searchParams.get("path")).toBe("/lp/shoes");
+    expect(url.searchParams.get("pathTemplate")).toBe("/lp/:slug");
   });
 
-  it("returns null when the encoded URL exceeds the cap (fall back to published route)", () => {
-    // A decofile large enough to blow past the default ceiling.
-    const huge: Record<string, unknown> = {};
-    for (let i = 0; i < 5000; i++)
-      huge[`block-${i}`] = { title: `x`.repeat(20) };
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com",
+  it("carries the nonce so a bump produces a distinct URL (forces reload)", () => {
+    const base = {
+      previewUrl: "https://abc.deco.host",
       pageBlockKey: "pages-home-abc",
       path: "/",
-      decofile: huge,
-    });
-    expect(href).toBeNull();
+      pathTemplate: "/",
+    };
+    const a = buildFastPreviewDaemonUrl({ ...base, nonce: 1 });
+    const b = buildFastPreviewDaemonUrl({ ...base, nonce: 2 });
+    expect(new URL(a).searchParams.get("__cb")).toBe("1");
+    expect(a).not.toBe(b);
   });
 
-  it("honors a custom maxUrlLength", () => {
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com",
+  it("does not embed the decofile (no URL-size cap)", () => {
+    const href = buildFastPreviewDaemonUrl({
+      previewUrl: "https://abc.deco.host",
       pageBlockKey: "pages-home-abc",
       path: "/",
-      decofile,
-      maxUrlLength: 1,
+      pathTemplate: "/",
+      nonce: 0,
     });
-    expect(href).toBeNull();
-  });
-
-  it("stays under the documented ceiling for a small decofile", () => {
-    const href = buildInstantPagePreviewUrl({
-      baseUrl: "https://shop.example.com",
-      pageBlockKey: "pages-home-abc",
-      path: "/",
-      decofile,
-    });
-    expect(href!.length).toBeLessThanOrEqual(INSTANT_PREVIEW_MAX_URL_LENGTH);
+    expect(href).not.toContain("__decofile");
+    expect(href.length).toBeLessThan(200);
   });
 });

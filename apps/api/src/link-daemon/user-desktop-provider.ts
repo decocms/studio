@@ -89,6 +89,12 @@ export interface Workload {
   devPort?: number;
   /** Subdirectory inside the repo where the package manifest lives. */
   packageManagerPath?: string;
+  /**
+   * Live production URL of the linked site. Forwarded to the daemon so the
+   * `/_deco/fast-preview` route can render the working-tree decofile against
+   * production without the dev server.
+   */
+  productionUrl?: string;
 }
 
 export interface EnsureSandboxInput {
