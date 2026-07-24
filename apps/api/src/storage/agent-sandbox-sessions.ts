@@ -156,43 +156,46 @@ export class AgentSandboxSessionStorage {
 
     const row = await this.db
       .updateTable("agent_sandbox_sessions")
-      .set((expression) => ({
-        desired_state: "running",
-        generation: sql<number>`case
-          when ${expression.ref("desired_state")} = 'stopped'
-            or ${expression.ref("status")} in ('missing', 'failed')
-          then ${expression.ref("generation")} + 1
-          else ${expression.ref("generation")}
-        end`,
-        status: sql<AgentSandboxSessionStatus>`case
-          when ${expression.ref("desired_state")} = 'stopped'
-            or ${expression.ref("status")} in ('missing', 'failed')
-          then 'provisioning'
-          else ${expression.ref("status")}
-        end`,
-        sandbox_handle: sql<string | null>`case
-          when ${expression.ref("desired_state")} = 'stopped'
-            or ${expression.ref("status")} in ('missing', 'failed')
-          then null
-          else ${expression.ref("sandbox_handle")}
-        end`,
-        preview_url: sql<string | null>`case
-          when ${expression.ref("desired_state")} = 'stopped'
-            or ${expression.ref("status")} in ('missing', 'failed')
-          then null
-          else ${expression.ref("preview_url")}
-        end`,
-        sandbox_api_url: sql<string | null>`case
-          when ${expression.ref("desired_state")} = 'stopped'
-            or ${expression.ref("status")} in ('missing', 'failed')
-          then null
-          else ${expression.ref("sandbox_api_url")}
-        end`,
-        failure_reason: null,
-        thread_id: threadId,
-        last_started_by: actorUserId,
-        updated_at: now,
-      }))
+      .set((expression) => {
+        // Force a fresh provision when the row is stopped, terminal, or a
+        // `provisioning` row left orphaned by a crashed start (studio pod died
+        // between beginStart and completeStart/failStart, so nothing ever moved
+        // it off `provisioning` and it "reserves forever"). Bumping generation
+        // fences out any zombie in-flight writes from the dead attempt. 5m is
+        // safely longer than the ~180s real provision wait and matches the k8s
+        // scheduling timeout.
+        const reset = sql`${expression.ref("desired_state")} = 'stopped'
+          or ${expression.ref("status")} in ('missing', 'failed')
+          or (${expression.ref("status")} = 'provisioning'
+            and ${expression.ref("updated_at")} < now() - interval '5 minutes')`;
+        return {
+          desired_state: "running",
+          generation: sql<number>`case when ${reset}
+            then ${expression.ref("generation")} + 1
+            else ${expression.ref("generation")}
+          end`,
+          status: sql<AgentSandboxSessionStatus>`case when ${reset}
+            then 'provisioning'
+            else ${expression.ref("status")}
+          end`,
+          sandbox_handle: sql<string | null>`case when ${reset}
+            then null
+            else ${expression.ref("sandbox_handle")}
+          end`,
+          preview_url: sql<string | null>`case when ${reset}
+            then null
+            else ${expression.ref("preview_url")}
+          end`,
+          sandbox_api_url: sql<string | null>`case when ${reset}
+            then null
+            else ${expression.ref("sandbox_api_url")}
+          end`,
+          failure_reason: null,
+          thread_id: threadId,
+          last_started_by: actorUserId,
+          updated_at: now,
+        };
+      })
       .where("organization_id", "=", locator.organizationId)
       .where("virtual_mcp_id", "=", locator.virtualMcpId)
       .where("branch", "=", locator.branch)
