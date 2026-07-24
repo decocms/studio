@@ -446,6 +446,43 @@ export class ThreadManagerStore {
   }
 
   /**
+   * Force-refresh a loaded thread's metadata from the server and merge it into
+   * the panel slot. Unlike `fetchThread` (which short-circuits on a local hit),
+   * this always issues `COLLECTION_THREADS_GET`, so a stale panel row picks up
+   * metadata bound after the snapshot — e.g. a teammate's thread whose
+   * `githubRepo` / `sandboxMap` was written by `load_repo` after the row was
+   * first loaded. A read-only viewer never receives the live `data-open-preview`
+   * chunk that patches this client-side, and the thread-status SSE carries no
+   * metadata, so without this the preview reads a pre-repo row and shows "no
+   * source". Update-only (guards on the row already being present), so it never
+   * inserts a teammate's thread into the scoped panel list. Best-effort.
+   */
+  async refreshThreadMetadata(id: string): Promise<void> {
+    if (!id || !this.client) return;
+    if (!this.threads.get().some((t) => t.id === id)) return;
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_GET",
+        arguments: { id },
+      });
+      if ((result as { isError?: boolean }).isError) return;
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as { item?: Task | null };
+      const item = payload.item;
+      if (!item) return;
+      this.patchThread({
+        id: item.id,
+        metadata: item.metadata,
+        virtual_mcp_id: item.virtual_mcp_id,
+        branch: item.branch,
+        updated_at: item.updated_at,
+      });
+    } catch {
+      // Best-effort refresh — a failure leaves the (stale) row untouched.
+    }
+  }
+
+  /**
    * Handle a single SSE MessageEvent from the shared decopilot pool. We only
    * care about `decopilot.thread.status` here; other decopilot event types
    * are consumed by `useDecopilotEvents` elsewhere.

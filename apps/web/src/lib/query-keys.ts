@@ -310,6 +310,10 @@ export const KEYS = {
   ensureTask: (orgId: string, id: string) =>
     ["ensure-task", orgId, id] as const,
 
+  // One-shot refresh of a viewed thread's metadata (read-only teammate threads)
+  viewedThreadMetadataRefresh: (orgId: string, id: string) =>
+    ["viewed-thread-metadata-refresh", orgId, id] as const,
+
   // Global search (server-side, scoped by org)
   globalSearch: (orgId: string, query: string) =>
     ["global-search", orgId, query] as const,
