@@ -459,4 +459,6 @@ export const chat = {
   "chat.modelPreferences.usingOrgDefault": "Usando o padrão da organização",
   "chat.modelPreferences.orgDefaultIs": "Padrão da organização: {model}",
   "chat.modelPreferences.autoPicked": "escolhido automaticamente",
+  "chat.modelPreferences.loadFailed":
+    "Não foi possível carregar suas escolhas de modelo. O que aparece abaixo pode não corresponder ao que seus chats usam.",
 } satisfies Record<keyof typeof chatEn, string>;

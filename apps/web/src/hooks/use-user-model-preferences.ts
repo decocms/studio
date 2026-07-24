@@ -19,25 +19,29 @@ const EMPTY_PREFS: UserModelPreferences = { tiers: {} };
  * The calling user's personal chat tier → model overrides for the current org.
  * Defaults to empty (all tiers fall back to the org config).
  */
-export function useUserModelPreferences(): UserModelPreferences {
+export function useUserModelPreferencesQuery() {
   const { org } = useProjectContext();
-  const { data } = useQuery({
+  return useQuery({
     queryKey: KEYS.userModelPreferences(org.id),
     queryFn: async (): Promise<UserModelPreferences> => {
-      try {
-        const res = (await callStudioTool(
-          org.slug,
-          "USER_MODEL_PREFERENCES_GET",
-          {},
-        )) as UserModelPreferences;
-        return res?.tiers ? res : EMPTY_PREFS;
-      } catch {
-        return EMPTY_PREFS;
-      }
+      // Deliberately not catching: swallowing a read failure would show
+      // "Using organization default" while a run uses the stored override —
+      // the exact display/reality gap this feature exists to close. The tool
+      // returns `{ tiers: {} }` when there's no row, so an error is a real one.
+      const res = (await callStudioTool(
+        org.slug,
+        "USER_MODEL_PREFERENCES_GET",
+        {},
+      )) as UserModelPreferences;
+      return res?.tiers ? res : EMPTY_PREFS;
     },
     staleTime: 60_000,
   });
-  return data ?? EMPTY_PREFS;
+}
+
+/** The overrides themselves. See `useUserModelPreferencesQuery` for load state. */
+function useUserModelPreferences(): UserModelPreferences {
+  return useUserModelPreferencesQuery().data ?? EMPTY_PREFS;
 }
 
 /**
@@ -46,6 +50,10 @@ export function useUserModelPreferences(): UserModelPreferences {
  * — so two quick edits to different tiers chain off each other instead of the
  * second rebuilding from a stale render snapshot and clobbering the first. The
  * server does a full-replace of `tiers`, so `mutationFn` sends the merged cache.
+ *
+ * `onSuccess` writing the response back is still not enough on its own: if two
+ * responses land out of order, the older payload wins and the cache disagrees
+ * with the server for a full `staleTime`. `onSettled` refetches to settle it.
  */
 export function useUpdateUserModelPreferences() {
   const { org } = useProjectContext();
@@ -54,6 +62,7 @@ export function useUpdateUserModelPreferences() {
   const key = KEYS.userModelPreferences(org.id);
 
   return useMutation({
+    mutationKey: key,
     mutationFn: async (_patch: { tier: ChatTier; slot: ModelSlot | null }) => {
       // onMutate already merged the patch into the cache — send that.
       const next =
@@ -77,6 +86,13 @@ export function useUpdateUserModelPreferences() {
     },
     onSuccess: (payload) => {
       queryClient.setQueryData(key, payload);
+    },
+    onSettled: () => {
+      // Only the last edit standing refetches — invalidating while a sibling
+      // tier's write is still in flight would drop its optimistic value.
+      if (queryClient.isMutating({ mutationKey: key }) === 1) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
     },
   });
 }

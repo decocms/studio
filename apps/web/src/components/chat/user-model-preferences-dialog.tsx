@@ -18,7 +18,7 @@ import {
 } from "@/hooks/use-organization-settings";
 import {
   useUpdateUserModelPreferences,
-  useUserModelPreferences,
+  useUserModelPreferencesQuery,
 } from "@/hooks/use-user-model-preferences";
 import { ModelSelector } from "./select-model";
 
@@ -59,6 +59,10 @@ function PrefTierRow({
   const t = useT();
   const allKeys = useAiProviderKeys();
   const effective = userSlot ?? orgSlot;
+  // Which provider key's catalog the selector is browsing. Seeded from the
+  // effective slot; the parent remounts this row when that slot changes, so it
+  // can't outlive the value it was seeded from (a reset used to leave this
+  // pointing at the old override's key, mislabelling the org model's provider).
   const [localCredentialId, setLocalCredentialId] = useState<string | null>(
     effective?.keyId ?? allKeys[0]?.id ?? null,
   );
@@ -128,7 +132,7 @@ export function UserModelPreferencesDialog({
 }) {
   const t = useT();
   const org = useSimpleMode();
-  const user = useUserModelPreferences();
+  const { data: user = { tiers: {} }, error } = useUserModelPreferencesQuery();
   const update = useUpdateUserModelPreferences();
 
   const setTier = (tier: ChatTier, slot: ModelSlot | null) => {
@@ -144,17 +148,30 @@ export function UserModelPreferencesDialog({
             {t("chat.modelPreferences.description")}
           </DialogDescription>
         </DialogHeader>
+        {/* A failed read would otherwise render as "using organization
+            default" for every tier — indistinguishable from having no
+            overrides, and misleading if the server actually has some. */}
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("chat.modelPreferences.loadFailed")}
+          </div>
+        )}
         <div className="flex flex-col divide-y divide-border">
-          {CHAT_TIERS.map((tier) => (
-            <PrefTierRow
-              key={tier}
-              tier={tier}
-              orgSlot={org.tiers[tier]}
-              userSlot={user.tiers[tier]}
-              onPick={(slot) => setTier(tier, slot)}
-              onReset={() => setTier(tier, null)}
-            />
-          ))}
+          {CHAT_TIERS.map((tier) => {
+            const userSlot = user.tiers[tier];
+            return (
+              <PrefTierRow
+                // Remount when the effective slot changes so the row's
+                // "browsing which provider key" state can't go stale.
+                key={`${tier}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
+                tier={tier}
+                orgSlot={org.tiers[tier]}
+                userSlot={userSlot}
+                onPick={(slot) => setTier(tier, slot)}
+                onReset={() => setTier(tier, null)}
+              />
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>
