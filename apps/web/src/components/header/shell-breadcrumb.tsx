@@ -227,8 +227,7 @@ export function NewChatCrumb() {
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
-  const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask } = usePanelActions();
+  const { createNewTask } = usePanelActions();
 
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const activeAgentId = params.taskId
@@ -243,18 +242,9 @@ export function NewChatCrumb() {
       ? threads.find((t) => t.id === params.taskId)?.branch
       : null) ?? null;
 
+  // ALWAYS create a fresh chat — never reuse/refocus an existing empty one.
   const handleNewChat = () => {
-    const existing = findReusableNewChat(
-      threads,
-      activeAgentId,
-      session?.user?.id,
-      currentBranch,
-    );
-    if (existing) {
-      setTaskId(existing.id, activeAgentId);
-    } else {
-      void createNewTask(activeAgentId, currentBranch);
-    }
+    void createNewTask(activeAgentId, currentBranch);
   };
 
   return (

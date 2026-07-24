@@ -65,37 +65,4 @@ describe("findReusableNewChat", () => {
       "fresh",
     );
   });
-
-  // Branch-aware reuse: a "new chat on the branch I'm viewing" action passes the
-  // current branch so it never reuses (and strands the user on) another branch.
-  it("reuses an empty New chat on the same branch when a branch is given", () => {
-    const t = task({ id: "a", branch: "feature-x" });
-    expect(findReusableNewChat([t], "agent-1", USER, "feature-x")?.id).toBe(
-      "a",
-    );
-  });
-
-  it("does not reuse an empty New chat on a different branch", () => {
-    const t = task({ id: "a", branch: "feature-x" });
-    expect(
-      findReusableNewChat([t], "agent-1", USER, "staging"),
-    ).toBeUndefined();
-  });
-
-  it("matches a branchless thread when the requested branch is null", () => {
-    const t = task({ id: "a", branch: null });
-    expect(findReusableNewChat([t], "agent-1", USER, null)?.id).toBe("a");
-  });
-
-  it("does not match a branched thread when the requested branch is null", () => {
-    const t = task({ id: "a", branch: "feature-x" });
-    expect(findReusableNewChat([t], "agent-1", USER, null)).toBeUndefined();
-  });
-
-  // Omitting branch (undefined) keeps the branch-agnostic behavior used by
-  // "open agent X" flows — reuse regardless of the thread's branch.
-  it("ignores branch when none is requested", () => {
-    const t = task({ id: "a", branch: "feature-x" });
-    expect(findReusableNewChat([t], "agent-1", USER)?.id).toBe("a");
-  });
 });

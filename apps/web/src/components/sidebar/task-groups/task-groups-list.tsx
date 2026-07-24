@@ -34,8 +34,6 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
   useProjectContext,
   useVirtualMCPs,
 } from "@/sdk";
@@ -144,11 +142,6 @@ export function TaskGroupsList({
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   // Agent entities (for the collapsed rail's per-thread avatars).
   const agents = useVirtualMCPs();
@@ -275,44 +268,15 @@ export function TaskGroupsList({
     setTaskId(t.id, t.virtual_mcp_id);
   };
 
-  // Verify a thread has no messages (an unsent "New chat"), so we can reuse it
-  // instead of spawning another empty one. Failure → treat as non-empty.
-  const isThreadEmpty = async (threadId: string): Promise<boolean> => {
-    try {
-      const res = await client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: { thread_id: threadId, limit: 1, offset: 0 },
-      });
-      const payload = ((res as { structuredContent?: unknown })
-        .structuredContent ?? res) as { items?: unknown[] };
-      return (payload.items?.length ?? 0) === 0;
-    } catch {
-      return false;
-    }
-  };
-
-  // New thread: always target the currently selected agent (the active
-  // thread's agent, else decopilot) AND inherit the branch of the active thread
-  // so the new chat lands on the same sandbox/branch. To avoid piling up
-  // empties, focus an existing empty "New chat" for that agent AND branch
-  // (verified to have no messages) instead of spawning another — reusing one on
-  // a different branch would silently switch the user's branch.
-  const handleNewThread = async () => {
+  // New thread: ALWAYS create a fresh chat on the currently selected agent (the
+  // active thread's agent, else decopilot), inheriting the active thread's
+  // branch so it lands on the same sandbox/branch. Every click creates — we do
+  // not reuse/refocus an existing empty "New chat".
+  const handleNewThread = () => {
     const currentAgentId = activeAgentId ?? decopilotId;
     const currentBranch =
       allThreads.find((t) => t.id === activeTaskId)?.branch ?? null;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
-    const candidate = myThreadsAll.find(
-      (t) =>
-        t.virtual_mcp_id === currentAgentId &&
-        t.title === "New chat" &&
-        (t.branch ?? null) === currentBranch,
-    );
-    if (candidate && (await isThreadEmpty(candidate.id))) {
-      closeAfterNavigation();
-      setTaskId(candidate.id, currentAgentId);
-      return;
-    }
     closeAfterNavigation();
     createNewTask(currentAgentId, currentBranch);
   };
