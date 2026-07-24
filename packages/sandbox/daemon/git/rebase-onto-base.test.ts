@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { execSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -83,6 +84,83 @@ function setupConflictingRepo(): {
   };
 }
 
+function setupBranchDeletesBaseModifiesRepo(): {
+  repoDir: string;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), "rebase-onto-base-ud-"));
+  const bare = join(root, "origin.git");
+  const seed = join(root, "seed");
+  const gitOpts = { stdio: "ignore" as const };
+  const gitcfg = `-c init.defaultBranch=main -c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  const decoPath = ".deco/blocks/shipping.json";
+
+  execSync(`git ${gitcfg} init --bare ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} init ${seed}`, gitOpts);
+
+  mkdirSync(join(seed, ".deco/blocks"), { recursive: true });
+  writeFileSync(
+    join(seed, decoPath),
+    JSON.stringify({ threshold: 200 }, null, 2),
+    "utf-8",
+  );
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} commit -m initial`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} branch -M main`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} remote add origin ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} push -u origin main`, gitOpts);
+
+  // Branch deletes the file...
+  execSync(
+    `git ${gitcfg} -C ${seed} checkout -b feat/remove-shipping`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${seed} rm ${decoPath}`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${seed} commit -m "Remove shipping block"`,
+    gitOpts,
+  );
+  execSync(
+    `git ${gitcfg} -C ${seed} push -u origin feat/remove-shipping`,
+    gitOpts,
+  );
+
+  // ...while main keeps modifying it, so rebase hits a "UD" (deleted by
+  // branch, modified by base) conflict rather than the "DU" case above.
+  execSync(`git ${gitcfg} -C ${seed} checkout main`, gitOpts);
+  writeFileSync(
+    join(seed, decoPath),
+    JSON.stringify({ threshold: 250 }, null, 2),
+    "utf-8",
+  );
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${seed} commit -m "Update free shipping threshold to R$ 250"`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${seed} push origin main`, gitOpts);
+
+  const repoDir = join(root, "workspace");
+  execSync(
+    `git ${gitcfg} clone --branch feat/remove-shipping ${bare} ${repoDir}`,
+    gitOpts,
+  );
+  execSync(
+    `git ${gitcfg} -C ${repoDir} config user.email test@example.com`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${repoDir} config user.name test`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${repoDir} remote set-url origin ${bare}`,
+    gitOpts,
+  );
+
+  return {
+    repoDir,
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
 describe("rebaseOntoBase", () => {
   it("rebases with -X theirs and resolves conflicts from branch changes", () => {
     const { repoDir, cleanup } = setupConflictingRepo();
@@ -102,6 +180,19 @@ describe("rebaseOntoBase", () => {
         .toString()
         .trim();
       expect(head).not.toBe(main);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("honors the branch's deletion when the base modified the same file", () => {
+    const { repoDir, cleanup } = setupBranchDeletesBaseModifiesRepo();
+    try {
+      rebaseOntoBase(repoDir, "main", { asUser: false });
+
+      expect(existsSync(join(repoDir, ".deco/blocks/shipping.json"))).toBe(
+        false,
+      );
     } finally {
       cleanup();
     }

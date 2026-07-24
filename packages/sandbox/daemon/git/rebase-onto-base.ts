@@ -176,17 +176,18 @@ function commitBeforeRebase(
 function resolveConflictFile(repoDir: string, summary: StatusFile): void {
   const filePath = summary.path;
   const xy = `${summary.index}${summary.working_dir}`;
-  const abs = path.join(repoDir, filePath);
 
-  // modify/delete during rebase: keep the replayed commit version when present.
-  if (
-    xy.includes("U") &&
-    (summary.index === "D" || summary.working_dir === "D")
-  ) {
-    if (fs.existsSync(abs)) {
-      runGit(repoDir, ["add", "--", filePath]);
-      return;
-    }
+  // modify/delete during rebase: the replayed commit ("theirs", the branch)
+  // must win, matching the `-X theirs` policy. "DU" = base ("ours") deleted,
+  // branch modified -> keep the branch's version. "UD" = branch deleted, base
+  // ("ours") modified -> honor the branch's deletion. Using fs.existsSync
+  // here would be wrong: git leaves whichever side survives the conflict in
+  // the tree, which for "UD" is the base's (unwanted) modified version.
+  if (xy === "DU") {
+    runGit(repoDir, ["add", "--", filePath]);
+    return;
+  }
+  if (xy === "UD") {
     runGit(repoDir, ["rm", "-f", "--", filePath]);
     return;
   }
