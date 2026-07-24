@@ -460,16 +460,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fastPreviewActive: fastPreviewEnabled,
   });
   const previewSurfaceActive = display.mode !== "none";
-  const showBootingOverlay = display.showBlockingOverlay;
 
   // Fast Preview render (gated by the CMS switch): render the CURRENT
   // working-tree draft via the sandbox DAEMON's `/_deco/fast-preview` route,
   // which merges `.deco/blocks/*` and POSTs it (server-side, no URL cap) to the
   // site's production `/live/previews`. Available once the daemon is up
-  // (`previewUrl`) — no dev server needed. `null` (Fast Preview off, daemon not
-  // up yet, or no page matched) → fall back to the plain published route below
-  // while the sandbox provisions. `fastPreviewNonce` is bumped after a Blocks
-  // save so the frame re-navigates and the daemon re-reads the fresh draft.
+  // (`previewUrl`) — no dev server needed. `null` (daemon not up yet, or no page
+  // matched) → the booting overlay owns the canvas; Fast Preview NEVER falls
+  // back to the published site. `fastPreviewNonce` is bumped after a Blocks save
+  // so the frame re-navigates and the daemon re-reads the fresh draft.
   const fastPreviewDaemonUrl =
     fastPreviewEnabled &&
     display.mode === "production" &&
@@ -484,6 +483,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         })
       : null;
 
+  // Show the booting overlay while Fast Preview is waiting for the daemon render
+  // (no published-site stopgap), on top of the normal blocking-overlay cases.
+  const showBootingOverlay =
+    display.showBlockingOverlay ||
+    (fastPreviewEnabled &&
+      display.mode === "production" &&
+      !fastPreviewDaemonUrl);
+
   const iframeSrc =
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
@@ -494,14 +501,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           workspace.state.variantOverride ?? [],
         )
       : display.mode === "production"
-        ? // Prefer the daemon Fast Preview render (draft); else load the current
-          // path best-effort against the published site while the sandbox
-          // provisions (its own committed pages).
-          withDeviceHint(
-            fastPreviewDaemonUrl ??
+        ? fastPreviewEnabled
+          ? // Fast Preview: ONLY the daemon draft render — never the published
+            // site. `null` while the page/daemon isn't ready yet → the booting
+            // overlay owns the canvas (see `showBootingOverlay`).
+            fastPreviewDaemonUrl
+            ? withDeviceHint(fastPreviewDaemonUrl, previewDeviceSize)
+            : null
+          : // Fast Preview off: published site best-effort while the sandbox
+            // provisions (its own committed pages).
+            withDeviceHint(
               new URL(resolvedPath, display.iframeBase!).href,
-            previewDeviceSize,
-          )
+              previewDeviceSize,
+            )
         : null;
 
   // Last visited page (incl. `:param` values), persisted per project+branch.

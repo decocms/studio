@@ -123,54 +123,49 @@ describe("resolvePreviewDisplay", () => {
   });
 
   describe("Fast Preview", () => {
-    it("shows the pill only while the sandbox is still provisioning (no handle yet)", () => {
-      // No previewUrl → the sandbox VM isn't up; the instant draft renders but
-      // we still signal that the sandbox is coming online.
-      const result = run({
-        previewState: STARTING,
-        progressStatus: "doing",
-        fastPreviewActive: true,
-      });
-      expect(result.mode).toBe("production");
-      expect(result.showWakingPill).toBe(true);
-    });
+    const previewUrl = IFRAME.kind === "iframe" ? IFRAME.previewUrl : "";
 
-    it("drops the pill once the sandbox is up, even while the dev server is still booting", () => {
-      // The key gate change: handle exists (kind === "iframe") but the dev
-      // server inside is still installing/starting (progressStatus "doing").
-      // Fast Preview treats the sandbox as booted → no "starting" pill, since
-      // the instant draft is already the preview.
+    it("renders on the daemon (previewUrl), never the published site", () => {
       const result = run({
         previewState: IFRAME,
         progressStatus: "doing",
         fastPreviewActive: true,
       });
       expect(result.mode).toBe("production");
-      expect(result.iframeBase).toBe(PROD);
+      // The daemon origin, NOT productionUrl — Fast Preview never shows the
+      // published site.
+      expect(result.iframeBase).toBe(previewUrl);
+      expect(result.iframeBase).not.toBe(PROD);
       expect(result.showWakingPill).toBe(false);
     });
 
-    it("never swaps to the sandbox — stays on the preview server even once the dev server is running", () => {
-      // Fast Preview previews only on the preview server; the sandbox dev server
-      // being up is irrelevant, so there's no swap.
-      const result = run({
-        previewState: IFRAME,
-        progressStatus: "done",
-        fastPreviewActive: true,
+    it("shows a booting overlay (not the published site) while the sandbox provisions", () => {
+      // No previewUrl yet → the daemon can't serve the render; show the overlay,
+      // never fall back to productionUrl.
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+        }),
+      ).toEqual({
+        mode: "none",
+        iframeBase: null,
+        showBlockingOverlay: true,
+        showWakingPill: false,
       });
-      expect(result.mode).toBe("production");
-      expect(result.iframeBase).toBe(PROD);
-      expect(result.showWakingPill).toBe(false);
     });
 
-    it("stays on the preview server even if the dev server crashed/failed", () => {
-      const result = run({
-        previewState: IFRAME,
-        progressStatus: "failed",
-        fastPreviewActive: true,
-      });
-      expect(result.mode).toBe("production");
-      expect(result.showWakingPill).toBe(false);
+    it("never swaps to the sandbox — stays on the daemon render regardless of dev-server state", () => {
+      for (const progressStatus of ["done", "failed"] as const) {
+        const result = run({
+          previewState: IFRAME,
+          progressStatus,
+          fastPreviewActive: true,
+        });
+        expect(result.mode).toBe("production");
+        expect(result.iframeBase).toBe(previewUrl);
+      }
     });
   });
 });
