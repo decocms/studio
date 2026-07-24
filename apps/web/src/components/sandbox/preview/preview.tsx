@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Code01,
   Compass01,
+  Copy01,
   CursorClick01,
   DotsHorizontal,
   Edit05,
@@ -1225,6 +1226,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               <>
                 {terminal && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={handleCopyUrl}>
+                  <Copy01 size={14} />
                   {t("sandbox.preview.copyCurrentUrl")}
                 </DropdownMenuItem>
               </>
