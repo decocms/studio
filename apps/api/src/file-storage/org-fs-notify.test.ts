@@ -1,15 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  notifyOrgFsChange,
-  orgFsChangeSubject,
-  orgFsChangeSubjects,
-} from "./org-fs-notify";
+import { notifyOrgFsChange, orgFsChangeSubjects } from "./org-fs-notify";
 
 describe("org-fs NATS compatibility subjects", () => {
   test("returns the canonical subject first and its legacy alias second", () => {
-    expect(orgFsChangeSubject("org-1", "home")).toBe(
-      "studio.org-fs.changes.org-1.home",
-    );
     expect(orgFsChangeSubjects("org-1", "home")).toEqual([
       "studio.org-fs.changes.org-1.home",
       "mesh.org-fs.changes.org-1.home",
@@ -17,7 +10,7 @@ describe("org-fs NATS compatibility subjects", () => {
   });
 
   test("rejects unsafe NATS subject tokens", () => {
-    expect(orgFsChangeSubject("org.with.dot", "home")).toBeNull();
+    expect(orgFsChangeSubjects("org.with.dot", "home")).toEqual([]);
     expect(orgFsChangeSubjects("org-1", "volume.*")).toEqual([]);
   });
 

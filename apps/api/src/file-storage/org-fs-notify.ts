@@ -19,21 +19,12 @@ const SUBJECT_PREFIXES = [
 ] as const;
 
 /**
- * NATS subject for a volume's change notifications, or null if either token
- * contains a character that isn't safe in a subject (`.`, `*`, `>`, ws). Volume
- * is already validated upstream; orgId is server-controlled — the guard is
- * defensive, and a null subject just means the long-poll falls back to its
- * timeout safety net.
+ * Canonical subject plus the legacy alias used during rolling upgrades, or []
+ * if either token contains a character that isn't safe in a subject (`.`,
+ * `*`, `>`, ws). Volume is already validated upstream; orgId is
+ * server-controlled — the guard is defensive, and empty subjects just mean
+ * the long-poll falls back to its timeout safety net.
  */
-export function orgFsChangeSubject(
-  orgId: string,
-  volume: string,
-): string | null {
-  if (/[.*>\s]/.test(orgId) || /[.*>\s]/.test(volume)) return null;
-  return `${SUBJECT_PREFIXES[0]}.${orgId}.${volume}`;
-}
-
-/** Canonical subject plus the legacy alias used during rolling upgrades. */
 export function orgFsChangeSubjects(orgId: string, volume: string): string[] {
   if (/[.*>\s]/.test(orgId) || /[.*>\s]/.test(volume)) return [];
   return SUBJECT_PREFIXES.map((prefix) => `${prefix}.${orgId}.${volume}`);
