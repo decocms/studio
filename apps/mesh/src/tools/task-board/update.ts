@@ -10,6 +10,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -73,9 +74,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.assigneeId !== undefined ||
       input.dueDate !== undefined;
 
-    // Only enqueue on the transition INTO Super Agent, not on every later edit.
+    // Fetch the pre-update item when the assignee OR status changes: the
+    // assignee diff gates the enqueue on the transition INTO Super Agent, and
+    // both are diffed against `item` below to log status/assignee changes to
+    // the activity timeline.
     const previous =
-      input.assigneeId !== undefined
+      input.assigneeId !== undefined || input.status !== undefined
         ? await ctx.storage.taskBoard.getById(input.id, organizationId)
         : null;
     const assigneeChanged =
@@ -116,6 +120,30 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
       if (!fetched) throw new Error(`Task board item not found: ${input.id}`);
       item = fetched;
+    }
+
+    // Log the meaningful changes to the activity timeline (status, assignee) by
+    // diffing against the pre-update item. Best-effort.
+    if (previous) {
+      const actorId = getUserId(ctx)!;
+      if (item.status !== previous.status) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "status_changed",
+          actorId,
+          data: { from: previous.status, to: item.status },
+        });
+      }
+      if (item.assigneeId !== previous.assigneeId) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "assignee_changed",
+          actorId,
+          data: { from: previous.assigneeId, to: item.assigneeId },
+        });
+      }
     }
 
     // Broadcast the delegation flip (assignee + forced To Do), or a new linked

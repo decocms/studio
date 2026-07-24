@@ -129,6 +129,18 @@ export async function advanceTaskBoardForRun(
         { status },
         ctx.auth?.user?.id ?? current.updatedBy,
       );
+      // Timeline entry for the agent-driven move (actor "system"). Best-effort.
+      await ctx.storage.taskBoard
+        .recordActivity({
+          organizationId: orgId,
+          taskBoardItemId: itemId,
+          kind: "status_changed",
+          actorId: "system",
+          data: { from: current.status, to: status },
+        })
+        .catch((err) =>
+          console.error("[task-board] activity log write failed", err),
+        );
       emitTaskBoardUpdated(orgId, item);
     }
   } catch (err) {

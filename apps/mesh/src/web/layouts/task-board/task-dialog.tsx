@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,11 +26,13 @@ import {
   Check,
   CheckCircle,
   ChevronRight,
+  Circle,
   Copy01,
   DotsHorizontal,
   Edit05,
   GitMerge,
   GitPullRequest,
+  Globe01,
   HelpCircle,
   LinkExternal01,
   Loading02,
@@ -58,6 +60,12 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { useTaskBoardItemPrs } from "@/web/hooks/use-task-board-item-prs";
+import {
+  useTaskBoardActivity,
+  type TaskBoardActivity,
+} from "@/web/hooks/use-task-board-activity";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { formatTimeAgo } from "@/web/lib/format-time";
 import { AssigneePickerContent } from "./assignee-picker";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
@@ -90,9 +98,6 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  */
 const PROPERTY_BUTTON =
   "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
-
-// ponytail: THREAD_STATUS labels moved into component to access t()
-// each status key is resolved dynamically via t() in ActivityCard
 
 export function TaskBoardItemDialog({
   open,
@@ -251,20 +256,22 @@ export function TaskBoardItemDialog({
               )}
             </div>
 
-            {item && item.threads.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {item.threads.map((t) => (
-                  <ActivityCard
-                    key={t.threadId}
-                    thread={t}
-                    startedBy={assignedBy ?? assignee}
-                    onOpen={onOpenThread}
-                  />
-                ))}
-              </div>
+            {item?.id && (
+              <LinksSection
+                item={item}
+                description={description}
+                onOpenThread={onOpenThread}
+              />
             )}
 
-            {item?.id && <PullRequestsCard itemId={item.id} />}
+            {item && (
+              <ActivitySection
+                item={item}
+                members={members}
+                startedBy={assignedBy ?? assignee}
+                onOpenThread={onOpenThread}
+              />
+            )}
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
@@ -555,11 +562,61 @@ export function TaskBoardItemDialog({
   );
 }
 
+/** Live-status style for a linked thread (agent session). */
+function threadStatusStyle(
+  status: NonNullable<TaskBoardItemThread["status"]>,
+  t: ReturnType<typeof useT>,
+): {
+  label: string;
+  className: string;
+  icon: typeof AlertSquare;
+  spin?: boolean;
+} {
+  switch (status) {
+    case "failed":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusError"),
+        className: "text-destructive",
+        icon: AlertSquare,
+      };
+    case "requires_action":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
+        className: "text-warning",
+        icon: HelpCircle,
+      };
+    case "in_progress":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusRunning"),
+        className: "text-primary",
+        icon: Loading02,
+        spin: true,
+      };
+    case "completed":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusCompleted"),
+        className: "text-success",
+        icon: CheckCircle,
+      };
+    case "expired":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusExpired"),
+        className: "text-muted-foreground",
+        icon: AlertCircle,
+      };
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
 /**
- * The linked run's activity: a header ("Super Agent started by X") and a status
- * row (Error / Running / …). Clicking opens the run's thread.
+ * A linked agent session (thread) in the Activity feed — the WHOLE card is
+ * clickable (opens the run's chat), with a hover state + "Open" affordance so
+ * it's obvious it's interactive, plus the live run status and last message.
  */
-function ActivityCard({
+function ThreadActivityItem({
   thread,
   startedBy,
   onOpen,
@@ -569,58 +626,24 @@ function ActivityCard({
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-
-  // ponytail: build THREAD_STATUS dynamically to access t()
-  const THREAD_STATUS_CONFIG: Record<
-    NonNullable<TaskBoardItemThread["status"]>,
-    {
-      label: string;
-      className: string;
-      icon: typeof AlertSquare;
-      spin?: boolean;
-    }
-  > = {
-    failed: {
-      label: t("taskBoard.taskDialog.threadStatusError"),
-      className: "text-destructive",
-      icon: AlertSquare,
-    },
-    requires_action: {
-      label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
-      className: "text-warning",
-      icon: HelpCircle,
-    },
-    in_progress: {
-      label: t("taskBoard.taskDialog.threadStatusRunning"),
-      className: "text-primary",
-      icon: Loading02,
-      spin: true,
-    },
-    completed: {
-      label: t("taskBoard.taskDialog.threadStatusCompleted"),
-      className: "text-success",
-      icon: CheckCircle,
-    },
-    expired: {
-      label: t("taskBoard.taskDialog.threadStatusExpired"),
-      className: "text-muted-foreground",
-      icon: AlertCircle,
-    },
-  };
-
-  const state = thread.status ? THREAD_STATUS_CONFIG[thread.status] : null;
+  const state = thread.status ? threadStatusStyle(thread.status, t) : null;
   const message = thread.lastMessage;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 px-4 py-3.5">
-        <SuperAgentIcon size={16} />
-        <span className="truncate text-sm text-foreground">
+    <button
+      type="button"
+      disabled={!onOpen}
+      onClick={() => onOpen?.(thread)}
+      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
+    >
+      <div className="flex items-center gap-2">
+        <SuperAgentIcon size={16} className="shrink-0" />
+        <span className="truncate text-sm font-medium text-foreground">
           {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
         </span>
         {startedBy && (
           <>
-            <span className="text-sm text-muted-foreground/50">
+            <span className="shrink-0 text-sm text-muted-foreground/50">
               {t("taskBoard.taskDialog.startedByLabel")}
             </span>
             <Avatar
@@ -634,36 +657,35 @@ function ActivityCard({
             </span>
           </>
         )}
+        {onOpen && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
+            {t("taskBoard.taskDialog.openThreadHint")}
+            <ChevronRight size={14} />
+          </span>
+        )}
       </div>
-
       {state && (
-        <button
-          type="button"
-          disabled={!onOpen}
-          onClick={() => onOpen?.(thread)}
-          className="flex items-center gap-2 border-t border-border px-4 py-2 text-left transition-colors enabled:hover:bg-muted disabled:cursor-default"
-        >
-          <span className={cn("flex items-center gap-1.5", state.className)}>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              state.className,
+            )}
+          >
             <state.icon
-              size={16}
+              size={15}
               className={cn(state.spin && "animate-spin")}
             />
             <span className="text-sm">{state.label}</span>
           </span>
           {message && (
-            <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {message}
             </span>
           )}
-          {onOpen && (
-            <ChevronRight
-              size={16}
-              className="ml-auto shrink-0 text-muted-foreground"
-            />
-          )}
-        </button>
+        </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -702,67 +724,330 @@ function prStateStyle(
   };
 }
 
-/** One PR row — state badge, title (falls back to repo#number), external link,
- *  and the PR description (live-fetched) clamped below when present. */
-function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
+/** Extract outbound links from the description text — bare URLs, deduped, for
+ *  the Links panel. */
+function extractDescriptionLinks(
+  text: string,
+): { url: string; label: string }[] {
+  if (!text) return [];
+  const out: { url: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/https?:\/\/[^\s)]+/g)) {
+    const url = m[0];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, label: url });
+  }
+  return out;
+}
+
+/**
+ * Links panel (ai-services-panel style): the task's related pull requests plus
+ * any links found in the description, aggregated in one place — distinct from
+ * the activity timeline. Hidden when there's nothing to show.
+ */
+function LinksSection({
+  item,
+  description,
+  onOpenThread,
+}: {
+  item: TaskBoardItem;
+  description: string;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
   const t = useT();
-  const style = prStateStyle(pr, t);
-  const body = pr.body?.trim();
+  const { data: prs } = useTaskBoardItemPrs(item.id);
+  const links = extractDescriptionLinks(description);
+  if ((!prs || prs.length === 0) && links.length === 0) return null;
+
+  // The task's preview-capable thread (a bound repo checked out on the PR's
+  // branch). Opening it paints that branch's live dev server — so "Edit" lands
+  // you in the branch, not on GitHub.
+  const previewThread = onOpenThread
+    ? item.threads.find((th) => th.hasPreview && th.virtualMcpId)
+    : undefined;
+
+  const row =
+    "group flex items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-muted";
+
   return (
-    <a
-      href={pr.url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex flex-col gap-1 border-t border-border px-4 py-2 transition-colors hover:bg-muted"
-    >
-      <span className="flex items-center gap-2">
-        <span className={cn("flex items-center gap-1.5", style.className)}>
-          <style.icon size={16} />
-          <span className="text-sm">{style.label}</span>
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-          {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
-        </span>
-        <span className="shrink-0 text-sm text-muted-foreground">
-          #{pr.number}
-        </span>
-        <LinkExternal01 size={16} className="shrink-0 text-muted-foreground" />
+    <div className="flex flex-col gap-1 pb-4">
+      <span className="mb-1 text-xs font-medium text-muted-foreground">
+        {t("taskBoard.taskDialog.linksLabel")}
       </span>
-      {body ? (
-        <span className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">
-          {body}
-        </span>
-      ) : null}
-    </a>
+      {(prs ?? []).map((pr) => {
+        const style = prStateStyle(pr, t);
+        return (
+          <div
+            key={pr.url}
+            className="flex items-center gap-3 rounded-xl bg-card p-3 card-shadow"
+          >
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex min-w-0 flex-1 items-center gap-3"
+            >
+              <GitHubIcon className="size-4 shrink-0 text-foreground" />
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
+              </span>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center gap-1 text-xs font-medium",
+                  style.className,
+                )}
+              >
+                <style.icon size={13} />
+                {style.label}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                #{pr.number}
+              </span>
+              <LinkExternal01
+                size={13}
+                className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
+              />
+            </a>
+            {previewThread && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-2"
+                title={t("taskBoard.taskDialog.openPreviewTitle")}
+                onClick={() => onOpenThread?.(previewThread)}
+              >
+                <Edit05 size={13} />
+                {t("taskBoard.taskDialog.openPreviewButton")}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+      {links.map((link) => (
+        <a
+          key={link.url}
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className={row}
+        >
+          <Globe01 size={15} className="shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+            {link.label}
+          </span>
+          <LinkExternal01
+            size={13}
+            className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
+          />
+        </a>
+      ))}
+    </div>
   );
 }
 
 /**
- * The task's linked pull requests, each with live state fetched from GitHub.
- * Hidden entirely when the task has none (the common case), so it never adds
- * empty chrome to a task that never opened a PR.
+ * The task's Activity feed: its change timeline (created, status/assignee
+ * moves) and any linked agent sessions, merged into one chronological run
+ * (oldest first, like Linear). Hidden until there's something to show.
  */
-function PullRequestsCard({ itemId }: { itemId: string }) {
+function ActivitySection({
+  item,
+  members,
+  startedBy,
+  onOpenThread,
+}: {
+  item: TaskBoardItem;
+  members: Member[];
+  startedBy?: Member;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
   const t = useT();
-  const { data: prs, isLoading } = useTaskBoardItemPrs(itemId);
-  if (!isLoading && (!prs || prs.length === 0)) return null;
+  const { data: activity } = useTaskBoardActivity(item.id);
+
+  const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  // Merge the change timeline and agent sessions into one chronological feed.
+  // Consecutive timeline events render as a connected run; a thread is a card.
+  // (PRs live in the Links panel, not the timeline.)
+  type Ev =
+    | { kind: "activity"; at: number; activity: TaskBoardActivity }
+    | { kind: "thread"; at: number; thread: TaskBoardItemThread };
+  const events: Ev[] = [
+    ...(activity ?? []).map(
+      (a): Ev => ({
+        kind: "activity",
+        at: new Date(a.createdAt).getTime(),
+        activity: a,
+      }),
+    ),
+    ...item.threads.map(
+      (thread): Ev => ({
+        kind: "thread",
+        at: new Date(thread.createdAt).getTime(),
+        thread,
+      }),
+    ),
+  ].sort((a, b) => a.at - b.at);
+
+  if (events.length === 0) return null;
+
+  // Group consecutive timeline events so their icons connect with a rail.
+  const blocks: (
+    | { type: "timeline"; items: TaskBoardActivity[] }
+    | { type: "thread"; thread: TaskBoardItemThread }
+  )[] = [];
+  for (const ev of events) {
+    if (ev.kind === "activity") {
+      const last = blocks[blocks.length - 1];
+      if (last?.type === "timeline") last.items.push(ev.activity);
+      else blocks.push({ type: "timeline", items: [ev.activity] });
+    } else {
+      blocks.push({ type: "thread", thread: ev.thread });
+    }
+  }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 px-4 py-3.5">
-        <GitPullRequest size={16} className="text-muted-foreground" />
-        <span className="text-sm text-foreground">
-          {t("taskBoard.taskDialog.pullRequestsLabel")}
-        </span>
-      </div>
-      {!prs ? (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-sm text-muted-foreground">
-          <Loading02 size={16} className="animate-spin" />
-          <span>{t("taskBoard.taskDialog.loadingLabel")}</span>
-        </div>
-      ) : (
-        prs.map((pr) => <PullRequestRow key={pr.url} pr={pr} />)
+    <div className="flex flex-col gap-6 pb-6">
+      <span className="text-xs font-medium text-muted-foreground">
+        {t("taskBoard.taskDialog.activityLabel")}
+      </span>
+
+      {blocks.map((block, i) => {
+        if (block.type === "timeline") {
+          return (
+            <TimelineBlock
+              key={`tl-${i}`}
+              items={block.items}
+              memberByUserId={memberByUserId}
+            />
+          );
+        }
+        return (
+          <ThreadActivityItem
+            key={`thread-${block.thread.threadId}`}
+            thread={block.thread}
+            startedBy={startedBy}
+            onOpen={onOpenThread}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Human icon + text for one timeline event. */
+function describeActivity(
+  a: TaskBoardActivity,
+  t: ReturnType<typeof useT>,
+  memberByUserId: Map<string, Member>,
+): { icon: ReactNode; text: string } {
+  const memberName = (id: unknown) =>
+    (typeof id === "string" && memberByUserId.get(id)?.user?.name) ||
+    t("taskBoard.taskDialog.someoneLabel");
+  const statusLabel = (s: unknown) => {
+    const cfg =
+      typeof s === "string"
+        ? STATUS_CONFIG[s as keyof typeof STATUS_CONFIG]
+        : undefined;
+    return cfg ? t(cfg.labelKey) : String(s ?? "");
+  };
+  const d = a.data;
+  switch (a.kind) {
+    case "created":
+      return {
+        icon: <Plus size={12} />,
+        text: t("taskBoard.taskDialog.activityCreated"),
+      };
+    case "status_changed": {
+      const Icon =
+        (typeof d.to === "string" &&
+          STATUS_CONFIG[d.to as keyof typeof STATUS_CONFIG]?.icon) ||
+        Circle;
+      return {
+        icon: <Icon size={12} />,
+        text: d.from
+          ? t("taskBoard.taskDialog.activityMovedFromTo", {
+              from: statusLabel(d.from),
+              to: statusLabel(d.to),
+            })
+          : t("taskBoard.taskDialog.activityMovedTo", {
+              to: statusLabel(d.to),
+            }),
+      };
+    }
+    case "assignee_changed":
+      if (d.to === SUPER_AGENT_ASSIGNEE_ID)
+        return {
+          icon: <SuperAgentIcon size={13} />,
+          text: t("taskBoard.taskDialog.activityDelegated"),
+        };
+      if (d.to == null)
+        return {
+          icon: <UserPlus01 size={12} />,
+          text: t("taskBoard.taskDialog.activityUnassigned"),
+        };
+      return {
+        icon: <UserPlus01 size={12} />,
+        text: t("taskBoard.taskDialog.activityAssigned", {
+          name: memberName(d.to),
+        }),
+      };
+    default: {
+      const _exhaustive: never = a.kind;
+      return { icon: <Circle size={12} />, text: String(_exhaustive) };
+    }
+  }
+}
+
+/** A run of consecutive timeline events, icons joined by a vertical rail. */
+function TimelineBlock({
+  items,
+  memberByUserId,
+}: {
+  items: TaskBoardActivity[];
+  memberByUserId: Map<string, Member>;
+}) {
+  const t = useT();
+  const actorName = (actorId: string | null) => {
+    if (!actorId) return t("taskBoard.taskDialog.someoneLabel");
+    if (actorId === "system" || actorId === SUPER_AGENT_ASSIGNEE_ID)
+      return t("taskBoard.taskDialog.superAgentLabel");
+    return (
+      memberByUserId.get(actorId)?.user?.name ??
+      t("taskBoard.taskDialog.someoneLabel")
+    );
+  };
+
+  return (
+    <div className="relative flex flex-col gap-5">
+      {items.length > 1 && (
+        <span
+          aria-hidden
+          className="absolute left-[8px] top-3 bottom-3 w-px bg-border"
+        />
       )}
+      {items.map((a) => {
+        const { icon, text } = describeActivity(a, t, memberByUserId);
+        return (
+          <div key={a.id} className="relative flex items-center gap-2.5">
+            <span className="z-10 flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              {icon}
+            </span>
+            <span className="min-w-0 truncate text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {actorName(a.actorId)}
+              </span>{" "}
+              {text}
+              <span className="text-muted-foreground/60">
+                {" · "}
+                {formatTimeAgo(new Date(a.createdAt))}
+              </span>
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

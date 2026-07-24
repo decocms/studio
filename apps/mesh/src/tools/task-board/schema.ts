@@ -63,3 +63,20 @@ export const TaskBoardItemSchema = z.object({
   updatedBy: z.string(),
   updatedAt: z.string().datetime(),
 });
+
+const TaskBoardActivityKindSchema = z.enum([
+  "created",
+  "status_changed",
+  "assignee_changed",
+]);
+
+export const TaskBoardActivitySchema = z.object({
+  id: z.string(),
+  taskBoardItemId: z.string(),
+  kind: TaskBoardActivityKindSchema,
+  /** User id, or a sentinel ("system" / "super-agent"). */
+  actorId: z.string().nullable(),
+  /** Event payload, e.g. { from, to } for a status/assignee change. */
+  data: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
+});
