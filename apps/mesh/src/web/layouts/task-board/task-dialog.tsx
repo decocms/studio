@@ -31,6 +31,7 @@ import {
   Edit05,
   GitMerge,
   GitPullRequest,
+  Globe01,
   HelpCircle,
   LinkExternal01,
   Loading02,
@@ -58,6 +59,7 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { useTaskBoardItemPrs } from "@/web/hooks/use-task-board-item-prs";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
@@ -90,9 +92,6 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  */
 const PROPERTY_BUTTON =
   "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
-
-// ponytail: THREAD_STATUS labels moved into component to access t()
-// each status key is resolved dynamically via t() in ActivityCard
 
 export function TaskBoardItemDialog({
   open,
@@ -251,20 +250,26 @@ export function TaskBoardItemDialog({
               )}
             </div>
 
+            {item?.id && (
+              <LinksSection
+                item={item}
+                description={description}
+                onOpenThread={onOpenThread}
+              />
+            )}
+
             {item && item.threads.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {item.threads.map((t) => (
-                  <ActivityCard
-                    key={t.threadId}
-                    thread={t}
+              <div className="flex flex-col gap-3">
+                {item.threads.map((th) => (
+                  <ThreadActivityItem
+                    key={th.threadId}
+                    thread={th}
                     startedBy={assignedBy ?? assignee}
                     onOpen={onOpenThread}
                   />
                 ))}
               </div>
             )}
-
-            {item?.id && <PullRequestsCard itemId={item.id} />}
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
@@ -555,11 +560,61 @@ export function TaskBoardItemDialog({
   );
 }
 
+/** Live-status style for a linked thread (agent session). */
+function threadStatusStyle(
+  status: NonNullable<TaskBoardItemThread["status"]>,
+  t: ReturnType<typeof useT>,
+): {
+  label: string;
+  className: string;
+  icon: typeof AlertSquare;
+  spin?: boolean;
+} {
+  switch (status) {
+    case "failed":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusError"),
+        className: "text-destructive",
+        icon: AlertSquare,
+      };
+    case "requires_action":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
+        className: "text-warning",
+        icon: HelpCircle,
+      };
+    case "in_progress":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusRunning"),
+        className: "text-primary",
+        icon: Loading02,
+        spin: true,
+      };
+    case "completed":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusCompleted"),
+        className: "text-success",
+        icon: CheckCircle,
+      };
+    case "expired":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusExpired"),
+        className: "text-muted-foreground",
+        icon: AlertCircle,
+      };
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
 /**
- * The linked run's activity: a header ("Super Agent started by X") and a status
- * row (Error / Running / …). Clicking opens the run's thread.
+ * A linked agent session (thread) — the WHOLE card is clickable (opens the
+ * run's chat), with a hover state + "Open" affordance so it's obvious it's
+ * interactive, plus the live run status and last message.
  */
-function ActivityCard({
+function ThreadActivityItem({
   thread,
   startedBy,
   onOpen,
@@ -569,58 +624,24 @@ function ActivityCard({
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-
-  // ponytail: build THREAD_STATUS dynamically to access t()
-  const THREAD_STATUS_CONFIG: Record<
-    NonNullable<TaskBoardItemThread["status"]>,
-    {
-      label: string;
-      className: string;
-      icon: typeof AlertSquare;
-      spin?: boolean;
-    }
-  > = {
-    failed: {
-      label: t("taskBoard.taskDialog.threadStatusError"),
-      className: "text-destructive",
-      icon: AlertSquare,
-    },
-    requires_action: {
-      label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
-      className: "text-warning",
-      icon: HelpCircle,
-    },
-    in_progress: {
-      label: t("taskBoard.taskDialog.threadStatusRunning"),
-      className: "text-primary",
-      icon: Loading02,
-      spin: true,
-    },
-    completed: {
-      label: t("taskBoard.taskDialog.threadStatusCompleted"),
-      className: "text-success",
-      icon: CheckCircle,
-    },
-    expired: {
-      label: t("taskBoard.taskDialog.threadStatusExpired"),
-      className: "text-muted-foreground",
-      icon: AlertCircle,
-    },
-  };
-
-  const state = thread.status ? THREAD_STATUS_CONFIG[thread.status] : null;
+  const state = thread.status ? threadStatusStyle(thread.status, t) : null;
   const message = thread.lastMessage;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 px-4 py-3.5">
-        <SuperAgentIcon size={16} />
-        <span className="truncate text-sm text-foreground">
+    <button
+      type="button"
+      disabled={!onOpen}
+      onClick={() => onOpen?.(thread)}
+      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
+    >
+      <div className="flex items-center gap-2">
+        <SuperAgentIcon size={16} className="shrink-0" />
+        <span className="truncate text-sm font-medium text-foreground">
           {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
         </span>
         {startedBy && (
           <>
-            <span className="text-sm text-muted-foreground/50">
+            <span className="shrink-0 text-sm text-muted-foreground/50">
               {t("taskBoard.taskDialog.startedByLabel")}
             </span>
             <Avatar
@@ -634,36 +655,35 @@ function ActivityCard({
             </span>
           </>
         )}
+        {onOpen && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
+            {t("taskBoard.taskDialog.openThreadHint")}
+            <ChevronRight size={14} />
+          </span>
+        )}
       </div>
-
       {state && (
-        <button
-          type="button"
-          disabled={!onOpen}
-          onClick={() => onOpen?.(thread)}
-          className="flex items-center gap-2 border-t border-border px-4 py-2 text-left transition-colors enabled:hover:bg-muted disabled:cursor-default"
-        >
-          <span className={cn("flex items-center gap-1.5", state.className)}>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              state.className,
+            )}
+          >
             <state.icon
-              size={16}
+              size={15}
               className={cn(state.spin && "animate-spin")}
             />
             <span className="text-sm">{state.label}</span>
           </span>
           {message && (
-            <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {message}
             </span>
           )}
-          {onOpen && (
-            <ChevronRight
-              size={16}
-              className="ml-auto shrink-0 text-muted-foreground"
-            />
-          )}
-        </button>
+        </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -702,67 +722,125 @@ function prStateStyle(
   };
 }
 
-/** One PR row — state badge, title (falls back to repo#number), external link,
- *  and the PR description (live-fetched) clamped below when present. */
-function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
-  const t = useT();
-  const style = prStateStyle(pr, t);
-  const body = pr.body?.trim();
-  return (
-    <a
-      href={pr.url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex flex-col gap-1 border-t border-border px-4 py-2 transition-colors hover:bg-muted"
-    >
-      <span className="flex items-center gap-2">
-        <span className={cn("flex items-center gap-1.5", style.className)}>
-          <style.icon size={16} />
-          <span className="text-sm">{style.label}</span>
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-          {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
-        </span>
-        <span className="shrink-0 text-sm text-muted-foreground">
-          #{pr.number}
-        </span>
-        <LinkExternal01 size={16} className="shrink-0 text-muted-foreground" />
-      </span>
-      {body ? (
-        <span className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">
-          {body}
-        </span>
-      ) : null}
-    </a>
-  );
+/** Extract outbound links from the description text — bare URLs, deduped, for
+ *  the Links panel. */
+function extractDescriptionLinks(
+  text: string,
+): { url: string; label: string }[] {
+  if (!text) return [];
+  const out: { url: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/https?:\/\/[^\s)]+/g)) {
+    const url = m[0];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, label: url });
+  }
+  return out;
 }
 
 /**
- * The task's linked pull requests, each with live state fetched from GitHub.
- * Hidden entirely when the task has none (the common case), so it never adds
- * empty chrome to a task that never opened a PR.
+ * Links panel: the task's related pull requests (live GitHub state) plus any
+ * links found in the description, aggregated in one place. Hidden when there's
+ * nothing to show.
  */
-function PullRequestsCard({ itemId }: { itemId: string }) {
+function LinksSection({
+  item,
+  description,
+  onOpenThread,
+}: {
+  item: TaskBoardItem;
+  description: string;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
   const t = useT();
-  const { data: prs, isLoading } = useTaskBoardItemPrs(itemId);
-  if (!isLoading && (!prs || prs.length === 0)) return null;
+  const { data: prs } = useTaskBoardItemPrs(item.id);
+  const links = extractDescriptionLinks(description);
+  if ((!prs || prs.length === 0) && links.length === 0) return null;
+
+  // The task's preview-capable thread (a bound repo checked out on the PR's
+  // branch). Opening it paints that branch's live dev server — so "Edit" lands
+  // you in the branch, not on GitHub.
+  const previewThread = onOpenThread
+    ? item.threads.find((th) => th.hasPreview && th.virtualMcpId)
+    : undefined;
+
+  const row =
+    "group flex items-center gap-2 rounded-md px-1 py-1.5 transition-colors hover:bg-muted";
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 px-4 py-3.5">
-        <GitPullRequest size={16} className="text-muted-foreground" />
-        <span className="text-sm text-foreground">
-          {t("taskBoard.taskDialog.pullRequestsLabel")}
-        </span>
-      </div>
-      {!prs ? (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-sm text-muted-foreground">
-          <Loading02 size={16} className="animate-spin" />
-          <span>{t("taskBoard.taskDialog.loadingLabel")}</span>
-        </div>
-      ) : (
-        prs.map((pr) => <PullRequestRow key={pr.url} pr={pr} />)
-      )}
+    <div className="flex flex-col gap-1 pb-2">
+      <span className="mb-1 text-xs font-medium text-muted-foreground">
+        {t("taskBoard.taskDialog.linksLabel")}
+      </span>
+      {(prs ?? []).map((pr) => {
+        const style = prStateStyle(pr, t);
+        return (
+          <div
+            key={pr.url}
+            className="flex items-center gap-3 rounded-xl bg-card p-3 card-shadow"
+          >
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex min-w-0 flex-1 items-center gap-3"
+            >
+              <GitHubIcon className="size-4 shrink-0 text-foreground" />
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
+              </span>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center gap-1 text-xs font-medium",
+                  style.className,
+                )}
+              >
+                <style.icon size={13} />
+                {style.label}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                #{pr.number}
+              </span>
+              <LinkExternal01
+                size={13}
+                className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
+              />
+            </a>
+            {previewThread && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-2"
+                title={t("taskBoard.taskDialog.openPreviewTitle")}
+                onClick={() => onOpenThread?.(previewThread)}
+              >
+                <Edit05 size={13} />
+                {t("taskBoard.taskDialog.openPreviewButton")}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+      {links.map((link) => (
+        <a
+          key={link.url}
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className={row}
+        >
+          <Globe01 size={15} className="shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+            {link.label}
+          </span>
+          <LinkExternal01
+            size={13}
+            className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
+          />
+        </a>
+      ))}
     </div>
   );
 }
