@@ -41,6 +41,14 @@ export interface PreviewDisplayInput {
   progressStatus: PhaseStatus;
   /** Live production URL to fall back to while waking, or `null` if unknown. */
   productionUrl: string | null;
+  /**
+   * Fast Preview is on (its switch is enabled AND a production URL is set). When
+   * true the surface is the sandbox daemon's Fast Preview render (the caller
+   * builds `previewUrl/_sandbox/fast-preview`) — never the published site, and
+   * never the dev server. Until the sandbox handle exists, a blocking booting
+   * overlay is shown instead of the published page.
+   */
+  fastPreviewActive: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -53,12 +61,35 @@ const NONE: PreviewDisplay = {
 export function resolvePreviewDisplay(
   input: PreviewDisplayInput,
 ): PreviewDisplay {
-  const { previewState, progressStatus, productionUrl } = input;
+  const { previewState, progressStatus, productionUrl, fastPreviewActive } =
+    input;
 
   // Suspended / errored render their own dedicated card — hand the canvas over
   // so we don't paint a toolbar or load the production iframe behind/around it.
   if (previewState.kind === "suspended" || previewState.kind === "errored") {
     return NONE;
+  }
+
+  // Fast Preview renders ONLY the daemon draft (`previewUrl/_deco/fast-preview`)
+  // and NEVER the published site. Once the sandbox handle exists the daemon can
+  // serve it (iframeBase = the daemon origin); until then, a blocking booting
+  // overlay — not `productionUrl`. The dev server is irrelevant, so this ignores
+  // `progressStatus` entirely.
+  if (fastPreviewActive) {
+    if (previewState.kind === "iframe") {
+      return {
+        mode: "production",
+        iframeBase: previewState.previewUrl,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      };
+    }
+    return {
+      mode: "none",
+      iframeBase: null,
+      showBlockingOverlay: true,
+      showWakingPill: false,
+    };
   }
 
   // The sandbox surface is showable once a previewUrl exists AND boot is no
@@ -74,8 +105,9 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // Still booting (fresh boot with no previewUrl yet, or a warming iframe).
-  // Prefer the live production site so the user sees their site immediately.
+  // Fast Preview OFF: while the sandbox boots, show the published site as a
+  // temporary stopgap + a "waking" pill until the dev server is routable and the
+  // `sandbox` swap above takes over.
   if (productionUrl) {
     return {
       mode: "production",

@@ -10,6 +10,7 @@ import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { buildPreviewLabel } from "./preview-label";
 import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -81,7 +82,10 @@ import {
 } from "@/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
-import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url";
+import {
+  buildFastPreviewDaemonUrl,
+  buildGlobalSectionPreviewUrl,
+} from "@/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -263,6 +267,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
+  // Bumped after a Blocks save so the Fast Preview daemon frame re-navigates and
+  // the daemon re-reads the fresh `.deco/blocks/*` (the "save → refresh" step).
+  const [fastPreviewNonce, setFastPreviewNonce] = useState(0);
   const [activeGlobalSection, setActiveGlobalSection] =
     useState<GlobalSectionEntry | null>(null);
   /** Overrides iframe src for global-section live previews (stable URL, not recomputed). */
@@ -460,10 +467,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.productionUrl` at import time (deco.cx reports the real domain,
   // which can be a custom one — so we store it rather than guess it). Used as a
-  // Lovable-style fallback: while the sandbox dev server is still waking, paint
-  // the published site in the iframe (non-blocking) instead of a blank overlay,
-  // then swap to the sandbox preview once it's up. `null` (no field, or a site
-  // imported before this was persisted) → the original blocking overlay is kept.
+  // published-site fallback while the sandbox provisions (non-blocking) instead
+  // of a blank overlay; once the daemon is up, Fast Preview swaps to the daemon
+  // render (`fastPreviewDaemonUrl` below). `null` (no field, or a site imported
+  // before this was persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
   const productionUrl =
     inset?.entity?.id === virtualMcpId
@@ -478,6 +485,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
       : null) ?? false;
 
+  // Fast Preview (opt-in switch in CMS settings): render the draft against
+  // `productionUrl` instead of the published site while the sandbox boots.
+  // Requires BOTH the switch and a production URL — a bare flag is inert
+  // (nothing to render against), and `productionUrl` is non-null only for this
+  // agent's entity, so reading `metadata.fastPreview` off the same object is
+  // safe.
+  const fastPreviewEnabled =
+    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
+
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
   // so the sandbox surface is gated on `progress.status` (boot no longer in
@@ -488,9 +504,39 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewState,
     progressStatus: progress.status,
     productionUrl,
+    fastPreviewActive: fastPreviewEnabled,
   });
   const previewSurfaceActive = display.mode !== "none";
-  const showBootingOverlay = display.showBlockingOverlay;
+
+  // Fast Preview render (gated by the CMS switch): render the CURRENT
+  // working-tree draft via the sandbox DAEMON's `/_deco/fast-preview` route,
+  // which merges `.deco/blocks/*` and POSTs it (server-side, no URL cap) to the
+  // site's production `/live/previews`. Available once the daemon is up
+  // (`previewUrl`) — no dev server needed. `null` (daemon not up yet, or no page
+  // matched) → the booting overlay owns the canvas; Fast Preview NEVER falls
+  // back to the published site. `fastPreviewNonce` is bumped after a Blocks save
+  // so the frame re-navigates and the daemon re-reads the fresh draft.
+  const fastPreviewDaemonUrl =
+    fastPreviewEnabled &&
+    display.mode === "production" &&
+    previewUrl &&
+    currentPageKey
+      ? buildFastPreviewDaemonUrl({
+          previewUrl,
+          pageBlockKey: currentPageKey,
+          path: resolvedPath,
+          pathTemplate: currentPath,
+          nonce: fastPreviewNonce,
+        })
+      : null;
+
+  // Show the booting overlay while Fast Preview is waiting for the daemon render
+  // (no published-site stopgap), on top of the normal blocking-overlay cases.
+  const showBootingOverlay =
+    display.showBlockingOverlay ||
+    (fastPreviewEnabled &&
+      display.mode === "production" &&
+      !fastPreviewDaemonUrl);
 
   const iframeSrc =
     display.mode === "sandbox"
@@ -502,13 +548,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           workspace.state.variantOverride ?? [],
         )
       : display.mode === "production"
-        ? // Production is a different origin: no sandbox-only overrides
-          // (directPreviewUrl / variant matcher) apply. Load the current path
-          // best-effort; the published site serves its own committed pages.
-          withDeviceHint(
-            new URL(resolvedPath, display.iframeBase!).href,
-            previewDeviceSize,
-          )
+        ? fastPreviewEnabled
+          ? // Fast Preview: ONLY the daemon draft render — never the published
+            // site. `null` while the page/daemon isn't ready yet → the booting
+            // overlay owns the canvas (see `showBootingOverlay`).
+            fastPreviewDaemonUrl
+            ? withDeviceHint(fastPreviewDaemonUrl, previewDeviceSize)
+            : null
+          : // Fast Preview off: published site best-effort while the sandbox
+            // provisions (its own committed pages).
+            withDeviceHint(
+              new URL(resolvedPath, display.iframeBase!).href,
+              previewDeviceSize,
+            )
         : null;
 
   // "Open outside the preview pane". In a browser that's a new tab; inside the
@@ -639,12 +691,31 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // lands on the browser's connection-refused page and fires no load/error
   // event, so nothing reloads it once the server is back. This watchdog retries
   // (backoff) until a load fires. Sandbox surface only — never thrash the
-  // best-effort production fallback frame.
+  // best-effort production fallback frame, nor the Fast Preview daemon frame,
+  // which has its own cross-origin navigation path below.
   const iframeRecovery = useIframeLoadRecovery({
     iframeRef: previewIframeRef,
     src: display.mode === "sandbox" ? iframeSrc : null,
     active: display.mode === "sandbox",
   });
+
+  // Fast Preview refresh backstop: the daemon frame is cross-origin (the daemon
+  // host), so the shared reload path can't `.reload()` it. When the daemon URL
+  // changes — a page switch or a nonce bump after a save — force-navigate the
+  // frame. The nonce guarantees a distinct URL, and the ref guard makes the
+  // first paint (React already set `src`) and unrelated re-renders no-ops.
+  const lastFastPreviewUrlRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on draft change; .reload() throws cross-origin
+  useEffect(() => {
+    if (!fastPreviewDaemonUrl || !iframeSrc) return;
+    if (lastFastPreviewUrlRef.current === fastPreviewDaemonUrl) return;
+    lastFastPreviewUrlRef.current = fastPreviewDaemonUrl;
+    const iframe = previewIframeRef.current;
+    if (iframe && iframe.getAttribute("src") !== iframeSrc) {
+      beginNavigation();
+      iframe.src = iframeSrc;
+    }
+  }, [fastPreviewDaemonUrl, iframeSrc]);
 
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
@@ -838,8 +909,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Fires on the daemon "reload" event and on debounced `.deco/` file changes
   // (Blocks saves, external/agent decofile writes) — the only refresh path for
-  // decofile edits, which the framework's HMR doesn't cover.
+  // decofile edits, which the framework's HMR doesn't cover. In Fast Preview the
+  // frame is the daemon render, so "refresh" = bump the nonce (new URL → the
+  // frame re-navigates, the daemon re-reads the just-saved `.deco/blocks/*`);
+  // the sandbox path uses the normal reload.
   useSandboxReloadHandler(() => {
+    if (fastPreviewDaemonUrl) {
+      setFastPreviewNonce((n) => n + 1);
+      return;
+    }
     reloadPreviewPreservingScroll();
   });
   // Show the loading overlay the instant a `.deco/` change is detected, ahead of
@@ -873,17 +951,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const previewLabel = (() => {
-    if (!previewUrl) return t("sandbox.preview.noServerRunning");
-    if (activeGlobalSection) return activeGlobalSection.name;
-    try {
-      const url = new URL(previewUrl);
-      const path = resolvedPath === "/" ? "" : resolvedPath;
-      return `${url.host}${path}`;
-    } catch {
-      return previewUrl;
-    }
-  })();
+  // Domain shown in the URL bar follows what's actually in the iframe
+  // (`display.iframeBase`) — production under Fast Preview, the sandbox
+  // otherwise — so the label never drifts from the rendered page.
+  const previewLabel = buildPreviewLabel({
+    iframeBase: display.iframeBase,
+    resolvedPath,
+    activeGlobalSectionName: activeGlobalSection?.name ?? null,
+    noServerLabel: t("sandbox.preview.noServerRunning"),
+  });
 
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.

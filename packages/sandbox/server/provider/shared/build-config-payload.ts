@@ -18,6 +18,8 @@ export function buildConfigPayload(args: {
   tenant?: EnsureOptions["tenant"];
   /** Checkout only — the daemon skips install + dev server. */
   cloneOnly?: boolean;
+  /** Live production URL for the Fast Preview daemon route (see Application). */
+  productionUrl?: string;
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -56,6 +58,7 @@ export function buildConfigPayload(args: {
         packageManager,
         runtime: args.runtime,
         ...(args.port !== undefined ? { port: args.port } : {}),
+        ...(args.productionUrl ? { productionUrl: args.productionUrl } : {}),
       }
     : undefined;
 
