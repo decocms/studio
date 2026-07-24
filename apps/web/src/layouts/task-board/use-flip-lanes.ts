@@ -18,22 +18,23 @@ const DURATION = 380;
 const STAGGER = 90;
 const TILT = 5;
 const EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
-// A move with meaningful horizontal travel = a lane change (tilt + stagger).
-const LANE_CHANGE_DX = 8;
 
 export function useFlipLanes(
   containerRef: React.RefObject<HTMLElement | null>,
   signature: string,
 ) {
-  const prevRects = useRef<Map<string, DOMRect>>(new Map());
+  // Remember each card's position AND which lane it was in, so a lane change is
+  // detected by the column it actually moved between — not by horizontal delta,
+  // which a board-wide sideways shift (scrollbar toggling, row re-centering)
+  // gives to every card at once, tilting the whole board.
+  const prev = useRef<Map<string, { rect: DOMRect; lane?: string }>>(new Map());
 
   useLayoutEffect(() => {
     const root = containerRef.current;
     if (!root) return;
 
     const nodes = root.querySelectorAll<HTMLElement>("[data-flip-id]");
-    const prev = prevRects.current;
-    const next = new Map<string, DOMRect>();
+    const next = new Map<string, { rect: DOMRect; lane?: string }>();
 
     const reduced =
       typeof window !== "undefined" &&
@@ -46,17 +47,18 @@ export function useFlipLanes(
       const id = el.dataset.flipId;
       if (!id) continue;
       const rect = el.getBoundingClientRect();
-      next.set(id, rect);
-      const old = prev.get(id);
+      const lane = el.dataset.flipLane;
+      next.set(id, { rect, lane });
+      const old = prev.current.get(id);
       if (!old) continue;
-      const dx = old.left - rect.left;
-      const dy = old.top - rect.top;
+      const dx = old.rect.left - rect.left;
+      const dy = old.rect.top - rect.top;
       if (dx || dy) {
-        moved.push({ el, dx, dy, lane: Math.abs(dx) > LANE_CHANGE_DX });
+        moved.push({ el, dx, dy, lane: old.lane !== lane });
       }
     }
 
-    prevRects.current = next;
+    prev.current = next;
     if (reduced || moved.length === 0) return;
 
     // Invert: paint every moved card at its previous position (before browser

@@ -818,6 +818,7 @@ function TaskCard({
       type="button"
       draggable
       data-flip-id={item.id}
+      data-flip-lane={item.status}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
