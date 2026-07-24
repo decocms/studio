@@ -59,6 +59,13 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_GET = defineTool({
     ) {
       return { config: null };
     }
+    // This tool only manages plugin config for virtual MCPs — a plugin
+    // config row keyed by a non-virtual connection can only exist as leftover
+    // data from before VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE started rejecting
+    // non-virtual connections (see plugin-config-update.ts), so don't surface it.
+    if (parentConnection.connection_type !== "VIRTUAL") {
+      return { config: null };
+    }
 
     const config = await ctx.storage.virtualMcpPluginConfigs.get(
       virtualMcpId,
