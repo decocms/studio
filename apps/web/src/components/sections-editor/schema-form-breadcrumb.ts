@@ -144,6 +144,26 @@ export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
   return schema.title ?? humanize(key);
 }
 
+/**
+ * Header crumb index the top-bar back button ("<") should navigate to.
+ *
+ * Normally "back" targets the parent of the last crumb (`crumbCount - 2`). But a
+ * multivariate section renders its variant list AND the selected variant's form
+ * as one combined view, so the section-label crumb and the variant-label crumb
+ * collapse to the same navigation level (both map to `fieldBreadcrumbs = []`). At
+ * that top level `crumbCount - 2` points at the redundant section crumb, so back
+ * only clears the (already empty) field trail and appears to do nothing. Treat the
+ * variant top as a direct child of the section list instead, so back exits the
+ * section (index 0).
+ */
+export function headerBackTargetIndex(
+  crumbCount: number,
+  opts: { isMultivariateSectionTop: boolean },
+): number {
+  if (opts.isMultivariateSectionTop) return 0;
+  return crumbCount - 2;
+}
+
 /** Map a header crumb index to the breadcrumb trail (`headerCrumbs = [title, ...breadcrumbs]`). */
 export function breadcrumbsForHeaderClick(
   breadcrumbs: string[],

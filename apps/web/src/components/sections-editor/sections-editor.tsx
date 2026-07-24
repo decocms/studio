@@ -49,6 +49,7 @@ import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
+import { headerBackTargetIndex } from "./schema-form-breadcrumb";
 import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildMatcherBlockData,
@@ -1835,6 +1836,15 @@ export function SectionsEditor({
         ? editingBreadcrumbs
         : [globalBannerName]
       : editingBreadcrumbs;
+  // A multivariate section shows its variant list and the selected variant's
+  // form as one combined view, so the section-label and variant-label crumbs
+  // collapse to the same level. At that top level the back button must exit the
+  // section (not clear an already-empty field trail) — see headerBackTargetIndex.
+  const isMultivariateSectionTop =
+    !editingSeo &&
+    !isGlobalBlockMode &&
+    isEditingMultivariateSection &&
+    fieldBreadcrumbs.length === 0;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
@@ -2414,7 +2424,13 @@ export function SectionsEditor({
               {headerCrumbs.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => handleBreadcrumbClick(headerCrumbs.length - 2)}
+                  onClick={() =>
+                    handleBreadcrumbClick(
+                      headerBackTargetIndex(headerCrumbs.length, {
+                        isMultivariateSectionTop,
+                      }),
+                    )
+                  }
                   title={t("sectionsEditor.sectionsEditor.back")}
                   aria-label={t("sectionsEditor.sectionsEditor.back")}
                   className={cn(
