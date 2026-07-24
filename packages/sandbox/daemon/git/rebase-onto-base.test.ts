@@ -161,6 +161,76 @@ function setupBranchDeletesBaseModifiesRepo(): {
   };
 }
 
+function setupBothSidesAddSameFileRepo(): {
+  repoDir: string;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), "rebase-onto-base-aa-"));
+  const bare = join(root, "origin.git");
+  const seed = join(root, "seed");
+  const gitOpts = { stdio: "ignore" as const };
+  const gitcfg = `-c init.defaultBranch=main -c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  const newPath = ".deco/blocks/new-block.json";
+
+  execSync(`git ${gitcfg} init --bare ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} init ${seed}`, gitOpts);
+
+  mkdirSync(join(seed, ".deco/blocks"), { recursive: true });
+  writeFileSync(join(seed, "readme.txt"), "seed\n", "utf-8");
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} commit -m initial`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} branch -M main`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} remote add origin ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} push -u origin main`, gitOpts);
+
+  // Branch adds the file with its own content...
+  execSync(`git ${gitcfg} -C ${seed} checkout -b feat/new-block`, gitOpts);
+  writeFileSync(
+    join(seed, newPath),
+    JSON.stringify({ from: "branch" }, null, 2),
+    "utf-8",
+  );
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} commit -m "Add new block"`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} push -u origin feat/new-block`, gitOpts);
+
+  // ...while main independently adds the same path with different content,
+  // so rebase hits an "AA" (both added) conflict rather than a modify/delete.
+  execSync(`git ${gitcfg} -C ${seed} checkout main`, gitOpts);
+  mkdirSync(join(seed, ".deco/blocks"), { recursive: true });
+  writeFileSync(
+    join(seed, newPath),
+    JSON.stringify({ from: "main" }, null, 2),
+    "utf-8",
+  );
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${seed} commit -m "Add new block from main"`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${seed} push origin main`, gitOpts);
+
+  const repoDir = join(root, "workspace");
+  execSync(
+    `git ${gitcfg} clone --branch feat/new-block ${bare} ${repoDir}`,
+    gitOpts,
+  );
+  execSync(
+    `git ${gitcfg} -C ${repoDir} config user.email test@example.com`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${repoDir} config user.name test`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${repoDir} remote set-url origin ${bare}`,
+    gitOpts,
+  );
+
+  return {
+    repoDir,
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
 describe("rebaseOntoBase", () => {
   it("rebases with -X theirs and resolves conflicts from branch changes", () => {
     const { repoDir, cleanup } = setupConflictingRepo();
@@ -193,6 +263,21 @@ describe("rebaseOntoBase", () => {
       expect(existsSync(join(repoDir, ".deco/blocks/shipping.json"))).toBe(
         false,
       );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("resolves an 'AA' conflict (both sides added the same path) favoring the branch", () => {
+    const { repoDir, cleanup } = setupBothSidesAddSameFileRepo();
+    try {
+      rebaseOntoBase(repoDir, "main", { asUser: false });
+
+      const content = readFileSync(
+        join(repoDir, ".deco/blocks/new-block.json"),
+        "utf-8",
+      );
+      expect(JSON.parse(content)).toEqual({ from: "branch" });
     } finally {
       cleanup();
     }
