@@ -633,39 +633,6 @@ export class OrgFsEntryStorage {
       .executeTakeFirst();
     return row?.seq ?? "0";
   }
-
-  /**
-   * Move/rename a file or directory within the same volume.
-   * The destination path must not already exist (move fails if it does).
-   * Updates the path, parent, and seq fields.
-   */
-  async move(
-    organizationId: string,
-    volume: string,
-    fromPath: string,
-    toPath: string,
-    actor: string,
-  ): Promise<void> {
-    const now = new Date();
-    // Extract parent directory from toPath
-    const lastSlash = toPath.lastIndexOf("/");
-    const toParent = lastSlash === -1 ? "" : toPath.slice(0, lastSlash);
-
-    await this.db
-      .updateTable("org_fs_entry")
-      .set({
-        path: toPath,
-        parent: toParent,
-        updated_by: actor,
-        updated_at: now,
-        seq: NEXT_SEQ,
-      })
-      .where("organization_id", "=", organizationId)
-      .where("volume", "=", volume)
-      .where("path", "=", fromPath)
-      .where("deleted_at", "is", null)
-      .execute();
-  }
 }
 
 /** Escape LIKE wildcards in a literal path prefix. */
