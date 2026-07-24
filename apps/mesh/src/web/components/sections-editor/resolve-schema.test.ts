@@ -918,8 +918,16 @@ describe("resolveSchema – __SECTION_REF__ falls back to root.sections", () => 
    * form appears to stop after the first prop.
    */
   function sectionRefWithoutDefMeta(sectionCount: number): LiveMeta {
-    const definitions: Record<string, unknown> = {};
-    const sectionsAnyOf: Array<{ $ref: string; inputSchema?: string }> = [];
+    const definitions: Record<string, unknown> = {
+      // Real `root.sections.anyOf` always leads with the `Resolvable` fallback
+      // ref — the picker must skip it (it has no `__resolveType`, so `rt`
+      // degrades to the bare key with no "/"). Including it here proves the
+      // exclusion runs on the fallback path, not just the `#/root/*` branch.
+      Resolvable: { title: "Resolvable" },
+    };
+    const sectionsAnyOf: Array<{ $ref: string; inputSchema?: string }> = [
+      { $ref: "#/definitions/Resolvable" },
+    ];
 
     for (let i = 0; i < sectionCount; i++) {
       const rt = `site/sections/S${i}.tsx`;
@@ -971,17 +979,47 @@ describe("resolveSchema – __SECTION_REF__ falls back to root.sections", () => 
   }
 
   test("Section fields render the section picker instead of an empty object", () => {
+    // 110 sections + 1 leading Resolvable entry in root.sections.anyOf.
     const meta = sectionRefWithoutDefMeta(110);
     const resolved = resolveSchema("site/sections/Host.tsx", meta);
 
     for (const field of ["children", "fallback"] as const) {
       const prop = resolved?.properties?.[field];
       expect(prop?.type).toBe("block-ref");
-      // Every section is offered as an option (selector works).
+      // Every real section is offered; the Resolvable fallback ref is excluded.
       expect(prop?.anyOfRefs?.length).toBe(110);
+      expect(prop?.anyOfRefs?.some((r) => r.resolveType === "Resolvable")).toBe(
+        false,
+      );
       // Oversized section union stays lazy — no eager per-branch schema.
       expect(prop?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(true);
     }
+  });
+
+  test("small section union materializes eager branch schemas via the fallback", () => {
+    // Under the eager threshold (40), the fallback path must still resolve each
+    // branch's nested schema one level — mirrors the def-present small-union
+    // test, but exercising the missing-def → root.sections redirect.
+    const meta = sectionRefWithoutDefMeta(3);
+    const children = resolveSchema("site/sections/Host.tsx", meta)?.properties
+      ?.children;
+    expect(children?.type).toBe("block-ref");
+    expect(children?.anyOfRefs?.length).toBe(3);
+    expect(children?.anyOfRefs?.[0]?.schema?.properties?.title?.type).toBe(
+      "string",
+    );
+  });
+
+  test("root.sections present but without anyOf resolves to empty object", () => {
+    const meta = sectionRefWithoutDefMeta(3);
+    // Drop the union — the registry exists but lists nothing resolvable.
+    (meta.schema as { root?: { sections?: unknown } }).root = {
+      sections: { title: "Section" },
+    };
+    const children = resolveSchema("site/sections/Host.tsx", meta)?.properties
+      ?.children;
+    expect(children?.type).toBe("object");
+    expect(children?.anyOfRefs).toBeUndefined();
   });
 
   test("still resolves to empty when neither the def nor root.sections exist", () => {
