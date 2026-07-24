@@ -246,7 +246,7 @@ function CompanionMcpsSectionContent({
         )}
         {/* Single list, required source(s) first — the "Obrigatório" pill on the
             card carries the must-vs-optional distinction (no section headers). */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 pt-3">
           {[...requiredCards, ...enhancedCards].map(renderCard)}
         </div>
       </ScrollReveal>
