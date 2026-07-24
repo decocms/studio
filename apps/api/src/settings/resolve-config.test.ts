@@ -218,6 +218,34 @@ describe("resolveConfig Studio environment aliases", () => {
   });
 });
 
+describe("resolveConfig external database/nats URL detection", () => {
+  it("treats a bracketed IPv6 loopback DATABASE_URL as local, not external", () => {
+    const result = resolveConfig(flags, {
+      DATABASE_URL: "postgres://[::1]:5432/postgres",
+    });
+
+    expect(result.externalDatabaseUrl).toBeNull();
+  });
+
+  it("treats a bracketed IPv6 loopback NATS_URL as local, not external", () => {
+    const result = resolveConfig(flags, {
+      NATS_URL: "nats://[::1]:4222",
+    });
+
+    expect(result.externalNatsUrl).toBeNull();
+  });
+
+  it("still treats a genuinely remote host as external", () => {
+    const result = resolveConfig(flags, {
+      DATABASE_URL: "postgres://db.example.com:5432/postgres",
+    });
+
+    expect(result.externalDatabaseUrl).toBe(
+      "postgres://db.example.com:5432/postgres",
+    );
+  });
+});
+
 describe("resolveConfig NODE_ENV", () => {
   it("defaults to development when unset", () => {
     const result = resolveConfig(flags, {});
