@@ -31,6 +31,7 @@ import {
   type MsgHdrs,
   type NatsConnection,
 } from "@nats-io/nats-core";
+import { retry } from "@decocms/shared/std";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { natsChunkSource } from "./nats-chunk-source";
@@ -214,6 +215,18 @@ export interface NatsStreamBufferOptions {
   getJetStreamManager?: () => Promise<JetStreamManager>;
 }
 
+/**
+ * A JetStream management round-trip that failed transiently (server briefly
+ * slow / mid-election / no responders yet) rather than because the request is
+ * semantically wrong. Only these are worth retrying — a bad stream config would
+ * fail identically every attempt.
+ */
+function isTransientJsApiError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === "TimeoutError") return true;
+  return /timeout|no responders|503/i.test(err.message);
+}
+
 export class NatsStreamBuffer implements StreamBuffer {
   private js: JetStreamClient | null = null;
   private jsm: JetStreamManager | null = null;
@@ -231,37 +244,54 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
       return;
     }
-    const jsm = this.options.getJetStreamManager
-      ? await this.options.getJetStreamManager()
-      : await jetstreamManager(nc);
-
     const config = decopilotStreamConfig();
 
-    try {
-      await jsm.streams.info(DECOPILOT_STREAM_NAME);
-      await jsm.streams.update(DECOPILOT_STREAM_NAME, config);
-    } catch (err: unknown) {
-      const isNotFound =
-        err instanceof Error && err.message.includes("stream not found");
-      if (isNotFound) {
-        await jsm.streams.add(config);
-      } else {
-        // JetStream cannot change a stream's `storage` in place, so flipping the
-        // legacy Memory stream to File makes `update` reject. The stream is
-        // ephemeral run-scratch (it only holds in-flight chunks), so a one-time
-        // delete + add at deploy is safe: drop the old stream and recreate it
-        // file-backed. Any other error is real — rethrow.
-        const isStorageMismatch =
-          err instanceof Error &&
-          /can ?not change.*storage|storage type/i.test(err.message);
-        if (isStorageMismatch) {
-          await jsm.streams.delete(DECOPILOT_STREAM_NAME);
-          await jsm.streams.add(config);
-        } else {
-          throw err;
+    // The JS-API round-trips below (manager handshake + stream ensure) can time
+    // out transiently if JetStream is briefly slow at boot. Init only re-runs on
+    // a NATS `onReady` (reconnect); when the connection stays up, a single
+    // startup timeout would otherwise leave `this.js` null for the pod's whole
+    // life — every run then fails at `publishRawChunk`. Retry the transient
+    // failures in place instead of relying on a reconnect that may never come.
+    const jsm = await retry(
+      async () => {
+        const mgr = this.options.getJetStreamManager
+          ? await this.options.getJetStreamManager()
+          : await jetstreamManager(nc);
+        try {
+          await mgr.streams.info(DECOPILOT_STREAM_NAME);
+          await mgr.streams.update(DECOPILOT_STREAM_NAME, config);
+        } catch (err: unknown) {
+          const isNotFound =
+            err instanceof Error && err.message.includes("stream not found");
+          if (isNotFound) {
+            await mgr.streams.add(config);
+          } else {
+            // JetStream cannot change a stream's `storage` in place, so flipping
+            // the legacy Memory stream to File makes `update` reject. The stream
+            // is ephemeral run-scratch (it only holds in-flight chunks), so a
+            // one-time delete + add at deploy is safe: drop the old stream and
+            // recreate it file-backed. Any other error is real — rethrow.
+            const isStorageMismatch =
+              err instanceof Error &&
+              /can ?not change.*storage|storage type/i.test(err.message);
+            if (isStorageMismatch) {
+              await mgr.streams.delete(DECOPILOT_STREAM_NAME);
+              await mgr.streams.add(config);
+            } else {
+              throw err;
+            }
+          }
         }
-      }
-    }
+        return mgr;
+      },
+      {
+        maxAttempts: 5,
+        minTimeout: 250,
+        maxTimeout: 4000,
+        jitter: 0.5,
+        isRetriable: isTransientJsApiError,
+      },
+    );
 
     this.js = this.options.getJetStream();
     this.jsm = jsm;
