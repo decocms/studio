@@ -81,7 +81,7 @@ describe("fetchCommerceDiscoveryAuth", () => {
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 
@@ -312,7 +312,7 @@ describe("triggerCommerceDiscoveryRun", () => {
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 });
@@ -462,7 +462,7 @@ describe("bindCommerceDiscoveryResource", () => {
         },
       ),
     ).rejects.toThrow(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   });
 });
