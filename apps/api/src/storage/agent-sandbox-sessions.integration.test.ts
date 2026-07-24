@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { sql } from "kysely";
 import { sharedSandboxId, userSandboxId } from "@decocms/sandbox/provider";
 import {
   closeTestPgDatabase,
@@ -160,5 +161,51 @@ describe("shared agent sandbox storage", () => {
       locked.completeDelete(locator, deleting.generation),
     );
     expect(await sessions.find(locator)).toBeNull();
+  });
+
+  it("force-reprovisions a provisioning row orphaned by a crashed start", async () => {
+    const locator = {
+      organizationId: "org_shared_sandbox",
+      virtualMcpId: "vm_orphaned",
+      branch: "feature/orphaned",
+    };
+    // Simulate a start that crashed after recording its handle but before
+    // completeStart/failStart: the row is stuck in `provisioning`.
+    const orphaned = await sessions.beginStart(locator, "user_1", null);
+    await sessions.recordProvisioningHandle(
+      locator,
+      orphaned.generation,
+      "zombie-handle",
+    );
+
+    // A recent provisioning row must NOT be reset — a genuine start may still
+    // be in flight, so a concurrent start coalesces onto its generation.
+    const fresh = await sessions.beginStart(locator, "user_2", null);
+    expect(fresh.generation).toBe(orphaned.generation);
+    expect(fresh.sandboxHandle).toBe("zombie-handle");
+
+    // Backdate past the 5-minute staleness threshold: now the next start must
+    // fence out the dead attempt (bump generation) and clear its handle.
+    await database.db
+      .updateTable("agent_sandbox_sessions")
+      .set({ updated_at: sql`now() - interval '10 minutes'` })
+      .where("organization_id", "=", locator.organizationId)
+      .where("virtual_mcp_id", "=", locator.virtualMcpId)
+      .where("branch", "=", locator.branch)
+      .execute();
+
+    const rebooted = await sessions.beginStart(locator, "user_2", null);
+    expect(rebooted.generation).toBeGreaterThan(orphaned.generation);
+    expect(rebooted.status).toBe("provisioning");
+    expect(rebooted.sandboxHandle).toBeNull();
+
+    // The zombie completion from the old generation is fenced out.
+    expect(
+      await sessions.completeStart(locator, orphaned.generation, {
+        sandboxHandle: "zombie-handle",
+        previewUrl: "https://zombie.example",
+        sandboxProviderKind: "agent-sandbox",
+      }),
+    ).toBeNull();
   });
 });
