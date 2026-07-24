@@ -290,9 +290,14 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
-    commerceDiscoveryInternalApiUrl:
+    // New name first, legacy Commerce Discovery envs as fallback — one
+    // setting, so prod migrates secrets whenever convenient without a
+    // coordinated deploy. Drop the fallback once the CD envs are renamed.
+    reportsInternalApiUrl:
+      envVars.REPORTS_INTERNAL_API_URL ??
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_URL,
-    commerceDiscoveryInternalApiKey:
+    reportsInternalApiKey:
+      envVars.REPORTS_INTERNAL_API_KEY ??
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the

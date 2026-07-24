@@ -53,25 +53,23 @@ export interface CommerceDiscoveryAuthOptions {
   baseUrl?: string;
   apiKey?: string;
   fetchImpl?: FetchImpl;
-  settings?: Pick<
-    Settings,
-    "commerceDiscoveryInternalApiUrl" | "commerceDiscoveryInternalApiKey"
-  >;
+  settings?: Pick<Settings, "reportsInternalApiUrl" | "reportsInternalApiKey">;
 }
 
 export function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
   if (options.baseUrl) return options.baseUrl.replace(/\/+$/, "");
   const settings = options.settings ?? getSettings();
-  return (
-    settings.commerceDiscoveryInternalApiUrl ?? DEFAULT_INTERNAL_API_URL
-  ).replace(/\/+$/, "");
+  return (settings.reportsInternalApiUrl ?? DEFAULT_INTERNAL_API_URL).replace(
+    /\/+$/,
+    "",
+  );
 }
 
 /**
  * Resolve the Commerce Discovery MCP endpoint URL from env settings, so the
  * CD connection's `connection_url` always targets the same instance as the
  * internal API (prod vs. stg). Falls back to the hardcoded constant when no
- * COMMERCE_DISCOVERY_INTERNAL_API_URL override is set.
+ * REPORTS_INTERNAL_API_URL (or legacy CD) override is set.
  */
 export function resolveCommerceDiscoveryMcpUrl(
   options: CommerceDiscoveryAuthOptions = {},
@@ -81,12 +79,11 @@ export function resolveCommerceDiscoveryMcpUrl(
 
 export function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
   const apiKey =
-    options.apiKey ??
-    (options.settings ?? getSettings()).commerceDiscoveryInternalApiKey;
+    options.apiKey ?? (options.settings ?? getSettings()).reportsInternalApiKey;
 
   if (!apiKey) {
     throw new Error(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+      "REPORTS_INTERNAL_API_KEY (or the legacy COMMERCE_DISCOVERY_INTERNAL_API_KEY) is required to set up reports.",
     );
   }
 

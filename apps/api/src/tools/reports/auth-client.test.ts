@@ -75,8 +75,8 @@ describe("fetchCommerceDiscoveryAuth", () => {
         },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),
@@ -306,8 +306,8 @@ describe("triggerCommerceDiscoveryRun", () => {
         { siteUrl: "https://example.com", orgId: "org_123" },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),
@@ -456,8 +456,8 @@ describe("bindCommerceDiscoveryResource", () => {
         },
         {
           settings: {
-            commerceDiscoveryInternalApiUrl: undefined,
-            commerceDiscoveryInternalApiKey: undefined,
+            reportsInternalApiUrl: undefined,
+            reportsInternalApiKey: undefined,
           },
         },
       ),

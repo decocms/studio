@@ -142,8 +142,11 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
-  commerceDiscoveryInternalApiUrl: string | undefined;
-  commerceDiscoveryInternalApiKey: string | undefined;
+  /** Reports service internal API (the service historically named "Commerce
+   *  Discovery" — REPORTS_INTERNAL_API_URL, with the legacy
+   *  COMMERCE_DISCOVERY_INTERNAL_API_URL env still honored as fallback). */
+  reportsInternalApiUrl: string | undefined;
+  reportsInternalApiKey: string | undefined;
 
   // Managed asset storage (the shared deco tenant bucket). Used by `managed`
   // file configs: studio mints prefix-scoped STS credentials per site slug via

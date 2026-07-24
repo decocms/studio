@@ -1,15 +1,16 @@
 /**
  * Reports-service internal client for the subscription benefits: the weekly
- * run switch and paid runs. Reuses the Commerce Discovery internal API
- * settings (same service, same master key — see tools/reports/auth-client).
+ * run switch and paid runs. Same service + master key as the Commerce
+ * Discovery tools (see tools/reports/auth-client) — one setting, two env
+ * names during the rename transition.
  */
 
 import { getSettings } from "../settings";
 
 function config(): { baseUrl: string; apiKey: string } | null {
   const settings = getSettings();
-  const baseUrl = settings.commerceDiscoveryInternalApiUrl?.replace(/\/+$/, "");
-  const apiKey = settings.commerceDiscoveryInternalApiKey;
+  const baseUrl = settings.reportsInternalApiUrl?.replace(/\/+$/, "");
+  const apiKey = settings.reportsInternalApiKey;
   return baseUrl && apiKey ? { baseUrl, apiKey } : null;
 }
 
