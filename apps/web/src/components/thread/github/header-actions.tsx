@@ -1,13 +1,14 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { useState, useRef } from "react";
+import { useState, useRef, type ComponentType } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
@@ -33,10 +34,38 @@ import { usePrReviews } from "./use-pr-reviews.ts";
 import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
+import {
+  AlertTriangle,
+  CheckCircle,
+  GitPullRequest,
+  MessageCircle01,
+  RefreshCw01,
+  Upload01,
+} from "@untitledui/icons";
 
 interface Props {
   virtualMcpId: string;
 }
+
+/**
+ * Leading icon per actionable header state. Below `lg` (< 1024px) the header
+ * collapses these buttons to icon-only (the label moves to the tooltip); above
+ * it, the text label shows as before. Status pills (no `action`) have no icon
+ * and keep their text. `merge-split` is omitted — it renders via MergeSplitButton.
+ */
+const ACTION_ICON: Partial<
+  Record<
+    NonNullable<HeaderButton["action"]>,
+    ComponentType<{ className?: string }>
+  >
+> = {
+  "create-pr": GitPullRequest,
+  reopen: RefreshCw01,
+  rebase: RefreshCw01,
+  "fix-checks": AlertTriangle,
+  "mark-ready": CheckCircle,
+  "resolve-comments": MessageCircle01,
+};
 
 // Sentinel for the branch-not-yet-selected state; labels are filled in
 // at render time using the translated versions from the component.
@@ -442,6 +471,12 @@ function HeaderButtonRenderer(props: {
     );
   }
 
+  const ActionIcon = button.action ? ACTION_ICON[button.action] : undefined;
+  // Actionable / loading states collapse to icon (or spinner) only below `lg`
+  // (< 1024px); the label stays reachable via the tooltip. Plain status pills
+  // (no action, not loading) keep their text at every size.
+  const collapseLabel = Boolean(ActionIcon) || loading;
+
   return (
     <div className="flex items-center gap-2">
       <WithTooltip label={tooltipLabel}>
@@ -460,8 +495,14 @@ function HeaderButtonRenderer(props: {
             if (button.action) props.onActivate(button.action);
           }}
         >
-          {loading ? <Spinner size="xs" variant="default" /> : null}
-          {button.label}
+          {loading ? (
+            <Spinner size="xs" variant="default" />
+          ) : ActionIcon ? (
+            <ActionIcon className="size-4 shrink-0 lg:hidden" />
+          ) : null}
+          <span className={cn(collapseLabel && "max-lg:hidden")}>
+            {button.label}
+          </span>
         </Button>
       </WithTooltip>
       {props.showPublishSide ? (
@@ -484,8 +525,12 @@ function HeaderButtonRenderer(props: {
           >
             {props.publishGate.pending ? (
               <Spinner size="xs" variant="default" />
-            ) : null}
-            {t("thread.headerActions.publish")}
+            ) : (
+              <Upload01 className="size-4 shrink-0 lg:hidden" />
+            )}
+            <span className="max-lg:hidden">
+              {t("thread.headerActions.publish")}
+            </span>
           </Button>
         </WithTooltip>
       ) : null}
