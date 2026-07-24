@@ -169,5 +169,5 @@ export const thread = {
   "thread.publishDialog.toPublish": "para publicar",
   "thread.publishDialog.viewOnGithub": "Ver no GitHub",
   "thread.publishDialog.viewPr": "Ver PR",
-  "thread.publishDialog.visitPreview": "Visitar o Preview",
+  "thread.publishDialog.visitPreview": "Abrir o Preview",
 } satisfies Record<keyof typeof threadEn, string>;
