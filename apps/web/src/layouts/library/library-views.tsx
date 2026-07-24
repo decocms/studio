@@ -94,6 +94,44 @@ function locationOf(volume: string, path: string, orgSlug: string): string {
   return dir ? `${volLabel}/${dir}` : volLabel;
 }
 
+/** Create drag-drop handlers for a library entry. */
+function makeDragHandlers(
+  path: string,
+  kind: "file" | "dir",
+  callbacks: {
+    onDragStart?: (path: string) => void;
+    onContextMenu?: (path: string, kind: "file" | "dir") => void;
+    onDrop?: (fromPath: string, toPath: string) => void;
+  },
+) {
+  return {
+    onDragStart: (ev: React.DragEvent) => {
+      callbacks.onDragStart?.(path);
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("application/x-studio-library-path", path);
+    },
+    onContextMenu: (ev: React.MouseEvent) => {
+      ev.preventDefault();
+      callbacks.onContextMenu?.(path, kind);
+    },
+    onDrop: callbacks.onDrop
+      ? (ev: React.DragEvent) => {
+          ev.preventDefault();
+          const fromPath = ev.dataTransfer.getData(
+            "application/x-studio-library-path",
+          );
+          if (
+            fromPath &&
+            fromPath !== path &&
+            !path.startsWith(fromPath + "/")
+          ) {
+            callbacks.onDrop!(fromPath, path);
+          }
+        }
+      : undefined,
+  };
+}
+
 export interface PendingDelete {
   volume: string;
   path: string;
@@ -517,15 +555,10 @@ export function VolumeView({
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
                 draggable={!location.readOnly}
-                onDragStart={(ev) => {
-                  onDragStart?.(e.path);
-                  ev.dataTransfer.effectAllowed = "move";
-                  ev.dataTransfer.setData("text/plain", e.path);
-                }}
-                onContextMenu={(ev) => {
-                  ev.preventDefault();
-                  onContextMenu?.(e.path, "dir");
-                }}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>
@@ -545,15 +578,10 @@ export function VolumeView({
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onDelete={deleteFor(e)}
                 draggable={!location.readOnly}
-                onDragStart={(ev) => {
-                  onDragStart?.(e.path);
-                  ev.dataTransfer.effectAllowed = "move";
-                  ev.dataTransfer.setData("text/plain", e.path);
-                }}
-                onContextMenu={(ev) => {
-                  ev.preventDefault();
-                  onContextMenu?.(e.path, "dir");
-                }}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>
@@ -574,22 +602,11 @@ export function VolumeView({
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
                 draggable={!location.readOnly}
-                onDragStart={(ev) => {
-                  onDragStart?.(e.path);
-                  ev.dataTransfer.effectAllowed = "move";
-                  ev.dataTransfer.setData("text/plain", e.path);
-                }}
-                onContextMenu={(ev) => {
-                  ev.preventDefault();
-                  onContextMenu?.(e.path, "dir");
-                }}
-                onDrop={(ev) => {
-                  ev.preventDefault();
-                  const fromPath = ev.dataTransfer.getData("text/plain");
-                  if (fromPath && onMove) {
-                    onMove(fromPath, e.path);
-                  }
-                }}
+                {...makeDragHandlers(e.path, "dir", {
+                  onDragStart,
+                  onContextMenu,
+                  onDrop: onMove,
+                })}
               />
             ))}
           </CardsGrid>
@@ -610,15 +627,10 @@ export function VolumeView({
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
                 draggable={!location.readOnly}
-                onDragStart={(ev) => {
-                  onDragStart?.(e.path);
-                  ev.dataTransfer.effectAllowed = "move";
-                  ev.dataTransfer.setData("text/plain", e.path);
-                }}
-                onContextMenu={(ev) => {
-                  ev.preventDefault();
-                  onContextMenu?.(e.path, "file");
-                }}
+                {...makeDragHandlers(e.path, "file", {
+                  onDragStart,
+                  onContextMenu,
+                })}
               />
             ))}
           </CardsGrid>

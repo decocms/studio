@@ -261,7 +261,12 @@ export function LibraryPage({
   async function handleRename() {
     if (!renameTarget) return;
     const newName = renameName.trim();
-    if (!newName || newName === basename(renameTarget.path)) {
+    if (
+      !newName ||
+      newName.includes("/") ||
+      newName.includes("..") ||
+      newName === basename(renameTarget.path)
+    ) {
       setRenameOpen(false);
       setRenameTarget(null);
       setRenameName("");
@@ -273,7 +278,8 @@ export function LibraryPage({
         : "";
       const newPath = dir ? `${dir}/${newName}` : newName;
       await move.mutateAsync({ from: renameTarget.path, to: newPath });
-      toast.success(t("library.library.renamed", { name: newName }));
+      const displayName = newName.replace(/[<>]/g, "");
+      toast.success(t("library.library.renamed", { name: displayName }));
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("library.library.renameFailed"),
@@ -527,7 +533,16 @@ export function LibraryPage({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+      <Dialog
+        open={renameOpen}
+        onOpenChange={(open) => {
+          setRenameOpen(open);
+          if (!open) {
+            setRenameTarget(null);
+            setRenameName("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>

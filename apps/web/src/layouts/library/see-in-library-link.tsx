@@ -20,6 +20,8 @@ export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
         ...prev,
         main: `library:${parentPath}`,
         preview: previewPath,
+        skill: undefined,
+        brand: undefined,
       }),
     });
   };
