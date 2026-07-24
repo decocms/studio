@@ -201,11 +201,7 @@ if (command === "services") {
     process.exit(1);
   }
 
-  const decoHome =
-    values.home ||
-    process.env.DATA_DIR ||
-    process.env.DECOCMS_HOME ||
-    join(homedir(), "deco");
+  const decoHome = resolveDataDir();
 
   const { servicesCommand } = await import("./cli/commands/services");
   await servicesCommand({
@@ -412,11 +408,7 @@ if (
 }
 
 // ── Server mode (default) ──────────────────────────────────────────────
-const decoHome =
-  values.home ||
-  process.env.DATA_DIR ||
-  process.env.DECOCMS_HOME ||
-  join(homedir(), "deco");
+const decoHome = resolveDataDir();
 
 const serveOptions = {
   port: values.port!,
