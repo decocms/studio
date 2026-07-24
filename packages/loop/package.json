@@ -1,0 +1,32 @@
+{
+  "name": "@decocms/loop",
+  "version": "0.1.0",
+  "description": "Declarative domain loops: declare how a domain should be, let a reconciler agent open PRs that close the drift",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "loop": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "skills",
+    "templates"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@decocms/shared": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/studio.git",
+    "directory": "packages/loop"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
