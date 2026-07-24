@@ -48,6 +48,16 @@ const inflightStarts = new Map<string, Promise<SandboxStartResult>>();
 const startKey = (args: SandboxStartArgs) =>
   `${args.virtualMcpId}::${args.branch ?? ""}::${args.sandboxProviderKind ?? ""}`;
 
+// Concurrency-transient failures the server tags with a "retry shortly" marker
+// (lifecycle-transition-in-progress + advisory-lock-busy in
+// agent-sandbox-sessions.ts / *-runner-state.ts). These resolve within a beat
+// once the racing lifecycle transition finishes, so we retry them in-place
+// rather than surfacing an error the user would have to clear by hand. The
+// mutation stays `isPending` across retries, so the booting overlay holds
+// instead of flipping to the error state.
+export const isRetryableSandboxStartError = (error: Error) =>
+  error.message.includes("retry shortly");
+
 // Tracks (virtualMcpId, branch) pairs explicitly stopped by the user.
 // Prevents self-heal from restarting a sandbox the user just stopped: the SSE
 // "gone" event can race the sandboxMap query refetch and arrive while vmEntry
@@ -69,6 +79,9 @@ export function useSandboxStart(client: MinimalMcpClient) {
   const queryClient = useQueryClient();
   return useMutation<SandboxStartResult, Error, SandboxStartArgs>({
     mutationKey: SANDBOX_START_MUTATION_KEY,
+    // Auto-recover from transient lifecycle/lock contention without a refresh.
+    retry: (count, error) => isRetryableSandboxStartError(error) && count < 6,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 5000),
     mutationFn: async (args) => {
       if (args.branch) sandboxUserStop.clear(args.virtualMcpId, args.branch);
       const key = startKey(args);
