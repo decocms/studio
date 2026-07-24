@@ -42,7 +42,7 @@
  *
  * ── PREREQUISITES (why every body stays `test.skip`) ─────────────────
  * 1. `tests/multi-pod/docker-compose.yml` must export the Phase A flag
- *    on every mesh pod:
+ *    on every Studio pod:
  *      - LINK_DURABLE_PROJECTOR=true   (start the standalone DB-writer,
  *                                       leader-elected; default-off today)
  *    Without it `app.ts` never constructs the `ProjectorLeadership` /
@@ -51,8 +51,8 @@
  *
  * 2. Leader-acquire observability. `selectLeader` is the
  *    lexicographically-lowest alive podId, so with services
- *    {mesh-1,mesh-2,mesh-3} the initial leader is deterministically
- *    `mesh-1`. SINGLE-ACTIVE (c) and FAILOVER (d) assert on a leader
+ *    the three compose services, the initial leader is deterministic.
+ *    SINGLE-ACTIVE (c) and FAILOVER (d) assert on a leader
  *    log line — `app.ts`'s `onAcquire`/`onRelease` must emit a stable,
  *    greppable marker (e.g. `[DurableProjector] leader acquired` /
  *    `released`). The markers below (`LEADER_ACQUIRED_LOG`) are the
@@ -90,7 +90,7 @@ import {
 
 registerTestHooks();
 
-// mesh strips request headers before calling the provider, so the run
+// Studio strips request headers before calling the provider, so the run
 // shape is encoded in the message text. mock-ai parses "many:N" → N
 // chunks at the default 50ms cadence; "slow:NxMS" → N chunks every MS.
 const FAST_HINT = "many:6"; // 6 chunks — a deterministic small run.
@@ -107,7 +107,7 @@ const POISON_HINT = "poison:final";
 const LEADER_ACQUIRED_LOG = "[DurableProjector] leader acquired";
 
 // selectLeader = lexicographically-lowest alive podId, so the first
-// leader across {mesh-1,mesh-2,mesh-3} is deterministically mesh-1.
+// The leader across the three compose services is deterministically the first.
 const INITIAL_LEADER: PodName = "mesh-1";
 
 /** Fire-and-forget a streaming turn; returns once the POST is accepted. */
@@ -172,16 +172,16 @@ function sqlLit(v: string): string {
 describe("durable-projector parity + leader-failover + poison", () => {
   // (a) PARITY + (b) STATUS + (c) SINGLE-ACTIVE on a clean run.
   test.skip("[parity] projector persists the same parts + completed status as inline, on exactly one leader", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
     const { threadId } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
 
-    await postTurn(PODS.MESH_1, session, virtualMcpId, threadId, FAST_HINT);
+    await postTurn(PODS.STUDIO_1, session, virtualMcpId, threadId, FAST_HINT);
 
     // (b) STATUS — the projector writes `completed` on the {done}
     // sentinel, AFTER parts. Wait for that terminal write.
@@ -214,7 +214,7 @@ describe("durable-projector parity + leader-failover + poison", () => {
     expect(kinds.length).toBeGreaterThan(0);
 
     // (c) SINGLE-ACTIVE — exactly one pod logs leader-acquire, and it is
-    // the lexicographically-lowest alive pod (mesh-1 at clean boot).
+    // the lexicographically-lowest alive pod (the first service at clean boot).
     const acquiredOn = await Promise.all(
       ALL_PODS.map((p) => logsContain(p.service, LEADER_ACQUIRED_LOG)),
     );
@@ -226,17 +226,17 @@ describe("durable-projector parity + leader-failover + poison", () => {
   // (d) FAILOVER — kill the leader mid-run; a standby acquires leadership
   // and replays the run from JetStream to `completed` with all parts.
   test.skip("[failover] killing the leader mid-run hands off; the standby replays to completed", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
     const { threadId } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
 
     // A long run so the leader is still consuming when we kill it.
-    await postTurn(PODS.MESH_1, session, virtualMcpId, threadId, SLOW_HINT);
+    await postTurn(PODS.STUDIO_1, session, virtualMcpId, threadId, SLOW_HINT);
 
     // Wait until the leader is actually running the consumer (so the
     // kill targets a live leader, not a pre-acquire pod).
@@ -255,7 +255,7 @@ describe("durable-projector parity + leader-failover + poison", () => {
     });
 
     // SIGKILL the leader. The heartbeat watcher + the 15s poll re-elect
-    // the next-lowest alive pod (mesh-2), whose onAcquire starts the
+    // the next-lowest alive pod, whose onAcquire starts the
     // consumer; an explicit-ack durable consumer replays unacked
     // messages from the file-backed stream.
     await kill(INITIAL_LEADER);
@@ -293,19 +293,19 @@ describe("durable-projector parity + leader-failover + poison", () => {
   // (e) POISON — an un-projectable run is marked failed via the DLQ path
   // and does NOT wedge the consumer (a later healthy run still completes).
   test.skip("[poison] an un-projectable run is failed via DLQ without wedging later runs", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
 
     // Poison run: the projector's terminal write throws; projectRun
     // exhausts retries → onDlq → onRunErrored → status='failed'.
     const { threadId: poisonThread } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
     await postTurn(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
       poisonThread,
@@ -327,12 +327,12 @@ describe("durable-projector parity + leader-failover + poison", () => {
     // (published AFTER the poison) still reaches completed. Same org so
     // it shares the single leader-elected consumer.
     const { threadId: healthyThread } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
     await postTurn(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
       healthyThread,

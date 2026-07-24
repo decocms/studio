@@ -156,12 +156,13 @@ describe("daemon e2e: smoke, CORS, dual-prefix", () => {
       method: "OPTIONS",
     });
     expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
-    const bash = await fetch(url(d, "/_sandbox/bash"), {
+    const handled = await fetch(url(d, "/_sandbox/bash"), {
       method: "POST",
       headers: jsonAuthHeaders(),
-      body: toBody({ command: "true" }),
+      body: toBody({}),
     });
-    expect(bash.headers.get("access-control-allow-origin")).toBe("*");
+    expect(handled.status).toBe(400);
+    expect(handled.headers.get("access-control-allow-origin")).toBe("*");
     const missing = await fetch(url(d, "/_sandbox/does-not-exist"), {
       headers: authHeaders(),
     });

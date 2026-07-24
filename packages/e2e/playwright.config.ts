@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const serverPort = process.env.PORT || "3000";
 const appPort = process.env.VITE_PORT || "4000";
+const apiOrigin = `http://localhost:${serverPort}`;
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
 // Commerce Discovery setup mints a one-time client token by calling the
@@ -13,9 +14,9 @@ const commerceMockOrigin = `http://localhost:${commerceMockPort}`;
 const commerceMockKey = "e2e-commerce-key";
 
 // e2e exercises production-like behavior; the MCP read/list cache is on in prod
-// but defaults off under NODE_ENV=development (which `dev:server` sets), so opt
-// it back in here. Without this, cache-dependent specs (e.g. proxy roundtrip's
-// no-re-handshake assertion) fail against the dev server.
+// but defaults off under NODE_ENV=development (which the API `dev` script sets),
+// so opt it back in here. Without this, cache-dependent specs (e.g. proxy
+// roundtrip's no-re-handshake assertion) fail against the dev server.
 //
 // RUN_IDLE_TIMEOUT_MS shortens the unified-control-plane liveness window
 // (production default: 10 minutes — see run-registry.ts) so
@@ -41,7 +42,8 @@ const commerceMockKey = "e2e-commerce-key";
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 
-const webServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev:servers`;
+const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const webServerCommand = `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev`;
 
 export default defineConfig({
   testDir: "./tests",
@@ -84,11 +86,20 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
+      command: apiServerCommand,
+      // The API and web apps are launched as separate processes. These cwd
+      // entries are the suite's ONLY ties to app implementation, and both stay
+      // behind process + HTTP boundaries so the black-box contract holds.
+      cwd: "../../apps/api",
+      url: `${apiOrigin}/api/config`,
+      reuseExistingServer: true,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
       command: webServerCommand,
-      // The dev server (dev:servers) is an apps/mesh script — run it from there.
-      // This is the suite's ONLY tie to the app, and it's a process boundary
-      // (spawn + HTTP), not a code import, so the black-box contract holds.
-      cwd: "../../apps/mesh",
+      cwd: "../../apps/web",
       url: `${appOrigin}/api/config`,
       reuseExistingServer: true,
       timeout: 120_000,

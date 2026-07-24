@@ -173,7 +173,7 @@ async function addWebhookTrigger(
 /**
  * Build the webhook URL targeting a specific pod's host port. We don't
  * reuse the URL returned by AUTOMATION_TRIGGER_ADD because that one is
- * stamped with whatever `BASE_URL` the mesh process saw at mint time
+ * stamped with whatever `BASE_URL` the Studio process saw at mint time
  * (the in-container `http://localhost:3000` in compose) — useless from
  * the test process, and we want to deliberately POST against a chosen
  * pod for the cross-pod assertion.
@@ -248,27 +248,27 @@ describe("automation webhook trigger (e2e through the real cluster)", () => {
   test("POST to a webhook trigger on pod-2 fires the automation and the run completes", async () => {
     // Setup runs against pod-1; the webhook POST itself targets pod-2 to
     // exercise the cross-pod path.
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
 
     const automation = await createAgentAutomation(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
     expect(automation.active).toBe(true);
 
     const trigger = await addWebhookTrigger(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       automation.id,
     );
     const token = trigger.webhook!.token;
 
     // -------- cross-pod fire --------
-    const url = webhookUrlFor(PODS.MESH_2, session, trigger.id);
-    const res = await postWebhook(PODS.MESH_2, url, token, {
+    const url = webhookUrlFor(PODS.STUDIO_2, session, trigger.id);
+    const res = await postWebhook(PODS.STUDIO_2, url, token, {
       source: "e2e-test",
       ping: "pong",
     });
@@ -283,7 +283,7 @@ describe("automation webhook trigger (e2e through the real cluster)", () => {
     // hop. 30s is generous and matches the budget used elsewhere in
     // this suite.
     const completed = await waitForCompletedRun(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       trigger.id,
       30_000,
@@ -292,16 +292,16 @@ describe("automation webhook trigger (e2e through the real cluster)", () => {
   }, 60_000);
 
   test("AUTOMATION_TRIGGER_ROTATE_TOKEN revokes the old token and the new one fires", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
     const automation = await createAgentAutomation(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
     const trigger = await addWebhookTrigger(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       automation.id,
     );
@@ -313,7 +313,7 @@ describe("automation webhook trigger (e2e through the real cluster)", () => {
     // to fire on any key whose id != trigger.api_key_id. That's what
     // we're nailing down here.
     const rotated = await mcpCall<RotatedToken>(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       "AUTOMATION_TRIGGER_ROTATE_TOKEN",
       { trigger_id: trigger.id },
@@ -321,21 +321,21 @@ describe("automation webhook trigger (e2e through the real cluster)", () => {
     expect(rotated.token).toBeTruthy();
     expect(rotated.token).not.toBe(oldToken);
 
-    const url = webhookUrlFor(PODS.MESH_1, session, trigger.id);
+    const url = webhookUrlFor(PODS.STUDIO_1, session, trigger.id);
 
     // Old token: must be refused. Acceptable codes are 401 (key was
     // revoked outright OR key.id doesn't match trigger.api_key_id any
     // more) or 403 (key still validates but its scoped permission was
     // dropped). Both are correct outcomes; the *wrong* outcome is 202.
-    const oldRes = await postWebhook(PODS.MESH_1, url, oldToken, {});
+    const oldRes = await postWebhook(PODS.STUDIO_1, url, oldToken, {});
     expect([401, 403]).toContain(oldRes.status);
 
     // New token: should fire end-to-end like a fresh trigger.
-    const newRes = await postWebhook(PODS.MESH_1, url, rotated.token, {
+    const newRes = await postWebhook(PODS.STUDIO_1, url, rotated.token, {
       ping: "after-rotate",
     });
     expect(newRes.status).toBe(202);
 
-    await waitForCompletedRun(PODS.MESH_1, session, trigger.id, 30_000);
+    await waitForCompletedRun(PODS.STUDIO_1, session, trigger.id, 30_000);
   }, 60_000);
 });

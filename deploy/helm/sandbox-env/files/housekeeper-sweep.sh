@@ -106,7 +106,7 @@ probe_daemon() {
   case "$code" in
     2*)
       # Warm-pool pods boot with claimed=false and must not be reaped before
-      # mesh delivers a workload via POST /_sandbox/config. Older daemons
+      # Studio delivers a workload via POST /_sandbox/config. Older daemons
       # omit the field; treat absent as claimed=true to preserve existing
       # behaviour on cold-start deployments.
       claimed=$(sed -n 's/.*"claimed"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$body")
@@ -180,7 +180,7 @@ kubectl get sandboxclaims -n "$NS" -l "$CLAIM_SELECTOR" \
   > "$CLAIMS_FILE" 2>/dev/null || true
 
 # Selector-mismatch detector: silent `claims=0` hides a missing STUDIO_ENV
-# on mesh. Warn loudly and gate orphan GC off so we don't nuke routes whose
+# on Studio. Warn loudly and gate orphan GC off so we don't nuke routes whose
 # claims are present but unlabeled.
 selector_mismatch=0
 if ! [ -s "$CLAIMS_FILE" ]; then
@@ -188,7 +188,7 @@ if ! [ -s "$CLAIMS_FILE" ]; then
     -l "app.kubernetes.io/managed-by=studio,app.kubernetes.io/name=studio-sandbox" \
     -o name 2>/dev/null | wc -l | tr -d ' ' || echo 0)
   if [ "${unscoped:-0}" -gt 0 ]; then
-    log "WARN selector matched zero claims but ${unscoped} studio-managed claim(s) exist in ${NS} — verify STUDIO_ENV is set on the mesh deployment and matches the chart's envName (current selector: ${CLAIM_SELECTOR})"
+    log "WARN selector matched zero claims but ${unscoped} studio-managed claim(s) exist in ${NS} — verify STUDIO_ENV is set on the Studio deployment and matches the chart's envName (current selector: ${CLAIM_SELECTOR})"
     selector_mismatch=1
   fi
 fi

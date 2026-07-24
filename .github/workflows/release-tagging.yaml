@@ -5,9 +5,12 @@ on:
     branches:
       - main
     paths:
-      - "apps/mesh/**"
+      - "apps/api/**"
+      - "apps/web/**"
+      - "package.json"
+      - "scripts/build-studio.ts"
       - "packages/**"
-      # Baked into the nginx image at build time (Dockerfile.nginx), so a change
+      # Baked into the nginx image at build time (apps/web/Dockerfile), so a change
       # here must cut a release to rebuild that image — it is not a ConfigMap.
       - "deploy/helm/studio/files/**"
 
@@ -121,16 +124,27 @@ jobs:
           const manifests = new Set();
 
           for (const file of files) {
-            if (file.startsWith("apps/mesh/")) {
-              manifests.add("apps/mesh/package.json");
+            if (
+              file === "package.json" ||
+              file === "scripts/build-studio.ts"
+            ) {
+              manifests.add("apps/api/package.json");
+              continue;
+            }
+
+            if (
+              file.startsWith("apps/api/") ||
+              file.startsWith("apps/web/")
+            ) {
+              manifests.add("apps/api/package.json");
               continue;
             }
 
             // The nginx conf is baked into the studio-nginx image, tagged with
-            // apps/mesh's version — so a change here must bump that version to
+            // apps/api's version — so a change here must bump that version to
             // force a rebuild (there is no ConfigMap to reload).
             if (file.startsWith("deploy/helm/studio/files/")) {
-              manifests.add("apps/mesh/package.json");
+              manifests.add("apps/api/package.json");
               continue;
             }
 
@@ -156,17 +170,16 @@ jobs:
           echo "package_manifests=$PACKAGE_MANIFESTS" >> "$GITHUB_OUTPUT"
 
           # Deploy scope drives which CD tier rolls (see deco-apps-cd
-          # bump-studio-image): web-only changes (apps/mesh/src/web/** and
-          # nothing else under apps/mesh/) roll only the web pods; server-only
-          # roll api+worker; mixed or no-mesh-files roll both (safe default).
-          MESH=$(echo "$FILES" | grep '^apps/mesh/' || true)
+          # bump-studio-image): apps/web-only changes roll only the web pods;
+          # apps/api-only changes roll api+worker; mixed or no app changes roll
+          # both (safe default).
+          API_FILES=$(echo "$FILES" | grep '^apps/api/' || true)
+          WEB_FILES=$(echo "$FILES" | grep '^apps/web/' || true)
           SCOPE=both
-          if [ -n "$MESH" ]; then
-            if echo "$MESH" | grep -qv '^apps/mesh/src/web/'; then
-              if echo "$MESH" | grep -q '^apps/mesh/src/web/'; then SCOPE=both; else SCOPE=server; fi
-            else
-              SCOPE=web
-            fi
+          if [ -n "$API_FILES" ] && [ -z "$WEB_FILES" ]; then
+            SCOPE=server
+          elif [ -n "$WEB_FILES" ] && [ -z "$API_FILES" ]; then
+            SCOPE=web
           fi
           echo "Deploy scope: $SCOPE"
           echo "deploy_scope=$SCOPE" >> "$GITHUB_OUTPUT"
@@ -291,7 +304,7 @@ jobs:
             "",
             summary,
             "",
-            // Read by release-mesh's deco-apps-cd dispatch to roll only the
+            // Read by release-studio's deco-apps-cd dispatch to roll only the
             // affected CD tier (web / server / both).
             `Deploy-Scope: ${process.env.DEPLOY_SCOPE || "both"}`,
           ].join("\n");
@@ -341,7 +354,7 @@ jobs:
             git rebase origin/main
           done
           # No [skip ci], no API dispatch: this push (made with the App token,
-          # which re-triggers workflows) is itself what kicks off release-mesh
+          # which re-triggers workflows) is itself what kicks off release-studio
           # and the package publish workflows for the package.json files that
           # changed. The heavy test/multi-pod/resilience suites skip [release]:
           # commits via guards.

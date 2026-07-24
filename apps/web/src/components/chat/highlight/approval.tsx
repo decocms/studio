@@ -1,0 +1,437 @@
+"use client";
+
+import { Button } from "@deco/ui/components/button.tsx";
+import { Form } from "@deco/ui/components/form.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
+import { ShieldTick } from "@untitledui/icons";
+import { type Control, Controller } from "react-hook-form";
+import { z } from "zod";
+import {
+  APPROVAL_LEVEL_OPTIONS,
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/hooks/use-preferences.ts";
+import { useT } from "@/i18n/use-t.ts";
+import { CollapsibleHighlight } from "./collapsible-highlight";
+import { PaginatedFormFooterLeft } from "./common/paginated-form-footer";
+import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
+import { type PendingApproval } from "./extract-pending-approvals";
+export {
+  extractPendingApprovals,
+  type PendingApproval,
+} from "./extract-pending-approvals";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+// ponytail: module-scope constant used by multiple functions for denial reason
+const DEFAULT_DENY_REASON_KEY = "chat.approval.defaultDenyReason";
+
+// ============================================================================
+// ApprovalLevelSelect
+// ============================================================================
+
+function ApprovalLevelSelect({
+  onYolo,
+}: {
+  onYolo: (level: ToolApprovalLevel) => void;
+}) {
+  const t = useT();
+  const [preferences, setPreferences] = usePreferences();
+
+  const handleLevelChange = (value: string) => {
+    const newLevel = value as ToolApprovalLevel;
+    // Capture the level the pending approval was REQUESTED at before persisting
+    // the new one. The continuation that carries this approval response must run
+    // at the request-time level so the SDK still resolves the tool as needing
+    // approval and HONORS the response. Responding at the freshly-selected
+    // "auto" would make `needsApproval` false on the continuation; the SDK then
+    // re-classifies the just-approved tool call as a fabricated approval and
+    // DENIES it (validate-tool-approvals.ts), persisting an invalid
+    // `output-denied` + `approved: true` part that bricks every later turn's
+    // `validateUIMessages`. The new level still applies to subsequent turns via
+    // the persisted preference.
+    const requestTimeLevel = preferences.toolApprovalLevel ?? "readonly";
+    setPreferences({ ...preferences, toolApprovalLevel: newLevel });
+    if (newLevel === "auto") {
+      onYolo(requestTimeLevel);
+    }
+  };
+
+  return (
+    <Select
+      value={preferences.toolApprovalLevel}
+      onValueChange={handleLevelChange}
+    >
+      <SelectTrigger
+        size="xs"
+        className="text-xs text-muted-foreground border-border/60 bg-transparent hover:bg-accent/60 h-7 gap-1"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {t(opt.labelKey)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ============================================================================
+// ApprovalDetail
+// ============================================================================
+
+function ApprovalDetail({ input }: { input: unknown }) {
+  const t = useT();
+  if (input === undefined || input === null) {
+    return (
+      <div className="px-4 text-xs text-muted-foreground">
+        {t("chat.approval.noInput")}
+      </div>
+    );
+  }
+  let formatted: string;
+  try {
+    formatted = JSON.stringify(input, null, 2);
+  } catch {
+    formatted = String(input);
+  }
+  return (
+    <div className="px-4">
+      <pre className="text-xs font-mono text-muted-foreground/70 whitespace-pre-wrap wrap-break-word max-h-32 overflow-y-auto rounded-md bg-muted/30 px-3 py-2">
+        {formatted}
+      </pre>
+    </div>
+  );
+}
+
+// ============================================================================
+// Single-approval branch — instant fire, no Submit
+// ============================================================================
+
+interface SingleApprovalPromptProps {
+  approval: PendingApproval;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
+}
+
+function SingleApprovalPrompt({
+  approval,
+  onRespond,
+}: SingleApprovalPromptProps) {
+  const t = useT();
+  const [preferences] = usePreferences();
+  const currentLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? "readonly";
+
+  const handleDeny = () =>
+    onRespond(
+      approval.approvalId,
+      false,
+      t(DEFAULT_DENY_REASON_KEY),
+      currentLevel,
+    );
+  const handleAccept = () =>
+    onRespond(approval.approvalId, true, undefined, currentLevel);
+  const handleAcceptAll = (level: ToolApprovalLevel) =>
+    onRespond(approval.approvalId, true, undefined, level);
+
+  const footerLeft = (
+    <div className="flex items-center gap-2">
+      <ApprovalLevelSelect onYolo={handleAcceptAll} />
+    </div>
+  );
+  const footerRight = (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
+        onClick={handleDeny}
+      >
+        {t("chat.approval.denyButton")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
+        onClick={handleAccept}
+      >
+        {t("chat.approval.acceptButton")}
+      </Button>
+    </>
+  );
+
+  return (
+    <CollapsibleHighlight
+      icon={<ShieldTick size={14} />}
+      label={t("chat.approval.needsApproval")}
+      title={approval.friendlyName}
+      defaultExpanded={true}
+      footerLeft={footerLeft}
+      footerRight={footerRight}
+    >
+      <ApprovalDetail input={approval.input} />
+    </CollapsibleHighlight>
+  );
+}
+
+// ============================================================================
+// Batched approval prompt — react-hook-form, explicit Submit
+// ============================================================================
+
+type ApprovalFormValues = Record<
+  string,
+  { approved?: boolean; levelOverride?: ToolApprovalLevel }
+>;
+
+const approvalsSchema = z.record(
+  z.string(),
+  z.object({
+    approved: z.boolean().optional(),
+    levelOverride: z.enum(["auto", "readonly"]).optional(),
+  }),
+);
+
+interface BatchedApprovalPromptProps {
+  approvals: PendingApproval[];
+  isStreaming: boolean;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
+}
+
+function BatchedApprovalPrompt({
+  approvals,
+  isStreaming,
+  onRespond,
+}: BatchedApprovalPromptProps) {
+  const t = useT();
+  const [preferences] = usePreferences();
+  const currentLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? "readonly";
+
+  const defaultValues: ApprovalFormValues = Object.fromEntries(
+    approvals.map((a) => [a.approvalId, { approved: undefined }]),
+  );
+
+  const decisionForm = useMultiPartDecisionForm<
+    PendingApproval,
+    ApprovalFormValues
+  >({
+    parts: approvals,
+    partKey: (a) => a.approvalId,
+    schema: approvalsSchema,
+    defaultValues,
+    isStreaming,
+    hasAnswer: (v) =>
+      typeof (v as { approved?: boolean } | undefined)?.approved === "boolean",
+    onSubmit: (approval, value) => {
+      const v = value as {
+        approved?: boolean;
+        levelOverride?: ToolApprovalLevel;
+      };
+      if (typeof v?.approved !== "boolean") return;
+      onRespond(
+        approval.approvalId,
+        v.approved,
+        v.approved === false ? t(DEFAULT_DENY_REASON_KEY) : undefined,
+        v.levelOverride ?? currentLevel,
+      );
+    },
+  });
+
+  const fillAndSubmit = (level: ToolApprovalLevel) => {
+    // Stash the explicit level on each form value so onSubmit doesn't have
+    // to read it from the (still-stale) preferences closure. Stashing in
+    // the form (rather than a closure or ref) also survives the
+    // streaming-deferred flush in useMultiPartDecisionForm.
+    decisionForm.form.reset(
+      Object.fromEntries(
+        approvals.map((a) => [
+          a.approvalId,
+          { approved: true, levelOverride: level },
+        ]),
+      ) as ApprovalFormValues,
+    );
+    decisionForm.submitOrAdvance();
+  };
+
+  const current = decisionForm.currentPart;
+
+  return (
+    <Form {...decisionForm.form}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          decisionForm.submit();
+        }}
+      >
+        <CollapsibleHighlight
+          icon={<ShieldTick size={14} />}
+          label={t("chat.approval.batchedLabel", { count: approvals.length })}
+          title={current?.friendlyName ?? ""}
+          defaultExpanded={true}
+          footerLeft={
+            <PaginatedFormFooterLeft
+              currentIndex={decisionForm.currentIndex}
+              total={approvals.length}
+              onPrev={decisionForm.goPrev}
+              onNext={decisionForm.goNext}
+              extraLeft={<ApprovalLevelSelect onYolo={fillAndSubmit} />}
+            />
+          }
+          footerRight={
+            current ? (
+              <ApprovalDecisionButtons
+                approvalId={current.approvalId}
+                control={decisionForm.form.control}
+                onChange={decisionForm.submitOrAdvance}
+              />
+            ) : null
+          }
+        >
+          {current ? <ApprovalDetail input={current.input} /> : null}
+        </CollapsibleHighlight>
+      </form>
+    </Form>
+  );
+}
+
+// ============================================================================
+// ApprovalDecisionButtons — Deny / Accept pair for the current approval,
+// driven by react-hook-form. Each click writes the decision to form state and
+// then calls `submitOrAdvance`: if other approvals remain unanswered the form
+// advances to the next one, otherwise the whole batch flushes to `onRespond`.
+// There is no explicit Submit step — answering the last pending approval
+// commits the batch immediately, including any earlier decisions buffered
+// during this pass.
+// ============================================================================
+
+function ApprovalDecisionButtons({
+  approvalId,
+  control,
+  onChange,
+}: {
+  approvalId: string;
+  control: Control<ApprovalFormValues>;
+  onChange: () => void;
+}) {
+  const t = useT();
+  return (
+    <Controller
+      control={control}
+      name={`${approvalId}.approved`}
+      render={({ field }) => {
+        const isAccepted = field.value === true;
+        const isDenied = field.value === false;
+        return (
+          <>
+            <Button
+              type="button"
+              variant={isDenied ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => {
+                field.onChange(false);
+                onChange();
+              }}
+              aria-pressed={isDenied}
+            >
+              {t("chat.approval.denyButton")}
+            </Button>
+            <Button
+              type="button"
+              variant={isAccepted ? "default" : "outline"}
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => {
+                field.onChange(true);
+                onChange();
+              }}
+              aria-pressed={isAccepted}
+            >
+              {t("chat.approval.acceptButton")}
+            </Button>
+          </>
+        );
+      }}
+    />
+  );
+}
+
+// ============================================================================
+// ApprovalLoadingUI
+// ============================================================================
+
+function ApprovalLoadingUI() {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
+      <ShieldTick className="size-5 text-muted-foreground shimmer" />
+      <span className="text-sm text-muted-foreground shimmer">
+        {t("chat.approval.preparingRequest")}
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// ApprovalHighlight - wrapper for ChatHighlight
+// ============================================================================
+
+export function ApprovalHighlight({
+  approvals,
+  isStreaming,
+  onRespond,
+}: {
+  approvals: PendingApproval[];
+  isStreaming: boolean;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
+}) {
+  if (isStreaming && approvals.length === 0) {
+    return <ApprovalLoadingUI />;
+  }
+
+  if (approvals.length === 0) {
+    return null;
+  }
+
+  if (approvals.length === 1) {
+    const only = approvals[0];
+    if (!only) return null;
+    return <SingleApprovalPrompt approval={only} onRespond={onRespond} />;
+  }
+
+  return (
+    <BatchedApprovalPrompt
+      approvals={approvals}
+      isStreaming={isStreaming}
+      onRespond={onRespond}
+    />
+  );
+}

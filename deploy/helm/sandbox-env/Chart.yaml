@@ -2,13 +2,15 @@ apiVersion: v2
 name: sandbox-env
 description: |
   Studio-side resources that consume the agent-sandbox operator: the
-  shared SandboxTemplate, mesh runner RBAC, sandbox-pod NetworkPolicy,
+  shared SandboxTemplate, Studio runner RBAC, sandbox-pod NetworkPolicy,
   optional SandboxWarmPool, and optional preview Gateway / HTTPRoute /
   Certificate. Install one release per environment (dev / staging /
   prod / ...). Resource names are suffixed with `envName` so multiple
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.20: Studio terminology and compatibility documentation refresh. The
+# legacy `mesh.*` values key remains supported; no runtime behavior changes.
 # 0.9.14: sandbox pod memory request 1Gi -> 2Gi (= measured p95 of per-pod peak
 # working-set; 7d). At 1Gi the scheduler bin-packed on less than half of real
 # usage and prod nodes hit memory-pressure eviction (0 per-pod OOMs — the 4Gi

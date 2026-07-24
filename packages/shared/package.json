@@ -1,0 +1,31 @@
+{
+  "name": "@decocms/shared",
+  "version": "0.0.0",
+  "description": "Private isomorphic code shared by Studio workspaces",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "exports": {
+    "./std": "./src/std/index.ts",
+    "./std/*": "./src/std/*.ts",
+    "./sdk": "./src/sdk/index.ts",
+    "./sdk/types": "./src/sdk/types/index.ts",
+    "./sdk/types/*": "./src/sdk/types/*.ts",
+    "./sdk/lib/*": "./src/sdk/lib/*.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.7.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "ai": "^6.0.208",
+    "nanoid": "^5.1.6",
+    "zod": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

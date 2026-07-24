@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { makeOrgFsConfigHandler } from "./orgfs-config";
 
 const CONFIG = JSON.stringify({
-  baseUrl: "http://mesh",
+  baseUrl: "http://studio",
   orgSlug: "acme",
   token: "t",
   mounts: [{ volume: "skills", path: "skills" }],

@@ -462,7 +462,9 @@ function formatGitError(err: unknown): string {
 let emptyHooksDir: string | null = null;
 function getEmptyHooksDir(): string {
   if (!emptyHooksDir) {
-    emptyHooksDir = mkdtempSync(path.join(tmpdir(), "mesh-sandbox-no-hooks-"));
+    emptyHooksDir = mkdtempSync(
+      path.join(tmpdir(), "studio-sandbox-no-hooks-"),
+    );
   }
   return emptyHooksDir;
 }

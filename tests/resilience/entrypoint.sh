@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cd /app/apps/mesh
+cd /app/apps/api
 
 # Run all migrations (Kysely + Better Auth + plugins)
 echo "Running migrations..."

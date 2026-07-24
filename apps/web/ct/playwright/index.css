@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 auto-scans the project root but EXCLUDES node_modules — and
+ * @deco/ui (where Switch, Button, Select, etc. live) is a workspace package
+ * resolved through node_modules. Without scanning it, sizing utilities like the
+ * Switch's `h-[1.15rem] w-8` are never generated, so icon-only buttons collapse
+ * to 0x0 and Playwright treats them as hidden. Point @source at the real UI
+ * package src (and the app web src) so every utility class actually used by the
+ * components under test gets generated and elements have real layout.
+ *
+ * We still do NOT import the design-system @theme tokens: unresolved token
+ * utilities (e.g. `bg-primary`) only affect color, not visibility, so behavior
+ * tests don't need them.
+ */
+@source "../../src";
+@source "../../../../packages/ui/src";
+
+/* Ensure the mount root never collapses, so click targets have layout. */
+#root {
+  padding: 16px;
+}

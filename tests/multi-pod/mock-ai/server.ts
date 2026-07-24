@@ -3,7 +3,7 @@
  *
  * Two surfaces:
  *
- *   1. OpenAI-compatible (`/v1/...`) — mesh's `openai-compatible` adapter
+ *   1. OpenAI-compatible (`/v1/...`) — Studio's `openai-compatible` adapter
  *      wraps `@ai-sdk/openai` against a custom baseURL, so pointing a
  *      credential's JSON at this server is enough to drive the full
  *      decopilot dispatch pipeline (streamText → onChunk → JetStream
@@ -14,8 +14,8 @@
  *      POST /v1/chat/completions      — SSE stream of OpenAI-shaped chunks
  *
  *   2. Gemini Interactions API (`/v1beta/interactions`) — the async path
- *      mesh uses for Gemini Deep Research models (web_search tool). The
- *      adapter at `apps/mesh/src/ai-providers/adapters/gemini-interactions.ts`
+ *      Studio uses for Gemini Deep Research models (web_search tool). The
+ *      adapter at `apps/api/src/ai-providers/adapters/gemini-interactions.ts`
  *      points at this URL when `GEMINI_INTERACTIONS_URL` is set.
  *
  *      POST /v1beta/interactions      — accept a job, return `{ id }`
@@ -25,7 +25,7 @@
  *                                       `failed` on hint).
  *
  * Test-time control comes from the user message text / interaction
- * `input` field — mesh doesn't propagate request headers to outbound
+ * `input` field — Studio doesn't propagate request headers to outbound
  * provider calls, so we encode hints in the prompt instead. Recognized
  * forms:
  *
@@ -158,7 +158,7 @@ async function streamCompletion(req: Request): Promise<Response> {
 // ============================================================================
 
 /**
- * In-memory state for each submitted interaction. The mesh side persists
+ * In-memory state for each submitted interaction. The Studio side persists
  * the `id` in `async_research_jobs` and polls until terminal, so the
  * mock only needs to keep the contract — no durability across restarts.
  */

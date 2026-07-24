@@ -12,7 +12,7 @@ import { describe, expect, it } from "bun:test";
 import { DesktopSandboxProvider } from "./runner";
 
 // Minimal structural mirror of the dispatch contract the runner consumes — kept
-// local so this provider-package test doesn't reach across into apps/mesh.
+// local so this provider-package test doesn't reach into an application tree.
 interface DispatchChunk {
   data?: string;
   headers?: { status: number; headers: Record<string, string> };

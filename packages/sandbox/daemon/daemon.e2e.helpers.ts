@@ -12,6 +12,7 @@
  */
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -156,14 +157,39 @@ export async function stopDaemon(d: Daemon | null): Promise<void> {
   if (!d) return;
   const { proc, appDir } = d;
   if (proc.exitCode === null && proc.signalCode === null) {
-    // Wait for the OS to reap the process so its bound port is released before
-    // the next startDaemon picks a fresh one.
+    // Wait for the OS to reap the process tree so its bound port and cwd are
+    // released before the next startDaemon picks a fresh one. On Windows,
+    // ChildProcess.kill() terminates only the Bun parent; an in-flight npm.cmd
+    // child can survive and keep appDir locked. taskkill /T closes that tree.
     await new Promise<void>((resolve) => {
       proc.once("exit", () => resolve());
-      proc.kill("SIGKILL");
+      if (process.platform === "win32" && proc.pid !== undefined) {
+        const killer = spawn(
+          "taskkill",
+          ["/PID", String(proc.pid), "/T", "/F"],
+          { stdio: "ignore" },
+        );
+        const fallBackToParentKill = () => {
+          if (proc.exitCode === null && proc.signalCode === null) proc.kill();
+        };
+        killer.once("error", fallBackToParentKill);
+        killer.once("exit", fallBackToParentKill);
+      } else {
+        proc.kill("SIGKILL");
+      }
     });
   }
-  if (appDir) rmSync(appDir, { recursive: true, force: true });
+  if (appDir) {
+    // Windows releases executable/cwd handles asynchronously even after the
+    // process exit event. fs.rm's built-in EBUSY retry keeps teardown from
+    // replacing the real assertion failure with a transient cleanup error.
+    await rm(appDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  }
 }
 
 // --- SSE ---------------------------------------------------------------------
@@ -310,8 +336,8 @@ export interface BareRepo {
  * Create a bare "origin" git repo (default branch `main`, one commit with
  * README.md) and return a `file://` clone URL. Hermetic — no network, no port.
  * Adapted from `setup/clone.test.ts`. With `withPackageJson`, the seed commit
- * also carries a package.json exposing an `echo` script and empty deps so
- * `npm install` is offline-safe.
+ * also carries a package.json + lockfile exposing an `echo` script and empty
+ * deps so `npm install --offline` is deterministic.
  */
 export function setupBareRepo(
   opts: { withPackageJson?: boolean } = {},
@@ -326,14 +352,30 @@ export function setupBareRepo(
   execSync(`git ${cfg} init ${seed}`, o);
   writeFileSync(join(seed, "README.md"), "hello\n");
   if (opts.withPackageJson) {
+    const packageJson = {
+      name: "fixture-app",
+      version: "0.0.0",
+      private: true,
+      scripts: { echo: "node -e \"console.log('hi-from-echo')\"" },
+    };
     writeFileSync(
       join(seed, "package.json"),
+      JSON.stringify(packageJson, null, 2),
+    );
+    writeFileSync(
+      join(seed, "package-lock.json"),
       JSON.stringify(
         {
-          name: "fixture-app",
-          version: "0.0.0",
-          private: true,
-          scripts: { echo: "node -e \"console.log('hi-from-echo')\"" },
+          name: packageJson.name,
+          version: packageJson.version,
+          lockfileVersion: 3,
+          requires: true,
+          packages: {
+            "": {
+              name: packageJson.name,
+              version: packageJson.version,
+            },
+          },
         },
         null,
         2,

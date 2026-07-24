@@ -51,9 +51,9 @@ For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox
 The commands below use the versions currently declared by the charts. Pin versions in your own deployment instead of tracking `latest`.
 
 ```bash
-export STUDIO_CHART_VERSION=0.12.2
+export STUDIO_CHART_VERSION=0.12.4
 export SANDBOX_OPERATOR_CHART_VERSION=0.1.3
-export SANDBOX_ENV_CHART_VERSION=0.9.6
+export SANDBOX_ENV_CHART_VERSION=0.9.13
 ```
 
 ### 1. Install the cluster-wide sandbox operator
@@ -119,6 +119,11 @@ secret:
   secretName: deco-studio-secrets
 ```
 
+<Callout type="note">
+  `configMap.meshConfig` is a deprecated chart-key name retained for upgrade
+  compatibility. Its values configure the Studio API.
+</Callout>
+
 <Callout type="warning">
   The existing `deco-studio-secrets` Secret must contain `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`, plus provider-specific `S3_REGION` and `S3_FORCE_PATH_STYLE`. Prefer `externalSecret` or another secret manager in production; do not commit these values to Git.
 </Callout>
@@ -153,7 +158,11 @@ helm install sandbox-env-production \
 This creates `SandboxTemplate/studio-sandbox-production` and grants only the named Studio service account permission to manage claims, read sandboxes, port-forward to sandbox pods, patch their Services, and manage per-claim `HTTPRoute` objects in `agent-sandbox-system`.
 
 <Callout type="note">
-  `mesh.serviceName`, `mesh.servicePort`, and `mesh.podSelectorLabels` are deprecated and unused by the current per-claim preview routing design. New installations do not need to set them.
+  The sandbox chart's `mesh.*` values key is a deprecated name retained for
+  upgrade compatibility; it points to the Studio release. `mesh.serviceName`,
+  `mesh.servicePort`, and `mesh.podSelectorLabels` are deprecated and unused by
+  the current per-claim preview routing design. New installations do not need
+  to set those three fields.
 </Callout>
 
 ### 4. Verify the complete deployment

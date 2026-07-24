@@ -1,23 +1,23 @@
 /**
  * Liveness heartbeat scheduler (unified-control-plane T5/T6).
  *
- * Shared between the hosted executor (apps/mesh's decopilot dispatch, T5)
+ * Shared between the hosted executor (apps/api's decopilot dispatch, T5)
  * and the desktop daemon's relay pump (T6 — wired into
- * `apps/mesh/src/link-daemon/chunk-relay.ts`, which is the file that
+ * `apps/api/src/link-daemon/chunk-relay.ts`, which is the file that
  * actually pumps a sandbox's raw SSE into seq-numbered relay lines; that
- * file lives in the `apps/mesh` workspace, which already depends on
+ * file lives in the `apps/api` workspace, which already depends on
  * `@decocms/harness`, same as `packages/sandbox`) — both need the exact same
  * "call `emit` after N ms of silence, reset the window on every real chunk,
  * never emit again after `stop()`" scheduler; only the wiring (what `emit`
  * actually publishes) differs per executor. Lives here so this is reachable
  * from both without a reverse dependency (packages/harness has no
- * dependency on apps/mesh in either direction).
+ * dependency on apps/api in either direction).
  *
  * Pure: no NATS/DBOS/StudioContext/relay-transport knowledge — just a timer
  * plus the shared `data-liveness` wire-shape builder below. Uses
- * `@decocms/std`'s `sleep(ms, { signal })` for the wait, never a hand-rolled
+ * `@decocms/shared/std`'s `sleep(ms, { signal })` for the wait, never a hand-rolled
  * `setTimeout` loop (see the repo's async-primitives rule in
- * AGENTS.md/CLAUDE.md — `@decocms/std` is the one canonical home for this).
+ * AGENTS.md/CLAUDE.md — `@decocms/shared/std` is the one canonical home for this).
  *
  * Version-skew note (both T5 and T6): only executors built with this change
  * ever emit `data-liveness` chunks. An old, already-deployed hosted pod or
@@ -27,23 +27,23 @@
  * complete. This module only ever ADDS emission, never changes the
  * threshold that consumes it.
  */
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 
 /**
  * Silence window before a heartbeat fires. MUST stay well under the
  * liveness enforcer's own idle window — `RUN_IDLE_TIMEOUT_MS` (10 minutes,
- * `apps/mesh/src/api/routes/decopilot/run-registry.ts`), which both the
+ * `apps/api/src/api/routes/decopilot/run-registry.ts`), which both the
  * projector's in-process consume-side timeout (`natsChunkSource`) and the
  * per-pod reaper backstop enforce. 30s gives ~20 heartbeats of margin inside
  * that 10-minute window, so a single dropped publish or a slow tick never
  * risks a false-positive liveness kill. Not imported from run-registry.ts on
- * purpose: `packages/harness` has no dependency on `apps/mesh` (that would be
+ * purpose: `packages/harness` has no dependency on `apps/api` (that would be
  * the wrong direction) — the relationship is documented here, not enforced
  * by import.
  */
 export const LIVENESS_HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** Injectable wait primitive — defaults to `@decocms/std`'s `sleep`. Tests
+/** Injectable wait primitive — defaults to `@decocms/shared/std`'s `sleep`. Tests
  *  inject a small `intervalMs` (matching this repo's existing idle-timeout
  *  test style, e.g. `nats-chunk-source.test.ts`) rather than mocking this. */
 export type HeartbeatSleepFn = (
@@ -58,7 +58,7 @@ export interface HeartbeatEmitterOptions {
   emit: () => void | Promise<void>;
   /** Silence window before firing. Defaults to `LIVENESS_HEARTBEAT_INTERVAL_MS`. */
   intervalMs?: number;
-  /** Injected clock — see `HeartbeatSleepFn`. Defaults to `@decocms/std`'s `sleep`. */
+  /** Injected clock — see `HeartbeatSleepFn`. Defaults to `@decocms/shared/std`'s `sleep`. */
   sleepFn?: HeartbeatSleepFn;
 }
 
@@ -141,9 +141,9 @@ export class HeartbeatEmitter {
 /**
  * Shape of the transient `data-liveness` chunk BOTH executors emit — single
  * source of truth for the wire format, so the desktop daemon's relay pump
- * (T6, `apps/mesh/src/link-daemon/chunk-relay.ts`) can't drift from the
+ * (T6, `apps/api/src/link-daemon/chunk-relay.ts`) can't drift from the
  * hosted executor's wrapper (T5,
- * `apps/mesh/src/api/routes/decopilot/with-liveness-heartbeat.ts`).
+ * `apps/api/src/api/routes/decopilot/with-liveness-heartbeat.ts`).
  * Deliberately NOT typed against `ai`'s `UIMessageChunk`: this package pins
  * no `ai` version, and the desktop path only needs a plain object matching
  * `DispatchSSEEvent`'s `chunk: z.unknown()` field

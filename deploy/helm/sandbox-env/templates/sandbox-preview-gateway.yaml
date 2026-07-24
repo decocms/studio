@@ -13,7 +13,7 @@
 {{- $previewName := include "sandbox-env.previewName" . }}
 {{- $infra := .Values.previewGateway.infrastructure | default dict }}
 # Wildcard preview-URL ingress. The Gateway fronts `*.<domain>`; per-claim
-# HTTPRoutes are minted by the mesh runner against this Gateway and route
+# HTTPRoutes are minted by the Studio runner against this Gateway and route
 # directly to each sandbox's headless Service at port 9000 (daemon owns the
 # public surface — routing straight at the dev port 3000 would bypass CSP/HMR
 # rewrites and break iframe embedding + SSE).
@@ -26,15 +26,15 @@
 #                  plaintext to Envoy over a trusted hop. No Certificate.
 #
 # This chart creates ONLY the Gateway (+ optional Certificate). It deliberately
-# does NOT render a wildcard HTTPRoute backed by mesh — keeping mesh in the
+# does NOT render a wildcard HTTPRoute backed by Studio — keeping Studio in the
 # request path was the previous design, and it's been replaced by per-claim
-# routing. Mesh now creates one HTTPRoute per SandboxClaim in
+# routing. Studio now creates one HTTPRoute per SandboxClaim in
 # `agent-sandbox-system` (same namespace as the operator's Service, no
 # ReferenceGrant needed) and tears it down on claim delete. RBAC for that
 # lives in templates/sandbox-rbac.yaml.
 #
 # Browser → (LB) → Gateway → HTTPRoute(handle) → Service(handle):9000 → pod.
-# Mesh is no longer the data-path proxy.
+# Studio is no longer the data-path proxy.
 #
 # AUTH MODEL — read before exposing this. The Host header carries the
 # sandbox handle, which is the *only* authorization on the preview path
@@ -92,7 +92,7 @@ spec:
       allowedRoutes:
         namespaces:
           # Per-claim HTTPRoutes live in `agent-sandbox-system` (same
-          # namespace as the operator-created Service they back) so mesh
+          # namespace as the operator-created Service they back) so Studio
           # can write them with the same Role used for SandboxClaim
           # CRUD. Without this selector the routes would silently drop.
           from: Selector
@@ -113,7 +113,7 @@ spec:
       allowedRoutes:
         namespaces:
           # Per-claim HTTPRoutes live in `agent-sandbox-system` (same
-          # namespace as the operator-created Service they back) so mesh
+          # namespace as the operator-created Service they back) so Studio
           # can write them with the same Role used for SandboxClaim
           # CRUD. Without this selector the routes would silently drop.
           from: Selector

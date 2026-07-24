@@ -6,7 +6,7 @@
  *
  * Wire format (subject + msgId scheme + envelope shapes) is now owned by
  * `@decocms/harness/run-stream-codec` — the single source of truth shared by
- *   - the app's live producer (apps/mesh/src/link-daemon/direct-nats-publisher.ts,
+ *   - the app's live producer (apps/api/src/link-daemon/direct-nats-publisher.ts,
  *     a thin adapter that injects OpenTelemetry metrics via `hooks`), and
  *   - the e2e "fake daemon" relay (packages/e2e/fixtures/relay-nats.ts).
  *

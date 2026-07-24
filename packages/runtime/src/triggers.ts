@@ -5,6 +5,7 @@ import {
 } from "@decocms/bindings/trigger";
 import { z, type ZodObject, type ZodRawShape } from "zod";
 import type { DefaultEnv } from "./index.ts";
+import { resolveStudioRequestContext } from "./studio-context.ts";
 import { createTool, type CreatedTool } from "./tools.ts";
 
 export interface CallbackCredentials {
@@ -224,8 +225,10 @@ export function createTriggers<const TDefs extends TriggerDef[]>(
     inputSchema: TriggerConfigureInputSchema,
     outputSchema: z.object({ success: z.boolean() }),
     execute: async ({ context, runtimeContext }) => {
-      const connectionId = (runtimeContext?.env as unknown as DefaultEnv)
-        ?.MESH_REQUEST_CONTEXT?.connectionId;
+      const requestContext = resolveStudioRequestContext(
+        runtimeContext?.env as unknown as DefaultEnv,
+      );
+      const connectionId = requestContext?.connectionId;
 
       if (!connectionId) {
         throw new Error("Connection ID not available");

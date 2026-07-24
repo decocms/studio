@@ -109,7 +109,7 @@ removed values key won't error — `helm template` after big `deploy/` changes).
 - **Sandbox / preview / k8s behavior** — [`examples/dev-hybrid`](examples/dev-hybrid):
   `bun run dev` on your host, but Postgres/NATS/MinIO **and the real
   agent-sandbox operator** come from the k8s-local install (the app in-cluster is
-  scaled to 0). mesh drives the cluster's sandbox via your kubeconfig +
+  scaled to 0). Studio drives the cluster's sandbox via your kubeconfig +
   API-server port-forward, so code-exec/previews work — which the laptop-only
   loop can't do.
 - **The artifact itself (chart/image)** — build a local image and
@@ -140,7 +140,7 @@ shows it with placeholders (nothing environment-specific baked in):
   in-cluster/link-local CIDRs and allows only 443 + 53 outbound — untrusted code
   can't reach your Services. This is the sandbox's "outbound proxy/firewall".
 - **Node isolation:** pin sandbox pods to a dedicated tainted NodePool so an
-  escape lands away from mesh/Postgres/NATS.
+  escape lands away from Studio/Postgres/NATS.
 - **Zone spread**, **warm pool** (+ optional HPA), and **sentinel token**.
 - **Preview URLs:** wildcard `*.<domain>` via an Istio Gateway + cert-manager
   (needs Gateway API CRDs + a DNS-01 issuer — off in the example until those

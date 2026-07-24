@@ -3,7 +3,7 @@ import type { HarnessFactory, HarnessId } from "./types";
 const registry = new Map<HarnessId, HarnessFactory>();
 
 /** Register a harness factory. Called once per harness at module load by
- *  `apps/mesh/src/harnesses/index.ts` (the barrel), which imports each
+ *  `apps/api/src/harnesses/index.ts` (the barrel), which imports each
  *  harness module for its registration side effect. */
 export function registerHarnessFactory(factory: HarnessFactory): void {
   registry.set(factory.id, factory);

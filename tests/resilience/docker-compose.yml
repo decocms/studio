@@ -117,7 +117,7 @@ services:
     command: ["bun", "run", "/app/tests/resilience/link-daemon-entrypoint.ts"]
     environment:
       NODE_ENV: production
-      MESH_CLUSTER_URL: http://toxiproxy:3011
+      STUDIO_CLUSTER_URL: http://toxiproxy:3011
       DAEMON_API_KEY: "${DAEMON_API_KEY:-}"
       DATA_DIR: /app/data/link-daemon
       LINK_DAEMON_PORT: "4500"

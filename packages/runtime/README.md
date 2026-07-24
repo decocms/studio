@@ -1,834 +1,282 @@
 # @decocms/runtime
 
-A TypeScript framework for building MCP (Model Context Protocol) servers with first-class support for tools, prompts, resources, OAuth authentication, and event-driven architectures.
+Provides the framework for building MCP applications behind Studio with typed
+tools, bindings, authentication, OAuth, resources, prompts, and triggers.
 
-## Installation
+| Attribute | Value |
+| --- | --- |
+| Workspace | `@decocms/runtime` (`packages/runtime`) |
+| Kind | Public MCP application framework |
+| Runtime | Node.js 24+; Web Fetch API |
+| Distribution | Public npm package |
+
+## Overview
+
+`@decocms/runtime` is the application-facing runtime for MCP servers connected to
+Studio. It turns declarative tools, prompts, resources, agents, and bindings into a
+Fetch-compatible handler. The runtime also supplies the request-scoped Studio
+context that application code uses for identity, connection metadata, credentials,
+and calls to bound MCPs.
+
+The package exposes source TypeScript through explicit package subpaths. Consumers
+should import only the subpath that owns the capability they need.
+
+## Responsibilities
+
+- Create MCP tools with Zod input and output schemas.
+- Mount tools, prompts, resources, and event handlers on a Fetch-compatible MCP
+  server.
+- Resolve Studio request context and bound connections for each request.
+- Enforce authenticated access to protected tools, prompts, and resources.
+- Serve OAuth metadata and OAuth routes when an OAuth configuration is present.
+- Expose scoped access to Studio-managed credentials through the vault client.
+- Create trigger-management tools and deliver trigger callbacks to Studio.
+- Provide helpers for connection proxies, MCP client stubs, assets, and Decopilot
+  applications.
+
+## Usage
+
+Install the package in an MCP application:
 
 ```bash
 bun add @decocms/runtime
 ```
 
-Or with npm:
+Define a tool and export the runtime handler:
 
-```bash
-npm install @decocms/runtime
-```
-
-## Quick Start
-
-Create a simple MCP server with tools:
-
-```typescript
-import { withRuntime, createTool } from "@decocms/runtime";
-import { z } from "zod";
-
-// Define a tool
-const greetTool = createTool({
-  id: "greet",
-  description: "Greets a user by name",
-  inputSchema: z.object({
-    name: z.string().describe("Name of the person to greet"),
-  }),
-  outputSchema: z.object({
-    message: z.string(),
-  }),
-  execute: async ({ context }) => {
-    return { message: `Hello, ${context.name}!` };
-  },
-});
-
-// Create the MCP server
-export default withRuntime({
-  tools: [greetTool],
-});
-```
-
-The server automatically exposes an MCP endpoint at `/mcp` that handles all MCP protocol requests.
-
-## Core Concepts
-
-### withRuntime
-
-The `withRuntime` function is the main entry point for creating an MCP server. It accepts configuration options and returns a fetch handler compatible with Cloudflare Workers, Bun, and other web standard runtimes.
-
-```typescript
-import { withRuntime } from "@decocms/runtime";
-
-export default withRuntime({
-  // Tools exposed to LLMs
-  tools: [...],
-  
-  // Prompts for guided interactions
-  prompts: [...],
-  
-  // Resources for data access
-  resources: [...],
-  
-  // Optional: Custom fetch handler for non-MCP routes
-  fetch: async (req, env, ctx) => {
-    // Handle custom routes
-    return new Response("Custom response");
-  },
-  
-  // Optional: CORS configuration
-  cors: {
-    origin: "*",
-    credentials: true,
-  },
-  
-  // Optional: OAuth configuration
-  oauth: { ... },
-  
-  // Optional: Configuration state
-  configuration: { ... },
-  
-  // Optional: Event handlers
-  events: { ... },
-  
-  // Optional: Hook before request processing
-  before: async (env) => {
-    // Initialize resources
-  },
-});
-```
-
-## Tools
-
-Tools are functions that LLMs can invoke to perform actions or retrieve data.
-
-### Creating a Tool
-
-```typescript
-import { createTool } from "@decocms/runtime";
-import { z } from "zod";
-
-const calculateTool = createTool({
-  id: "calculate",
-  description: "Performs basic arithmetic operations",
-  inputSchema: z.object({
-    operation: z.enum(["add", "subtract", "multiply", "divide"]),
-    a: z.number(),
-    b: z.number(),
-  }),
-  outputSchema: z.object({
-    result: z.number(),
-  }),
-  execute: async ({ context }) => {
-    const { operation, a, b } = context;
-    let result: number;
-    
-    switch (operation) {
-      case "add": result = a + b; break;
-      case "subtract": result = a - b; break;
-      case "multiply": result = a * b; break;
-      case "divide": result = a / b; break;
-    }
-    
-    return { result };
-  },
-});
-```
-
-### Private Tools (Authentication Required)
-
-Use `createPrivateTool` for tools that require user authentication:
-
-```typescript
-import { createPrivateTool } from "@decocms/runtime";
-
-const getUserDataTool = createPrivateTool({
-  id: "getUserData",
-  description: "Retrieves the current user's data",
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    userId: z.string(),
-    email: z.string(),
-  }),
-  execute: async ({ runtimeContext }) => {
-    // ensureAuthenticated is called automatically
-    const user = runtimeContext.env.MESH_REQUEST_CONTEXT.ensureAuthenticated();
-    return { userId: user.id, email: user.email };
-  },
-});
-```
-
-### Registering Tools
-
-Pass an array of tool instances created with `createTool()` / `createPrivateTool()`:
-
-```typescript
-export default withRuntime({
-  tools: [greetTool, calculateTool],
-});
-```
-
-## Prompts
-
-Prompts define guided interactions with predefined templates.
-
-### Creating a Prompt
-
-```typescript
-import { createPrompt, createPublicPrompt } from "@decocms/runtime";
-import { z } from "zod";
-
-const codeReviewPrompt = createPrompt({
-  name: "code-review",
-  title: "Code Review",
-  description: "Provides a structured code review",
-  argsSchema: {
-    code: z.string().describe("The code to review"),
-    language: z.string().optional().describe("Programming language"),
-  },
-  execute: async ({ args }) => {
-    return {
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: `Please review this ${args.language ?? "code"}:\n\n${args.code}`,
-          },
-        },
-      ],
-    };
-  },
-});
-
-// Public prompt (no auth required)
-const welcomePrompt = createPublicPrompt({
-  name: "welcome",
-  title: "Welcome Message",
-  description: "Generates a welcome message",
-  execute: async () => {
-    return {
-      messages: [
-        {
-          role: "user",
-          content: { type: "text", text: "Welcome to our MCP server!" },
-        },
-      ],
-    };
-  },
-});
-```
-
-## Resources
-
-Resources expose data that LLMs can read.
-
-### Creating a Resource
-
-```typescript
-import { createResource, createPublicResource } from "@decocms/runtime";
-
-const configResource = createResource({
-  uri: "config://app",
-  name: "App Configuration",
-  description: "Current application configuration",
-  mimeType: "application/json",
-  read: async ({ runtimeContext }) => {
-    const config = await loadConfig();
-    return {
-      uri: "config://app",
-      mimeType: "application/json",
-      text: JSON.stringify(config, null, 2),
-    };
-  },
-});
-
-// URI templates for dynamic resources
-const fileResource = createPublicResource({
-  uri: "file://{path}",
-  name: "File Reader",
-  description: "Reads file contents",
-  read: async ({ uri }) => {
-    const path = uri.pathname;
-    const content = await readFile(path);
-    return {
-      uri: uri.toString(),
-      mimeType: "text/plain",
-      text: content,
-    };
-  },
-});
-```
-
-## OAuth Authentication
-
-Enable OAuth for protected MCP endpoints:
-
-```typescript
-import { withRuntime, type OAuthConfig } from "@decocms/runtime";
-
-const oauthConfig: OAuthConfig = {
-  mode: "PKCE",
-  
-  // External OAuth provider URL
-  authorizationServer: "https://your-oauth-provider.com",
-  
-  // Generate authorization URL
-  authorizationUrl: (callbackUrl) => {
-    const url = new URL("https://your-oauth-provider.com/authorize");
-    url.searchParams.set("client_id", "your-client-id");
-    url.searchParams.set("redirect_uri", callbackUrl);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "openid profile email");
-    return url.toString();
-  },
-  
-  // Exchange authorization code for tokens
-  exchangeCode: async ({ code, redirect_uri }) => {
-    const response = await fetch("https://your-oauth-provider.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirect_uri!,
-        client_id: "your-client-id",
-        client_secret: "your-client-secret",
-      }),
-    });
-    return response.json();
-  },
-  
-  // Optional: Refresh token support
-  refreshToken: async (refreshToken) => {
-    const response = await fetch("https://your-oauth-provider.com/token", {
-      method: "POST",
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }),
-    });
-    return response.json();
-  },
-};
-
-export default withRuntime({
-  oauth: oauthConfig,
-  tools: [...],
-});
-```
-
-OAuth endpoints are automatically exposed:
-- `/.well-known/oauth-protected-resource` - Resource metadata
-- `/.well-known/oauth-authorization-server` - Server metadata
-- `/authorize` - Authorization endpoint
-- `/oauth/callback` - OAuth callback
-- `/token` - Token endpoint
-- `/register` - Dynamic client registration
-
-## Configuration State
-
-Define typed configuration state that persists across requests:
-
-```typescript
+```ts
 import {
-  BindingOf,
-  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
   withRuntime,
-  type ConfigurationScope,
 } from "@decocms/runtime";
-import { z } from "zod";
-
-// Define your state schema
-const stateSchema = z.object({
-  apiKey: z.string(),
-  maxTokens: z.number().default(1000),
-  // Bindings reference other MCP connections
-  database: BindingOf<MyRegistry, "@deco/database">("@deco/database"),
-});
-
-export default withRuntime({
-  configuration: {
-    state: stateSchema,
-    scopes: [
-      "database::query",
-      `database::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
-    ] satisfies ConfigurationScope[],
-    
-    // Called when configuration changes
-    onChange: async (env, { state, scopes }) => {
-      console.log("Configuration updated:", state);
-    },
-  },
-  
-  tools: [
-    createTool({
-      id: "query",
-      inputSchema: z.object({ sql: z.string() }),
-      execute: async ({ context, runtimeContext }) => {
-        // Access resolved bindings from state
-        const { database } = runtimeContext.env.MESH_REQUEST_CONTEXT.state;
-        return database.QUERY({ sql: context.sql });
-      },
-    }),
-  ],
-});
-```
-
-### Studio Vault Reads
-
-#### Access Token Reads
-
-Background workers can request current downstream OAuth access tokens from
-Studio during `configuration.onInstall`. Add
-`credential:access-token:read` for the configured binding key. Studio refreshes
-the downstream credential when needed and returns only the current access token;
-refresh tokens and client secrets stay in Studio's vault.
-
-```typescript
 import {
-  BindingOf,
-  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
-  createStudioVaultClient,
-  withRuntime,
-  type BindingRegistry,
-  type ConfigurationScope,
-} from "@decocms/runtime";
+  createTool,
+  ensureAuthenticated,
+} from "@decocms/runtime/tools";
 import { z } from "zod";
 
-const stateSchema = z.object({
-  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
-});
-
-export default withRuntime({
-  configuration: {
-    state: stateSchema,
-    scopes: [
-      `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
-    ] satisfies ConfigurationScope[],
-    onInstall: async (env, { vault }) => {
-      if (!vault) return;
-
-      const { github } = env.MESH_REQUEST_CONTEXT.state;
-      const client = createStudioVaultClient(vault);
-      const token = await client.getAccessToken(github);
-
-      await fetch("https://api.github.com/user", {
-        headers: { Authorization: `${token.tokenType} ${token.accessToken}` },
-      });
-    },
-  },
-});
-```
-
-#### Configuration Reads
-
-Use `credential:configuration:read` when the target MCP stores provider
-credentials or provider settings in its saved MCP configuration instead of
-OAuth. Add `credential:configuration:read` for the configured binding key. This
-returns the decrypted configuration state Studio has already saved for that
-target connection; it does not call the target MCP's
-`MCP_CONFIGURATION` discovery tool.
-
-```typescript
-import {
-  BindingOf,
-  CREDENTIAL_CONFIGURATION_READ_SCOPE,
-  createStudioVaultClient,
-  withRuntime,
-  type BindingRegistry,
-  type ConfigurationScope,
-} from "@decocms/runtime";
-import { z } from "zod";
-
-const stateSchema = z.object({
-  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
-});
-
-export default withRuntime({
-  configuration: {
-    state: stateSchema,
-    scopes: [
-      `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
-    ] satisfies ConfigurationScope[],
-    onInstall: async (env, { vault }) => {
-      if (!vault) return;
-
-      const { github } = env.MESH_REQUEST_CONTEXT.state;
-      const client = createStudioVaultClient(vault);
-      const configuration = await client.getConfiguration(github);
-      const apiKey = configuration.state.apiKey;
-
-      if (typeof apiKey !== "string") {
-        throw new Error("GitHub configuration is missing apiKey");
-      }
-
-      await fetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-    },
-  },
-});
-```
-
-Returned configuration:
-
-```typescript
-type StudioMcpConfiguration = {
-  type: "mcp_configuration";
-  state: Record<string, unknown>;
-  scopes: string[];
-};
-```
-
-## Event Handlers
-
-Subscribe to events from other MCP connections:
-
-```typescript
-import { withRuntime, SELF } from "@decocms/runtime";
-
-export default withRuntime({
-  configuration: {
-    state: z.object({
-      database: BindingOf<Registry, "@deco/database">("@deco/database"),
-    }),
-  },
-  
-  events: {
-    // Subscribe to events from the database binding
-    database: {
-      // Per-event handlers
-      "record.created": async ({ events }, env) => {
-        for (const event of events) {
-          console.log("New record:", event.data);
-        }
-        return { success: true };
-      },
-      "record.deleted": async ({ events }, env) => {
-        return { success: true };
-      },
-    },
-    
-    // Subscribe to events from self (this connection)
-    SELF: {
-      "order.completed": async ({ events }, env) => {
-        return { success: true };
-      },
-    },
-  },
-});
-
-// Or use batch handlers for multiple event types
-export default withRuntime({
-  events: {
-    handler: async ({ events }, env) => {
-      // Process all events in batch
-      return { success: true };
-    },
-    events: [
-      "SELF::order.created",
-      "database::record.updated",
-    ],
-  },
-});
-```
-
-## Bindings
-
-Bindings define standardized interfaces that MCP servers can implement.
-
-### Using Existing Bindings
-
-```typescript
-import { impl, WellKnownBindings } from "@decocms/runtime/bindings";
-
-// Implement a channel binding
-const channelTools = impl(WellKnownBindings.Channel, [
-  {
-    description: "Join a channel",
-    handler: async ({ workspace, channelId }) => {
-      // Implementation
-      return { success: true, channelId };
-    },
-  },
-  {
-    description: "Leave a channel",
-    handler: async ({ channelId }) => {
-      return { success: true };
-    },
-  },
-]);
-
-export default withRuntime({
-  tools: channelTools,
-});
-```
-
-### Creating Custom Bindings
-
-```typescript
-import { z } from "zod";
-import type { Binder } from "@decocms/runtime/bindings";
-
-// Define your binding schema
-export const MY_BINDING = [
-  {
-    name: "MY_TOOL_ACTION" as const,
-    inputSchema: z.object({
-      param: z.string(),
-    }),
-    outputSchema: z.object({
-      result: z.string(),
-    }),
-  },
-  {
-    name: "MY_TOOL_QUERY" as const,
-    inputSchema: z.object({}),
-    outputSchema: z.object({
-      items: z.array(z.string()),
-    }),
-    opt: true, // Optional tool
-  },
-] as const satisfies Binder;
-```
-
-## Custom Fetch Handler
-
-Handle non-MCP routes alongside your MCP server:
-
-```typescript
-export default withRuntime({
-  tools: [...],
-  
-  fetch: async (req, env, ctx) => {
-    const url = new URL(req.url);
-    
-    if (url.pathname === "/api/health") {
-      return new Response(JSON.stringify({ status: "ok" }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    
-    if (url.pathname.startsWith("/api/")) {
-      // Handle API routes
-      return handleApiRoutes(req, env);
-    }
-    
-    return new Response("Not Found", { status: 404 });
-  },
-});
-```
-
-## CORS Configuration
-
-Configure CORS for browser-based MCP clients:
-
-```typescript
-export default withRuntime({
-  cors: {
-    origin: ["https://example.com", "http://localhost:3000"],
-    credentials: true,
-    allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization", "mcp-protocol-version"],
-  },
-  
-  // Or disable CORS entirely
-  cors: false,
-});
-```
-
-## Accessing Request Context
-
-Access request context within tools:
-
-```typescript
-const myTool = createTool({
-  id: "contextDemo",
-  inputSchema: z.object({}),
-  execute: async ({ runtimeContext }) => {
-    const { env, req } = runtimeContext;
-    
-    // Access MESH_REQUEST_CONTEXT for auth and bindings
-    const ctx = env.MESH_REQUEST_CONTEXT;
-    
-    // Get authenticated user (throws if not authenticated)
-    const user = ctx.ensureAuthenticated();
-    
-    // Access resolved binding state
-    const state = ctx.state;
-    
-    // Get connection info
-    const { connectionId, organizationId, meshUrl } = ctx;
-    
-    // Access original request
-    const userAgent = req?.headers.get("user-agent");
-    
-    return { userId: user.id };
-  },
-});
-```
-
-## Complete Example
-
-Here's a complete example of an MCP server with tools, prompts, resources, and OAuth:
-
-```typescript
-import { 
-  withRuntime, 
-  createTool, 
-  createPrivateTool,
-  createPrompt,
-  createResource,
-} from "@decocms/runtime";
-import { z } from "zod";
-
-// Public tool - no auth required
-const echoTool = createTool({
-  id: "echo",
-  description: "Echoes the input message",
+const greet = createTool({
+  id: "GREET",
+  description: "Greet the signed-in user",
   inputSchema: z.object({
-    message: z.string(),
-  }),
-  outputSchema: z.object({
-    echo: z.string(),
-  }),
-  execute: async ({ context }) => {
-    return { echo: context.message };
-  },
-});
-
-// Private tool - requires authentication
-const getProfileTool = createPrivateTool({
-  id: "getProfile",
-  description: "Gets the current user's profile",
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    id: z.string(),
-    email: z.string(),
     name: z.string(),
   }),
-  execute: async ({ runtimeContext }) => {
-    const user = runtimeContext.env.MESH_REQUEST_CONTEXT.ensureAuthenticated();
+  outputSchema: z.object({
+    message: z.string(),
+  }),
+  execute: async ({ context, runtimeContext }) => {
+    const user = ensureAuthenticated(runtimeContext);
+
     return {
-      id: user.id,
-      email: user.email,
-      name: user.user_metadata.full_name,
+      message: `Hello, ${context.name}. Signed in as ${user.email}.`,
     };
   },
 });
 
-// Prompt template
-const analyzePrompt = createPrompt({
-  name: "analyze",
-  title: "Analyze Data",
-  description: "Analyzes provided data and returns insights",
+export default withRuntime({
+  tools: [greet],
+});
+```
+
+`withRuntime()` returns an object with a `fetch()` handler. It serves the MCP
+endpoint at `/mcp`, delegates any unmatched request to the optional application
+`fetch` handler, and applies the configured CORS and OAuth behavior.
+
+Prompts and resources use the same request context:
+
+```ts
+import { createPrompt, createResource } from "@decocms/runtime";
+import { z } from "zod";
+
+const reviewPrompt = createPrompt({
+  name: "review",
+  description: "Review a change",
   argsSchema: {
-    data: z.string().describe("JSON data to analyze"),
+    path: z.string().optional(),
   },
-  execute: async ({ args }) => ({
+  execute: ({ args }) => ({
     messages: [
       {
         role: "user",
         content: {
           type: "text",
-          text: `Analyze this data and provide insights:\n\n${args.data}`,
+          text: `Review ${args.path ?? "the current change"}.`,
         },
       },
     ],
   }),
 });
 
-// Resource
 const statusResource = createResource({
-  uri: "status://server",
-  name: "Server Status",
-  description: "Current server status and metrics",
+  uri: "studio://status",
+  name: "Status",
   mimeType: "application/json",
-  read: async () => ({
-    uri: "status://server",
+  read: () => ({
+    uri: "studio://status",
     mimeType: "application/json",
-    text: JSON.stringify({
-      status: "healthy",
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-    }),
+    text: JSON.stringify({ ready: true }),
   }),
 });
-
-// Export the MCP server
-export default withRuntime({
-  tools: [echoTool, getProfileTool],
-  prompts: [analyzePrompt],
-  resources: [statusResource],
-  cors: {
-    origin: "*",
-    credentials: true,
-  },
-});
 ```
 
-## API Reference
+`createPrompt()` and `createResource()` protect their handlers by default. Use the
+explicit `createPublicPrompt()` or `createPublicResource()` variants only when the
+content is safe to expose without a Studio identity.
 
-### Types
+## Architecture
 
-- `Tool<TSchemaIn, TSchemaOut>` - Tool definition with typed input/output
-- `Prompt<TArgs>` - Prompt definition with typed arguments
-- `Resource` - Resource definition
-- `OAuthConfig` - OAuth configuration
-- `CreateMCPServerOptions` - Full options for withRuntime
-- `RequestContext` - Request context with auth and bindings
-- `AppContext` - Runtime context passed to execute functions
+`withRuntime()` is the composition root. For each incoming request it:
 
-### Functions
+1. Normalizes canonical Studio environment fields and supported legacy aliases.
+2. Creates a request-scoped context containing identity and binding state.
+3. Initializes configured bindings.
+4. Dispatches MCP requests to the server created from tools, prompts, resources,
+   agents, and event handlers.
+5. Applies OAuth and CORS behavior around the result.
+6. Falls back to the application's own `fetch()` handler for non-runtime routes.
 
-- `withRuntime(options)` - Create an MCP server
-- `createTool(opts)` - Create a public tool
-- `createPrivateTool(opts)` - Create an authenticated tool
-- `createPrompt(opts)` - Create an authenticated prompt
-- `createPublicPrompt(opts)` - Create a public prompt
-- `createResource(opts)` - Create an authenticated resource
-- `createPublicResource(opts)` - Create a public resource
-- `BindingOf(name)` - Create a binding reference schema
+The request context is stored with asynchronous request scoping. Tool code receives
+that context as the second `execute()` argument; it should not read ambient HTTP
+objects or reconstruct Studio identity from process-wide state.
 
-### Exports
+Bindings describe MCP capabilities that a connection implements. `withBindings()`
+resolves those bindings for a request, while `BindingOf`, `AgentOf`, and
+`proxyConnectionForId()` provide typed access patterns for consumers that need to
+call them.
 
-```typescript
-// Main entry
-import { withRuntime, createTool, ... } from "@decocms/runtime";
+## Development
 
-// Bindings utilities
-import { impl, WellKnownBindings, ... } from "@decocms/runtime/bindings";
+Run package checks from the repository root:
 
-// MCP client utilities
-import { createMCPFetchStub, MCPClient } from "@decocms/runtime/client";
-
-// Proxy utilities
-import { ... } from "@decocms/runtime/proxy";
-
-// Tool utilities
-import { ... } from "@decocms/runtime/tools";
+```bash
+bun run --cwd=packages/runtime check
+bun run --cwd=packages/runtime test
 ```
 
-## Deployment
+Run a focused test file while iterating:
 
-The server works with any Web Standard runtime:
-
-**Cloudflare Workers:**
-```typescript
-export default withRuntime({ tools: [...] });
+```bash
+bun test packages/runtime/src/tools.test.ts
 ```
 
-**Bun:**
-```typescript
-const server = withRuntime({ tools: [...] });
-Bun.serve({
-  port: 3000,
-  fetch: server.fetch,
-});
+Format and lint repository changes before committing:
+
+```bash
+bun run fmt
+bun run lint
 ```
 
-**Node.js (with adapter):**
-```typescript
-import { serve } from "@hono/node-server";
-const server = withRuntime({ tools: [...] });
-serve({ fetch: server.fetch, port: 3000 });
+## Boundaries
+
+- This package is an MCP application framework, not the Studio control plane. It
+  must not import server implementation details from `apps/api` or UI details from
+  `apps/web`.
+- Treat the request-scoped runtime context as the authority for identity, Studio
+  metadata, and bound services. Do not cache it across requests.
+- A tool is not protected merely because it runs behind an MCP endpoint. Call
+  `ensureAuthenticated()` in tools that require a user.
+- Prompts and resources are authenticated by default. Public variants must expose
+  only non-sensitive data.
+- Credential access is opt-in and scope-limited. Never request more credential
+  material than the application needs, and never persist returned secrets.
+- The published package requires Node.js 24 or newer. Individual helpers use Web
+  Fetch APIs; environment-specific helpers such as file-backed trigger storage and
+  the asset server also require their documented host capabilities.
+- Legacy `MESH_*` environment fields and `meshUrl` remain compatibility aliases.
+  New code must use `STUDIO_*` names and `studioUrl`.
+
+## Export surface
+
+| Import | Purpose |
+| --- | --- |
+| `@decocms/runtime` | Runtime composition, prompts, resources, bindings, request context, MCP stubs, and the Studio vault client |
+| `@decocms/runtime/proxy` | MCP proxy client primitives |
+| `@decocms/runtime/client` | Client for the runtime tool-call HTTP endpoint |
+| `@decocms/runtime/bindings` | Binding declarations, registry helpers, and binding initialization |
+| `@decocms/runtime/asset-server` | Static and single-page-application asset serving |
+| `@decocms/runtime/tools` | Tool creation plus prompt, resource, agent, and authentication primitives |
+| `@decocms/runtime/decopilot` | Decopilot application helpers |
+| `@decocms/runtime/triggers` | Trigger definitions, configuration tools, and callback delivery |
+| `@decocms/runtime/trigger-storage` | In-memory, Studio KV, and JSON-file trigger storage adapters |
+
+These are the only supported package entry points. Do not import files below
+`@decocms/runtime/src`.
+
+## Authentication and credential access
+
+`ensureAuthenticated(runtimeContext)` returns the Studio user or throws when the
+request is unauthenticated. It is the normal guard for a protected tool.
+
+Applications that need Studio-managed credentials declare an explicit
+binding-scoped permission and create a client from the bootstrap passed to
+`configuration.onInstall` or `configuration.onChange`:
+
+```ts
+import {
+  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  createStudioVaultClient,
+  type ConfigurationScope,
+} from "@decocms/runtime";
+import type { StudioVaultBootstrap } from "@decocms/runtime/tools";
+
+const scopes = [
+  `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+] satisfies ConfigurationScope[];
+
+function vaultClient(bootstrap: StudioVaultBootstrap) {
+  return createStudioVaultClient({
+    baseUrl: bootstrap.baseUrl,
+    org: bootstrap.org,
+    token: bootstrap.token,
+  });
+}
 ```
 
-## License
+Use `CREDENTIAL_ACCESS_TOKEN_READ_SCOPE` for a provider access token and
+`CREDENTIAL_CONFIGURATION_READ_SCOPE` for non-token credential configuration.
+Refresh tokens and OAuth client secrets stay inside the Studio vault and are not
+part of the application-facing contract.
 
-See the root LICENSE.md file in the repository.
+## Triggers and persistence
+
+`createTriggers()` creates `TRIGGER_LIST` and `TRIGGER_CONFIGURE` tools from typed
+trigger definitions. Its `notify()` method is intentionally fire-and-forget:
+delivery failures are logged and are not thrown back into a webhook handler.
+
+Trigger configuration is process-local unless the application supplies a
+`TriggerStorage`. Use `StudioKV` when Studio KV is available, `JsonFileStorage`
+only for an appropriate local Node/Bun deployment, or provide an adapter backed by
+the application's durable store.
+
+## Configuration, bindings, and events
+
+`configuration.state` accepts a Zod schema for persisted MCP configuration.
+`BindingOf()` fields in that schema resolve configured connection references into
+typed clients on `STUDIO_REQUEST_CONTEXT.state`. Declare required permissions in
+`configuration.scopes`; Studio evaluates those scopes when it configures the
+connection.
+
+`configuration.onChange` runs for configuration updates and receives the parsed
+state, granted scopes, and optional vault bootstrap. `configuration.onInstall`
+runs on the first saved configuration and also receives the agent-provisioning
+helper. Handlers must be idempotent because network or deployment failures can
+interrupt work around these callbacks.
+
+`events.handlers` declares CloudEvent subscriptions by binding key or `SELF`.
+The runtime exposes the corresponding `ON_EVENTS` tool and supports both batch
+results and per-event results. Event handlers own their idempotency because the
+Studio event bus provides at-least-once delivery.
+
+When `oauth` is configured, the runtime serves protected-resource metadata,
+authorization-server metadata, authorization, callback, token, and dynamic client
+registration routes. The application supplies provider-specific authorization
+and token-exchange behavior.
+
+The optional `cors` property controls runtime CORS handling; set it to `false` to
+disable the built-in layer. The optional application `fetch()` handler receives
+requests that do not match the runtime, OAuth, or tool-call routes.
+
+## Related documentation
+
+- [Bindings guide](./src/bindings/README.md)
+- [Repository guidelines](../../AGENTS.md)
+- [Testing strategy](../../TESTING.md)

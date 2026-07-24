@@ -32,7 +32,7 @@
  * with a `{type:"done"}` terminal line (see links/protocol/relay.ts).
  */
 
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";

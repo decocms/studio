@@ -25,7 +25,7 @@
  * Deps are injected so the loop is unit-testable without a real studio or rclone.
  */
 
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 
 export interface InvalidatorDeps {
   /**

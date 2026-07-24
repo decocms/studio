@@ -18,7 +18,7 @@
  * runtime in production.
  *
  * Uses `ignoreIncompleteToolCalls: true` to match the decopilot pipeline
- * at `apps/mesh/src/api/routes/decopilot/conversation.ts:164-167` — if a
+ * at `apps/api/src/api/routes/decopilot/conversation.ts:164-167` — if a
  * prior turn left a tool call without a corresponding result (e.g. the
  * stream was aborted mid-tool), we drop it rather than fail conversion.
  *

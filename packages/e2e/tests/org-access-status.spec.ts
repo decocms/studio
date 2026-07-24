@@ -1,5 +1,5 @@
 /**
- * Migration of apps/mesh/src/api/routes/auth.test.ts to a real e2e spec.
+ * Migration of apps/api/src/api/routes/auth.test.ts to a real e2e spec.
  *
  * The unit test mocked `auth.api.getSession` and `auth.api.listUserInvitations`
  * to drive each branch of the endpoint's status decision. That made it

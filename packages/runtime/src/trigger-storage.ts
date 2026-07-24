@@ -31,8 +31,8 @@ interface StudioKVOptions {
  * const triggers = createTriggers({
  *   definitions: [...],
  *   storage: new StudioKV({
- *     url: process.env.MESH_URL!,
- *     apiKey: process.env.MESH_API_KEY!,
+ *     url: process.env.STUDIO_URL!,
+ *     apiKey: process.env.STUDIO_API_KEY!,
  *   }),
  * });
  * ```
