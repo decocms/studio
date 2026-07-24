@@ -2062,6 +2062,15 @@ export function SectionsEditor({
     nextName: string,
   ) => {
     cancelPendingRuleSaves();
+    // Also cancel a pending section-field autosave — it reads the current
+    // variant's sections fresh via latestRef when it fires and writes the
+    // whole page block. This function itself persists a `sections` snapshot
+    // taken now, so a still-pending timer firing during the awaits below
+    // would have its write clobbered by this stale snapshot.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
 
     const pageKey = latestRef.current.activePageKey;
     const latestDecofile: Record<string, unknown> = latestRef.current.decofile;
@@ -2201,6 +2210,15 @@ export function SectionsEditor({
     nextName: string,
   ) => {
     cancelPendingRuleSaves();
+    // Also cancel a pending section-field autosave — it targets the same
+    // section's `rawSections[index]` and this function persists a
+    // `latestRawSections` snapshot taken now, so a still-pending timer firing
+    // during the awaits below would have its write clobbered by this stale
+    // snapshot.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
 
     const {
       selectedSectionIndex: sectionIndex,
