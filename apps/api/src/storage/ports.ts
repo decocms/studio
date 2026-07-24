@@ -31,8 +31,8 @@ import type {
   OrganizationTag,
   Thread,
   ThreadMessage,
-  UserModelPreferences,
 } from "./types";
+import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 
 export type ThreadUpdateData = Partial<Thread> & {
   /**

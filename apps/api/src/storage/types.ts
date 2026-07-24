@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
+import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { PrivateRegistryDatabase } from "./registry/types";
 
@@ -155,13 +156,6 @@ export type SimpleModeTier =
 
 export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
-}
-
-export type ChatTier = "fast" | "smart" | "thinking";
-
-/** Per-user override of the chat tier → model mapping (see resolveTier). */
-export interface UserModelPreferences {
-  tiers: Partial<Record<ChatTier, SimpleModeModelSlot | null>>;
 }
 
 export interface UserModelPreferencesTable {
