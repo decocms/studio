@@ -654,7 +654,9 @@ export function publish(
   // through to pushBranch and fail with an opaque "Invalid username or token".
   const originUrl = tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "";
   if (originUrl.includes("github.com") && !cloneUrlHasCredentials(originUrl)) {
-    throw new Error(
+    // Missing GitHub credentials is a config/state condition (mirrors the
+    // detached-HEAD/protected-branch refusals above), not a server fault.
+    throw new PublishBlockedError(
       "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
     );
   }

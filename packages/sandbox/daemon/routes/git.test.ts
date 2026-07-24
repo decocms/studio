@@ -634,6 +634,26 @@ describe("git routes", () => {
     );
   });
 
+  it("publish route returns 409 (not 500) for a tokenless github origin", async () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    gitSync(["remote", "add", "origin", "https://github.com/owner/repo.git"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "no creds" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/authenticated clone URL/);
+  });
+
   it("publish skips failing pre-commit hooks", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
