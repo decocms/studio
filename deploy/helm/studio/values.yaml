@@ -73,7 +73,7 @@ worker:
   # a distinct `app.kubernetes.io/name` (`<name>-worker`), so the main Service
   # selector does not match them.
   # When true, render a second Deployment (`<fullname>-worker`) that dequeues
-  # only the agent/automation run queues (MESH_DISPATCH_ROLE=worker). Required
+  # only the agent/automation run queues (STUDIO_DISPATCH_ROLE=worker). Required
   # because the main Deployment now runs API-only containers behind nginx.
   enabled: true
   replicaCount: 2
@@ -94,7 +94,7 @@ worker:
   # not consolidate/drift-evict a worker mid-run (see worker-deployment.yaml).
   # Default on; set false where Karpenter isn't the node provisioner. (A
   # PodDisruptionBudget for forced/involuntary eviction is deployed alongside,
-  # in the deco-apps-cd wrapper chart, next to the existing mesh PDB.)
+  # in the deco-apps-cd wrapper chart, next to the existing Studio PDB.)
   doNotDisrupt: true
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
@@ -127,6 +127,9 @@ nginx:
   frontDoorLabels: {}
 
 configMap:
+  # DEPRECATED NAME — retained as a values-API compatibility surface for
+  # existing releases. These are Studio API settings; a future chart major may
+  # rename this key to `studioConfig`.
   meshConfig:
     NODE_ENV: "production"
     PORT: "3000"
@@ -364,7 +367,7 @@ nats:
 # configMap.meshConfig or in the Secret (Secret wins — use it for an
 # authenticated URL, see examples/values-clickhouse.yaml).
 # The dashboard reads the studio_monitoring_logs VIEW — provision it once
-# (apps/mesh/src/monitoring/clickhouse-setup.md).
+# (apps/api/src/monitoring/clickhouse-setup.md).
 clickhouse-operator:
   enabled: false
   controller:
@@ -383,7 +386,7 @@ clickhouse-cluster:
     # WARNING: raising replicas/shards does NOT replicate/distribute the data
     # by itself — the table DDL must change in lockstep (ReplicatedMergeTree /
     # Distributed). See "Scaling beyond a single node" in
-    # apps/mesh/src/monitoring/clickhouse-setup.md.
+    # apps/api/src/monitoring/clickhouse-setup.md.
     spec:
       replicas: 1
       shards: 1

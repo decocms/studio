@@ -26,7 +26,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import {
   type KubeConfig,
   KubeConfig as KubeConfigClass,
@@ -110,7 +110,7 @@ function errMsg(err: unknown): string {
 /**
  * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
  * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
- * The studio edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
+ * The Studio edge (`apps/api/src/sandbox/preview-proxy.ts`) swaps these for an
  * auto-reloading "connecting" page on top-level document navigations.
  */
 export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
@@ -352,7 +352,7 @@ export interface AgentSandboxProviderOptions {
    * OpenTelemetry meter for runner-level metrics (active gauge, ensure
    * outcome counter, proxy duration histogram). Optional — when absent,
    * runner is fully functional but emits no metrics. Tests typically pass
-   * undefined; studio wires `metrics.getMeter("mesh", "1.0.0")`.
+   * undefined; Studio wires `metrics.getMeter("studio", "1.0.0")`.
    */
   meter?: Meter;
   /**

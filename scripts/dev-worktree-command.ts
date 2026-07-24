@@ -25,7 +25,7 @@ export function buildDevCommand(options: BuildDevCommandOptions): string[] {
   return [
     "bun",
     "run",
-    join(options.repoRoot, "apps/mesh/src/cli.ts"),
+    join(options.repoRoot, "apps/api/src/cli.ts"),
     "dev",
     "--port",
     String(options.port),

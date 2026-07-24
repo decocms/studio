@@ -48,7 +48,7 @@ function isClusterContext(ctx: HarnessContext): boolean {
 // ── Environment-deps registration seam ──────────────────────────────────────
 // The factory looks the cluster deps builder up from a module-scoped registry
 // instead of statically importing the `@/`-coupled cluster assembler
-// (`apps/mesh/src/harnesses/decopilot/harness-deps`). That keeps this package
+// (`apps/api/src/harnesses/decopilot/harness-deps`). That keeps this package
 // entry free of `@/` imports; the studio barrel registers the implementation.
 export interface ClusterEnvironmentBuilderArgs {
   ctx: HarnessContext;
@@ -99,7 +99,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
         if (!clusterEnvironmentBuilder) {
           throw new Error(
             "[decopilot] cluster environment builder not registered — " +
-              "apps/mesh/src/harnesses must be imported before dispatching " +
+              "apps/api/src/harnesses must be imported before dispatching " +
               "the decopilot harness in cluster mode",
           );
         }

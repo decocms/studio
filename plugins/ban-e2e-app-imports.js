@@ -11,7 +11,7 @@
 //   - the explicit ALLOWLIST below (runner + DB + MCP test client + the
 //     wire-protocol packages a fake daemon needs).
 //
-// Everything else is denied — in particular the "@/" mesh path alias and any
+// Everything else is denied — in particular any app-local "@/" alias and any
 // reach-in to an app's "src" tree, AND any workspace package NOT on the
 // allowlist. The last point is deliberate: app code migrating into packages
 // over time must not silently widen the test's surface. Adding a dependency is
@@ -33,7 +33,7 @@ const ALLOWED_EXACT = new Set([
 // Scoped packages allowed at the root or any subpath export (`pkg` / `pkg/sub`).
 const ALLOWED_SCOPED = [
   "@modelcontextprotocol/sdk",
-  "@decocms/std",
+  "@decocms/shared",
   "@decocms/tunnel",
   "@decocms/sandbox",
   "@decocms/harness",
@@ -48,7 +48,7 @@ function isAtAlias(spec) {
   return spec.startsWith("@/");
 }
 function reachesAppSrc(spec) {
-  // e.g. "../../../apps/mesh/src/core/org-archived" or "apps/mesh/src/x"
+  // e.g. "../../../apps/api/src/core/org-archived" or "apps/web/src/x"
   return /(^|\/)apps\/[^/]+\/src(\/|$)/.test(spec);
 }
 function isAllowed(spec) {
@@ -69,12 +69,12 @@ const banE2eAppImportsRule = {
       const spec = src.value;
 
       // Reach-ins are checked first — a RELATIVE specifier like
-      // "../../../apps/mesh/src/x" must still be caught, so these precede the
+      // "../../../apps/api/src/x" must still be caught, so these precede the
       // relative-import allow below.
       if (isAtAlias(spec)) {
         context.report({
           node: src,
-          message: `e2e isolation: "${spec}" uses the "@/" mesh path alias, which resolves into app source. The e2e suite is a black-box contract — it must not import app source. Inline the expected shape (the test owning its contract is correct, not duplication) or import a published workspace package.`,
+          message: `e2e isolation: "${spec}" uses an app-local "@/" path alias. The e2e suite is a black-box contract — it must not import app source. Inline the expected shape (the test owning its contract is correct, not duplication) or import an allowlisted workspace package.`,
         });
         return;
       }
@@ -82,7 +82,7 @@ const banE2eAppImportsRule = {
       if (reachesAppSrc(spec)) {
         context.report({
           node: src,
-          message: `e2e isolation: "${spec}" reaches into app source (an apps/<name>/src tree). The e2e suite must stay decoupled from the implementation — inline the contract or depend on a published workspace package.`,
+          message: `e2e isolation: "${spec}" reaches into app source (an apps/<name>/src tree). The e2e suite must stay decoupled from the implementation — inline the contract or depend on an allowlisted workspace package.`,
         });
         return;
       }
@@ -102,7 +102,7 @@ const banE2eAppImportsRule = {
       });
     };
 
-    // Known gap: a type-position `import("../../apps/mesh/src/...").Foo`
+    // Known gap: a type-position `import("../../apps/api/src/...").Foo`
     // (TSImportType) is NOT caught — oxlint's experimental JS-plugin traversal
     // doesn't dispatch named visitors for TS type nodes (verified against
     // oxlint 1.23.0). The risk is low: a type-only import is erased at runtime

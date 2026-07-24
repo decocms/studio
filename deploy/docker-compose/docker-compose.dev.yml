@@ -1,7 +1,7 @@
 # Local development infrastructure
 #
 # Starts PostgreSQL and a 3-node NATS JetStream cluster — mirrors production topology.
-# The studio server itself runs from source via: bun run --cwd=apps/mesh dev:server
+# The Studio API itself runs from source via: bun run --cwd=apps/api dev:server
 #
 # Usage:
 #   docker compose -f deploy/docker-compose/docker-compose.dev.yml up -d
@@ -11,7 +11,7 @@
 #   NATS_URL=nats://localhost:4222   (client_advertise propaga os outros nós automaticamente)
 #
 # Example:
-#   DECOCMS_LOCAL_MODE=true bun run --cwd=apps/mesh dev:server
+#   DECOCMS_LOCAL_MODE=true bun run --cwd=apps/api dev:server
 
 services:
   # ============================================================================

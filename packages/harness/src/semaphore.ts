@@ -3,7 +3,7 @@
  *
  * Used to bound how many `subtask` core runs execute at once across a single
  * process (decision Q17: a small cap). This is a GATE, not a retry/backoff
- * loop — the `@decocms/std` backoff/sleep primitives don't apply. It is a
+ * loop — the `@decocms/shared/std` backoff/sleep primitives don't apply. It is a
  * plain FIFO counting semaphore with `AbortSignal` support so a waiter blocked
  * on a full gate can be cancelled (parent tool-call abort) without leaking a
  * permit or an orphaned waiter.

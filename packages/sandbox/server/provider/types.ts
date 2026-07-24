@@ -65,7 +65,7 @@ export interface Workload {
 export interface EnsureOptions {
   /**
    * Branch slug for handle composition. The sandbox proxy
-   * (`apps/mesh/src/api/routes/sandbox-proxy.ts`) ALWAYS derives the claim
+   * (`apps/api/src/api/routes/sandbox-proxy.ts`) ALWAYS derives the claim
    * handle from the URL-path branch, so the runner MUST agree or every
    * proxy call 404s with `unknown handle`. Callers that also drive the
    * proxy (i.e. SANDBOX_START / ensureSandbox) MUST pass this; `repo.branch`

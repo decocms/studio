@@ -35,7 +35,7 @@ import {
   type UIMessageChunk,
   type UIMessageStreamWriter,
 } from "ai";
-import type { MeshProvider } from "./mesh-provider";
+import type { StudioProvider } from "./studio-provider";
 
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import {
@@ -46,7 +46,7 @@ import { generateMessageId } from "../message-id";
 import { resolveModeConfig } from "./mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
-import { createLanguageModel } from "./mesh-provider";
+import { createLanguageModel } from "./studio-provider";
 import { genTitle } from "../title-generator";
 import { extractUserText } from "../cli-message-prep";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
@@ -58,7 +58,7 @@ import type {
 } from "./engine";
 import type { DecopilotRunContext } from "./run-context";
 import { sanitizeStreamError, stringifyError } from "../stream-error";
-import { isDecopilot } from "@decocms/mesh-sdk";
+import { isDecopilot } from "@decocms/shared/sdk";
 import {
   createAgentPrepareStep,
   reconstructEnabledTools,
@@ -139,11 +139,11 @@ export interface DecopilotTelemetry {
  */
 export interface RunDecopilotStreamExtras {
   /** Provider reconstructed from DecopilotRunContext.modelSources.thinking. */
-  provider: MeshProvider;
+  provider: StudioProvider;
 
   /** Provider/model used only for title generation. Lets Decopilot use the org
    *  fast tier even when the main chat model uses another tier/credential. */
-  titleProvider?: MeshProvider | null;
+  titleProvider?: StudioProvider | null;
   titleModel?: ModelSelection | null;
 
   /** Run-registry abort signal for this run. Listened to by streamText and
@@ -326,7 +326,7 @@ export async function* runDecopilotStream(
     const seen = new Set<string>();
     const chain: Array<() => LanguageModelV3> = [];
     const push = (
-      prov: MeshProvider,
+      prov: StudioProvider,
       sel: ModelSelection | null | undefined,
     ) => {
       if (!sel || seen.has(sel.id)) return;
@@ -442,7 +442,7 @@ export async function* runDecopilotStream(
   //   - `additionalSystemMessages` → per-request inline <system> blocks
   const vmMetadata = runContext?.virtualMcp.metadata as
     | {
-        githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+        githubRepo?: import("@decocms/shared/sdk").GithubRepo | null;
         subAgents?: string[] | null;
       }
     | undefined;

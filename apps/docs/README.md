@@ -1,175 +1,165 @@
-# Deco docs
+# Studio Documentation
 
-Created from the template:
-[MCP with Astro Docs View](https://github.com/deco-cx/astro-docs-view)
+Publishes current and legacy deco Studio documentation with Astro.
 
-A full-stack template for building
-[Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/) servers
-with a modern Astro documentation site. This template provides a complete
-development environment where your MCP server not only exposes tools and
-workflows to AI agents but also serves a beautiful documentation interface built
-with Astro and Starlight.
+| Attribute | Value |
+| --- | --- |
+| Workspace | `@decocms/docs` (`apps/docs`) |
+| Kind | Astro documentation site |
+| Runtime | Node.js 22+ |
+| Distribution | Static site on Cloudflare Pages |
 
-## ✨ Features
+## Overview
 
-- **🤖 MCP Server**: Cloudflare Workers-based server with typed tools and
-  workflows
-- **⭐ Astro Frontend**: Modern Astro app with Starlight documentation theme
-- **📚 Documentation Ready**: Pre-configured Starlight theme for beautiful docs
-- **🎨 Tailwind CSS**: Full Tailwind CSS integration with custom theming
-- **🔧 Type Safety**: Full TypeScript support with auto-generated RPC client
-  types
-- **🚀 Hot Reload**: Live development with automatic rebuilding for both
-  frontend and backend
-- **☁️ Ready to Deploy**: One-command deployment to Cloudflare Workers
+This workspace builds the public Studio documentation as a static Astro site.
+It supports versioned product content, English and Brazilian Portuguese
+locales, MDX pages, React-enhanced components, and redirects for historical
+URLs.
 
-## 🚀 Quick Start
+Documentation under `apps/docs` describes the intended system design and
+behavior. It is both product documentation and a target specification. When the
+implementation and documentation differ, do not weaken the documentation to
+match an incomplete implementation.
 
-### Prerequisites
+## Responsibilities
 
-- Node.js ≥22.0.0
+- Publish current Studio guides, concepts, self-hosting instructions, and API
+  reference content.
+- Preserve the legacy `deco-chat` documentation set alongside the current
+  `deco-studio` set.
+- Generate versioned and localized routes for `en` and `pt-br`.
+- Render MDX through the shared documentation layouts and components.
+- Maintain navigation, product metadata, locale strings, syntax highlighting,
+  styles, and static assets.
+- Redirect legacy and `latest` URLs to stable versioned destinations.
+- Produce the static `dist/client` bundle deployed to Cloudflare Pages.
 
-### Setup
+## Usage
+
+Install dependencies and start the documentation server from the repository
+root:
 
 ```bash
-# Install dependencies
-npm install
-
-# Configure your app
-npm run configure
-
-# Start development server
-npm run dev
+bun install
+bun run --cwd=apps/docs dev
 ```
 
-The server will start on `http://localhost:8787` serving both your MCP endpoints
-and the Astro documentation site.
+The site runs at `http://localhost:4000`.
 
-## 📁 Project Structure
+Validate and build the static site with:
 
-```
-├── server/           # MCP Server (Cloudflare Workers + Deco runtime)
-│   ├── main.ts      # Server entry point with tools & workflows
-│   └── deco.gen.ts  # Auto-generated integration types
-└── view/            # Astro Documentation Site (Starlight theme)
-    ├── src/
-    │   ├── content/docs/  # Documentation content (MDX/Markdown)
-    │   ├── assets/        # Static assets
-    │   └── content.config.ts  # Content configuration
-    └── astro.config.mjs   # Astro configuration with Starlight
+```bash
+bun run --cwd=apps/docs check
+bun run --cwd=apps/docs build
 ```
 
-## 🛠️ Development Workflow
+The build output is `apps/docs/dist/client`.
 
-- **`npm run dev`** - Start development with hot reload
-- **`npm run gen`** - Generate types for external integrations
-- **`npm run gen:self`** - Generate types for your own tools/workflows
-- **`npm run deploy`** - Deploy to production
+Deploy with Wrangler after authenticating to the Cloudflare account that owns
+the `decocms-docs` Pages project:
 
-## 📖 Documentation Features
+```bash
+bun run --cwd=apps/docs deploy
+```
 
-The template includes a fully configured Starlight documentation theme with
-Tailwind CSS:
+## Architecture
 
-- **📝 MDX Support**: Write documentation in Markdown with React components
-- **🔍 Full-Text Search**: Built-in search functionality
-- **📱 Responsive Design**: Mobile-friendly documentation
-- **🎨 Tailwind Theming**: Customizable theme with Tailwind CSS variables
-- **🎨 Customizable Theme**: Easy to customize colors, fonts, and layout
-- **📚 Auto-Generated Sidebar**: Automatic navigation from your content
-  structure
+Astro uses `client` as its source root. The content collection loads every MDX
+file under `client/src/content`, and the route layer interprets the first two
+path segments as product version and locale.
 
-## 📚 Content Management
+```text
+client/src/content/<version>/<locale>/<slug>.mdx
+                         |
+                         v
+              Astro content collection
+                         |
+                         v
+            versioned and localized routes
+                         |
+                         v
+                  dist/client
+```
 
-Add documentation by creating MDX files in `view/src/content/docs/`:
+Key paths:
 
-```mdx
+| Path | Purpose |
+| --- | --- |
+| `astro.config.mjs` | Astro root, output, Markdown, React, Tailwind, and port configuration |
+| `client/src/content/` | Versioned MDX source content |
+| `client/src/content.config.ts` | Content loader and frontmatter schema |
+| `client/src/pages/` | Static route generation and compatibility redirects |
+| `client/src/config/versions.ts` | Product versions, labels, roots, and latest-version selection |
+| `client/src/i18n/` | Supported locales and translated interface strings |
+| `client/src/layouts/` | Page-level documentation layouts |
+| `client/src/components/` | Astro and React rendering components |
+| `client/src/styles/` | Site and Markdown presentation |
+| `client/public/` | Static assets and hosting redirects |
+
+The current version ID is `deco-studio`. `deco-chat` remains available as the
+legacy documentation version. `/latest/...` and unversioned locale URLs redirect
+to the configured current version.
+
+## Development
+
+Create content at:
+
+```text
+apps/docs/client/src/content/<version>/<locale>/<slug>.mdx
+```
+
+Every document must satisfy the content schema:
+
+```yaml
 ---
-title: My Documentation Page
-description: A brief description of this page
+title: Page title
+description: A concise page description
+icon: optional-icon-name
 ---
-
-# My Documentation Page
-
-This is a documentation page written in MDX.
-
-## Features
-
-- Supports **Markdown** syntax
-- Can include **React components**
-- Full **TypeScript** support
 ```
 
-## 🎨 Customization
+Use `bun run --cwd=apps/docs check` while editing. It runs `astro sync` before
+TypeScript so generated content types stay current. Run
+`bun run --cwd=apps/docs build` before review to catch route generation,
+frontmatter, and rendering failures. This workspace does not define a separate
+test script; type checking and the production build are its focused validation
+steps.
 
-### Tailwind CSS Theming
+When adding a product documentation version, update
+`client/src/config/versions.ts` and add matching content roots. When adding
+locale-aware interface text, update `client/src/i18n/ui.ts`.
 
-The template includes full Tailwind CSS integration with custom theming. Edit
-`view/src/styles/global.css` to customize your theme:
+## Boundaries
 
-```css
-@theme {
-  /* Custom fonts */
-  --font-sans: "Atkinson Hyperlegible";
-  --font-mono: "IBM Plex Mono";
+- `apps/docs` owns documentation content and the documentation site's
+  presentation; it does not own Studio API or web runtime behavior.
+- Treat current documentation as the intended contract, even when application
+  work is still converging on it.
+- Do not import implementation from `apps/api/src` or `apps/web/src`. Link to
+  source or public contracts when implementation context is useful.
+- Keep product-version compatibility in the route layer. Do not copy stale
+  content into the current version solely to preserve an old URL.
+- Update English and Brazilian Portuguese counterparts together when a page
+  exists in both locales.
+- Keep commands executable from the repository root and identify the workspace
+  explicitly.
 
-  /* Custom accent colors (currently set to green) */
-  --color-accent-50: var(--color-green-50);
-  --color-accent-500: var(--color-green-500);
-  --color-accent-900: var(--color-green-900);
+## Content conventions
 
-  /* Custom gray scale */
-  --color-gray-50: var(--color-zinc-50);
-  --color-gray-900: var(--color-zinc-900);
-}
-```
+- Use clear Studio terminology and present tense.
+- Put the current product documentation under `deco-studio`.
+- Keep historical product behavior under `deco-chat` and label it as legacy.
+- Store reusable presentation in `client/src/components` or
+  `client/src/layouts`, not inside repeated MDX markup.
+- Put files that must retain their public name in `client/public`.
+- Add redirects in the route files only when an existing public URL needs
+  compatibility.
 
-You can customize:
+## Related documentation
 
-- **Fonts**: Change the sans-serif and monospace fonts
-- **Accent Colors**: Modify the primary accent color scheme
-- **Gray Scale**: Adjust the neutral color palette
-- **Additional Styles**: Add custom Tailwind utilities
-
-### Starlight Configuration
-
-Edit `view/astro.config.mjs` to customize your documentation site:
-
-```javascript
-starlight({
-  title: "My Documentation",
-  social: [
-    { icon: "github", label: "GitHub", href: "https://github.com/your-repo" },
-  ],
-  sidebar: [
-    {
-      label: "Guides",
-      items: [
-        { label: "Getting Started", slug: "guides/getting-started" },
-      ],
-    },
-  ],
-});
-```
-
-### Adding Content
-
-1. Create new MDX files in `view/src/content/docs/`
-2. Update the sidebar configuration in `astro.config.mjs`
-3. Use Starlight components for enhanced documentation features
-4. Apply Tailwind CSS classes directly in your MDX content
-
-## 📖 Learn More
-
-This template is built for deploying primarily on top of the
-[Deco platform](https://decocms.com) which can be found at the
-[deco-cx/chat](https://github.com/deco-cx/chat) repository.
-
-- [Astro Documentation](https://docs.astro.build/)
-- [Starlight Documentation](https://starlight.astro.build/)
-- [Deco Platform](https://decocms.com/)
-
----
-
-**Ready to build your next MCP server with beautiful documentation?
-[Get started now!](https://decocms.com)**
+- [Studio API](../api/README.md)
+- [Studio web app](../web/README.md)
+- [Repository guidelines and documentation philosophy](../../AGENTS.md)
+- [Project overview](../../README.md)
+- [Astro documentation](https://docs.astro.build/)
+- [Cloudflare Pages deployment documentation](https://developers.cloudflare.com/pages/)

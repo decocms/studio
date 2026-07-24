@@ -214,7 +214,7 @@ const NODES: Record<string, Node> = {
     tag: "role=worker · dbos",
     replicas: true,
     role: "Run executor",
-    desc: "MESH_DISPATCH_ROLE=worker. Dequeues the DBOS queues it listens on (THREAD_GATE serial-per-thread; AUTOMATIONS per-org) via listenQueues — set by env — and runs the agent loop: streamText, model → tool → repeat, ~200 steps. Calls MCP tools in-process and the sandbox daemon for fs/git/bash. CPU-bound. Scales horizontally; pools can be split per queue to run different DBOS workflows with their own resources.",
+    desc: "STUDIO_DISPATCH_ROLE=worker. Dequeues the DBOS queues it listens on (THREAD_GATE serial-per-thread; AUTOMATIONS per-org) via listenQueues — set by env — and runs the agent loop: streamText, model → tool → repeat, ~200 steps. Calls MCP tools in-process and the sandbox daemon for fs/git/bash. CPU-bound. Scales horizontally; pools can be split per queue to run different DBOS workflows with their own resources.",
     facts: [
       ["Drives", "the agent loop"],
       ["Queues", "DBOS listenQueues (env)"],

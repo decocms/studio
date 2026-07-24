@@ -24,7 +24,7 @@ jobs:
 
       - name: Get chart version
         id: chart
-        run: echo "version=$(grep '^version:' deploy/helm/studio/Chart.yaml | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep '^version:' deploy/helm/studio/Chart.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         run: helm registry login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
@@ -36,11 +36,11 @@ jobs:
         run: helm push chart-deco-studio-${{ steps.chart.outputs.version }}.tgz oci://ghcr.io/decocms
 
       - name: Summary
-        run: echo "Published ghcr.io/decocms/chart-deco-studio:${{ steps.chart.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        run: echo "Published ghcr.io/decocms/chart-deco-studio:${{ steps.chart.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # GitOps: tell deco-apps-cd to bump the chart version. Mirrors the image path
-  # in release-mesh.yaml — we do NOT write into that repo from here, we fire a
+  # in release-studio.yaml — we do NOT write into that repo from here, we fire a
   # `studio-chart-bump` repository_dispatch and its own bump-studio-chart.yml
   # self-commits (rewriting Chart.yaml + regenerating Chart.lock + the vendored
   # tgz). Without this, chart bumps were manual and stranded the lock/tgz,

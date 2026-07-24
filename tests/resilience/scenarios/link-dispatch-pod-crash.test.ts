@@ -1,5 +1,5 @@
 /**
- * Resilience scenario: link dispatch when the mesh pod crashes.
+ * Resilience scenario: link dispatch when the Studio API pod crashes.
  *
  * The link-tunnel topology is:
  *
@@ -7,7 +7,7 @@
  *
  * When the pod that owns the daemon's WebSocket crashes:
  *   1. The daemon's WS connection closes (TCP RST or our heartbeat timeout).
- *   2. The daemon's reconnect loop (`reconnect-backoff.ts`) re-dials mesh.
+ *   2. The daemon's reconnect loop (`reconnect-backoff.ts`) re-dials Studio.
  *   3. On reconnect the daemon sends a `hello` frame; the pod claims the user
  *      in the NATS JS KV bucket (last-writer-wins — the new pod takes over).
  *   4. Subsequent dispatches route to the new pod and succeed.
@@ -35,7 +35,7 @@
  *   - A `link-daemon` service that dials `ws://studio:3000/api/links/connect`
  *     with a valid bearer token and sends a `hello` frame.
  *   - A Toxiproxy proxy for `studio:3000` (WS path) so the daemon ↔ studio
- *     link can be severed independently from the NATS mesh ↔ mesh path.
+ *     link can be severed independently from the NATS API-pod ↔ API-pod path.
  *
  * Then the full scenario would be:
  *   1. Confirm daemon is connected (`GET /api/links/me` returns a claim).

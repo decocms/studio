@@ -1,4 +1,4 @@
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

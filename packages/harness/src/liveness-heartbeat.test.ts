@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import {
   buildLivenessChunk,
   HeartbeatEmitter,

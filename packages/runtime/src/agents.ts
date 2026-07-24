@@ -114,7 +114,7 @@ interface VirtualMcpItem {
  * are covered by a binding. Until then, a rename of a tool or field on the
  * server requires a matching change here.
  */
-interface MeshAgentClient {
+interface StudioAgentClient {
   COLLECTION_VIRTUAL_MCP_LIST: (input: {
     where?: {
       operator: "and";
@@ -161,12 +161,12 @@ interface MeshAgentClient {
   }>;
 }
 
-function createMeshSelfClient(
-  meshUrl: string,
+function createStudioSelfClient(
+  studioUrl: string,
   token?: string,
-): MeshAgentClient {
-  const connection = proxyConnectionForId("self", { meshUrl, token });
-  return MCPClient.forConnection(connection) as unknown as MeshAgentClient;
+): StudioAgentClient {
+  const connection = proxyConnectionForId("self", { studioUrl, token });
+  return MCPClient.forConnection(connection) as unknown as StudioAgentClient;
 }
 
 /**
@@ -210,15 +210,17 @@ function triggerArgs(automationId: string, trigger: AutomationTrigger) {
  * resaved config (which re-fires onInstall) from minting duplicates.
  */
 export function makeCreateAgent(
-  meshUrl: string | undefined,
+  studioUrl: string | undefined,
   token: string | undefined,
   connectionId: string | undefined,
 ): (input: CreateAgentInput) => Promise<CreateAgentResult> {
   return async (input) => {
-    if (!meshUrl) {
-      throw new Error("createAgent: missing meshUrl in MESH_REQUEST_CONTEXT");
+    if (!studioUrl) {
+      throw new Error(
+        "createAgent: missing studioUrl in STUDIO_REQUEST_CONTEXT",
+      );
     }
-    const self = createMeshSelfClient(meshUrl, token);
+    const self = createStudioSelfClient(studioUrl, token);
 
     const existing = await self.COLLECTION_VIRTUAL_MCP_LIST({
       where: {

@@ -1,0 +1,333 @@
+import { createHash } from "node:crypto";
+import type { Kysely } from "kysely";
+import type { CredentialVault } from "../encryption/credential-vault";
+import type { ProviderKeyCache } from "./provider-key-cache";
+import type { Database, ProviderKeyInfo } from "./types";
+import type { ProviderId } from "@decocms/shared/sdk";
+import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+
+function hashApiKey(apiKey: string): string {
+  return createHash("sha256").update(apiKey).digest("hex");
+}
+
+export class AIProviderKeyStorage {
+  constructor(
+    private db: Kysely<Database>,
+    private vault: CredentialVault,
+    private cache?: ProviderKeyCache,
+  ) {}
+
+  private rowToKeyInfo(row: {
+    id: string;
+    provider_id: string;
+    label: string;
+    preset_id: string | null;
+    organization_id: string;
+    created_by: string;
+    created_at: Date | string;
+  }): ProviderKeyInfo {
+    return {
+      id: row.id,
+      providerId: row.provider_id as ProviderId,
+      label: row.label,
+      presetId: row.preset_id,
+      organizationId: row.organization_id,
+      createdBy: row.created_by,
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : String(row.created_at),
+    };
+  }
+
+  async create(params: {
+    providerId: ProviderId;
+    label: string;
+    apiKey: string; // plaintext — will be encrypted before storage
+    organizationId: string;
+    createdBy: string;
+    presetId?: string | null;
+  }): Promise<ProviderKeyInfo> {
+    const id = generatePrefixedId("aik");
+    const encryptedApiKey = await this.vault.encrypt(params.apiKey);
+    const keyHash = hashApiKey(params.apiKey);
+    const createdAt = new Date();
+    const presetId = params.presetId ?? null;
+
+    await this.db
+      .insertInto("ai_provider_keys")
+      .values({
+        id,
+        organization_id: params.organizationId,
+        provider_id: params.providerId,
+        label: params.label,
+        preset_id: presetId,
+        encrypted_api_key: encryptedApiKey,
+        key_hash: keyHash,
+        created_by: params.createdBy,
+        created_at: createdAt,
+      })
+      .execute();
+
+    return this.rowToKeyInfo({
+      id,
+      provider_id: params.providerId,
+      label: params.label,
+      preset_id: presetId,
+      organization_id: params.organizationId,
+      created_by: params.createdBy,
+      created_at: createdAt,
+    });
+  }
+
+  /**
+   * Insert-or-update a key for a provider.
+   * If a row with the same (organization_id, provider_id, key_hash) already
+   * exists the label and audit fields are refreshed; the encrypted key and id
+   * remain unchanged. This makes the OAuth exchange idempotent when the
+   * upstream provider returns the same key on every authorization.
+   */
+  async upsert(params: {
+    providerId: ProviderId;
+    label: string;
+    apiKey: string; // plaintext — will be encrypted before storage
+    organizationId: string;
+    createdBy: string;
+    presetId?: string | null;
+  }): Promise<ProviderKeyInfo> {
+    const id = generatePrefixedId("aik");
+    const encryptedApiKey = await this.vault.encrypt(params.apiKey);
+    const keyHash = hashApiKey(params.apiKey);
+    const createdAt = new Date();
+    const presetId = params.presetId ?? null;
+
+    const row = await this.db
+      .insertInto("ai_provider_keys")
+      .values({
+        id,
+        organization_id: params.organizationId,
+        provider_id: params.providerId,
+        label: params.label,
+        preset_id: presetId,
+        encrypted_api_key: encryptedApiKey,
+        key_hash: keyHash,
+        created_by: params.createdBy,
+        created_at: createdAt,
+      })
+      .onConflict((oc) =>
+        oc.columns(["organization_id", "provider_id", "key_hash"]).doUpdateSet({
+          label: params.label,
+          preset_id: presetId,
+        }),
+      )
+      .returning([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirstOrThrow();
+
+    // Rotation: the encrypted key may have changed for an existing id, so evict
+    // (and broadcast) to stop replicas serving the previous key.
+    this.cache?.invalidate(params.organizationId, row.id);
+
+    return this.rowToKeyInfo(row);
+  }
+
+  async list(params: {
+    organizationId: string;
+    providerId?: ProviderId;
+  }): Promise<ProviderKeyInfo[]> {
+    let query = this.db
+      .selectFrom("ai_provider_keys")
+      .where("organization_id", "=", params.organizationId)
+      .select([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ]);
+
+    if (params.providerId) {
+      query = query.where("provider_id", "=", params.providerId);
+    }
+
+    const rows = await query.orderBy("created_at", "desc").execute();
+
+    return rows.map((row) => this.rowToKeyInfo(row));
+  }
+
+  /** Decrypt and return the raw API key. Only call when you need to make provider API calls. */
+  async resolve(
+    keyId: string,
+    organizationId: string,
+  ): Promise<{ keyInfo: ProviderKeyInfo; apiKey: string }> {
+    // The cache holds the encrypted key + metadata, never plaintext — decrypt
+    // happens per call (cheap CPU) so secrets stay request-scoped.
+    const cached = this.cache?.get(organizationId, keyId);
+    if (cached) {
+      return {
+        keyInfo: cached.keyInfo,
+        apiKey: await this.vault.decrypt(cached.encryptedApiKey),
+      };
+    }
+
+    const row = await this.db
+      .selectFrom("ai_provider_keys")
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .selectAll()
+      .executeTakeFirstOrThrow();
+
+    const keyInfo = this.rowToKeyInfo(row);
+    this.cache?.set(organizationId, keyId, {
+      keyInfo,
+      encryptedApiKey: row.encrypted_api_key,
+    });
+
+    return {
+      keyInfo,
+      apiKey: await this.vault.decrypt(row.encrypted_api_key),
+    };
+  }
+
+  async updateLabel(
+    keyId: string,
+    organizationId: string,
+    label: string,
+  ): Promise<ProviderKeyInfo> {
+    const row = await this.db
+      .updateTable("ai_provider_keys")
+      .set({ label })
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .returning([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirst();
+
+    if (!row) {
+      throw new Error(`AI provider key ${keyId} not found`);
+    }
+    // keyInfo (label) is cached too, so evict to avoid serving a stale label.
+    this.cache?.invalidate(organizationId, keyId);
+    return this.rowToKeyInfo(row);
+  }
+
+  async getPreview(
+    keyId: string,
+    organizationId: string,
+  ): Promise<{ label: string; maskedKey: string; baseUrl?: string }> {
+    const { keyInfo, apiKey } = await this.resolve(keyId, organizationId);
+    if (keyInfo.providerId === "openai-compatible") {
+      try {
+        const parsed = JSON.parse(apiKey) as {
+          baseUrl?: string;
+          apiKey?: string;
+        };
+        const rawKey = parsed.apiKey ?? "";
+        const maskedKey =
+          rawKey.length > 4
+            ? `${"•".repeat(8)}${rawKey.slice(-4)}`
+            : "•".repeat(rawKey.length || 1);
+        return { label: keyInfo.label, maskedKey, baseUrl: parsed.baseUrl };
+      } catch {
+        return { label: keyInfo.label, maskedKey: "••••••••" };
+      }
+    }
+    const maskedKey =
+      apiKey.length > 4
+        ? `${"•".repeat(8)}${apiKey.slice(-4)}`
+        : "•".repeat(apiKey.length || 1);
+    return { label: keyInfo.label, maskedKey };
+  }
+
+  async updateKey(
+    keyId: string,
+    organizationId: string,
+    updates: { label?: string; apiKey?: string },
+  ): Promise<ProviderKeyInfo> {
+    if (updates.apiKey !== undefined) {
+      const encryptedApiKey = await this.vault.encrypt(updates.apiKey);
+      const keyHash = hashApiKey(updates.apiKey);
+      const row = await this.db
+        .updateTable("ai_provider_keys")
+        .set({
+          ...(updates.label !== undefined ? { label: updates.label } : {}),
+          encrypted_api_key: encryptedApiKey,
+          key_hash: keyHash,
+        })
+        .where("id", "=", keyId)
+        .where("organization_id", "=", organizationId)
+        .returning([
+          "id",
+          "provider_id",
+          "label",
+          "preset_id",
+          "organization_id",
+          "created_by",
+          "created_at",
+        ])
+        .executeTakeFirst();
+      if (!row) throw new Error(`AI provider key ${keyId} not found`);
+      this.cache?.invalidate(organizationId, keyId);
+      return this.rowToKeyInfo(row);
+    }
+    if (updates.label !== undefined) {
+      return this.updateLabel(keyId, organizationId, updates.label);
+    }
+    return this.findById(keyId, organizationId);
+  }
+
+  async delete(keyId: string, organizationId: string): Promise<void> {
+    const result = await this.db
+      .deleteFrom("ai_provider_keys")
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    if (!result.numDeletedRows) {
+      throw new Error(`AI provider key ${keyId} not found`);
+    }
+    // Revocation: drop locally and broadcast so no replica keeps serving the
+    // deleted key until its TTL would have expired.
+    this.cache?.invalidate(organizationId, keyId);
+  }
+
+  async findById(
+    keyId: string,
+    organizationId: string,
+  ): Promise<ProviderKeyInfo> {
+    const row = await this.db
+      .selectFrom("ai_provider_keys")
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .select([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirst();
+    if (!row) {
+      throw new Error("Provider key not found");
+    }
+    return this.rowToKeyInfo(row);
+  }
+}

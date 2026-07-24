@@ -1,0 +1,855 @@
+import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
+import {
+  getUIResourceUri,
+  MCP_APP_DISPLAY_MODES,
+} from "@decocms/shared/mcp-apps/types";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@deco/ui/components/alert.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
+import { Textarea } from "@deco/ui/components/textarea.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import { Loading01 } from "@untitledui/icons";
+import { Link, useSearch } from "@tanstack/react-router";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@deco/ui/components/breadcrumb.tsx";
+import {
+  AlertCircle,
+  Box,
+  Clock,
+  Code01,
+  Copy01,
+  Database01,
+  LayersTwo01,
+  Play,
+  StopCircle,
+} from "@untitledui/icons";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+import { Suspense, useState } from "react";
+import { toast } from "sonner";
+import { ViewLayout } from "./layout";
+import {
+  OAuthAuthenticationState,
+  ManualAuthRequiredState,
+} from "./connection/settings-tab";
+import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
+import { useMCPAuthStatus } from "@/hooks/use-mcp-auth-status";
+import {
+  useConnection,
+  useMCPClient,
+  useMCPToolsListQuery,
+  useProjectContext,
+  type ConnectionEntity,
+} from "@/sdk";
+import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
+import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { ToolAnnotationBadges } from "@/components/tools/tools-list.tsx";
+import {
+  useOptionalChatStream,
+  useOptionalChatPrefs,
+} from "@/components/chat/context.tsx";
+import { usePanelActions } from "@/layouts/shell-layout";
+import { MonacoCodeEditor } from "../monaco-editor";
+import type { ToolInputProperty } from "@/components/tool-input-form";
+import { useT } from "@/i18n/use-t.ts";
+
+export interface ToolDetailsViewProps {
+  itemId: string;
+  siblings: ConnectionEntity[];
+  onBack: () => void;
+  onUpdate: (updates: Record<string, unknown>) => Promise<void>;
+}
+
+const beautifyToolName = (toolName: string) => {
+  return toolName
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toLocaleLowerCase());
+};
+
+function ToolDetailsContent({
+  toolName,
+  connectionId,
+  siblings,
+  onSelectInstance,
+  onBack,
+}: {
+  toolName: string;
+  connectionId: string;
+  siblings: ConnectionEntity[];
+  onSelectInstance: (id: string) => void;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const authStatus = useMCPAuthStatus({
+    connectionId: connectionId,
+  });
+
+  if (!authStatus.isAuthenticated) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        {authStatus.supportsOAuth ? (
+          <OAuthAuthenticationState
+            onAuthenticate={() => onBack()}
+            buttonText={t("details.tool.goBackToAuthenticate")}
+          />
+        ) : (
+          <ManualAuthRequiredState hasReadme={false} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <ToolDetailsAuthenticated
+      key={`${connectionId}:${toolName}`}
+      toolName={toolName}
+      connectionId={connectionId}
+      siblings={siblings}
+      onSelectInstance={onSelectInstance}
+    />
+  );
+}
+
+function ToolDetailsAuthenticated({
+  toolName,
+  connectionId,
+  siblings,
+  onSelectInstance,
+}: {
+  toolName: string;
+  connectionId: string;
+  siblings: ConnectionEntity[];
+  onSelectInstance: (id: string) => void;
+}) {
+  const t = useT();
+  // Read replayId from search params to check for prefilled input
+  const { replayId } = useSearch({ strict: false }) as { replayId?: string };
+
+  // Read replay input from sessionStorage (one-time, on mount)
+  const replayInput = (() => {
+    if (!replayId) return null;
+    const key = `replay-${replayId}`;
+    const stored = sessionStorage.getItem(key);
+    if (!stored) return null;
+    // Clear after reading (one-time use)
+    sessionStorage.removeItem(key);
+    try {
+      return JSON.parse(stored) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  })();
+
+  // Convert replay input to form-friendly format (stringify objects/arrays)
+  const replayInputForForm = (() => {
+    if (!replayInput) return null;
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(replayInput)) {
+      // Stringify objects and arrays for textarea/input fields
+      if (value !== null && typeof value === "object") {
+        result[key] = JSON.stringify(value, null, 2);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  })();
+
+  // Store only user edits; defaults are derived from the schema (no effect-driven initialization).
+  // If replay input exists, use it as initial edited params (with objects/arrays stringified).
+  const [editedParams, setEditedParams] = useState<Record<string, unknown>>(
+    replayInputForForm ?? {},
+  );
+  // For tools without `inputSchema.properties`, allow free-form JSON editing (including temporarily invalid JSON while typing).
+  // If replay input exists, stringify it for the raw JSON editor.
+  const [rawJsonText, setRawJsonText] = useState(
+    replayInput ? JSON.stringify(replayInput, null, 2) : "{}",
+  );
+  const [executionResult, setExecutionResult] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [rawToolResult, setRawToolResult] = useState<CallToolResult | null>(
+    null,
+  );
+  const [lastToolInput, setLastToolInput] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [stats, setStats] = useState<{
+    duration: string;
+    tokens?: string;
+    bytes?: string;
+    cost?: string;
+  } | null>(null);
+
+  const { org } = useProjectContext();
+  const connection = useConnection(connectionId);
+  const chatStream = useOptionalChatStream();
+  const chatPrefs = useOptionalChatPrefs();
+  const { openSidePanel } = usePanelActions();
+  const sourceId = `${connectionId}:${toolName}`;
+
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const toolsQuery = useMCPToolsListQuery({ client });
+
+  // Find the tool definition
+  const tool = toolsQuery.data?.tools?.find((t) => t.name === toolName);
+  const uiResourceUri = getUIResourceUri(tool?._meta);
+
+  const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    if (!chatStream) return;
+    const doc = contentBlocksToTiptapDoc(params.content);
+    if (doc.content.length > 0) {
+      openSidePanel("chat");
+      chatStream.sendMessage({ tiptapDoc: doc });
+    }
+  };
+
+  const [resultView, setResultView] = useState<"ui" | "json">("json");
+  const [hasSetDefaultView, setHasSetDefaultView] = useState(false);
+  // Default to UI view once the tool's resource URI becomes available
+  if (uiResourceUri && !hasSetDefaultView) {
+    setResultView("ui");
+    setHasSetDefaultView(true);
+  }
+
+  const toolProperties = tool?.inputSchema?.properties;
+  const toolPropertyKeys = toolProperties ? Object.keys(toolProperties) : [];
+  const hasToolProperties = toolPropertyKeys.length > 0;
+
+  const defaultParams: Record<string, unknown> = {};
+  if (hasToolProperties && tool?.inputSchema?.properties) {
+    for (const key of toolPropertyKeys) {
+      defaultParams[key] = tool.inputSchema.required?.includes(key)
+        ? ""
+        : undefined;
+    }
+  }
+
+  const hasEditedKey = (key: string) =>
+    Object.prototype.hasOwnProperty.call(editedParams, key);
+
+  const handleExecute = async () => {
+    setIsExecuting(true);
+    setExecutionError(null);
+    setExecutionResult(null);
+    setRawToolResult(null);
+    setLastToolInput(null);
+    setStats(null);
+
+    const startTime = performance.now();
+    try {
+      if (!client) {
+        throw new Error("MCP client is not available");
+      }
+      // Prepare arguments:
+      // - If we have properties, merge derived defaults with user edits and parse object/array fields when provided as strings.
+      // - Otherwise, parse the raw JSON input as the full args payload.
+      const args: Record<string, unknown> = hasToolProperties
+        ? { ...defaultParams, ...editedParams }
+        : (() => {
+            const trimmed = rawJsonText.trim();
+            if (!trimmed) return {};
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object") {
+              return parsed as Record<string, unknown>;
+            }
+            throw new Error("Raw JSON input must be an object.");
+          })();
+
+      if (hasToolProperties && tool?.inputSchema?.properties) {
+        Object.entries(
+          tool.inputSchema.properties as Record<string, ToolInputProperty>,
+        ).forEach(([key, prop]) => {
+          if (
+            (prop.type === "object" || prop.type === "array") &&
+            typeof args[key] === "string"
+          ) {
+            try {
+              args[key] = JSON.parse(args[key]);
+            } catch {
+              // Parsing failed, send as string (will likely fail validation but let server handle it)
+            }
+          } else if (
+            (prop.type === "number" || prop.type === "integer") &&
+            typeof args[key] === "string" &&
+            args[key] !== ""
+          ) {
+            // Text inputs yield strings; coerce numeric fields so the tool's
+            // schema (e.g. z.number()) doesn't reject "7776000". Leave
+            // non-numeric strings untouched for the server to reject.
+            const n = Number(args[key]);
+            if (!Number.isNaN(n)) {
+              args[key] = n;
+            }
+          }
+        });
+      }
+
+      const result = (await client.callTool({
+        name: toolName,
+        arguments: args,
+      })) as CallToolResult & { structuredContent?: unknown };
+      const payload = (result.structuredContent ?? result) as Record<
+        string,
+        unknown
+      >;
+
+      const endTime = performance.now();
+      const durationMs = Math.round(endTime - startTime);
+
+      setExecutionResult(payload);
+      setRawToolResult(result);
+      setLastToolInput(args);
+
+      // Calculate mocked stats based on result size
+      const resultStr = JSON.stringify(payload);
+      const bytes = new TextEncoder().encode(resultStr).length;
+
+      setStats({
+        duration: `${durationMs}ms`,
+        bytes: `${bytes} bytes`,
+        // Mocking tokens/cost as we don't have real data for that yet
+        tokens: `~${Math.ceil(bytes / 4)} tokens`,
+        cost: "$0.0000",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setExecutionError(message || "Unknown error occurred");
+      const endTime = performance.now();
+      setStats({
+        duration: `${Math.round(endTime - startTime)}ms`,
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleInputChange = (key: string, value: unknown) => {
+    setEditedParams((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleClear = () => {
+    setExecutionResult(null);
+    setRawToolResult(null);
+    setLastToolInput(null);
+    setExecutionError(null);
+    setStats(null);
+  };
+
+  const displayToolName = tool?.name ?? beautifyToolName(toolName);
+
+  const breadcrumb = (
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link to="/$org/settings/connections" params={{ org: org.slug }}>
+              {t("details.tool.connections")}
+            </Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        {connection && (
+          <>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link
+                  to="/$org/settings/connections/$appSlug"
+                  params={{
+                    org: org.slug,
+                    appSlug: getConnectionSlug(connection),
+                  }}
+                  search={{ tab: "tools" }}
+                >
+                  {connection.title}
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+          </>
+        )}
+        <BreadcrumbItem>
+          <BreadcrumbPage>{displayToolName}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+
+  const instanceSelector = siblings.length > 1 && (
+    <Select value={connectionId} onValueChange={onSelectInstance}>
+      <SelectTrigger className="h-8 w-auto min-w-[200px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {siblings.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            <div className="flex items-center gap-2">
+              <IntegrationIcon
+                icon={s.icon}
+                name={s.title}
+                size="xs"
+                className="shrink-0"
+              />
+              {s.title}
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const parametersSection = (
+    <div className="flex flex-col p-6 gap-4 overflow-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+          {t("details.tool.parameters")}
+        </h2>
+        {tool?.inputSchema?.required &&
+          tool.inputSchema.required.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              <span className="text-destructive">*</span>{" "}
+              {t("details.tool.required")}
+            </span>
+          )}
+      </div>
+
+      <div className="space-y-4">
+        {hasToolProperties && tool?.inputSchema?.properties ? (
+          Object.entries(
+            tool.inputSchema.properties as Record<string, ToolInputProperty>,
+          ).map(([key, prop]) => (
+            <div key={key} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium leading-none flex items-center gap-1.5">
+                  {key}
+                  {tool.inputSchema?.required?.includes(key) && (
+                    <span className="text-destructive text-xs">*</span>
+                  )}
+                </label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {prop.type}
+                </span>
+              </div>
+              {prop.description && (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {prop.description}
+                </p>
+              )}
+              {prop.type === "object" || prop.type === "array" ? (
+                <Textarea
+                  className="font-mono text-xs"
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={t("details.tool.enterAsJson", { key })}
+                  rows={3}
+                />
+              ) : prop.type === "boolean" ? (
+                <Select
+                  value={
+                    hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
+                  }
+                  onValueChange={(v) => handleInputChange(key, v === "true")}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("details.tool.selectTrueOrFalse")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">true</SelectItem>
+                    <SelectItem value="false">false</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={t("details.tool.enter", { key })}
+                />
+              )}
+            </div>
+          ))
+        ) : tool?.inputSchema && !hasToolProperties ? (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {t("details.tool.rawJsonInput")}
+            </label>
+            <Textarea
+              className="font-mono text-xs min-h-[120px]"
+              value={rawJsonText}
+              onChange={(e) => setRawJsonText(e.target.value)}
+              placeholder={t("details.tool.rawJsonExample")}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center p-8 bg-muted/30 rounded-lg border border-dashed border-border">
+            <p className="text-sm text-muted-foreground">
+              {t("details.tool.noParametersRequired")}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Execute Button */}
+      <div className="flex items-center gap-2 pt-2">
+        {isExecuting ? (
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-8 gap-2"
+            onClick={handleClear}
+          >
+            <StopCircle className="h-3.5 w-3.5" />
+            {t("details.tool.cancel")}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 gap-2"
+            onClick={handleExecute}
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            {t("details.tool.executeTool")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  const resultPanel = (
+    <div className="flex flex-col @3xl:h-full @3xl:overflow-hidden">
+      {/* Results Header */}
+      <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
+        <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+          {t("details.tool.result")}
+        </h2>
+
+        <div className="flex items-center gap-3">
+          {/* Execution Stats */}
+          {stats && (
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono text-foreground">
+                  {stats.duration}
+                </span>
+              </div>
+              {stats.tokens && (
+                <div className="flex items-center gap-1.5">
+                  <Box className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-mono text-foreground">
+                    {stats.tokens}
+                  </span>
+                </div>
+              )}
+              {stats.bytes && (
+                <div className="flex items-center gap-1.5">
+                  <Database01 className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-mono text-foreground">
+                    {stats.bytes}
+                  </span>
+                </div>
+              )}
+              {stats.cost && (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-foreground">
+                    {stats.cost}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* View toggle: UI / JSON */}
+          {uiResourceUri && (
+            <TooltipProvider>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant={resultView === "ui" ? "secondary" : "ghost"}
+                      className="h-8 w-8"
+                      onClick={() => setResultView("ui")}
+                    >
+                      <LayersTwo01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("details.tool.interactiveView")}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant={resultView === "json" ? "secondary" : "ghost"}
+                      className="h-8 w-8"
+                      onClick={() => setResultView("json")}
+                    >
+                      <Code01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("details.tool.jsonView")}</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
+          )}
+        </div>
+      </div>
+
+      {/* Error Alert */}
+      {executionError && (
+        <div className="px-6 py-4 bg-background">
+          <Alert variant="destructive">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle className="mb-0">
+                  {t("details.tool.executionFailed")}
+                </AlertTitle>
+              </div>
+              <AlertDescription className="text-xs text-destructive">
+                {executionError}
+              </AlertDescription>
+            </div>
+          </Alert>
+        </div>
+      )}
+
+      {/* Results Content */}
+      <div className="relative flex-1 min-h-[400px] @3xl:min-h-0 @3xl:overflow-auto bg-muted/50">
+        {uiResourceUri && resultView === "ui" && client ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-48">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">
+                    {t("details.tool.loadingApp")}
+                  </span>
+                </div>
+              </div>
+            }
+          >
+            <MCPAppRenderer
+              resourceURI={uiResourceUri}
+              toolInfo={
+                tool
+                  ? {
+                      tool: tool as Tool,
+                    }
+                  : undefined
+              }
+              toolInput={lastToolInput ?? undefined}
+              toolResult={rawToolResult ?? undefined}
+              displayMode="fullscreen"
+              minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
+              maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
+              client={client}
+              onMessage={handleAppMessage}
+              onUpdateModelContext={(params) =>
+                chatPrefs?.setAppContext(sourceId, params)
+              }
+              onTeardown={() => chatPrefs?.clearAppContext(sourceId)}
+              className="h-full"
+            />
+          </Suspense>
+        ) : executionResult ? (
+          <>
+            <MonacoCodeEditor
+              code={JSON.stringify(executionResult, null, 2)}
+              language="json"
+              height="100%"
+              readOnly
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  JSON.stringify(executionResult, null, 2),
+                );
+                toast.success(t("details.tool.copiedToClipboard"));
+              }}
+            >
+              <Copy01 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
+            <Code01 className="h-12 w-12 mb-3 opacity-40" />
+            <p className="text-sm">{t("details.tool.runToolToSeeResults")}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <ViewLayout breadcrumb={breadcrumb}>
+      <div className="flex flex-col h-full overflow-hidden @container">
+        {/* Header */}
+        <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
+          {/* Row 1: icon | title + status | selector */}
+          <div className="flex items-center gap-4">
+            <IntegrationIcon
+              icon={connection?.icon || null}
+              name={connection?.title || toolName}
+              size="xl"
+              className="shrink-0"
+            />
+            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
+              {toolName}
+            </h1>
+            {/* MCP Status */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
+              {toolsQuery.isSuccess ? (
+                <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
+              ) : toolsQuery.isLoading ? (
+                <Loading01
+                  size={10}
+                  className="animate-spin text-warning shrink-0"
+                />
+              ) : (
+                <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+              )}
+              <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
+                {toolsQuery.isSuccess
+                  ? "ready"
+                  : toolsQuery.isLoading
+                    ? "connecting"
+                    : "error"}
+              </span>
+            </div>
+            <ToolAnnotationBadges
+              annotations={tool?.annotations}
+              _meta={tool?._meta as Record<string, unknown> | undefined}
+            />
+            {/* Instance switcher — visible only on large containers */}
+            <div className="hidden @3xl:flex items-center ml-auto shrink-0">
+              {instanceSelector}
+            </div>
+          </div>
+          {/* Row 2: description */}
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {tool?.description || "No description available"}
+          </p>
+        </div>
+
+        {/* Instance switcher — visible only on small containers */}
+        {siblings.length > 1 && (
+          <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
+            <span className="text-xs font-medium text-muted-foreground shrink-0">
+              {t("details.tool.instance")}
+            </span>
+            {instanceSelector}
+          </div>
+        )}
+
+        {/* Content area */}
+        <div className="flex-1 overflow-auto @3xl:overflow-hidden">
+          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
+            {/* Parameters */}
+            <div className="@3xl:border-r border-border @3xl:overflow-auto">
+              {parametersSection}
+            </div>
+            {/* Result */}
+            {resultPanel}
+          </div>
+        </div>
+      </div>
+    </ViewLayout>
+  );
+}
+
+export function ToolDetailsView({
+  itemId: toolName,
+  siblings,
+  onBack,
+}: ToolDetailsViewProps) {
+  const t = useT();
+  const [selectedConnectionId, setSelectedConnectionId] = useState(
+    siblings[0]?.id ?? "",
+  );
+
+  const connectionId =
+    siblings.find((s) => s.id === selectedConnectionId)?.id ??
+    siblings[0]?.id ??
+    "";
+
+  const connection = useConnection(connectionId || undefined);
+
+  if (!connection || !connectionId) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h3 className="text-lg font-semibold">
+            {t("details.tool.connectionNotFound")}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {t("details.tool.connectionNotFoundMessage")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <Loading01 size={32} className="animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <ToolDetailsContent
+        toolName={toolName}
+        connectionId={connectionId}
+        siblings={siblings}
+        onSelectInstance={setSelectedConnectionId}
+        onBack={onBack}
+      />
+    </Suspense>
+  );
+}

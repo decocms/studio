@@ -1,5 +1,5 @@
 import { type Page } from "@playwright/test";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { type Client } from "pg";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { signUp } from "../fixtures/auth";
@@ -469,7 +469,7 @@ test.describe("Commerce onboarding route isolation", () => {
     );
 
     const sidebarOpen = await page.evaluate(() =>
-      window.localStorage.getItem("mesh:sidebar-open"),
+      window.localStorage.getItem("studio:sidebar-open"),
     );
     expect(sidebarOpen).toBe("false");
   });

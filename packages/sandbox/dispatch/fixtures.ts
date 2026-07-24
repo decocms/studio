@@ -23,7 +23,7 @@ export const FIXTURE_MINIMAL_INPUT: HarnessStreamInputWire = {
     },
   },
   mcp: {
-    url: "https://mesh.example.com/mcp/virtual-mcp/agent-fixture",
+    url: "https://studio.example.com/mcp/virtual-mcp/agent-fixture",
     headers: { Authorization: "Bearer fixture-token" },
     expiresAt: 9999999999000,
   },

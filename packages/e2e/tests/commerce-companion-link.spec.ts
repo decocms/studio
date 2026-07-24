@@ -5,7 +5,7 @@
  *
  * Why this matters: COLLECTION_CONNECTIONS_UPDATE persists whatever
  * `configuration_state` object it's given wholesale (see
- * apps/mesh/src/tools/connection/update.ts: `finalState = data.configuration_state
+ * apps/api/src/tools/connection/update.ts: `finalState = data.configuration_state
  * ?? {}`); it does NOT merge server-side. So any caller that links a companion
  * MCP (adding one binding) MUST first read the current state and spread the
  * existing bindings into the write, or it silently clobbers every other

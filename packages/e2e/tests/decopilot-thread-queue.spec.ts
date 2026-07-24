@@ -2,8 +2,8 @@
 /**
  * E2E: the thread-queue endpoints.
  *
- * ## Wire contract (apps/mesh/src/api/routes/decopilot/routes.ts +
- * apps/mesh/src/dispatch-queue/thread-gate-queue.ts)
+ * ## Wire contract (apps/api/src/api/routes/decopilot/routes.ts +
+ * apps/api/src/dispatch-queue/thread-gate-queue.ts)
  *
  *   GET  /api/:org/decopilot/queue/:threadId
  *     → 200 { items: [{ workflowId, messageId, status: "running"|"queued",
@@ -12,7 +12,7 @@
  *     row is the running head; ENQUEUED rows are the queued tail, oldest
  *     first. `text`/`hasAttachments` are hydrated server-side from the
  *     item's persisted `thread_message_parts` (`foldQueueHydration`,
- *     `apps/mesh/src/api/routes/decopilot/queue-text.ts`) — never carried on
+ *     `apps/api/src/api/routes/decopilot/queue-text.ts`) — never carried on
  *     the durable gate input, which stays content-free.
  *
  *   POST /api/:org/decopilot/queue/:threadId/cancel/:workflowId

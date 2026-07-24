@@ -60,17 +60,17 @@ async function runThroughRollingDeploy(): Promise<{
   status: string | null;
   renderable: number;
 }> {
-  const session = await bootstrapSession(PODS.MESH_1);
-  await wireMockProvider(PODS.MESH_1, session);
-  const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+  const session = await bootstrapSession(PODS.STUDIO_1);
+  await wireMockProvider(PODS.STUDIO_1, session);
+  const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
   const { threadId } = await createTestThread(
-    PODS.MESH_1,
+    PODS.STUDIO_1,
     session,
     virtualMcpId,
   );
 
   const postRes = await postJson(
-    PODS.MESH_1,
+    PODS.STUDIO_1,
     `/api/${session.orgSlug}/decopilot/threads/${threadId}/messages`,
     {
       messages: [

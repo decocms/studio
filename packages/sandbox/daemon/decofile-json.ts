@@ -20,7 +20,8 @@
  * (parsing those synchronously would risk the daemon's event loop).
  *
  * The frontend has its own `.deco/blocks` vocabulary
- * (`apps/mesh/.../sections-editor/deco-block-key.ts`); the daemon can't import
+ * (`apps/web/src/components/sections-editor/deco-block-key.ts`); the daemon
+ * can't import
  * across that process boundary, so this small predicate is intentionally
  * independent, not accidental duplication.
  */

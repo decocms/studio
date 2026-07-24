@@ -53,11 +53,13 @@ jobs:
           CHART_PATH: deploy/helm/${{ matrix.chart }}
         run: |
           set -euo pipefail
-          VERSION=$(awk '/^version:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")
-          NAME=$(awk '/^name:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
-          echo "path=${CHART_PATH}" >> "${GITHUB_OUTPUT}"
+          VERSION="$(awk '/^version:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")"
+          NAME="$(awk '/^name:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")"
+          {
+            echo "version=${VERSION}"
+            echo "name=${NAME}"
+            echo "path=${CHART_PATH}"
+          } >> "${GITHUB_OUTPUT}"
           echo "::notice::Chart ${NAME} version ${VERSION}"
 
       - name: Log in to GitHub Container Registry
@@ -157,9 +159,11 @@ jobs:
               echo "  --namespace agent-sandbox-system \\"
               echo "  --set envName=<envName> \\"
               echo "  --set mesh.namespace=<studio-namespace> \\"
-              echo "  --set mesh.serviceAccountName=<studio-release-name> \\"
-              echo "  --set mesh.serviceName=<studio-release-name> \\"
-              echo "  --set mesh.servicePort=80"
+              echo "  --set mesh.serviceAccountName=<studio-release-name>"
             fi
             echo '```'
+            if [ "${{ matrix.chart }}" = "sandbox-env" ]; then
+              echo ""
+              echo "> Compatibility: \`mesh.*\` is the legacy values namespace for Studio release references."
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"

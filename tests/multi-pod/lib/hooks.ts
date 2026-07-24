@@ -2,7 +2,7 @@
  * Standard test hooks for multi-pod scenarios.
  *
  * Call `registerTestHooks()` at the top of each scenario file. It (1)
- * restarts any mesh pods that were left stopped by a previous scenario
+ * restarts any Studio pods that were left stopped by a previous scenario
  * (the pod-death scenarios SIGKILL pods and don't currently restore
  * them themselves) and (2) waits for every pod to report /health/live
  * before any test body runs.
@@ -37,7 +37,7 @@ async function restoreStoppedPods(): Promise<void> {
   // Fail loudly: if compose can't even list services (daemon down,
   // compose file moved, etc.), silently treating it as "no pods to
   // restore" turns the real failure into a 2-minute waitReady timeout
-  // with a misleading "mesh-1 not healthy" message.
+  // with a misleading "first pod not healthy" message.
   if (code !== 0) {
     throw new Error(
       `docker compose ps failed (exit ${code}): ${err.trim() || out.trim() || "<no output>"}`,

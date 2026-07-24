@@ -27,7 +27,7 @@ function fakeManager() {
 }
 
 const CONFIG = JSON.stringify({
-  baseUrl: "http://mesh",
+  baseUrl: "http://studio",
   orgSlug: "acme",
   token: "t",
   mounts: [{ volume: "skills", path: "skills" }],

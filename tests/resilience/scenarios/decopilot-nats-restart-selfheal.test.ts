@@ -63,13 +63,13 @@
 
 import { describe, expect, test } from "bun:test";
 // Relative import (NOT the `@/` alias): the `@/` path is defined only inside
-// the apps/mesh workspace tsconfig, and these resilience scenarios live
+// the apps/api workspace tsconfig, and these resilience scenarios live
 // outside it. The headless link-daemon entrypoint reaches into app code the
 // same way (see ../link-daemon-entrypoint.ts).
 import {
   foldParts,
   type ThreadMessagePart,
-} from "../../../apps/mesh/src/storage/fold-parts";
+} from "../../../apps/api/src/storage/fold-parts";
 import { registerTestHooks } from "../lib/setup";
 import { disableProxy, enableProxy } from "../lib/toxiproxy";
 import { PROXY_NAMES } from "../lib/toxic-presets";

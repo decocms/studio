@@ -7,7 +7,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { generateClientCode, toolSchemaFiles } from "./codegen.js";
 import { discoverEndpoint, mcpIdFromUrl } from "./endpoint.js";
-import { createMeshClient } from "./runtime.js";
+import { createStudioClient } from "./runtime.js";
 
 const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
@@ -174,7 +174,7 @@ async function cmdCall(args: string[]): Promise<void> {
     }
   }
 
-  const client = createMeshClient({
+  const client = createStudioClient({
     endpoint: { url: opts.url.toString(), headers: opts.headers },
   }) as Record<string, (i: unknown) => Promise<unknown>> & {
     close: () => Promise<void>;

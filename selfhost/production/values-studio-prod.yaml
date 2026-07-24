@@ -60,6 +60,8 @@ secret:
   #  the chart create its own Secret from inline secret.* values — dev only.)
 
 configMap:
+  # Legacy chart values key retained for upgrade compatibility; these settings
+  # configure the Studio API.
   meshConfig:
     BASE_URL: "https://<studio.your-domain.com>"
     BETTER_AUTH_URL: "https://<studio.your-domain.com>"
@@ -72,7 +74,7 @@ configMap:
     # Monitoring dashboard (optional): ClickHouse Cloud, OR in-cluster ClickHouse
     # (the chart's clickhouse-operator/clickhouse-cluster subcharts), OR omit
     # (dashboard degrades). If set, provision the studio_monitoring_logs view —
-    # see apps/mesh/src/monitoring/clickhouse-setup.md.
+    # see apps/api/src/monitoring/clickhouse-setup.md.
     # CLICKHOUSE_URL: "https://<clickhouse-host>:8443"
     # Only set NATS_URL if you disable the bundled NATS (nats.enabled=false)
     # and run a managed/HA NATS instead.

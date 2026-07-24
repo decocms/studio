@@ -10,7 +10,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { sleep } from "@decocms/std";
+import { sleep } from "@decocms/shared/std";
 import { serve, type TunnelServer } from "@decocms/tunnel";
 import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import { expect, type APIRequestContext } from "@playwright/test";

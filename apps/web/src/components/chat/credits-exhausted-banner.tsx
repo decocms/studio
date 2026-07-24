@@ -1,0 +1,277 @@
+/**
+ * Credits Exhausted Dialog — shown as a modal when a streaming error
+ * indicates the org has run out of Deco AI Gateway credits.
+ *
+ * Lets the user top up directly from the dialog with quick-pick amounts,
+ * or navigate to settings for full provider management.
+ */
+
+import { useEffect, useState } from "react";
+import { track } from "@/lib/posthog-client";
+import { Check } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@deco/ui/components/toggle-group.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@deco/ui/components/dialog.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useProjectContext } from "@/sdk";
+import { useNavigate } from "@tanstack/react-router";
+import { useDecoCredits } from "@/hooks/use-deco-credits";
+import { useStudioTools } from "@/lib/studio-tools";
+import { useT } from "@/i18n/use-t";
+
+const QUICK_AMOUNTS = {
+  usd: [
+    { dollars: 10, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
+    { dollars: 20, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
+    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
+  ],
+  brl: [
+    { dollars: 50, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
+    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
+    { dollars: 500, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
+  ],
+} as const;
+
+const BENEFITS_KEYS = [
+  "chat.creditsExhaustedBanner.benefit1",
+  "chat.creditsExhaustedBanner.benefit2",
+  "chat.creditsExhaustedBanner.benefit3",
+] as const;
+
+export function CreditsExhaustedBanner({
+  onDismiss,
+}: {
+  onDismiss?: () => void;
+}) {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+  const { decoKeyId } = useDecoCredits();
+  const studio = useStudioTools();
+  const t = useT();
+
+  const [customAmount, setCustomAmount] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+  const [currency, setCurrency] = useState<"usd" | "brl">("usd");
+  const currencySymbol = currency === "brl" ? "R$" : "$";
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    track("credits_exhausted_shown", { organization_id: org.id });
+  }, [org.id]);
+
+  const { mutate: topUp, isPending } = useMutation({
+    mutationFn: async (amountCents: number) => {
+      const { url } = await studio.call("AI_PROVIDER_TOPUP_URL", {
+        providerId: "deco",
+        amountCents,
+        currency,
+      });
+      return url;
+    },
+    onSuccess: (url) => {
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      onDismiss?.();
+    },
+    onError: (err) => {
+      toast.error(
+        t("chat.creditsExhaustedBanner.topupError", { error: err.message }),
+      );
+    },
+  });
+
+  const customNum = parseFloat(customAmount);
+  const isCustomValid = !isNaN(customNum) && customNum >= 1;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onDismiss?.()}>
+      <DialogContent
+        className="sm:max-w-[520px] gap-0 p-0 overflow-hidden"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        {/* Header with deco gradient fade */}
+        <div className="relative px-8 pt-8 pb-2 overflow-hidden">
+          <div
+            className="absolute inset-x-0 top-0 h-36 pointer-events-none"
+            style={{
+              backgroundImage: [
+                "radial-gradient(ellipse 40% 200% at -5% 100%, rgba(165,149,255,0.5) 0%, transparent 100%)",
+                "radial-gradient(ellipse 40% 200% at 105% -10%, rgba(208,236,26,0.45) 0%, transparent 100%)",
+              ].join(", "),
+              maskImage:
+                "linear-gradient(to bottom, black 0%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to bottom, black 0%, transparent 100%)",
+            }}
+          />
+          <DialogHeader className="relative gap-4">
+            <img
+              src="/logos/deco%20logo.svg"
+              alt="Deco AI Gateway"
+              className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
+            />
+            <div>
+              <DialogTitle className="text-xl font-semibold tracking-tight">
+                {t("chat.creditsExhaustedBanner.title")}
+              </DialogTitle>
+              <DialogDescription className="mt-1.5 text-sm leading-relaxed">
+                {t("chat.creditsExhaustedBanner.description")}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+        </div>
+
+        {/* Amount selection */}
+        {decoKeyId && (
+          <div className="px-8 pt-5 pb-6">
+            {/* Currency toggle */}
+            <div className="mb-4">
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                value={currency}
+                onValueChange={(v) => {
+                  if (v) setCurrency(v as "usd" | "brl");
+                }}
+              >
+                <ToggleGroupItem value="usd" className="h-8 px-3 text-xs">
+                  USD
+                </ToggleGroupItem>
+                <ToggleGroupItem value="brl" className="h-8 px-3 text-xs">
+                  BRL
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* Pricing card */}
+            <div className="rounded-xl border border-border p-5">
+              <div className="grid grid-cols-3 gap-2.5">
+                {QUICK_AMOUNTS[currency].map(({ dollars, labelKey }) => (
+                  <button
+                    key={dollars}
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => {
+                      track("credits_topup_clicked", {
+                        amount_cents: dollars * 100,
+                        currency,
+                        tier_label: labelKey,
+                        source: "exhausted_banner",
+                      });
+                      topUp(dollars * 100);
+                    }}
+                    className={cn(
+                      "relative flex flex-col items-center gap-1 py-5 rounded-xl border transition-all duration-150 cursor-pointer",
+                      "disabled:opacity-50 disabled:cursor-wait",
+                      "border-border hover:border-foreground/20 hover:bg-muted/30",
+                    )}
+                  >
+                    <span className="text-2xl font-semibold tabular-nums text-foreground">
+                      {currencySymbol}
+                      {dollars}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {t(labelKey)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom amount */}
+              {showCustom ? (
+                <div className="flex gap-2 mt-3">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">
+                      {currencySymbol}
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder={t(
+                        "chat.creditsExhaustedBanner.customPlaceholder",
+                      )}
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      className="h-10 text-sm pl-7"
+                      autoFocus
+                    />
+                  </div>
+                  <Button
+                    className="h-10"
+                    disabled={!isCustomValid || isPending}
+                    onClick={() => {
+                      track("credits_topup_clicked", {
+                        amount_cents: Math.round(customNum * 100),
+                        currency,
+                        tier_label: "custom",
+                        source: "exhausted_banner",
+                      });
+                      topUp(Math.round(customNum * 100));
+                    }}
+                  >
+                    {isPending
+                      ? t("chat.creditsExhaustedBanner.opening")
+                      : t("chat.creditsExhaustedBanner.add")}
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+                  onClick={() => setShowCustom(true)}
+                >
+                  {t("chat.creditsExhaustedBanner.enterCustom")}
+                </button>
+              )}
+            </div>
+
+            {/* Benefits */}
+            <div className="mt-5 rounded-xl bg-muted/25 border border-border/50 p-4 space-y-3">
+              {BENEFITS_KEYS.map((key) => (
+                <div key={key} className="flex items-center gap-3">
+                  <div className="flex items-center justify-center size-5 rounded-full bg-[hsl(var(--chart-1))]/15 shrink-0">
+                    <Check size={12} className="text-[hsl(var(--chart-1))]" />
+                  </div>
+                  <span className="text-sm text-foreground/80">{t(key)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-8 py-4 border-t border-border bg-muted/30 flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={onDismiss}>
+            {t("chat.creditsExhaustedBanner.dismiss")}
+          </Button>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => {
+              navigate({
+                to: "/$org/settings/ai-providers",
+                params: { org: org.slug },
+              });
+              onDismiss?.();
+            }}
+          >
+            {t("chat.creditsExhaustedBanner.manageProviders")}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

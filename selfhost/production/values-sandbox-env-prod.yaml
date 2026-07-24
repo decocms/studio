@@ -20,6 +20,7 @@ resources:
     cpu: 2
     memory: 4Gi
 
+# Legacy sandbox-env values key retained for upgrade compatibility.
 mesh:
   namespace: "deco-studio"          # your Studio release namespace
   serviceAccountName: "deco-studio"
@@ -41,7 +42,7 @@ netinit:
 # dnsConfig.nameservers default to 1.1.1.1; override if you require your own.
 
 # ── Isolation: pin sandboxes to a dedicated node pool ──────────────────────
-# So a container escape lands on a node with no mesh/Postgres/NATS pods. Pair
+# So a container escape lands on a node with no Studio/Postgres/NATS pods. Pair
 # with a tainted+labeled NodePool (Karpenter/managed).
 # nodeSelector:
 #   workload: sandbox

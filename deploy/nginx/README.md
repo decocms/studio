@@ -18,13 +18,13 @@ container:
   with `no-store` to avoid negative-cache poisoning.
 
 The config is `deploy/helm/studio/files/api-nginx.conf`. It is copied into the
-image by `apps/mesh/Dockerfile.nginx` as `/etc/nginx/conf.d/default.conf`, so the
+image by `apps/web/Dockerfile` as `/etc/nginx/conf.d/default.conf`, so the
 runtime keeps the base `nginxinc/nginx-unprivileged` entrypoint and global
 settings.
 
 ## Image release
 
-`.github/workflows/release-mesh.yaml` publishes the nginx image as a first-class
+`.github/workflows/release-studio.yaml` publishes the nginx image as a first-class
 release artifact alongside the Bun API image:
 
 ```text
@@ -42,7 +42,7 @@ deployment.
 ```bash
 # Build from the repository root after the release package artifact exists as
 # ./decocms.tgz, matching the GitHub Actions build context.
-docker build -f apps/mesh/Dockerfile.nginx -t studio-nginx:local .
+docker build -f apps/web/Dockerfile -t studio-nginx:local .
 
 # Run nginx and point it at a local Bun API server.
 docker run --rm -p 8080:8080 --add-host=host.docker.internal:host-gateway \

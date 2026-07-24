@@ -54,7 +54,7 @@ The main Studio Deployment runs each API pod as three containers:
 The separate `web.enabled` Deployment topology has been removed. nginx is part
 of every API pod and the Service targets nginx through `targetPort: http`.
 
-Because API containers run with `MESH_DISPATCH_ROLE=api`, worker pods are
+Because API containers run with `STUDIO_DISPATCH_ROLE=api`, worker pods are
 required:
 
 ```yaml
@@ -214,6 +214,11 @@ helm uninstall deco-studio -n deco-studio
 
 ## Configuration
 
+> Compatibility: `configMap.meshConfig` is the chart's legacy public values
+> key for Studio API environment variables. It remains supported so existing
+> values files continue to upgrade safely; a future chart major may rename it
+> to `configMap.studioConfig`.
+
 ### Main Values
 
 The main configurable values are in `values.yaml`.
@@ -370,7 +375,7 @@ app.kubernetes.io/instance: deco-studio
 
 The API Deployment always renders nginx plus two Bun API containers. nginx owns
 the service-facing `http` port and proxies API/system paths to `api-0` and
-`api-1` on localhost. The Bun API containers run with `MESH_DISPATCH_ROLE=api`,
+`api-1` on localhost. The Bun API containers run with `STUDIO_DISPATCH_ROLE=api`,
 so they do not dequeue worker-only run queues.
 
 #### Conditional Structure
@@ -1003,7 +1008,7 @@ The embedded operator must be scoped to the install namespace via `clickhouse-op
 
 When the CR is enabled, `CLICKHOUSE_URL` is auto-derived to `http://<cr-name>-clickhouse-headless:8123` (no password on the `default` user out of the box). An explicit `CLICKHOUSE_URL` in `configMap.meshConfig` or in the Secret takes precedence — the Secret is the place for an authenticated URL (`http://default:<pass>@...`) paired with `clickhouse.spec.settings.defaultUserPassword`.
 
-Telemetry gets **into** ClickHouse via the in-cluster OTel collector's `clickhouse` exporter, and the dashboard reads the `studio_monitoring_logs` view, which is provisioned once by hand — see `examples/values-clickhouse.yaml` for the full wiring and `apps/mesh/src/monitoring/clickhouse-setup.md` for the view DDL. Backups are your responsibility (single-node ClickHouse has no replication).
+Telemetry gets **into** ClickHouse via the in-cluster OTel collector's `clickhouse` exporter, and the dashboard reads the `studio_monitoring_logs` view, which is provisioned once by hand — see `examples/values-clickhouse.yaml` for the full wiring and `apps/api/src/monitoring/clickhouse-setup.md` for the view DDL. Backups are your responsibility (single-node ClickHouse has no replication).
 
 ### Secret
 

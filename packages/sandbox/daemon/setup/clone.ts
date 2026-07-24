@@ -1,4 +1,5 @@
-import { sleep } from "@decocms/std";
+import { SUBMODULE_HOST_RE } from "@decocms/shared/sdk/types/virtual-mcp";
+import { sleep } from "@decocms/shared/std";
 import { existsSync, readdirSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
@@ -243,10 +244,6 @@ export interface CloneResult {
 // file form makes shell injection impossible, but a host with a slash, `@`,
 // whitespace, or control chars would corrupt the insteadOf prefix or the
 // credential URL — so allow only a bare hostname with an optional port.
-// Duplicated (not imported) because the daemon can't depend on mesh-sdk — keep
-// in sync with `SUBMODULE_HOST_RE` in packages/mesh-sdk/src/types/virtual-mcp.ts.
-const VALID_SUBMODULE_HOST = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-
 /**
  * Exported for unit tests. Validates + dedupes submodule credentials by host
  * (last write wins), returning the git-credential-store file lines for the
@@ -258,7 +255,7 @@ export function prepareSubmoduleCredentials(
   const invalidHosts: string[] = [];
   const tokenByHost = new Map<string, string>();
   for (const c of credentials) {
-    if (!VALID_SUBMODULE_HOST.test(c.host)) {
+    if (!SUBMODULE_HOST_RE.test(c.host)) {
       invalidHosts.push(c.host);
       continue;
     }

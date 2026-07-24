@@ -38,7 +38,7 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
-Mesh runner Role / RoleBinding name. Stays under 63 chars even with a
+Studio runner Role / RoleBinding name. Stays under 63 chars even with a
 32-char envName.
 */}}
 {{- define "sandbox-env.runnerRoleName" -}}
@@ -173,7 +173,7 @@ worth catching at template time rather than letting the API server reject
 {{- end }}
 
 {{/*
-Default housekeeper selectors. Mirror the labels mesh stamps in runner.ts
+Default housekeeper selectors. Mirror the labels Studio stamps in runner.ts
 (`studio.decocms.com/env=<envName>` requires STUDIO_ENV); during phased
 rollout, .Values.housekeeper.{claimSelector,podSelector} can be overridden
 to drop the env scope. README has copy-paste values.
@@ -188,7 +188,7 @@ to drop the env scope. README has copy-paste values.
 
 {{/*
 Sentinel-token Secret name. Holds the bearer baked into pool-pod env via
-`valueFrom.secretKeyRef`; mesh reads the same secret out-of-band (env var
+`valueFrom.secretKeyRef`; Studio reads the same secret out-of-band (env var
 sourced from this Secret in the studio chart) so both sides agree on the
 sentinel without it landing in any chart values.yaml.
 */}}

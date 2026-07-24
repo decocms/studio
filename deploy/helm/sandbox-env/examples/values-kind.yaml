@@ -28,8 +28,8 @@ resources:
 readOnlyRootFilesystem: false
 
 # ── no preview Gateway in kind ─────────────────────────────────────────
-# Mesh's HTTP edge handles preview routing in-process via
-# apps/mesh/src/sandbox/preview-proxy.ts: it reads the Host header,
+# Studio's HTTP edge handles preview routing in-process via
+# apps/api/src/sandbox/preview-proxy.ts: it reads the Host header,
 # extracts the sandbox handle, and reverse-proxies to the in-cluster
 # daemon Service.
 previewGateway:
@@ -39,7 +39,7 @@ previewGateway:
 warmPool:
   enabled: false
 
-# ── mesh cross-references (point at the kind studio install) ───────────
+# ── Studio cross-references (legacy `mesh.*` values key) ───────────────
 # studio kind install conventionally lands in `deco-studio` namespace
 # with release name `deco-studio`. Override here if you `helm install`
 # studio under a different name/namespace.
