@@ -13,7 +13,7 @@
     "templates"
   ],
   "scripts": {
-    "build": "bun build src/cli.ts --target bun --outfile dist/cli.js",
+    "build": "bun build.ts",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "test": "bun test"
@@ -22,7 +22,7 @@
     "@decocms/shared": "workspace:*"
   },
   "engines": {
-    "bun": ">=1.1.0"
+    "node": ">=20.0.0"
   },
   "repository": {
     "type": "git",

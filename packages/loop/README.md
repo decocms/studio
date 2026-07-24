@@ -20,9 +20,9 @@ bunx @decocms/loop tick          # reconcile every domain you own (cron target)
 bunx @decocms/loop status        # inbox: in-flight PRs per domain, what needs you
 ```
 
-Requires **Bun** (the CLI ships as a bun-bundled `dist/cli.js`; built via
-`bun build`, and `bun build --compile` is the future path for standalone
-binaries), plus `claude` (Claude Code) and `gh` on PATH.
+Requires Node ≥20 (or Bun) plus `claude` (Claude Code) and `gh` on PATH.
+The published CLI is a single node-target bundle — bun is only a build-time
+tool (`bun build --compile` remains the future path for standalone binaries).
 
 ## Scheduling
 
