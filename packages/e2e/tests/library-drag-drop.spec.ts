@@ -24,7 +24,6 @@ test.describe("Library drag-drop, rename, and see-in-library", () => {
     // 2. Drag file card to folder card
     // 3. Verify success toast appears
     // 4. Verify file list updates
-
     // Example (adjust selectors to match your DOM):
     // const fileCard = page.locator('[data-testid="file-card-test.txt"]');
     // const folderCard = page.locator('[data-testid="folder-card-dest"]');
@@ -38,7 +37,6 @@ test.describe("Library drag-drop, rename, and see-in-library", () => {
     // Type new name in dialog
     // Press Enter
     // Verify success toast
-
     // Example:
     // const fileCard = page.locator('[data-testid="file-card-old.txt"]');
     // await fileCard.click({ button: "right" });
@@ -53,7 +51,6 @@ test.describe("Library drag-drop, rename, and see-in-library", () => {
     // Try entering "../../../etc/passwd"
     // Button should be disabled
     // Or: try renaming to "folder/file" — should reject
-
     // Example:
     // const fileCard = page.locator('[data-testid="file-card-test.txt"]');
     // await fileCard.click({ button: "right" });
@@ -67,7 +64,6 @@ test.describe("Library drag-drop, rename, and see-in-library", () => {
     // Click "See in library" button
     // Verify URL contains main=library: and preview=
     // Verify library panel opens
-
     // Example:
     // await page.goto("http://localhost:4000/org/chat");
     // const seeInLibraryBtn = page.locator("button:has-text('See in library')");
@@ -81,7 +77,6 @@ test.describe("Library drag-drop, rename, and see-in-library", () => {
   test("prevent drag-drop move to self", async () => {
     // Attempt to drag a file/folder onto itself
     // Verify nothing happens (no move API call, no toast)
-
     // Example:
     // const fileCard = page.locator('[data-testid="file-card-test.txt"]');
     // const box = await fileCard.boundingBox();

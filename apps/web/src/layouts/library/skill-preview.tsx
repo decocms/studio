@@ -233,20 +233,3 @@ export function SkillPreviewDialog({
 }
 
 /** Desktop: right-side panel (consistent with file previews). */
-export function SkillPreviewPanel({
-  skillPath,
-  onClose,
-}: {
-  skillPath: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      <SkillPreviewContent
-        skillPath={skillPath}
-        onClose={onClose}
-        variant="panel"
-      />
-    </div>
-  );
-}

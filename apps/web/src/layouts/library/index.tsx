@@ -18,13 +18,11 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import {
   Eye,
-  Palette,
   Plus,
   RefreshCw01,
   SearchLg,
   Upload01,
   XClose,
-  Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -47,24 +45,14 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { FileTypeIcon } from "@/components/file-type-icon";
-import { Toolbar } from "@/layouts/agent-shell-layout/toolbar";
-import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/resizable";
-import { BrandPreviewDialog, BrandPreviewPanel } from "./brand-preview";
+import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
-import { LibraryPreviewPanel } from "./preview-panel";
-import { SkillPreviewDialog, SkillPreviewPanel } from "./skill-preview";
+import { SkillPreviewDialog } from "./skill-preview";
 import {
   Breadcrumbs,
   type PendingDelete,
@@ -612,125 +600,5 @@ export function LibraryPage({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  );
-}
-
-export default function Library() {
-  const isMobile = useIsMobile();
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as {
-    preview?: string;
-    skill?: string;
-    brand?: string;
-  };
-  const clearParam = (key: "preview" | "skill" | "brand") =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        [key]: undefined,
-      }),
-    });
-
-  // One right-side panel at a time; preview wins, then skill, then brand —
-  // matching the dialog precedence in LibraryPage.
-  const right = search.preview
-    ? {
-        key: "preview" as const,
-        path: search.preview,
-        panel: (
-          <LibraryPreviewPanel
-            previewPath={search.preview}
-            onClose={() => clearParam("preview")}
-          />
-        ),
-      }
-    : search.skill
-      ? {
-          key: "skill" as const,
-          path: search.skill,
-          panel: (
-            // Keyed per skill so switching entries remounts (no stale state).
-            <SkillPreviewPanel
-              key={search.skill}
-              skillPath={search.skill}
-              onClose={() => clearParam("skill")}
-            />
-          ),
-        }
-      : search.brand
-        ? {
-            key: "brand" as const,
-            path: search.brand,
-            panel: (
-              // Keyed per brand so switching entries remounts the editor.
-              <BrandPreviewPanel
-                key={search.brand}
-                brandPath={search.brand}
-                onClose={() => clearParam("brand")}
-              />
-            ),
-          }
-        : null;
-
-  if (isMobile) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        <ErrorBoundary>
-          <LibraryPage />
-        </ErrorBoundary>
-      </div>
-    );
-  }
-
-  // Desktop: chat-style two-panel group — Library on the left and, when a
-  // file is open (`?preview=`), its preview as a tab-like panel on the right.
-  return (
-    <ResizablePanelGroup
-      direction="horizontal"
-      className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0"
-    >
-      <ResizablePanel order={1} minSize={30} defaultSize={55}>
-        <div className="h-full p-0.5 pt-0.25">
-          <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-            <ErrorBoundary>
-              <LibraryPage />
-            </ErrorBoundary>
-          </div>
-        </div>
-      </ResizablePanel>
-      {right && (
-        <>
-          {/* Mirror the chat: the open preview surfaces as a pill in the
-              shared top-right tab slot; clicking it closes the panel. */}
-          <Toolbar.Tabs>
-            <HeaderTabButton
-              title={basename(right.path)}
-              icon={{
-                kind: "component",
-                Component: (props) =>
-                  right.key === "preview" ? (
-                    <FileTypeIcon filename={basename(right.path)} {...props} />
-                  ) : right.key === "skill" ? (
-                    <Zap {...props} />
-                  ) : (
-                    <Palette {...props} />
-                  ),
-              }}
-              active
-              onClick={() => clearParam(right.key)}
-            />
-          </Toolbar.Tabs>
-          <ResizableHandle className="bg-sidebar" />
-          <ResizablePanel order={2} minSize={25} defaultSize={45}>
-            <div className="h-full p-0.5 pt-0.25">
-              <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-                <ErrorBoundary>{right.panel}</ErrorBoundary>
-              </div>
-            </div>
-          </ResizablePanel>
-        </>
-      )}
-    </ResizablePanelGroup>
   );
 }
