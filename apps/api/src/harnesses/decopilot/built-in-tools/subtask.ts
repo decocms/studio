@@ -277,6 +277,14 @@ export function createSubtaskTool(
       const targetLabel = targetRef.id;
 
       const releaseSlot = await acquireSubagentSlot();
+      // A flip abandons this generator via a detached `iter.return()` that
+      // isn't awaited (a hung provider call must not stall the flip) — so the
+      // slot can't wait on `finally` below. Release it the instant the abort
+      // fires; `releaseSlot` is idempotent, so the later `finally` call is a
+      // harmless no-op.
+      abortSignal?.addEventListener("abort", () => releaseSlot(), {
+        once: true,
+      });
       try {
         const subtaskCodingWorkspace = resolveSubtaskCodingWorkspace(
           targetRef,

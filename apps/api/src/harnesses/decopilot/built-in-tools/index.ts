@@ -52,6 +52,7 @@ import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-t
 import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import { registerFlip } from "@/harnesses/decopilot/flip-registry";
 import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
@@ -320,6 +321,10 @@ async function buildAllTools(
         ctx,
       ),
       backgroundDispatcher,
+      // Let the user flip a still-running foreground subtask to the background
+      // (frees the thread gate so they can keep chatting). Inert without a
+      // dispatcher — makeBackgroundable returns the inner tool unchanged there.
+      (toolCallId) => registerFlip(taskId, toolCallId),
     ) as ReturnType<typeof createSubtaskTool>;
   }
   // generate_image requires a provider and an image model selection.
