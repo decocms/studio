@@ -244,7 +244,6 @@ export function WorkspacePanelGroup({
           Publish / ⋯ never clip) and is what `rightRef` measures, so the tab
           count budget is unaffected by the branch label's width. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-1">
-        {!chatOpen && newChatCrumb}
         <div className="flex min-w-0 shrink items-center justify-end">
           {branchSelector}
         </div>
