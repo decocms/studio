@@ -20,12 +20,12 @@ import {
   Compass01,
   CursorClick01,
   DotsHorizontal,
-  Edit05,
   Globe02,
   LayoutAlt01,
   LinkExternal01,
   Loading01,
   Plus,
+  PuzzlePiece01,
   SearchLg,
   CreditCardSearch,
   Monitor04,
@@ -932,7 +932,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         // well before this group hides at 448px, so the group stays narrow
         // through the widths where it is most cramped.
         labelCollapse="sooner"
-        icon={{ kind: "component", Component: Edit05 }}
+        icon={{ kind: "component", Component: PuzzlePiece01 }}
         active={blocksActive}
         onClick={() => toggleEditingMode("blocks")}
         testId="preview-blocks-toggle"
@@ -1223,7 +1223,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {showPreviewToolbar && (
               <>
                 <DropdownMenuItem onClick={() => toggleEditingMode("blocks")}>
-                  <Edit05 size={14} />
+                  <PuzzlePiece01 size={14} />
                   {blocksActive
                     ? t("sandbox.preview.exitEditor")
                     : t("sandbox.preview.editContent")}
