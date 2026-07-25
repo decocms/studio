@@ -62,6 +62,23 @@ function applyPatch(list: Task[], patch: RowPatch): Task[] {
   return next;
 }
 
+/**
+ * Upsert a full, authoritative row: insert if missing, else overwrite fields
+ * unconditionally — NO recency guard. Used only by `fetchThreadIntoSlot` for a
+ * by-id GET result, which is the source of truth for the rich fields
+ * (`harness_id`, `sandbox_provider_kind`, `metadata`) that a concurrent
+ * `/watch` synthetic drops. `applyPatch`'s `updated_at` guard would let that
+ * newer-but-lossy synthetic win; here the full row always wins. The caller is
+ * responsible for the tombstone check.
+ */
+function upsertFullRow(list: Task[], row: Task): Task[] {
+  const idx = list.findIndex((t) => t.id === row.id);
+  if (idx === -1) return [row, ...list];
+  const next = [...list];
+  next[idx] = { ...next[idx]!, ...row };
+  return next;
+}
+
 export class ThreadManagerStore {
   readonly threads = new Store<Task[]>([]);
   readonly threadsStatus = new Store<ThreadsStatus>({ kind: "loading" });
@@ -424,13 +441,22 @@ export class ThreadManagerStore {
    * The `threads` slot represents threads loaded for the panel (filtered
    * server-side by `hidden: false`); merging arbitrary by-id GET results
    * into it would resurrect archived rows in the panel cache, so this
-   * method intentionally returns the row without inserting.
+   * method intentionally returns the row without inserting. Callers that want
+   * the resolved thread to also become the slot's source of truth (the active
+   * deep-linked view) use `fetchThreadIntoSlot`, which merges non-hidden rows.
    */
   async fetchThread(id: string): Promise<Task | null> {
     if (!id) return null;
     const local = this.threads.get().find((t) => t.id === id);
     if (local) return local;
-    if (!this.client) return null;
+    return this.getThreadRemote(id);
+  }
+
+  /** Server GET for a thread by id, no local short-circuit and no slot write.
+   *  Returns null when id is empty, no client, the row is absent server-side,
+   *  or the MCP call fails. */
+  private async getThreadRemote(id: string): Promise<Task | null> {
+    if (!id || !this.client) return null;
     try {
       const result = await this.client.callTool({
         name: "COLLECTION_THREADS_GET",
@@ -480,6 +506,39 @@ export class ThreadManagerStore {
     } catch {
       // Best-effort refresh — a failure leaves the (stale) row untouched.
     }
+  }
+
+  /**
+   * Resolve a thread by id AND, when it's a live (non-hidden) row, merge it into
+   * the `threads` slot so the active view (e.g. the CMS preview/blocks editor
+   * opened by direct link, whose thread is beyond page 0) shares a single
+   * source of truth with the panel. Once merged, optimistic mutations like
+   * `setBranch` (the publish branch-hop) patch the row IN-PLACE instead of
+   * upserting a lossy synthetic (see `applyPatch`), so `activeTask` actually
+   * re-points to the fresh branch.
+   *
+   * Reads the authoritative row via `getThreadRemote` (NOT `fetchThread`): a
+   * local row must not be trusted here, since a concurrent `/watch` event may
+   * have already upserted a lossy synthetic (status-only, no `harness_id` /
+   * `metadata`) that raced ahead of us. Merged with `upsertFullRow`, NOT
+   * `mergeThreads`, so the full row wins over that synthetic even if its
+   * `updated_at` is newer (`mergeThreads`'s recency guard would drop it and
+   * reintroduce the bug). Tombstone-checked so a just-hidden row can't be
+   * resurrected. Falls back to any local row for the return value when the
+   * remote read fails, so callers still get something to display.
+   *
+   * Hidden/archived rows are never merged (preserves the panel's `hidden:false`
+   * invariant, see `fetchThread`). Owner-scoping is intentionally NOT applied:
+   * the slot is org-wide and every owner-sensitive reader re-filters by
+   * `created_by` (`findReusableNewChat`, `readCachedLastThread`, the sidebar's
+   * `mineFiltered`).
+   */
+  async fetchThreadIntoSlot(id: string): Promise<Task | null> {
+    const remote = await this.getThreadRemote(id);
+    if (remote && !remote.hidden && !this.isTombstoned(remote.id)) {
+      this.threads.update((list) => upsertFullRow(list, remote));
+    }
+    return remote ?? this.threads.get().find((t) => t.id === id) ?? null;
   }
 
   /**
