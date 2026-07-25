@@ -81,6 +81,19 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     setFetchedTask("pending");
     manager.fetchThread(id).then((row) => {
       setFetchedTask(row); // null if not found, Task if found
+      // A live thread reached by direct link (e.g. the CMS preview/blocks
+      // editor opened from a URL) isn't in the panel's paginated slot, so
+      // `fetchThread` returns it without merging. But mutations flow through the
+      // store slot: `setBranch` → `optimisticUpdate` patches the slot, which for
+      // a not-yet-present row upserts a LOSSY synthetic row (no harness_id /
+      // sandbox_provider_kind / metadata). Either way the update never reaches
+      // the `fetchedTask` object that feeds `activeTask`, so publishing (which
+      // calls `setCurrentTaskBranch` to hop onto a fresh branch) fails to
+      // re-point the view. Merge the row into the slot so it is the single
+      // source of truth and branch mutations patch it in-place. Hidden/archived
+      // rows stay out to preserve the panel's `hidden: false` invariant (see
+      // `fetchThread`).
+      if (row && !row.hidden) manager.mergeThreads([row]);
     });
   }, [id, localHit, threadsStatus.kind, fetchedTask, manager]);
 
