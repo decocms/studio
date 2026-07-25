@@ -45,7 +45,7 @@ describe("headerLayout", () => {
   });
 
   test("the page selector is no longer decided here — it is a container query", () => {
-    // Moved to `@max-md/panel-header:hidden` in workspace-panel-group, so the
+    // Moved to `@max-sm/panel-header:hidden` in workspace-panel-group, so the
     // budget must not resurrect a showPageSelector field (see PanelHeader).
     expect(headerLayout(100, 0)).not.toHaveProperty("showPageSelector");
     expect(headerLayout(5000, 0)).not.toHaveProperty("showPageSelector");

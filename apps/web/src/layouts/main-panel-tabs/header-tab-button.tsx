@@ -72,7 +72,7 @@ export function HeaderTabButton({
   tooltip?: string;
   /** How soon the label is dropped as the PANEL HEADER narrows, leaving icon +
    *  tooltip. Labels always go before the centered address bar does (which
-   *  hides at 448px), because shedding ~40px per button is what buys the
+   *  hides at 384px), because shedding ~40px per button is what buys the
    *  centre its room — the same degradation order headerLayout documents.
    *  - `sooner` (< 768px) — Chat and the system tabs (Preview, Code, Library,
    *    Tasks). Fixed, distinctive icons, so they read fine bare.

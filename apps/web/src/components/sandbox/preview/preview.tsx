@@ -924,7 +924,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             : t("sandbox.preview.editContent")
         }
         // Distinctive icon — sheds its label with the system tabs at 768px,
-        // well before this group hides at 448px, so the group stays narrow
+        // well before this group hides at 384px, so the group stays narrow
         // through the widths where it is most cramped.
         labelCollapse="sooner"
         icon={{ kind: "component", Component: PuzzlePiece01 }}

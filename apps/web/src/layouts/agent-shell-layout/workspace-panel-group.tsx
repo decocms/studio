@@ -214,7 +214,7 @@ export function WorkspacePanelGroup({
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
-          gap. It hides below 448px of PANEL HEADER — a container query on
+          gap. It hides below 384px of PANEL HEADER — a container query on
           `@container/panel-header`, not this flex gap (which grows when a tab
           folds and used to flicker the selector back) and not the viewport
           (one panel is far narrower than the screen). It goes AFTER the tab
@@ -222,14 +222,20 @@ export function WorkspacePanelGroup({
           The portal target stays mounted so Preview keeps rendering into it
           instead of falling back to its inline toolbar.
 
-          448px is a deliberate call to keep the group around longer than the
-          old JS rule did (it hid below ~668px). The trade: between roughly 448
-          and 530px the selector has less than HEADER_W.middle to work with and
-          degrades toward a bare chevron instead of showing its page name. That
-          squish is accepted here — losing the controls entirely was judged
-          worse than showing them small. */}
+          384px is set by the group's measured floor: its min-content is 112px
+          (36 CMS + 28 refresh + 24 page chevron + 28 open-in-new-tab), and a
+          header that size leaves ~112-128px once the left group (66px — the
+          tab budget is down to one tab this narrow) and the actions (178px)
+          take their share. One breakpoint lower and the icons clip. Note the
+          query measures the CONTENT box, so with `px-1.5` this fires around
+          396px of rendered width — a ~16px margin above the floor, not on it.
+
+          Deliberately far later than the old JS rule (~668px). The trade: the
+          page NAME is gone from ~448px down — the selector is a bare chevron
+          there — so 384-448px is four usable icons without a label. Losing the
+          controls outright was judged worse than losing the label. */}
       <div className="flex min-w-0 flex-1 items-center justify-center">
-        <MainPanelHeaderSlot className="@max-md/panel-header:hidden" />
+        <MainPanelHeaderSlot className="@max-sm/panel-header:hidden" />
       </div>
       {/* Right side. The wrapper is shrinkable so the branch selector inside it
           can yield BEFORE the centered address bar (which is `flex-1` — basis 0,

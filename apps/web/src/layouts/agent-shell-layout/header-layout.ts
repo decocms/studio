@@ -28,9 +28,10 @@ export const HEADER_W = {
    * tab count — enough that it reads its page name rather than squishing to a
    * bare chevron. This is ONLY an allowance in the tab budget: it no longer
    * gates the center's visibility, which is a container query hiding it below
-   * 448px of header (see workspace-panel-group). Between ~448 and ~530px the
-   * center therefore shows with less than this and does squish — accepted, on
-   * the grounds that small controls beat absent ones.
+   * 384px of header (see workspace-panel-group). The center therefore shows
+   * with far less than this on narrow panels — the page name drops out around
+   * 448px, leaving the icon row down to its 112px floor — accepted, on the
+   * grounds that small controls beat absent ones.
    */
   middle: 232,
 } as const;
