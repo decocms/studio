@@ -284,6 +284,54 @@ describe("makeBackgroundable", () => {
     expect(disposed).toBe(true);
   });
 
+  // --- toModelOutput -------------------------------------------------------
+
+  test("toModelOutput surfaces the started handle's note instead of the inner tool's default", () => {
+    const inner = tool({
+      description: "inner",
+      inputSchema: BASE,
+      execute: async () => ({ ok: true }),
+      toModelOutput: () => ({
+        type: "text" as const,
+        value: "Subtask completed (no output).",
+      }),
+    });
+    const dispatcher: BackgroundDispatcher = {
+      start: async () => ({ jobId: "job-note" }),
+    };
+    const wrapped = makeBackgroundable("subtask", BASE, inner, dispatcher);
+    const out = wrapped.toModelOutput?.({
+      toolCallId: "c",
+      input: { prompt: "dig" },
+      output: {
+        background: true,
+        status: "started",
+        jobId: "job-note",
+        note: "Running in the background.",
+      },
+    } as never);
+    expect(out).toEqual({ type: "text", value: "Running in the background." });
+  });
+
+  test("toModelOutput still delegates to the inner tool for a real (non-started) output", () => {
+    const inner = tool({
+      description: "inner",
+      inputSchema: BASE,
+      execute: async () => ({ ok: true }),
+      toModelOutput: () => ({ type: "text" as const, value: "real result" }),
+    });
+    const dispatcher: BackgroundDispatcher = {
+      start: async () => ({ jobId: "x" }),
+    };
+    const wrapped = makeBackgroundable("subtask", BASE, inner, dispatcher);
+    const out = wrapped.toModelOutput?.({
+      toolCallId: "c",
+      input: { prompt: "dig" },
+      output: { text: "done" },
+    } as never);
+    expect(out).toEqual({ type: "text", value: "real result" });
+  });
+
   test("propagates dispatcher errors on background:true", async () => {
     const dispatcher: BackgroundDispatcher = {
       start: async () => {

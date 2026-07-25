@@ -63,6 +63,17 @@ function startedHandle(jobId: string): BackgroundStartedOutput {
   return { background: true, status: "started", jobId, note: STARTED_NOTE };
 }
 
+function isBackgroundStarted(
+  output: unknown,
+): output is BackgroundStartedOutput {
+  return (
+    !!output &&
+    typeof output === "object" &&
+    (output as BackgroundStartedOutput).status === "started" &&
+    (output as BackgroundStartedOutput).background === true
+  );
+}
+
 /**
  * Wrap a tool so the model can opt a call into the background via `background:
  * true`. The schema is extended with that prop; at call time a true value
@@ -194,5 +205,23 @@ export function makeBackgroundable<S extends z.ZodObject<z.ZodRawShape>>(
         return innerExecute(rest, options);
       };
 
-  return { ...innerTool, inputSchema, execute } as Tool;
+  // The started/background handle isn't a real inner-tool output — the inner
+  // toModelOutput (built for the inner tool's own result shape) doesn't
+  // recognize it and falls through to a generic "no output" text, hiding the
+  // note that tells the model the result arrives later. Intercept it here so
+  // every backgroundable tool (explicit `background: true` AND a flip) tells
+  // the model it's running in the background instead of looking finished.
+  const toModelOutput: Tool["toModelOutput"] = (args: {
+    toolCallId: string;
+    input: unknown;
+    output: unknown;
+  }) => {
+    if (isBackgroundStarted(args.output)) {
+      return { type: "text" as const, value: args.output.note };
+    }
+    if (innerTool.toModelOutput) return innerTool.toModelOutput(args as never);
+    return { type: "text" as const, value: JSON.stringify(args.output) };
+  };
+
+  return { ...innerTool, inputSchema, execute, toModelOutput } as Tool;
 }
