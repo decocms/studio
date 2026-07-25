@@ -246,6 +246,49 @@ export function useChecks(
   });
 }
 
+export interface CheckRunOutput {
+  title: string | null;
+  summary: string | null;
+  text: string | null;
+}
+
+/**
+ * Fetches a single check run's full `output` (title/summary/text markdown) via
+ * the github-mcp first-party GET_CHECK_RUN tool. The list tool
+ * (pull_request_read get_check_runs) returns a minimal shape without `output`,
+ * so the Checks tab lazily loads this when a row is expanded.
+ */
+export function useCheckRunDetail(
+  args: RepoArgs & { checkRunId: number | null; enabled: boolean },
+) {
+  const client = useMCPClient({
+    connectionId: args.connectionId,
+    orgId: args.orgId,
+    orgSlug: args.orgSlug,
+  });
+
+  return useMCPToolCallQuery<CheckRunOutput>({
+    client,
+    toolName: "GET_CHECK_RUN",
+    toolArguments: {
+      owner: args.owner,
+      repo: args.repo,
+      checkRunId: args.checkRunId ?? 0,
+    },
+    enabled: args.enabled && !!args.checkRunId,
+    staleTime: STALE,
+    select: (r) => {
+      assertToolOk(r);
+      const d = extractToolJson<{ output?: Partial<CheckRunOutput> }>(r);
+      return {
+        title: d?.output?.title ?? null,
+        summary: d?.output?.summary ?? null,
+        text: d?.output?.text ?? null,
+      };
+    },
+  });
+}
+
 /**
  * Issue-level comments on a PR via pull_request_read(get_comments).
  * Does NOT return review comments tied to a file + line — those belong
