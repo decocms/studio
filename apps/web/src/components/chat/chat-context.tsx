@@ -1157,19 +1157,27 @@ export function ActiveTaskProvider({
 
     // First message on an unlocked thread: the server pins harness_id /
     // sandbox_provider_kind on receipt, but that write never flows back through
-    // `/watch` (RowPatch carries it, the SSE event does not). Mirror it into the
-    // store now so `findReusableNewChat` stops treating the (now non-empty,
-    // often just-failed) thread as an empty "New chat" and dropping the user
-    // back onto it. When the user hasn't explicitly picked a runtime the client
-    // sends no harnessId and the server pins its default ("decopilot", per
-    // resolveHarnessId's fallback for non-CLI providers) — mirror that so this
-    // covers the common brand-new-thread case, not just explicit picks. LIST is
-    // authoritative on reload; this only keeps the live view correct meanwhile.
+    // `/watch` (RowPatch carries it, the SSE event does not). Mirror the
+    // harness into the store now so `findReusableNewChat` stops treating the
+    // (now non-empty, often just-failed) thread as an empty "New chat" and
+    // dropping the user back onto it. When the user hasn't explicitly picked a
+    // runtime the client sends no harnessId and the server pins its default
+    // ("decopilot", per resolveHarnessId's fallback for non-CLI providers) —
+    // mirror that so this covers the common brand-new-thread case, not just
+    // explicit picks. LIST/GET is authoritative; this only keeps the live view
+    // correct meanwhile.
+    //
+    // `sandbox_provider_kind` is deliberately NOT mirrored: the server resolves
+    // it from state the client doesn't own (notably whether a desktop link is
+    // live), so the picker's value is a guess that the server routinely
+    // contradicts — it pins `user-desktop` for a linked desktop while the
+    // picker says `agent-sandbox`. Writing the guess made the preview's entry
+    // lookup miss a running sandbox, blanking a working preview and booting a
+    // competing one. Leave the field null until the authoritative row lands.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
         harness_id: submitSettings.harnessId ?? "decopilot",
-        sandbox_provider_kind: submitSettings.sandboxProviderKind ?? null,
         updated_at: new Date().toISOString(),
       });
     }

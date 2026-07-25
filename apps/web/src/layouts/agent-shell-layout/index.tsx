@@ -62,7 +62,7 @@ import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-d
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import {
   SandboxLifecycleProvider,
-  selectVmEntry,
+  resolveVmEntry,
   deriveOthersThreadLabel,
   type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -246,14 +246,10 @@ function VmEventsBridge({
           effectiveSandboxMap?.[userId]?.[currentBranch],
         ) as Record<string, BranchMapEntryLike>)
       : {};
-  // Use the resolved provider kind to pick the matching entry — same logic as
-  // SandboxLifecycleProvider so the SSE previewUrl and the lifecycle vmEntry
-  // always agree on which sandbox is active.
-  const vmEntry = pendingSandboxProviderKind
-    ? ((branchMap[pendingSandboxProviderKind] as
-        | BranchMapEntryLike
-        | undefined) ?? null)
-    : selectVmEntry(branchMap);
+  // Use the resolved provider kind to pick the matching entry — the SAME
+  // helper as SandboxLifecycleProvider so the SSE previewUrl and the lifecycle
+  // vmEntry always agree on which sandbox is active.
+  const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const shouldConnect =
     Object.keys(branchMap).length > 0 ||

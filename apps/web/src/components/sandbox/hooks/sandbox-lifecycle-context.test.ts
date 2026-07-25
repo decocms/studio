@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  resolveVmEntry,
   selectVmEntry,
   shouldAutoStart,
   shouldSelfHeal,
@@ -50,6 +51,46 @@ describe("selectVmEntry", () => {
     expect(
       selectVmEntry({ a: entry("agent-sandbox", "solo") })?.sandboxHandle,
     ).toBe("solo");
+  });
+});
+
+describe("resolveVmEntry", () => {
+  test("an exact kind match wins over the non-desktop preference", () => {
+    const result = resolveVmEntry(
+      {
+        "user-desktop": entry("user-desktop", "desk"),
+        "agent-sandbox": entry("agent-sandbox", "vm"),
+      },
+      "user-desktop",
+    );
+    expect(result?.sandboxHandle).toBe("desk");
+  });
+
+  test("falls back to the serving sandbox when the pinned kind has no entry", () => {
+    // The regression: a linked desktop is serving the branch while the thread
+    // is optimistically pinned to `agent-sandbox`. Returning null here blanked
+    // a working preview into "Starting your preview" and booted a rival VM.
+    const result = resolveVmEntry(
+      { "user-desktop": entry("user-desktop", "desk") },
+      "agent-sandbox",
+    );
+    expect(result?.sandboxHandle).toBe("desk");
+  });
+
+  test("uses the heuristic when no kind is recorded", () => {
+    const result = resolveVmEntry(
+      {
+        "user-desktop": entry("user-desktop", "desk"),
+        "agent-sandbox": entry("agent-sandbox", "vm"),
+      },
+      null,
+    );
+    expect(result?.sandboxHandle).toBe("vm");
+  });
+
+  test("returns null when the branch has no sandbox at all", () => {
+    expect(resolveVmEntry({}, "agent-sandbox")).toBeNull();
+    expect(resolveVmEntry({}, null)).toBeNull();
   });
 });
 
