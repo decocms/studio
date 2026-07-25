@@ -13,9 +13,10 @@ import {
   tryResolveTier,
 } from "@/core/resolve-tier";
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
-import type {
-  ChatTier,
-  SimpleModeTier,
+import {
+  ChatTierSchema,
+  type ChatTier,
+  type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
@@ -225,10 +226,7 @@ async function resolvePerRequestModels(
   harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
   if (harnessId === "claude-code" || harnessId === "codex") {
-    const chatTier: ChatTier =
-      tier === "fast" || tier === "smart" || tier === "thinking"
-        ? tier
-        : "smart";
+    const chatTier: ChatTier = ChatTierSchema.safeParse(tier).data ?? "smart";
     const entry = resolveAgentTier(harnessId, chatTier);
     if (!entry) {
       // Should be unreachable — resolveAgentTier returns non-null for
@@ -249,7 +247,9 @@ async function resolvePerRequestModels(
   }
 
   const [chat, image, webSearch, deepResearch] = await Promise.all([
-    resolveTier(ctx, tier ?? "smart"),
+    // The only opt-in site for per-user chat-tier overrides: this is the
+    // interactive chat request, dispatched as the caller themselves.
+    resolveTier(ctx, tier ?? "smart", { applyUserPrefs: true }),
     tryResolveTier(ctx, "image"),
     tryResolveTier(ctx, "web_search"),
     tryResolveTier(ctx, "deep_research"),

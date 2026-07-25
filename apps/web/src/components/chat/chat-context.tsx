@@ -128,7 +128,7 @@ import {
 import { textFromParts } from "./queue-items";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useSimpleMode } from "../../hooks/use-organization-settings";
+import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
 import {
   findModel,
   pickFallbackChatModel,
@@ -346,8 +346,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
 
-  // Simple Model Mode
-  const simpleMode = useSimpleMode();
+  // Simple Model Mode (org config with this user's chat-tier overrides layered on)
+  const simpleMode = useEffectiveSimpleMode();
   const [storedTier, setStoredTier] = useLocalStorage<SimpleTier | null>(
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,

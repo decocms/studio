@@ -3262,6 +3262,59 @@ export interface StudioToolIO {
       } | null;
     };
   };
+  USER_MODEL_PREFERENCES_GET: {
+    input: { [x: string]: never };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+  };
+  USER_MODEL_PREFERENCES_UPDATE: {
+    input: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+  };
   COLLECTION_THREADS_CREATE: {
     input: {
       data: {
