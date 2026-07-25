@@ -15,6 +15,7 @@ import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
+import { usePanelActions } from "@/layouts/shell-layout";
 import { squashMergePullRequest } from "./github-pr-api.ts";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { PublishDialog } from "./publish-dialog.tsx";
@@ -105,6 +106,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch } = useChatTask();
   const chat = useChatStream();
+  const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishDialogIntent, setPublishDialogIntent] = useState<
     "open-pr" | "publish-only"
@@ -281,8 +283,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
     });
   }
 
-  const send = (text: string) =>
-    chat.sendMessage({ parts: [{ type: "text", text }] });
+  const send = (text: string) => {
+    // Header actions can fire while the chat side panel is closed (e.g. from the
+    // GitHub tab), so surface the chat so the user sees the message we just sent.
+    openSidePanel("chat");
+    return chat.sendMessage({ parts: [{ type: "text", text }] });
+  };
 
   const isStreaming = chat.isStreaming;
 
