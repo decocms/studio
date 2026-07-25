@@ -3,48 +3,11 @@ import { computeHandle, hashSandboxId } from "./handle";
 import type { SandboxId } from "../types";
 
 const ID: SandboxId = {
-  scope: "user",
   userId: "u_1",
   projectRef: "agent:org:vmcp:deco/mellow-flint",
 };
 
 describe("computeHandle", () => {
-  it("shares hosted handles for the same project ref", () => {
-    const first: SandboxId = {
-      scope: "shared",
-      projectRef: "agent:org:vmcp:deco/shared",
-    };
-    const second: SandboxId = {
-      scope: "shared",
-      projectRef: "agent:org:vmcp:deco/shared",
-    };
-    expect(computeHandle(first, "deco/shared")).toBe(
-      computeHandle(second, "deco/shared"),
-    );
-  });
-
-  it("keeps user-scoped desktop handles isolated", () => {
-    expect(
-      computeHandle(
-        {
-          scope: "user",
-          userId: "u_1",
-          projectRef: "agent:org:vmcp:deco/shared",
-        },
-        "deco/shared",
-      ),
-    ).not.toBe(
-      computeHandle(
-        {
-          scope: "user",
-          userId: "u_2",
-          projectRef: "agent:org:vmcp:deco/shared",
-        },
-        "deco/shared",
-      ),
-    );
-  });
-
   it("strips the prefix before the last `/` from the branch slug", () => {
     const handle = computeHandle(ID, "deco/mellow-flint");
     expect(handle).toMatch(/^mellow-flint-[0-9a-f]{16}$/);
@@ -110,11 +73,7 @@ describe("computeHandle", () => {
   it("uses the SandboxId for the hash, so different ids with the same slug differ", () => {
     const handleA = computeHandle(ID, "deco/foo");
     const handleB = computeHandle(
-      {
-        scope: "user",
-        userId: "u_2",
-        projectRef: "agent:org:vmcp:deco/foo",
-      },
+      { userId: "u_2", projectRef: "agent:org:vmcp:deco/foo" },
       "deco/foo",
     );
     expect(handleA).not.toBe(handleB);

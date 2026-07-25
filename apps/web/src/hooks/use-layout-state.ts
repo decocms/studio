@@ -14,6 +14,8 @@
 
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useProjectContext } from "@/sdk";
+import { readCachedTaskBranch } from "@/lib/read-cached-task-branch";
 import { resolveDefaultTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useThreadActions } from "@/components/chat/store/hooks";
 
@@ -193,6 +195,7 @@ export function useWorkspaceLayoutState(
     taskId?: string;
   };
   const { create } = useThreadActions();
+  const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
   const mainParam = search.main === 0 ? "0" : search.main;
@@ -276,13 +279,16 @@ export function useWorkspaceLayoutState(
     if (update) navigateSearch(update, { replace: true });
   };
 
-  // The server assigns the default branch for the new thread.
+  // Carry the active task's branch into the new thread so it lands on the
+  // same warm sandbox. Server picks from sandboxMap when no branch is provided.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
+    const branch = readCachedTaskBranch(orgSlug, locator, taskId);
     try {
       await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
+        ...(branch ? { branch } : {}),
       });
     } catch {
       // Toast already fired by useCollectionActions; navigate anyway so the

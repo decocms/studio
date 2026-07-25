@@ -60,7 +60,6 @@ import {
   useCreateSecret,
   useSecrets,
 } from "@/hooks/use-secrets";
-import { useAgentSandboxSessions } from "@/hooks/use-agent-sandbox-session";
 
 export interface EnvVarsFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -149,10 +148,6 @@ function RunningSandboxNotice<T extends FieldValues>({
   const t = useT();
   const session = authClient.useSession();
   const userId = session.data?.user?.id;
-  const { data: sharedSessions = [] } = useAgentSandboxSessions(
-    orgSlug,
-    virtualMcpId,
-  );
 
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   const sandboxMapPath = "metadata.sandboxMap" as FieldPath<T>;
@@ -167,20 +162,8 @@ function RunningSandboxNotice<T extends FieldValues>({
   const sandboxMap = form.getValues(sandboxMapPath) as
     | Record<string, Record<string, unknown>>
     | undefined;
-  const branches = [
-    ...new Set([
-      ...(userId ? Object.keys(sandboxMap?.[userId] ?? {}) : []),
-      ...sharedSessions
-        .filter(
-          (sandbox) =>
-            sandbox.desiredState === "running" &&
-            sandbox.status === "ready" &&
-            !!sandbox.sandboxHandle,
-        )
-        .map((sandbox) => sandbox.branch),
-    ]),
-  ];
-  const hasActiveSandbox = branches.length > 0;
+  const userBranches = userId ? Object.keys(sandboxMap?.[userId] ?? {}) : [];
+  const hasActiveSandbox = userBranches.length > 0;
 
   const [isRestarting, setRestarting] = useState(false);
 
@@ -189,7 +172,7 @@ function RunningSandboxNotice<T extends FieldValues>({
   const handleRestart = async () => {
     setRestarting(true);
     const results = await Promise.allSettled(
-      branches.map(async (branch) => {
+      userBranches.map(async (branch) => {
         const url = `/api/${encodeURIComponent(orgSlug)}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/setup/start`;
         const res = await fetch(url, { method: "POST" });
         if (!res.ok) {
@@ -203,17 +186,17 @@ function RunningSandboxNotice<T extends FieldValues>({
     if (failed === 0) {
       setBaseline(currentStr);
       toast.success(
-        branches.length === 1
+        userBranches.length === 1
           ? t("sandbox.envVarsField.restartedSingle")
           : t("sandbox.envVarsField.restartedMultiple", {
-              count: branches.length,
+              count: userBranches.length,
             }),
       );
     } else {
       toast.error(
         t("sandbox.envVarsField.restartFailed", {
           failed,
-          total: branches.length,
+          total: userBranches.length,
         }),
       );
     }

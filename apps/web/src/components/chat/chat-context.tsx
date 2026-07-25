@@ -206,8 +206,9 @@ export interface ChatTaskContextValue {
   lockedSandbox: SandboxProviderKind | null;
   /** Locked branch (null when unlocked or thread has no branch). */
   lockedBranch: string | null;
-  /** thread.branch — alias of `lockedBranch`. Null until the user picks one or
-   *  the server assigns the default. */
+  /** thread.branch — alias of `lockedBranch`. Kept for call-site compatibility
+   *  (e.g. `createTask` carry-over). Null until the user picks one or the
+   *  server generates one on first send. */
   currentBranch: string | null;
   /** Persist pinned branch onto the thread (cache + server). */
   setCurrentTaskBranch: (branch: string | null) => void;
@@ -666,17 +667,21 @@ export function ChatContextProvider({
   const lockedBranch = activeTask?.branch ?? null;
   const isThreadLocked = lockedHarness != null;
 
-  // The stored thread branch is authoritative for sandbox dispatch.
+  // Existing call sites still read `currentBranch` for create-task carry-over;
+  // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
 
-  // Create the row up-front. The server assigns the default branch, and the
-  // route loader's useEnsureTask skips its create-on-404 fallback.
+  // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
+  // task's branch so the new thread lands on the same warm sandbox. The
+  // route loader's useEnsureTask will see the row already exists on its
+  // GET and skip the create-on-404 fallback.
   const createTask = (): string => {
     const newId = crypto.randomUUID();
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
+        ...(currentBranch ? { branch: currentBranch } : {}),
       })
       .then(() => navigateToTask(newId))
       .catch(() => {
@@ -689,18 +694,23 @@ export function ChatContextProvider({
   };
 
   // Create task + hand off the message via URL ?autosend= so the new
-  // task's ActiveTaskProvider fires it on mount.
+  // task's ActiveTaskProvider fires it on mount. Propagates currentBranch
+  // only when the new task is on the same vMCP (different vMCPs have their
+  // own sandboxMap, so carrying a branch across them would land on a cold
+  // sandbox).
   const createTaskWithMessage = (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
+    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
+        ...(carryBranch ? { branch: carryBranch } : {}),
       })
       .then(() =>
         navigateToTask(newId, {

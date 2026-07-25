@@ -25,8 +25,6 @@ export {
   normalizeSandboxProviderKind,
   sandboxIdKey,
   sandboxProviderKindSchema,
-  sharedSandboxId,
-  userSandboxId,
 } from "./types";
 // Needed by studio callers (decopilot dispatch-run) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.

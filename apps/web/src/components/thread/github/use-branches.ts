@@ -1,7 +1,6 @@
 import { KEYS, type SandboxMap, useMCPClient } from "@/sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { groupBranches } from "./group-branches";
-import { useAgentSandboxSessions } from "@/hooks/use-agent-sandbox-session";
 
 export interface Branch {
   name: string;
@@ -36,7 +35,6 @@ export interface UseBranchesResult {
 interface UseBranchesArgs {
   orgId: string;
   orgSlug: string;
-  virtualMcpId: string;
   userId: string;
   connectionId: string | null | undefined;
   sandboxMap: SandboxMap | undefined;
@@ -134,7 +132,6 @@ function extractBranches(r: unknown): RawBranchesResponse {
 export function useBranches({
   orgId,
   orgSlug,
-  virtualMcpId,
   userId,
   connectionId,
   sandboxMap,
@@ -142,11 +139,6 @@ export function useBranches({
   repo,
   enabled = true,
 }: UseBranchesArgs): UseBranchesResult {
-  const { data: sharedSessions = [] } = useAgentSandboxSessions(
-    orgSlug,
-    virtualMcpId,
-    enabled,
-  );
   const client = useMCPClient({
     connectionId: connectionId ?? null,
     orgId,
@@ -217,35 +209,8 @@ export function useBranches({
           : (b.commit?.author?.login ?? null),
     }));
 
-  let effectiveSandboxMap = sandboxMap;
-  for (const session of sharedSessions) {
-    if (
-      session.desiredState !== "running" ||
-      session.status !== "ready" ||
-      !session.sandboxHandle
-    ) {
-      continue;
-    }
-    effectiveSandboxMap = {
-      ...(effectiveSandboxMap ?? {}),
-      [userId]: {
-        ...(effectiveSandboxMap?.[userId] ?? {}),
-        [session.branch]: {
-          ...(effectiveSandboxMap?.[userId]?.[session.branch] ?? {}),
-          "agent-sandbox": {
-            sandboxHandle: session.sandboxHandle,
-            previewUrl: session.previewUrl,
-            sandboxApiUrl: session.sandboxApiUrl,
-            sandboxProviderKind: "agent-sandbox",
-            createdAt: Date.parse(session.updatedAt),
-          },
-        },
-      },
-    };
-  }
-
   const { recent, yours, others } = groupBranches({
-    sandboxMap: effectiveSandboxMap,
+    sandboxMap,
     userId,
     rawBranches,
     now: Date.now(),

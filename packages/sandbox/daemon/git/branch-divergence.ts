@@ -1,5 +1,4 @@
 import { git } from "../setup/git";
-import { SANDBOX_BASE_BRANCH } from "./checkout-branch";
 
 export interface BranchDivergenceFields {
   base: string;
@@ -24,12 +23,15 @@ function defaultTryGit(repoDir: string, args: string[]): string | null {
   }
 }
 
-/** Divergence vs the sandbox base branch — shared by HTTP /git/status and BranchStatusMonitor. */
+/** Divergence vs default base branch — shared by HTTP /git/status and BranchStatusMonitor. */
 export function computeBranchDivergence(
   repoDir: string,
   tryGit: GitTryRunner = (args) => defaultTryGit(repoDir, args),
 ): BranchDivergenceFields {
-  const base = SANDBOX_BASE_BRANCH;
+  let base =
+    tryGit(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]) ?? "";
+  if (base.startsWith("origin/")) base = base.slice("origin/".length);
+  if (!base) base = "main";
 
   const branch = tryGit(["rev-parse", "--abbrev-ref", "HEAD"]) ?? "";
   if (!branch || branch === "HEAD") {

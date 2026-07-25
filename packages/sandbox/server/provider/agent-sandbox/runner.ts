@@ -226,7 +226,7 @@ interface PortForwarder {
 
 interface RunnerTenant {
   orgId: string;
-  userId?: string;
+  userId: string;
   orgSlug?: string;
   orgName?: string;
   userEmail?: string;
@@ -514,22 +514,8 @@ export class AgentSandboxProvider implements SandboxProvider {
     );
   }
 
-  async delete(handle: string, id?: SandboxId): Promise<void> {
-    if (id && this.stateStore) {
-      await withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
-        this.deleteLocked(handle, id, ops),
-      );
-      return;
-    }
-    await this.deleteLocked(handle, id, this.stateStore);
-  }
-
-  private async deleteLocked(
-    handle: string,
-    id: SandboxId | undefined,
-    stateStore: RunnerStateStoreOps | null,
-  ): Promise<void> {
-    const rec = this.records.get(handle) ?? null;
+  async delete(handle: string): Promise<void> {
+    const rec = await this.getRecord(handle);
     this.records.delete(handle);
     if (rec) {
       this.closeForwarder(rec.daemonForward);
@@ -551,10 +537,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
     });
     await deleteSandboxClaim(this.kubeConfig, this.namespace, handle);
-    if (stateStore) {
-      if (id) await stateStore.delete(id, RUNNER_KIND);
-      else if (rec) await stateStore.delete(rec.id, RUNNER_KIND);
-      else await stateStore.deleteByHandle(RUNNER_KIND, handle);
+    if (this.stateStore) {
+      if (rec) await this.stateStore.delete(rec.id, RUNNER_KIND);
+      else await this.stateStore.deleteByHandle(RUNNER_KIND, handle);
     }
   }
 
@@ -2294,7 +2279,7 @@ function buildTenantLabels(
   const labels: Record<string, string> = { ...extra };
   if (tenant) {
     const orgId = sanitizeLabelValue(tenant.orgId);
-    const userId = tenant.userId ? sanitizeLabelValue(tenant.userId) : "";
+    const userId = sanitizeLabelValue(tenant.userId);
     if (orgId) labels[LABEL_KEYS.orgId] = orgId;
     if (userId) labels[LABEL_KEYS.userId] = userId;
   }
@@ -2384,11 +2369,11 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
   if (!labels) return null;
   const orgId = labels[LABEL_KEYS.orgId];
   const userId = labels[LABEL_KEYS.userId];
-  if (!orgId) return null;
+  if (!orgId || !userId) return null;
   const annotations = claim.metadata?.annotations ?? {};
   return {
     orgId,
-    ...(userId ? { userId } : {}),
+    userId,
     orgSlug: annotations[ANNOTATION_KEYS.orgSlug],
     orgName: annotations[ANNOTATION_KEYS.orgName],
     userEmail: annotations[ANNOTATION_KEYS.userEmail],

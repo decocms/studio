@@ -21,15 +21,13 @@ Studio addresses a sandbox by logical identity and talks to it through the
 behind that contract, so API code does not depend on Kubernetes or desktop-link
 details.
 
-Hosted agent sandboxes share one workspace for each project reference, while a
-linked desktop keeps one workspace for each user and project reference. The
-identity scope is explicit in `SandboxId`, so callers cannot accidentally include
-an acting user in a shared hosted identity.
+A sandbox is isolated per user and project reference, so one user's workspace
+never becomes another user's execution context.
 
 ## Responsibilities
 
-- Define stable shared and user-scoped sandbox identities, provider kinds,
-  references, and lifecycle contracts.
+- Define stable sandbox identities, provider kinds, references, and lifecycle
+  contracts.
 - Provision or attach to isolated execution environments.
 - Build and run the authenticated Bun daemon inside each environment.
 - Expose asynchronous filesystem, Git, task, terminal, and preview operations.
@@ -69,18 +67,6 @@ export async function ensureSandbox(
 }
 ```
 
-Construct the identity that matches the selected provider:
-
-```ts
-import {
-  sharedSandboxId,
-  userSandboxId,
-} from "@decocms/sandbox/provider";
-
-const hostedId = sharedSandboxId(projectRef);
-const desktopId = userSandboxId(userId, projectRef);
-```
-
 Dispatch producers and consumers share schemas from the package instead of
 redeclaring wire objects:
 
@@ -105,10 +91,9 @@ The package has four major layers:
 4. **Proxy and filesystem layer** — HTTP/WebSocket helpers expose development
    servers, while organization filesystem helpers manage mounted Studio content.
 
-A logical sandbox uses a discriminated `SandboxId`. Hosted agent sandboxes use a
-shared identity containing only `projectRef`; linked desktops use a user-scoped
-identity containing both `userId` and `projectRef`. Providers map that identity to
-a deterministic, DNS-safe handle. The handle and preview URL are bearer-like links
+A logical sandbox is identified by `SandboxId`, which pairs a `userId` with an
+opaque `projectRef`. Providers map that identity to a deterministic, DNS-safe
+handle. The handle and preview URL are bearer-like links
 for the preview surface in current providers; daemon control requests still
 require separate authentication.
 
@@ -160,8 +145,6 @@ bun run lint
 
 - All Studio callers depend on `SandboxProvider`; provider-specific clients and
   transports must not leak into business logic.
-- Use `sharedSandboxId()` for hosted agent sandboxes and `userSandboxId()` for
-  linked desktops. Do not add the acting user to a shared hosted identity.
 - The daemon runs on one Bun event loop. Never use synchronous filesystem or
   crypto APIs, blocking child processes, large unchunked serialization, or
   unbounded CPU work in `packages/sandbox/daemon`.
@@ -195,22 +178,6 @@ Production deployments must set `STUDIO_SANDBOX_PROVIDER` explicitly. Use
 `agent-sandbox` for the Kubernetes topology. The old `host` and `local-docker`
 provider modes are not supported.
 
-## Shared hosted sessions
-
-The Studio API keeps agent-sandbox lifecycle state in an organization-scoped
-session registry keyed by organization, virtual MCP, and branch. Authorized
-collaborators on the same branch join the same lifecycle generation and
-`SandboxClaim`; linked desktops remain user-scoped.
-
-Shared-session transitions use generation fences so a stale provisioning or
-teardown completion cannot overwrite a newer start. Keep provider operations
-outside the short database lifecycle lock to avoid lock-ordering and connection
-pool hazards.
-
-Upgrading does not migrate an already-running, per-user hosted workspace. Commit
-any work in those claims and drain them before deploying the shared-session
-behavior.
-
 ## Routing and preview traffic
 
 The daemon listens on port `9000`. A production `agent-sandbox` deployment may
@@ -225,8 +192,7 @@ so HMR remains on the authenticated Studio route instead of exposing an
 unreachable container-local address.
 
 Handles have the shape `<branch-slug>-<hash>` (or `s-<hash>` without a usable
-branch slug). The hash is derived from `projectRef` for shared hosted sandboxes
-and from `userId:projectRef` for linked desktops.
+branch slug), where the hash is derived from `userId:projectRef`.
 
 Daemon control endpoints use the `/_sandbox/*` namespace, with `/health` at the
 root. Providers decide how those routes travel; they are separate from the public

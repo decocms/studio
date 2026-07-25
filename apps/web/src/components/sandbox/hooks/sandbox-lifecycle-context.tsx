@@ -79,9 +79,9 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
 }
 
 /** The gate label for an active thread: non-null iff the thread belongs to
- *  another member (its branch or title as a fallback). Extracted from the
- *  layout so the ownership rule is unit-testable: an inverted comparison here
- *  would silently gate the user's own thread. */
+ *  another member (its branch — which encodes the owner — or title as a
+ *  fallback). Extracted from the layout so the ownership rule is unit-testable:
+ *  an inverted comparison here would silently gate the user's own thread. */
 export function deriveOthersThreadLabel(args: {
   userId: string | null;
   createdBy: string | null | undefined;
@@ -96,7 +96,7 @@ export function deriveOthersThreadLabel(args: {
 
 /** Whether auto-start (and self-heal) must be held back pending confirmation.
  *  Keyed by thread id, not branch: acknowledging a null-branch thread survives
- *  the server later assigning its default branch (no re-prompt / double-start), and
+ *  the server later assigning it a branch (no re-prompt / double-start), and
  *  two different members' threads that collide on a branch name don't share an
  *  acknowledgement. Re-arms when the active thread id changes. */
 export function computeOthersThreadGate(args: {
@@ -269,7 +269,7 @@ import {
 } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
+import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useChatTask } from "@/components/chat/context";
 import {
   sandboxUserStop,
@@ -326,8 +326,6 @@ export function SandboxLifecycleProvider({
   hasActiveGithubRepo,
   sandboxMap,
   sandboxProviderKind,
-  sharedDesiredState,
-  sharedLifecyclePending,
   othersThreadLabel,
   othersThreadId,
   children,
@@ -341,8 +339,6 @@ export function SandboxLifecycleProvider({
    *  (unlocked). When non-null, entry selection and SANDBOX_START are scoped to
    *  this kind so the preview never silently shows a different-provider sibling. */
   sandboxProviderKind: SandboxProviderKind | null;
-  sharedDesiredState: "running" | "stopped" | null;
-  sharedLifecyclePending: boolean;
   /** Non-null when the active thread belongs to another member: label to show
    *  in the confirmation gate (its branch, or title). While set and not yet
    *  acknowledged, auto-start is held back so we never silently boot a sandbox
@@ -418,10 +414,9 @@ export function SandboxLifecycleProvider({
     : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const userStopped =
-    sharedDesiredState === "stopped" ||
-    (!!virtualMcpId &&
-      !!branch &&
-      sandboxUserStop.isStopped(virtualMcpId, branch));
+    !!virtualMcpId &&
+    !!branch &&
+    sandboxUserStop.isStopped(virtualMcpId, branch);
   const appPaused = events.status.state === "paused";
   const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
   // A retryable claim failure keeps the booting overlay (deriveStartError
@@ -437,7 +432,7 @@ export function SandboxLifecycleProvider({
         ? decodeSandboxStartError(startVm.error.message)
         : null,
     phase: events.phase,
-    startPending: startVm.isPending || sharedLifecyclePending,
+    startPending: startVm.isPending,
     claimRetryExhausted,
   });
   const previewState = computePreviewState({
@@ -457,7 +452,7 @@ export function SandboxLifecycleProvider({
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
   // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
-  // single auto-start fires even before the server assigns the default branch.
+  // single auto-start fires even before the server assigns a branch.
   const autoStartDedupKey = branch ?? "";
   const attempted =
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
@@ -468,7 +463,7 @@ export function SandboxLifecycleProvider({
     branch,
     vmEntry,
     userStopped,
-    isPending: startVm.isPending || sharedLifecyclePending,
+    isPending: startVm.isPending,
     attempted,
     autoStartBlocked,
   });
@@ -507,7 +502,7 @@ export function SandboxLifecycleProvider({
     deadVmId,
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after firing
     lastDeadVmId: reprovisionedForVmIdRef.current,
-    isPending: startVm.isPending || sharedLifecyclePending,
+    isPending: startVm.isPending,
     userStopped,
     autoStartBlocked,
   });
@@ -546,7 +541,7 @@ export function SandboxLifecycleProvider({
   const claimRetryEligible = shouldAutoRetryClaim({
     failedReason: failedPhase?.reason ?? null,
     attempts: claimRetryEpisode.count,
-    isPending: startVm.isPending || sharedLifecyclePending,
+    isPending: startVm.isPending,
     userStopped,
     autoStartBlocked,
     alreadyHandled: claimRetryEpisode.handled,
@@ -629,11 +624,6 @@ export function SandboxLifecycleProvider({
       // Best effort
     }
     invalidateVirtualMcpQueries(queryClient);
-    if (branch) {
-      queryClient.invalidateQueries({
-        queryKey: KEYS.agentSandboxSession(org.slug, virtualMcpId, branch),
-      });
-    }
   };
 
   const restart = async () => {

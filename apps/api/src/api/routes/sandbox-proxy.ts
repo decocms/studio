@@ -15,14 +15,8 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
-import {
-  composeSandboxRef,
-  sharedSandboxId,
-  userSandboxId,
-  type SandboxId,
-  type SandboxProvider,
-  type SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
@@ -58,8 +52,6 @@ import {
 
 interface VmClaim {
   claimName: string;
-  sandboxId: SandboxId;
-  providerKind: SandboxProviderKind;
   /** Null when no sandbox runner is configured on this studio instance. */
   runner: SandboxProvider | null;
   virtualMcpId: string;
@@ -171,6 +163,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpId,
     branch,
   });
+  const claimName = computeClaimHandle({ userId, projectRef }, branch);
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
@@ -187,34 +180,23 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // to a sandbox that doesn't host this VM. The events handler streams a
   // `failed` phase from null; other handlers 503 via `requireRunner`.
   let runner: SandboxProvider | null;
-  let providerKind: SandboxProviderKind | null = null;
   try {
     const resolved = await resolveSandboxProvider(ctx, {
       userId,
       branch,
-      virtualMcpId,
       virtualMcpMetadata,
     });
     runner = resolved.provider;
-    providerKind = resolved.kind;
   } catch {
     runner = null;
   }
 
-  if (!runner || !providerKind) {
+  if (!runner) {
     return c.json({ error: "No sandbox runner found" }, 404);
   }
 
-  const sandboxId =
-    providerKind === "agent-sandbox"
-      ? sharedSandboxId(projectRef)
-      : userSandboxId(userId, projectRef);
-  const claimName = computeClaimHandle(sandboxId, branch);
-
   c.set("vmClaim", {
     claimName,
-    sandboxId,
-    providerKind,
     runner,
     virtualMcpId,
     branch,
@@ -239,9 +221,9 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
 /**
  * Publish/rebase first PUT an `operator` identity into the daemon's persisted
  * tenant config, then trigger the commit/push against the single working
- * tree the daemon reads that config back from. On a sandbox shared by
- * multiple users (see `sharedSandboxId`), two concurrent publish/rebase
- * calls for the same claim can otherwise interleave: one request's operator
+ * tree the daemon reads that config back from. Two concurrent publish/rebase
+ * calls for the same claim (the same user in two tabs, or a retry racing the
+ * original) can otherwise interleave: one request's operator
  * PUT gets read back by the other's commit, and two `git commit`/`push`
  * sequences race the same working tree. Serializing per claim closes that
  * window for this mesh process. Entries are removed once idle so this never
@@ -300,7 +282,7 @@ async function proxyDaemon(
   const runner = requireRunner(c);
   if (runner instanceof Response) return runner;
 
-  const { claimName, sandboxId } = c.get("vmClaim");
+  const { claimName, userId, projectRef } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
   let body: string | null = null;
   const headers = new Headers();
@@ -342,7 +324,10 @@ async function proxyDaemon(
       } catch {
         /* ignore */
       }
-      const adopted = await runner.adoptLiveClaim?.(sandboxId, claimName);
+      const adopted = await runner.adoptLiveClaim?.(
+        { userId, projectRef },
+        claimName,
+      );
       if (adopted) {
         upstream = await runner.proxyDaemonRequest(
           claimName,
@@ -443,7 +428,7 @@ async function fetchDaemonJson<T>(
   claimName: string,
   daemonPath: string,
   method: "GET" | "POST" = "GET",
-  sandboxId?: SandboxId,
+  sandboxId?: { userId: string; projectRef: string },
 ): Promise<T> {
   let upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
     method,
@@ -614,9 +599,6 @@ export const createSandboxRoutes = () => {
             orgId: organization.id,
             userId: claim.userId,
             entries,
-            organizationSecretsOnly:
-              claim.providerKind === "agent-sandbox" &&
-              claim.sandboxId.scope === "shared",
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -656,11 +638,10 @@ export const createSandboxRoutes = () => {
       ctx: c.var.studioContext,
       claimName: claim.claimName,
       runner: claim.runner,
-      sandboxId: claim.sandboxId,
-      providerKind: claim.providerKind,
       virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
+      projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
   });
@@ -776,7 +757,7 @@ export const createSandboxRoutes = () => {
       const runner = requireRunner(c);
       if (runner instanceof Response) return runner;
 
-      const { claimName, sandboxId } = c.get("vmClaim");
+      const { claimName, userId, projectRef } = c.get("vmClaim");
       const ctx = c.var.studioContext;
 
       try {
@@ -801,14 +782,14 @@ export const createSandboxRoutes = () => {
                   claimName,
                   "/_sandbox/git/status",
                   "GET",
-                  sandboxId,
+                  { userId, projectRef },
                 ),
                 fetchDaemonJson<GitDiffLike>(
                   runner,
                   claimName,
                   "/_sandbox/git/diff",
                   "GET",
-                  sandboxId,
+                  { userId, projectRef },
                 ),
               ]);
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
@@ -850,7 +831,7 @@ export const createSandboxRoutes = () => {
       const runner = requireRunner(c);
       if (runner instanceof Response) return runner;
 
-      const { claimName, sandboxId } = c.get("vmClaim");
+      const { claimName, userId, projectRef } = c.get("vmClaim");
       const ctx = c.var.studioContext;
 
       try {
@@ -876,14 +857,14 @@ export const createSandboxRoutes = () => {
                   claimName,
                   "/_sandbox/git/status",
                   "GET",
-                  sandboxId,
+                  { userId, projectRef },
                 ),
                 fetchDaemonJson<GitDiffLike>(
                   runner,
                   claimName,
                   "/_sandbox/git/diff",
                   "GET",
-                  sandboxId,
+                  { userId, projectRef },
                 ),
               ]);
         const verdict = await judgeRequiresReviewWithLlm(

@@ -1,9 +1,6 @@
 import { gitSync } from "./git-sync";
 import { assertValidRemoteBranchName } from "./ref-name";
 
-/** Base branch all sandbox work is created from and published back to. */
-export const SANDBOX_BASE_BRANCH = "main";
-
 /** Default branch pointed to by `origin/HEAD`, falling back to `main`. */
 export function resolveRemoteDefaultBranch(repoDir: string): string {
   try {
@@ -43,7 +40,7 @@ export interface CheckoutBranchParams {
  * Check out `branch` in an existing clone:
  * - remote branch → fetch + reset to origin
  * - local-only branch → checkout existing ref
- * - absent everywhere → fork from `origin/main` (not current HEAD)
+ * - absent everywhere → fork from the repo default branch (not current HEAD)
  */
 export async function spawnCheckoutBranch(
   params: CheckoutBranchParams,
@@ -106,26 +103,31 @@ export async function spawnCheckoutBranch(
       return;
     }
 
+    const defaultBranch = resolveRemoteDefaultBranch(repoDir);
+    // `defaultBranch` comes from the remote's own `origin/HEAD` symref (set by
+    // whoever controls that remote) and flows into git argv below — argv form
+    // means no shell interprets it, but ref-format garbage (or a value
+    // starting with `-`) could still confuse git, so it still needs
+    // validation before ever reaching a git invocation.
+    assertValidRemoteBranchName(defaultBranch);
     log(
-      `[orchestrator] branch '${branch}' not on remote; creating from base branch '${SANDBOX_BASE_BRANCH}'\r\n`,
+      `[orchestrator] branch '${branch}' not on remote; creating from default branch '${defaultBranch}'\r\n`,
     );
     const fetchCode = await runGit([
       "fetch",
       "--depth",
       "1",
       "origin",
-      `+refs/heads/${SANDBOX_BASE_BRANCH}:refs/remotes/origin/${SANDBOX_BASE_BRANCH}`,
+      `+refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
     ]);
     if (fetchCode !== 0) {
-      throw new Error(
-        `git fetch origin ${SANDBOX_BASE_BRANCH} exited ${fetchCode}`,
-      );
+      throw new Error(`git fetch origin ${defaultBranch} exited ${fetchCode}`);
     }
     const checkoutCode = await runGit([
       "checkout",
       "-B",
       branch,
-      `refs/remotes/origin/${SANDBOX_BASE_BRANCH}`,
+      `refs/remotes/origin/${defaultBranch}`,
     ]);
     if (checkoutCode !== 0) {
       throw new Error(`git checkout -B ${branch} exited ${checkoutCode}`);

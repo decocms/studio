@@ -61,7 +61,6 @@ import { TagStorage } from "../storage/tags";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
-import { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
 import { AccessControl } from "./access-control";
 import { buildWildcardPermission } from "./permission-wildcard";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
@@ -1342,7 +1341,6 @@ export async function createStudioContextFactory(
       metricsFromLogs,
     ),
     virtualMcps: new VirtualMCPStorage(config.db),
-    agentSandboxSessions: new AgentSandboxSessionStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
