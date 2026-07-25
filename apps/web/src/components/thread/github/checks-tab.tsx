@@ -1,9 +1,9 @@
 import { useProjectContext } from "@/sdk";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Markdown } from "@deco/ui/components/markdown.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronRight, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
-import { MemoizedMarkdown } from "@/components/chat/markdown.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import * as tpl from "./message-templates.ts";
@@ -214,7 +214,10 @@ function CheckRunDetail({ checkRunId, ...repo }: CheckRunDetailProps) {
           {output.title}
         </div>
       )}
-      <MemoizedMarkdown id={`check-${checkRunId}`} text={body} />
+      {/* Check output is attacker-influenceable (any app with checks:write can
+          set it), so render through the sanitizing Markdown — NOT the chat
+          renderer, which enables rehype-raw (raw HTML → XSS). */}
+      <Markdown className="max-w-none text-sm">{body}</Markdown>
     </div>
   );
 }
