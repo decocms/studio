@@ -910,30 +910,36 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Refresh + page selector + open-in-new-tab — the URL group. Sized to content
   // (capped) rather than stretching, so it doesn't dominate the top bar.
-  const urlControls = showPreviewToolbar ? (
-    <div className="flex min-w-0 items-center gap-0.5">
-      {/* Edit (Blocks) — the primary "edit this page" action, tied to the page
-          the selector shows. Leads the group (set off by a divider) so it reads
-          as a distinct action rather than being wedged inside the URL controls.
-          Filled when the Blocks editor is open; click again for plain preview. */}
-      <HeaderTabButton
-        title={t("sandbox.preview.cms")}
-        tooltip={
-          blocksActive
-            ? t("sandbox.preview.exitEditor")
-            : t("sandbox.preview.editContent")
-        }
-        // Distinctive icon — sheds its label with the system tabs at 768px,
-        // well before this group hides at 384px, so the group stays narrow
-        // through the widths where it is most cramped.
-        labelCollapse="sooner"
-        icon={{ kind: "component", Component: PuzzlePiece01 }}
-        active={blocksActive}
-        onClick={() => toggleEditingMode("blocks")}
-        testId="preview-blocks-toggle"
-        dataTour={TOUR_ANCHORS.edit}
-      />
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+  // Edit (Blocks) — the primary "edit this page" action, tied to the page the
+  // selector shows. On desktop it leads the URL group, set off by a divider, so
+  // it reads as a distinct action rather than being wedged inside the URL
+  // controls. On mobile it anchors the left edge on its own (see below).
+  // Filled when the Blocks editor is open; click again for plain preview.
+  const cmsToggle = showPreviewToolbar ? (
+    <HeaderTabButton
+      title={t("sandbox.preview.cms")}
+      tooltip={
+        blocksActive
+          ? t("sandbox.preview.exitEditor")
+          : t("sandbox.preview.editContent")
+      }
+      // Distinctive icon — sheds its label with the system tabs at 768px,
+      // well before this group hides at 384px, so the group stays narrow
+      // through the widths where it is most cramped.
+      labelCollapse="sooner"
+      icon={{ kind: "component", Component: PuzzlePiece01 }}
+      active={blocksActive}
+      onClick={() => toggleEditingMode("blocks")}
+      testId="preview-blocks-toggle"
+      dataTour={TOUR_ANCHORS.edit}
+    />
+  ) : null;
+
+  // The view controls proper: refresh · page selector · open-in-new. Kept as a
+  // unit so both layouts can place it as one block — inline after the Edit
+  // action on desktop, or in its own centered slot on mobile.
+  const urlGroup = showPreviewToolbar ? (
+    <>
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
@@ -1173,8 +1179,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </div>
         )}
       </div>
-      {/* View controls (refresh · page · open-in-new) stay grouped after the
-          Edit action, which leads the group above. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
@@ -1191,6 +1195,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           {t("sandbox.preview.openInNewTab")}
         </TooltipContent>
       </Tooltip>
+    </>
+  ) : null;
+
+  // Desktop composition (portaled into the panel header's centre slot): the
+  // Edit action leads, set off by a divider, then the view controls.
+  const urlControls = showPreviewToolbar ? (
+    <div className="flex min-w-0 items-center gap-0.5">
+      {cmsToggle}
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {urlGroup}
     </div>
   ) : null;
 
@@ -1394,9 +1408,32 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           // slot — mobile) the controls render inline instead of portaling, so
           // without it their container queries would find no container and every
           // label would stay at full width.
-          <div className="@container/panel-header relative flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 md:px-4">
-            {showPreviewToolbar ? urlControls : <div />}
-            {moreMenu}
+          //
+          // Three zones rather than the desktop's single left-packed group: Edit
+          // anchors the left edge, the view controls sit in the middle, and the
+          // ⋯ menu holds the right. Packed left, the page selector sat wherever
+          // Edit and refresh pushed it — visibly off-centre on a phone, where
+          // the bar is the whole screen.
+          //
+          // The two side zones are `flex-1` (equal basis) and the middle is
+          // content-sized, so the selector centres on the BAR wherever there is
+          // slack to divide. Giving the middle the flex-1 instead centres it
+          // between the side zones, which are unequal — Edit is ~9px wider than
+          // ⋯ — leaving it visibly off. On the narrowest phones the zones can no
+          // longer be equal either (the left one cannot shrink below the Edit
+          // button), so ~5px of that asymmetry returns; closing it completely
+          // would mean pinning both sides to a fixed width and letting the
+          // selector lose the space instead.
+          <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
+            <div className="flex flex-1 items-center justify-start">
+              {cmsToggle}
+            </div>
+            <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
+              {urlGroup}
+            </div>
+            <div className="flex flex-1 items-center justify-end">
+              {moreMenu}
+            </div>
           </div>
         )
       )}
