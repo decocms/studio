@@ -48,10 +48,18 @@ interface Props {
 }
 
 /**
- * Leading icon per actionable header state. Below `lg` (< 1024px) the header
- * collapses these buttons to icon-only (the label moves to the tooltip); above
- * it, the text label shows as before. Status pills (no `action`) have no icon
- * and keep their text. `merge-split` is omitted — it renders via MergeSplitButton.
+ * Leading icon per actionable header state. Below 768px of PANEL HEADER these
+ * buttons collapse to icon-only (the label moves to the tooltip); above it the
+ * text label shows as before. Status pills (no `action`) have no icon and keep
+ * their text. `merge-split` is omitted — it renders via MergeSplitButton.
+ *
+ * The query is `@container/panel-header` (declared by PanelHeader), not the
+ * viewport: this cluster sits in one panel, so screen width says nothing about
+ * the room it has — with chat open a 1400px screen can leave it under 700px.
+ * 768px is the same cut the view tabs and Chat use, so the whole strip
+ * collapses together instead of in two stages. These components render only
+ * inside a PanelHeader; outside one the query finds no container and the label
+ * simply stays, which is the safe direction.
  */
 const ACTION_ICON: Partial<
   Record<
@@ -472,9 +480,9 @@ function HeaderButtonRenderer(props: {
   }
 
   const ActionIcon = button.action ? ACTION_ICON[button.action] : undefined;
-  // Actionable / loading states collapse to icon (or spinner) only below `lg`
-  // (< 1024px); the label stays reachable via the tooltip. Plain status pills
-  // (no action, not loading) keep their text at every size.
+  // Actionable / loading states collapse to icon (or spinner) only below 768px
+  // of panel header; the label stays reachable via the tooltip. Plain status
+  // pills (no action, not loading) keep their text at every size.
   const collapseLabel = Boolean(ActionIcon) || loading;
 
   return (
@@ -498,9 +506,9 @@ function HeaderButtonRenderer(props: {
           {loading ? (
             <Spinner size="xs" variant="default" />
           ) : ActionIcon ? (
-            <ActionIcon className="size-4 shrink-0 lg:hidden" />
+            <ActionIcon className="size-4 shrink-0 @3xl/panel-header:hidden" />
           ) : null}
-          <span className={cn(collapseLabel && "max-lg:hidden")}>
+          <span className={cn(collapseLabel && "@max-3xl/panel-header:hidden")}>
             {button.label}
           </span>
         </Button>
@@ -526,9 +534,9 @@ function HeaderButtonRenderer(props: {
             {props.publishGate.pending ? (
               <Spinner size="xs" variant="default" />
             ) : (
-              <Upload01 className="size-4 shrink-0 lg:hidden" />
+              <Upload01 className="size-4 shrink-0 @3xl/panel-header:hidden" />
             )}
-            <span className="max-lg:hidden">
+            <span className="@max-3xl/panel-header:hidden">
               {t("thread.headerActions.publish")}
             </span>
           </Button>

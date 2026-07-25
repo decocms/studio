@@ -921,23 +921,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           the selector shows. Leads the group (set off by a divider) so it reads
           as a distinct action rather than being wedged inside the URL controls.
           Filled when the Blocks editor is open; click again for plain preview. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <HeaderTabButton
-            title={t("sandbox.preview.cms")}
-            icon={{ kind: "component", Component: Edit05 }}
-            active={blocksActive}
-            onClick={() => toggleEditingMode("blocks")}
-            testId="preview-blocks-toggle"
-            dataTour={TOUR_ANCHORS.edit}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {blocksActive
+      <HeaderTabButton
+        title={t("sandbox.preview.cms")}
+        tooltip={
+          blocksActive
             ? t("sandbox.preview.exitEditor")
-            : t("sandbox.preview.editContent")}
-        </TooltipContent>
-      </Tooltip>
+            : t("sandbox.preview.editContent")
+        }
+        // Distinctive icon — sheds its label with the system tabs at 768px,
+        // well before this group hides at 448px, so the group stays narrow
+        // through the widths where it is most cramped.
+        labelCollapse="sooner"
+        icon={{ kind: "component", Component: Edit05 }}
+        active={blocksActive}
+        onClick={() => toggleEditingMode("blocks")}
+        testId="preview-blocks-toggle"
+        dataTour={TOUR_ANCHORS.edit}
+      />
       <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1411,7 +1411,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </>
       ) : (
         (showPreviewToolbar || moreMenu) && (
-          <div className="relative flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 md:px-4">
+          // Declares the same container as PanelHeader: on this path (no header
+          // slot — mobile) the controls render inline instead of portaling, so
+          // without it their container queries would find no container and every
+          // label would stay at full width.
+          <div className="@container/panel-header relative flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 md:px-4">
             {showPreviewToolbar ? urlControls : <div />}
             {moreMenu}
           </div>

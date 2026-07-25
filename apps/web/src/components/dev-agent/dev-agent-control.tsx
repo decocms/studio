@@ -65,7 +65,8 @@ export function DevAgentControl({
       )}
     >
       <Icon className="size-3.5 shrink-0" />
-      <span className="max-lg:hidden">{label}</span>
+      {/* Collapses with the rest of the strip at 768px of panel header. */}
+      <span className="@max-3xl/panel-header:hidden">{label}</span>
     </button>
   );
 
