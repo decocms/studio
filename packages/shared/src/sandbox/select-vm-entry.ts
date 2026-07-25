@@ -22,3 +22,26 @@ export function selectVmEntry<T extends BranchMapEntryLike>(
   if (!first) return null;
   return entries.find((e) => e.sandboxProviderKind !== "user-desktop") ?? first;
 }
+
+/**
+ * The sandbox entry to show for a thread whose provider kind is `kind`.
+ *
+ * An exact match on `kind` always wins, so a thread pinned to one provider
+ * keeps showing that provider even when a sibling of another kind is live —
+ * that pinning is the whole point of recording the kind.
+ *
+ * When `kind` has NO entry, degrade to whatever is actually serving the branch
+ * rather than reporting "nothing". A missing entry for the pinned kind does not
+ * mean the branch has no sandbox: the kind can be a stale or optimistic guess
+ * (the client mirrors a runtime pin at send time before the server's own
+ * resolution comes back), while a different kind is up and serving. Returning
+ * null there blanks a working preview into the booting overlay AND makes
+ * `shouldAutoStart` boot a second, competing sandbox.
+ */
+export function resolveVmEntry<T extends BranchMapEntryLike>(
+  branchMap: Record<string, T>,
+  kind: string | null | undefined,
+): T | null {
+  if (kind) return branchMap[kind] ?? selectVmEntry(branchMap);
+  return selectVmEntry(branchMap);
+}
