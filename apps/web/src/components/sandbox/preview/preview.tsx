@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { startCmsTour } from "@/components/cms-tour/cms-tour";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
@@ -132,6 +132,7 @@ import {
   type ImperativePanelHandle,
 } from "@/components/resizable";
 import {
+  shouldAutoOpenCms,
   togglePreviewEditorMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
@@ -183,6 +184,23 @@ function previewOrigin(previewUrl: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
+ * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
+ * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
+ * and latches on `onOpen`, so it unmounts the instant it fires and never
+ * re-opens behind a user who has taken manual control. `queueMicrotask` defers
+ * the imperative open to post-commit (panel mounted) instead of mid-render.
+ */
+function CmsAutoOpen({ onOpen }: { onOpen: () => void }) {
+  const [fired, setFired] = useState(false);
+  if (!fired) {
+    setFired(true);
+    queueMicrotask(onOpen);
+  }
+  return null;
 }
 
 /**
@@ -285,13 +303,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
 
   const { org } = useProjectContext();
-
-  // Per-agent "Open CMS" Layout setting. Off by default (absent / null → false):
-  // Preview stays on the site until the user opens the CMS manually, unless an
-  // agent opts in to auto-open.
-  const virtualMcp = useVirtualMCP(virtualMcpId);
-  const cmsDefaultOpen =
-    virtualMcp?.metadata?.ui?.layout?.cmsDefaultOpen ?? false;
 
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
@@ -461,6 +472,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inset?.entity?.id === virtualMcpId
       ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
       : null;
+  // Per-agent "Open CMS" Layout setting, read off the entity already in
+  // context (same source as productionUrl above). Off by default (absent /
+  // null → false): Preview stays on the site until the user opens the CMS
+  // manually, unless an agent opts in to auto-open.
+  const cmsDefaultOpen =
+    (inset?.entity?.id === virtualMcpId
+      ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
+      : null) ?? false;
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -717,26 +736,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
     // The user is driving the editing mode now — stop the one-shot CMS
-    // auto-open from ever kicking in behind them.
+    // auto-open from ever kicking in behind them. This is the ONLY path back to
+    // `editingMode === "preview"` (the direct `activateEditingMode("blocks")`
+    // calls only ever leave it in "blocks"), so latching here is what keeps
+    // auto-open from re-firing after a manual close.
     setBlocksAutoOpenResolved(true);
     activateEditingMode(togglePreviewEditorMode(editingMode, mode));
   };
 
   // One-shot: auto-open the CMS the first time Blocks metadata is ready to
   // render content, so the panel never pops open onto a loading/empty/error
-  // card. Gated by the per-agent "Open CMS" Layout setting. Render-time guard
-  // is the codebase's run-once pattern (see PathParamAutoFill); the imperative
-  // open is deferred to a microtask so it runs post-commit (panel mounted)
-  // instead of mid-render.
-  if (
-    cmsDefaultOpen &&
-    blocksReady &&
-    !blocksAutoOpenResolved &&
-    editingMode === "preview"
-  ) {
+  // card. Gated by the per-agent "Open CMS" Layout setting. Handled by the
+  // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
+  // holds; `onOpen` latches so it fires exactly once.
+  const autoOpenCms = shouldAutoOpenCms({
+    cmsDefaultOpen,
+    blocksReady,
+    autoOpenResolved: blocksAutoOpenResolved,
+    editingMode,
+  });
+  const handleCmsAutoOpen = () => {
     setBlocksAutoOpenResolved(true);
-    queueMicrotask(() => activateEditingMode("blocks"));
-  }
+    activateEditingMode("blocks");
+  };
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
@@ -1425,6 +1447,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* Headless: auto-opens the CMS once (renders nothing). Mounted only
+          while the per-agent setting + readiness say it should. */}
+      {autoOpenCms && <CmsAutoOpen onOpen={handleCmsAutoOpen} />}
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
