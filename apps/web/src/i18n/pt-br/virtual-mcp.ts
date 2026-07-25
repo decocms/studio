@@ -116,6 +116,9 @@ export const virtualMcp = {
     "O que os usuários veem quando abrem este agente pela primeira vez.",
   "virtualMcp.layoutTabContent.noInteractiveTools":
     "Nenhum dos servidores conectados expõe ferramentas interativas.",
+  "virtualMcp.layoutTabContent.openCms": "Abrir CMS",
+  "virtualMcp.layoutTabContent.openCmsDescription":
+    "Abrir o CMS automaticamente quando a visualização estiver pronta para editar conteúdo.",
   "virtualMcp.layoutTabContent.pinnedViews": "Visualizações fixadas",
   "virtualMcp.layoutTabContent.pinnedViewsDescription":
     "Colocar ferramentas interativas como abas de nível superior no agente.",

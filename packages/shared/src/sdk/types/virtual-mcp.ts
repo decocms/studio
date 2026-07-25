@@ -96,6 +96,13 @@ export const VirtualMcpUILayoutSchema = z.object({
    * unless the default view is Chat.
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
+  /**
+   * When true, the CMS (Blocks) panel auto-opens in the Preview as soon as its
+   * metadata is ready to render content. Off by default: absent / null / false
+   * → Preview stays on the site until the user opens the CMS manually. Only
+   * relevant for agents with a preview.
+   */
+  cmsDefaultOpen: z.boolean().nullable().optional(),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
 

@@ -64,9 +64,14 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
+import {
+  resolveBlocksTabState,
+  toBlocksQueryState,
+} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   fillPathTemplate,
   normalizePagePath,
@@ -127,6 +132,7 @@ import {
   type ImperativePanelHandle,
 } from "@/components/resizable";
 import {
+  shouldAutoOpenCms,
   togglePreviewEditorMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
@@ -175,6 +181,23 @@ function previewOrigin(previewUrl: string | null): string | null {
 }
 
 /**
+ * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
+ * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
+ * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
+ * and latches on `onOpen`, so it unmounts the instant it fires and never
+ * re-opens behind a user who has taken manual control. `queueMicrotask` defers
+ * the imperative open to post-commit (panel mounted) instead of mid-render.
+ */
+function CmsAutoOpen({ onOpen }: { onOpen: () => void }) {
+  const [fired, setFired] = useState(false);
+  if (!fired) {
+    setFired(true);
+    queueMicrotask(onOpen);
+  }
+  return null;
+}
+
+/**
  * Reload the iframe in place; falls back to reassigning `src` when the
  * iframe's live location is cross-origin (sandbox preview domain) and
  * `.reload()` throws.
@@ -212,7 +235,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Editing mode is singular: Visual editor and Blocks cannot be active
   // together. Device size is independent and survives mode switches.
+  // Starts in plain "preview"; the CMS (blocks) auto-opens once its metadata is
+  // ready to render content (see `blocksAutoOpenResolved` below), so users never
+  // see the "Blocos indisponíveis"/loading card pop open on its own.
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>("preview");
+  // Latches once the CMS has auto-opened (or the user has taken manual control
+  // of the editing mode), so the one-shot auto-open never fights the user.
+  const [blocksAutoOpenResolved, setBlocksAutoOpenResolved] = useState(false);
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
@@ -296,12 +325,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
-  const { data: decofile } = useDecofile(decofileParams, {
+  const decofileQuery = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
   });
-  const { data: meta } = useLiveMeta(decofileParams, {
+  const metaQuery = useLiveMeta(decofileParams, {
     fetchEnabled: devServerReady,
   });
+  const decofile = decofileQuery.data;
+  const meta = metaQuery.data;
+  // Same readiness classification the CMS panel itself uses. We only auto-open
+  // the CMS once this resolves to "content" (metadata loaded AND there is
+  // editable content) so the panel never opens onto a loading/empty/error card.
+  const blocksReady =
+    resolveBlocksTabState({
+      lifecyclePhase,
+      decofile: toBlocksQueryState(decofileQuery),
+      meta: toBlocksQueryState(metaQuery),
+      hasEditableContent: hasEditableDecoContent(decofile, meta),
+    }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
@@ -424,6 +465,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inset?.entity?.id === virtualMcpId
       ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
       : null;
+  // Per-agent "Open CMS" Layout setting, read off the entity already in
+  // context (same source as productionUrl above). Off by default (absent /
+  // null → false): Preview stays on the site until the user opens the CMS
+  // manually, unless an agent opts in to auto-open.
+  const cmsDefaultOpen =
+    (inset?.entity?.id === virtualMcpId
+      ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
+      : null) ?? false;
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -679,7 +728,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
+    // The user is driving the editing mode now — stop the one-shot CMS
+    // auto-open from ever kicking in behind them. This is the ONLY path back to
+    // `editingMode === "preview"` (the direct `activateEditingMode("blocks")`
+    // calls only ever leave it in "blocks"), so latching here is what keeps
+    // auto-open from re-firing after a manual close.
+    setBlocksAutoOpenResolved(true);
     activateEditingMode(togglePreviewEditorMode(editingMode, mode));
+  };
+
+  // One-shot: auto-open the CMS the first time Blocks metadata is ready to
+  // render content, so the panel never pops open onto a loading/empty/error
+  // card. Gated by the per-agent "Open CMS" Layout setting. Handled by the
+  // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
+  // holds; `onOpen` latches so it fires exactly once.
+  const autoOpenCms = shouldAutoOpenCms({
+    cmsDefaultOpen,
+    blocksReady,
+    autoOpenResolved: blocksAutoOpenResolved,
+    editingMode,
+  });
+  const handleCmsAutoOpen = () => {
+    setBlocksAutoOpenResolved(true);
+    activateEditingMode("blocks");
   };
 
   const handleRefresh = () => {
@@ -1365,6 +1436,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* Headless: auto-opens the CMS once (renders nothing). Mounted only
+          while the per-agent setting + readiness say it should. */}
+      {autoOpenCms && <CmsAutoOpen onOpen={handleCmsAutoOpen} />}
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}

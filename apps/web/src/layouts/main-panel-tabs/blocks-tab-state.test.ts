@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   resolveBlocksTabState,
+  toBlocksQueryState,
   type BlocksTabStateInput,
 } from "./blocks-tab-state";
 
@@ -17,6 +18,57 @@ function input(
     ...overrides,
   };
 }
+
+describe("toBlocksQueryState", () => {
+  test("maps a settled query: data present, no error", () => {
+    expect(
+      toBlocksQueryState({ status: "success", data: {}, error: null }),
+    ).toEqual({ status: "success", hasData: true, errorStatus: undefined });
+  });
+
+  test("hasData is false only when data is `undefined`", () => {
+    expect(
+      toBlocksQueryState({ status: "pending", data: undefined, error: null })
+        .hasData,
+    ).toBe(false);
+    // `null`, "", 0 are real data (the check is `!== undefined`).
+    for (const data of [null, "", 0]) {
+      expect(
+        toBlocksQueryState({ status: "success", data, error: null }).hasData,
+      ).toBe(true);
+    }
+  });
+
+  test("extracts a numeric `.status` off a thrown Error, else undefined", () => {
+    expect(
+      toBlocksQueryState({
+        status: "error",
+        data: undefined,
+        error: Object.assign(new Error("nope"), { status: 404 }),
+      }).errorStatus,
+    ).toBe(404);
+    // plain Error (no status), non-numeric status, and non-Error throwables
+    // all collapse to undefined.
+    expect(
+      toBlocksQueryState({
+        status: "error",
+        data: undefined,
+        error: new Error(),
+      }).errorStatus,
+    ).toBeUndefined();
+    expect(
+      toBlocksQueryState({
+        status: "error",
+        data: undefined,
+        error: Object.assign(new Error(), { status: "404" }),
+      }).errorStatus,
+    ).toBeUndefined();
+    expect(
+      toBlocksQueryState({ status: "error", data: undefined, error: "boom" })
+        .errorStatus,
+    ).toBeUndefined();
+  });
+});
 
 describe("resolveBlocksTabState", () => {
   test.each(["idle", "cloning"] as const)(

@@ -113,6 +113,9 @@ export const virtualMcp = {
     "What users see when they first open this agent.",
   "virtualMcp.layoutTabContent.noInteractiveTools":
     "None of the connected servers expose interactive tools.",
+  "virtualMcp.layoutTabContent.openCms": "Open CMS",
+  "virtualMcp.layoutTabContent.openCmsDescription":
+    "Open the CMS automatically when the preview is ready to edit content.",
   "virtualMcp.layoutTabContent.pinnedViews": "Pinned views",
   "virtualMcp.layoutTabContent.pinnedViewsDescription":
     "Surface interactive tools as top-level tabs in the agent.",
