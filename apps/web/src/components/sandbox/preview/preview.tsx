@@ -1,5 +1,5 @@
 import { sleep } from "@decocms/shared/std";
-import { useState, useRef, useEffect, Suspense, lazy } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
@@ -137,12 +137,6 @@ const VSCODE_ICON_URL =
 const CURSOR_ICON_URL =
   "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
 
-const SeoSheet = lazy(() =>
-  import("@/components/sections-editor/page-seo-sheet").then((m) => ({
-    default: m.SeoSheet,
-  })),
-);
-
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
 
@@ -271,7 +265,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   // SEO panel state
-  const [siteSeoOpen, setSiteSeoOpen] = useState(false);
 
   const { org } = useProjectContext();
 
@@ -1281,10 +1274,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     {t("sandbox.preview.viewJson")}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
-                  <CreditCardSearch size={14} />
-                  {t("sandbox.preview.siteSeo")}
-                </DropdownMenuItem>
               </>
             )}
             {repoDir && (
@@ -1669,28 +1658,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         templates={pages}
         onSubmit={handleCreatePage}
       />
-
-      {siteSeoOpen && decofile && meta && (
-        <Suspense fallback={null}>
-          <SeoSheet
-            open={siteSeoOpen}
-            onOpenChange={setSiteSeoOpen}
-            orgSlug={org.slug}
-            virtualMcpId={virtualMcpId ?? ""}
-            branch={branch ?? ""}
-            decofile={decofile}
-            meta={meta}
-            onSaved={() => {
-              setTimeout(() => {
-                const iframe = previewIframeRef.current;
-                if (!iframe) return;
-                reloadIframeOrFallback(iframe, iframeSrcRef.current);
-              }, DEV_SERVER_SETTLE_MS);
-            }}
-            target={{ kind: "site" }}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

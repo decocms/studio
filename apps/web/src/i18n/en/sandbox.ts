@@ -403,7 +403,6 @@ export const sandbox = {
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
-  "sandbox.preview.siteSeo": "Site SEO",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":
     "You can make changes now — they'll appear once the preview is ready.",

@@ -421,7 +421,6 @@ export const sandbox = {
   "sandbox.preview.refresh": "Atualizar",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
-  "sandbox.preview.siteSeo": "SEO do site",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
   "sandbox.preview.startingPreviewHint":
     "Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
