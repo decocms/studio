@@ -37,6 +37,10 @@ type BarItem = {
   active: boolean;
   locked: boolean;
   onSelect: () => void;
+  /** How soon this button drops its label as the panel header narrows (see
+   *  HeaderTabButton). Buttons with a fixed, distinctive icon go `sooner`;
+   *  those that can fall back to a generic glyph hold their text `later`. */
+  labelCollapse: "sooner" | "later";
 };
 
 export function MainPanelTabsBar({
@@ -109,6 +113,7 @@ export function MainPanelTabsBar({
       icon: { kind: "component", Component: Folder },
       active: library.active,
       locked: false,
+      labelCollapse: "sooner",
       onSelect: () => {
         track("agent_toolbar_toggled", {
           button: "library",
@@ -125,6 +130,7 @@ export function MainPanelTabsBar({
       icon: { kind: "component", Component: Columns03 },
       active: tasks.active,
       locked: false,
+      labelCollapse: "sooner",
       onSelect: () => {
         track("agent_toolbar_toggled", {
           button: "tasks",
@@ -142,6 +148,7 @@ export function MainPanelTabsBar({
     active: isTabActive(tab),
     locked: disableActiveMainToggle && isTabActive(tab),
     onSelect: () => selectTab(tab.id),
+    labelCollapse: tab.kind === "system" ? "sooner" : "later",
   }));
 
   const items = [...tabItems, ...overlayItems];
@@ -186,6 +193,7 @@ export function MainPanelTabsBar({
           locked={item.locked}
           onClick={item.onSelect}
           dataTour={`tour-tab-${item.id}`}
+          labelCollapse={item.labelCollapse}
         />
       ))}
       {overflow.length > 0 && (

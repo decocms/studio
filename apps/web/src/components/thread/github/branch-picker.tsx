@@ -198,9 +198,12 @@ export function BranchPicker({
               >
                 <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
                 {/* Show the branch name (truncated) so the branch in use is
-                    visible at a glance. Below `lg` (< 1024px) collapse to an
-                    icon-only button — the name stays available via the tooltip. */}
-                <span className="min-w-0 truncate max-lg:hidden">{label}</span>
+                    visible at a glance. Below 768px of panel header collapse to
+                    an icon-only button — the name stays available via the
+                    tooltip. Container query, matching the rest of the strip. */}
+                <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
+                  {label}
+                </span>
                 {!disabled && (
                   <ChevronDown size={12} className="opacity-60 shrink-0" />
                 )}

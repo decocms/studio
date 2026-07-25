@@ -54,9 +54,11 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
             )}
           >
             <GitBranch01 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {/* Show the branch (truncated); below `lg` (< 1024px) collapse to an
-                icon-only chip — the name stays available via the tooltip. */}
-            <span className="min-w-0 truncate max-lg:hidden">
+            {/* Show the branch (truncated); below 768px of panel header collapse
+                to an icon-only chip — the name stays available via the tooltip.
+                Container query on `@container/panel-header`, matching the rest
+                of the strip (see header-actions). */}
+            <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
               {branchLabel}
             </span>
           </span>

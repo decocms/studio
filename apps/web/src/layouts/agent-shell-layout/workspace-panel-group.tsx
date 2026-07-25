@@ -139,7 +139,7 @@ export function WorkspacePanelGroup({
   // opens fully first.
   const [headerWidth, headerRef] = useElementWidth();
   const [rightWidth, rightRef] = useElementWidth();
-  const { maxTabs, showPageSelector } = headerLayout(headerWidth, rightWidth);
+  const { maxTabs } = headerLayout(headerWidth, rightWidth);
 
   // The agent switcher + new-chat action live in the nav sidebar while it's
   // expanded. When the sidebar is collapsed it has no room for them, so we
@@ -214,13 +214,22 @@ export function WorkspacePanelGroup({
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
-          gap. `headerLayout` decides its visibility from the header/right widths
-          (not this gap), so it never flickers back when a tab folds; below the
-          threshold the slot is hidden (display:none) rather than squished. The
-          portal target stays mounted so Preview keeps rendering into it instead
-          of falling back to its inline toolbar. */}
+          gap. It hides below 448px of PANEL HEADER — a container query on
+          `@container/panel-header`, not this flex gap (which grows when a tab
+          folds and used to flicker the selector back) and not the viewport
+          (one panel is far narrower than the screen). It goes AFTER the tab
+          labels collapse, so shedding those buys the selector its room first.
+          The portal target stays mounted so Preview keeps rendering into it
+          instead of falling back to its inline toolbar.
+
+          448px is a deliberate call to keep the group around longer than the
+          old JS rule did (it hid below ~668px). The trade: between roughly 448
+          and 530px the selector has less than HEADER_W.middle to work with and
+          degrades toward a bare chevron instead of showing its page name. That
+          squish is accepted here — losing the controls entirely was judged
+          worse than showing them small. */}
       <div className="flex min-w-0 flex-1 items-center justify-center">
-        <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
+        <MainPanelHeaderSlot className="@max-md/panel-header:hidden" />
       </div>
       {/* Right side. The wrapper is shrinkable so the branch selector inside it
           can yield BEFORE the centered address bar (which is `flex-1` — basis 0,
