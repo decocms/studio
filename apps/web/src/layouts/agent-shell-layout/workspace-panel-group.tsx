@@ -139,7 +139,7 @@ export function WorkspacePanelGroup({
   // opens fully first.
   const [headerWidth, headerRef] = useElementWidth();
   const [rightWidth, rightRef] = useElementWidth();
-  const { maxTabs, showPageSelector } = headerLayout(headerWidth, rightWidth);
+  const { maxTabs } = headerLayout(headerWidth, rightWidth);
 
   // The agent switcher + new-chat action live in the nav sidebar while it's
   // expanded. When the sidebar is collapsed it has no room for them, so we
@@ -214,26 +214,47 @@ export function WorkspacePanelGroup({
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
-          gap. `headerLayout` decides its visibility from the header/right widths
-          (not this gap), so it never flickers back when a tab folds; below the
-          threshold the slot is hidden (display:none) rather than squished. The
-          portal target stays mounted so Preview keeps rendering into it instead
-          of falling back to its inline toolbar. */}
+          gap. It hides below 384px of PANEL HEADER — a container query on
+          `@container/panel-header`, not this flex gap (which grows when a tab
+          folds and used to flicker the selector back) and not the viewport
+          (one panel is far narrower than the screen). It goes AFTER the tab
+          labels collapse, so shedding those buys the selector its room first.
+          The portal target stays mounted so Preview keeps rendering into it
+          instead of falling back to its inline toolbar.
+
+          384px is set by the group's measured floor: its min-content is 112px
+          (36 CMS + 28 refresh + 24 page chevron + 28 open-in-new-tab), and a
+          header that size leaves ~112-128px once the left group (66px — the
+          tab budget is down to one tab this narrow) and the actions (178px)
+          take their share. One breakpoint lower and the icons clip. Note the
+          query measures the CONTENT box, so with `px-1.5` this fires around
+          396px of rendered width — a ~16px margin above the floor, not on it.
+
+          Deliberately far later than the old JS rule (~668px). The trade: the
+          page NAME is gone from ~448px down — the selector is a bare chevron
+          there — so 384-448px is four usable icons without a label. Losing the
+          controls outright was judged worse than losing the label. */}
       <div className="flex min-w-0 flex-1 items-center justify-center">
-        <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
+        <MainPanelHeaderSlot className="@max-sm/panel-header:hidden" />
       </div>
-      {/* shrink-0: the right actions (Edit / Submit / Publish / ⋯) are the
-          highest-priority controls — they hold their size and are never
-          clipped; the selector and tab group yield instead. Measured so the
-          tab count knows how much room is actually left for it. */}
-      <div
-        ref={rightRef}
-        className="flex shrink-0 items-center justify-end gap-1"
-      >
+      {/* Right side. The wrapper is shrinkable so the branch selector inside it
+          can yield BEFORE the centered address bar (which is `flex-1` — basis 0,
+          so it shrinks last). The branch sits in its own `min-w-0` slot and
+          truncates first; the actions cluster stays `shrink-0` (Edit / Submit /
+          Publish / ⋯ never clip) and is what `rightRef` measures, so the tab
+          count budget is unaffected by the branch label's width. */}
+      <div className="flex min-w-0 shrink items-center justify-end gap-1">
         {!chatOpen && newChatCrumb}
-        {branchSelector}
-        <MainPanelHeaderEndSlot />
-        {publishActions}
+        <div className="flex min-w-0 shrink items-center justify-end">
+          {branchSelector}
+        </div>
+        <div
+          ref={rightRef}
+          className="flex shrink-0 items-center justify-end gap-1"
+        >
+          <MainPanelHeaderEndSlot />
+          {publishActions}
+        </div>
       </div>
     </PanelHeader>
   );

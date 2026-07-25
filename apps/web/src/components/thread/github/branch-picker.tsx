@@ -25,7 +25,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { ChevronDown, GitBranch01, GitPullRequest } from "@untitledui/icons";
+import {
+  Check,
+  ChevronDown,
+  GitBranch01,
+  GitPullRequest,
+} from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { useBranches } from "./use-branches";
@@ -78,6 +83,10 @@ export function BranchPicker({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"branches" | "prs">("branches");
   const [search, setSearch] = useState("");
+  // cmdk highlights the first item by default; seed the active item with the
+  // current branch so the picker opens focused on the branch in use rather than
+  // an unrelated first row. Kept in sync with keyboard/hover navigation.
+  const [activeValue, setActiveValue] = useState(value ?? "");
   const [isSearchingRemote, setIsSearchingRemote] = useState(false);
   const searchRequestId = useRef(0);
 
@@ -176,7 +185,19 @@ export function BranchPicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={
+        disabled
+          ? undefined
+          : (next) => {
+              // Re-seed the highlight on the current branch each time the picker
+              // opens, in case the branch changed since it was last closed.
+              if (next) setActiveValue(value ?? "");
+              setOpen(next);
+            }
+      }
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <span
@@ -190,38 +211,22 @@ export function BranchPicker({
                 aria-label={label}
                 disabled={disabled}
                 className={cn(
-                  "font-mono shrink min-w-0 max-w-[200px]",
+                  "font-mono shrink min-w-0 max-w-[200px] gap-1.5",
                   isHeader
-                    ? "gap-1.5 text-xs"
-                    : cn(
-                        "text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-                        disabled
-                          ? "gap-0"
-                          : "gap-0 @[320px]/chat-bottom:gap-1.5",
-                      ),
+                    ? "text-xs"
+                    : "text-xs text-muted-foreground hover:text-foreground",
                 )}
               >
                 <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
-                <span
-                  className={cn(
-                    "min-w-0 truncate",
-                    isHeader
-                      ? ""
-                      : "transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
-                  )}
-                >
+                {/* Show the branch name (truncated) so the branch in use is
+                    visible at a glance. Below 768px of panel header collapse to
+                    an icon-only button — the name stays available via the
+                    tooltip. Container query, matching the rest of the strip. */}
+                <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
                   {label}
                 </span>
                 {!disabled && (
-                  <ChevronDown
-                    size={12}
-                    className={cn(
-                      "opacity-60 shrink-0",
-                      isHeader
-                        ? ""
-                        : "hidden @[320px]/chat-bottom:inline-block",
-                    )}
-                  />
+                  <ChevronDown size={12} className="opacity-60 shrink-0" />
                 )}
               </Button>
             </PopoverTrigger>
@@ -233,7 +238,7 @@ export function BranchPicker({
         className="w-[min(420px,calc(100vw-2rem))] p-0"
         align="start"
       >
-        <Command>
+        <Command value={activeValue} onValueChange={setActiveValue}>
           <div className="*:data-[slot=command-input-wrapper]:flex-1 *:data-[slot=command-input-wrapper]:border-b-0 flex items-center border-b pr-2">
             <CommandInput
               placeholder={
@@ -350,6 +355,9 @@ export function BranchPicker({
                       >
                         <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
                         <span className="flex-1 truncate">{b.name}</span>
+                        {b.name === value && (
+                          <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        )}
                         <ContributorAvatars
                           userIds={b.contributors ?? []}
                           memberById={memberById}
@@ -373,6 +381,9 @@ export function BranchPicker({
                         >
                           <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
                           <span className="flex-1 truncate">{b.name}</span>
+                          {b.name === value && (
+                            <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -397,6 +408,9 @@ export function BranchPicker({
                             <span className="text-xs text-muted-foreground">
                               @{b.author}
                             </span>
+                          )}
+                          {b.name === value && (
+                            <Check className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
                           )}
                         </CommandItem>
                       ))}
