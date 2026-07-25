@@ -868,6 +868,18 @@ export interface StudioToolIO {
     input: { quantity: number };
     output: { amountDueCents: number; currency: string };
   };
+  ORGANIZATION_BILLING_PORTAL: {
+    input: { [x: string]: never };
+    output: { url: string };
+  };
+  ORGANIZATION_INCLUDED_REPORT_SET: {
+    input: { url: string | null };
+    output: { includedReportUrl: string | null; benefitsSyncQueued: boolean };
+  };
+  ORGANIZATION_REPORT_RUN_PAID: {
+    input: { url?: string | undefined };
+    output: { url: string; started: boolean };
+  };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
       data: {
@@ -1630,6 +1642,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -1834,6 +1847,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2008,6 +2022,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2193,6 +2208,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2369,6 +2385,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2539,6 +2556,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2721,6 +2739,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2895,6 +2914,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3871,6 +3891,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;

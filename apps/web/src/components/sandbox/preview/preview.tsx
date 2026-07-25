@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { startCmsTour } from "@/components/cms-tour/cms-tour";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
@@ -64,9 +64,14 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
+import {
+  resolveBlocksTabState,
+  toBlocksQueryState,
+} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   fillPathTemplate,
   normalizePagePath,
@@ -218,7 +223,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Editing mode is singular: Visual editor and Blocks cannot be active
   // together. Device size is independent and survives mode switches.
+  // Starts in plain "preview"; the CMS (blocks) auto-opens once its metadata is
+  // ready to render content (see `blocksAutoOpenResolved` below), so users never
+  // see the "Blocos indisponíveis"/loading card pop open on its own.
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>("preview");
+  // Latches once the CMS has auto-opened (or the user has taken manual control
+  // of the editing mode), so the one-shot auto-open never fights the user.
+  const [blocksAutoOpenResolved, setBlocksAutoOpenResolved] = useState(false);
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
@@ -275,6 +286,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const { org } = useProjectContext();
 
+  // Per-agent "Open CMS" Layout setting. Off by default (absent / null → false):
+  // Preview stays on the site until the user opens the CMS manually, unless an
+  // agent opts in to auto-open.
+  const virtualMcp = useVirtualMCP(virtualMcpId);
+  const cmsDefaultOpen =
+    virtualMcp?.metadata?.ui?.layout?.cmsDefaultOpen ?? false;
+
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const vmEntry = lifecycle.vmEntry;
@@ -303,12 +321,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
-  const { data: decofile } = useDecofile(decofileParams, {
+  const decofileQuery = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
   });
-  const { data: meta } = useLiveMeta(decofileParams, {
+  const metaQuery = useLiveMeta(decofileParams, {
     fetchEnabled: devServerReady,
   });
+  const decofile = decofileQuery.data;
+  const meta = metaQuery.data;
+  // Same readiness classification the CMS panel itself uses. We only auto-open
+  // the CMS once this resolves to "content" (metadata loaded AND there is
+  // editable content) so the panel never opens onto a loading/empty/error card.
+  const blocksReady =
+    resolveBlocksTabState({
+      lifecyclePhase,
+      decofile: toBlocksQueryState(decofileQuery),
+      meta: toBlocksQueryState(metaQuery),
+      hasEditableContent: hasEditableDecoContent(decofile, meta),
+    }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
@@ -686,8 +716,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
+    // The user is driving the editing mode now — stop the one-shot CMS
+    // auto-open from ever kicking in behind them.
+    setBlocksAutoOpenResolved(true);
     activateEditingMode(togglePreviewEditorMode(editingMode, mode));
   };
+
+  // One-shot: auto-open the CMS the first time Blocks metadata is ready to
+  // render content, so the panel never pops open onto a loading/empty/error
+  // card. Gated by the per-agent "Open CMS" Layout setting. Render-time guard
+  // is the codebase's run-once pattern (see PathParamAutoFill); the imperative
+  // open is deferred to a microtask so it runs post-commit (panel mounted)
+  // instead of mid-render.
+  if (
+    cmsDefaultOpen &&
+    blocksReady &&
+    !blocksAutoOpenResolved &&
+    editingMode === "preview"
+  ) {
+    setBlocksAutoOpenResolved(true);
+    queueMicrotask(() => activateEditingMode("blocks"));
+  }
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;

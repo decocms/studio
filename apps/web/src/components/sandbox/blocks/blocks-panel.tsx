@@ -12,7 +12,10 @@ import {
   readLastPreviewPage,
 } from "@/components/sandbox/preview/last-preview-page";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { resolveBlocksTabState } from "@/layouts/main-panel-tabs/blocks-tab-state";
+import {
+  resolveBlocksTabState,
+  toBlocksQueryState,
+} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   BlocksEmptyState,
   BlocksErrorState,
@@ -24,17 +27,6 @@ const SectionsEditor = lazy(() =>
     default: m.SectionsEditor,
   })),
 );
-
-function errorStatus(error: unknown): number | undefined {
-  if (
-    error instanceof Error &&
-    "status" in error &&
-    typeof error.status === "number"
-  ) {
-    return error.status;
-  }
-  return undefined;
-}
 
 export function BlocksPanel({
   virtualMcpId,
@@ -66,16 +58,8 @@ export function BlocksPanel({
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
-    decofile: {
-      status: decofile.status,
-      hasData: decofile.data !== undefined,
-      errorStatus: errorStatus(decofile.error),
-    },
-    meta: {
-      status: meta.status,
-      hasData: meta.data !== undefined,
-      errorStatus: errorStatus(meta.error),
-    },
+    decofile: toBlocksQueryState(decofile),
+    meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
   });
 

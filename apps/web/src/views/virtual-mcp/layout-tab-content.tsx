@@ -127,6 +127,9 @@ export function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  // Off by default (absent / null → false): the CMS auto-opens in Preview only
+  // when an agent explicitly opts in via this toggle.
+  const cmsDefaultOpen = layoutMeta?.cmsDefaultOpen ?? false;
   // Convert the stored {type, id, toolName} object into the string composite
   // key used by the <Select> UI. Legacy tab types fold into "settings".
   const defaultMainView = (() => {
@@ -165,6 +168,7 @@ export function LayoutTabContent({
   const writeLayout = (next: {
     defaultMainView?: { type: string; id?: string; toolName?: string } | null;
     chatDefaultOpen?: boolean | null;
+    cmsDefaultOpen?: boolean | null;
   }) => {
     form.setValue(
       "metadata.ui.layout",
@@ -392,6 +396,27 @@ export function LayoutTabContent({
               )}
             </Tooltip>
           </div>
+
+          {hasClonableSource && (
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5 min-w-0">
+                <Label className="font-normal text-foreground">
+                  {t("virtualMcp.layoutTabContent.openCms")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("virtualMcp.layoutTabContent.openCmsDescription")}
+                </p>
+              </div>
+              <Switch
+                className="shrink-0"
+                checked={cmsDefaultOpen}
+                onCheckedChange={(checked) => {
+                  writeLayout({ cmsDefaultOpen: checked });
+                  flushAndSave();
+                }}
+              />
+            </div>
+          )}
         </CardContent>
 
         {hasPinnedContent && (
