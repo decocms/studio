@@ -154,13 +154,21 @@ export function usePanelActions() {
   };
 
   // Create the row before navigating so the route loader does not race its
-  // create-on-404 fallback. The server assigns the default branch.
+  // create-on-404 fallback.
   //
   // `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin
   // the thread to a specific agent regardless of the current URL. When
   // omitted, falls back to the URL's `virtualmcpid`, then to the well-known
   // Decopilot agent.
-  const createNewTask = async (virtualMcpId?: string) => {
+  //
+  // `branch` lets a "New chat on the branch I'm viewing" caller inherit the
+  // current thread's branch. When omitted/null (e.g. a branchless agent, or an
+  // "open agent X" flow), the server assigns the default branch. The schema
+  // only accepts a non-empty branch string, so null/empty is dropped.
+  const createNewTask = async (
+    virtualMcpId?: string,
+    branch?: string | null,
+  ) => {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcpId ??
@@ -172,6 +180,7 @@ export function usePanelActions() {
       await manager?.create({
         id: newId,
         virtual_mcp_id: targetVmcp,
+        ...(branch ? { branch } : {}),
       });
     } catch {
       // Toast already fired by useCollectionActions; navigate anyway so the
