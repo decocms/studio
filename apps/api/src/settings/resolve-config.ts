@@ -79,20 +79,6 @@ function toBoolOrUndefined(value: string | undefined): boolean | undefined {
   return toBool(value);
 }
 
-function toPositiveIntegerOrDefault(
-  name: string,
-  value: string | undefined,
-  defaultValue: number,
-): number {
-  if (value === undefined || value === "") return defaultValue;
-
-  const numberValue = Number(value);
-  if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return numberValue;
-}
-
 function toPositiveIntegerOrUndefined(
   name: string,
   value: string | undefined,
@@ -104,6 +90,14 @@ function toPositiveIntegerOrUndefined(
     throw new Error(`${name} must be a positive integer`);
   }
   return numberValue;
+}
+
+function toPositiveIntegerOrDefault(
+  name: string,
+  value: string | undefined,
+  defaultValue: number,
+): number {
+  return toPositiveIntegerOrUndefined(name, value) ?? defaultValue;
 }
 
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
