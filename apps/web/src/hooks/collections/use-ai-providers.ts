@@ -8,9 +8,11 @@
 import type { ModelCollectionEntitySchema } from "@decocms/bindings/llm";
 import {
   useProjectContext,
+  pickSimpleModeDefaults,
   type AiProviderModel,
   type AiProviderKey,
   type AiProviderInfo,
+  type SimpleModeDefaults,
   type UseCollectionListOptions,
 } from "@/sdk";
 
@@ -80,6 +82,31 @@ export function useAiProviderModels(keyId: string | undefined) {
       })) as { models: AiProviderModel[] },
   });
   return { models: data?.models ?? [], isLoading: !!keyId && isLoading };
+}
+
+/**
+ * Mirrors the server's tier auto-pick (`pickSimpleModeDefaults`) so a UI
+ * showing "what model will this tier use" agrees with what a run actually
+ * gets. Hooks can't loop over an arbitrary key count, so this caps at the
+ * first 3 keys — same tradeoff `SimpleModeSection` already makes to prefill
+ * the settings form; picking only `keys[0]` (the previous shortcut here)
+ * showed the wrong provider's catalog whenever the org's first key wasn't
+ * the one the backend would actually select for a tier.
+ */
+export function useAutoSimpleModeDefaults(
+  keys: AiProviderKey[],
+): SimpleModeDefaults {
+  const key0 = keys[0];
+  const key1 = keys[1];
+  const key2 = keys[2];
+  const { models: models0 } = useAiProviderModels(key0?.id);
+  const { models: models1 } = useAiProviderModels(key1?.id);
+  const { models: models2 } = useAiProviderModels(key2?.id);
+  const modelsByKeyId: Record<string, AiProviderModel[]> = {};
+  if (key0?.id) modelsByKeyId[key0.id] = models0;
+  if (key1?.id) modelsByKeyId[key1.id] = models1;
+  if (key2?.id) modelsByKeyId[key2.id] = models2;
+  return pickSimpleModeDefaults(keys, modelsByKeyId);
 }
 
 export function useSuspenseAiProviderModels(keyId: string) {
