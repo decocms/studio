@@ -43,6 +43,7 @@ export function TierModelOverridePicker({
   tier,
   orgSlot,
   userSlot,
+  autoSlot,
   onPick,
   onReset,
   onClose,
@@ -50,13 +51,17 @@ export function TierModelOverridePicker({
   tier: ChatTier;
   orgSlot: ModelSlot | null;
   userSlot: ModelSlot | null | undefined;
+  /** Server-mirrored auto-pick, used when neither org nor user has an
+   *  explicit slot — so the picker opens on the provider a run would
+   *  actually use instead of an arbitrary connected key. */
+  autoSlot: ModelSlot | null | undefined;
   onPick: (slot: ModelSlot) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
   const t = useT();
   const allKeys = useAiProviderKeys();
-  const effective = userSlot ?? orgSlot;
+  const effective = userSlot ?? orgSlot ?? autoSlot ?? null;
   // Which provider key's catalog the picker is browsing. Seeded from the
   // effective slot; the parent remounts this component when that slot
   // changes, so it can't outlive the value it was seeded from.

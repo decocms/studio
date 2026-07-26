@@ -46,9 +46,8 @@ import {
 import { useSimpleMode } from "@/hooks/use-organization-settings";
 import {
   useAiProviderKeys,
-  useAiProviderModels,
+  useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
-import { pickFallbackChatModel } from "./resolve-chat-model";
 import { TierModelOverridePicker } from "./tier-model-override-row";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import {
@@ -327,16 +326,15 @@ function tierIconFor(tier: ChatTier): ReactNode {
  * from the connected provider's catalog, so a name is still what a run uses.
  * Undefined only while the catalog is loading (caller falls back to the blurb).
  */
-function useTierModelNames(): Record<ChatTier, string | undefined> {
+function useTierModelNames(
+  autoDefaults: ReturnType<typeof useAutoSimpleModeDefaults>,
+): Record<ChatTier, string | undefined> {
   const effective = useEffectiveSimpleMode();
-  const keys = useAiProviderKeys();
-  const fallbackKeyId = keys[0]?.id ?? null;
-  const { models } = useAiProviderModels(fallbackKeyId ?? undefined);
 
   const nameFor = (tier: ChatTier) => {
     const slot = effective.tiers[tier];
     if (slot) return slot.title ?? slot.modelId;
-    return pickFallbackChatModel(tier, keys, fallbackKeyId, models)?.title;
+    return autoDefaults.chat[tier]?.title;
   };
   return {
     fast: nameFor("fast"),
@@ -471,12 +469,18 @@ export function TierTrigger() {
   const locked = taskCtx?.isThreadLocked ?? false;
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
-  // Per-tier model name (user override → org slot → auto-pick) shown as each
-  // cloud row's subtitle.
-  const tierModelNames = useTierModelNames();
   // Cloud rows only: org config + this user's overrides, wired into each
   // row's cog popover below.
   const org = useSimpleMode();
+  const keys = useAiProviderKeys();
+  // Mirrors the server's default-pick across the org's first few keys (not
+  // just the first one) so an org with more than one provider — e.g. a
+  // self-hosted/local key alongside a cloud one — shows and edits whichever
+  // key the backend would actually pick for a tier, not an arbitrary key.
+  const autoDefaults = useAutoSimpleModeDefaults(keys);
+  // Per-tier model name (user override → org slot → auto-pick) shown as each
+  // cloud row's subtitle.
+  const tierModelNames = useTierModelNames(autoDefaults);
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
@@ -573,6 +577,7 @@ export function TierTrigger() {
                   tier={tierOption}
                   orgSlot={org.tiers[tierOption]}
                   userSlot={userSlot}
+                  autoSlot={autoDefaults.chat[tierOption]}
                   onClose={closeOverride}
                   onPick={(slot) =>
                     updateUserModelPreferences.mutate({
