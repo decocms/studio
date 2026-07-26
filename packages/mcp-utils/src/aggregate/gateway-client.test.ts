@@ -236,6 +236,51 @@ describe("GatewayClient", () => {
     });
   });
 
+  describe("pagination", () => {
+    it("follows nextCursor across multiple pages", async () => {
+      const client = createMockClient();
+      let call = 0;
+      const tool = (name: string) => ({
+        name,
+        inputSchema: { type: "object" as const },
+      });
+      client.listTools = mock(async () => {
+        call++;
+        if (call === 1) {
+          return { tools: [tool("a")], nextCursor: "page2" };
+        }
+        return { tools: [tool("b")] };
+      }) as IClient["listTools"];
+
+      const gw = new GatewayClient({ srv: { client } });
+      const result = await gw.listTools();
+
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("srv", "a"),
+        ns("srv", "b"),
+      ]);
+    });
+
+    it("caps pagination instead of looping forever on a server that never stops returning nextCursor", async () => {
+      const client = createMockClient();
+      let call = 0;
+      client.listTools = mock(async () => {
+        call++;
+        // A misbehaving/malicious upstream that always claims there's another page.
+        return {
+          tools: [{ name: `t${call}`, inputSchema: { type: "object" as const } }],
+          nextCursor: "always-more",
+        };
+      }) as IClient["listTools"];
+
+      const gw = new GatewayClient({ srv: { client } });
+      const result = await gw.listTools();
+
+      expect(result.tools.length).toBe(1000);
+      expect(call).toBe(1000);
+    });
+  });
+
   describe("prompt namespacing", () => {
     it("prefixes prompt names with slugified client key", async () => {
       const client = createMockClient([], [], [{ name: "greet" }]);
