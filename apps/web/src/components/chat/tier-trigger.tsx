@@ -164,7 +164,11 @@ export function TierTriggerPure({
         </TooltipTrigger>
         <TooltipContent>{resolvedPillLabel}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="p-1 w-64">
+      <PopoverContent
+        align="end"
+        className="p-1 w-64"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         {header && (
           <div className="mb-1 border-b border-border/60 pb-1">{header}</div>
         )}
