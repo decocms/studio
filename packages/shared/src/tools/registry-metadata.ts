@@ -1578,10 +1578,9 @@ export function allCapabilitiesGranted(): Record<string, boolean> {
 export function resolveCapabilities(
   permission: Record<string, string[]>,
 ): Record<string, boolean> {
-  const perm = permission as Record<string, unknown>;
   const arrayBucket = (key: string): string[] => {
-    const value = perm[key];
-    return Array.isArray(value) ? (value as string[]) : [];
+    const value = permission[key];
+    return Array.isArray(value) ? value : [];
   };
 
   // ONLY an org-wide (`*`) or full org-tool (`self`) wildcard is a GLOBAL grant
@@ -1593,7 +1592,7 @@ export function resolveCapabilities(
 
   const grantedActions = new Set<string>();
   if (!hasGlobalGrant) {
-    for (const actions of Object.values(perm)) {
+    for (const actions of Object.values(permission)) {
       if (!Array.isArray(actions)) continue;
       for (const action of actions) grantedActions.add(action);
     }
@@ -1615,8 +1614,8 @@ export function resolveCapabilities(
 /**
  * Get tools grouped by category
  */
-export function getToolsByCategory() {
-  const grouped: Record<string, ToolMetadata[]> = {
+export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
+  const grouped: Record<ToolCategory, ToolMetadata[]> = {
     Organizations: [],
     Connections: [],
     "Virtual MCPs": [],
@@ -1627,6 +1626,8 @@ export function getToolsByCategory() {
     "Event Bus": [],
     Tags: [],
     "AI Providers": [],
+    Secrets: [],
+    "File Configs": [],
     Automations: [],
     "Object Storage": [],
     Registry: [],
@@ -1634,10 +1635,11 @@ export function getToolsByCategory() {
     VM: [],
     Links: [],
     Search: [],
+    "Task Board": [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {
-    grouped[tool.category]?.push(tool);
+    grouped[tool.category].push(tool);
   }
 
   return grouped;
