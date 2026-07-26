@@ -268,7 +268,9 @@ describe("GatewayClient", () => {
         call++;
         // A misbehaving/malicious upstream that always claims there's another page.
         return {
-          tools: [{ name: `t${call}`, inputSchema: { type: "object" as const } }],
+          tools: [
+            { name: `t${call}`, inputSchema: { type: "object" as const } },
+          ],
           nextCursor: "always-more",
         };
       }) as IClient["listTools"];
