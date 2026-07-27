@@ -37,6 +37,10 @@ import {
   createDevAssetsConnectionEntity,
   usesLocalObjectStorage,
 } from "./dev-assets";
+import {
+  finalizeNonBindingPage,
+  shouldConsiderDevAssetsForPage,
+} from "./dev-assets-page";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { connectionMatchesWhere } from "./where-match";
@@ -212,7 +216,11 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     // When no external S3 bucket is configured, inject the dev-assets
     // connection so the OBJECT_STORAGE binding is satisfied by the local
     // DevObjectStorage filesystem fallback.
-    if (usesLocalObjectStorage()) {
+    let devAssetsInjected = false;
+    if (
+      usesLocalObjectStorage() &&
+      shouldConsiderDevAssetsForPage(needsBindingFilter, offset)
+    ) {
       const baseUrl = getBaseUrl();
       const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS(organization.id);
 
@@ -234,6 +242,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
         );
         if (slugMatches && whereMatches) {
           connections.unshift(devAssetsConnection);
+          devAssetsInjected = true;
         }
       }
     }
@@ -277,13 +286,13 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       };
     }
 
-    // Non-binding path: SQL already handled where/orderBy/pagination
-    const hasMore = offset + limit < sqlTotalCount;
-
-    return {
-      items: connections,
-      totalCount: sqlTotalCount,
-      hasMore,
-    };
+    // Non-binding path: SQL already handled where/orderBy/pagination.
+    return finalizeNonBindingPage(
+      connections,
+      devAssetsInjected,
+      limit,
+      offset,
+      sqlTotalCount,
+    );
   },
 });
