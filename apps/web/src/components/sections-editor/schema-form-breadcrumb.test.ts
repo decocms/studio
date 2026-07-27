@@ -165,6 +165,74 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("alert");
   });
 
+  test("narrows to a loader whose inline config owns the drilled item", () => {
+    // Multi-field section: several sibling props + a loader (block-ref) whose
+    // config holds a `banners` array. Drilling into the "Beach Short" banner
+    // produces a bare `[itemLabel]` trail; the section must still narrow to the
+    // loader (not keep showing the sibling toggles).
+    const properties = {
+      enableCta: { title: "Ativar CTA", type: "boolean" },
+      enableBanners: { title: "Ativar modo de banners", type: "boolean" },
+      loader: {
+        title: "Loader",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      enableCta: true,
+      enableBanners: false,
+      loader: {
+        __resolveType: "shelf/loader.ts",
+        banners: [{ title: "Linha Outdoors" }, { title: "Beach Short" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        "Beach Short",
+      ]),
+    ).toBe("loader");
+  });
+
+  test("narrows to a GLOBAL loader whose decofile data owns the drilled item", () => {
+    const properties = {
+      enableCta: { title: "Ativar CTA", type: "boolean" },
+      loader: {
+        title: "Loader",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    // Global loader: the field value is just a reference; the real config
+    // (with the `banners` array) lives in the decofile under that key.
+    const objValue = {
+      enableCta: true,
+      loader: { __resolveType: "carrossel-home-loader" },
+    };
+    const decofile = {
+      "carrossel-home-loader": {
+        __resolveType: "shelf/loader.ts",
+        name: "carrossel-home-loader",
+        banners: [{ title: "Linha Outdoors" }, { title: "Beach Short" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        ["Beach Short"],
+        decofile,
+      ),
+    ).toBe("loader");
+    // Without the decofile the reference can't be resolved, so it can't narrow.
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        "Beach Short",
+      ]),
+    ).toBeNull();
+  });
+
   test("disambiguates block-refs with same label by inner value keys", () => {
     const properties = {
       asideMenu: {

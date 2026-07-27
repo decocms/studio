@@ -201,6 +201,19 @@ export function SectionsEditor({
   > | null>(null);
   const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
+  // Reset the form panel's scroll to the top whenever the drill-down DEPTH
+  // changes (entering/leaving an item), so a drilled-in item form always starts
+  // at the top instead of inheriting the previous view's scroll offset. Keyed on
+  // depth, not the full trail, so editing a field that syncs its own crumb label
+  // (ArrayField.updateItem) doesn't yank the scroll mid-typing.
+  const fieldScrollRef = useRef<HTMLDivElement>(null);
+  const [prevFieldDepth, setPrevFieldDepth] = useState(fieldBreadcrumbs.length);
+  if (prevFieldDepth !== fieldBreadcrumbs.length) {
+    setPrevFieldDepth(fieldBreadcrumbs.length);
+    requestAnimationFrame(() => {
+      if (fieldScrollRef.current) fieldScrollRef.current.scrollTop = 0;
+    });
+  }
   const [formResetKey, setFormResetKey] = useState(0);
   const [makeReusableIndex, setMakeReusableIndex] = useState<number | null>(
     null,
@@ -2643,7 +2656,10 @@ export function SectionsEditor({
           </div>
         </ScrollArea>
       ) : isEditing ? (
-        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <ScrollArea
+          viewportRef={fieldScrollRef}
+          className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+        >
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
               <SectionVariantList
@@ -2716,7 +2732,10 @@ export function SectionsEditor({
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
-        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <ScrollArea
+          viewportRef={fieldScrollRef}
+          className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+        >
           <SchemaFormPanel
             activeSchema={activeSchema}
             formValue={formValue}
