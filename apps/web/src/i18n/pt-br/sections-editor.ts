@@ -41,6 +41,7 @@ export const sectionsEditor = {
     "Nenhum resultado encontrado.",
   "sectionsEditor.dynamicOptionsField.searchPlaceholder": "Pesquisar...",
   "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.fileField.browseButton": "Procurar",
   "sectionsEditor.fileField.dropFileHint":

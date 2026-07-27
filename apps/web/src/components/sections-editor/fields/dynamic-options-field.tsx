@@ -340,6 +340,21 @@ export function DynamicOptionsField({
   const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
+  // A loader-backed field (dynamic `@options`, no fixed schema `enum`, not the
+  // constrained icon-select) treats its options as suggestions, not a closed
+  // set — so a value the loader doesn't return (e.g. a Collection ID the search
+  // can't find, or a loader that came back empty) can still be entered by hand.
+  // cmdk owns the input, so we surface the typed text as a selectable "use this"
+  // item rather than a separate text box; Enter commits it when it's the only
+  // match, so an empty result set no longer traps the user.
+  const allowFreeValue =
+    !!loaderPath && !isIconSelect && enumFallback.length === 0;
+  const trimmedSearch = search.trim();
+  const canUseTypedValue =
+    allowFreeValue &&
+    trimmedSearch.length > 0 &&
+    !options.some((opt) => opt.value === trimmedSearch);
+
   // Fallback to text input only when there's no option source at all: no
   // loader/preview to fetch from AND no schema enum to list.
   const noOptionSource =
@@ -408,16 +423,19 @@ export function DynamicOptionsField({
               onValueChange={handleSearchChange}
             />
             <CommandList>
-              <CommandEmpty>
-                {query.isLoading
-                  ? t("sectionsEditor.dynamicOptionsField.loading")
-                  : t("sectionsEditor.dynamicOptionsField.noResults")}
-              </CommandEmpty>
+              {!canUseTypedValue && (
+                <CommandEmpty>
+                  {query.isLoading
+                    ? t("sectionsEditor.dynamicOptionsField.loading")
+                    : t("sectionsEditor.dynamicOptionsField.noResults")}
+                </CommandEmpty>
+              )}
               <CommandGroup>
                 {visibleOptions.map((opt) => (
                   <CommandItem
                     key={opt.value}
                     value={opt.value}
+                    className="cursor-pointer"
                     onSelect={() => {
                       onChange(opt.value === currentValue ? "" : opt.value);
                       setOpen(false);
@@ -442,6 +460,26 @@ export function DynamicOptionsField({
                   </CommandItem>
                 ))}
               </CommandGroup>
+              {canUseTypedValue && (
+                <CommandGroup>
+                  <CommandItem
+                    value={trimmedSearch}
+                    className="cursor-pointer"
+                    onSelect={() => {
+                      onChange(trimmedSearch);
+                      setSearch("");
+                      setDebouncedSearch("");
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="truncate">
+                      {t("sectionsEditor.dynamicOptionsField.useValue", {
+                        value: trimmedSearch,
+                      })}
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
