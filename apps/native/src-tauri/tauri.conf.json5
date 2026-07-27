@@ -36,7 +36,7 @@
     // frontend changes that add origins or script patterns. Embedded
     // local-api validates the exact Vite Host/Origin in dev; it does not
     // enable generic loopback CORS.
-    devUrl: "http://localhost:4420",
+    devUrl: "https://local.studio.decocms.com:4420",
     beforeDevCommand: "bun run --cwd ../web dev:native",
     // Runs automatically before `tauri build`, from the directory containing
     // `src-tauri` (`apps/native`) — so `tauri build` alone is self-sufficient

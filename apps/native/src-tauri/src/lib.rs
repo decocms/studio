@@ -7,6 +7,7 @@ mod auth;
 mod commands;
 mod control_origin;
 mod csp;
+mod local_tls;
 mod selftest;
 mod setup;
 mod shutdown;

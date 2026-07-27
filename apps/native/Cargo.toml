@@ -26,6 +26,12 @@ all = { level = "warn", priority = -1 }
 # owners must not touch (see the native module-ownership contract).
 [workspace.dependencies]
 axum = { version = "0.7", features = ["ws", "macros"] }
+# Local TLS: the app terminates HTTPS on the user's own machine so its origin
+# is a secure context (Web Crypto) AND a real domain (per-sandbox cookie
+# jars). `rcgen` mints the CA/leaf on first run; nothing is shipped.
+rcgen = { version = "0.13", default-features = false, features = ["pem", "crypto", "ring"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+time = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["trace", "cors", "fs", "timeout"] }

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -21,8 +22,23 @@ const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 // apps/web/src/index.native.tsx for the entry itself and
 // apps/web/src/lib/desktop/transport.ts for what it wires up.
 const isNativeBuild = process.env.VITE_TAURI_APP === "1";
+// Leaf minted by the desktop app into its app-data dir. Read at config time
+// so `vite dev` serves the same certificate the Rust listeners do.
+const nativeTlsFiles = (() => {
+  if (process.env.VITE_TAURI_APP !== "1") return null;
+  const dir = `${process.env.HOME}/Library/Application Support/com.decocms.studio/tls`;
+  try {
+    return {
+      cert: readFileSync(`${dir}/leaf-cert.pem`),
+      key: readFileSync(`${dir}/leaf-key.pem`),
+    };
+  } catch {
+    return null;
+  }
+})();
+
 const nativeLocalApiTarget =
-  process.env.NATIVE_LOCAL_API_TARGET ?? "http://127.0.0.1:43121";
+  process.env.NATIVE_LOCAL_API_TARGET ?? "https://127.0.0.1:43121";
 const appServerTarget = isNativeBuild ? nativeLocalApiTarget : bunServerTarget;
 
 // Native (Tauri) build ONLY: emit the entry as `index.html`, not
@@ -92,35 +108,42 @@ const sharedProxy = {
   "/api": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/mcp": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/oauth-proxy": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/.well-known": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/org": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/health": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
   },
   "/metrics": {
     target: appServerTarget,
     changeOrigin: false,
+    secure: false,
   },
   // Native-only routes, served by the in-process Rust local-api rather than
   // the Bun API server. Part of the SHARED proxy so `vite preview` reaches
@@ -130,24 +153,29 @@ const sharedProxy = {
         "/_auth": {
           target: nativeLocalApiTarget,
           changeOrigin: false,
+          secure: false,
           ws: true,
         },
         "/_local": {
           target: nativeLocalApiTarget,
           changeOrigin: false,
+          secure: false,
         },
         "/_sandbox": {
           target: nativeLocalApiTarget,
           changeOrigin: false,
+          secure: false,
           ws: true,
         },
         "/threads": {
           target: nativeLocalApiTarget,
           changeOrigin: false,
+          secure: false,
         },
         "/models": {
           target: nativeLocalApiTarget,
           changeOrigin: false,
+          secure: false,
         },
       }
     : {}),
@@ -183,7 +211,21 @@ export default defineConfig({
       : process.env.HOST === "0.0.0.0"
         ? { host: true }
         : {}),
-    ...(isNativeBuild ? { allowedHosts: ["localhost"] } : {}),
+    // The desktop shell is served from a real hostname, not `localhost`:
+    // sandbox previews live at `<handle>.local.studio.decocms.com` so each gets
+    // its own cookie jar, and that only keeps the preview iframe first-party if
+    // the shell shares its registrable domain. See
+    // `apps/native/src-tauri/src/control_origin.rs`.
+    ...(isNativeBuild
+      ? { allowedHosts: ["localhost", ".local.studio.decocms.com"] }
+      : {}),
+    // The desktop dev shell is served by Vite, so it — not just local-api —
+    // has to speak HTTPS: the webview's origin must be a secure context (Web
+    // Crypto) while also being a real domain (per-sandbox cookie jars). The
+    // app mints this leaf on first run from a CA it trusted with macOS; see
+    // `apps/native/src-tauri/src/local_tls.rs`. Absent (first ever run, before
+    // the app has booted once) we stay on HTTP rather than failing to start.
+    ...(isNativeBuild && nativeTlsFiles ? { https: nativeTlsFiles } : {}),
     hmr: {
       overlay: true,
       host: "localhost",

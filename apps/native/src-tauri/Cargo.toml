@@ -21,6 +21,8 @@ workspace = true
 tauri-build = { workspace = true }
 
 [dependencies]
+rcgen = { workspace = true }
+time = { workspace = true }
 # In-process local-api embedding (Phase 3 — see the desktop migration contract's "in-process axum,
 # no sidecar" decision and the native implementation contract §5). Path dep, not a version to
 # keep in sync.

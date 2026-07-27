@@ -295,20 +295,43 @@ pub async fn set_preview_handle(
 /// file's `dev_port_*` tests still drive `dev_port` directly, and its
 /// unknown-handle -> `None` rule (never preview the wrong branch) is
 /// deliberately NOT the observability fallback [`resolve_preview`] uses.
+/// The sandbox handle named by the request's `Host`.
+///
+/// Each sandbox is now previewed at `<handle>.<preview-host>` so that cookies —
+/// which ignore the port — stop being shared between sandboxes. A preview
+/// iframe cannot set [`crate::sandbox::SANDBOX_HANDLE_HEADER`], but its Host
+/// carries the handle, so this is what routes a headerless preview request to
+/// the right dev server instead of the process-global "active" sandbox.
+///
+/// Returns the first label only when it is at least two labels deep, and the
+/// caller checks it against the sandbox manager, so a bare `localhost` (or any
+/// other name pointed at this listener) falls through to the previous
+/// behaviour rather than resolving to a wrong sandbox.
+fn handle_from_host(headers: &HeaderMap) -> Option<String> {
+    let host = headers.get(header::HOST)?.to_str().ok()?;
+    let host = host.split(':').next()?;
+    let (label, rest) = host.split_once('.')?;
+    (!label.is_empty() && !rest.is_empty()).then(|| label.to_string())
+}
+
 fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {
-    match crate::sandbox::handle_from_headers(headers) {
-        Some(handle) => {
-            let sandbox = state.sandbox_manager.get(handle)?;
-            dev_port_for(&sandbox.setup, &sandbox.config)
-        }
-        // Headerless request (e.g. a preview iframe, which can't set the
-        // handle header): serve the ACTIVE sandbox's dev server if a
-        // git-backed thread has been dispatched, else the global (non-git)
-        // orchestrator — same behavior as before for the plain path.
-        None => match state.sandbox_manager.active() {
-            Some(sandbox) => dev_port_for(&sandbox.setup, &sandbox.config),
-            None => dev_port_for(&state.setup, &state.config),
-        },
+    if let Some(handle) = crate::sandbox::handle_from_headers(headers) {
+        let sandbox = state.sandbox_manager.get(handle)?;
+        return dev_port_for(&sandbox.setup, &sandbox.config);
+    }
+    // A preview iframe cannot set the handle header, but its Host names the
+    // sandbox — this is the per-handle preview origin resolving itself.
+    if let Some(sandbox) =
+        handle_from_host(headers).and_then(|handle| state.sandbox_manager.get(&handle))
+    {
+        return dev_port_for(&sandbox.setup, &sandbox.config);
+    }
+    // Neither: serve the ACTIVE sandbox's dev server if a git-backed thread has
+    // been dispatched, else the global (non-git) orchestrator — unchanged
+    // behavior for the plain path.
+    match state.sandbox_manager.active() {
+        Some(sandbox) => dev_port_for(&sandbox.setup, &sandbox.config),
+        None => dev_port_for(&state.setup, &state.config),
     }
 }
 
@@ -368,16 +391,23 @@ enum PreviewResolution {
 /// orchestrator's lifecycle phase. NOT shared with `dev_port` on purpose — see
 /// [`dev_port`]'s doc and plan D1/D4.
 fn resolve_preview(state: &AppState, headers: &HeaderMap) -> PreviewResolution {
-    match crate::sandbox::handle_from_headers(headers) {
-        Some(handle) => match state.sandbox_manager.get(handle) {
+    if let Some(handle) = crate::sandbox::handle_from_headers(headers) {
+        return match state.sandbox_manager.get(handle) {
             Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
             // Unknown explicit handle: never fall back to the wrong branch.
             None => PreviewResolution::NoServer,
-        },
-        None => match state.sandbox_manager.active() {
-            Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
-            None => preview_from(&state.setup, &state.config),
-        },
+        };
+    }
+    // Per-handle preview origin (`<handle>.<preview-host>`): the iframe's Host
+    // names the sandbox even though it cannot set the handle header.
+    if let Some(sandbox) =
+        handle_from_host(headers).and_then(|handle| state.sandbox_manager.get(&handle))
+    {
+        return preview_from(&sandbox.setup, &sandbox.config);
+    }
+    match state.sandbox_manager.active() {
+        Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
+        None => preview_from(&state.setup, &state.config),
     }
 }
 
@@ -589,28 +619,20 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
     build_response(status, resp_headers, body)
 }
 
-/// Makes the sandbox's cookies storable by a webview on a plaintext loopback
-/// origin.
+/// Makes the sandbox's cookies storable by the preview origin.
 ///
-/// WebKit — the engine behind WKWebView — refuses to store a `Secure` cookie
-/// unless the connection is genuinely TLS. Unlike Chrome it grants loopback no
-/// exception, and `window.isSecureContext` being `true` on `localhost` does not
-/// change it: that flag gates JS APIs, while cookie `Secure` enforcement keys
-/// off the actual scheme. The preview listener is plaintext http on 127.0.0.1
-/// by construction, so a `Secure` cookie from a real site — a VTEX checkout
-/// session, say — is dropped on the floor and the flow it belongs to can never
-/// work in the preview. Keeping the attribute buys nothing; it only loses the
-/// cookie.
+/// A sandbox's own server sets cookies scoped to the site it proxies — VTEX
+/// sends `domain=<store>.vtexcommercestable.com.br` — and a browser rejects a
+/// cookie whose `Domain` does not cover the host that sent it. The preview is
+/// served from `<handle>.<control host>`, so every such cookie would be
+/// dropped and the flow it belongs to (a checkout session, say) could never
+/// complete. Removing the attribute makes the cookie host-only for the preview
+/// origin: storable, and narrower than what was asked for.
 ///
-/// `SameSite=None` is rewritten in the same pass because `None` is invalid
-/// without `Secure`: dropping one and not the other just trades a silently
-/// ignored cookie for a silently rejected one. `Lax` is the closest thing that
-/// survives, and the preview iframe is same-site with the shell today (both
-/// are `localhost`; a site is the registrable domain, so the differing ports
-/// do not matter).
-///
-/// Scoped to THIS proxy, which serves only the local preview iframe. Nothing
-/// rewritten here is ever sent to a real network peer.
+/// `Secure` and `SameSite=None` used to be rewritten here too, because the
+/// preview was served over plain http where WebKit refuses `Secure` cookies.
+/// The app now terminates TLS locally (`src-tauri/src/local_tls.rs`), so both
+/// are honoured as sent and the rewriting is gone.
 fn relax_cookies_for_loopback(headers: &mut HeaderMap) {
     let mut rewritten: Vec<HeaderValue> = Vec::new();
     let mut changed = false;
@@ -641,7 +663,7 @@ fn relax_cookies_for_loopback(headers: &mut HeaderMap) {
     }
 }
 
-/// One `Set-Cookie` value with `Secure` dropped and `SameSite=None` downgraded.
+/// One `Set-Cookie` value with any `Domain` attribute removed.
 ///
 /// Only ATTRIBUTES are inspected. The first `;`-separated segment is the
 /// cookie's own `name=value` and is copied verbatim, so a cookie whose value
@@ -655,15 +677,17 @@ fn relax_set_cookie(value: &str) -> String {
             parts.push(trimmed.to_string());
             continue;
         }
-        let (name, attr_value) = match trimmed.split_once('=') {
-            Some((name, attr_value)) => (name.trim(), attr_value.trim()),
-            None => (trimmed, ""),
+        let name = match trimmed.split_once('=') {
+            Some((name, _)) => name.trim(),
+            None => trimmed,
         };
-        if name.eq_ignore_ascii_case("secure") {
-            continue;
-        }
-        if name.eq_ignore_ascii_case("samesite") && attr_value.eq_ignore_ascii_case("none") {
-            parts.push("SameSite=Lax".to_string());
+        // `Domain` names the ORIGIN site, not this loopback origin — VTEX
+        // sends `domain=<store>.vtexcommercestable.com.br` through the store's
+        // own server. A browser rejects a cookie whose Domain does not match
+        // the host that sent it, so keeping the attribute loses the cookie as
+        // surely as `Secure` did. Dropping it makes the cookie host-only for
+        // the preview origin, which is both storable and the narrower scope.
+        if name.eq_ignore_ascii_case("domain") {
             continue;
         }
         parts.push(trimmed.to_string());
@@ -953,36 +977,25 @@ mod tests {
         assert_eq!(headers.get("x-end-to-end").unwrap(), "keep");
     }
 
-    /// WebKit drops `Secure` cookies on the plaintext loopback origin the
-    /// preview is served from, so the attribute has to go or the cookie is
-    /// lost — see [`relax_cookies_for_loopback`].
+    /// A cookie the upstream scoped to ITS OWN domain cannot be stored by a
+    /// browser talking to this loopback origin; dropping the attribute makes
+    /// it host-only, which is storable and narrower.
     #[test]
-    fn drops_secure_so_the_webview_will_store_the_cookie() {
-        assert_eq!(
-            relax_set_cookie("checkout=abc; Path=/; Secure; HttpOnly"),
-            "checkout=abc; Path=/; HttpOnly"
-        );
-        // Attribute names are case-insensitive.
-        assert_eq!(relax_set_cookie("a=1; SECURE"), "a=1");
-        assert_eq!(relax_set_cookie("a=1; secure"), "a=1");
-    }
-
-    /// `SameSite=None` is invalid without `Secure`, so dropping only the
-    /// latter would trade an ignored cookie for a rejected one.
-    #[test]
-    fn downgrades_samesite_none_alongside_secure() {
+    fn drops_a_domain_the_preview_origin_could_never_satisfy() {
         assert_eq!(
             relax_set_cookie(
-                "checkout.vtex.com=__ofid=87a2; path=/; secure; samesite=none; httponly"
+                "checkout.vtex.com=__ofid=4973; domain=fila.vtexcommercestable.com.br; path=/; secure; samesite=none; httponly"
             ),
-            "checkout.vtex.com=__ofid=87a2; path=/; SameSite=Lax; httponly"
+            // `Secure`/`SameSite` now pass through untouched: the preview
+            // origin is HTTPS, so the browser honours them as sent.
+            "checkout.vtex.com=__ofid=4973; path=/; secure; samesite=none; httponly"
         );
-        // Other SameSite values are already storable and are left alone.
+        assert_eq!(relax_set_cookie("a=1; Domain=example.com"), "a=1");
+        // Everything else survives verbatim.
         assert_eq!(
-            relax_set_cookie("a=1; SameSite=Strict"),
-            "a=1; SameSite=Strict"
+            relax_set_cookie("a=1; Path=/; Secure; SameSite=None; HttpOnly"),
+            "a=1; Path=/; Secure; SameSite=None; HttpOnly"
         );
-        assert_eq!(relax_set_cookie("a=1; SameSite=Lax"), "a=1; SameSite=Lax");
     }
 
     /// Only attributes are interpreted; the cookie's own value is copied
@@ -1016,11 +1029,11 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.append(
             header::SET_COOKIE,
-            HeaderValue::from_static("a=1; Secure; SameSite=None"),
+            HeaderValue::from_static("a=1; Domain=a.example.com; Secure"),
         );
         headers.append(
             header::SET_COOKIE,
-            HeaderValue::from_static("b=2; Path=/; Secure"),
+            HeaderValue::from_static("b=2; Path=/; domain=b.example.com"),
         );
         relax_cookies_for_loopback(&mut headers);
 
@@ -1029,7 +1042,7 @@ mod tests {
             .iter()
             .map(|value| value.to_str().unwrap())
             .collect();
-        assert_eq!(cookies, ["a=1; SameSite=Lax", "b=2; Path=/"]);
+        assert_eq!(cookies, ["a=1; Secure", "b=2; Path=/"]);
     }
 
     #[tokio::test]

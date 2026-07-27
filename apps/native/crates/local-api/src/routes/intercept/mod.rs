@@ -77,7 +77,9 @@ mod sandbox_lifecycle;
 mod sandbox_ops;
 pub mod thread_tools;
 
-pub(crate) use sandbox_lifecycle::set_preview_port;
+pub(crate) use sandbox_lifecycle::{
+    preview_host_base, set_preview_host, set_preview_port, set_preview_scheme,
+};
 pub(crate) mod watch;
 
 use axum::body::Bytes;

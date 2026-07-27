@@ -27,6 +27,8 @@ pub enum SetupError {
     LocalApi(#[from] local_api::StartError),
     #[error("failed to load bundled UI assets: {0}")]
     UiAssets(String),
+    #[error("failed to prepare local HTTPS: {0}")]
+    LocalTls(#[from] crate::local_tls::TlsError),
     #[error("invalid control URL: {0}")]
     ControlUrl(String),
     #[error("failed to build the main window: {0}")]
@@ -56,10 +58,31 @@ fn is_allowed_webview_navigation(
         || is_sandbox_preview_url(url, preview_port)
 }
 
+/// Whether `url` is a sandbox preview.
+///
+/// Mirrors `preview_url`'s gate: under a single-label control host every
+/// sandbox shares ONE preview origin, and only under a real registrable domain
+/// does each get its own `<handle>.<host>`. Accepts whichever form the
+/// configured host implies, and nothing else.
 fn is_sandbox_preview_url(url: &tauri::Url, preview_port: u16) -> bool {
-    url.scheme() == "http"
-        && url.host_str() == Some("localhost")
-        && url.port_or_known_default() == Some(preview_port)
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if url.scheme() != control_origin::CONTROL_SCHEME
+        || url.port_or_known_default() != Some(preview_port)
+    {
+        return false;
+    }
+    let control = control_origin::CONTROL_HOST;
+    if !control.contains('.') {
+        // Single-origin mode: the preview is the control host on its own port.
+        return host == control;
+    }
+    // Per-handle mode: exactly one label under the control host. The wildcard
+    // DNS record covers one level, and a deeper name is not something this app
+    // ever mints.
+    host.strip_suffix(&format!(".{control}"))
+        .is_some_and(|label| !label.is_empty() && !label.contains('.'))
 }
 
 fn new_window_policy() -> tauri::webview::NewWindowResponse<tauri::Wry> {
@@ -194,6 +217,16 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
         source,
     })?;
 
+    // Local HTTPS. The webview's origin has to be BOTH a real domain (so each
+    // sandbox preview gets its own cookie jar) and a secure context (so Web
+    // Crypto exists), and only TLS gives both — see `local_tls`'s module doc.
+    // The CA is minted per machine and reused; the leaf is fresh each launch.
+    // Trusting the root prompts the user once, in the USER trust domain, so it
+    // needs their own password rather than an administrator.
+    let tls = crate::local_tls::ensure(&app_root)?;
+    crate::local_tls::ensure_trusted(&tls.ca_cert)?;
+    tracing::info!(ca = %tls.ca_cert.display(), "local TLS material ready and trusted");
+
     let control = control_origin::current(selftest_mode);
     let browser_origin = control.resolve();
     let bundled_ui = if selftest_mode || !tauri::is_dev() {
@@ -210,6 +243,13 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     embedded.preview_cookie_selftest = selftest_mode;
     let handle = local_api::start_embedded(
         local_api::StartOptions {
+            // Serve the leaf minted above: the webview's origin must be a
+            // secure context for Web Crypto, and a real domain for per-sandbox
+            // cookie jars.
+            tls: Some(local_api::TlsFiles {
+                cert: tls.leaf_cert.clone(),
+                key: tls.leaf_key.clone(),
+            }),
             token: generate_launch_token(),
             boot_id: uuid::Uuid::new_v4().to_string(),
             app_root,
@@ -331,11 +371,11 @@ mod tests {
 
     #[test]
     fn webview_navigation_is_limited_to_control_and_preview_origins() {
-        let control = "http://localhost:43120";
+        let control = "https://local.studio.decocms.com:43120";
         let preview_port = 61_234;
         for allowed in [
-            "http://localhost:43120/fila",
-            "http://localhost:61234/products",
+            "https://local.studio.decocms.com:43120/fila",
+            "https://h1-abc.local.studio.decocms.com:61234/products",
             "about:blank",
         ] {
             assert!(
@@ -348,7 +388,12 @@ mod tests {
             "https://13105467.fls.doubleclick.net/activityi;src=13105467",
             "https://ct.pinterest.com/ct.html",
             "http://127.0.0.1:61234/steal-cookie",
-            "http://localhost:61235/",
+            "https://h1.local.studio.decocms.com:61235/",
+            // Sub-labels are NOT the preview while the control host is a
+            // single label — they are separate sites with no cookie storage.
+            "https://local.studio.decocms.com:61234/",
+            "https://a.b.local.studio.decocms.com:61234/",
+            "http://h1.local.studio.decocms.com:61234/",
             "http://preview.localhost:61234/",
             "http://evil.localhost:61234/",
         ] {

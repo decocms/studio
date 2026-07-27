@@ -1,25 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildPublicStudioUrlAtOrigin,
-  buildPreviewOrigin,
   isProtectedFirstPartyAssetPath,
   isLoopbackStudioOrigin,
   resolveProtectedFirstPartyAssetUrl,
   resolvePublicStudioOrigin,
 } from "./transport-rules";
 
-const ENDPOINT = {
-  port: 54231,
-  previewPort: 61234,
-  upstreamUrl: "https://studio.decocms.com",
-};
 const APP_ORIGIN = "http://localhost:54231";
-
-describe("local native origins", () => {
-  test("uses the plain localhost preview origin so cookies stay first-party", () => {
-    expect(buildPreviewOrigin(ENDPOINT)).toBe("http://localhost:61234/");
-  });
-});
 
 describe("protected first-party asset URLs", () => {
   test("recognizes only org-scoped protected file routes", () => {

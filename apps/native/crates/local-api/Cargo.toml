@@ -23,6 +23,8 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+axum-server = { workspace = true }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Phase 2: harness detection/tiers/spawn/stream-translation — see
 # `crates/harness`'s own Cargo.toml doc comment for why its PTY dependency
 # lives there instead of the shared `[workspace.dependencies]` table. This

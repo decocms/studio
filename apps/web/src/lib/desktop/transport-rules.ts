@@ -15,16 +15,6 @@ export interface LocalApiEndpoint {
   upstreamUrl: string;
 }
 
-/**
- * The control UI and preview use plain `localhost` on different ports. This
- * keeps sandbox application cookies first-party in WKWebView on every
- * supported macOS version. Arbitrary `*.localhost` names do not reliably load
- * inside a bundled app, even when they resolve in the host OS.
- */
-export function buildPreviewOrigin(endpoint: LocalApiEndpoint): string {
-  return `http://localhost:${endpoint.previewPort}/`;
-}
-
 /** Only authenticated, org-scoped file routes are safe to localize. */
 export function isProtectedFirstPartyAssetPath(pathname: string): boolean {
   return /^\/api\/[^/]+\/files(?:\/|$)/.test(pathname);

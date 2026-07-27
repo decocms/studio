@@ -95,6 +95,19 @@ pub struct StartOptions {
     /// back via [`ServerHandle::port`]).
     pub port: u16,
     pub mode: ApiMode,
+    /// PEM certificate + key for local HTTPS, or `None` to serve plain HTTP.
+    ///
+    /// The desktop app needs its origin to be a real domain (per-sandbox
+    /// cookie jars) AND a secure context (Web Crypto); only TLS gives both.
+    /// Standalone/bearer callers and the tests keep plain HTTP.
+    pub tls: Option<TlsFiles>,
+}
+
+/// Paths to the material [`start`] serves HTTPS with.
+#[derive(Clone, Debug)]
+pub struct TlsFiles {
+    pub cert: PathBuf,
+    pub key: PathBuf,
 }
 
 /// Browser-facing authentication and optional bundled-UI configuration for an
@@ -139,6 +152,12 @@ pub enum ClientAuthMode {
 /// whole app process die.
 #[derive(Debug, thiserror::Error)]
 pub enum StartError {
+    #[error("failed to load local TLS material {path:?}: {source}")]
+    Tls {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("failed to create repo dir {path:?}: {source}")]
     RepoDir {
         path: PathBuf,
@@ -471,6 +490,13 @@ pub async fn start_with_client_auth(
             bootstrap_secrets.push(opts.token.clone());
             bootstrap_secrets.extend(embedded.additional_bootstrap_secrets);
             let expected_host = embedded.expected_host.clone();
+            // rclone talks to local-api as a plain HTTP client, so it needs the
+            // same scheme the listeners actually serve.
+            let control_scheme = if embedded.control_origin.starts_with("https://") {
+                "https"
+            } else {
+                "http"
+            };
             let control_origin = embedded.control_origin.clone();
             let auth = client_auth::ClientAuth::embedded(
                 embedded.expected_host,
@@ -485,10 +511,17 @@ pub async fn start_with_client_auth(
             // family may not add fields to.
             if let Some(token) = auth.session_token() {
                 sandbox::org_mount::set_credentials(sandbox::org_mount::MountCredentials {
-                    base_url: format!("http://{expected_host}"),
+                    base_url: format!("{control_scheme}://{expected_host}"),
                     origin: control_origin,
                     cookie: format!("{}={token}", client_auth::LOCAL_SESSION_COOKIE_NAME),
                 });
+            }
+            // Previews are served per-sandbox at `<handle>.<control host>`:
+            // the same registrable domain, so the iframe stays first-party and
+            // can hold cookies, but a distinct host, so each sandbox gets its
+            // own cookie jar. See `src-tauri/src/control_origin.rs`.
+            if let Some(host) = expected_host.split(':').next() {
+                routes::intercept::set_preview_host(host.to_string());
             }
             (auth, embedded.ui_assets, preview_cookie_selftest_origin)
         }
@@ -634,28 +667,60 @@ pub async fn start_with_client_auth(
         .await
         .map_err(|message| StartError::LocalStore { message })?;
 
+    // A WILDCARD host, because previews are now per-sandbox
+    // (`<handle>.<preview-host>`) rather than one shared origin. A CSP host
+    // wildcard matches at least one label, which is exactly a handle — and
+    // deliberately does NOT match the bare preview host itself.
     let app = router::build(
         state.clone(),
         client_auth,
         ui_assets,
-        format!("http://localhost:{preview_port}"),
+        format!(
+            "http://*.{}:{preview_port}",
+            routes::intercept::preview_host_base()
+        ),
     );
     let preview_app =
         router::build_preview(state.clone(), preview_port, preview_cookie_selftest_origin);
 
+    // One rustls config shared by both listeners: they serve the same leaf,
+    // which covers the control host and the `*.<host>` preview wildcard.
+    // Loaded BEFORE either task spawns so a bad certificate fails the whole
+    // start rather than leaving one listener silently on plain HTTP.
+    let tls_config = match opts.tls.as_ref() {
+        Some(files) => {
+            // rustls 0.23 has no default crypto provider and PANICS on first
+            // use without one. Installing is idempotent-by-ignoring: a second
+            // call returns Err because another provider is already set, which
+            // is exactly the state we want.
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            Some(
+                axum_server::tls_rustls::RustlsConfig::from_pem_file(&files.cert, &files.key)
+                    .await
+                    .map_err(|source| StartError::Tls {
+                        path: files.cert.clone(),
+                        source,
+                    })?,
+            )
+        }
+        None => None,
+    };
+
+    // Previews follow the listeners' scheme; the webview refuses a plain-http
+    // iframe inside an https shell (mixed content) and the URL must match.
+    routes::intercept::set_preview_scheme(if tls_config.is_some() {
+        "https"
+    } else {
+        "http"
+    });
+
     let shutdown_notify = Arc::new(Notify::new());
     let notify_for_task = shutdown_notify.clone();
     let main_instance_lock = instance_lock.clone();
+    let main_tls = tls_config.clone();
     let serve_task = tokio::spawn(async move {
         let _instance_lock = main_instance_lock;
-        let result = axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                notify_for_task.notified().await;
-            })
-            .await;
-        if let Err(err) = result {
-            tracing::error!(error = %err, "local-api server error");
-        }
+        serve_maybe_tls(listener, app, main_tls, notify_for_task, "local-api server").await;
     });
 
     // A SEPARATE `Notify` (not the main listener's) — each is a one-shot,
@@ -667,16 +732,17 @@ pub async fn start_with_client_auth(
     let preview_shutdown_notify = Arc::new(Notify::new());
     let preview_notify_for_task = preview_shutdown_notify.clone();
     let preview_instance_lock = instance_lock.clone();
+    let preview_tls = tls_config.clone();
     let preview_serve_task = tokio::spawn(async move {
         let _instance_lock = preview_instance_lock;
-        let result = axum::serve(preview_listener, preview_app)
-            .with_graceful_shutdown(async move {
-                preview_notify_for_task.notified().await;
-            })
-            .await;
-        if let Err(err) = result {
-            tracing::error!(error = %err, "local-api preview server error");
-        }
+        serve_maybe_tls(
+            preview_listener,
+            preview_app,
+            preview_tls,
+            preview_notify_for_task,
+            "local-api preview server",
+        )
+        .await;
     });
 
     Ok(ServerHandle {
@@ -796,6 +862,9 @@ pub async fn boot_from_env() {
         app_root,
         port,
         mode,
+        // The standalone binary serves plain HTTP: local HTTPS exists for the
+        // desktop webview's origin, and nothing here has a webview.
+        tls: None,
     })
     .await
     {
@@ -952,6 +1021,53 @@ impl InstalledTerminationSignal {
     }
 }
 
+/// Serve `app` on `listener`, over TLS when configured, until `shutdown` fires.
+///
+/// `axum::serve` and `axum_server` have different shutdown shapes, so this
+/// keeps the choice in one place instead of forking every call site.
+async fn serve_maybe_tls(
+    listener: TcpListener,
+    app: axum::Router,
+    tls: Option<axum_server::tls_rustls::RustlsConfig>,
+    shutdown: Arc<Notify>,
+    label: &'static str,
+) {
+    let Some(tls) = tls else {
+        let result = axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                shutdown.notified().await;
+            })
+            .await;
+        if let Err(err) = result {
+            tracing::error!(error = %err, "{label} error");
+        }
+        return;
+    };
+
+    let std_listener = match listener.into_std() {
+        Ok(listener) => listener,
+        Err(err) => {
+            tracing::error!(error = %err, "{label} could not take the listener for TLS");
+            return;
+        }
+    };
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
+        shutdown.notified().await;
+        // `None` — connections are dropped at once rather than lingering; the
+        // only clients are this app's own webview and its children.
+        shutdown_handle.graceful_shutdown(None);
+    });
+    let result = axum_server::from_tcp_rustls(std_listener, tls)
+        .handle(handle)
+        .serve(app.into_make_service())
+        .await;
+    if let Err(err) = result {
+        tracing::error!(error = %err, "{label} error");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1022,6 +1138,7 @@ mod tests {
     async fn server_start_rejects_same_root_until_owner_shuts_down() {
         let dir = tempfile::tempdir().unwrap();
         let options = |boot_id: &str| StartOptions {
+            tls: None,
             token: "t".repeat(32),
             boot_id: boot_id.to_string(),
             app_root: dir.path().to_path_buf(),

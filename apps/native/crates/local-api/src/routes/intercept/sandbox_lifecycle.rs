@@ -28,6 +28,7 @@
 //! produced.
 
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::OnceLock;
 
 use axum::body::Bytes;
 use axum::http::{Method, StatusCode};
@@ -53,12 +54,59 @@ pub(crate) fn set_preview_port(port: u16) {
     PREVIEW_PORT.store(port, Ordering::Relaxed);
 }
 
-/// `SANDBOX_START`'s `previewUrl`: the local preview listener, which proxies to
-/// whichever sandbox is active. `None` before the listener binds.
-fn preview_url() -> Option<String> {
-    match PREVIEW_PORT.load(Ordering::Relaxed) {
-        0 => None,
-        port => Some(format!("http://localhost:{port}/")),
+/// The host the preview listener answers on, WITHOUT a port — every sandbox is
+/// served from `<handle>.<this>`.
+///
+/// Published the same way as [`PREVIEW_PORT`] rather than threaded through
+/// `AppState`. Defaults to `localhost` so the standalone/bearer build and the
+/// unit tests keep the old single-host behaviour; the embedded app sets the
+/// real one at startup. See `src-tauri/src/control_origin.rs` for why it has
+/// to be a real registrable domain and not `*.localhost`.
+static PREVIEW_HOST: OnceLock<String> = OnceLock::new();
+
+pub(crate) fn set_preview_host(host: String) {
+    let _ = PREVIEW_HOST.set(host);
+}
+
+/// `https` once the listeners terminate TLS. Published alongside the host for
+/// the same reason: the scheme is decided at startup, not per request.
+static PREVIEW_SCHEME: OnceLock<&'static str> = OnceLock::new();
+
+pub(crate) fn set_preview_scheme(scheme: &'static str) {
+    let _ = PREVIEW_SCHEME.set(scheme);
+}
+
+fn preview_scheme() -> &'static str {
+    PREVIEW_SCHEME.get().copied().unwrap_or("http")
+}
+
+pub(crate) fn preview_host_base() -> &'static str {
+    PREVIEW_HOST
+        .get()
+        .map(String::as_str)
+        .unwrap_or("localhost")
+}
+
+/// `SANDBOX_START`'s `previewUrl` for ONE sandbox.
+///
+/// Per-handle rather than one shared origin: cookies ignore the port, so a
+/// single host put every sandbox in one jar. `None` before the listener binds.
+fn preview_url(handle: &str) -> Option<String> {
+    let port = match PREVIEW_PORT.load(Ordering::Relaxed) {
+        0 => return None,
+        port => port,
+    };
+    let base = preview_host_base();
+    // Per-handle hosts ONLY under a real registrable domain. Under a
+    // single-label host (`localhost`) every `<handle>.localhost` is its own
+    // SITE, which makes the preview iframe third-party and — measured in
+    // WebKit — unable to store ANY cookie. That is strictly worse than one
+    // shared jar, so this stays single-origin until the app is served from a
+    // real domain. See `src-tauri/src/control_origin.rs`.
+    if base.contains('.') {
+        Some(format!("{}://{handle}.{base}:{port}/", preview_scheme()))
+    } else {
+        Some(format!("{}://{base}:{port}/", preview_scheme()))
     }
 }
 
@@ -251,7 +299,6 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let preview = preview_url();
     let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
         return Vec::new();
     };
@@ -277,7 +324,9 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
             .as_deref()
             .filter(|branch| !branch.is_empty())
             .unwrap_or(DEFAULT_BRANCH);
-        // A preview origin is only meaningful while something is serving it.
+        // A preview origin is only meaningful while something is serving it,
+        // and it is per-handle: each sandbox has its own host.
+        let preview = preview_url(&handle);
         let preview_url = (record.observed_status == "running")
             .then_some(preview.as_deref())
             .flatten();
@@ -303,7 +352,6 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let preview = preview_url();
     let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
         return Vec::new();
     };
@@ -347,9 +395,9 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
             branch,
             json!({
                 "sandboxHandle": handle,
-                "previewUrl": preview,
+                "previewUrl": preview_url(&handle),
                 // For user-desktop the daemon IS the preview origin.
-                "sandboxApiUrl": preview,
+                "sandboxApiUrl": preview_url(&handle),
                 "sandboxProviderKind": "user-desktop",
             }),
         ));
@@ -484,7 +532,7 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     }
 
     Json(json!({
-        "previewUrl": preview_url(),
+        "previewUrl": preview_url(&handle),
         "sandboxHandle": handle,
         "branch": resolved_branch,
         "isNewVm": !existed,
@@ -596,10 +644,27 @@ mod tests {
         // Ordering matters: an unbound listener must report no preview URL
         // rather than a bogus `localhost:0`, which the shell would try to load.
         set_preview_port(0);
-        assert_eq!(preview_url(), None);
+        assert_eq!(preview_url("h1"), None);
 
         set_preview_port(51_234);
-        assert_eq!(preview_url().as_deref(), Some("http://localhost:51234/"));
+        assert_eq!(
+            preview_url("h1").as_deref(),
+            Some("http://localhost:51234/")
+        );
+        set_preview_port(0);
+    }
+
+    /// Under a single-label host every handle would be its own SITE, which
+    /// costs the preview iframe ALL cookie storage in WebKit — worse than one
+    /// shared jar. So the per-handle form is gated on a real domain.
+    #[test]
+    fn handles_share_one_origin_until_a_real_domain_is_configured() {
+        set_preview_port(51_234);
+        assert_eq!(
+            preview_url("alpha").as_deref(),
+            Some("http://localhost:51234/")
+        );
+        assert_eq!(preview_url("alpha"), preview_url("beta"));
         set_preview_port(0);
     }
 
