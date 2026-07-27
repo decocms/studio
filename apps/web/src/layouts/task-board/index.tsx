@@ -3,7 +3,8 @@
  * description, status, priority, assignee), independent of chat threads.
  */
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
+import type { DragEvent } from "react";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -488,7 +489,9 @@ export function TaskBoardPage() {
           memberByUserId={memberByUserId}
           onOpen={openTask}
           onCreate={openCreateInLane}
-          onMove={(id, status) => actions.update.mutate({ id, status })}
+          onMove={(id, status, sortOrder) =>
+            actions.update.mutate({ id, status, sortOrder })
+          }
           onAssign={(id, userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
             actions.update.mutate({ id, assigneeId: userId ?? undefined });
@@ -659,6 +662,29 @@ function LayoutToggle({
   );
 }
 
+/**
+ * `sortOrder` a dragged card should take to land right before `beforeId`
+ * within `laneItems` (or at the end when `beforeId` is null) — the midpoint
+ * of its new neighbors, so reordering never needs to touch other rows.
+ */
+function insertSortOrder(
+  laneItems: TaskBoardItem[],
+  beforeId: string | null,
+  draggedId: string,
+): number {
+  const filtered = laneItems.filter((i) => i.id !== draggedId);
+  const beforeIndex = beforeId
+    ? filtered.findIndex((i) => i.id === beforeId)
+    : -1;
+  const insertIndex = beforeIndex === -1 ? filtered.length : beforeIndex;
+  const prev = filtered[insertIndex - 1];
+  const next = filtered[insertIndex];
+  if (prev && next) return (prev.sortOrder + next.sortOrder) / 2;
+  if (prev) return prev.sortOrder + 1;
+  if (next) return next.sortOrder - 1;
+  return 0;
+}
+
 function Lanes({
   items,
   members,
@@ -674,12 +700,16 @@ function Lanes({
   memberByUserId: Map<string, Member>;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
-  onMove: (id: string, status: TaskBoardItemStatus) => void;
+  onMove: (id: string, status: TaskBoardItemStatus, sortOrder: number) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
   const t = useT();
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
+  // Which card the dragged one would land before, within `overLane` — null
+  // means "at the end of the lane". Drives both the drop math and the
+  // insertion-line indicator.
+  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Re-run FLIP whenever a card's lane or ordering changes.
@@ -708,17 +738,28 @@ function Lanes({
               onDragOver={(e) => {
                 e.preventDefault();
                 setOverLane(status);
+                // Only reached when not over a card (cards stop propagation),
+                // i.e. the empty area below the last card — drop at the end.
+                setDropBeforeId(null);
               }}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                   setOverLane(null);
+                  setDropBeforeId(null);
                 }
               }}
               onDrop={(e) => {
                 e.preventDefault();
                 const id = e.dataTransfer.getData("text/plain");
-                if (id) onMove(id, status);
+                if (id) {
+                  onMove(
+                    id,
+                    status,
+                    insertSortOrder(laneItems, dropBeforeId, id),
+                  );
+                }
                 setOverLane(null);
+                setDropBeforeId(null);
               }}
               className={cn(
                 "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
@@ -752,36 +793,70 @@ function Lanes({
                   <Plus size={15} />
                 </button>
               </div>
-              <div className="flex min-h-12 flex-col gap-2 pt-1">
+              <div className="flex min-h-12 flex-col pt-1">
                 {laneItems.map((item) => (
-                  <TaskCard
-                    key={item.id}
-                    item={item}
-                    assignee={
-                      item.assigneeId
-                        ? memberByUserId.get(item.assigneeId)
-                        : undefined
-                    }
-                    assignedBy={
-                      item.assignedBy
-                        ? memberByUserId.get(item.assignedBy)
-                        : undefined
-                    }
-                    members={members}
-                    onOpen={() => onOpen(item)}
-                    onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
-                    onAssign={
-                      onAssign
-                        ? (userId) => onAssign(item.id, userId)
-                        : undefined
-                    }
-                  />
+                  <Fragment key={item.id}>
+                    <DropDivider
+                      show={overLane === status && dropBeforeId === item.id}
+                    />
+                    <TaskCard
+                      item={item}
+                      assignee={
+                        item.assigneeId
+                          ? memberByUserId.get(item.assigneeId)
+                          : undefined
+                      }
+                      assignedBy={
+                        item.assignedBy
+                          ? memberByUserId.get(item.assignedBy)
+                          : undefined
+                      }
+                      members={members}
+                      onOpen={() => onOpen(item)}
+                      onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+                      onAssign={
+                        onAssign
+                          ? (userId) => onAssign(item.id, userId)
+                          : undefined
+                      }
+                      onDragOverCard={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOverLane(status);
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const before = e.clientY - rect.top < rect.height / 2;
+                        if (before) {
+                          setDropBeforeId(item.id);
+                        } else {
+                          const index = laneItems.indexOf(item);
+                          setDropBeforeId(laneItems[index + 1]?.id ?? null);
+                        }
+                      }}
+                    />
+                  </Fragment>
                 ))}
+                <DropDivider
+                  show={overLane === status && dropBeforeId === null}
+                />
               </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** Thin line marking where a dragged card will land between two others. */
+function DropDivider({ show }: { show: boolean }) {
+  return (
+    <div className="flex h-3 shrink-0 items-center px-1">
+      <div
+        className={cn(
+          "h-0.5 w-full rounded-full transition-colors",
+          show ? "bg-primary/20" : "bg-transparent",
+        )}
+      />
     </div>
   );
 }
@@ -794,6 +869,7 @@ function TaskCard({
   onOpen,
   onAutoFix,
   onAssign,
+  onDragOverCard,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
@@ -802,6 +878,7 @@ function TaskCard({
   onOpen: () => void;
   onAutoFix?: () => void;
   onAssign?: (userId: string | null) => void;
+  onDragOverCard?: (e: DragEvent<HTMLButtonElement>) => void;
 }) {
   const t = useT();
   const statusConfig = STATUS_CONFIG[item.status];
@@ -823,6 +900,7 @@ function TaskCard({
         e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
+      onDragOver={onDragOverCard}
       onClick={onOpen}
       className="group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing"
       title={item.title}
