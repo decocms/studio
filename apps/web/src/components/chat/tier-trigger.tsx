@@ -28,7 +28,7 @@ import {
   Settings01,
   Stars01,
 } from "@untitledui/icons";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { ChatTier } from "@decocms/shared/organization/schema";
 import {
   resolveTierSubtitle,
@@ -433,6 +433,7 @@ function localGroup(params: {
   setOption: (option: AgentOption) => void;
   setTier: (tier: ChatTier) => void;
   tierLabels: Record<ChatTier, string>;
+  t: TFunction;
 }): TierGroup {
   return {
     key: params.key,
@@ -441,7 +442,7 @@ function localGroup(params: {
       key: `${params.key}-${t}`,
       icon: params.icon,
       title: params.tierLabels[t],
-      subtitle: resolveTierSubtitle(params.mode, t),
+      subtitle: resolveTierSubtitle(params.mode, t, params.t),
       active: params.isActiveRuntime && params.currentTier === t,
       onSelect: () => {
         params.setOption(params.option);
@@ -522,6 +523,7 @@ export function TierTrigger() {
           setOption: setPendingAgentOption,
           setTier,
           tierLabels,
+          t,
         }),
       );
     }
@@ -538,6 +540,7 @@ export function TierTrigger() {
           setOption: setPendingAgentOption,
           setTier,
           tierLabels,
+          t,
         }),
       );
     }
@@ -556,7 +559,8 @@ export function TierTrigger() {
             // Show the concrete model backing this tier; fall back to the
             // intent blurb before the org config has loaded.
             subtitle:
-              modelName ?? resolveTierSubtitle("cloud-decopilot", tierOption),
+              modelName ??
+              resolveTierSubtitle("cloud-decopilot", tierOption, t),
             active: tier === tierOption,
             onSelect: () => setTier(tierOption),
             // Local CLI tiers are fixed per harness, so only cloud rows get a
