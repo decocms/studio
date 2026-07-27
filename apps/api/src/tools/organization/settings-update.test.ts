@@ -89,4 +89,35 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
       main_agent_id: null,
     });
   });
+
+  it("forwards flags to storage — true and explicit false both persist", async () => {
+    const upsert = (ctx: ReturnType<typeof makeCtx>): ReturnType<typeof mock> =>
+      (
+        ctx as unknown as {
+          storage: {
+            organizationSettings: { upsert: ReturnType<typeof mock> };
+          };
+        }
+      ).storage.organizationSettings.upsert;
+
+    const onCtx = makeCtx({ id: "org-a" });
+    await ORGANIZATION_SETTINGS_UPDATE.handler(
+      { organizationId: "org-a", flags: { demo_mode: true } },
+      onCtx,
+    );
+    expect(upsert(onCtx).mock.calls[0]?.[1]).toMatchObject({
+      flags: { demo_mode: true },
+    });
+
+    // Explicit false must be forwarded (not dropped) so the storage merge can
+    // switch a demo org back to the normal connect gate.
+    const offCtx = makeCtx({ id: "org-a" });
+    await ORGANIZATION_SETTINGS_UPDATE.handler(
+      { organizationId: "org-a", flags: { demo_mode: false } },
+      offCtx,
+    );
+    expect(upsert(offCtx).mock.calls[0]?.[1]).toMatchObject({
+      flags: { demo_mode: false },
+    });
+  });
 });

@@ -146,6 +146,7 @@ import * as migration144benefitspendingindex from "./144-benefits-pending-index.
 import * as migration145usermodelpreferences from "./145-user-model-preferences.ts";
 import * as migration146organizationmainagent from "./146-organization-main-agent.ts";
 import * as migration147dropagentsandboxtables from "./147-drop-agent-sandbox-tables.ts";
+import * as migration148orgflags from "./148-org-flags.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -317,6 +318,7 @@ const migrations: Record<string, Migration> = {
   "145-user-model-preferences": migration145usermodelpreferences,
   "146-organization-main-agent": migration146organizationmainagent,
   "147-drop-agent-sandbox-tables": migration147dropagentsandboxtables,
+  "148-org-flags": migration148orgflags,
 };
 
 export default migrations;

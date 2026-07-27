@@ -13,7 +13,10 @@ import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
 
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
-import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import type {
+  OrgFlags,
+  SimpleModeTier,
+} from "@decocms/shared/organization/schema";
 
 export interface ModelSlot {
   keyId: string;
@@ -42,6 +45,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
+  flags: OrgFlags | null;
   main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -55,6 +59,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   reports_only: null,
+  flags: null,
   main_agent_id: null,
 };
 
@@ -139,6 +144,7 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "reports_only"
+    | "flags"
     | "main_agent_id"
   >
 >;
@@ -235,6 +241,16 @@ export function useUpdateSimpleMode() {
  */
 export function useReportsOnly(): boolean {
   const { data } = useOrganizationSettings((s) => s.reports_only ?? false);
+  return data ?? false;
+}
+
+/**
+ * Read one org flag from the `flags` bag (see OrgFlagsSchema in
+ * @decocms/shared/organization/schema — the single place flags are defined).
+ * Unset and NULL both read as `false`. Non-blocking, cosmetic-gating only.
+ */
+export function useOrgFlag(flag: keyof OrgFlags): boolean {
+  const { data } = useOrganizationSettings((s) => s.flags?.[flag] ?? false);
   return data ?? false;
 }
 

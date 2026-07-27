@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { Database, OrganizationSettings } from "./types";
 import type { OrganizationSettingsStoragePort } from "./ports";
 
@@ -46,6 +46,11 @@ export class OrganizationSettingsStorage
           : record.default_home_agents
         : null,
       reports_only: record.reports_only ?? null,
+      flags: record.flags
+        ? typeof record.flags === "string"
+          ? JSON.parse(record.flags)
+          : record.flags
+        : null,
       main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -63,6 +68,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "reports_only"
+        | "flags"
         | "main_agent_id"
       >
     >,
@@ -83,6 +89,7 @@ export class OrganizationSettingsStorage
     const defaultHomeAgentsJson = data?.default_home_agents
       ? JSON.stringify(data.default_home_agents)
       : null;
+    const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -93,6 +100,7 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         reports_only: data?.reports_only ?? null,
+        flags: flagsJson,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
@@ -109,6 +117,12 @@ export class OrganizationSettingsStorage
           // Boolean flag: explicit `false` must persist; `undefined` (field
           // absent) skips the column in doUpdateSet.
           reports_only: data?.reports_only,
+          // Flags shallow-merge atomically: keys in the update win, omitted
+          // keys keep their stored value (explicit `false` persists — merge,
+          // not spread-and-replace). Absent field skips the column.
+          flags: flagsJson
+            ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${flagsJson}::jsonb`
+            : undefined,
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
@@ -128,6 +142,7 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         reports_only: data?.reports_only ?? null,
+        flags: data?.flags ?? null,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,

@@ -113,6 +113,29 @@ export type DefaultHomeAgentsConfig = z.infer<
 >;
 
 /**
+ * Org-level boolean toggles, stored in the `organization_settings.flags`
+ * jsonb bag. THE single source of truth: adding a flag is one line here —
+ * storage, the settings tools, and the web hook all derive from this schema.
+ *
+ * Updates are shallow-merged server-side (omitted keys keep their stored
+ * value; explicit `false` persists), so partial writes never wipe neighbors.
+ *
+ * Only boolean toggles belong here. Anything with its own semantics (ids,
+ * structured config, values that would ever need a DB index or constraint)
+ * gets its own column instead.
+ */
+export const OrgFlagsSchema = z.object({
+  demo_mode: z
+    .boolean()
+    .optional()
+    .describe(
+      "Curated demo org: the commerce connect modal proceeds without a configured required data source.",
+    ),
+});
+
+export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
