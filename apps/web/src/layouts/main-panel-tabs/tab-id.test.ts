@@ -223,6 +223,12 @@ describe("resolveDefaultTabId", () => {
     );
   });
 
+  test("content → 'content'", () => {
+    expect(resolveDefaultTabId({ defaultMainView: { type: "content" } })).toBe(
+      "content",
+    );
+  });
+
   test("unknown type falls back to 'settings'", () => {
     expect(
       resolveDefaultTabId({ defaultMainView: { type: "automation" } }),
