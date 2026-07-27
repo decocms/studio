@@ -354,6 +354,15 @@ function rebaseOntoBaseInner(
 ): { rebased: boolean } {
   assertValidRemoteBranchName(base);
 
+  // A prior rebase can be left mid-flight if the daemon process was killed
+  // (OOM, container restart) while `git rebase` was running: rebase leaves
+  // HEAD detached and `.git/rebase-merge` on disk. Every future call would
+  // otherwise misreport this as "Cannot rebase from a detached HEAD" below,
+  // permanently bricking rebase for the sandbox. Clear it before checking HEAD.
+  if (isRebaseInProgress(repoDir)) {
+    abortRebase(repoDir);
+  }
+
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new RebaseBlockedError("Cannot rebase from a detached HEAD");
