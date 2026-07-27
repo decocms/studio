@@ -122,18 +122,21 @@ export function ToolsPopover({
     if (!files || files.length === 0 || !editor) return;
 
     const fileArray = Array.from(files);
-    const { from } = editor.state.selection;
 
     try {
+      // Re-read the selection after each insert so multiple files land in
+      // order instead of all racing to insert at the same stale position.
+      let insertPos = editor.state.selection.from;
       for (const file of fileArray) {
         await processFile(
           editor,
           selectedModel ?? null,
           file,
-          from,
+          insertPos,
           onUnsupportedFile,
           t,
         );
+        insertPos = editor.state.selection.to;
       }
     } finally {
       if (fileInputRef.current) {
