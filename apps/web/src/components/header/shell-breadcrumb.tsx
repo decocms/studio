@@ -11,7 +11,7 @@
  *   mobile top header + sheet.
  */
 import { Suspense } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useParams, useSearch } from "@tanstack/react-router";
 import { ChevronDown, Edit05 } from "@untitledui/icons";
 import {
   Tooltip,
@@ -176,7 +176,6 @@ export function AgentSwitcherCrumb({
   onNavigate?: () => void;
 } = {}) {
   const { org } = useProjectContext();
-  const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
     taskId?: string;
@@ -192,17 +191,19 @@ export function AgentSwitcherCrumb({
     ? (search.virtualmcpid ?? decopilotId)
     : decopilotId;
 
+  // Open the picked agent directly. The Super Agent (Decopilot) is opened by
+  // its well-known id like any other agent rather than by navigating to
+  // `/$org`: the org landing may resolve to a configured "main agent", so
+  // routing the Super Agent through `/$org` would redirect away from it and
+  // leave it unreachable. `null` (the picker's "Super Agent" row) maps to the
+  // Decopilot id.
   const handlePickAgent = (id: string | null) => {
-    if (!id || id === decopilotId) {
-      navigate({ to: "/$org", params: { org: org.slug } });
-      onNavigate?.();
-      return;
-    }
-    const existing = findReusableNewChat(threads, id, session?.user?.id);
+    const targetId = id ?? decopilotId;
+    const existing = findReusableNewChat(threads, targetId, session?.user?.id);
     if (existing) {
-      setTaskId(existing.id, id);
+      setTaskId(existing.id, targetId);
     } else {
-      void createNewTask(id);
+      void createNewTask(targetId);
     }
     onNavigate?.();
   };
