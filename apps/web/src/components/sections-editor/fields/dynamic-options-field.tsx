@@ -107,6 +107,47 @@ export function filterOptions(
 }
 
 /**
+ * Whether to offer the typed search text as a committable free value.
+ *
+ * Only loader-backed fields treat their options as suggestions rather than a
+ * closed set: a dynamic `@options` loader, no fixed schema `enum`, and not the
+ * constrained icon-select. For those, a value the loader doesn't return (e.g. a
+ * Collection ID the search can't find, or a loader that came back empty) can
+ * still be entered by hand.
+ *
+ * Gated on `optionsSettled` so the offer never appears while the loader is
+ * still fetching — otherwise a user searching for a real option could
+ * Enter-commit the raw text over the results about to load. Suppressed when the
+ * typed value already exists as an option; dedupe against the full resolved
+ * list (`optionValues`), not the filtered view — an exact value match always
+ * survives client-side filtering, so it can never be hidden.
+ */
+export function shouldOfferTypedValue({
+  loaderPath,
+  isIconSelect,
+  enumFallbackCount,
+  trimmedSearch,
+  optionValues,
+  optionsSettled,
+}: {
+  loaderPath: string | undefined;
+  isIconSelect: boolean;
+  enumFallbackCount: number;
+  trimmedSearch: string;
+  optionValues: string[];
+  optionsSettled: boolean;
+}): boolean {
+  const allowFreeValue =
+    !!loaderPath && !isIconSelect && enumFallbackCount === 0;
+  return (
+    allowFreeValue &&
+    optionsSettled &&
+    trimmedSearch.length > 0 &&
+    !optionValues.includes(trimmedSearch)
+  );
+}
+
+/**
  * Data URI for an option's inline-SVG preview. Rendered through an `img` so
  * loader-controlled markup is never injected into the document. Loader SVGs
  * rely on Tailwind's current-color utilities (e.g. odin-ui color swatches are
@@ -340,20 +381,24 @@ export function DynamicOptionsField({
   const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
-  // A loader-backed field (dynamic `@options`, no fixed schema `enum`, not the
-  // constrained icon-select) treats its options as suggestions, not a closed
-  // set — so a value the loader doesn't return (e.g. a Collection ID the search
-  // can't find, or a loader that came back empty) can still be entered by hand.
-  // cmdk owns the input, so we surface the typed text as a selectable "use this"
-  // item rather than a separate text box; Enter commits it when it's the only
-  // match, so an empty result set no longer traps the user.
-  const allowFreeValue =
-    !!loaderPath && !isIconSelect && enumFallback.length === 0;
+  // Offer the typed text as a committable free value on loader-backed fields
+  // (see `shouldOfferTypedValue`). cmdk owns the input, so it's surfaced as a
+  // selectable "use this" item rather than a separate text box; when it's the
+  // only item cmdk highlights it, so Enter commits it and an empty result set
+  // no longer traps the user. `optionsSettled` keeps the offer from appearing
+  // (and preempting an incoming loader result) during the debounce + fetch
+  // window: the query for a new term returns no data until it settles.
   const trimmedSearch = search.trim();
-  const canUseTypedValue =
-    allowFreeValue &&
-    trimmedSearch.length > 0 &&
-    !options.some((opt) => opt.value === trimmedSearch);
+  const optionsSettled =
+    query.isFetched && !query.isFetching && search === debouncedSearch;
+  const canUseTypedValue = shouldOfferTypedValue({
+    loaderPath,
+    isIconSelect,
+    enumFallbackCount: enumFallback.length,
+    trimmedSearch,
+    optionValues: options.map((opt) => opt.value),
+    optionsSettled,
+  });
 
   // Fallback to text input only when there's no option source at all: no
   // loader/preview to fetch from AND no schema enum to list.
