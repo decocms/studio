@@ -218,6 +218,31 @@ describe("resolveConfig Studio environment aliases", () => {
   });
 });
 
+describe("resolveConfig public URL", () => {
+  it("prefers STUDIO_PUBLIC_URL over the legacy MESH_PUBLIC_URL alias", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_PUBLIC_URL: "https://studio.example.com",
+      MESH_PUBLIC_URL: "https://legacy.example.com",
+    });
+
+    expect(result.settings.publicUrl).toBe("https://studio.example.com");
+  });
+
+  it("accepts the legacy MESH_PUBLIC_URL during the compatibility window", () => {
+    const result = resolveConfig(flags, {
+      MESH_PUBLIC_URL: "https://legacy.example.com",
+    });
+
+    expect(result.settings.publicUrl).toBe("https://legacy.example.com");
+  });
+
+  it("defaults to undefined when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.publicUrl).toBeUndefined();
+  });
+});
+
 describe("resolveConfig external database/nats URL detection", () => {
   it("treats a bracketed IPv6 loopback DATABASE_URL as local, not external", () => {
     const result = resolveConfig(flags, {
