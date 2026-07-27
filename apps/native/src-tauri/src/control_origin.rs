@@ -56,15 +56,35 @@ pub const CONTROL_SCHEME: &str = "https";
 pub struct ControlOrigin {
     pub listener_port: u16,
     pub browser_port: u16,
+    /// Selftest runs headless on CI, where no keychain can be unlocked to
+    /// trust a CA — so it stays on plain `localhost`, which the browser
+    /// treats as a secure context for free. Only the real app pays for TLS.
+    pub secure: bool,
 }
 
 impl ControlOrigin {
+    pub fn scheme(self) -> &'static str {
+        if self.secure {
+            CONTROL_SCHEME
+        } else {
+            "http"
+        }
+    }
+
+    pub fn host(self) -> &'static str {
+        if self.secure {
+            CONTROL_HOST
+        } else {
+            "localhost"
+        }
+    }
+
     pub fn resolve(self) -> String {
-        format!("{CONTROL_SCHEME}://{CONTROL_HOST}:{}", self.browser_port)
+        format!("{}://{}:{}", self.scheme(), self.host(), self.browser_port)
     }
 
     pub fn expected_host(self) -> String {
-        format!("{CONTROL_HOST}:{}", self.browser_port)
+        format!("{}:{}", self.host(), self.browser_port)
     }
 }
 
@@ -73,16 +93,19 @@ pub fn current(selftest: bool) -> ControlOrigin {
         ControlOrigin {
             listener_port: SELFTEST_PORT,
             browser_port: SELFTEST_PORT,
+            secure: false,
         }
     } else if tauri::is_dev() {
         ControlOrigin {
             listener_port: DEV_API_PORT,
             browser_port: DEV_UI_PORT,
+            secure: true,
         }
     } else {
         ControlOrigin {
             listener_port: RELEASE_PORT,
             browser_port: RELEASE_PORT,
+            secure: true,
         }
     }
 }
@@ -96,7 +119,7 @@ mod tests {
         let origin = current(true);
         assert_eq!(origin.listener_port, SELFTEST_PORT);
         assert_eq!(origin.browser_port, SELFTEST_PORT);
-        assert_eq!(origin.resolve(), "https://local.studio.decocms.com:43122");
+        assert_eq!(origin.resolve(), "http://localhost:43122");
     }
 
     /// The control UI and every sandbox preview must share eTLD+1, or the
@@ -117,6 +140,7 @@ mod tests {
         let origin = ControlOrigin {
             listener_port: DEV_API_PORT,
             browser_port: DEV_UI_PORT,
+            secure: true,
         };
         assert_eq!(origin.expected_host(), "local.studio.decocms.com:4420");
     }

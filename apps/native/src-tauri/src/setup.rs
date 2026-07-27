@@ -68,12 +68,11 @@ fn is_sandbox_preview_url(url: &tauri::Url, preview_port: u16) -> bool {
     let Some(host) = url.host_str() else {
         return false;
     };
-    if url.scheme() != control_origin::CONTROL_SCHEME
-        || url.port_or_known_default() != Some(preview_port)
-    {
+    let origin = control_origin::current(crate::selftest::is_enabled());
+    if url.scheme() != origin.scheme() || url.port_or_known_default() != Some(preview_port) {
         return false;
     }
-    let control = control_origin::CONTROL_HOST;
+    let control = origin.host();
     if !control.contains('.') {
         // Single-origin mode: the preview is the control host on its own port.
         return host == control;
@@ -223,11 +222,17 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     // The CA is minted per machine and reused; the leaf is fresh each launch.
     // Trusting the root prompts the user once, in the USER trust domain, so it
     // needs their own password rather than an administrator.
-    let tls = crate::local_tls::ensure(&app_root)?;
-    crate::local_tls::ensure_trusted(&tls.ca_cert)?;
-    tracing::info!(ca = %tls.ca_cert.display(), "local TLS material ready and trusted");
-
     let control = control_origin::current(selftest_mode);
+    // Selftest runs headless on CI, where no keychain can be unlocked — it
+    // stays on plain `localhost`, which is a secure context for free.
+    let tls = if control.secure {
+        let tls = crate::local_tls::ensure(&app_root)?;
+        crate::local_tls::ensure_trusted(&tls.ca_cert)?;
+        tracing::info!(ca = %tls.ca_cert.display(), "local TLS material ready and trusted");
+        Some(tls)
+    } else {
+        None
+    };
     let browser_origin = control.resolve();
     let bundled_ui = if selftest_mode || !tauri::is_dev() {
         Some(Arc::new(
@@ -246,7 +251,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             // Serve the leaf minted above: the webview's origin must be a
             // secure context for Web Crypto, and a real domain for per-sandbox
             // cookie jars.
-            tls: Some(local_api::TlsFiles {
+            tls: tls.as_ref().map(|tls| local_api::TlsFiles {
                 cert: tls.leaf_cert.clone(),
                 key: tls.leaf_key.clone(),
             }),
