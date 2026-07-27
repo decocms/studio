@@ -32,6 +32,37 @@ export function primaryThread(
   return item.threads[0];
 }
 
+/**
+ * `sortOrder` a dragged card should take to land right before `beforeId`
+ * within `laneItems` (or at the end when `beforeId` is null) — the midpoint
+ * of its new neighbors, so reordering never needs to touch other rows.
+ */
+export function insertSortOrder(
+  laneItems: TaskBoardItem[],
+  beforeId: string | null,
+  draggedId: string,
+): number {
+  const draggedIndex = laneItems.findIndex((i) => i.id === draggedId);
+  // Hovering the dragged card's own row reports itself as `beforeId` — treat
+  // that as its current successor (a no-op), not "not found", which the
+  // lookup below over `filtered` would otherwise read as "insert at the end".
+  const resolvedBeforeId =
+    beforeId === draggedId
+      ? (laneItems[draggedIndex + 1]?.id ?? null)
+      : beforeId;
+  const filtered = laneItems.filter((i) => i.id !== draggedId);
+  const beforeIndex = resolvedBeforeId
+    ? filtered.findIndex((i) => i.id === resolvedBeforeId)
+    : -1;
+  const insertIndex = beforeIndex === -1 ? filtered.length : beforeIndex;
+  const prev = filtered[insertIndex - 1];
+  const next = filtered[insertIndex];
+  if (prev && next) return (prev.sortOrder + next.sortOrder) / 2;
+  if (prev) return prev.sortOrder + 1;
+  if (next) return next.sortOrder - 1;
+  return 0;
+}
+
 /** Shape of an org member as returned by `useMembers()`, trimmed to the fields used here. */
 export type Member = {
   userId: string;
