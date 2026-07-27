@@ -35,5 +35,6 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeAuto": "Auto",
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "Lista",
+  "sidebar.taskGroupsList.viewRooms": "Salas",
   "sidebar.taskGroupsList.viewStatus": "Status",
 } satisfies Record<keyof typeof sidebarEn, string>;

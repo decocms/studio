@@ -7,6 +7,7 @@ import {
   Activity,
   Edit05,
   FilterLines,
+  Hash02,
   LayoutLeft,
   Rows01,
   SearchSm,
@@ -54,7 +55,7 @@ import { findArchiveFallback } from "./archive-fallback";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 
 type TypeFilter = "all" | "manual" | "automation";
-type GroupBy = "flat" | "status";
+type GroupBy = "flat" | "status" | "room";
 
 /** Toolbar icon button with the shared dark tooltip (matches the collapsed
  * rail's SidebarMenuButton tooltip). `active` gives the pressed/highlighted look.
@@ -178,7 +179,7 @@ export function TaskGroupsList({
   );
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [groupBy, setGroupBy] = useState<GroupBy>("flat");
+  const [groupBy, setGroupBy] = useState<GroupBy>("room");
   const [showAll, setShowAll] = useLocalStorage<boolean>(
     "sidebar-threads-scope-all",
     false,
@@ -357,7 +358,7 @@ export function TaskGroupsList({
   }
 
   const filtersActive =
-    groupBy !== "flat" || typeFilter !== "all" || showAll === true;
+    groupBy !== "room" || typeFilter !== "all" || showAll === true;
 
   const filterPopover = (
     <Popover>
@@ -389,6 +390,11 @@ export function TaskGroupsList({
             setGroupBy(v);
           }}
           options={[
+            {
+              value: "room",
+              label: t("sidebar.taskGroupsList.viewRooms"),
+              icon: <Hash02 size={13} />,
+            },
             {
               value: "flat",
               label: t("sidebar.taskGroupsList.viewList"),
