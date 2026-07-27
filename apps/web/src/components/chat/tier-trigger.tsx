@@ -58,6 +58,14 @@ import { ClaudeCodeIcon, CodexIcon, localHarnessBrand } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
+function getTierLabels(t: TFunction): Record<ChatTier, string> {
+  return {
+    fast: t("chat.tierTrigger.tierFast"),
+    smart: t("chat.tierTrigger.tierSmart"),
+    thinking: t("chat.tierTrigger.tierThinking"),
+  };
+}
+
 /** One selectable row in the popover — a concrete (runtime, tier) choice. */
 interface TierRow {
   key: string;
@@ -115,12 +123,7 @@ export function TierTriggerPure({
   header,
 }: PureProps) {
   const t = useT();
-  const getTierLabels = (): Record<ChatTier, string> => ({
-    fast: t("chat.tierTrigger.tierFast"),
-    smart: t("chat.tierTrigger.tierSmart"),
-    thinking: t("chat.tierTrigger.tierThinking"),
-  });
-  const tierLabels = getTierLabels();
+  const tierLabels = getTierLabels(t);
   const [open, setOpen] = useState(false);
   const handleSelect = (row: TierRow) => {
     row.onSelect();
@@ -487,12 +490,7 @@ export function TierTrigger() {
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
 
-  const getTierLabels = (): Record<ChatTier, string> => ({
-    fast: t("chat.tierTrigger.tierFast"),
-    smart: t("chat.tierTrigger.tierSmart"),
-    thinking: t("chat.tierTrigger.tierThinking"),
-  });
-  const tierLabels = getTierLabels();
+  const tierLabels = getTierLabels(t);
 
   let groups: TierGroup[];
   if (isLocal) {
