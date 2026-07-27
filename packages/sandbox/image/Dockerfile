@@ -16,8 +16,16 @@ RUN apt-get update \
        ripgrep unzip \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
-  && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+  # Download to a file, then run: `curl | bash` swallows a failed download
+  # (the pipeline's status is bash's), so a NodeSource 403 silently left the
+  # Debian nodejs (no npm) and the build died stages later with `npm: not
+  # found`. NodeSource 403s are intermittent — retry them like corepack below.
+  && curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
+       -o /tmp/nodesource-setup.sh https://deb.nodesource.com/setup_${NODE_MAJOR}.x \
+  && bash /tmp/nodesource-setup.sh \
+  && rm /tmp/nodesource-setup.sh \
   && apt-get install -y --no-install-recommends nodejs \
+  && npm --version \
   && rm -rf /var/lib/apt/lists/* \
   && curl -fsSL https://deno.land/install.sh \
        | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
