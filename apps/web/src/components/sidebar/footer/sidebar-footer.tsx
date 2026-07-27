@@ -6,18 +6,15 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import { Link01, Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
+import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
-import { ConnectDialog } from "@/components/connect/connect-dialog";
 import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
-import { LinkedDesktopIndicator } from "@/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t";
-import { track } from "@/lib/posthog-client";
 
 function SettingsFullButton() {
   const t = useT();
@@ -57,11 +54,10 @@ function SettingsIconButton() {
   );
 }
 
-/** Quick actions in the footer: invite members, add connection, connect to Claude. */
+/** Quick actions in the footer: invite members, add connection. */
 function SidebarExtraActions() {
   const t = useT();
   const [connectionsOpen, setConnectionsOpen] = useState(false);
-  const [connectClaudeOpen, setConnectClaudeOpen] = useState(false);
   return (
     <>
       <SidebarMenu className="gap-0.5">
@@ -86,27 +82,11 @@ function SidebarExtraActions() {
             <span>{t("sidebar.sidebarFooter.addConnection")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Connect to Claude"
-            onClick={() => {
-              track("connect_studio_opened", { source: "sidebar_footer" });
-              setConnectClaudeOpen(true);
-            }}
-          >
-            <Link01 />
-            <span>Connect to Claude</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
       </SidebarMenu>
       <AddConnectionDialog
         open={connectionsOpen}
         onOpenChange={setConnectionsOpen}
         mode="browse"
-      />
-      <ConnectDialog
-        open={connectClaudeOpen}
-        onOpenChange={setConnectClaudeOpen}
       />
     </>
   );
@@ -135,9 +115,9 @@ function SidebarExtraActionsCommerce() {
 
 /**
  * Account footer — extra actions (invite / connections, trimmed to invite-only
- * for reports-only orgs), the desktop-link indicator, and the account row with
- * Settings tucked into a bottom-right icon (no full-width Settings row). The
- * credits chip only shows outside reports-only orgs.
+ * for reports-only orgs) and the account row with Settings tucked into a
+ * bottom-right icon (no full-width Settings row). The credits chip only shows
+ * outside reports-only orgs.
  */
 export function SidebarAccountFooter() {
   const { state } = useSidebar();
@@ -156,11 +136,6 @@ export function SidebarAccountFooter() {
         )}
         <SidebarMenu>
           <SidebarMenuItem>
-            <div className="flex justify-center">
-              <LinkedDesktopIndicator />
-            </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
             <SettingsFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -176,9 +151,6 @@ export function SidebarAccountFooter() {
       {showCredits && <SidebarTopActions />}
       {reportsOnly ? <SidebarExtraActionsCommerce /> : <SidebarExtraActions />}
       <SidebarMenu className="gap-0.5">
-        <SidebarMenuItem>
-          <LinkedDesktopIndicator variant="full" />
-        </SidebarMenuItem>
         <SidebarMenuItem>
           <div className="flex items-center gap-1">
             <div className="flex-1 min-w-0">

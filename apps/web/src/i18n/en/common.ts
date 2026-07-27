@@ -32,6 +32,12 @@ export const common = {
   "common.authEntry.autoLoginFailedWithError": "Auto-login failed: {error}",
   "common.authEntry.noLoginOptions": "No login options available",
   "common.authEntry.tryRestartingServer": "Try restarting the server.",
+  "common.desktopKeychainUnavailable.description":
+    "deco studio could not access macOS Keychain. Dismiss any pending Keychain dialogs, then try again.",
+  "common.desktopKeychainUnavailable.retry": "Try again",
+  "common.desktopKeychainUnavailable.retrying": "Trying again…",
+  "common.desktopKeychainUnavailable.title":
+    "Unable to access your saved session",
   "common.autoDomainJoinScreen.enterOrg": "Enter {orgName}",
   "common.autoDomainJoinScreen.goHome": "Go to home",
   "common.autoDomainJoinScreen.joinDescription":
@@ -277,4 +283,5 @@ export const common = {
   "common.mainPanelTabs.report": "Report",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
+  "common.openExternalFailed": "Could not open this link in your browser.",
 } as const;

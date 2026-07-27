@@ -131,17 +131,7 @@ export async function startDaemon(
   const [cmd, ...args] = DAEMON_CMD;
   const proc = spawn(cmd, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      // The daemon's documented startup contract — a reimplementation must
-      // honor exactly these. (Dead vars DEV_PORT / DAEMON_NO_AUTOSTART /
-      // DAEMON_DROP_PRIVILEGES from the pre-state-machine daemon are gone.)
-      DAEMON_TOKEN,
-      DAEMON_BOOT_ID: `boot-${port}`,
-      APP_ROOT: appDir,
-      PROXY_PORT: String(port),
-      ...extraEnv,
-    },
+    env: buildDaemonEnv(appDir, port, extraEnv),
   });
   const stderr = { value: "" };
   proc.stdout?.on("data", (c) => process.stderr.write(`[daemon:out] ${c}`));
@@ -151,6 +141,28 @@ export async function startDaemon(
   });
   await waitForPort(port, proc, stderr);
   return { port, proc, appDir, stderr };
+}
+
+export function buildDaemonEnv(
+  appDir: string,
+  port: number,
+  extraEnv: Record<string, string> = {},
+  inheritedEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...inheritedEnv,
+    // The daemon's documented startup contract — a reimplementation must
+    // honor exactly these. (Dead vars DEV_PORT / DAEMON_NO_AUTOSTART /
+    // DAEMON_DROP_PRIVILEGES from the pre-state-machine daemon are gone.)
+    DAEMON_TOKEN,
+    DAEMON_BOOT_ID: `boot-${port}`,
+    APP_ROOT: appDir,
+    PROXY_PORT: String(port),
+    ...extraEnv,
+    // Conformance children are headless and must never touch a developer's
+    // real credential store. The TS daemon ignores this local-api setting.
+    LOCAL_API_TOKEN_STORE: "memory",
+  };
 }
 
 export async function stopDaemon(d: Daemon | null): Promise<void> {

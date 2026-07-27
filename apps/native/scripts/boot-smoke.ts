@@ -1,0 +1,384 @@
+#!/usr/bin/env bun
+/**
+ * `bun run --cwd apps/native smoke:boot`
+ *
+ * End-to-end boot smoke for the Tauri shell (`apps/native/src-tauri/`):
+ *
+ *   1. Builds the debug `.app` bundle (`bunx @tauri-apps/cli build --debug`)
+ *      if it doesn't already exist (pass `--rebuild` to force a fresh
+ *      build — useful after touching Rust or frontend source).
+ *   2. Launches `Contents/MacOS/<bin>` DIRECTLY (not `open -a`, which
+ *      detaches from this process's stdio/exit-code and complicates
+ *      cleanup) with `DESKTOP_SELFTEST=1`,
+ *      `DESKTOP_SELFTEST_APP_DATA_DIR=<unique tmp root>/app-data`, and
+ *      `DESKTOP_SELFTEST_OUT=<unique tmp report>` — see
+ *      `src-tauri/src/selftest.rs` for what that mode does.
+ *   3. Waits for the process to exit (bounded — `SELFTEST_DEADLINE_MS`),
+ *      asserts exit code 0.
+ *   4. Reads the results file, asserts `allPass === true`, prints a
+ *      per-check summary table (pass/fail/informational).
+ *   5. Checks for orphaned children: captures the app's OS-level
+ *      descendant PIDs while it's running, then asserts none of them are
+ *      still alive after it exits (`pgrep -P <pid>`, plus a broad
+ *      `pgrep -f` sweep for the standalone `local-api`/`decocms-desktop`
+ *      binaries in case something detached from the process tree
+ *      entirely — e.g. a double-forked PTY child).
+ *
+ * Each run creates one unique `desktop-boot-smoke-*` directory under the
+ * system temp root and passes its `app-data` child to the native shell via
+ * `DESKTOP_SELFTEST_APP_DATA_DIR`. The shell requires and validates that
+ * override in self-test mode, so this script can never open or delete the
+ * real `com.decocms.studio` app data.
+ */
+import { spawn } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { sleep } from "@decocms/shared/std";
+import {
+  BOOT_SMOKE_TEMP_PREFIX,
+  type BootSmokePaths,
+  resolveBootSmokePaths,
+} from "./boot-smoke-paths";
+
+const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
+const APP_BINARY_NAME = "decocms-desktop";
+const APP_BUNDLE = join(
+  DESKTOP_DIR,
+  `target/debug/bundle/macos/${APP_BINARY_NAME}.app`,
+);
+const SELFTEST_DEADLINE_MS = 60_000;
+const ORPHAN_CHECK_SETTLE_MS = 1000;
+
+interface SelftestCheck {
+  ok?: boolean;
+  status?: number;
+  error?: string;
+  attempts?: number;
+  [k: string]: unknown;
+}
+
+interface SelftestReport {
+  allPass: boolean;
+  results: Record<string, SelftestCheck>;
+}
+
+function log(msg: string): void {
+  console.log(`[boot-smoke] ${msg}`);
+}
+
+function fail(msg: string): never {
+  throw new Error(msg);
+}
+
+/** `spawn` + wait for exit, streaming stdio, returning the exit code. */
+function run(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, {
+      cwd: opts.cwd,
+      env: opts.env ?? process.env,
+      stdio: "inherit",
+    });
+    proc.once("error", reject);
+    proc.once("exit", (code) => resolve(code ?? 1));
+  });
+}
+
+function binaryPath(): string {
+  const macosDir = join(APP_BUNDLE, "Contents/MacOS");
+  if (!existsSync(macosDir)) {
+    fail(`bundle exists but ${macosDir} is missing — build may have failed`);
+  }
+  // The app binary is no longer alone in here: Tauri copies every
+  // `externalBin` sidecar (currently `rclone`, which serves the organization
+  // filesystem) into this same directory, with its target triple stripped.
+  // Select the app by name rather than asserting the directory's size, so
+  // adding a sidecar does not break the smoke test.
+  const entries = readdirSync(macosDir);
+  if (!entries.includes(APP_BINARY_NAME)) {
+    fail(
+      `${APP_BINARY_NAME} is missing from ${macosDir}, found: ${entries.join(", ")}`,
+    );
+  }
+  return join(macosDir, APP_BINARY_NAME);
+}
+
+/** Newest file mtime under `dir` (recursive, sync — this is a dev script,
+ *  not the daemon; the walked trees hold no node_modules). 0 if absent. */
+function newestMtimeUnder(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let newest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    newest = Math.max(
+      newest,
+      entry.isDirectory() ? newestMtimeUnder(p) : statSync(p).mtimeMs,
+    );
+  }
+  return newest;
+}
+
+async function ensureBuilt(forceRebuild: boolean): Promise<void> {
+  if (!forceRebuild && existsSync(APP_BUNDLE)) {
+    // Staleness guard: the bundle bakes the frontend + Rust in at build
+    // time, so an existing .app can silently predate both. A stale bundle
+    // is exactly how a fixed frontend kept shipping a blank window on
+    // 2026-07-19 — the smoke passed against yesterday's .app. Rebuild
+    // whenever a known input is newer than the bundled binary.
+    //
+    // Frontend freshness is judged from SOURCE mtimes, not dist/native:
+    // since the HMR dev loop landed (`bun run dev:native` serves source via
+    // the Vite dev server), nothing in the routine dev workflow refreshes
+    // dist/native anymore, so its mtime is a dead signal — comparing it
+    // would re-open the same stale-bundle false-green this guard exists to
+    // prevent. When source IS newer, the rebuild's own beforeBuildCommand
+    // (`build:native`) regenerates dist/native before bundling.
+    const bundleBin = statSync(binaryPath()).mtimeMs;
+    const webDir = join(DESKTOP_DIR, "..", "web");
+    const inputs = [
+      join(DESKTOP_DIR, "target", "debug", "decocms-desktop"),
+      join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
+      join(webDir, "index.native.html"),
+      join(webDir, "vite.config.ts"),
+      join(webDir, "package.json"),
+    ].filter(existsSync);
+    const newest = Math.max(
+      ...inputs.map((f) => statSync(f).mtimeMs),
+      newestMtimeUnder(join(DESKTOP_DIR, "crates")),
+      newestMtimeUnder(join(DESKTOP_DIR, "src-tauri", "src")),
+      newestMtimeUnder(join(webDir, "src")),
+      newestMtimeUnder(join(webDir, "public")),
+    );
+    if (newest <= bundleBin) {
+      log(`found fresh bundle at ${APP_BUNDLE} (pass --rebuild to force)`);
+      return;
+    }
+    log("existing bundle is older than its inputs — rebuilding");
+  }
+  log(
+    "building debug app bundle: bunx @tauri-apps/cli@latest build --debug --bundles app",
+  );
+  const code = await run(
+    "bunx",
+    ["@tauri-apps/cli@latest", "build", "--debug", "--bundles", "app"],
+    { cwd: DESKTOP_DIR },
+  );
+  if (code !== 0) {
+    fail(`tauri build --debug exited ${code}`);
+  }
+  if (!existsSync(APP_BUNDLE)) {
+    fail(`build reported success but ${APP_BUNDLE} does not exist`);
+  }
+}
+
+/** The only recursive delete in this script. Re-validates the generated root
+ * immediately before deletion so later refactors cannot broaden the target. */
+function cleanupSmokeDir(paths: BootSmokePaths): void {
+  try {
+    const validated = resolveBootSmokePaths(paths.root, tmpdir());
+    rmSync(validated.root, { recursive: true, force: true });
+  } catch (err) {
+    log(`warning: failed to clean isolated smoke directory: ${err}`);
+  }
+}
+
+/** Direct children of `pid` still alive, via `pgrep -P`. Empty on macOS
+ *  when there are none (pgrep exits 1, not an error for our purposes). */
+function livingChildPids(pid: number): number[] {
+  const res = Bun.spawnSync(["pgrep", "-P", String(pid)]);
+  const out = res.stdout.toString().trim();
+  if (!out) return [];
+  return out
+    .split("\n")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n));
+}
+
+/** Broad sweep for the standalone binaries by name — catches a child that
+ *  detached from the process tree entirely (e.g. a double-forked PTY
+ *  child), which `pgrep -P` alone would miss. */
+/** All PIDs matching the desktop binaries, for the pre/post orphan diff. */
+function sweepForBinaries(): number[] {
+  return [
+    ...livingProcessesMatching("target/debug/decocms-desktop"),
+    ...livingProcessesMatching("target/debug/bundle/macos/decocms-desktop"),
+    ...livingProcessesMatching("target/(debug|release)/local-api"),
+  ];
+}
+
+function livingProcessesMatching(pattern: string): number[] {
+  const res = Bun.spawnSync(["pgrep", "-f", pattern]);
+  const out = res.stdout.toString().trim();
+  if (!out) return [];
+  return out
+    .split("\n")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n));
+}
+
+async function main(): Promise<void> {
+  const forceRebuild = process.argv.includes("--rebuild");
+
+  await ensureBuilt(forceRebuild);
+  const bin = binaryPath();
+  log(`binary: ${bin}`);
+
+  const outDir = mkdtempSync(join(tmpdir(), BOOT_SMOKE_TEMP_PREFIX));
+  const smokePaths = resolveBootSmokePaths(outDir, tmpdir());
+  const outFile = smokePaths.reportFile;
+
+  try {
+    // Snapshot matching PIDs that exist BEFORE our launch: another dev's
+    // running app, a parallel CI job, or a manually-started local-api must
+    // not fail OUR orphan check. Only processes that appear during the smoke
+    // and survive it count as orphans.
+    const preExisting = new Set(sweepForBinaries());
+
+    log(`isolated app data: ${smokePaths.appDataDir}`);
+    log("launching with DESKTOP_SELFTEST=1 …");
+    const proc = spawn(bin, [], {
+      env: {
+        ...process.env,
+        DESKTOP_SELFTEST: "1",
+        DESKTOP_SELFTEST_APP_DATA_DIR: smokePaths.appDataDir,
+        // Visible by default: macOS App Nap throttles network-response
+        // delivery to hidden windows, wedging the self-test's fetches with
+        // no report (observed live 2026-07-19 — requests reached local-api,
+        // responses never reached the hidden page). A briefly visible
+        // window is the lesser evil everywhere, including CI's GUI session.
+        // Set DESKTOP_SELFTEST_VISIBLE=0 to force the old hidden behavior.
+        DESKTOP_SELFTEST_VISIBLE: process.env.DESKTOP_SELFTEST_VISIBLE ?? "1",
+        DESKTOP_SELFTEST_OUT: outFile,
+        // Boot smoke validates the shell/IPC contract, not the operator's real
+        // login. Never let its auth-status probe open a macOS ACL dialog for the
+        // production Keychain item; persistence itself is covered by the
+        // isolated-Keychain fresh-process E2E suite.
+        LOCAL_API_TOKEN_STORE: "memory",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const pid = proc.pid;
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (c) => {
+      stdout += c.toString();
+    });
+    proc.stderr?.on("data", (c) => {
+      stderr += c.toString();
+    });
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        log(
+          `deadline (${SELFTEST_DEADLINE_MS}ms) exceeded — killing pid ${pid}`,
+        );
+        proc.kill("SIGKILL");
+      }, SELFTEST_DEADLINE_MS);
+      proc.once("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      proc.once("exit", (code, signal) => {
+        clearTimeout(timer);
+        if (code === null) {
+          reject(
+            new Error(
+              `process was killed by signal ${signal} before self-test completed`,
+            ),
+          );
+          return;
+        }
+        resolve(code);
+      });
+    });
+
+    console.log("--- app stdout/stderr ---");
+    console.log(stdout);
+    console.error(stderr);
+    console.log("-------------------------");
+
+    if (exitCode !== 0) {
+      fail(`app exited ${exitCode} (expected 0) — see stdout/stderr above`);
+    }
+
+    if (!existsSync(outFile)) {
+      fail("app exited 0 but the isolated self-test report was never written");
+    }
+    const report = JSON.parse(readFileSync(outFile, "utf8")) as SelftestReport;
+
+    log("self-test results:");
+    const gatingKeys = new Set([
+      "localApiInfo",
+      "sameOriginControl",
+      "health200Public",
+      "session401WithoutCookie",
+      "session204WithCookie",
+      "bootstrapSecretOneTime",
+      "protectedRoute200WithCookie",
+      "credentiallessMutationRejected",
+      "eventSourceStatusEvent",
+      "controlCookieIsolation",
+      "authStatusInvoke",
+      "domMountedEarly",
+      "remoteImageLoads",
+      "previewIframeLoads",
+      "previewFetchReachable",
+      "noCspViolations",
+    ]);
+    for (const [name, check] of Object.entries(report.results)) {
+      const tag = check.ok ? "PASS" : gatingKeys.has(name) ? "FAIL" : "INFO";
+      const detail =
+        check.error ??
+        (check.status !== undefined ? `status=${check.status}` : "");
+      log(`  [${tag}] ${name}${detail ? ` — ${detail}` : ""}`);
+    }
+
+    if (!report.allPass) {
+      fail("self-test report has allPass=false — see results above");
+    }
+    log("self-test report: allPass=true");
+
+    // --- orphan check --------------------------------------------------
+    await sleep(ORPHAN_CHECK_SETTLE_MS);
+    const orphanedChildren = pid ? livingChildPids(pid) : [];
+    const orphanedByName = sweepForBinaries().filter(
+      (p) => !preExisting.has(p),
+    );
+    const allOrphans = [...new Set([...orphanedChildren, ...orphanedByName])];
+    if (allOrphans.length > 0) {
+      fail(
+        `${allOrphans.length} orphaned process(es) still alive after exit: ${allOrphans.join(", ")}`,
+      );
+    }
+    log("orphan check: no leftover children");
+
+    log("SUMMARY: boot smoke PASSED");
+    log(`  bundle:        ${APP_BUNDLE}`);
+    log(`  binary:        ${bin}`);
+    log(`  exit code:     ${exitCode}`);
+    log(`  allPass:       ${report.allPass}`);
+    log(`  orphan check:  clean`);
+  } finally {
+    cleanupSmokeDir(smokePaths);
+  }
+}
+
+main().catch((err) => {
+  console.error(
+    `[boot-smoke] FAIL: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+  );
+  process.exitCode = 1;
+});

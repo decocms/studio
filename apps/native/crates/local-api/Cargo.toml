@@ -1,0 +1,73 @@
+[package]
+name = "local-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# Phase 3 addition: a thin `start()`/`boot_from_env()` lib surface so the
+# Tauri shell (`apps/native/src-tauri/`) can embed this server in-process
+# (per the desktop migration contract's in-process decision) instead
+# of spawning it as a subprocess. Mechanical extraction from `main.rs` — see
+# `src/lib.rs`'s module doc. The `local-api` BINARY (below) is unchanged in
+# behavior; it now just calls into this lib for its boot sequence.
+name = "local_api"
+path = "src/lib.rs"
+
+[[bin]]
+name = "local-api"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Phase 2: harness detection/tiers/spawn/stream-translation — see
+# `crates/harness`'s own Cargo.toml doc comment for why its PTY dependency
+# lives there instead of the shared `[workspace.dependencies]` table. This
+# is a path dep (in-workspace crate), not a version to keep in sync.
+harness = { path = "../harness" }
+upstream = { path = "../upstream" }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { workspace = true }
+reqwest = { workspace = true }
+globset = { workspace = true }
+walkdir = { workspace = true }
+ignore = { workspace = true }
+notify = { workspace = true }
+regex = { workspace = true }
+subtle = { workspace = true }
+rand = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+urlencoding = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+async-trait = { workspace = true }
+tokio-tungstenite = { workspace = true }
+# Crate-local, NOT in the shared workspace table — same "single-consumer dep
+# stays local" precedent `crates/upstream/Cargo.toml`'s own `sha2` entry
+# documents. Used by `sandbox/manager.rs` to derive the per-handle
+# `<branchSlug>-<hash16>` sandbox directory name (prod-parity shape).
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Same path dep as the `[dependencies]` entry above, with its `test-support`
+# feature enabled — Cargo unifies these into one compiled `upstream`
+# instance for test builds, giving `routes/upstream.rs`'s tests access to
+# `upstream::tokens::test_support::MemoryTokenStore` (a `#[cfg(test)]`-only
+# module in `upstream` otherwise invisible to a downstream crate's own
+# tests — see that crate's Cargo.toml `[features] test-support` doc).
+upstream = { path = "../upstream", features = ["test-support"] }

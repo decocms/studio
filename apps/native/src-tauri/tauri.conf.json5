@@ -1,0 +1,130 @@
+// Studio desktop shell — Tauri v2 config. See the native Tauri integration for the
+// stable control-origin, cookie-auth, and preview-origin design.
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  productName: "decocms-desktop",
+  version: "0.1.0",
+  // Bundle identifier — stable across builds (org slugs / update manifests
+  // key off this, and macOS Keychain ACLs the `crates/upstream` token store
+  // to it). Never change once shipped.
+  identifier: "com.decocms.studio",
+  build: {
+    // PROD: `build:native` emits the existing Studio UI here. Tauri's
+    // AssetResolver supplies these bytes to the in-process Rust server,
+    // which serves the UI and control API together at
+    // `http://localhost:43120`.
+    frontendDist: "../../web/dist/native",
+    // DEV (`tauri dev` / root `bun run dev:native`): the webview loads from
+    // apps/web's Vite DEV server instead — full HMR, no frontend rebuild per
+    // run. `beforeDevCommand` starts it (native mode, fixed port 4420 —
+    // strictPort, so a clash fails loudly); the CLI waits for `devUrl` to
+    // answer before launching the shell. Vite binds IPv4 explicitly and
+    // proxies native API paths to Rust on `127.0.0.1:43121`, so the browser
+    // sees one origin (`http://localhost:4420`) and its HttpOnly control
+    // cookie is attached normally. Sandbox previews use the same host on an
+    // ephemeral port. Cookies are host-scoped rather than port-scoped, so
+    // sandbox applications keep their normal first-party cookie behavior.
+    //
+    // KNOWN TRADE — dev pages run with NO CSP at all: Vite, rather than
+    // the packaged Rust asset path, serves them. A dev-mode CSP
+    // can't be faithfully replicated here without nonce plumbing —
+    // @vitejs/plugin-react injects an inline refresh preamble that
+    // `script-src 'self'` would block. Consequence: a change that violates
+    // the packaged CSP (new remote origin, inline script) works all through
+    // the HMR loop and only fails in the packaged app — boot-smoke's gating
+    // `noCspViolations` check is the net; run `smoke:boot` before shipping
+    // frontend changes that add origins or script patterns. Embedded
+    // local-api validates the exact Vite Host/Origin in dev; it does not
+    // enable generic loopback CORS.
+    devUrl: "http://localhost:4420",
+    beforeDevCommand: "bun run --cwd ../web dev:native",
+    // Runs automatically before `tauri build`, from the directory containing
+    // `src-tauri` (`apps/native`) — so `tauri build` alone is self-sufficient
+    // (matches the placeholder `tauri init` left here originally; this points
+    // it at the real script instead). `boot-smoke.ts` still checks the
+    // bundle's mtime against this to avoid redundant rebuilds on repeated
+    // smoke runs.
+    // Chained: the org filesystem needs a bundled rclone (`externalBin`
+    // below), and it is NOT committed — 78 MB per arch. `fetch-rclone.sh`
+    // verifies the download against the release's published SHA256SUMS and
+    // no-ops when the pinned version is already present.
+    beforeBuildCommand: "./scripts/fetch-rclone.sh && bun run --cwd ../web build:native",
+  },
+  app: {
+    // No declarative windows: Rust starts the control server first, then
+    // opens the main window at the stable browser-facing control origin. A
+    // declarative window would race server startup and collide on "main".
+    windows: [],
+    // Exposes `window.__TAURI__` as a global in every webview this app
+    // creates (including the hidden self-test window), so both the
+    // placeholder page and the `eval()`-injected self-test bundle
+    // (`src-tauri/selftest/bundle.js`) can call `invoke()` without an
+    // `@tauri-apps/api` import — there is no bundler in this placeholder
+    // frontend. The real frontend (TODO §3.2) may prefer the scoped
+    // `@tauri-apps/api` import instead; both work simultaneously, this
+    // flag only adds the global, it doesn't remove the module import path.
+    withGlobalTauri: true,
+    security: {
+      // Base policy for the HTTP-served bundled UI. UI and Rust API are
+      // same-origin, so `connect-src 'self'` covers control traffic.
+      // `ipc:` / `http://ipc.localhost` keep narrowly-permissioned Tauri
+      // commands available for bootstrap and native integration. The Rust
+      // index response adds only the exact
+      // `http://localhost:<previewPort>` to `connect-src` and `frame-src`.
+      //
+      // `img-src` is the one directive that DOES allow remote origins
+      // (`https:`) plus `blob:`, unlike every other directive here — the
+      // real production shell (not the old mini-app) renders provider
+      // login icons (`apps/api/src/auth/oauth-providers.ts`,
+      // `assets.decocache.com`), org/user avatars, and file-preview images
+      // that live on arbitrary remote hosts (object storage, user-supplied
+      // URLs), so a `'self'`-only `img-src` blocks real, legitimate
+      // first-party UI (confirmed empirically: the Google icon on the
+      // login button 404's-by-CSP in the packaged app but renders on
+      // `studio.decocms.com`). `<img>` tags cannot execute script or read
+      // page state back to their origin, so allowing arbitrary `https:`
+      // image loads (plus `blob:` for client-generated previews) does not
+      // widen this app's actual attack surface the way loosening
+      // `connect-src`/`script-src` would — see
+      // `src/csp.rs` and `src/ui_assets.rs` for the full CSP model.
+      // `font-src` needs no change: this shell's fonts are all bundled
+      // same-origin (`/assets/*.woff2`), so the CSP spec's fallback to
+      // `default-src 'self'` already covers them.
+      //
+      // `frame-src 'self'` is the base for the sandbox preview iframe. The
+      // bundled index response adds its exact dedicated preview origin at
+      // runtime. That proxy forwards the sandbox application's Cookie and
+      // Authorization headers unchanged.
+      csp: "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
+    },
+  },
+  bundle: {
+    active: true,
+    targets: ["app", "dmg"],
+    // rclone, which serves the org filesystem as an NFS mount macOS can
+    // attach kext-free. Tauri appends the host triple when resolving this and
+    // strips it again when copying into `<App>.app/Contents/MacOS/`, so the
+    // runtime lookup is `current_exe()?.parent()?.join("rclone")` — no
+    // `tauri-plugin-shell` and no `shell:allow-execute` capability needed.
+    // The bundler signs every externalBin before the app itself, with
+    // `--options runtime` under hardened runtime, so the shipped ad-hoc
+    // signature is replaced automatically. Fetched by `beforeBuildCommand`.
+    externalBin: ["binaries/rclone"],
+    icon: [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+    ],
+    macOS: {
+      // Tauri v2 / WKWebView features this shell relies on (async
+      // `on_web_resource_request` and fetch streaming reads) are
+      // comfortably available from Big Sur onward; this is NOT tied to the
+      // macOS-26-only `*.localhost` WKWebView fix (the native implementation contract §1) —
+      // the shipped app never depends on that (port-based preview routing
+      // is the primary design, not a version-gated fallback).
+      minimumSystemVersion: "11.0",
+    },
+  },
+}

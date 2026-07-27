@@ -46,10 +46,13 @@ import type { HarnessId } from "@decocms/harness/types";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
+  preferredLocalAgentOption,
   resolveOfflineAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
 import { useCurrentLink } from "@/hooks/use-current-link";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
@@ -530,8 +533,22 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // so we auto-switch it to cloud. Derived (not persisted), so the desktop pick
   // returns on its own once the link reconnects.
   const link = useCurrentLink();
+
+  // The desktop app has no cloud/Decopilot surface to fall back to, so an
+  // un-set pick must never resolve to `decopilot` the way it does on web —
+  // that pins the thread to `agent-sandbox` (see `AGENT_OPTION_PINS`) and the
+  // sandbox is provisioned in the cloud instead of on this machine. Defaulting
+  // to the locally-detected CLI keeps the pin on `user-desktop`, which is the
+  // kind local-api intercepts. Derived, not persisted, so it re-resolves on its
+  // own as `LINK_CURRENT_GET` reports CLIs; an explicit user pick always wins.
+  const isDesktopApp = useIsDesktopApp();
+  const availability = useAgentOptionAvailability();
+  const desktopDefaultOption = isDesktopApp
+    ? preferredLocalAgentOption(availability)
+    : null;
+
   const selectedAgentOption = resolveOfflineAgentOption(
-    pendingAgentOption,
+    pendingAgentOption ?? desktopDefaultOption,
     link.ready && !link.online,
   );
 

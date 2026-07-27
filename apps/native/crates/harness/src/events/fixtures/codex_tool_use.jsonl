@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"tool-use-thread"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"Figuring out what to run."}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"echo hi","aggregated_output":"hi\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"hi"}}
+{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":5}}

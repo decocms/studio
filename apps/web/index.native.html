@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!-- The Tauri (native) shell runs under a strict `script-src 'self'` CSP that
+     does NOT hash inline scripts, so this entry has ZERO inline scripts (any
+     would be blocked: `securitypolicyviolation: script-src-elem blocked
+     inline`). Dark-mode-before-paint lives in the external, same-origin
+     `/native-boot.js`. -->
+<html>
+  <head>
+    <meta name="theme-color" content="#f6f4ed" />
+    <script src="/native-boot.js"></script>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>deco Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- ABSOLUTE src (not ./relative): under the HMR dev server this file is
+         served for EVERY html navigation (vite.config's native-index-html-dev
+         middleware), including nested deep links like /org/thread/x — Vite
+         only absolutizes relative srcs for the literal /index.html path, so a
+         relative src would resolve against the deep link's directory and 404
+         (white screen). Root-relative resolves identically from any URL, and
+         is the canonical Vite-template form for build mode too. -->
+    <script type="module" src="/src/index.native.tsx"></script>
+  </body>
+</html>

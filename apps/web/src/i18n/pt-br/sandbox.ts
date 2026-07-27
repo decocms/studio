@@ -422,6 +422,9 @@ export const sandbox = {
     "Nenhum resultado corresponde à sua pesquisa.",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
   "sandbox.preview.openInCursor": "Abrir no Cursor",
+  "sandbox.preview.openInBrowser": "Abrir no navegador",
+  "sandbox.preview.failedToOpenInBrowser":
+    "Não foi possível abrir seu navegador",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
   "sandbox.preview.openInVscode": "Abrir no VSCode",
   "sandbox.preview.pageAlreadyExists":

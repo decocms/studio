@@ -1,0 +1,231 @@
+//! `GET /api/:org/agent-sandbox-sessions/:virtualMcpId` — the agent's sandbox
+//! sessions, with this machine's included.
+//!
+//! Upstream answers from the cloud's session table, which has no row for a
+//! sandbox that only exists here. The shell, the branch picker and the runtime
+//! card all read this list, so a desktop-run agent otherwise looks like it has
+//! no sessions at all.
+//!
+//! Same treatment as `sandbox_lifecycle`'s `sandboxMap` merge: proxy upstream
+//! first, then EXTEND the response with local sandboxes rather than replacing
+//! it — one user can have cloud sandboxes on some branches and desktop ones on
+//! others, and the list has to show both.
+
+use axum::body::Bytes;
+use axum::http::{header, HeaderMap, Method, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use serde_json::{json, Map, Value};
+
+use super::sandbox_lifecycle::local_sandbox_sessions;
+use crate::routes::upstream;
+use crate::state::AppState;
+
+pub(super) async fn try_dispatch(
+    state: &AppState,
+    method: &Method,
+    path_and_query: &str,
+    rest: &[&str],
+    query: Option<&str>,
+) -> Option<Response> {
+    let ["agent-sandbox-sessions", encoded_virtual_mcp_id] = rest else {
+        return None;
+    };
+    if *method != Method::GET {
+        return None;
+    }
+    let virtual_mcp_id = urlencoding::decode(encoded_virtual_mcp_id)
+        .map(|decoded| decoded.into_owned())
+        .unwrap_or_else(|_| (*encoded_virtual_mcp_id).to_string());
+
+    let branch_filter = query.and_then(branch_param);
+    Some(
+        merged_sessions(
+            state,
+            path_and_query,
+            &virtual_mcp_id,
+            branch_filter.as_deref(),
+        )
+        .await,
+    )
+}
+
+async fn merged_sessions(
+    state: &AppState,
+    path_and_query: &str,
+    virtual_mcp_id: &str,
+    branch_filter: Option<&str>,
+) -> Response {
+    let mut items = upstream_items(path_and_query).await;
+
+    // Local sandboxes WIN on a branch the cloud also lists: for a desktop
+    // agent this process is the authority on whether its own sandbox is
+    // running, and a stale cloud row would otherwise mask it.
+    for local in local_sandbox_sessions(state, virtual_mcp_id) {
+        let branch = local.get("branch").and_then(Value::as_str).unwrap_or("");
+        if branch_filter.is_some_and(|wanted| wanted != branch) {
+            continue;
+        }
+        items.retain(|item| item.get("branch").and_then(Value::as_str) != Some(branch));
+        items.push(local);
+    }
+
+    Json(json!({ "items": items })).into_response()
+}
+
+/// The cloud's own list, or an empty one.
+///
+/// Upstream being unreachable must NOT hide this machine's sandboxes — the
+/// desktop can run them with no network at all — so a failure degrades to
+/// "cloud contributed nothing" rather than to an error.
+async fn upstream_items(path_and_query: &str) -> Vec<Value> {
+    let mut headers = HeaderMap::new();
+    // A payload we parse must not arrive gzipped; reqwest is built without it.
+    headers.insert(
+        header::ACCEPT_ENCODING,
+        header::HeaderValue::from_static("identity"),
+    );
+    let Ok(response) =
+        upstream::send_org_request(Method::GET, path_and_query, headers, Bytes::new()).await
+    else {
+        return Vec::new();
+    };
+    if response.status() != StatusCode::OK {
+        return Vec::new();
+    }
+    let Ok(bytes) = response.bytes().await else {
+        return Vec::new();
+    };
+    serde_json::from_slice::<Value>(&bytes)
+        .ok()
+        .and_then(|value| value.get("items")?.as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// The `branch` value from a raw query string.
+fn branch_param(query: &str) -> Option<String> {
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == "branch").then(|| {
+            urlencoding::decode(value)
+                .map(|decoded| decoded.into_owned())
+                .unwrap_or_else(|_| value.to_string())
+        })
+    })
+}
+
+/// One local sandbox, as the session wire shape needs it.
+pub(super) struct LocalSession<'a> {
+    pub virtual_mcp_id: &'a str,
+    pub branch: &'a str,
+    pub handle: &'a str,
+    pub preview_url: Option<&'a str>,
+    pub desired_status: &'a str,
+    pub observed_status: &'a str,
+    pub failure_reason: Option<&'a str>,
+    pub updated_at_rfc3339: String,
+}
+
+/// Shared by this module and its tests: the wire shape one session takes.
+pub(super) fn session_json(session: LocalSession<'_>) -> Value {
+    let mut map = Map::new();
+    map.insert("virtualMcpId".into(), json!(session.virtual_mcp_id));
+    map.insert("branch".into(), json!(session.branch));
+    map.insert("sandboxHandle".into(), json!(session.handle));
+    map.insert("previewUrl".into(), json!(session.preview_url));
+    // For user-desktop the preview origin IS the sandbox API origin.
+    map.insert("sandboxApiUrl".into(), json!(session.preview_url));
+    map.insert(
+        "desiredState".into(),
+        json!(desired_state(session.desired_status)),
+    );
+    map.insert("status".into(), json!(ui_status(session.observed_status)));
+    map.insert("startedWith".into(), Value::Null);
+    map.insert("failureReason".into(), json!(session.failure_reason));
+    map.insert("updatedAt".into(), json!(session.updated_at_rfc3339));
+    Value::Object(map)
+}
+
+/// The registry's desired status, narrowed to the two the wire allows.
+fn desired_state(desired: &str) -> &'static str {
+    if desired == "running" {
+        "running"
+    } else {
+        "stopped"
+    }
+}
+
+/// Registry observed status -> the UI's session status.
+///
+/// `stopping`/`reaping`/`deleting` have no local equivalent: this runtime
+/// stops a sandbox synchronously, so it is never observed mid-transition.
+fn ui_status(observed: &str) -> &'static str {
+    match observed {
+        "running" => "ready",
+        "provisioning" => "provisioning",
+        "failed" => "failed",
+        "absent" => "missing",
+        _ => "stopped",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_registry_state_onto_the_wire_status() {
+        assert_eq!(ui_status("running"), "ready");
+        assert_eq!(ui_status("provisioning"), "provisioning");
+        assert_eq!(ui_status("failed"), "failed");
+        assert_eq!(ui_status("absent"), "missing");
+        assert_eq!(ui_status("stopped"), "stopped");
+        // Anything unrecognized reads as stopped rather than inventing a state.
+        assert_eq!(ui_status("something-new"), "stopped");
+
+        assert_eq!(desired_state("running"), "running");
+        assert_eq!(desired_state("stopped"), "stopped");
+        assert_eq!(desired_state(""), "stopped");
+    }
+
+    #[test]
+    fn a_session_carries_every_field_the_ui_reads() {
+        let value = session_json(LocalSession {
+            virtual_mcp_id: "vm-1",
+            branch: "main",
+            handle: "main-abc123",
+            preview_url: Some("http://localhost:5000/"),
+            desired_status: "running",
+            observed_status: "running",
+            failure_reason: None,
+            updated_at_rfc3339: "2026-07-27T12:00:00.000Z".to_string(),
+        });
+        for key in [
+            "virtualMcpId",
+            "branch",
+            "sandboxHandle",
+            "previewUrl",
+            "sandboxApiUrl",
+            "desiredState",
+            "status",
+            "startedWith",
+            "failureReason",
+            "updatedAt",
+        ] {
+            assert!(value.get(key).is_some(), "missing {key}");
+        }
+        assert_eq!(value["status"], "ready");
+        // The preview origin doubles as the sandbox API origin on desktop.
+        assert_eq!(value["sandboxApiUrl"], value["previewUrl"]);
+    }
+
+    #[test]
+    fn reads_the_branch_filter_out_of_a_raw_query() {
+        assert_eq!(branch_param("branch=main").as_deref(), Some("main"));
+        assert_eq!(
+            branch_param("x=1&branch=feature%2Ffoo").as_deref(),
+            Some("feature/foo")
+        );
+        assert_eq!(branch_param("other=1"), None);
+    }
+}

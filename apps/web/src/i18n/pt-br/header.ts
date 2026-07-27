@@ -1,13 +1,6 @@
 import type { header as headerEn } from "../en/header.ts";
 
 export const header = {
-  "header.linkedDesktopIndicator.availableCapabilities":
-    "Disponível: {capabilities}",
-  "header.linkedDesktopIndicator.connectDesktop": "Conectar desktop",
-  "header.linkedDesktopIndicator.connectYourDesktop": "Conecte seu desktop",
-  "header.linkedDesktopIndicator.desktopDisconnected": "Desktop desconectado",
-  "header.linkedDesktopIndicator.desktopLinked": "Desktop vinculado",
-  "header.linkedDesktopIndicator.noCliAgents": "Nenhum agente CLI detectado",
   "header.orgSwitcher.accept": "Aceitar",
   "header.orgSwitcher.declineInvitationTo": "Recusar convite para {name}",
   "header.orgSwitcher.failedToAcceptInvitation": "Falha ao aceitar convite",

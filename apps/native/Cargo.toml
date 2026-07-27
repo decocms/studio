@@ -1,0 +1,84 @@
+[workspace]
+resolver = "2"
+members = ["crates/local-api", "crates/harness", "crates/upstream", "src-tauri"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+publish = false
+
+# Warn locally (fast inner-loop feedback); CI runs
+# `cargo clippy -- -D warnings` from apps/native/, which promotes every
+# warning below to a hard failure. Do not add `deny` here — a `deny` in the
+# manifest breaks `cargo build`/`check` too, not just `clippy`, which is
+# stricter than intended for local iteration.
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# --- Dependency versions, pinned once here and inherited via `.workspace = true`
+# in crates/local-api/Cargo.toml. Over-provisioned on purpose (bootstrap
+# directive): every family implementer building on this skeleton pulls from
+# this table instead of editing it — Cargo.toml is a shared file family
+# owners must not touch (see the native module-ownership contract).
+[workspace.dependencies]
+axum = { version = "0.7", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "fs", "timeout"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full", "client-legacy", "http1"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "stream",
+  "rustls-tls",
+] }
+globset = "0.4"
+walkdir = "2"
+ignore = "0.4"
+notify = "6"
+regex = "1"
+subtle = "2"
+rand = "0.8"
+futures = "0.3"
+futures-util = "0.3"
+bytes = "1"
+urlencoding = "2"
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+# Inbound WS upgrades go through axum's own `ws` feature (above); this is for
+# a family that needs a WS *client* role (e.g. proxying an outbound upgrade).
+tokio-tungstenite = "0.23"
+tempfile = "3"
+# Phase 3 (`src-tauri/`, the Tauri shell) additions — distinct lines to
+# minimize merge friction with `crates/upstream` (built in parallel), which
+# is expected to add its own (`keyring`, etc.) below these rather than
+# interleaving.
+tauri = { version = "2", features = ["config-json5"] }
+# Dev-only MCP bridge for @hypothesi/tauri-mcp-server (registered under
+# `#[cfg(debug_assertions)]` in src-tauri/src/lib.rs — never in release).
+tauri-plugin-mcp-bridge = "0.12"
+tauri-plugin-opener = "2"
+tauri-build = { version = "2", features = ["config-json5"] }
+# `crates/upstream`'s OAuth/Keychain-specific deps (`keyring`, `sha2`,
+# `base64`, `dirs`) are declared directly in `crates/upstream/Cargo.toml`
+# instead of here, following the same "single-consumer dep stays local"
+# precedent `crates/harness/Cargo.toml` set for `portable-pty` — see that
+# crate's Cargo.toml doc comment.
+
+# Phase 2's `crates/harness` PTY spawn (see
+# the desktop migration contract) declares `portable-pty` (and
+# `libc`, for process-group signaling) directly in its OWN
+# `crates/harness/Cargo.toml` rather than here — this table stays the
+# family-agnostic dependency set every OTHER crate inherits via
+# `.workspace = true`; local-api itself never spawns a PTY directly and has
+# no reason to pull either dependency in.

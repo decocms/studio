@@ -2,7 +2,7 @@
  * Desktop system-browser session bridge.
  *
  * `POST /api/auth/desktop/session-from-oauth` — the one Studio-side change
- * `apps/desktop/docs/real-ui-auth-recon.md` concluded was unavoidable to fix
+ * the native authentication contract concluded was unavoidable to fix
  * the Google/GitHub/SAML system-browser desktop login path: an MCP OAuth
  * access token (the `oauthAccessToken` row both desktop login paths
  * ultimately hold) satisfies org-scoped `/api/:org/*` routes but is REJECTED
@@ -20,7 +20,7 @@
  * `Set-Cookie` header — this caller is a native app process, not a browser
  * that would capture one) so it can forward that value itself, byte for
  * byte, as `Cookie: better-auth.session_token=<value>` — see
- * `apps/desktop/crates/upstream/src/login.rs`'s
+ * `apps/native/crates/upstream/src/login.rs`'s
  * `mint_session_from_access_token`, the Rust-side caller.
  *
  * ## Auth guard

@@ -11,3 +11,11 @@ pre-commit:
     lint:
       glob: "*.{ts,tsx,js,jsx}"
       run: bunx oxlint {staged_files}
+    rust-fmt:
+      root: "apps/native/"
+      glob: "**/*.rs"
+      run: cargo fmt -- --check {staged_files}
+    rust-clippy:
+      root: "apps/native/"
+      glob: "**/*.rs"
+      run: cargo clippy -- -D warnings

@@ -12,7 +12,7 @@ import { Check, Copy01 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
 import type { Capability } from "@decocms/sandbox/dispatch";
 import { useCurrentLink } from "@/hooks/use-current-link";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
@@ -39,22 +39,6 @@ const LOCAL_AGENTS: LocalAgent[] = [
     icon: <CodexIcon size={18} />,
   },
 ] as const;
-
-/**
- * Format the link's capability list for UI display. Drops
- * `decopilot-sandbox` (always present and not meaningful to the user)
- * and maps the rest to friendly labels. Returns the empty array when
- * nothing user-facing is available.
- */
-export function visibleCapabilities(
-  caps: readonly Capability[],
-  t: TFunction,
-): string[] {
-  return LOCAL_AGENTS.filter((agent) => caps.includes(agent.capability)).map(
-    (agent) => t(agent.labelKey),
-  );
-}
-
 interface ConnectDesktopDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

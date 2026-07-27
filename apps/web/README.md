@@ -69,9 +69,11 @@ bun run build:studio
 
 ## Architecture
 
-`src/index.tsx` creates the TanStack Router tree and mounts the top-level
-providers. Route components load lazily, TanStack Query manages remote state,
-and shared UI primitives come from `@deco/ui`.
+`src/router.tsx` creates the TanStack Router tree and mounts the top-level
+providers; `src/index.web.tsx` is the browser entry that renders it (the Tauri
+desktop build has its own entry, `src/index.native.tsx`). Route components load
+lazily, TanStack Query manages remote state, and shared UI primitives come from
+`@deco/ui`.
 
 ```text
 TanStack Router
@@ -94,7 +96,9 @@ Key paths:
 
 | Path | Purpose |
 | --- | --- |
-| `src/index.tsx` | Application entry point and route tree |
+| `src/index.web.tsx` | Web application entry point |
+| `src/index.native.tsx` | Tauri desktop application entry point |
+| `src/router.tsx` | TanStack Router route tree |
 | `src/routes/` | Route components and route-specific logic |
 | `src/layouts/` | Authenticated shell and shared page layouts |
 | `src/views/` | Domain-oriented application views |

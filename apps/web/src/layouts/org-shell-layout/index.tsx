@@ -34,7 +34,6 @@ import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/components/sidebar";
 import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";
-import { LinkedDesktopIndicator } from "@/components/header/linked-desktop-indicator";
 import { AgentSwitcherCrumb } from "@/components/header/shell-breadcrumb";
 import { Toolbar } from "@/layouts/agent-shell-layout/toolbar";
 import {
@@ -97,7 +96,6 @@ export default function OrgShellLayout() {
             <AgentSwitcherCrumb />
           </div>
         )}
-        <LinkedDesktopIndicator />
         <Toolbar.TogglesSlot />
         <Toolbar.TabsSlot className="shrink-0" />
         <Toolbar.CenterSlot />

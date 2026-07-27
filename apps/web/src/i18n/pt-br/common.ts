@@ -34,6 +34,12 @@ export const common = {
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
   "common.authEntry.noLoginOptions": "Nenhuma opção de login disponível",
   "common.authEntry.tryRestartingServer": "Tente reiniciar o servidor.",
+  "common.desktopKeychainUnavailable.description":
+    "O deco studio não conseguiu acessar as Chaves do macOS. Feche qualquer diálogo pendente das Chaves e tente novamente.",
+  "common.desktopKeychainUnavailable.retry": "Tentar novamente",
+  "common.desktopKeychainUnavailable.retrying": "Tentando novamente…",
+  "common.desktopKeychainUnavailable.title":
+    "Não foi possível acessar sua sessão salva",
   "common.autoDomainJoinScreen.enterOrg": "Entrar em {orgName}",
   "common.autoDomainJoinScreen.goHome": "Ir para home",
   "common.autoDomainJoinScreen.joinDescription":
@@ -287,4 +293,5 @@ export const common = {
   "common.mainPanelTabs.report": "Relatório",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
+  "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
 } satisfies Record<keyof typeof commonEn, string>;

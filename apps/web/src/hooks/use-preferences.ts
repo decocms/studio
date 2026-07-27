@@ -58,6 +58,20 @@ export function readToolApprovalLevel(): ToolApprovalLevel {
   return "auto";
 }
 
+/**
+ * Read the language directly from localStorage (no React state), for the same
+ * reason as [`readToolApprovalLevel`] — see `i18n/use-t.ts`'s `translate`.
+ */
+export function readLanguage(): Locale {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(LOCALSTORAGE_KEYS.preferences()) ?? "{}",
+    );
+    if (VALID_LOCALES.includes(raw.language)) return raw.language;
+  } catch {}
+  return detectLocale();
+}
+
 export function usePreferences() {
   return useLocalStorage<Preferences>(
     LOCALSTORAGE_KEYS.preferences(),

@@ -7,7 +7,10 @@ import type {
   AuthFlowEvent,
   UnifiedAuthFormCopy,
 } from "@/components/unified-auth-form";
-import { authClient } from "@/lib/auth-client";
+import {
+  defaultAuthFormActions,
+  type AuthFormActions,
+} from "@/components/auth-form-actions";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -31,6 +34,13 @@ export interface AuthEntryProps {
   allowPassword?: boolean;
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
+  /**
+   * Overrides for the underlying network/post-auth actions (forwarded to
+   * `UnifiedAuthForm` and used for the `sso.enabled` auto-redirect branch
+   * below). Omitted -> `defaultAuthFormActions`. See
+   * `apps/web/src/components/auth-form-actions.ts`.
+   */
+  actions?: Partial<AuthFormActions>;
 }
 
 class RetriableAutoLoginResponse {
@@ -153,10 +163,12 @@ function AutoLogin({
 function RunSSO({
   callbackURL,
   providerId,
+  ssoSignIn,
   onAuthEvent,
 }: {
   providerId: string;
   callbackURL: string;
+  ssoSignIn: AuthFormActions["ssoSignIn"];
   onAuthEvent?: (event: AuthFlowEvent) => void;
 }) {
   const emitAuthEvent = useEffectEvent((event: AuthFlowEvent) => {
@@ -166,6 +178,10 @@ function RunSSO({
       // An analytics sink must never interrupt authentication.
     }
   });
+  // Reads the latest `ssoSignIn` reference without needing it in the effect's
+  // deps array (same reasoning as `emitAuthEvent` above) — desktop's caller
+  // recomputes its action object every render.
+  const runSsoSignIn = useEffectEvent(ssoSignIn);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
@@ -176,7 +192,7 @@ function RunSSO({
         provider: providerId,
       });
       try {
-        const result = await authClient.signIn.sso({
+        const result = await runSsoSignIn({
           providerId,
           callbackURL,
         });
@@ -210,6 +226,7 @@ export function AuthEntry({
   allowedSocialProviders,
   allowPassword,
   onAuthEvent,
+  actions,
 }: AuthEntryProps) {
   const t = useT();
   const {
@@ -221,6 +238,10 @@ export function AuthEntry({
     localMode,
   } = useAuthConfig();
   const redirectAfterLogin = redirectUrl || callbackUrl;
+  const resolvedActions: AuthFormActions = {
+    ...defaultAuthFormActions,
+    ...actions,
+  };
 
   if (localMode && allowAutoLogin) {
     return (
@@ -233,6 +254,7 @@ export function AuthEntry({
       <RunSSO
         callbackURL={redirectAfterLogin}
         providerId={sso.providerId}
+        ssoSignIn={resolvedActions.ssoSignIn}
         onAuthEvent={onAuthEvent}
       />
     );
@@ -256,6 +278,7 @@ export function AuthEntry({
         allowedSocialProviders={allowedSocialProviders}
         allowPassword={allowPassword}
         onAuthEvent={onAuthEvent}
+        actions={actions}
       />
     );
   }

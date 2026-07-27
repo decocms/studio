@@ -1,7 +1,7 @@
 /**
  * Mints a real MCP OAuth 2.1 + PKCE access token against the live Studio API —
  * the exact primitive both `apps/api/src/cli/commands/auth/login.ts` and
- * `apps/desktop/crates/upstream/src/login.rs` produce for a signed-in user.
+ * `apps/native/crates/upstream/src/login.rs` produce for a signed-in user.
  *
  * Drives the real wire dance: dynamic client registration
  * (`POST /api/auth/mcp/register`) → authorize

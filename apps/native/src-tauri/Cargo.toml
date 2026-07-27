@@ -1,0 +1,46 @@
+[package]
+name = "decocms-desktop"
+version.workspace = true
+description = "Studio desktop shell — Tauri v2 app embedding the local-api Rust core in-process"
+authors = ["decocms"]
+license.workspace = true
+repository = "https://github.com/decocms/studio"
+edition.workspace = true
+publish.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "decocms_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+# In-process local-api embedding (Phase 3 — see the desktop migration contract's "in-process axum,
+# no sidecar" decision and the native implementation contract §5). Path dep, not a version to
+# keep in sync.
+local-api = { path = "../crates/local-api" }
+# OAuth PKCE loopback + Keychain session (auth_status/auth_login/
+# auth_logout delegate to `upstream::global()` — see `src/auth.rs`). Path
+# dep, not a version to keep in sync.
+upstream = { path = "../crates/upstream" }
+tauri = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tauri-plugin-mcp-bridge = { workspace = true }
+tauri-plugin-opener = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
