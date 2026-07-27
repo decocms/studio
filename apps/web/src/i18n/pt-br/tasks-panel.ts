@@ -5,9 +5,8 @@ export const tasksPanel = {
     "Pesquise pelos recursos da sua organização.",
   "tasksPanel.globalSearchDialog.noResults": "Sem resultados.",
   "tasksPanel.globalSearchDialog.placeholder": "Pesquisar...",
+  "tasksPanel.globalSearchDialog.recent": "Recentes",
   "tasksPanel.globalSearchDialog.searching": "Pesquisando…",
-  "tasksPanel.globalSearchDialog.startTyping":
-    "Comece a digitar para pesquisar.",
   "tasksPanel.globalSearchDialog.title": "Pesquisar",
   "tasksPanel.globalSearchDialog.untitledChat": "Chat sem título",
   "tasksPanel.mcpAvatar.automationTriggered": "Disparada por automação",

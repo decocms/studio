@@ -10,6 +10,7 @@ import {
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
@@ -56,11 +57,11 @@ export function GlobalSearchDialog({
 
   const { data, isFetching } = useQuery({
     queryKey: KEYS.globalSearch(org.id, trimmed),
-    enabled: open && trimmed.length > 0,
+    enabled: open,
     queryFn: async (): Promise<SearchResponse> => {
       return await studio.call("GLOBAL_SEARCH", {
         query: trimmed,
-        limit: 20,
+        limit: trimmed ? 20 : 10,
       });
     },
     staleTime: 10_000,
@@ -104,11 +105,7 @@ export function GlobalSearchDialog({
             placeholder={t("tasksPanel.globalSearchDialog.placeholder")}
           />
           <CommandList>
-            {!trimmed ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {t("tasksPanel.globalSearchDialog.startTyping")}
-              </div>
-            ) : isFetching && items.length === 0 ? (
+            {isFetching && items.length === 0 ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 {t("tasksPanel.globalSearchDialog.searching")}
               </div>
@@ -117,33 +114,47 @@ export function GlobalSearchDialog({
                 {t("tasksPanel.globalSearchDialog.noResults")}
               </CommandEmpty>
             ) : (
-              items.map((item) => {
-                if (item.type === "thread") {
-                  return (
-                    <CommandItem
-                      key={`thread:${item.id}`}
-                      value={`thread:${item.id}:${item.title}`}
-                      onSelect={() => handleThreadSelect(item)}
-                      className="gap-2.5"
-                    >
-                      <McpAvatar virtualMcpId={item.virtual_mcp_id} size="xs" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-foreground truncate">
-                          {item.title ||
-                            t("tasksPanel.globalSearchDialog.untitledChat")}
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {new Date(item.updated_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </CommandItem>
-                  );
+              <CommandGroup
+                heading={
+                  trimmed
+                    ? undefined
+                    : t("tasksPanel.globalSearchDialog.recent")
                 }
-                return null;
-              })
+              >
+                {items.map((item) => {
+                  if (item.type === "thread") {
+                    return (
+                      <CommandItem
+                        key={`thread:${item.id}`}
+                        value={`thread:${item.id}:${item.title}`}
+                        onSelect={() => handleThreadSelect(item)}
+                        className="gap-2.5"
+                      >
+                        <McpAvatar
+                          virtualMcpId={item.virtual_mcp_id}
+                          size="xs"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-foreground truncate">
+                            {item.title ||
+                              t("tasksPanel.globalSearchDialog.untitledChat")}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {new Date(item.updated_at).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
+                        </span>
+                      </CommandItem>
+                    );
+                  }
+                  return null;
+                })}
+              </CommandGroup>
             )}
           </CommandList>
         </Command>
