@@ -27,6 +27,7 @@ import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
 import {
   ensureOrganization,
+  isUnsafeThreadId,
   validateThreadAccess,
   validateThreadOwnership,
 } from "./helpers";
@@ -418,6 +419,9 @@ async function validate(
     });
   }
   const taskIdInput = threadIdParam ?? bodyThreadId;
+  if (taskIdInput && isUnsafeThreadId(taskIdInput)) {
+    throw new HTTPException(400, { message: "Invalid thread ID" });
+  }
 
   const userId = ctx.auth?.user?.id;
   if (!userId) {

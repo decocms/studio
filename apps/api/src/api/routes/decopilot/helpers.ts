@@ -39,6 +39,18 @@ export function ensureOrganization(
 }
 
 /**
+ * Thread IDs are used verbatim as NATS subject tokens (e.g.
+ * `decopilot.stream.<threadId>`, see streamSubject() in
+ * packages/harness/src/run-stream-codec.ts). `.`/`*`/`>`/whitespace are
+ * subject metacharacters there, so a thread id containing one would either
+ * blow up subject construction downstream or (for `*`/`>`) silently widen
+ * the subject to match other threads. Reject it up front instead.
+ */
+export function isUnsafeThreadId(taskId: string): boolean {
+  return /[.*>\s]/.test(taskId);
+}
+
+/**
  * Validate that a thread exists and belongs to the org.
  * Does NOT enforce ownership — any authenticated org member can access.
  * Use this for read-only / observability endpoints (e.g. stream).
@@ -56,7 +68,7 @@ export async function validateThreadAccess(
   if (!taskId) {
     throw new HTTPException(400, { message: "Missing thread ID" });
   }
-  if (/[.*>\s]/.test(taskId)) {
+  if (isUnsafeThreadId(taskId)) {
     throw new HTTPException(400, { message: "Invalid thread ID" });
   }
   const thread = await ctx.storage.threads.get(taskId);
