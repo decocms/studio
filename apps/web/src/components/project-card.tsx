@@ -38,7 +38,10 @@ export function ProjectCard({
   const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
   const { mainAgentId } = useMainAgentId();
   const setMainAgent = useSetMainAgent();
-  const { granted: canManageAgents } = useCapability("agents:manage");
+  // The main agent is org-wide config written via ORGANIZATION_SETTINGS_UPDATE,
+  // which the backend gates on `org:manage` — not `agents:manage`. Match it so
+  // the action isn't shown to users whose click would fail server-side.
+  const { granted: canSetMainAgent } = useCapability("org:manage");
   const isMainAgent = mainAgentId === project.id;
 
   const toggleMainAgent = () => {
@@ -93,7 +96,7 @@ export function ProjectCard({
                     <Settings02 size={16} />
                     Settings
                   </DropdownMenuItem>
-                  {canManageAgents && (
+                  {canSetMainAgent && (
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation();

@@ -134,4 +134,58 @@ test.describe("Organization main agent setting", () => {
     );
     expect(after.main_agent_id ?? null).toBeNull();
   });
+
+  test("org landing opens the main agent when set", async ({ page }) => {
+    await signUp(page);
+    await waitForPostSignupRedirect(page);
+    const orgSlug = extractOrgSlugFromUrl(page);
+    const orgId = await lookupOrgId(orgSlug);
+    const request = page.context().request;
+
+    const created = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      { data: { title: "Landing Agent E2E" } },
+    );
+    const agentId = created.item.id;
+    await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      main_agent_id: agentId,
+    });
+
+    // A fresh entry into `/$org` must redirect to the main agent's thread,
+    // carrying its id in the `virtualmcpid` search param.
+    await page.goto(`/${orgSlug}`);
+    await page.waitForURL(
+      (url) => url.searchParams.get("virtualmcpid") === agentId,
+    );
+    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBe(agentId);
+  });
+
+  test("org landing falls back to the Super Agent when the main agent is missing", async ({
+    page,
+  }) => {
+    await signUp(page);
+    await waitForPostSignupRedirect(page);
+    const orgSlug = extractOrgSlugFromUrl(page);
+    const orgId = await lookupOrgId(orgSlug);
+    const request = page.context().request;
+
+    // Point at an id that isn't a real agent in this org — the resolver must
+    // ignore it and land on the well-known Super Agent (`decopilot_<orgId>`).
+    await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      main_agent_id: "vmcp-does-not-exist",
+    });
+
+    const superAgentId = `decopilot_${orgId}`;
+    await page.goto(`/${orgSlug}`);
+    await page.waitForURL(
+      (url) => url.searchParams.get("virtualmcpid") === superAgentId,
+    );
+    expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBe(
+      superAgentId,
+    );
+  });
 });

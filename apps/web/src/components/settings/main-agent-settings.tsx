@@ -49,19 +49,28 @@ function MainAgentSelect() {
 
   const superAgent = getWellKnownDecopilotVirtualMCP(org.id);
 
-  // A stored id pointing at a deleted agent falls back to the Super Agent row
-  // (mirrors the landing resolver), so the Select never shows an empty value.
-  const selected =
-    mainAgentId && agents.some((a) => a.id === mainAgentId)
-      ? mainAgentId
-      : SUPER_AGENT_VALUE;
+  // Validity must match the landing resolver, which checks the FULL agent list,
+  // not the filtered browse set. A stored id outside that set (a dev/Studio-Pack
+  // agent set from the agent card, or a deleted agent) otherwise renders here as
+  // "Super Agent" AND can't be cleared — clicking the already-shown row is a
+  // no-op. So resolve against the full list and, when the main agent falls
+  // outside the browse options, prepend it so the selection stays changeable.
+  const storedMainAgent =
+    mainAgentId != null
+      ? (allAgents ?? []).find((a) => a.id === mainAgentId)
+      : undefined;
+  const selected = storedMainAgent ? storedMainAgent.id : SUPER_AGENT_VALUE;
+  const options =
+    storedMainAgent && !agents.some((a) => a.id === storedMainAgent.id)
+      ? [storedMainAgent, ...agents]
+      : agents;
 
   const onChange = (value: string) => {
     const next = value === SUPER_AGENT_VALUE ? null : value;
     const title =
       next === null
         ? superAgent.title
-        : (agents.find((a) => a.id === next)?.title ?? "");
+        : ((allAgents ?? []).find((a) => a.id === next)?.title ?? "");
     setMainAgent.mutate(next, {
       onSuccess: () =>
         toast.success(
@@ -96,7 +105,7 @@ function MainAgentSelect() {
             </span>
           </span>
         </SelectItem>
-        {agents.map((agent) => (
+        {options.map((agent) => (
           <SelectItem key={agent.id} value={agent.id}>
             <span className="flex items-center gap-2">
               <AgentAvatar
