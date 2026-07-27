@@ -79,7 +79,14 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     if (threadsStatus.kind === "loading") return;
     if (fetchedTask !== undefined) return; // already tried or in progress
     setFetchedTask("pending");
-    manager.fetchThread(id).then((row) => {
+    // `fetchThreadIntoSlot` (not a plain `fetchThread`) merges a live by-id row
+    // into the store slot, so the deep-linked active view (e.g. the CMS
+    // preview/blocks editor) shares one source of truth with the panel and
+    // optimistic `setBranch` on publish patches it in place instead of
+    // upserting a lossy synthetic — otherwise the branch-hop never re-points the
+    // view. The `!hidden` guard and the lossy-synthetic race live in the store
+    // method next to the `fetchThread` contract they uphold.
+    manager.fetchThreadIntoSlot(id).then((row) => {
       setFetchedTask(row); // null if not found, Task if found
     });
   }, [id, localHit, threadsStatus.kind, fetchedTask, manager]);
