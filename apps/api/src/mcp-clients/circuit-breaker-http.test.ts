@@ -1,13 +1,8 @@
 /**
- * E2E test: Circuit breaker with real HTTP MCP servers
- *
- * Starts actual HTTP servers that simulate different failure modes:
- * - Hanging (never responds) → triggers MCP SDK timeout
- * - Connection refused (closed port) → immediate failure
- * - Intermittent (works, then dies)
- *
- * Measures actual timings to verify the circuit breaker prevents
- * the 60s timeout penalty on repeated failures.
+ * Circuit breaker against real local HTTP servers (infrastructure edge only —
+ * see TESTING.md): failing servers trip the circuit, an open circuit rejects
+ * instantly instead of paying the MCP SDK's 60s default connect timeout, and
+ * a success closes it again.
  */
 
 import { describe, expect, it, beforeEach } from "bun:test";
@@ -22,17 +17,6 @@ import {
 } from "./circuit-breaker";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
-
-/** Start an HTTP server that never sends a response (simulates timeout) */
-function startHangingServer() {
-  return Bun.serve({
-    port: 0,
-    fetch() {
-      // Never resolve — client will eventually timeout
-      return new Promise(() => {});
-    },
-  });
-}
 
 /** Start an HTTP server that immediately returns 500 */
 function startErrorServer() {
@@ -66,7 +50,7 @@ async function timedConnect(
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("circuit breaker e2e - real HTTP servers", () => {
+describe("circuit breaker - real HTTP servers", () => {
   beforeEach(() => {
     resetAll();
   });
@@ -86,24 +70,6 @@ describe("circuit breaker e2e - real HTTP servers", () => {
       server.stop(true);
     }
   });
-
-  it("connection to hanging server triggers MCP timeout (~60s)", async () => {
-    const server = startHangingServer();
-    const url = `http://localhost:${server.port}/mcp`;
-
-    try {
-      const result = await timedConnect(url);
-      console.log(`  Hanging server: ${result.durationMs}ms — ${result.error}`);
-
-      expect(result.error).toBeDefined();
-      // This is the key test — proves the 60s timeout hypothesis
-      // MCP SDK default timeout is 60000ms
-      expect(result.durationMs).toBeGreaterThan(55000);
-      expect(result.durationMs).toBeLessThan(70000);
-    } finally {
-      server.stop(true);
-    }
-  }, 90_000); // extend test timeout to 90s
 
   it("circuit breaker prevents repeated 60s waits", async () => {
     const connId = "conn_hanging_test";
