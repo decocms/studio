@@ -308,7 +308,7 @@ export interface OrganizationSettingsStoragePort {
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
-        | "reports_only"
+        | "flags"
         | "main_agent_id"
       >
     >,

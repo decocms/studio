@@ -28,6 +28,7 @@ import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { Suspense, useState } from "react";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import {
   CompanionMcpsSection,
   CompanionMcpsSectionSkeleton,
@@ -239,7 +240,10 @@ function CommerceConnectModalContent({
     onComplete();
   };
 
-  const ready = hasConnectedSource;
+  // Demo orgs proceed regardless of readiness: the demo's diagnostic and
+  // tasks are pre-baked, so a required-source gate would only break the flow.
+  const demoMode = useOrgFlag("demo_mode");
+  const ready = hasConnectedSource || demoMode;
 
   return (
     <ConnectLayout

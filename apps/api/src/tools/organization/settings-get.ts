@@ -6,6 +6,7 @@ import {
   RegistryConfigSchema,
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
+  OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_GET = defineTool({
@@ -28,7 +29,7 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
-    reports_only: z.boolean().nullable().optional(),
+    flags: OrgFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),

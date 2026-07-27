@@ -319,6 +319,18 @@ don't — extend the options or ask. The circuit breaker
 (`mcp-clients/circuit-breaker.ts`) is a different pattern (fault isolation) and
 is intentionally separate.
 
+### Org-level flags
+
+Org boolean toggles live in the `organization_settings.flags` jsonb bag — never
+a new column. Adding one = one line in **`OrgFlagsSchema`**
+(`packages/shared/src/organization/schema.ts`, the single source of truth) +
+its consumer, then `bun run --cwd=apps/api generate:tool-contracts`. Read via
+`useOrgFlag("<flag>")` (web) or `settings?.flags?.<flag>` (api); set via
+`ORGANIZATION_SETTINGS_UPDATE { flags: { <flag>: true } }`. Updates
+shallow-merge (explicit `false` persists, omitted keys survive); unset reads as
+off. Flags are product gating, not access control. Anything non-boolean or ever
+needing an index/constraint gets its own column instead.
+
 ### Style & Formatting
 - **Biome** enforces two-space indentation and double quotes
 - **ALWAYS** run `bun run fmt` after making code changes (pre-commit hook via lefthook)

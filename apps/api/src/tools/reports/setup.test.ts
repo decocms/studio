@@ -37,7 +37,7 @@ function makeCtx(opts: {
   existingConnection?: StubConnection;
   existingVirtualMcp?: StubVirtualMcp;
   connectionUpdate?: (id: string, data: Record<string, unknown>) => void;
-  /** Stored reports_only value; undefined = settings row never created. */
+  /** Stored flags.reports_only value; undefined = settings row never created. */
   reportsOnly?: boolean | null;
   settingsUpsert?: (orgId: string, data: Record<string, unknown>) => void;
   /** Org row createdAt; defaults to "just now" (fresh onboarding-made org). */
@@ -95,7 +95,10 @@ function makeCtx(opts: {
         get: async () =>
           opts.reportsOnly === undefined
             ? null
-            : { organizationId: ORG_ID, reports_only: opts.reportsOnly },
+            : {
+                organizationId: ORG_ID,
+                flags: { reports_only: opts.reportsOnly },
+              },
         upsert: async (orgId: string, data: Record<string, unknown>) => {
           opts.settingsUpsert?.(orgId, data);
           return { organizationId: orgId, ...data };
@@ -170,7 +173,9 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       ctx,
     );
 
-    expect(upserts).toEqual([{ orgId: ORG_ID, data: { reports_only: true } }]);
+    expect(upserts).toEqual([
+      { orgId: ORG_ID, data: { flags: { reports_only: true } } },
+    ]);
   });
 
   test("setup retry on a fresh org still defaults the flag", async () => {
@@ -187,7 +192,9 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       ctx,
     );
 
-    expect(upserts).toEqual([{ orgId: ORG_ID, data: { reports_only: true } }]);
+    expect(upserts).toEqual([
+      { orgId: ORG_ID, data: { flags: { reports_only: true } } },
+    ]);
   });
 
   test("does not clobber an explicit reports_only=false on a fresh org", async () => {

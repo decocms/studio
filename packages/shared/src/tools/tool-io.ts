@@ -117,7 +117,13 @@ export interface StudioToolIO {
         | null
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
-      reports_only?: boolean | null | undefined;
+      flags?:
+        | {
+            demo_mode?: boolean | undefined;
+            reports_only?: boolean | undefined;
+          }
+        | null
+        | undefined;
       main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
@@ -173,7 +179,12 @@ export interface StudioToolIO {
           }
         | undefined;
       default_home_agents?: { ids: string[] } | undefined;
-      reports_only?: boolean | undefined;
+      flags?:
+        | {
+            demo_mode?: boolean | undefined;
+            reports_only?: boolean | undefined;
+          }
+        | undefined;
       main_agent_id?: string | null | undefined;
     };
     output: {
@@ -230,7 +241,13 @@ export interface StudioToolIO {
         | null
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
-      reports_only?: boolean | null | undefined;
+      flags?:
+        | {
+            demo_mode?: boolean | undefined;
+            reports_only?: boolean | undefined;
+          }
+        | null
+        | undefined;
       main_agent_id?: string | null | undefined;
     };
   };

@@ -15,7 +15,10 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
-import type { UserModelPreferences } from "@decocms/shared/organization/schema";
+import type {
+  OrgFlags,
+  UserModelPreferences,
+} from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { PrivateRegistryDatabase } from "./registry/types";
 
@@ -177,7 +180,9 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
-  reports_only: boolean | null;
+  // Boolean toggles bag — the flag set lives in OrgFlagsSchema
+  // (@decocms/shared/organization/schema); updates shallow-merge.
+  flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
@@ -191,7 +196,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  reports_only: boolean | null;
+  flags: OrgFlags | null;
   main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
