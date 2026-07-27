@@ -64,9 +64,13 @@ services:
   # migration step (we override the entrypoint with a direct start command) to
   # avoid races on parallel boot.
   migrate:
+    # The only service with a `build:` — it tags the shared image, and every
+    # mesh pod (which depends_on migrate completing) reuses the tag instead of
+    # rebuilding the same context 4×. Same pattern as the resilience compose.
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
+    image: deco-multipod-studio:latest
     working_dir: /app/apps/api
     command: ["bun", "run", "migrate"]
     environment:
@@ -78,9 +82,7 @@ services:
   # Legacy service identities are part of the resilience-test control contract;
   # Keep the legacy service names stable while the production apps use Studio naming.
   mesh-1: &studio
-    build:
-      context: ../../
-      dockerfile: tests/resilience/Dockerfile.studio
+    image: deco-multipod-studio:latest
     # No restart policy — tests need explicit start/stop control. With
     # `unless-stopped`, `docker kill` is auto-restarted within seconds,
     # which would defeat any pod-death scenario (the SIGKILL'd pod would
