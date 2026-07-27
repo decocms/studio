@@ -120,4 +120,17 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
       flags: { demo_mode: false },
     });
   });
+
+  it("rejects an unrecognized flag key instead of silently stripping it", () => {
+    // Regression: without `.strict()`, Zod drops unknown keys from an object
+    // schema — a mistyped flag name (e.g. `demoMode` instead of `demo_mode`)
+    // would previously validate as `flags: {}`, upsert as a no-op, and report
+    // success with no indication the intended flag was never set.
+    const result = ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+      organizationId: "org-a",
+      flags: { demoMode: true },
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
