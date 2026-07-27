@@ -2,15 +2,28 @@ import type { thread as threadEn } from "../en/thread.ts";
 
 export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
+  "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",
+  "thread.branchPicker.couldntLoadPullRequests":
+    "Não foi possível carregar pull requests do GitHub.",
+  "thread.branchPicker.hiddenForkPrs":
+    "{count} PR(s) de forks ocultado(s) — abra em uma branch deste repositório",
+  "thread.branchPicker.last7Days": "Últimos 7 dias",
   "thread.branchPicker.loadMoreBranches": "Carregar mais branches",
   "thread.branchPicker.loadingMore": "Carregando mais…",
+  "thread.branchPicker.loadingPullRequests": "Carregando pull requests…",
   "thread.branchPicker.lookingThroughMoreBranches": "Procurando mais branches…",
   "thread.branchPicker.new": "Nova",
   "thread.branchPicker.noBranchesFound": "Nenhuma branch encontrada.",
+  "thread.branchPicker.noPullRequestsFound":
+    "Nenhum pull request corresponde à sua busca.",
+  "thread.branchPicker.noOpenPullRequests": "Nenhum pull request aberto.",
+  "thread.branchPicker.openPullRequests": "Pull requests abertos",
   "thread.branchPicker.otherBranchesInRepo": "Outras branches no repositório",
+  "thread.branchPicker.prsTab": "PRs",
   "thread.branchPicker.searchLoadedBranches": "Pesquisar branches carregadas…",
+  "thread.branchPicker.searchPullRequests": "Pesquisar pull requests…",
   "thread.branchPicker.selectBranch": "Selecione uma branch…",
   "thread.branchPicker.yourBranches": "Suas branches",
   "thread.changesTab.couldntLoadPrChanges":

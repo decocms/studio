@@ -246,7 +246,7 @@ export function BranchPicker({
               placeholder={
                 tab === "branches"
                   ? t("thread.branchPicker.searchLoadedBranches")
-                  : "Search pull requests…"
+                  : t("thread.branchPicker.searchPullRequests")
               }
               value={search}
               onValueChange={handleSearchChange}
@@ -275,10 +275,10 @@ export function BranchPicker({
               variant="pill"
             >
               <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
-                Branches
+                {t("thread.branchPicker.branchesTab")}
               </TabsTrigger>
               <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
-                PRs
+                {t("thread.branchPicker.prsTab")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -287,23 +287,25 @@ export function BranchPicker({
               <>
                 {prsError && (
                   <div className="p-3 text-xs text-muted-foreground">
-                    Couldn't load pull requests from GitHub.
+                    {t("thread.branchPicker.couldntLoadPullRequests")}
                   </div>
                 )}
                 {prsLoading && (
                   <div className="p-3 text-xs text-muted-foreground">
-                    Loading pull requests…
+                    {t("thread.branchPicker.loadingPullRequests")}
                   </div>
                 )}
                 {!prsError && !prsLoading && (
                   <CommandEmpty>
                     {search.trim()
-                      ? "No pull requests match your search."
-                      : "No open pull requests."}
+                      ? t("thread.branchPicker.noPullRequestsFound")
+                      : t("thread.branchPicker.noOpenPullRequests")}
                   </CommandEmpty>
                 )}
                 {openablePrs.length > 0 && (
-                  <CommandGroup heading="Open pull requests">
+                  <CommandGroup
+                    heading={t("thread.branchPicker.openPullRequests")}
+                  >
                     {openablePrs.map((pr) => (
                       <CommandItem
                         key={pr.number}
@@ -327,8 +329,9 @@ export function BranchPicker({
                 )}
                 {hiddenForkPrs > 0 && (
                   <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                    {hiddenForkPrs} PR{hiddenForkPrs > 1 ? "s" : ""} from forks
-                    hidden — open on a branch in this repo
+                    {t("thread.branchPicker.hiddenForkPrs", {
+                      count: hiddenForkPrs,
+                    })}
                   </div>
                 )}
               </>
@@ -347,7 +350,7 @@ export function BranchPicker({
                   </CommandEmpty>
                 )}
                 {recent.length > 0 && (
-                  <CommandGroup heading="Last 7 days">
+                  <CommandGroup heading={t("thread.branchPicker.last7Days")}>
                     {recent.map((b) => (
                       <CommandItem
                         key={b.name}
