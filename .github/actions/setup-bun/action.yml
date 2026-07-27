@@ -1,0 +1,33 @@
+name: Setup Bun and install dependencies
+description: >-
+  Install Bun (pinned version), restore the package cache via actions/cache
+  keyed on bun.lock, and run `bun install`. Shared by every workflow that
+  installs workspace dependencies so the pinned Bun version and the cache
+  configuration live in exactly one place.
+
+inputs:
+  bun-version:
+    description: Bun version to install — single source of truth for CI.
+    default: "1.3.14"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Restore Bun package cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      # BUN_INSTALL_CACHE_DIR pins Bun's cache to the exact path actions/cache
+      # saves, so the same location holds on Linux and Windows runners.
+      run: BUN_INSTALL_CACHE_DIR="$HOME/.bun/install/cache" bun install

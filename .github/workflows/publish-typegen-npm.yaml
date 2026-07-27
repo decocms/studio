@@ -20,17 +20,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Setup Node.js for npm registry
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Install dependencies
-        run: bun install
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
 
       - name: Build
         run: bun run build
