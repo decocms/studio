@@ -46,7 +46,5 @@ export function getInternalUrl(): string {
  * separate public-URL setting still work.
  */
 export function getPublicUrl(): string {
-  return (
-    process.env.STUDIO_PUBLIC_URL ?? process.env.MESH_PUBLIC_URL ?? getBaseUrl()
-  );
+  return getSettings().publicUrl ?? getBaseUrl();
 }

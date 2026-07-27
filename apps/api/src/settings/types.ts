@@ -13,6 +13,10 @@ export interface Settings {
   nodeEnv: "production" | "development" | "test";
   port: number;
   baseUrl: string | undefined;
+  /** Externally reachable URL (STUDIO_PUBLIC_URL, legacy MESH_PUBLIC_URL alias)
+   *  for URLs that must resolve from outside the cluster (e.g. the MCP
+   *  endpoint handed to a remote link daemon). Falls back to baseUrl when unset. */
+  publicUrl: string | undefined;
   dataDir: string;
 
   // Database

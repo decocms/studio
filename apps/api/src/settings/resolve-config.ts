@@ -193,6 +193,7 @@ export function resolveConfig(
     nodeEnv,
     port: toPositiveIntegerOrDefault("PORT", flags.port || envVars.PORT, 3000),
     baseUrl: flags.baseUrl || envVars.BASE_URL,
+    publicUrl: envVars.STUDIO_PUBLIC_URL ?? envVars.MESH_PUBLIC_URL,
     dataDir,
 
     // Database (url resolved after services start)
