@@ -38,6 +38,7 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.noResults": "No results found.",
   "sectionsEditor.dynamicOptionsField.searchPlaceholder": "Search...",
   "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Select...",
+  "sectionsEditor.dynamicOptionsField.useValue": 'Use "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Select...",
   "sectionsEditor.fileField.browseButton": "Browse",
   "sectionsEditor.fileField.dropFileHint": "Drop a file or click to browse",
