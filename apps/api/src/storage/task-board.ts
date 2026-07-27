@@ -85,7 +85,7 @@ export class TaskBoardStorage {
       .selectFrom("task_board_items")
       .selectAll()
       .where("organization_id", "=", organizationId)
-      .orderBy("created_at", "desc")
+      .orderBy("sort_order", "asc")
       .execute();
 
     const items = rows.map((row) => this.itemFromDbRow(row));
@@ -125,6 +125,16 @@ export class TaskBoardStorage {
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
     const now = new Date().toISOString();
+    const status = params.status ?? "triage";
+
+    // New cards land at the top of their lane — one below the current lowest
+    // sort_order (ascending order), matching the prior created_at-desc feel.
+    const { minOrder } = await this.db
+      .selectFrom("task_board_items")
+      .select((eb) => eb.fn.min("sort_order").as("minOrder"))
+      .where("organization_id", "=", params.organizationId)
+      .where("status", "=", status)
+      .executeTakeFirstOrThrow();
 
     const row = await this.db
       .insertInto("task_board_items")
@@ -133,12 +143,13 @@ export class TaskBoardStorage {
         organization_id: params.organizationId,
         title: params.title,
         description: params.description ?? null,
-        status: params.status ?? "triage",
+        status,
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
+        sort_order: (minOrder ?? 0) - 1,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,
@@ -162,6 +173,7 @@ export class TaskBoardStorage {
       assigneeId?: string | null;
       assignedBy?: string | null;
       dueDate?: string | null;
+      sortOrder?: number;
     },
     by: string,
   ): Promise<TaskBoardItem> {
@@ -181,6 +193,7 @@ export class TaskBoardStorage {
           ? { assigned_by: data.assignedBy }
           : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
+        ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -460,6 +473,7 @@ export class TaskBoardStorage {
     assignee_id: string | null;
     assigned_by: string | null;
     due_date: string | Date | null;
+    sort_order: number;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -478,6 +492,7 @@ export class TaskBoardStorage {
         row.due_date instanceof Date
           ? row.due_date.toISOString()
           : row.due_date,
+      sortOrder: row.sort_order,
       // Populated by attachThreads for reads; empty for a fresh create.
       threads: [],
       createdBy: row.created_by,

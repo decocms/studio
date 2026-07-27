@@ -1622,6 +1622,8 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** Manual drag-to-reorder position within a lane, ascending. */
+  sort_order: ColumnType<number, number | undefined, number>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1701,6 +1703,8 @@ export interface TaskBoardItem {
   assigneeId: string | null;
   assignedBy: string | null;
   dueDate: string | null;
+  /** Manual drag-to-reorder position within a lane, ascending. */
+  sortOrder: number;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   createdBy: string;

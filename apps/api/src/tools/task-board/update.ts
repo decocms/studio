@@ -31,6 +31,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
+    /** New drag-to-reorder position within its lane (ascending). */
+    sortOrder: z.number().optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
   }),
@@ -71,7 +73,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.status !== undefined ||
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
-      input.dueDate !== undefined;
+      input.dueDate !== undefined ||
+      input.sortOrder !== undefined;
 
     // Only enqueue on the transition INTO Super Agent, not on every later edit.
     const previous =
@@ -106,6 +109,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               : null
             : undefined,
           dueDate: input.dueDate,
+          sortOrder: input.sortOrder,
         },
         getUserId(ctx)!,
       );

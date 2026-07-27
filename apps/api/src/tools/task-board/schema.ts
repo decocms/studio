@@ -59,6 +59,8 @@ export const TaskBoardItemSchema = z.object({
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
+  // Manual drag-to-reorder position within a lane, ascending.
+  sortOrder: z.number(),
   // Agent threads linked to this task (many-to-many), most-recent first.
   threads: z.array(TaskBoardItemThreadSchema),
   createdBy: z.string(),

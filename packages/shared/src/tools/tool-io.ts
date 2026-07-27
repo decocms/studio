@@ -277,6 +277,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
+        sortOrder: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -313,6 +314,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
+        sortOrder: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -351,6 +353,7 @@ export interface StudioToolIO {
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
       dueDate?: string | null | undefined;
+      sortOrder?: number | undefined;
       linkThreadId?: string | undefined;
     };
     output: {
@@ -364,6 +367,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
+        sortOrder: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
