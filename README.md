@@ -11,6 +11,23 @@
 <a href="https://decocms.com/studio">decocms.com/studio</a>
 </p>
 
+<p align="center">
+<a href="https://github.com/decocms/studio/actions/workflows/test.yml"><img alt="Checks &amp; unit tests" src="https://img.shields.io/github/actions/workflow/status/decocms/studio/test.yml?branch=main&label=checks&style=flat-square"></a>
+<a href="https://www.npmjs.com/package/decostudio"><img alt="npm version" src="https://img.shields.io/npm/v/decostudio?style=flat-square&label=decostudio"></a>
+<a href="./LICENSE.md"><img alt="MIT license" src="https://img.shields.io/github/license/decocms/studio?style=flat-square"></a>
+<a href="https://github.com/decocms/studio/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/decocms/studio?style=flat-square"></a>
+<a href="https://github.com/decocms/studio/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/decocms/studio?style=flat-square"></a>
+<a href="https://decocms.com/discord"><img alt="Discord" src="https://img.shields.io/badge/discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
+<br/>
+<img alt="Model Context Protocol" src="https://img.shields.io/badge/MCP-control%20plane-black?style=flat-square">
+<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white">
+<img alt="Bun" src="https://img.shields.io/badge/Bun-000000?style=flat-square&logo=bun&logoColor=white">
+<img alt="React 19" src="https://img.shields.io/badge/React%2019-61DAFB?style=flat-square&logo=react&logoColor=black">
+<img alt="Hono" src="https://img.shields.io/badge/Hono-E36002?style=flat-square&logo=hono&logoColor=white">
+<img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white">
+<img alt="OpenTelemetry" src="https://img.shields.io/badge/OpenTelemetry-425CC7?style=flat-square&logo=opentelemetry&logoColor=white">
+</p>
+
 > **TL;DR:** Your team needs a secure internal vibecoding platform. You just found it. Configure agents with team context. Connect private MCPs once — share capabilities, not credentials. Keep the model layer interchangeable. Roll out across the organization with SSO, RBAC, audit logs, and cost controls — all through one MCP endpoint. Local-first. Self-host or use the cloud.
 
 ---
@@ -323,7 +340,32 @@ bun run lint     # Lint
 bun test         # Test
 ```
 
-See `AGENTS.md` for coding guidelines.
+See `AGENTS.md` for coding guidelines, [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the contribution workflow, and [`TESTING.md`](./TESTING.md) for the testing rules.
+
+Good first steps: open an [issue](https://github.com/decocms/studio/issues), pick one labeled `good first issue`, or ask in [Discord](https://decocms.com/discord).
+
+---
+
+## Contributors
+
+Studio is built in the open. Thanks to everyone who has shipped a commit.
+
+<a href="https://github.com/decocms/studio/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=decocms/studio" alt="Contributors to decocms/studio" />
+</a>
+
+Maintainers — see [`MAINTAINERS.txt`](./MAINTAINERS.txt):
+
+[@guitavano](https://github.com/guitavano) ·
+[@viktormarinho](https://github.com/viktormarinho) ·
+[@mcandeia](https://github.com/mcandeia) ·
+[@pedrofrxncx](https://github.com/pedrofrxncx) ·
+[@JonasJesus42](https://github.com/JonasJesus42) ·
+[@aka-sacci-ccr](https://github.com/aka-sacci-ccr) ·
+[@vibegui](https://github.com/vibegui) ·
+[@tlgimenes](https://github.com/tlgimenes) ·
+[@vibe-dex](https://github.com/vibe-dex) ·
+[@nicacioliveira](https://github.com/nicacioliveira)
 
 ---
 
