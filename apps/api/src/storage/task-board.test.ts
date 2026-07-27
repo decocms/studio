@@ -1,10 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import { shouldAdvanceToReview } from "./task-board";
 
+/** A thread that was actually used — the default for these cases. */
 const thread = (
   status: string | null,
-  hasPreview = false,
-): { status: string | null; hasPreview: boolean } => ({ status, hasPreview });
+  hasMessages = true,
+): { status: string | null; hasMessages: boolean } => ({
+  status,
+  hasMessages,
+});
+
+/** Created and never typed in: born `completed`, must not count. */
+const emptyThread = () => thread("completed", false);
 
 describe("shouldAdvanceToReview", () => {
   it("advances an in_progress, repo-less task whose only thread completed", () => {
@@ -47,7 +54,7 @@ describe("shouldAdvanceToReview", () => {
     expect(
       shouldAdvanceToReview({
         status: "in_progress",
-        threads: [thread("completed", true)],
+        threads: [thread("completed")],
       }),
     ).toBe(true);
   });
@@ -64,5 +71,35 @@ describe("shouldAdvanceToReview", () => {
     expect(shouldAdvanceToReview({ status: "in_progress", threads: [] })).toBe(
       false,
     );
+  });
+
+  // Clicking "New chat" persists the row before anything is typed, and `create`
+  // defaults status to "completed" — so an empty chat is born terminal. Prod
+  // card board_zsKGcXRC9IhyqY_rNHekN sat In Progress on exactly this.
+  it("ignores a thread that was created and never used", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [emptyThread()],
+      }),
+    ).toBe(false);
+  });
+
+  it("advances on the used thread, ignoring an empty one beside it", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [emptyThread(), thread("completed")],
+      }),
+    ).toBe(true);
+  });
+
+  it("an empty thread cannot mask a still-running one", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [emptyThread(), thread("in_progress")],
+      }),
+    ).toBe(false);
   });
 });

@@ -1682,6 +1682,12 @@ export interface TaskBoardItemThreadRef {
   /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
    *  card opens the live dev Preview instead of staying on the board. */
   hasPreview: boolean;
+  /** True when the thread has at least one message in either storage format.
+   *  False means it was created and never used — clicking "New chat" persists
+   *  the row up-front, and `create` defaults `status` to "completed", so such a
+   *  thread looks finished without ever having run. Status alone can't tell the
+   *  two apart; see `shouldAdvanceToReview`. */
+  hasMessages: boolean;
   createdAt: string;
 }
 

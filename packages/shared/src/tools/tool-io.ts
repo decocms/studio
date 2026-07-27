@@ -290,6 +290,7 @@ export interface StudioToolIO {
           title: string | null;
           lastMessage: string | null;
           hasPreview: boolean;
+          hasMessages: boolean;
           createdAt: string;
         }[];
         createdBy: string;
@@ -325,6 +326,7 @@ export interface StudioToolIO {
           title: string | null;
           lastMessage: string | null;
           hasPreview: boolean;
+          hasMessages: boolean;
           createdAt: string;
         }[];
         createdBy: string;
@@ -375,6 +377,7 @@ export interface StudioToolIO {
           title: string | null;
           lastMessage: string | null;
           hasPreview: boolean;
+          hasMessages: boolean;
           createdAt: string;
         }[];
         createdBy: string;
