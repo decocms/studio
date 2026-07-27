@@ -52,9 +52,11 @@ describe("wrapStreamWithKeepalive", () => {
   it("injects keepalive comments during silent periods", async () => {
     const source = makeSource([
       { delayMs: 0, bytes: 'data: {"x":1}\n\n' },
-      { delayMs: 120, bytes: "data: [DONE]\n\n" },
+      { delayMs: 250, bytes: "data: [DONE]\n\n" },
     ]);
-    // 30ms interval — should fire ~3-4 times during the 120ms gap.
+    // 30ms interval over a 250ms gap (~8 windows) asserting only >=2: timer
+    // chains drift hard on a loaded CI runner under the parallel unit suite,
+    // and the previous 4-window margin flaked there.
     const wrapped = wrapStreamWithKeepalive(source, 30);
     const out = await readAll(wrapped);
     const matches = out.match(/: keepalive\n\n/g) ?? [];

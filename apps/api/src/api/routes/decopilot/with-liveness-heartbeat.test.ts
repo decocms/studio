@@ -45,7 +45,9 @@ describe("withLivenessHeartbeat", () => {
   test("injects a data-liveness chunk after intervalMs of silence, then resumes the source", async () => {
     async function* slowThenFast(): AsyncGenerator<UIMessageChunk> {
       yield { type: "text-start", id: "1" };
-      await sleep(80); // spans ~3 heartbeat windows at intervalMs=25
+      // ~6 heartbeat windows at intervalMs=25 for a >=2 assertion — smaller
+      // margins flake under CI CPU contention (parallel unit suite).
+      await sleep(150);
       yield { type: "text-delta", id: "1", delta: "done waiting" };
     }
     const out = await collect(
