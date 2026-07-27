@@ -56,6 +56,9 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const branchPill =
     githubRepo && connectionId ? (
       <BranchPill
+        // Remount on repo/connection change so search/tab/highlight state
+        // from the previous repo doesn't leak into the new one's picker.
+        key={`${connectionId}:${githubRepo.owner}/${githubRepo.name}`}
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
