@@ -161,7 +161,7 @@ function PickerBody({
         <TabsContent
           key={c.id}
           value={c.id}
-          className="min-h-0 flex-1 overflow-hidden"
+          className="min-h-0 flex-1 overflow-hidden flex flex-col"
         >
           <BucketPanel config={c} mode={mode} onSelect={onSelect} />
         </TabsContent>
@@ -280,7 +280,7 @@ function BucketPanel({
     (objectsQuery.isFetching && !objectsQuery.isFetchingNextPage);
 
   return (
-    <div className="flex flex-col gap-3 min-h-0 h-full">
+    <div className="flex flex-col gap-3 min-h-0 flex-1">
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
