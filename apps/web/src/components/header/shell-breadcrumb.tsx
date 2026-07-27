@@ -61,6 +61,7 @@ function AgentCrumb({
   onOpenHome: () => void;
   onPick: (id: string | null) => void;
 }) {
+  const t = useT();
   const entity = useVirtualMCP(agentId) ?? fallback ?? null;
   const title = entity?.title ?? "Super Agent";
   return (
@@ -68,7 +69,7 @@ function AgentCrumb({
       <button
         type="button"
         onClick={onOpenHome}
-        aria-label={`Open ${title} home`}
+        aria-label={t("header.shellBreadcrumb.openAgentHome", { name: title })}
         className="wco-no-drag flex items-center shrink-0 rounded-md p-1 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <AgentAvatar
@@ -103,6 +104,7 @@ function AgentCrumb({
  * in the task list toolbar below it.
  */
 export function OrgSwitcherCrumb({ showName }: { showName?: boolean } = {}) {
+  const t = useT();
   const { org } = useProjectContext();
   const { state: sidebarState, isMobile } = useSidebar();
   const hasPendingInvites = usePendingInvitations().invitations.length > 0;
@@ -118,8 +120,13 @@ export function OrgSwitcherCrumb({ showName }: { showName?: boolean } = {}) {
               type="button"
               aria-label={
                 hasPendingInvites
-                  ? `${org.name} — switch organization (pending invitation)`
-                  : `${org.name} — switch organization`
+                  ? t(
+                      "header.shellBreadcrumb.switchOrganizationPendingInvitation",
+                      { name: org.name },
+                    )
+                  : t("header.shellBreadcrumb.switchOrganization", {
+                      name: org.name,
+                    })
               }
               // pl-[5px] centers the 24px org icon on the same axis (x=25) as the
               // collapsed rail centers it (the 50px icon-rail's midpoint), so the
