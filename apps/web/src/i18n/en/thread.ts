@@ -16,10 +16,14 @@ export const thread = {
   "thread.changesTab.loadingChanges": "Loading changes…",
   "thread.changesTab.noCommittedChanges":
     "No committed changes in this pull request",
+  "thread.checksTab.couldntLoadCheckDetail":
+    "Couldn't load this check's detail.",
   "thread.checksTab.couldntLoadCheckRuns": "Couldn't load check runs.",
   "thread.checksTab.failure": "Failure",
   "thread.checksTab.inProgress": "In progress",
+  "thread.checksTab.loadingCheckDetail": "Loading detail…",
   "thread.checksTab.loadingChecks": "Loading checks…",
+  "thread.checksTab.noCheckDetail": "This check has no detailed output.",
   "thread.checksTab.noCheckRunsOnPrHeadCommit":
     "No check runs on the PR head commit.",
   "thread.checksTab.rerun": "Re-run",

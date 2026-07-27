@@ -19,6 +19,7 @@ import {
 } from "@/oauth/token-refresh";
 import {
   getRepoScope,
+  mintRepoTokenWithChecksFallback,
   type RepoScopeRecipe,
 } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
@@ -66,18 +67,29 @@ async function mintRepoToken(
   // injected as the bearer either way (the gate needs the user-to-server token).
   const client = await clientFromConnection(orgConn, ctx, true);
   try {
-    const res = (await client.callTool({
-      name: "MINT_REPO_TOKEN",
-      arguments: {
-        installationId: recipe.installationId,
-        owner: recipe.owner,
-        repo: recipe.repo,
-        permissions: recipe.permissions,
-      },
-    })) as {
+    type MintResult = {
       isError?: boolean;
       structuredContent?: { token?: string; expiresAt?: string };
+      content?: Array<{ type?: string; text?: string }>;
     };
+
+    // Self-heal legacy connections on their ~1h re-mint: request checks:read on
+    // top of the stored recipe so the token gains check-run access without a
+    // re-install, falling back to the checks-less recipe when checks isn't
+    // available yet. (Re-probes each cycle — see the helper's note.)
+    const { result: res } = await mintRepoTokenWithChecksFallback<MintResult>(
+      (permissions) =>
+        client.callTool({
+          name: "MINT_REPO_TOKEN",
+          arguments: {
+            installationId: recipe.installationId,
+            owner: recipe.owner,
+            repo: recipe.repo,
+            permissions,
+          },
+        }) as Promise<MintResult>,
+      recipe.permissions,
+    );
 
     const token = res.structuredContent?.token;
     if (res.isError || !token) {

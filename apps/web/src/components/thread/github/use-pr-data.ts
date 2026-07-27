@@ -16,7 +16,8 @@
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
-import { extractToolJson } from "./extract-tool-json.ts";
+import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
+import type { CheckRunOutput } from "./check-run-output.ts";
 
 export interface PrSummary {
   number: number;
@@ -141,6 +142,7 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       const arr = extractPullRequestList(r);
       if (arr.length === 0) return null;
       return mapRawPr(arr[0]!);
@@ -180,7 +182,10 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
       !!args.owner &&
       !!args.repo,
     staleTime: STALE,
-    select: (r) => extractPullRequestList(r).map(mapRawPr),
+    select: (r) => {
+      assertToolOk(r);
+      return extractPullRequestList(r).map(mapRawPr);
+    },
   });
 }
 
@@ -211,6 +216,7 @@ export function useChecks(
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       // Accept both `{ check_runs: [...] }` envelopes and raw arrays.
       const raw = extractToolJson<
         { check_runs?: Record<string, unknown>[] } | Record<string, unknown>[]
@@ -237,6 +243,43 @@ export function useChecks(
           durationMs,
         };
       });
+    },
+  });
+}
+
+/**
+ * Fetches a single check run's full `output` (title/summary/text markdown) via
+ * the github-mcp first-party GET_CHECK_RUN tool. The list tool
+ * (pull_request_read get_check_runs) returns a minimal shape without `output`,
+ * so the Checks tab lazily loads this when a row is expanded.
+ */
+export function useCheckRunDetail(
+  args: RepoArgs & { checkRunId: number | null; enabled: boolean },
+) {
+  const client = useMCPClient({
+    connectionId: args.connectionId,
+    orgId: args.orgId,
+    orgSlug: args.orgSlug,
+  });
+
+  return useMCPToolCallQuery<CheckRunOutput>({
+    client,
+    toolName: "GET_CHECK_RUN",
+    toolArguments: {
+      owner: args.owner,
+      repo: args.repo,
+      checkRunId: args.checkRunId ?? 0,
+    },
+    enabled: args.enabled && !!args.checkRunId,
+    staleTime: STALE,
+    select: (r) => {
+      assertToolOk(r);
+      const d = extractToolJson<{ output?: Partial<CheckRunOutput> }>(r);
+      return {
+        title: d?.output?.title ?? null,
+        summary: d?.output?.summary ?? null,
+        text: d?.output?.text ?? null,
+      };
     },
   });
 }
@@ -269,6 +312,7 @@ export function usePrComments(
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       const arr = extractToolJson<Record<string, unknown>[]>(r);
       if (!Array.isArray(arr)) return [];
       return arr.map((c): PrComment => {
