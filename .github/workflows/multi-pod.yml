@@ -30,8 +30,13 @@ on:
       - "packages/runtime/**"
       - "packages/bindings/**"
       - "tests/multi-pod/**"
+      - "tests/resilience/Dockerfile.studio"
       - ".github/workflows/multi-pod.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   multi-pod:

@@ -13,6 +13,12 @@ on:
       - "apps/docs/**"
       - "**/*.md"
   pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # See test.yml for why this gate exists: skip the (required) check on

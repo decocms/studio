@@ -16,16 +16,28 @@ on:
     branches:
       - main
 
+# A force-push to a PR obsoletes the in-flight run — cancel it instead of
+# letting 6 jobs run to completion. Pushes to main all run (no cancel) so
+# every merged commit keeps its own result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Gate: skip the (required) check jobs when a PR only touches workflow YAML,
   # docs, or markdown. Required checks can't be skipped via workflow-level
   # `paths` filters — a never-scheduled required check blocks the merge forever.
   # A job skipped via `if`, by contrast, reports as passed. So we keep the
   # trigger broad and skip at the job level. Pushes to main always run.
+  #
+  # `sandbox` additionally scopes docker-smoke: the job only exercises the
+  # sandbox daemon bundle + image, so it's skipped unless the PR touches the
+  # packages that feed that build.
   changes:
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      sandbox: ${{ steps.filter.outputs.sandbox }}
     steps:
       - name: Detect relevant changes
         id: filter
@@ -38,8 +50,14 @@ jobs:
             # commit, which only touches the version string. release-studio picks
             # that commit up on its own push trigger and cuts the release.
             case "$HEAD_MSG" in
-              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
-              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+              '[release]:'*)
+                echo "relevant=false" >> "$GITHUB_OUTPUT"
+                echo "sandbox=false" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "relevant=true" >> "$GITHUB_OUTPUT"
+                echo "sandbox=true" >> "$GITHUB_OUTPUT"
+                ;;
             esac
             exit 0
           fi
@@ -49,19 +67,27 @@ jobs:
             --jq '.[].filename'); then
             echo "Could not list PR files — running to be safe."
             echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "sandbox=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Changed files:"; echo "$FILES"
-          # Run unless every changed file is workflow/docs/markdown.
+          # relevant: run unless every changed file is workflow/docs/markdown.
+          # sandbox: run docker-smoke only when the sandbox build's inputs
+          # change (the daemon bundle pulls in typegen, shared, and harness).
           relevant=false
+          sandbox=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
               .github/*|apps/docs/*|deploy/*|*.md) ;;
-              *) relevant=true; break ;;
+              *) relevant=true ;;
+            esac
+            case "$f" in
+              packages/sandbox/*|packages/typegen/*|packages/shared/*|packages/harness/*) sandbox=true ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          echo "sandbox=$sandbox" >> "$GITHUB_OUTPUT"
 
   format:
     needs: changes
@@ -90,6 +116,11 @@ jobs:
 
       - name: Run lint
         run: bun run lint
+
+      # knip only reads source (knip.jsonc references no dist/ paths), so it
+      # lives here instead of serializing after the builds in the build job.
+      - name: Run knip
+        run: bun run knip
 
   typecheck:
     needs: changes
@@ -153,12 +184,9 @@ jobs:
       - name: Verify web output
         run: test -f apps/web/dist/index.html
 
-      - name: Run knip
-        run: bun run knip
-
   docker-smoke:
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    if: needs.changes.outputs.sandbox == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
