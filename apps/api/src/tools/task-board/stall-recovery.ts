@@ -32,17 +32,32 @@ import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 export type StallAction = "none" | "advance" | "nudge";
 
 /**
- * What a stalled card needs, if anything. `threads[0]` is the newest link
- * (`attachThreads` orders by `link.created_at desc`), so the last run to
- * happen decides: it completing means the work stands, it failing means it
- * doesn't. Pure — unit-tested.
+ * What a stalled card needs, given the newest linked thread's authoritative
+ * state. Pure — unit-tested.
+ *
+ * `hasHistory` is load-bearing, not defensive. `ThreadStorage.create` defaults
+ * `status` to `"completed"`, so a thread is born terminal: an empty chat
+ * someone opened next to a card is indistinguishable *by status* from a run
+ * that finished. The projector's finish hook can't be fooled by that — a
+ * terminal event proves a run happened — but this runs off state, where that
+ * proof has to be fetched. Prod has exactly one card in this shape, and
+ * advancing it would call work reviewable that nobody ever started.
  */
-export function classifyStall(item: {
-  status: TaskBoardItem["status"];
-  threads: { status: string | null; hasPreview: boolean }[];
+export function decideStallAction(thread: {
+  status: string | null;
+  hasHistory: boolean;
+  messageStorageVersion: number;
 }): StallAction {
-  if (!shouldAdvanceToReview(item)) return "none";
-  return item.threads[0]?.status === "failed" ? "nudge" : "advance";
+  if (!thread.hasHistory) return "none";
+  if (thread.status === "completed") return "advance";
+  // Only v2 threads can take a new turn: dispatch nulls the part emitter for v1
+  // (deprecated, read-only), so a nudge would run with nothing persisted and
+  // nothing rendered. A failed v1 thread is left In Progress for a human rather
+  // than advanced — its work really is unfinished.
+  if (thread.status === "failed" && thread.messageStorageVersion === 2) {
+    return "nudge";
+  }
+  return "none";
 }
 
 const NUDGE_PROMPT = [
@@ -113,6 +128,30 @@ async function nudgeThread(
 }
 
 /**
+ * Read the newest thread's authoritative state and decide. Two reads the board
+ * list doesn't carry: `message_storage_version` (not in the public thread ref)
+ * and whether any message exists at all — the same `limit: 1` probe POST
+ * /messages uses to spot a never-used thread, so it spans v1 and v2 alike.
+ * Only runs for a card that already looks stalled, so a healthy board pays
+ * nothing.
+ */
+async function resolveStallAction(
+  ctx: StudioContext,
+  threadId: string,
+): Promise<StallAction> {
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread) return "none";
+  const { total } = await ctx.storage.threads.listMessages(threadId, {
+    limit: 1,
+  });
+  return decideStallAction({
+    status: thread.status,
+    hasHistory: total > 0,
+    messageStorageVersion: thread.message_storage_version,
+  });
+}
+
+/**
  * Recover every stalled card in a freshly-read board. Takes the items the read
  * already loaded, so detection costs nothing. Best-effort per task: one card's
  * failure never stops the others, and none of it ever reaches the caller.
@@ -125,10 +164,15 @@ export async function recoverStalledTasks(
   if (!organizationId) return;
 
   for (const item of items) {
-    const action = classifyStall(item);
+    // Narrow off the already-loaded list first, so a board with nothing stuck
+    // costs zero queries. `threads[0]` is the newest link (`attachThreads`
+    // orders by `link.created_at desc`) — the last run to happen decides.
+    if (!shouldAdvanceToReview(item)) continue;
     const thread = item.threads[0];
-    if (action === "none" || !thread) continue;
+    if (!thread) continue;
     try {
+      const action = await resolveStallAction(ctx, thread.threadId);
+      if (action === "none") continue;
       if (action === "advance") {
         await advanceTasksToReviewOnThreadFinish(
           ctx.storage.taskBoard,
@@ -139,10 +183,7 @@ export async function recoverStalledTasks(
         await nudgeThread(ctx, item, thread);
       }
     } catch (err) {
-      console.error(
-        `[task-board] stall recovery (${action}) failed for ${item.id}`,
-        err,
-      );
+      console.error(`[task-board] stall recovery failed for ${item.id}`, err);
     }
   }
 }
