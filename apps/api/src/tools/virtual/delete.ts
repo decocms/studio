@@ -15,6 +15,7 @@ import {
 } from "../../core/studio-context";
 import { deleteAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema } from "./schema";
+import { isUndeletableWellKnownVirtualMcp } from "./well-known-virtual-mcp";
 
 /**
  * Input schema for deleting a virtual MCP
@@ -50,6 +51,14 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     const organization = requireOrganization(ctx);
 
     await ctx.access.check();
+
+    // These well-known agent ids are synthetic (never a real `connections` row) —
+    // findById() below returns a fake entity for them instead of null, which
+    // would bypass the not-found check and let delete() silently wipe out the
+    // agent's threads (virtual_mcp_id has no DB FK) while reporting success.
+    if (isUndeletableWellKnownVirtualMcp(input.id)) {
+      throw new Error(`Virtual MCP not found: ${input.id}`);
+    }
 
     // Get the virtual MCP before deleting (to return it)
     const existing = await ctx.storage.virtualMcps.findById(input.id);
