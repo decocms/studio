@@ -282,6 +282,18 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
     return <EmptyMessage title="Waiting for sandbox context…" />;
   }
 
+  const phase = vmEvents.lifecycle.phase;
+  const devServerReady = phase === "running";
+  // Terminal daemon phases: no further progress is coming, so the content
+  // browser should surface its error rather than spin. Everything else before
+  // `running` (cloning, installing, starting) is still warming up.
+  const sandboxWarming =
+    !devServerReady &&
+    phase !== "clone-failed" &&
+    phase !== "install-failed" &&
+    phase !== "start-failed" &&
+    phase !== "crashed";
+
   return (
     <ContentBrowserReady
       orgSlug={org.slug}
@@ -289,7 +301,8 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
       branch={branch}
       previewUrl={previewUrl}
       mode={mode}
-      devServerReady={vmEvents.lifecycle.phase === "running"}
+      devServerReady={devServerReady}
+      sandboxWarming={sandboxWarming}
     />
   );
 }
@@ -319,6 +332,7 @@ function ContentBrowserReady({
   previewUrl,
   mode,
   devServerReady,
+  sandboxWarming,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -326,6 +340,7 @@ function ContentBrowserReady({
   previewUrl: string | null;
   mode: "content" | "blocks";
   devServerReady: boolean;
+  sandboxWarming: boolean;
 }) {
   const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
@@ -495,7 +510,14 @@ function ContentBrowserReady({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
-  if (decofileLoading || metaLoading) {
+  // Prefer any data we already have: the committed `.deco/*.gen.json` snapshot
+  // keeps the CMS editable even while the dev server is down (see useDecofile),
+  // so only spin while the data is genuinely absent AND the sandbox is still
+  // warming up (repo cloning / installing / starting). Once it reaches a
+  // terminal phase — or the dev server is up but the fetch failed — fall
+  // through to the error below instead of spinning forever.
+  const dataMissing = !decofile || !meta;
+  if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Loading01 size={20} className="animate-spin text-muted-foreground" />
@@ -503,7 +525,7 @@ function ContentBrowserReady({
     );
   }
 
-  if (!decofile || !meta) {
+  if (dataMissing) {
     return <EmptyMessage title="Could not load site data." />;
   }
 
