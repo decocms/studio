@@ -1,4 +1,3 @@
-import type { CollectionBinding } from "@decocms/bindings/collections";
 import type { MCPConnection } from "./connection.ts";
 import type { AgentBindingConfig, ResolvedAgentClient } from "./decopilot.ts";
 import type { RequestContext } from "./index.ts";
@@ -350,13 +349,3 @@ export const initializeBindings = <
   // resolves the state in-place
   return traverseAndReplace(ctx.state, ctx) as ResolvedBindings<T, TBindings>;
 };
-
-interface DefaultRegistry extends BindingRegistry {
-  "@deco/studio": CollectionBinding<{ hello: string }, "STUDIO">;
-}
-
-export interface XPTO {
-  STUDIO: Binding<"@deco/meh">;
-}
-
-export type XPTOResolved = ResolvedBindings<XPTO, DefaultRegistry>;
