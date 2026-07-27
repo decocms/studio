@@ -1,9 +1,11 @@
 name: Setup Bun and install dependencies
 description: >-
-  Install Bun (pinned version), restore the package cache via actions/cache
-  keyed on bun.lock, and run `bun install`. Shared by every workflow that
-  installs workspace dependencies so the pinned Bun version and the cache
-  configuration live in exactly one place.
+  Install Bun (pinned version) and run `bun install`. Shared by every workflow
+  that installs workspace dependencies so the pinned Bun version lives in
+  exactly one place. Deliberately NOT cached: measured on real runs, restoring
+  the ~570MB actions/cache entry (~18s) is slower than a cold `bun install`
+  from npm (~18s cold, and GH runners pull npm at ~70MB/s), while pressuring
+  the repo's 10GB cache quota that buildkit layers share.
 
 inputs:
   bun-version:
@@ -18,16 +20,6 @@ runs:
       with:
         bun-version: ${{ inputs.bun-version }}
 
-    - name: Restore Bun package cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-        restore-keys: |
-          bun-${{ runner.os }}-
-
     - name: Install dependencies
       shell: bash
-      # BUN_INSTALL_CACHE_DIR pins Bun's cache to the exact path actions/cache
-      # saves, so the same location holds on Linux and Windows runners.
-      run: BUN_INSTALL_CACHE_DIR="$HOME/.bun/install/cache" bun install
+      run: bun install
