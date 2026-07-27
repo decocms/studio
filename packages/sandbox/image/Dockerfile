@@ -2,35 +2,39 @@
 # Published multi-arch (linux/amd64 + linux/arm64) by
 # .github/workflows/release-studio-sandbox.yaml so sandboxes run natively on
 # arm64 nodes (Apple Silicon, arm64 cloud) as well as amd64.
+ARG NODE_MAJOR=26
+
+# Node comes from the official image instead of NodeSource's apt repo: the
+# deb.nodesource.com setup script 403s intermittently (outages last hours and
+# retries don't save the build), while this pull rides the same registry +
+# digest cache the base image already depends on. Multi-arch like the rest.
+FROM node:${NODE_MAJOR}-slim AS node-dist
+
 FROM oven/bun:1.3.14-debian
 
-ARG NODE_MAJOR=26
 ARG COREPACK_VERSION=0.35.0
 ARG DENO_VERSION=v1.46.3
+
+COPY --from=node-dist /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-dist /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # `locales` + generated `en_US.UTF-8` is load-bearing: repos using
 # `embedded-postgres` refuse to init without it.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       bash ca-certificates curl git gnupg locales python3 python3-pip \
-       ripgrep unzip \
+       bash ca-certificates curl git gnupg libatomic1 locales python3 \
+       python3-pip ripgrep unzip \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
-  # Download to a file, then run: `curl | bash` swallows a failed download
-  # (the pipeline's status is bash's), so a NodeSource 403 silently left the
-  # Debian nodejs (no npm) and the build died stages later with `npm: not
-  # found`. NodeSource 403s are intermittent — retry them like corepack below.
-  && curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-       -o /tmp/nodesource-setup.sh https://deb.nodesource.com/setup_${NODE_MAJOR}.x \
-  && bash /tmp/nodesource-setup.sh \
-  && rm /tmp/nodesource-setup.sh \
-  && apt-get install -y --no-install-recommends nodejs \
+  && node --version \
   && npm --version \
   && rm -rf /var/lib/apt/lists/* \
   && curl -fsSL https://deno.land/install.sh \
        | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
-  # NodeSource's Node 26 packages no longer ship Corepack.
+  # Node 26 no longer ships Corepack in its dist.
   && (command -v corepack >/dev/null 2>&1 \
        || npm install --global "corepack@${COREPACK_VERSION}") \
   && corepack enable \
