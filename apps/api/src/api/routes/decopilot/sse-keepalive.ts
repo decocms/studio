@@ -68,6 +68,20 @@ export function wrapWithSseKeepalive(
   });
 }
 
+/** Injectable interval scheduler — tests drive ticks manually instead of
+ *  waiting on real timers, so they stay deterministic under a loaded
+ *  parallel run. Production uses the globals. */
+export interface KeepaliveTimerFns {
+  setInterval: (fn: () => void, ms: number) => unknown;
+  clearInterval: (handle: unknown) => void;
+}
+
+const REAL_TIMER_FNS: KeepaliveTimerFns = {
+  setInterval: (fn, ms) => setInterval(fn, ms),
+  clearInterval: (handle) =>
+    clearInterval(handle as ReturnType<typeof setInterval>),
+};
+
 /**
  * Lower-level: wrap a `ReadableStream<Uint8Array>` of SSE bytes with
  * periodic keepalive comments. Exposed separately so tests can drive it
@@ -76,11 +90,12 @@ export function wrapWithSseKeepalive(
 export function wrapStreamWithKeepalive(
   source: ReadableStream<Uint8Array>,
   intervalMs: number = DEFAULT_INTERVAL_MS,
+  timerFns: KeepaliveTimerFns = REAL_TIMER_FNS,
 ): ReadableStream<Uint8Array> {
   // These vars are captured by both `start` and `cancel`. They live across
   // the constructor's two method scopes so cancel can reach the active reader.
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  let timer: ReturnType<typeof setInterval> | null = null;
+  let timer: unknown = null;
   let cleaned = false;
   // Tracks whether the most recent chunk left the byte stream mid-event (no
   // trailing `\n\n`). When true, heartbeats are suppressed until the next
@@ -89,7 +104,7 @@ export function wrapStreamWithKeepalive(
 
   const clearTimer = () => {
     if (timer !== null) {
-      clearInterval(timer);
+      timerFns.clearInterval(timer);
       timer = null;
     }
   };
@@ -110,7 +125,7 @@ export function wrapStreamWithKeepalive(
         }
       };
 
-      timer = setInterval(tryHeartbeat, intervalMs);
+      timer = timerFns.setInterval(tryHeartbeat, intervalMs);
 
       try {
         while (true) {
