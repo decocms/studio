@@ -46,6 +46,7 @@ export class OrganizationSettingsStorage
           : record.default_home_agents
         : null,
       reports_only: record.reports_only ?? null,
+      main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -62,6 +63,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "reports_only"
+        | "main_agent_id"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -91,6 +93,7 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         reports_only: data?.reports_only ?? null,
+        main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -106,6 +109,9 @@ export class OrganizationSettingsStorage
           // Boolean flag: explicit `false` must persist; `undefined` (field
           // absent) skips the column in doUpdateSet.
           reports_only: data?.reports_only,
+          // Nullable id: explicit `null` clears the main agent; `undefined`
+          // (field absent) skips the column so partial updates don't wipe it.
+          main_agent_id: data?.main_agent_id,
           updatedAt: now,
         }),
       )
@@ -122,6 +128,7 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         reports_only: data?.reports_only ?? null,
+        main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
       };

@@ -75,6 +75,26 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // connection), so its token is still readable below.
     await ctx.storage.virtualMcps.delete(input.id);
 
+    // If this agent was the org's "main agent" (the one `/$org` lands on),
+    // clear the pointer so the stored state stays truthful and the landing
+    // falls back to the Super Agent. Best-effort: the landing resolver also
+    // guards against a dangling id, so a cleanup hiccup must not fail delete.
+    try {
+      const settings = await ctx.storage.organizationSettings.get(
+        organization.id,
+      );
+      if (settings?.main_agent_id === input.id) {
+        await ctx.storage.organizationSettings.upsert(organization.id, {
+          main_agent_id: null,
+        });
+      }
+    } catch (err) {
+      console.error("[VIRTUAL_MCP_DELETE] failed to clear main agent pointer", {
+        id: input.id,
+        error: (err as Error).message,
+      });
+    }
+
     // Drop the agent's seeded kickstart prompts from org-fs (best-effort).
     if (ctx.orgFs) {
       await deleteAgentPrompts(ctx.orgFs, input.id, getUserId(ctx) ?? "system");

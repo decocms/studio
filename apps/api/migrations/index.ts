@@ -144,6 +144,7 @@ import * as migration142stripeeventwatermark from "./142-stripe-event-watermark.
 import * as migration143armedreporturl from "./143-armed-report-url.ts";
 import * as migration144benefitspendingindex from "./144-benefits-pending-index.ts";
 import * as migration145usermodelpreferences from "./145-user-model-preferences.ts";
+import * as migration146organizationmainagent from "./146-organization-main-agent.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -313,6 +314,7 @@ const migrations: Record<string, Migration> = {
   "143-armed-report-url": migration143armedreporturl,
   "144-benefits-pending-index": migration144benefitspendingindex,
   "145-user-model-preferences": migration145usermodelpreferences,
+  "146-organization-main-agent": migration146organizationmainagent,
 };
 
 export default migrations;

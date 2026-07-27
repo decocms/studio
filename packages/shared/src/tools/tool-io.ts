@@ -118,6 +118,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
       reports_only?: boolean | null | undefined;
+      main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -173,6 +174,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | undefined;
       reports_only?: boolean | undefined;
+      main_agent_id?: string | null | undefined;
     };
     output: {
       organizationId: string;
@@ -229,6 +231,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
       reports_only?: boolean | null | undefined;
+      main_agent_id?: string | null | undefined;
     };
   };
   TASK_BOARD_ITEM_CREATE: {

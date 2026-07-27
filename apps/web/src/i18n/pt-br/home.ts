@@ -111,4 +111,11 @@ export const home = {
   "home.tileErrorBoundary.tileCrashed": "Este card falhou",
   "home.projectCard.lastUsed": "Último uso {time}",
   "home.projectCard.updated": "Atualizado {time}",
+  "home.projectCard.setAsMainAgent": "Definir como agente principal",
+  "home.projectCard.unsetMainAgent": "Remover como agente principal",
+  "home.projectCard.mainAgentBadge": "Agente principal",
+  "home.projectCard.mainAgentSet": '"{title}" agora é o agente principal',
+  "home.projectCard.mainAgentUnset": 'Removido "{title}" como agente principal',
+  "home.projectCard.mainAgentError":
+    "Não foi possível atualizar o agente principal",
 } satisfies Record<keyof typeof homeEn, string>;
