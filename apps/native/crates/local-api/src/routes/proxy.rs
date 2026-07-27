@@ -553,6 +553,7 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
     resp_headers.remove("x-frame-options");
     resp_headers.remove("content-security-policy");
     resp_headers.remove("content-security-policy-report-only");
+    relax_cookies_for_loopback(&mut resp_headers);
 
     let content_type = upstream
         .headers()
@@ -586,6 +587,89 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
 
     let body = Body::from_stream(upstream.bytes_stream());
     build_response(status, resp_headers, body)
+}
+
+/// Makes the sandbox's cookies storable by a webview on a plaintext loopback
+/// origin.
+///
+/// WebKit — the engine behind WKWebView — refuses to store a `Secure` cookie
+/// unless the connection is genuinely TLS. Unlike Chrome it grants loopback no
+/// exception, and `window.isSecureContext` being `true` on `localhost` does not
+/// change it: that flag gates JS APIs, while cookie `Secure` enforcement keys
+/// off the actual scheme. The preview listener is plaintext http on 127.0.0.1
+/// by construction, so a `Secure` cookie from a real site — a VTEX checkout
+/// session, say — is dropped on the floor and the flow it belongs to can never
+/// work in the preview. Keeping the attribute buys nothing; it only loses the
+/// cookie.
+///
+/// `SameSite=None` is rewritten in the same pass because `None` is invalid
+/// without `Secure`: dropping one and not the other just trades a silently
+/// ignored cookie for a silently rejected one. `Lax` is the closest thing that
+/// survives, and the preview iframe is same-site with the shell today (both
+/// are `localhost`; a site is the registrable domain, so the differing ports
+/// do not matter).
+///
+/// Scoped to THIS proxy, which serves only the local preview iframe. Nothing
+/// rewritten here is ever sent to a real network peer.
+fn relax_cookies_for_loopback(headers: &mut HeaderMap) {
+    let mut rewritten: Vec<HeaderValue> = Vec::new();
+    let mut changed = false;
+
+    for value in headers.get_all(header::SET_COOKIE) {
+        // A cookie this function cannot read is forwarded untouched rather
+        // than dropped — losing it would be a worse bug than not relaxing it.
+        let Ok(text) = value.to_str() else {
+            rewritten.push(value.clone());
+            continue;
+        };
+        let relaxed = relax_set_cookie(text);
+        if relaxed != text {
+            changed = true;
+        }
+        match HeaderValue::from_str(&relaxed) {
+            Ok(header_value) => rewritten.push(header_value),
+            Err(_) => rewritten.push(value.clone()),
+        }
+    }
+
+    if !changed {
+        return;
+    }
+    headers.remove(header::SET_COOKIE);
+    for value in rewritten {
+        headers.append(header::SET_COOKIE, value);
+    }
+}
+
+/// One `Set-Cookie` value with `Secure` dropped and `SameSite=None` downgraded.
+///
+/// Only ATTRIBUTES are inspected. The first `;`-separated segment is the
+/// cookie's own `name=value` and is copied verbatim, so a cookie whose value
+/// happens to contain `secure` is never touched.
+fn relax_set_cookie(value: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    for (index, part) in value.split(';').enumerate() {
+        let trimmed = part.trim();
+        if index == 0 {
+            parts.push(trimmed.to_string());
+            continue;
+        }
+        let (name, attr_value) = match trimmed.split_once('=') {
+            Some((name, attr_value)) => (name.trim(), attr_value.trim()),
+            None => (trimmed, ""),
+        };
+        if name.eq_ignore_ascii_case("secure") {
+            continue;
+        }
+        if name.eq_ignore_ascii_case("samesite") && attr_value.eq_ignore_ascii_case("none") {
+            parts.push("SameSite=Lax".to_string());
+            continue;
+        }
+        parts.push(trimmed.to_string());
+    }
+
+    parts.join("; ")
 }
 
 /// Removes headers that describe one HTTP connection rather than the proxied
@@ -867,6 +951,85 @@ mod tests {
         assert!(headers.get("x-remove-me").is_none());
         assert!(headers.get("x-remove-too").is_none());
         assert_eq!(headers.get("x-end-to-end").unwrap(), "keep");
+    }
+
+    /// WebKit drops `Secure` cookies on the plaintext loopback origin the
+    /// preview is served from, so the attribute has to go or the cookie is
+    /// lost — see [`relax_cookies_for_loopback`].
+    #[test]
+    fn drops_secure_so_the_webview_will_store_the_cookie() {
+        assert_eq!(
+            relax_set_cookie("checkout=abc; Path=/; Secure; HttpOnly"),
+            "checkout=abc; Path=/; HttpOnly"
+        );
+        // Attribute names are case-insensitive.
+        assert_eq!(relax_set_cookie("a=1; SECURE"), "a=1");
+        assert_eq!(relax_set_cookie("a=1; secure"), "a=1");
+    }
+
+    /// `SameSite=None` is invalid without `Secure`, so dropping only the
+    /// latter would trade an ignored cookie for a rejected one.
+    #[test]
+    fn downgrades_samesite_none_alongside_secure() {
+        assert_eq!(
+            relax_set_cookie(
+                "checkout.vtex.com=__ofid=87a2; path=/; secure; samesite=none; httponly"
+            ),
+            "checkout.vtex.com=__ofid=87a2; path=/; SameSite=Lax; httponly"
+        );
+        // Other SameSite values are already storable and are left alone.
+        assert_eq!(
+            relax_set_cookie("a=1; SameSite=Strict"),
+            "a=1; SameSite=Strict"
+        );
+        assert_eq!(relax_set_cookie("a=1; SameSite=Lax"), "a=1; SameSite=Lax");
+    }
+
+    /// Only attributes are interpreted; the cookie's own value is copied
+    /// verbatim, so a value containing `secure` must survive intact.
+    #[test]
+    fn never_rewrites_the_cookie_value_itself() {
+        assert_eq!(
+            relax_set_cookie("token=secure-samesite=none; Path=/"),
+            "token=secure-samesite=none; Path=/"
+        );
+        assert_eq!(relax_set_cookie("mode=secure"), "mode=secure");
+    }
+
+    /// A cookie that needs no relaxing must come through byte-identical.
+    #[test]
+    fn leaves_an_already_storable_cookie_untouched() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::SET_COOKIE,
+            HeaderValue::from_static("a=1; Path=/; HttpOnly; SameSite=Lax"),
+        );
+        relax_cookies_for_loopback(&mut headers);
+        assert_eq!(
+            headers[header::SET_COOKIE],
+            "a=1; Path=/; HttpOnly; SameSite=Lax"
+        );
+    }
+
+    #[test]
+    fn relaxes_every_cookie_on_the_response() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::SET_COOKIE,
+            HeaderValue::from_static("a=1; Secure; SameSite=None"),
+        );
+        headers.append(
+            header::SET_COOKIE,
+            HeaderValue::from_static("b=2; Path=/; Secure"),
+        );
+        relax_cookies_for_loopback(&mut headers);
+
+        let cookies: Vec<&str> = headers
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|value| value.to_str().unwrap())
+            .collect();
+        assert_eq!(cookies, ["a=1; SameSite=Lax", "b=2; Path=/"]);
     }
 
     #[tokio::test]
