@@ -32,11 +32,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import {
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@/sdk";
+import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
@@ -47,7 +43,6 @@ import type { Task } from "@/components/chat/task/types";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SidebarTriggerButton } from "@/layouts/shell-controls";
 import { OrgIcon, OrgSwitcherPopover } from "@/components/header/org-switcher";
-import { AgentAvatar } from "@/components/agent-icon";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { findArchiveFallback } from "./archive-fallback";
@@ -143,8 +138,6 @@ export function TaskGroupsList({
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  // Agent entities (for the collapsed rail's per-thread avatars).
-  const agents = useVirtualMCPs();
 
   const {
     threads: allThreads,
@@ -285,19 +278,14 @@ export function TaskGroupsList({
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
-  // Collapsed rail: the toggle up top, then each thread as its agent's avatar
-  // (tooltip = title), so threads stay reachable without expanding.
+  // Collapsed rail: the toggle up top, then a search button so threads stay
+  // reachable without expanding.
   //
   // The rail is pinned to the collapsed icon width (var(--sidebar-width-icon) -
   // px-2) so its icons don't reflow while the sidebar animates its width down on
   // collapse: without the pin they'd render centered in the still-wide sidebar,
   // then slide left as it shrinks — that horizontal drift is the "flick".
   if (isCollapsed) {
-    const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
-    const agentById = new Map((agents ?? []).map((a) => [a.id, a] as const));
-    const resolveAgent = (id: string | undefined) =>
-      (id ? agentById.get(id) : undefined) ??
-      (id === decopilotId ? decopilot : undefined);
     return (
       <div className="flex flex-col min-h-0 flex-1 -mt-1 w-[calc(var(--sidebar-width-icon)-1rem)]">
         {/* Mirror the OPEN sidebar's top exactly so nothing jumps when toggling:
@@ -330,28 +318,23 @@ export function TaskGroupsList({
           {/* New chat lives in the panel header when the sidebar is collapsed
               (see workspace-panel-group), so it's intentionally omitted from the
               collapsed rail to avoid duplicating it. */}
-          {visibleScopedThreads.map((thread) => {
-            const agent = resolveAgent(thread.virtual_mcp_id);
-            return (
-              <SidebarMenuItem key={thread.id}>
-                <SidebarMenuButton
-                  aria-label={
-                    thread.title || t("sidebar.taskGroupsList.newChat")
-                  }
-                  tooltip={thread.title || t("sidebar.taskGroupsList.newChat")}
-                  isActive={thread.id === activeTaskId}
-                  onClick={() => handleSelectTask(thread)}
-                >
-                  <AgentAvatar
-                    icon={agent?.icon ?? null}
-                    name={agent?.title ?? "Agent"}
-                    size="xs"
-                  />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              aria-label={t("sidebar.taskGroupsList.searchChats")}
+              tooltip={t("sidebar.taskGroupsList.searchChats")}
+              onClick={() => {
+                track("tasks_panel_search_opened");
+                setSearchEverOpened(true);
+                setSearchOpen(true);
+              }}
+            >
+              <SearchSm size={16} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
+        {searchEverOpened && (
+          <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+        )}
       </div>
     );
   }
