@@ -552,13 +552,13 @@ export const createSandboxRoutes = () => {
   );
 
   // -- Script exec/kill -----------------------------------------------------
-  app.post("/:virtualMcpId/:branch/exec/:script", (c) => {
+  app.post("/:virtualMcpId/:branch/exec/:script", async (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}`);
   });
 
-  app.post("/:virtualMcpId/:branch/exec/:script/kill", (c) => {
+  app.post("/:virtualMcpId/:branch/exec/:script/kill", async (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);

@@ -32,11 +32,7 @@ import {
 export type { BuildBuiltInToolsOptions };
 export type { ToolApprovalLevel };
 
-export const EXCLUDED_FOR_SUBAGENT = [
-  "subtask",
-  "user_ask",
-  "propose_plan",
-] as const;
+const EXCLUDED_FOR_SUBAGENT = ["subtask", "user_ask", "propose_plan"] as const;
 
 export interface AssembleAgentToolsOptions {
   kind: "agent" | "subagent";

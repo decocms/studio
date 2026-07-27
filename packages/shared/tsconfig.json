@@ -4,6 +4,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "moduleResolution": "bundler",
+    "types": ["bun"],
     "verbatimModuleSyntax": false
   },
   "include": ["src/**/*"],

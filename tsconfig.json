@@ -39,16 +39,11 @@
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
     "noErrorTruncation": false,
-    "noStrictGenericChecks": false,
-    "suppressExcessPropertyErrors": false,
-    "suppressImplicitAnyIndexErrors": false,
-    "keyofStringsOnly": false,
     // Library files (adapted for Node.js instead of Deno)
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     // Path resolution
-    "baseUrl": ".",
     "paths": {
-      "@deco/*": ["packages/*/src"]
+      "@deco/*": ["./packages/*/src"]
     },
     // Experimental decorators for compatibility
     "experimentalDecorators": true,

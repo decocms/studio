@@ -1,7 +1,7 @@
 /** Control-frame codec for cluster-to-daemon link commands. */
 import { z } from "zod";
 
-export const controlFrameSchema = z.discriminatedUnion("type", [
+const controlFrameSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("cancel"), runId: z.string() }),
   z.object({ type: z.literal("cancel_req"), reqId: z.string() }),
   z.object({ type: z.literal("keep_alive") }),

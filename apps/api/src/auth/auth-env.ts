@@ -20,7 +20,7 @@ const csv = (fallback: string[]) =>
 
 // ── Schema ───────────────────────────────────────────────────────────
 
-export const authEnvSchema = z
+const authEnvSchema = z
   .object({
     AUTH_EMAIL_PASSWORD_ENABLED: bool(true),
 

@@ -187,7 +187,7 @@ export interface PreviewWsData {
   upstreamUrl: string;
   upstreamProtocols: string[];
   /** Buffer messages received before the upstream WS finishes opening. */
-  pending: Array<string | Uint8Array | ArrayBuffer>;
+  pending: Array<string | Uint8Array<ArrayBuffer> | ArrayBuffer>;
   upstream: WebSocket | null;
   closed: boolean;
 }
@@ -326,7 +326,7 @@ export const previewWebSocketHandler = {
     });
     upstream.addEventListener("message", (ev: MessageEvent) => {
       if (data.closed) return;
-      ws.send(ev.data as string | Uint8Array | ArrayBuffer);
+      ws.send(ev.data as string | Uint8Array<ArrayBuffer> | ArrayBuffer);
     });
     upstream.addEventListener("close", (ev: CloseEvent) => {
       closePreviewBridge(ws, data, ev.code || 1000, ev.reason || "");
@@ -337,7 +337,7 @@ export const previewWebSocketHandler = {
   },
   message(
     ws: PreviewServerWebSocket,
-    message: string | Uint8Array | ArrayBuffer,
+    message: string | Uint8Array<ArrayBuffer> | ArrayBuffer,
   ) {
     const data = ws.data;
     if (!isPreviewWsData(data)) return;
@@ -367,7 +367,7 @@ export const previewWebSocketHandler = {
 // we only touch these members.
 export interface PreviewServerWebSocket {
   data: PreviewWsData | unknown;
-  send(data: string | Uint8Array | ArrayBuffer): number;
+  send(data: string | Uint8Array<ArrayBuffer> | ArrayBuffer): number;
   close(code?: number, reason?: string): void;
 }
 

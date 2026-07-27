@@ -35,7 +35,10 @@ expect.extend(matchers as Parameters<typeof expect.extend>[0]);
 // without this declaration TypeScript reports e.g.
 // `Property 'toBeInTheDocument' does not exist on type 'Matchers<HTMLElement>'`.
 declare module "bun:test" {
-  interface Matchers<T> extends matchers.TestingLibraryMatchers<unknown, T> {}
+  // Omit toBeEmpty: bun:test has its own builtin and jest-dom's is deprecated
+  // (toBeEmptyDOMElement is the replacement) — the two signatures conflict.
+  interface Matchers<T>
+    extends Omit<matchers.TestingLibraryMatchers<unknown, T>, "toBeEmpty"> {}
   interface AsymmetricMatchers
     extends matchers.TestingLibraryMatchers<unknown, void> {}
 }
