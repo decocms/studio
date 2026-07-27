@@ -148,12 +148,12 @@ export function SidebarAccountFooter() {
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
+        {showCredits && <SidebarTopActions />}
         {reportsOnly ? (
           <SidebarExtraActionsCommerce />
         ) : (
           <SidebarExtraActions />
         )}
-        {showCredits && <SidebarTopActions />}
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex justify-center">
@@ -173,8 +173,8 @@ export function SidebarAccountFooter() {
 
   return (
     <SidebarFooter className="px-2 pb-3 gap-0.5">
-      {reportsOnly ? <SidebarExtraActionsCommerce /> : <SidebarExtraActions />}
       {showCredits && <SidebarTopActions />}
+      {reportsOnly ? <SidebarExtraActionsCommerce /> : <SidebarExtraActions />}
       <SidebarMenu className="gap-0.5">
         <SidebarMenuItem>
           <LinkedDesktopIndicator variant="full" />
