@@ -49,6 +49,7 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  insertSortOrder,
   isTaskBlocked,
   primaryThread,
   PRIORITY_CONFIG,
@@ -660,29 +661,6 @@ function LayoutToggle({
       {label}
     </button>
   );
-}
-
-/**
- * `sortOrder` a dragged card should take to land right before `beforeId`
- * within `laneItems` (or at the end when `beforeId` is null) — the midpoint
- * of its new neighbors, so reordering never needs to touch other rows.
- */
-function insertSortOrder(
-  laneItems: TaskBoardItem[],
-  beforeId: string | null,
-  draggedId: string,
-): number {
-  const filtered = laneItems.filter((i) => i.id !== draggedId);
-  const beforeIndex = beforeId
-    ? filtered.findIndex((i) => i.id === beforeId)
-    : -1;
-  const insertIndex = beforeIndex === -1 ? filtered.length : beforeIndex;
-  const prev = filtered[insertIndex - 1];
-  const next = filtered[insertIndex];
-  if (prev && next) return (prev.sortOrder + next.sortOrder) / 2;
-  if (prev) return prev.sortOrder + 1;
-  if (next) return next.sortOrder - 1;
-  return 0;
 }
 
 function Lanes({
