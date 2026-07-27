@@ -197,7 +197,12 @@ function CheckRunDetail({ checkRunId, ...repo }: CheckRunDetailProps) {
   }
 
   const output = detailQuery.data;
-  const body = output?.summary?.trim() || output?.text?.trim();
+  // GitHub splits a check's output into `summary` (e.g. URL/verdict) and `text`
+  // (e.g. the step table) and renders BOTH — join them so the detailed section
+  // isn't dropped when a summary is present.
+  const body = [output?.summary?.trim(), output?.text?.trim()]
+    .filter(Boolean)
+    .join("\n\n");
 
   if (!body) {
     return (
