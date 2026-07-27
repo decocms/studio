@@ -6,7 +6,6 @@ import {
   afterAll,
   beforeEach,
 } from "bun:test";
-import type { OrgFlags } from "@decocms/shared/organization/schema";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -42,18 +41,11 @@ describe("OrganizationSettingsStorage — flags bag", () => {
   });
 
   it("shallow-merges on update: keys in the write win, other keys survive", async () => {
-    // A key beyond today's schema stands in for a future flag — the jsonb
-    // merge is shape-agnostic and must not wipe keys it doesn't know about.
-    await storage.upsert("org_1", {
-      flags: { future_flag: true } as OrgFlags,
-    });
+    await storage.upsert("org_1", { flags: { reports_only: true } });
     await storage.upsert("org_1", { flags: { demo_mode: true } });
 
     const got = await storage.get("org_1");
-    expect(got?.flags).toEqual({
-      future_flag: true,
-      demo_mode: true,
-    } as OrgFlags);
+    expect(got?.flags).toEqual({ reports_only: true, demo_mode: true });
   });
 
   it("explicit false persists (merge, not truthy-spread)", async () => {

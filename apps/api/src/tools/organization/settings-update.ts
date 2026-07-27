@@ -27,7 +27,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
-    reports_only: z.boolean().optional(),
     flags: OrgFlagsSchema.optional().describe(
       "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
     ),
@@ -47,7 +46,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
-    reports_only: z.boolean().nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
@@ -75,7 +73,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         registry_config: input.registry_config,
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
-        reports_only: input.reports_only,
         flags: input.flags,
         main_agent_id: input.main_agent_id,
       },

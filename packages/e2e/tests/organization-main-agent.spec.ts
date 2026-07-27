@@ -21,7 +21,7 @@ import {
 interface OrgSettings {
   organizationId: string;
   main_agent_id?: string | null;
-  reports_only?: boolean | null;
+  flags?: { reports_only?: boolean } | null;
 }
 
 async function lookupOrgId(orgSlug: string): Promise<string> {
@@ -64,7 +64,7 @@ test.describe("Organization main agent setting", () => {
       request,
       orgSlug,
       "ORGANIZATION_SETTINGS_UPDATE",
-      { organizationId: orgId, reports_only: true },
+      { organizationId: orgId, flags: { reports_only: true } },
     );
     const afterPartial = await callSelfMcpTool<OrgSettings>(
       request,
@@ -73,7 +73,7 @@ test.describe("Organization main agent setting", () => {
       {},
     );
     expect(afterPartial.main_agent_id).toBe("vmcp-main-e2e");
-    expect(afterPartial.reports_only).toBe(true);
+    expect(afterPartial.flags?.reports_only).toBe(true);
 
     // 3. Explicit null clears it (org landing falls back to the Super Agent).
     await callSelfMcpTool<OrgSettings>(
@@ -90,7 +90,7 @@ test.describe("Organization main agent setting", () => {
     );
     expect(afterClear.main_agent_id ?? null).toBeNull();
     // The unrelated field survived the clear.
-    expect(afterClear.reports_only).toBe(true);
+    expect(afterClear.flags?.reports_only).toBe(true);
   });
 
   test("deleting the main agent clears the dangling pointer", async ({

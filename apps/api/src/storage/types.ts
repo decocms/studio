@@ -180,7 +180,6 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
-  reports_only: boolean | null;
   // Boolean toggles bag — the flag set lives in OrgFlagsSchema
   // (@decocms/shared/organization/schema); updates shallow-merge.
   flags: JsonObject<OrgFlags> | null;
@@ -197,7 +196,6 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  reports_only: boolean | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
   createdAt: Date | string;

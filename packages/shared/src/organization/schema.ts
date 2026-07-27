@@ -131,6 +131,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated demo org: the commerce connect modal proceeds without a configured required data source.",
     ),
+  reports_only: z
+    .boolean()
+    .optional()
+    .describe(
+      "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

@@ -279,9 +279,9 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       const settings = await ctx.storage.organizationSettings.get(
         organization.id,
       );
-      if (settings?.reports_only == null) {
+      if (settings?.flags?.reports_only == null) {
         await ctx.storage.organizationSettings.upsert(organization.id, {
-          reports_only: true,
+          flags: { reports_only: true },
         });
       }
     }

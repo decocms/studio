@@ -44,7 +44,6 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  reports_only: boolean | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
   createdAt?: string;
@@ -58,7 +57,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
-  reports_only: null,
   flags: null,
   main_agent_id: null,
 };
@@ -143,7 +141,6 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
-    | "reports_only"
     | "flags"
     | "main_agent_id"
   >
@@ -240,8 +237,7 @@ export function useUpdateSimpleMode() {
  * gating where a brief pre-resolution render is harmless.
  */
 export function useReportsOnly(): boolean {
-  const { data } = useOrganizationSettings((s) => s.reports_only ?? false);
-  return data ?? false;
+  return useOrgFlag("reports_only");
 }
 
 /**
