@@ -1472,7 +1472,7 @@ export interface TriggerCallbackTokenTable {
 export interface KVTable {
   organization_id: string;
   key: string;
-  value: ColumnType<Record<string, unknown>, string, string>;
+  value: JsonObject<Record<string, unknown>>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
@@ -1481,7 +1481,7 @@ export interface SandboxProviderStateTable {
   project_ref: string;
   sandbox_provider_kind: string;
   handle: string;
-  state: ColumnType<Record<string, unknown>, string, string>;
+  state: JsonObject<Record<string, unknown>>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
