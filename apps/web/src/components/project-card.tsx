@@ -1,10 +1,16 @@
-import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
+import { DotsVertical, Home02, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
+import { toast } from "sonner";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { usePreferences } from "@/hooks/use-preferences.ts";
+import {
+  useMainAgentId,
+  useSetMainAgent,
+} from "@/hooks/use-organization-settings";
+import { useCapability } from "@/hooks/use-capability";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
@@ -30,6 +36,26 @@ export function ProjectCard({
   const t = useT();
   const [preferences] = usePreferences();
   const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
+  const { mainAgentId } = useMainAgentId();
+  const setMainAgent = useSetMainAgent();
+  // The main agent is org-wide config written via ORGANIZATION_SETTINGS_UPDATE,
+  // which the backend gates on `org:manage` — not `agents:manage`. Match it so
+  // the action isn't shown to users whose click would fail server-side.
+  const { granted: canSetMainAgent } = useCapability("org:manage");
+  const isMainAgent = mainAgentId === project.id;
+
+  const toggleMainAgent = () => {
+    const next = isMainAgent ? null : project.id;
+    setMainAgent.mutate(next, {
+      onSuccess: () =>
+        toast.success(
+          isMainAgent
+            ? t("home.projectCard.mainAgentUnset", { title: project.title })
+            : t("home.projectCard.mainAgentSet", { title: project.title }),
+        ),
+      onError: () => toast.error(t("home.projectCard.mainAgentError")),
+    });
+  };
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
@@ -70,6 +96,19 @@ export function ProjectCard({
                     <Settings02 size={16} />
                     Settings
                   </DropdownMenuItem>
+                  {canSetMainAgent && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMainAgent();
+                      }}
+                    >
+                      <Home02 size={16} />
+                      {isMainAgent
+                        ? t("home.projectCard.unsetMainAgent")
+                        : t("home.projectCard.setAsMainAgent")}
+                    </DropdownMenuItem>
+                  )}
                   {onDeleteClick && (
                     <DropdownMenuItem
                       variant="destructive"
@@ -89,9 +128,17 @@ export function ProjectCard({
 
           {/* Title and Description */}
           <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground truncate">
-              {project.title}
-            </h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-sm font-medium text-foreground truncate">
+                {project.title}
+              </h3>
+              {isMainAgent && (
+                <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  <Home02 size={12} />
+                  {t("home.projectCard.mainAgentBadge")}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground line-clamp-2">
               {project.description || "No description"}
             </p>

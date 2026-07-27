@@ -7,6 +7,8 @@
  */
 
 import { cn } from "@deco/ui/lib/utils.ts";
+import { Code01, Globe01 } from "@untitledui/icons";
+import type { ComponentType } from "react";
 import { useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
@@ -40,28 +42,38 @@ export function DevAgentControl({
     navigateToTask(taskId, { virtualMcpId: agentId });
   };
 
-  const segment = (label: string, active: boolean) => (
+  // Below `lg` (< 1024px) the segments collapse to icon-only; the label moves to
+  // the native title tooltip (kept as `aria-label` for a11y either way).
+  const segment = (
+    label: string,
+    active: boolean,
+    Icon: ComponentType<{ className?: string }>,
+  ) => (
     <button
       type="button"
       aria-pressed={active}
+      aria-label={label}
+      title={label}
       onClick={() => {
         if (!active) void goToAgent(partner.targetId);
       }}
       className={cn(
-        "px-2.5 py-1 rounded-md transition-colors",
+        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors",
         active
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      {label}
+      <Icon className="size-3.5 shrink-0" />
+      {/* Collapses with the rest of the strip at 768px of panel header. */}
+      <span className="@max-3xl/panel-header:hidden">{label}</span>
     </button>
   );
 
   return (
     <div className="inline-flex items-center rounded-lg border border-border bg-muted p-0.5 text-xs font-medium">
-      {segment("Develop", isDev)}
-      {segment("Live", !isDev)}
+      {segment("Develop", isDev, Code01)}
+      {segment("Live", !isDev, Globe01)}
     </div>
   );
 }

@@ -110,6 +110,8 @@ const ALL_TOOL_NAMES = [
   "API_KEY_DELETE",
   // User tools
   "USER_GET",
+  "USER_MODEL_PREFERENCES_GET",
+  "USER_MODEL_PREFERENCES_UPDATE",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -582,6 +584,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "USER_GET",
     description: "Get a user by id",
+    category: "Users",
+  },
+  {
+    name: "USER_MODEL_PREFERENCES_GET",
+    description: "Get the calling user's chat tier → model overrides",
+    category: "Users",
+  },
+  {
+    name: "USER_MODEL_PREFERENCES_UPDATE",
+    description: "Set the calling user's chat tier → model overrides",
     category: "Users",
   },
   // Thread tools
@@ -1566,10 +1578,9 @@ export function allCapabilitiesGranted(): Record<string, boolean> {
 export function resolveCapabilities(
   permission: Record<string, string[]>,
 ): Record<string, boolean> {
-  const perm = permission as Record<string, unknown>;
   const arrayBucket = (key: string): string[] => {
-    const value = perm[key];
-    return Array.isArray(value) ? (value as string[]) : [];
+    const value = permission[key];
+    return Array.isArray(value) ? value : [];
   };
 
   // ONLY an org-wide (`*`) or full org-tool (`self`) wildcard is a GLOBAL grant
@@ -1581,7 +1592,7 @@ export function resolveCapabilities(
 
   const grantedActions = new Set<string>();
   if (!hasGlobalGrant) {
-    for (const actions of Object.values(perm)) {
+    for (const actions of Object.values(permission)) {
       if (!Array.isArray(actions)) continue;
       for (const action of actions) grantedActions.add(action);
     }
@@ -1603,8 +1614,8 @@ export function resolveCapabilities(
 /**
  * Get tools grouped by category
  */
-export function getToolsByCategory() {
-  const grouped: Record<string, ToolMetadata[]> = {
+export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
+  const grouped: Record<ToolCategory, ToolMetadata[]> = {
     Organizations: [],
     Connections: [],
     "Virtual MCPs": [],
@@ -1615,6 +1626,8 @@ export function getToolsByCategory() {
     "Event Bus": [],
     Tags: [],
     "AI Providers": [],
+    Secrets: [],
+    "File Configs": [],
     Automations: [],
     "Object Storage": [],
     Registry: [],
@@ -1622,10 +1635,11 @@ export function getToolsByCategory() {
     VM: [],
     Links: [],
     Search: [],
+    "Task Board": [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {
-    grouped[tool.category]?.push(tool);
+    grouped[tool.category].push(tool);
   }
 
   return grouped;

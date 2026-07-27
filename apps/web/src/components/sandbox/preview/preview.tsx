@@ -1,5 +1,5 @@
 import { sleep } from "@decocms/shared/std";
-import { useState, useRef, useEffect, Suspense, lazy } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
@@ -21,12 +21,12 @@ import {
   Copy01,
   CursorClick01,
   DotsHorizontal,
-  Edit05,
   Globe02,
   LayoutAlt01,
   LinkExternal01,
   Loading01,
   Plus,
+  PuzzlePiece01,
   SearchLg,
   CreditCardSearch,
   Monitor04,
@@ -64,9 +64,14 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
+import {
+  resolveBlocksTabState,
+  toBlocksQueryState,
+} from "@/layouts/main-panel-tabs/blocks-tab-state";
 import {
   fillPathTemplate,
   normalizePagePath,
@@ -127,6 +132,7 @@ import {
   type ImperativePanelHandle,
 } from "@/components/resizable";
 import {
+  shouldAutoOpenCms,
   togglePreviewEditorMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
@@ -136,12 +142,6 @@ const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
 const CURSOR_ICON_URL =
   "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
-
-const SeoSheet = lazy(() =>
-  import("@/components/sections-editor/page-seo-sheet").then((m) => ({
-    default: m.SeoSheet,
-  })),
-);
 
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -178,6 +178,23 @@ function previewOrigin(previewUrl: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
+ * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
+ * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
+ * and latches on `onOpen`, so it unmounts the instant it fires and never
+ * re-opens behind a user who has taken manual control. `queueMicrotask` defers
+ * the imperative open to post-commit (panel mounted) instead of mid-render.
+ */
+function CmsAutoOpen({ onOpen }: { onOpen: () => void }) {
+  const [fired, setFired] = useState(false);
+  if (!fired) {
+    setFired(true);
+    queueMicrotask(onOpen);
+  }
+  return null;
 }
 
 /**
@@ -218,7 +235,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Editing mode is singular: Visual editor and Blocks cannot be active
   // together. Device size is independent and survives mode switches.
+  // Starts in plain "preview"; the CMS (blocks) auto-opens once its metadata is
+  // ready to render content (see `blocksAutoOpenResolved` below), so users never
+  // see the "Blocos indisponíveis"/loading card pop open on its own.
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>("preview");
+  // Latches once the CMS has auto-opened (or the user has taken manual control
+  // of the editing mode), so the one-shot auto-open never fights the user.
+  const [blocksAutoOpenResolved, setBlocksAutoOpenResolved] = useState(false);
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
@@ -271,7 +294,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   // SEO panel state
-  const [siteSeoOpen, setSiteSeoOpen] = useState(false);
 
   const { org } = useProjectContext();
 
@@ -303,12 +325,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
-  const { data: decofile } = useDecofile(decofileParams, {
+  const decofileQuery = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
   });
-  const { data: meta } = useLiveMeta(decofileParams, {
+  const metaQuery = useLiveMeta(decofileParams, {
     fetchEnabled: devServerReady,
   });
+  const decofile = decofileQuery.data;
+  const meta = metaQuery.data;
+  // Same readiness classification the CMS panel itself uses. We only auto-open
+  // the CMS once this resolves to "content" (metadata loaded AND there is
+  // editable content) so the panel never opens onto a loading/empty/error card.
+  const blocksReady =
+    resolveBlocksTabState({
+      lifecyclePhase,
+      decofile: toBlocksQueryState(decofileQuery),
+      meta: toBlocksQueryState(metaQuery),
+      hasEditableContent: hasEditableDecoContent(decofile, meta),
+    }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
@@ -431,6 +465,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inset?.entity?.id === virtualMcpId
       ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
       : null;
+  // Per-agent "Open CMS" Layout setting, read off the entity already in
+  // context (same source as productionUrl above). Off by default (absent /
+  // null → false): Preview stays on the site until the user opens the CMS
+  // manually, unless an agent opts in to auto-open.
+  const cmsDefaultOpen =
+    (inset?.entity?.id === virtualMcpId
+      ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
+      : null) ?? false;
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -686,7 +728,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
+    // The user is driving the editing mode now — stop the one-shot CMS
+    // auto-open from ever kicking in behind them. This is the ONLY path back to
+    // `editingMode === "preview"` (the direct `activateEditingMode("blocks")`
+    // calls only ever leave it in "blocks"), so latching here is what keeps
+    // auto-open from re-firing after a manual close.
+    setBlocksAutoOpenResolved(true);
     activateEditingMode(togglePreviewEditorMode(editingMode, mode));
+  };
+
+  // One-shot: auto-open the CMS the first time Blocks metadata is ready to
+  // render content, so the panel never pops open onto a loading/empty/error
+  // card. Gated by the per-agent "Open CMS" Layout setting. Handled by the
+  // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
+  // holds; `onOpen` latches so it fires exactly once.
+  const autoOpenCms = shouldAutoOpenCms({
+    cmsDefaultOpen,
+    blocksReady,
+    autoOpenResolved: blocksAutoOpenResolved,
+    editingMode,
+  });
+  const handleCmsAutoOpen = () => {
+    setBlocksAutoOpenResolved(true);
+    activateEditingMode("blocks");
   };
 
   const handleRefresh = () => {
@@ -910,30 +974,36 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Refresh + page selector + open-in-new-tab — the URL group. Sized to content
   // (capped) rather than stretching, so it doesn't dominate the top bar.
-  const urlControls = showPreviewToolbar ? (
-    <div className="flex min-w-0 items-center gap-0.5">
-      {/* Edit (Blocks) — the primary "edit this page" action, tied to the page
-          the selector shows. Leads the group (set off by a divider) so it reads
-          as a distinct action rather than being wedged inside the URL controls.
-          Filled when the Blocks editor is open; click again for plain preview. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <HeaderTabButton
-            title={t("sandbox.preview.cms")}
-            icon={{ kind: "component", Component: Edit05 }}
-            active={blocksActive}
-            onClick={() => toggleEditingMode("blocks")}
-            testId="preview-blocks-toggle"
-            dataTour={TOUR_ANCHORS.edit}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {blocksActive
-            ? t("sandbox.preview.exitEditor")
-            : t("sandbox.preview.editContent")}
-        </TooltipContent>
-      </Tooltip>
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+  // Edit (Blocks) — the primary "edit this page" action, tied to the page the
+  // selector shows. On desktop it leads the URL group, set off by a divider, so
+  // it reads as a distinct action rather than being wedged inside the URL
+  // controls. On mobile it anchors the left edge on its own (see below).
+  // Filled when the Blocks editor is open; click again for plain preview.
+  const cmsToggle = showPreviewToolbar ? (
+    <HeaderTabButton
+      title={t("sandbox.preview.cms")}
+      tooltip={
+        blocksActive
+          ? t("sandbox.preview.exitEditor")
+          : t("sandbox.preview.editContent")
+      }
+      // Distinctive icon — sheds its label with the system tabs at 768px,
+      // well before this group hides at 384px, so the group stays narrow
+      // through the widths where it is most cramped.
+      labelCollapse="sooner"
+      icon={{ kind: "component", Component: PuzzlePiece01 }}
+      active={blocksActive}
+      onClick={() => toggleEditingMode("blocks")}
+      testId="preview-blocks-toggle"
+      dataTour={TOUR_ANCHORS.edit}
+    />
+  ) : null;
+
+  // The view controls proper: refresh · page selector · open-in-new. Kept as a
+  // unit so both layouts can place it as one block — inline after the Edit
+  // action on desktop, or in its own centered slot on mobile.
+  const urlGroup = showPreviewToolbar ? (
+    <>
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
@@ -1173,8 +1243,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </div>
         )}
       </div>
-      {/* View controls (refresh · page · open-in-new) stay grouped after the
-          Edit action, which leads the group above. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
@@ -1191,6 +1259,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           {t("sandbox.preview.openInNewTab")}
         </TooltipContent>
       </Tooltip>
+    </>
+  ) : null;
+
+  // Desktop composition (portaled into the panel header's centre slot): the
+  // Edit action leads, set off by a divider, then the view controls.
+  const urlControls = showPreviewToolbar ? (
+    <div className="flex min-w-0 items-center gap-0.5">
+      {cmsToggle}
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {urlGroup}
     </div>
   ) : null;
 
@@ -1267,10 +1345,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     {t("sandbox.preview.viewJson")}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
-                  <CreditCardSearch size={14} />
-                  {t("sandbox.preview.siteSeo")}
-                </DropdownMenuItem>
               </>
             )}
             {repoDir && (
@@ -1362,6 +1436,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* Headless: auto-opens the CMS once (renders nothing). Mounted only
+          while the per-agent setting + readiness say it should. */}
+      {autoOpenCms && <CmsAutoOpen onOpen={handleCmsAutoOpen} />}
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
@@ -1390,9 +1467,36 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </>
       ) : (
         (showPreviewToolbar || moreMenu) && (
-          <div className="relative flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 md:px-4">
-            {showPreviewToolbar ? urlControls : <div />}
-            {moreMenu}
+          // Declares the same container as PanelHeader: on this path (no header
+          // slot — mobile) the controls render inline instead of portaling, so
+          // without it their container queries would find no container and every
+          // label would stay at full width.
+          //
+          // Three zones rather than the desktop's single left-packed group: Edit
+          // anchors the left edge, the view controls sit in the middle, and the
+          // ⋯ menu holds the right. Packed left, the page selector sat wherever
+          // Edit and refresh pushed it — visibly off-centre on a phone, where
+          // the bar is the whole screen.
+          //
+          // The two side zones are `flex-1` (equal basis) and the middle is
+          // content-sized, so the selector centres on the BAR wherever there is
+          // slack to divide. Giving the middle the flex-1 instead centres it
+          // between the side zones, which are unequal — Edit is ~9px wider than
+          // ⋯ — leaving it visibly off. On the narrowest phones the zones can no
+          // longer be equal either (the left one cannot shrink below the Edit
+          // button), so ~5px of that asymmetry returns; closing it completely
+          // would mean pinning both sides to a fixed width and letting the
+          // selector lose the space instead.
+          <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
+            <div className="flex flex-1 items-center justify-start">
+              {cmsToggle}
+            </div>
+            <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
+              {urlGroup}
+            </div>
+            <div className="flex flex-1 items-center justify-end">
+              {moreMenu}
+            </div>
           </div>
         )
       )}
@@ -1628,28 +1732,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         templates={pages}
         onSubmit={handleCreatePage}
       />
-
-      {siteSeoOpen && decofile && meta && (
-        <Suspense fallback={null}>
-          <SeoSheet
-            open={siteSeoOpen}
-            onOpenChange={setSiteSeoOpen}
-            orgSlug={org.slug}
-            virtualMcpId={virtualMcpId ?? ""}
-            branch={branch ?? ""}
-            decofile={decofile}
-            meta={meta}
-            onSaved={() => {
-              setTimeout(() => {
-                const iframe = previewIframeRef.current;
-                if (!iframe) return;
-                reloadIframeOrFallback(iframe, iframeSrcRef.current);
-              }, DEV_SERVER_SETTLE_MS);
-            }}
-            target={{ kind: "site" }}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

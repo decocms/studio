@@ -14,10 +14,8 @@
 
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useProjectContext } from "@/sdk";
-import { readCachedTaskBranch } from "@/lib/read-cached-task-branch";
 import { resolveDefaultTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useThreadActions } from "@/components/chat/store/hooks";
+import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,7 +193,7 @@ export function useWorkspaceLayoutState(
     taskId?: string;
   };
   const { create } = useThreadActions();
-  const { locator } = useProjectContext();
+  const { threads } = useThreads();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
   const mainParam = search.main === 0 ? "0" : search.main;
@@ -279,11 +277,12 @@ export function useWorkspaceLayoutState(
     if (update) navigateSearch(update, { replace: true });
   };
 
-  // Carry the active task's branch into the new thread so it lands on the
-  // same warm sandbox. Server picks from sandboxMap when no branch is provided.
+  // Inherit the branch of the thread the user is currently viewing, so a new
+  // chat lands on the same sandbox/branch. Branchless / unknown → omit and let
+  // the server pick the most-recently-touched branch from the user's sandboxMap.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
-    const branch = readCachedTaskBranch(orgSlug, locator, taskId);
+    const branch = threads.find((t) => t.id === taskId)?.branch ?? null;
     try {
       await create({
         id: newTaskId,

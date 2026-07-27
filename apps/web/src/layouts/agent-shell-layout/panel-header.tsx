@@ -32,6 +32,14 @@ import { cn } from "@deco/ui/lib/utils.ts";
  * 48px header strip shared by every desktop panel. Sits on the sidebar
  * background above the panel card (no border/divider — the rounded card owns
  * the only visible edge).
+ *
+ * Declares `@container/panel-header`, the query container every control inside
+ * degrades against. It has to be the panel header rather than the viewport:
+ * this strip is one panel wide, so the same viewport yields very different
+ * header widths depending on whether chat is open and how the splitter sits
+ * (at a 1074px viewport the main header measures ~826px). Keying off the
+ * viewport made controls collapse at widths that had nothing to do with the
+ * room they actually had.
  */
 export function PanelHeader({
   children,
@@ -40,7 +48,10 @@ export function PanelHeader({
 }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("flex h-12 shrink-0 items-center gap-1 px-1.5", className)}
+      className={cn(
+        "@container/panel-header flex h-12 shrink-0 items-center gap-1 px-1.5",
+        className,
+      )}
       {...props}
     >
       {children}

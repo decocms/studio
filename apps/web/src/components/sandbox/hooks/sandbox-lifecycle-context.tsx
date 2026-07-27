@@ -19,6 +19,7 @@ import type { DrawerStatus } from "@/components/sandbox/preview/drawer/status-pi
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { ClaimFailureReason, ClaimPhase } from "./sandbox-events-context";
 import {
+  resolveVmEntry,
   selectVmEntry,
   type BranchMapEntryLike,
 } from "@decocms/shared/sandbox/select-vm-entry";
@@ -28,7 +29,7 @@ import {
 // ---------------------------------------------------------------------------
 
 // Re-exported here for existing importers and the co-located unit tests.
-export { selectVmEntry, type BranchMapEntryLike };
+export { resolveVmEntry, selectVmEntry, type BranchMapEntryLike };
 
 export interface ShouldAutoStartArgs {
   hasActiveGithubRepo: boolean;
@@ -405,13 +406,10 @@ export function SandboxLifecycleProvider({
           BranchMapEntryLike
         >)
       : {};
-  // When a provider kind is known (locked thread or live mode pick), select the
-  // matching entry directly. Fall back to the heuristic only for legacy threads
-  // with no recorded kind (sandboxProviderKind == null).
-  const vmEntry = sandboxProviderKind
-    ? ((branchMap[sandboxProviderKind] as BranchMapEntryLike | undefined) ??
-      null)
-    : selectVmEntry(branchMap);
+  // When a provider kind is known (locked thread or live mode pick), the
+  // matching entry wins; with no entry for that kind (or no kind at all) fall
+  // back to whatever is serving the branch. See resolveVmEntry.
+  const vmEntry = resolveVmEntry(branchMap, sandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const userStopped =
     !!virtualMcpId &&

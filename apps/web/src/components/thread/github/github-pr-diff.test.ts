@@ -109,6 +109,33 @@ describe("github-pr-diff", () => {
     expect(fromCall?.arguments.path).toBe("old.ts");
   });
 
+  it("fetchGithubPrDiff throws instead of silently returning an empty diff when get_files errors", async () => {
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        if (req.name === "pull_request_read") {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "403 Resource not accessible" }],
+          };
+        }
+        throw new Error("should not fetch file contents");
+      },
+    };
+
+    await expect(
+      fetchGithubPrDiff(client, {
+        owner: "acme",
+        repo: "widgets",
+        pullNumber: 1,
+        base: "main",
+        headSha: "headsha",
+      }),
+    ).rejects.toThrow("403 Resource not accessible");
+  });
+
   it("fetchGithubPrDiff paginates past the first 100 changed files", async () => {
     const totalFiles = 150;
     const client = {

@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
+import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { PrivateRegistryDatabase } from "./registry/types";
 
@@ -157,6 +158,14 @@ export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
 }
 
+export interface UserModelPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  tiers: JsonObject<UserModelPreferences["tiers"]>;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
@@ -169,6 +178,8 @@ export interface OrganizationSettingsTable {
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   reports_only: boolean | null;
+  // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
+  main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -181,6 +192,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
+  main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1755,6 +1767,7 @@ export interface Database extends PrivateRegistryDatabase {
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
+  user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)

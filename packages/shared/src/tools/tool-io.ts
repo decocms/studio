@@ -118,6 +118,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
       reports_only?: boolean | null | undefined;
+      main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -173,6 +174,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | undefined;
       reports_only?: boolean | undefined;
+      main_agent_id?: string | null | undefined;
     };
     output: {
       organizationId: string;
@@ -229,6 +231,7 @@ export interface StudioToolIO {
         | undefined;
       default_home_agents?: { ids: string[] } | null | undefined;
       reports_only?: boolean | null | undefined;
+      main_agent_id?: string | null | undefined;
     };
   };
   TASK_BOARD_ITEM_CREATE: {
@@ -867,6 +870,18 @@ export interface StudioToolIO {
   ORGANIZATION_SEATS_PREVIEW: {
     input: { quantity: number };
     output: { amountDueCents: number; currency: string };
+  };
+  ORGANIZATION_BILLING_PORTAL: {
+    input: { [x: string]: never };
+    output: { url: string };
+  };
+  ORGANIZATION_INCLUDED_REPORT_SET: {
+    input: { url: string | null };
+    output: { includedReportUrl: string | null; benefitsSyncQueued: boolean };
+  };
+  ORGANIZATION_REPORT_RUN_PAID: {
+    input: { url?: string | undefined };
+    output: { url: string; started: boolean };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
@@ -1630,6 +1645,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -1834,6 +1850,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2008,6 +2025,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2193,6 +2211,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2369,6 +2388,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2539,6 +2559,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2721,6 +2742,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2895,6 +2917,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3240,6 +3263,59 @@ export interface StudioToolIO {
         email: string;
         image: string | null;
       } | null;
+    };
+  };
+  USER_MODEL_PREFERENCES_GET: {
+    input: { [x: string]: never };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+  };
+  USER_MODEL_PREFERENCES_UPDATE: {
+    input: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
     };
   };
   COLLECTION_THREADS_CREATE: {
@@ -3871,6 +3947,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;

@@ -46,20 +46,19 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
             data-testid="branch-picker-locked"
             aria-disabled="true"
             className={cn(
-              "inline-flex items-center rounded-md font-mono text-xs",
+              "inline-flex items-center gap-1.5 rounded-md font-mono text-xs",
               "text-muted-foreground cursor-default min-w-0 max-w-[200px]",
               isHeader
-                ? "h-8 gap-1.5 border border-input bg-background px-2.5"
-                : "h-9 gap-0 px-2",
+                ? "h-8 border border-input bg-background px-2.5"
+                : "h-9 px-2",
             )}
           >
             <GitBranch01 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span
-              className={cn(
-                "min-w-0 truncate",
-                isHeader ? "" : "max-w-0 opacity-0",
-              )}
-            >
+            {/* Show the branch (truncated); below 768px of panel header collapse
+                to an icon-only chip — the name stays available via the tooltip.
+                Container query on `@container/panel-header`, matching the rest
+                of the strip (see header-actions). */}
+            <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
               {branchLabel}
             </span>
           </span>

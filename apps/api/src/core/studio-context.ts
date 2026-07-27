@@ -285,6 +285,7 @@ import type {
   VirtualMcpPluginConfigStoragePort,
 } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
+import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
@@ -330,6 +331,7 @@ export interface StudioStorage {
   connections: ConnectionStorage;
   connectionCredentialVault: ConnectionCredentialVaultStorage;
   organizationSettings: OrganizationSettingsStorage;
+  userModelPreferences: UserModelPreferencesStorage;
   monitoring: MonitoringStorage;
   virtualMcps: VirtualMCPStorage;
   users: UserStorage;

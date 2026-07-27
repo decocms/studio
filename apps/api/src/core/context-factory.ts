@@ -38,6 +38,7 @@ import type {
 } from "../monitoring/query-engine";
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
+import { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -1332,6 +1333,7 @@ export async function createStudioContextFactory(
     connections: new ConnectionStorage(config.db, vault),
     connectionCredentialVault: new ConnectionCredentialVaultStorage(config.db),
     organizationSettings: new OrganizationSettingsStorage(config.db),
+    userModelPreferences: new UserModelPreferencesStorage(config.db),
     monitoring: new SqlMonitoringStorage(
       monitoringEngine,
       logSourceFactory,

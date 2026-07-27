@@ -227,25 +227,24 @@ export function NewChatCrumb() {
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
-  const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask } = usePanelActions();
+  const { createNewTask } = usePanelActions();
 
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const activeAgentId = params.taskId
     ? (search.virtualmcpid ?? decopilotId)
     : decopilotId;
 
+  // A new chat inherits the branch of the thread being viewed, so it lands on
+  // the same sandbox/branch. `null` on the home/agentless route (no active
+  // thread) → server default.
+  const currentBranch =
+    (params.taskId
+      ? threads.find((t) => t.id === params.taskId)?.branch
+      : null) ?? null;
+
+  // ALWAYS create a fresh chat — never reuse/refocus an existing empty one.
   const handleNewChat = () => {
-    const existing = findReusableNewChat(
-      threads,
-      activeAgentId,
-      session?.user?.id,
-    );
-    if (existing) {
-      setTaskId(existing.id, activeAgentId);
-    } else {
-      void createNewTask(activeAgentId);
-    }
+    void createNewTask(activeAgentId, currentBranch);
   };
 
   return (

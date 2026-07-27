@@ -1,5 +1,8 @@
 import type { ConnectionEntity } from "@/sdk";
-import { GITHUB_SCOPED_PERMISSIONS } from "@decocms/shared/github-repo-scope";
+import {
+  GITHUB_SCOPED_PERMISSIONS,
+  mintRepoTokenWithChecksFallback,
+} from "@decocms/shared/github-repo-scope";
 
 type McpCallTool = (req: {
   name: string;
@@ -61,15 +64,7 @@ export async function provisionRepoScopedGithubConnection(params: {
     orgShared,
   } = params;
 
-  const mintRes = (await githubCallTool({
-    name: "MINT_REPO_TOKEN",
-    arguments: {
-      installationId,
-      owner,
-      repo,
-      permissions: GITHUB_SCOPED_PERMISSIONS,
-    },
-  })) as {
+  type MintResult = {
     isError?: boolean;
     structuredContent?: {
       token?: string;
@@ -83,6 +78,19 @@ export async function provisionRepoScopedGithubConnection(params: {
     };
     content?: Array<{ type?: string; text?: string }>;
   };
+  // Request checks:read for the PR Checks tab, falling back to a checks-less
+  // token when the deployed github-mcp/installation doesn't grant it yet — so
+  // importing the repo keeps working. The stored recipe records whichever set
+  // was granted.
+  const { result: mintRes, grantedPermissions } =
+    await mintRepoTokenWithChecksFallback<MintResult>(
+      (permissions) =>
+        githubCallTool({
+          name: "MINT_REPO_TOKEN",
+          arguments: { installationId, owner, repo, permissions },
+        }) as Promise<MintResult>,
+      GITHUB_SCOPED_PERMISSIONS,
+    );
   const minted = mintRes.structuredContent;
   if (mintRes.isError || !minted?.token) {
     const detail = mintRes.content?.find((c) => c.type === "text")?.text;
@@ -149,7 +157,7 @@ export async function provisionRepoScopedGithubConnection(params: {
             repositoryId,
             owner,
             repo,
-            permissions: GITHUB_SCOPED_PERMISSIONS,
+            permissions: grantedPermissions,
             grantProvider: "github-mcp",
           },
         },

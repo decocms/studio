@@ -1,5 +1,8 @@
 import type { StudioContext } from "@/core/studio-context";
-import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  ChatTierSchema,
+  type SimpleModeTier,
+} from "@decocms/shared/organization/schema";
 import {
   pickSimpleModeDefaults,
   type AiProviderKey,
@@ -28,6 +31,22 @@ export interface ResolvedTier {
   credentialId: string;
   modelId: string;
   modelMeta: ModelMetadata;
+}
+
+export interface ResolveTierOptions {
+  /**
+   * Layer the caller's personal chat-tier override (USER_MODEL_PREFERENCES)
+   * on top of the org slot. Opt-in, and only ever honored for fast/smart/
+   * thinking.
+   *
+   * Off by default because most `resolveTier` callers are not "this user's
+   * chat": automations run as their creator, and the task-board super agent,
+   * background tools, commit-message suggestion and review judge all resolve a
+   * tier on someone's behalf. An admin who sets an automation to "smart" must
+   * not have it silently change model when its creator later edits a personal
+   * chat preference. Interactive chat (decopilot/routes.ts) opts in.
+   */
+  applyUserPrefs?: boolean;
 }
 
 const METADATA_FETCH_TIMEOUT_MS = 5_000;
@@ -93,27 +112,44 @@ function metaFromCatalogEntry(
 export async function resolveTier(
   ctx: StudioContext,
   tier: SimpleModeTier,
+  opts?: ResolveTierOptions,
 ): Promise<ResolvedTier> {
   const orgId = ctx.organization?.id;
   if (!orgId) throw new Error("resolveTier called without an organization");
 
   const settings = await ctx.storage.organizationSettings.get(orgId);
-  const slot = settings?.simple_mode?.tiers?.[tier] ?? null;
+  const orgSlot = settings?.simple_mode?.tiers?.[tier] ?? null;
+
+  // Per-user override, opt-in and chat-tiers-only (see ResolveTierOptions).
+  // Skipping the read entirely when it can't win also keeps a dispatch from
+  // issuing three throwaway queries for image/web_search/deep_research.
+  const userId = ctx.auth?.user?.id;
+  const chatTier = ChatTierSchema.safeParse(tier);
+  const userSlot =
+    opts?.applyUserPrefs && chatTier.success && userId
+      ? ((await ctx.storage.userModelPreferences.get(userId, orgId))?.tiers?.[
+          chatTier.data
+        ] ?? null)
+      : null;
 
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
 
-  // Fast path: admin has explicitly assigned this tier slot AND the key still
-  // exists. If the key was deleted but the slot wasn't cleared, fall through
-  // to the default-pick rather than returning a stale credentialId.
-  if (slot && keys.some((k) => k.id === slot.keyId)) {
-    const catalog = await fetchModelList(ctx, slot.keyId, orgId).catch(
-      () => [] as AiProviderModel[],
-    );
-    return {
-      credentialId: slot.keyId,
-      modelId: slot.modelId,
-      modelMeta: metaFromCatalogEntry(catalog, slot.modelId, slot.title),
-    };
+  // Prefer the user override, then the org slot; take the first whose key is
+  // still live. A slot pointing at a deleted key is skipped so resolution
+  // degrades cleanly: user → org → default-pick.
+  // ponytail: read-time liveness check is why deleting a provider key needs no
+  // sweep of every user's saved override — a stale slot just falls through.
+  for (const slot of [userSlot, orgSlot]) {
+    if (slot && keys.some((k) => k.id === slot.keyId)) {
+      const catalog = await fetchModelList(ctx, slot.keyId, orgId).catch(
+        () => [] as AiProviderModel[],
+      );
+      return {
+        credentialId: slot.keyId,
+        modelId: slot.modelId,
+        modelMeta: metaFromCatalogEntry(catalog, slot.modelId, slot.title),
+      };
+    }
   }
 
   // Fallback: tier slot is unset (or references a deleted key). Build the

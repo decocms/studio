@@ -132,6 +132,70 @@ function buildSubtaskRowConfig({ part, subtaskMeta }: SubtaskPartProps) {
   };
 }
 
+/** Whether a flip control should be offered: only once the call is actually
+ *  executing (so it's registered server-side) — not during input-streaming,
+ *  where a flip would be a silent no-op and leave the button stuck. */
+function isFlippable(part: SubtaskToolPart): boolean {
+  if (part.state === "input-available") return true;
+  if (part.state === "output-available")
+    return "preliminary" in part && part.preliminary === true;
+  return false;
+}
+
+/** Returns a callback that flips the given (still-running) subtask call to the
+ *  background, freeing the thread so the user can keep chatting. The server
+ *  fans the request out to the pod running the turn. */
+function useFlipToBackground(toolCallId: string): () => Promise<void> {
+  const { taskId: threadId } = useChatTask();
+  const { org } = useProjectContext();
+  return async () => {
+    const res = await fetch(
+      `/api/${encodeURIComponent(org.slug)}/decopilot/flip/${encodeURIComponent(threadId)}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ toolCallId }),
+      },
+    );
+    // A non-2xx response won't reject fetch on its own — surface it so the
+    // button resets instead of sitting on "Moving to background…" forever.
+    if (!res.ok) throw new Error(`flip failed: ${res.status}`);
+  };
+}
+
+/** A subtle "run in background" pill shown on a still-running foreground
+ *  subtask. Clicking POSTs the flip and disables itself; the card re-renders as
+ *  the background variant once the flip lands via the stream. */
+function FlipToBackgroundButton({ onFlip }: { onFlip: () => Promise<void> }) {
+  const t = useT();
+  const [pending, setPending] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={async (e) => {
+        e.stopPropagation();
+        setPending(true);
+        try {
+          await onFlip();
+        } catch {
+          setPending(false);
+        }
+      }}
+      className={cn(
+        "shrink-0 text-[12px] text-muted-foreground/70 px-2 py-1 rounded-md transition-colors",
+        "[@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/40",
+        "disabled:opacity-50",
+      )}
+    >
+      {pending
+        ? t("chat.subtask.flipping")
+        : t("chat.subtask.flipToBackground")}
+    </button>
+  );
+}
+
 /**
  * The clickable subtask row + the right-side panel it opens. Replaces the old
  * inline collapsible: the row reads as a one-liner in the transcript; the full
@@ -145,6 +209,7 @@ function SubtaskCard({
   state,
   usage,
   onOpenChange,
+  onFlip,
   children,
 }: {
   icon: ReactNode;
@@ -154,6 +219,9 @@ function SubtaskCard({
   usage?: UsageStatsType | null;
   /** Notified when the panel opens/closes — lets a caller gate a live tail. */
   onOpenChange?: (open: boolean) => void;
+  /** When set and the subtask is still running, show a "run in background"
+   *  control (foreground calls only). */
+  onFlip?: () => Promise<void>;
   children: ReactNode;
 }) {
   const [open, setOpenState] = useState(false);
@@ -166,45 +234,50 @@ function SubtaskCard({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "group/tool flex items-center gap-2 w-full py-2.5 text-left rounded-md transition-colors",
-          "[@media(hover:hover)]:hover:bg-accent/30",
-          isLoading && "shimmer",
-        )}
-      >
-        <div
+      <div className="flex items-center gap-1 w-full">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
           className={cn(
-            "relative shrink-0 size-4 flex items-center justify-center [&>svg]:size-4",
-            isError
-              ? "[&>svg]:text-warning/70"
-              : "[&>svg]:text-muted-foreground/75",
+            "group/tool flex items-center gap-2 flex-1 min-w-0 py-2.5 text-left rounded-md transition-colors",
+            "[@media(hover:hover)]:hover:bg-accent/30",
+            isLoading && "shimmer",
           )}
         >
-          {icon}
-        </div>
-        <span
-          className={cn(
-            "shrink-0 text-[14px] font-normal",
-            isError ? "text-warning/80" : "text-foreground",
-          )}
-        >
-          {title}
-        </span>
-        {summary ? (
-          <span className="min-w-0 flex-1 truncate">
-            <span className="text-[12px] text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
-              {summary}
-            </span>
+          <div
+            className={cn(
+              "relative shrink-0 size-4 flex items-center justify-center [&>svg]:size-4",
+              isError
+                ? "[&>svg]:text-warning/70"
+                : "[&>svg]:text-muted-foreground/75",
+            )}
+          >
+            {icon}
+          </div>
+          <span
+            className={cn(
+              "shrink-0 text-[14px] font-normal",
+              isError ? "text-warning/80" : "text-foreground",
+            )}
+          >
+            {title}
           </span>
-        ) : (
-          <div className="flex-1" />
-        )}
-        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity [@media(hover:hover)]:group-hover/tool:opacity-100" />
-        <MessageUsageStats usage={usage} />
-      </button>
+          {summary ? (
+            <span className="min-w-0 flex-1 truncate">
+              <span className="text-[12px] text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
+                {summary}
+              </span>
+            </span>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity [@media(hover:hover)]:group-hover/tool:opacity-100" />
+          <MessageUsageStats usage={usage} />
+        </button>
+        {onFlip && isLoading ? (
+          <FlipToBackgroundButton onFlip={onFlip} />
+        ) : null}
+      </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
@@ -423,6 +496,7 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
 }
 
 export function SubtaskPartFallback(props: SubtaskPartProps) {
+  const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
   const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(props);
@@ -441,6 +515,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
       summary={summary}
       state={state}
       usage={usage}
+      onFlip={isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>
@@ -455,6 +530,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
  */
 export function SubtaskPart(props: SubtaskPartProps) {
   const target = useConnection(props.part.input?.agent_id);
+  const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
   const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(props);
@@ -474,6 +550,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
       summary={summary}
       state={state}
       usage={usage}
+      onFlip={isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>

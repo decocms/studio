@@ -46,6 +46,11 @@ function ApprovalLevelSelect({
   const t = useT();
   const [preferences, setPreferences] = usePreferences();
 
+  const currentOption =
+    APPROVAL_LEVEL_OPTIONS.find(
+      (opt) => opt.value === preferences.toolApprovalLevel,
+    ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
+
   const handleLevelChange = (value: string) => {
     const newLevel = value as ToolApprovalLevel;
     // Capture the level the pending approval was REQUESTED at before persisting
@@ -75,7 +80,7 @@ function ApprovalLevelSelect({
         className="text-xs text-muted-foreground border-border/60 bg-transparent hover:bg-accent/60 h-7 gap-1"
         onClick={(e) => e.stopPropagation()}
       >
-        <SelectValue />
+        <SelectValue>{t(currentOption.shortKey)}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {APPROVAL_LEVEL_OPTIONS.map((opt) => (

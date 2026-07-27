@@ -202,11 +202,6 @@ function resolveConflictFile(repoDir: string, summary: StatusFile): void {
     return;
   }
 
-  if (summary.working_dir === "D" && !xy.includes("U")) {
-    runGit(repoDir, ["rm", "-f", filePath]);
-    return;
-  }
-
   // During rebase, `--theirs` is the commit being replayed (branch changes).
   runGit(repoDir, ["checkout", "--theirs", "--", filePath]);
   runGit(repoDir, ["add", "--", filePath]);

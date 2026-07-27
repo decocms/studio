@@ -114,29 +114,6 @@ export const openrouterAdapter: ProviderAdapter = {
         const { data }: { data: OpenRouterAPIModel[] } = await res.json();
         const models = data.map(mapV1Model);
 
-        // Best-effort: use frontend popular order for sorting. Falls back to v1 default order.
-        // try {
-        //   const frontendRes = await fetch(
-        //     "https://openrouter.ai/api/frontend/models/find?order=most-popular",
-        //     { signal: AbortSignal.timeout(10_000) },
-        //   );
-        //   if (frontendRes.ok) {
-        //     const frontendData = await frontendRes.json();
-        //     const slugOrder = new Map<string, number>(
-        //       (frontendData.data?.models as { slug: string }[] ?? []).map(
-        //         (m, i) => [m.slug, i] as const,
-        //       ),
-        //     );
-        //     if (slugOrder.size > 0) {
-        //       models.sort(
-        //         (a, b) =>
-        //           (slugOrder.get(a.modelId) ?? Infinity) -
-        //           (slugOrder.get(b.modelId) ?? Infinity),
-        //       );
-        //     }
-        //   }
-        // } catch { /* best-effort — v1 order is fine */ }
-
         return models;
       },
     };

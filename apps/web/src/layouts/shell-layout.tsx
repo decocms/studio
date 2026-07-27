@@ -29,7 +29,6 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
-import { readCachedTaskBranch } from "@/lib/read-cached-task-branch";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
@@ -86,7 +85,7 @@ export function usePanelActions() {
   // Optional: the settings route tree has no ThreadManagerProvider, so this is
   // null there. Navigation actions work regardless; only createNewTask needs it.
   const manager = useOptionalThreadManager();
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
 
   const params = useParams({ strict: false }) as {
     org?: string;
@@ -154,27 +153,28 @@ export function usePanelActions() {
     );
   };
 
-  // Create a new task carrying the current task's branch (if any) so the
-  // new thread lands on the same warm sandbox. Server picks from sandboxMap when
-  // no branch is provided. Awaiting the create avoids the route loader's
-  // create-on-404 fallback firing without a branch hint.
+  // Create the row before navigating so the route loader does not race its
+  // create-on-404 fallback.
   //
   // `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin
   // the thread to a specific agent regardless of the current URL. When
   // omitted, falls back to the URL's `virtualmcpid`, then to the well-known
-  // Decopilot agent. The current branch is only carried when we're staying
-  // on the same vMCP as the URL — switching agents would land on the wrong
-  // sandbox otherwise.
-  const createNewTask = async (virtualMcpId?: string) => {
+  // Decopilot agent.
+  //
+  // `branch` lets a "New chat on the branch I'm viewing" caller inherit the
+  // current thread's branch. When omitted/null (e.g. a branchless agent, or an
+  // "open agent X" flow), the server picks the most-recently-touched branch from
+  // the user's sandboxMap. The schema only accepts a non-empty branch string, so
+  // null/empty is dropped.
+  const createNewTask = async (
+    virtualMcpId?: string,
+    branch?: string | null,
+  ) => {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcpId ??
       search.virtualmcpid ??
       getWellKnownDecopilotVirtualMCP(org.id).id;
-    const carryBranch = targetVmcp === search.virtualmcpid;
-    const branch = carryBranch
-      ? readCachedTaskBranch(org.slug, locator, currentTaskId)
-      : null;
     try {
       // No manager (settings tree): skip the eager create and let the
       // /$org/$taskId route loader's ensure-fallback create the thread.

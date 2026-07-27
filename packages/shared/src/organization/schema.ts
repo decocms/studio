@@ -79,6 +79,22 @@ export const SimpleModeConfigSchema = z.object({
 export type SimpleModeConfig = z.infer<typeof SimpleModeConfigSchema>;
 
 /**
+ * Per-user override of the org's chat tier → model mapping. Only the three
+ * chat tiers are user-overridable; an absent tier means "use the org default"
+ * (see `resolveTier`). Reuses the org `ModelSlot` shape so the same picker UI
+ * and resolution logic apply.
+ */
+export const UserModelPreferencesSchema = z.object({
+  tiers: z.object({
+    fast: ModelSlotSchema.optional(),
+    smart: ModelSlotSchema.optional(),
+    thinking: ModelSlotSchema.optional(),
+  }),
+});
+
+export type UserModelPreferences = z.infer<typeof UserModelPreferencesSchema>;
+
+/**
  * Default home agents config schema - matches DefaultHomeAgentsConfig from storage/types.ts.
  *
  * Each entry is a custom virtual MCP agent id (UUID). The home view renders

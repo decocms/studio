@@ -18,11 +18,15 @@ export const thread = {
   "thread.changesTab.loadingChanges": "Carregando mudanças…",
   "thread.changesTab.noCommittedChanges":
     "Nenhuma mudança confirmada neste pull request",
+  "thread.checksTab.couldntLoadCheckDetail":
+    "Não foi possível carregar o detalhe desta verificação.",
   "thread.checksTab.couldntLoadCheckRuns":
     "Não foi possível carregar as verificações.",
   "thread.checksTab.failure": "Falha",
   "thread.checksTab.inProgress": "Em progresso",
+  "thread.checksTab.loadingCheckDetail": "Carregando detalhe…",
   "thread.checksTab.loadingChecks": "Carregando verificações…",
+  "thread.checksTab.noCheckDetail": "Esta verificação não tem detalhe.",
   "thread.checksTab.noCheckRunsOnPrHeadCommit":
     "Nenhuma verificação no commit principal do PR.",
   "thread.checksTab.rerun": "Executar novamente",

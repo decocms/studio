@@ -3,9 +3,130 @@ import {
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
+  isChecksPermissionRejected,
   isOrgSharedConnection,
+  mintRepoTokenWithChecksFallback,
+  permissionsWithoutChecks,
   type RepoScopeRecipe,
 } from "./github-repo-scope";
+
+describe("GITHUB_SCOPED_PERMISSIONS", () => {
+  it("includes checks:read so the PR panel can read CI check runs", () => {
+    // Without this, the minted GitHub App installation token gets
+    // `403 Resource not accessible by integration` on
+    // GET /commits/{sha}/check-runs. See github-repo-scope.ts.
+    expect(GITHUB_SCOPED_PERMISSIONS.checks).toBe("read");
+  });
+
+  it("keeps the write scopes the PR/sandbox flows depend on", () => {
+    expect(GITHUB_SCOPED_PERMISSIONS).toMatchObject({
+      contents: "write",
+      metadata: "read",
+      pull_requests: "write",
+      issues: "write",
+    });
+  });
+});
+
+describe("isChecksPermissionRejected", () => {
+  it("matches the github-mcp allowlist rejection", () => {
+    expect(
+      isChecksPermissionRejected(
+        'Permission "checks" is not allowed. This tool only mints repo-scoped ' +
+          "code access (contents, metadata, pull_requests, issues).",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches the GitHub 422 raised when the installation lacks Checks", () => {
+    expect(
+      isChecksPermissionRejected(
+        "Repository is not in this installation, or the requested permissions " +
+          "exceed what the GitHub App was granted.",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated errors or empty input", () => {
+    expect(
+      isChecksPermissionRejected('Permission "issues" is not allowed.'),
+    ).toBe(false);
+    expect(isChecksPermissionRejected("Repository is not accessible.")).toBe(
+      false,
+    );
+    expect(isChecksPermissionRejected(null)).toBe(false);
+    expect(isChecksPermissionRejected(undefined)).toBe(false);
+  });
+});
+
+describe("permissionsWithoutChecks", () => {
+  it("drops only the checks key and leaves the rest intact", () => {
+    expect(permissionsWithoutChecks(GITHUB_SCOPED_PERMISSIONS)).toEqual({
+      contents: "write",
+      metadata: "read",
+      pull_requests: "write",
+      issues: "write",
+    });
+  });
+
+  it("is a no-op when checks is absent", () => {
+    expect(permissionsWithoutChecks({ contents: "write" })).toEqual({
+      contents: "write",
+    });
+  });
+});
+
+describe("mintRepoTokenWithChecksFallback", () => {
+  type MintResult = {
+    isError?: boolean;
+    content?: Array<{ type?: string; text?: string }>;
+    structuredContent?: { token?: string };
+  };
+  const ok: MintResult = { structuredContent: { token: "ghs_x" } };
+  const base = { contents: "write", metadata: "read" };
+
+  it("requests checks:read and returns it as granted on success", async () => {
+    const calls: Record<string, string>[] = [];
+    const { result, grantedPermissions } =
+      await mintRepoTokenWithChecksFallback((permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(ok);
+      }, base);
+    expect(calls).toEqual([{ ...base, checks: "read" }]);
+    expect(grantedPermissions).toEqual({ ...base, checks: "read" });
+    expect(result).toBe(ok);
+  });
+
+  it("retries without checks when the mint is rejected for checks", async () => {
+    const calls: Record<string, string>[] = [];
+    const rejected: MintResult = {
+      isError: true,
+      content: [{ type: "text", text: 'Permission "checks" is not allowed.' }],
+    };
+    const { result, grantedPermissions } =
+      await mintRepoTokenWithChecksFallback((permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(calls.length === 1 ? rejected : ok);
+      }, base);
+    expect(calls).toEqual([{ ...base, checks: "read" }, base]);
+    expect(grantedPermissions).toEqual(base);
+    expect(result).toBe(ok);
+  });
+
+  it("does NOT retry on an unrelated error (surfaces it once)", async () => {
+    const calls: Record<string, string>[] = [];
+    const err: MintResult = {
+      isError: true,
+      content: [{ type: "text", text: "GitHub is temporarily unavailable." }],
+    };
+    const { result } = await mintRepoTokenWithChecksFallback((permissions) => {
+      calls.push(permissions);
+      return Promise.resolve(err);
+    }, base);
+    expect(calls).toHaveLength(1);
+    expect(result).toBe(err);
+  });
+});
 
 describe("getRepoScope", () => {
   it("returns the grant metadata for a refreshable repoScope without sourceConnectionId", () => {

@@ -4,6 +4,7 @@ import {
   filterOptions,
   normalizeOptions,
   resolveOptions,
+  shouldOfferTypedValue,
   svgPreviewDataUri,
 } from "./dynamic-options-field";
 
@@ -183,5 +184,59 @@ describe("resolveOptions", () => {
 
   test("returns empty when neither source has options", () => {
     expect(resolveOptions([], [])).toEqual([]);
+  });
+});
+
+describe("shouldOfferTypedValue", () => {
+  const base = {
+    loaderPath: "site/loaders/collections.ts",
+    isIconSelect: false,
+    enumFallbackCount: 0,
+    trimmedSearch: "5455",
+    optionValues: [] as string[],
+    optionsSettled: true,
+  };
+
+  test("offers the typed value for a settled, empty loader result", () => {
+    expect(shouldOfferTypedValue(base)).toBe(true);
+  });
+
+  test("offers it when the loader returned options but none match", () => {
+    expect(
+      shouldOfferTypedValue({ ...base, optionValues: ["100", "200"] }),
+    ).toBe(true);
+  });
+
+  test("does not offer while the query is still settling", () => {
+    // Debounce/fetch window: options are empty only because nothing loaded yet.
+    expect(shouldOfferTypedValue({ ...base, optionsSettled: false })).toBe(
+      false,
+    );
+  });
+
+  test("does not offer when the typed value already exists as an option", () => {
+    expect(
+      shouldOfferTypedValue({ ...base, optionValues: ["5455", "200"] }),
+    ).toBe(false);
+  });
+
+  test("does not offer for an empty (or whitespace-trimmed) search", () => {
+    expect(shouldOfferTypedValue({ ...base, trimmedSearch: "" })).toBe(false);
+  });
+
+  test("does not offer without a dynamic loader", () => {
+    expect(shouldOfferTypedValue({ ...base, loaderPath: undefined })).toBe(
+      false,
+    );
+  });
+
+  test("does not offer for the constrained icon-select format", () => {
+    expect(shouldOfferTypedValue({ ...base, isIconSelect: true })).toBe(false);
+  });
+
+  test("does not offer when a schema enum makes it a closed set", () => {
+    expect(shouldOfferTypedValue({ ...base, enumFallbackCount: 3 })).toBe(
+      false,
+    );
   });
 });

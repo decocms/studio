@@ -32,6 +32,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
+import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
 import type {
   ClaimFailureReason,
@@ -570,9 +571,12 @@ export function SandboxEventsProvider({
     function scheduleReconnect(target: "studio" | "direct") {
       if (disposed || reconnectTimer) return;
 
-      const delay = Math.min(
-        BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempt,
+      const delay = exponentialBackoffWithJitter(
         MAX_RECONNECT_DELAY_MS,
+        BASE_RECONNECT_DELAY_MS,
+        reconnectAttempt,
+        2,
+        0,
       );
       reconnectAttempt++;
 

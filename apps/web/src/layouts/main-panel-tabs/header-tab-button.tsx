@@ -1,16 +1,37 @@
 /**
  * HeaderTabButton — a tab in the agent-shell header tab bar.
  *
- * Both active and inactive tabs always show icon + label. The active
- * tab gets the accent background; inactive tabs are muted.
+ * Every tab shows its icon at all sizes; the text label drops out per
+ * `labelCollapse`, leaving an icon-only button. That decision is a CONTAINER
+ * query against the enclosing PanelHeader, not a viewport media query — the
+ * button cares how wide its panel is, not how wide the screen is.
  *
- * Every button is wrapped in a Tooltip showing the tab title so the
- * title is discoverable on hover in both states.
+ * The active tab gets the accent background; inactive tabs are muted.
+ *
+ * Every button is wrapped in a Tooltip so the title stays discoverable in both
+ * states — and, once the label is gone, so an icon-only tab is identifiable at
+ * all. Tabs whose icon resolves to the generic fallback (see resolve-tab-icon)
+ * are otherwise indistinguishable from one another.
  */
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
+
+/** Static class per tier — Tailwind only sees literal strings, so these can't
+ *  be built by interpolation. Queries `@container/panel-header` (PanelHeader),
+ *  NOT the viewport: these buttons live in a single panel, so panel width is
+ *  the only measure of the room they actually have. Outside a PanelHeader no
+ *  container matches and the label simply stays — the safe direction. */
+const LABEL_HIDDEN_BELOW = {
+  sooner: "@max-3xl/panel-header:hidden",
+  later: "@max-xl/panel-header:hidden",
+} as const;
 
 export function HeaderTabButton({
   title,
@@ -22,6 +43,8 @@ export function HeaderTabButton({
   className,
   testId,
   dataTour,
+  tooltip,
+  labelCollapse = "later",
 }: {
   title: string;
   icon: TabIcon;
@@ -42,8 +65,23 @@ export function HeaderTabButton({
    *  (the Chat toggle) tweak height / drag behaviour while staying pixel-
    *  identical to the tabs. */
   className?: string;
+  /** Tooltip copy, when it must differ from the label — e.g. a toggle whose
+   *  hover text describes the *next* action ("Exit editor") rather than the
+   *  button's name. Defaults to `title`. Pass this instead of wrapping the
+   *  button in your own Tooltip, which would nest two of them. */
+  tooltip?: string;
+  /** How soon the label is dropped as the PANEL HEADER narrows, leaving icon +
+   *  tooltip. Labels always go before the centered address bar does (which
+   *  hides at 384px), because shedding ~40px per button is what buys the
+   *  centre its room — the same degradation order headerLayout documents.
+   *  - `sooner` (< 768px) — Chat and the system tabs (Preview, Code, Library,
+   *    Tasks). Fixed, distinctive icons, so they read fine bare.
+   *  - `later` (< 576px, default) — dynamic tabs (files, pinned views, expanded
+   *    tools). Their icon can resolve to the generic fallback, so several open
+   *    at once would be indistinguishable; they hold their text longest. */
+  labelCollapse?: "sooner" | "later";
 }) {
-  return (
+  const button = (
     <button
       type="button"
       onClick={onClick}
@@ -67,9 +105,21 @@ export function HeaderTabButton({
       <span className="flex size-5 items-center justify-center shrink-0">
         <TabIconGlyph icon={icon} />
       </span>
-      <span className="max-md:hidden whitespace-nowrap text-sm font-medium leading-none">
+      <span
+        className={cn(
+          LABEL_HIDDEN_BELOW[labelCollapse],
+          "whitespace-nowrap text-sm font-medium leading-none",
+        )}
+      >
         {title}
       </span>
     </button>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="bottom">{tooltip ?? title}</TooltipContent>
+    </Tooltip>
   );
 }

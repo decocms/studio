@@ -119,6 +119,8 @@ export const CORE_TOOLS = [
 
   // User tools
   UserTools.USER_GET,
+  UserTools.USER_MODEL_PREFERENCES_GET,
+  UserTools.USER_MODEL_PREFERENCES_UPDATE,
 
   // Thread collection tools
   ThreadTools.COLLECTION_THREADS_CREATE,

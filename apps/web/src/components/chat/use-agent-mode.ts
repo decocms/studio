@@ -1,5 +1,6 @@
 import type { ChatTier } from "@decocms/shared/organization/schema";
 import { resolveAgentTier } from "@decocms/harness/claude-code/model/agent-tiers";
+import type { TFunction } from "@/i18n/use-t.ts";
 import { useChatPrefs } from "./context";
 import type { AgentOption } from "./pills/agent-options";
 
@@ -46,29 +47,32 @@ export function useSetChatTier(): (tier: ChatTier) => void {
  * User-friendly tier descriptions shown under each tier row for the org
  * router (cloud). These users are typically non-technical and benefit from
  * intent labels ("Quicker responses") over model names — the actual model the
- * server picks depends on org settings + provider keys and would be noise here.
+ * server picks depends on org settings + provider keys and would be noise
+ * here. Reuses the same `chat.agentModels.*` keys the desktop-CLI model
+ * picker already translates through, instead of a second hardcoded copy.
  */
-const CLOUD_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
-  fast: "Quicker responses",
-  smart: "Balanced quality",
-  thinking: "Deeper reasoning",
-};
+const CLOUD_TIER_DESCRIPTION_KEYS: Record<ChatTier, Parameters<TFunction>[0]> =
+  {
+    fast: "chat.agentModels.quickerResponses",
+    smart: "chat.agentModels.balancedQuality",
+    thinking: "chat.agentModels.deeperReasoning",
+  };
 
 /**
- * Per-tier subtitle shown in the TierTrigger popover. Pure — no React
- * hooks, no async I/O.
+ * Per-tier subtitle shown in the TierTrigger popover.
  *
  * - Local (Claude Code / Codex): returns the harness-mapped model name
  *   with version (e.g. "Sonnet 5", "GPT-5.5") from
  *   `@decocms/harness/claude-code/model/agent-tiers`. Desktop-CLI users are technical and
  *   want to know which model is about to run.
- * - Cloud (org router): returns a non-technical intent description from
- *   `CLOUD_TIER_DESCRIPTIONS`. The server picks the actual model via
- *   `resolveTier` at send time based on org admin config.
+ * - Cloud (org router): returns a non-technical intent description via `t`.
+ *   The server picks the actual model via `resolveTier` at send time based on
+ *   org admin config.
  */
 export function resolveTierSubtitle(
   mode: AgentMode,
   tier: ChatTier,
+  t: TFunction,
 ): string | null {
   if (mode === "local-claude-code") {
     return resolveAgentTier("claude-code", tier)?.label ?? null;
@@ -76,5 +80,5 @@ export function resolveTierSubtitle(
   if (mode === "local-codex") {
     return resolveAgentTier("codex", tier)?.label ?? null;
   }
-  return CLOUD_TIER_DESCRIPTIONS[tier];
+  return t(CLOUD_TIER_DESCRIPTION_KEYS[tier]);
 }

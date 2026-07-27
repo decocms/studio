@@ -1,5 +1,5 @@
 import type { GitDiffResult } from "./sandbox-git-api.ts";
-import { extractToolJson } from "./extract-tool-json.ts";
+import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 import type { PrFile } from "./use-pr-data.ts";
 
 type GithubMcpClient = {
@@ -68,6 +68,7 @@ async function getFileAtRef(
 }
 
 function parsePrFiles(result: unknown): PrFile[] {
+  assertToolOk(result);
   const arr = extractToolJson<Record<string, unknown>[]>(result);
   if (!Array.isArray(arr)) return [];
   return arr.map((f): PrFile => {

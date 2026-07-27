@@ -13,7 +13,7 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
-import { extractToolJson } from "./extract-tool-json.ts";
+import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 
 export type MergeableState =
   | "clean"
@@ -63,6 +63,7 @@ export function usePrReviews(args: Args) {
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       const p = extractToolJson<Record<string, unknown>>(r);
       if (!p) return null;
       const ms = (p.mergeable_state as MergeableState | undefined) ?? "unknown";

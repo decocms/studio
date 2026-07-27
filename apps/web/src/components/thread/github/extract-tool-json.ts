@@ -8,9 +8,34 @@
  * we still read the text payload.
  */
 type ToolResultLike = {
+  isError?: boolean;
   structuredContent?: unknown;
   content?: Array<{ type?: string; text?: string }>;
 };
+
+/**
+ * Returns the error text of a tool result flagged `isError`, or null when the
+ * call succeeded. github-mcp-server signals failures (bad token scope,
+ * unsupported method, GitHub API errors) via `isError: true` with the message
+ * in the text content — NOT by rejecting the call.
+ */
+export function toolErrorMessage(r: unknown): string | null {
+  if (!r || typeof r !== "object") return null;
+  const result = r as ToolResultLike;
+  if (!result.isError) return null;
+  const text = result.content?.find((c) => c.type === "text")?.text?.trim();
+  return text || "GitHub MCP tool returned an error";
+}
+
+/**
+ * Throws when a tool result is flagged `isError`. Call at the top of a query
+ * `select` so a swallowed tool failure surfaces as the query's error state
+ * instead of being silently mapped to an empty/`null` payload.
+ */
+export function assertToolOk(r: unknown): void {
+  const message = toolErrorMessage(r);
+  if (message) throw new Error(message);
+}
 
 function parseTextJson(text: string): unknown | null {
   try {

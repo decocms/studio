@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildSanitizedNameMap,
+  isUnsafeThreadId,
   sanitizeToolName,
   toolNeedsApproval,
   type ToolApprovalLevel,
@@ -179,6 +180,24 @@ describe("sanitizeToolName", () => {
       const result = sanitizeToolName(input);
       expect(isGeminiValid(result)).toBe(true);
     }
+  });
+});
+
+describe("isUnsafeThreadId", () => {
+  test("accepts a normal UUID-shaped id", () => {
+    expect(isUnsafeThreadId("a1b2c3d4-e5f6-4789-a012-3456789abcde")).toBe(
+      false,
+    );
+  });
+
+  test("rejects NATS subject metacharacters", () => {
+    // These are used verbatim as a NATS subject token (streamSubject()) —
+    // a dot/wildcard would either break subject construction or widen the
+    // subject to match other threads' subjects.
+    expect(isUnsafeThreadId("thread.other")).toBe(true);
+    expect(isUnsafeThreadId("thread*")).toBe(true);
+    expect(isUnsafeThreadId("thread>")).toBe(true);
+    expect(isUnsafeThreadId("thread id")).toBe(true);
   });
 });
 

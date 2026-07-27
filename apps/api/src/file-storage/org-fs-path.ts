@@ -12,7 +12,12 @@ const VOLUME_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 const FS_KEY_NAMESPACE = "_fs";
 
 export function isValidVolume(volume: string): boolean {
-  return VOLUME_RE.test(volume);
+  // The regex alone accepts "." and ".." (both are valid `[A-Za-z0-9_.-]`
+  // runs). Either would make `fsObjectKey` emit `_fs/./...` / `_fs/../...`,
+  // which `sanitizeKey`/`buildS3Key` then collapse — popping the `_fs`
+  // segment entirely and landing the write/read directly under the org's
+  // storage prefix, colliding with unrelated (non-org-fs) keys.
+  return VOLUME_RE.test(volume) && volume !== "." && volume !== "..";
 }
 
 export function assertValidVolume(volume: string): void {
