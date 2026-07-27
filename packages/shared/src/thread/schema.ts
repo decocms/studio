@@ -150,7 +150,11 @@ export const ThreadUpdateDataSchema = z.object({
   metadata: ThreadMetadataSchema.optional().describe(
     "Full replacement of the thread's metadata object",
   ),
-  branch: z.string().nullish().describe("New git branch for this thread"),
+  branch: z
+    .string()
+    .min(1)
+    .nullish()
+    .describe("New git branch for this thread"),
   virtual_mcp_id: z
     .string()
     .optional()
