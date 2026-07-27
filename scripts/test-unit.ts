@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { readdir } from "node:fs/promises";
-import { availableParallelism } from "node:os";
 import { join, relative } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -47,45 +46,15 @@ const testFiles = (
   .flat()
   .sort();
 
-// One bun process per file keeps the isolation guarantee; a worker pool keeps
-// the wall clock at max(slowest file, total / cores) instead of the serial sum.
-const concurrency = Math.min(availableParallelism(), testFiles.length);
-console.log(
-  `Running ${testFiles.length} isolated unit test files (concurrency ${concurrency})...`,
-);
+console.log(`Running ${testFiles.length} isolated unit test files...`);
 
-let nextIndex = 0;
-const failures: string[] = [];
-
-async function worker(): Promise<void> {
-  while (nextIndex < testFiles.length) {
-    const testFile = testFiles[nextIndex++];
-    if (!testFile) break;
-    const child = Bun.spawn(["bun", "test", testFile], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    if (exitCode === 0) {
-      console.log(`✓ ${testFile}`);
-    } else {
-      failures.push(testFile);
-      console.error(`\n✗ ${testFile}\n${stdout}${stderr}`);
-    }
-  }
-}
-
-await Promise.all(Array.from({ length: concurrency }, worker));
-
-if (failures.length > 0) {
-  console.error(`\n${failures.length} test file(s) failed:`);
-  for (const file of failures) {
-    console.error(`  ✗ ${file}`);
-  }
-  process.exit(1);
-}
+// --parallel implies --isolate: each file gets a fresh global object and
+// module registry across a pool of reused worker processes (one per core), so
+// the per-file isolation this tier requires holds without spawning a process
+// per file. Positional args are filters; exact relative paths match only
+// themselves, which is how the tier's filename-based exclusions stay applied.
+const child = Bun.spawn(["bun", "test", "--parallel", ...testFiles], {
+  cwd: repoRoot,
+  stdio: ["inherit", "inherit", "inherit"],
+});
+process.exit(await child.exited);
