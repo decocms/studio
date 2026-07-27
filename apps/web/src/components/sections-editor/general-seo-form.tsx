@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/i18n/use-t.ts";
 import type { SchemaProperty } from "./resolve-schema";
 import { renderField } from "./schema-form";
 import {
@@ -45,6 +46,7 @@ export function GeneralSeoForm({
   siteDefaultSeo,
   formResetKey,
 }: GeneralSeoFormProps) {
+  const t = useT();
   const filtered = filterSeoSchema(schema, DEFAULT_SEO_RESOLVE_TYPE);
   const properties = filtered.properties ?? {};
   const inheritKeys = generalSeoFieldsWithDefaultToggle();
@@ -124,7 +126,7 @@ export function GeneralSeoForm({
                   htmlFor={`seo-use-default-${key}`}
                   className="text-xs font-normal text-muted-foreground"
                 >
-                  Use default
+                  {t("sectionsEditor.generalSeoForm.useDefault")}
                 </Label>
               </div>
             )}
