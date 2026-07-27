@@ -1,17 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import {
-  DEFAULT_BASE_BRANCH,
-  DEFAULT_WORKSPACE_BRANCH,
   PACKAGE_MANAGER_CONFIG,
   type PackageManager,
 } from "./runtime-defaults";
 
 describe("PACKAGE_MANAGER_CONFIG", () => {
-  it("keeps shared sandbox work on staging and publishes to main", () => {
-    expect(DEFAULT_WORKSPACE_BRANCH).toBe("staging");
-    expect(DEFAULT_BASE_BRANCH).toBe("main");
-  });
-
   it("has entries for all 5 package managers", () => {
     const pms: PackageManager[] = ["npm", "pnpm", "yarn", "bun", "deno"];
     for (const pm of pms) {

@@ -23,6 +23,7 @@ import { getUserId, type StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "./dev-connection";
+import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
@@ -167,7 +168,11 @@ export async function handleVirtualMcpRequest(
     // binding: it only resolves a sandbox the acting user themselves started.
     const actingUserId = getUserId(ctx);
     let devConnection: ConnectionEntity | null = null;
-    if (virtualMcp.id && actingUserId) {
+    if (
+      virtualMcp.id &&
+      actingUserId &&
+      readSandboxMap(virtualMcp.metadata)[actingUserId]
+    ) {
       devConnection = await resolveDevConnection(
         ctx,
         virtualMcp.id,

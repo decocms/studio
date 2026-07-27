@@ -278,8 +278,8 @@ export function useWorkspaceLayoutState(
   };
 
   // Inherit the branch of the thread the user is currently viewing, so a new
-  // chat lands on the same sandbox/branch (not the shared default). Branchless /
-  // unknown → omit and let the server assign the default.
+  // chat lands on the same sandbox/branch. Branchless / unknown → omit and let
+  // the server pick the most-recently-touched branch from the user's sandboxMap.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
     const branch = threads.find((t) => t.id === taskId)?.branch ?? null;

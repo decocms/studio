@@ -10,14 +10,14 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
-  type SandboxId,
+  resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
-import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
+import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import {
   readSandboxMap,
   removeSandboxMapEntry,
@@ -29,7 +29,6 @@ import {
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
 import type { Env } from "../hono-env";
-import { requireOrganization } from "../../core/studio-context";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
@@ -62,11 +61,10 @@ export interface VmEventsHandlerArgs {
   ctx: StudioContext;
   claimName: string;
   runner: SandboxProvider;
-  sandboxId: SandboxId;
-  providerKind: SandboxProviderKind;
   virtualMcpId: string;
   branch: string;
   userId: string;
+  projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
 }
 
@@ -75,13 +73,14 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     ctx,
     claimName,
     runner,
-    sandboxId,
-    providerKind,
     virtualMcpId,
     branch,
     userId,
+    projectRef,
     virtualMcpMetadata,
   } = args;
+  const providerKind = resolveSandboxProviderKindFromEnv();
+
   // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
   // its records live on the THREAD (see `setThreadSandboxMapEntry`). Resolve the
   // thread id from the branch so the stale-handle check below covers thread-
@@ -105,117 +104,23 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     });
 
     try {
-      let vmEntry;
+      // Prefer the agent entry; fall back to the thread entry (thread-scoped
+      // branches). `fromThread` steers cleanup to the right store.
+      let vmEntry = resolveVm(
+        readSandboxMap(virtualMcpMetadata),
+        userId,
+        branch,
+        providerKind,
+      );
       let fromThread = false;
-      // Which sandboxMap user key held the entry. Same as the caller for
-      // user-scoped sandboxes; for a shared one it can be a teammate's key (see
-      // `resolveSharedThreadVm`), and cleanup must delete the key it found.
-      let sandboxMapUserId = userId;
-      if (sandboxId.scope === "shared") {
-        const organization = requireOrganization(ctx);
-        const session = await ctx.storage.agentSandboxSessions.find({
-          organizationId: organization.id,
-          virtualMcpId,
-          branch,
-        });
-        if (session?.desiredState === "stopped") {
-          if (session.status === "stopping" || session.status === "deleting") {
-            const transition = session.status;
-            let deleteSucceeded = true;
-            try {
-              const handle =
-                session.sandboxHandle ??
-                (transition === "deleting" ? claimName : null);
-              if (handle) {
-                await runner.delete(handle, sandboxId);
-              }
-            } catch (error) {
-              deleteSucceeded = false;
-              console.warn(
-                `[vm-events] failed to resume shared stop for ${virtualMcpId}/${branch}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
-            } finally {
-              if (transition !== "deleting" || deleteSucceeded) {
-                const locator = {
-                  organizationId: organization.id,
-                  virtualMcpId,
-                  branch,
-                };
-                await ctx.storage.agentSandboxSessions.withLock(
-                  locator,
-                  (sessions) =>
-                    transition === "deleting"
-                      ? sessions.completeDelete(locator, session.generation)
-                      : sessions.completeStop(locator, session.generation),
-                );
-              }
-            }
-          }
-          await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
-          return;
-        }
-        if (session?.status === "reaping" && session.sandboxHandle) {
-          await cleanupStaleEntry({
-            ctx,
-            runner,
-            claimName: session.sandboxHandle,
-            virtualMcpId,
-            branch,
-            userId,
-            sandboxId,
-            sandboxProviderKind: providerKind,
-            threadId: null,
-          });
-          await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
-          return;
-        }
-        vmEntry =
-          session?.sandboxHandle && session.status === "ready"
-            ? {
-                sandboxHandle: session.sandboxHandle,
-                sandboxProviderKind: "agent-sandbox" as const,
-              }
-            : null;
-        // No session row at all, but the thread may still carry a sandboxMap
-        // entry: a thread-scoped sandbox is recorded on the thread while
-        // agent-sandbox truth lives in the session registry, so a reap leaves
-        // the thread entry orphaned with nothing to reconcile it. Without this
-        // fallback the stale-handle probe below never runs, `gone` is never
-        // emitted, and the preview loops on `claiming` forever.
-        //
-        // Only when there is NO session — a session mid-transition
-        // (provisioning/stopping) is live state the thread map must not
-        // override.
-        if (!session && threadId) {
-          const found = resolveSharedThreadVm(
-            await getThreadSandboxMap(ctx, threadId),
-            branch,
-            providerKind,
-          );
-          vmEntry = found?.entry ?? null;
-          fromThread = !!found;
-          sandboxMapUserId = found?.userId ?? userId;
-        }
-      } else {
-        // Prefer the agent entry; fall back to the thread entry (thread-scoped
-        // branches). `fromThread` steers cleanup to the right store.
+      if (!vmEntry && threadId) {
         vmEntry = resolveVm(
-          readSandboxMap(virtualMcpMetadata),
+          await getThreadSandboxMap(ctx, threadId),
           userId,
           branch,
           providerKind,
         );
-        if (!vmEntry && threadId) {
-          vmEntry = resolveVm(
-            await getThreadSandboxMap(ctx, threadId),
-            userId,
-            branch,
-            providerKind,
-          );
-          fromThread = !!vmEntry;
-        }
+        fromThread = !!vmEntry;
       }
       const existingProviderKind: SandboxProviderKind | null =
         vmEntry?.sandboxProviderKind ?? null;
@@ -229,8 +134,8 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
             claimName,
             virtualMcpId,
             branch,
-            userId: sandboxMapUserId,
-            sandboxId,
+            userId,
+            projectRef,
             sandboxProviderKind: existingProviderKind ?? providerKind,
             threadId: fromThread ? threadId : null,
           });
@@ -261,30 +166,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
   });
 }
 
-/**
- * Find a recorded entry for `branch` under ANY user key — for shared-scope
- * sandboxes only.
- *
- * A shared claim handle derives from the projectRef, which carries no userId, so
- * whichever member's key the thread recorded the entry under names the same
- * sandbox. Scanning every key is what makes the stale-handle probe work when a
- * member opens a teammate's thread: the viewer's own key is legitimately absent
- * there, and keying the lookup on it would skip the probe and loop on
- * `claiming`. Never use this for user-scoped sandboxes — there the user key is
- * load-bearing (`resolveVm`).
- */
-export function resolveSharedThreadVm(
-  sandboxMap: SandboxMap,
-  branch: string,
-  sandboxProviderKind: SandboxProviderKind,
-): { userId: string; entry: SandboxRecord } | null {
-  for (const mapUserId of Object.keys(sandboxMap)) {
-    const entry = resolveVm(sandboxMap, mapUserId, branch, sandboxProviderKind);
-    if (entry) return { userId: mapUserId, entry };
-  }
-  return null;
-}
-
 async function isStaleHandle(
   runner: SandboxProvider,
   claimName: string,
@@ -309,7 +190,7 @@ async function cleanupStaleEntry(args: {
   virtualMcpId: string;
   branch: string;
   userId: string;
-  sandboxId: SandboxId;
+  projectRef: string;
   sandboxProviderKind: SandboxProviderKind;
   /** Set when the stale entry was found on the thread (synthetic agent) — clear
    *  it there instead of / in addition to the agent row. */
@@ -322,14 +203,14 @@ async function cleanupStaleEntry(args: {
     virtualMcpId,
     branch,
     userId,
-    sandboxId,
+    projectRef,
     sandboxProviderKind,
     threadId,
   } = args;
-  // Drop the thread's sandboxMap entry first, whatever the scope. A shared
-  // sandbox with no session row leaves nothing for the reap below to clear, so
-  // skipping this would keep the dangling `sandboxHandle` in thread metadata and
-  // every client SSE reconnect would re-enter this stale path.
+  // Drop the thread's sandboxMap entry first. A dangling `sandboxHandle` left
+  // in thread metadata makes every client SSE reconnect re-enter this stale
+  // path and re-issue a DELETE against the already-gone claim — a 404 flood
+  // that only stops when the tab closes.
   if (threadId) {
     try {
       await removeThreadSandboxMapEntry(
@@ -347,39 +228,7 @@ async function cleanupStaleEntry(args: {
       );
     }
   }
-  if (sandboxId.scope === "shared") {
-    const organization = requireOrganization(ctx);
-    const locator = {
-      organizationId: organization.id,
-      virtualMcpId,
-      branch,
-    };
-    try {
-      const reaping = await ctx.storage.agentSandboxSessions.withLock(
-        locator,
-        (sessions) => sessions.beginReap(locator, claimName),
-      );
-      if (!reaping) return;
-      try {
-        await runner.delete(claimName, sandboxId);
-      } finally {
-        await ctx.storage.agentSandboxSessions.withLock(locator, (sessions) =>
-          sessions.completeReap(locator, reaping.generation, claimName),
-        );
-      }
-    } catch (err) {
-      console.warn(
-        `[vm-events] shared session cleanup failed for ${virtualMcpId}/${branch}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-    return;
-  }
-  // Same reasoning as the thread removal above, for the agent row: a dangling
-  // `sandboxHandle` left in metadata makes every client SSE reconnect re-enter
-  // this stale path and re-issue a DELETE against the already-gone claim — a 404
-  // flood that only stops when the tab closes. Mirrors SANDBOX_DELETE.
+  // Same reasoning for the agent row. Mirrors SANDBOX_DELETE.
   try {
     if (!threadId) {
       await removeSandboxMapEntry(
@@ -399,10 +248,20 @@ async function cleanupStaleEntry(args: {
     );
   }
   try {
-    await runner.delete(claimName, sandboxId);
+    await runner.delete(claimName);
   } catch (err) {
     console.warn(
       `[vm-events] runner.delete failed for ${claimName}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  try {
+    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+    await stateStore.delete({ userId, projectRef }, sandboxProviderKind);
+  } catch (err) {
+    console.warn(
+      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${sandboxProviderKind}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

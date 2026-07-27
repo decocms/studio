@@ -14,10 +14,8 @@ export function hashSandboxId(id: SandboxId, length = 16): string {
 /**
  * Human-readable URL handle for a sandbox: `<slug>-<hash16>`, where `slug` is
  * derived from the last `/`-segment of the branch and `hash16` is the first
- * 16 hex chars (~64 bits) of the identity key. Shared hosted identities hash
- * `projectRef`; user-scoped desktop identities preserve the historical
- * `userId:projectRef` input. Falls back to a bare hash when the branch is
- * missing or sanitizes to empty.
+ * 16 hex chars (~64 bits) of `SHA256(userId:projectRef)`. Falls back to a
+ * bare hash when the branch is missing or sanitizes to empty.
  *
  * Both live runners expose the handle as a public hostname (agent-sandbox
  * preview URLs; the user-desktop `<handle>.localhost` ingress), so the handle

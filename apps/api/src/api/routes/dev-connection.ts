@@ -2,13 +2,15 @@
  * Ephemeral dev-server connection resolver.
  *
  * Materializes an in-memory `ConnectionEntity` for the synthetic id
- * `dev_<virtualMcpId>`, pointing at the running sandbox dev
+ * `dev_<virtualMcpId>`, pointing at the acting user's running sandbox dev
  * server (`${previewUrl}/api/mcp`, authless by default). Never persisted — the
  * proxy chokepoints call this instead of `connections.findById` when they see a
  * `dev_` id (mirrors the `_self` synthetic-id bypass).
  *
- * Shared hosted sessions resolve from the org registry; user-desktop sessions
- * continue to resolve from `sandboxMap[actingUserId]`.
+ * Per-acting-user by construction: the previewUrl is read from
+ * `sandboxMap[actingUserId]`, so each member only ever reaches their own
+ * sandbox — there is no shared row to leak across users. No sandbox running for
+ * the user → `null` (callers render a "start dev server" state).
  *
  * Returns `null` unless the agent is the dev side of a dev/live pair (the
  * MCP-app signal — see the gate below), so plain website/Hydrogen sandbox
@@ -115,36 +117,11 @@ export async function resolveDevConnection(
 
   const metadata = (vm.metadata ?? {}) as Record<string, unknown>;
   const userMap = readSandboxMap(metadata)[actingUserId];
-  const sharedSession = branch
-    ? await ctx.storage.agentSandboxSessions.find({
-        organizationId: orgId,
-        virtualMcpId: agentId,
-        branch,
-      })
-    : await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
-        orgId,
-        agentId,
-      );
-  const sharedEntry =
-    sharedSession?.desiredState === "running" &&
-    sharedSession.status === "ready" &&
-    sharedSession.sandboxHandle &&
-    sharedSession.previewUrl
-      ? {
-          sandboxHandle: sharedSession.sandboxHandle,
-          previewUrl: sharedSession.previewUrl,
-          sandboxProviderKind: "agent-sandbox" as const,
-        }
-      : null;
-  const picked = sharedEntry
-    ? {
-        entry: sharedEntry,
-      }
-    : userMap
-      ? branch
-        ? pickEntryForBranch(userMap, branch)
-        : pickMostRecentEntry(userMap)
-      : null;
+  if (!userMap) return null;
+
+  const picked = branch
+    ? pickEntryForBranch(userMap, branch)
+    : pickMostRecentEntry(userMap);
   if (!picked?.entry.previewUrl) return null;
 
   // Authless by default — most dev servers run open. If the app gates /mcp
@@ -187,12 +164,7 @@ export async function resolveDevConnection(
     metadata: {
       isDevConnection: true,
       virtualMcpId: agentId,
-      branch:
-        sharedEntry && sharedSession
-          ? sharedSession.branch
-          : "branch" in picked
-            ? picked.branch
-            : branch,
+      branch: picked.branch,
     },
     // null forces live tool/resource discovery (the dev server hot-reloads).
     tools: null,

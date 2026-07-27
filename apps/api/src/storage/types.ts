@@ -1480,45 +1480,6 @@ export interface SandboxProviderStateTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
-export interface AgentSandboxRunnerStateTable {
-  project_ref: string;
-  sandbox_provider_kind: string;
-  handle: string;
-  state: ColumnType<Record<string, unknown>, string, string>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-export interface AgentSandboxSessionTable {
-  organization_id: string;
-  virtual_mcp_id: string;
-  branch: string;
-  thread_id: string | null;
-  sandbox_handle: string | null;
-  preview_url: string | null;
-  sandbox_api_url: string | null;
-  desired_state: "running" | "stopped";
-  status:
-    | "provisioning"
-    | "ready"
-    | "missing"
-    | "failed"
-    | "stopping"
-    | "reaping"
-    | "deleting"
-    | "stopped";
-  generation: number;
-  started_with: ColumnType<
-    Record<string, unknown> | null,
-    string | null,
-    string | null
-  >;
-  failure_reason: string | null;
-  created_by: string;
-  last_started_by: string;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
 // ============================================================================
 // Organization Domain Table Definition
 // ============================================================================
@@ -1893,6 +1854,4 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_import_runs: TaskBoardImportRunTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
-  agent_sandbox_runner_state: AgentSandboxRunnerStateTable;
-  agent_sandbox_sessions: AgentSandboxSessionTable;
 }

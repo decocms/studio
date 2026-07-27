@@ -1,10 +1,11 @@
 /**
- * SANDBOX_START. Hosted agent sandboxes are keyed by (organization, virtual
- * MCP, branch) in agent_sandbox_sessions. User-desktop remains keyed by
- * (user, branch, kind) in the Virtual MCP's sandboxMap.
+ * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
+ * Provider-agnostic — dispatches through the active `SandboxProvider`; this
+ * handler only does `sandboxMap` bookkeeping. Branch defaults to a Bayer-style
+ * `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) when omitted.
  *
- * Different provider kinds can coexist for a branch without changing the
- * user-desktop persistence contract.
+ * Different sandbox provider kinds coexist as siblings under the same
+ * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
 import { z } from "zod";
@@ -12,10 +13,8 @@ import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
   normalizeSandboxProviderKind,
-  sharedSandboxId,
   type SandboxProvider,
   type SandboxProviderKind,
-  userSandboxId,
   type Workload,
 } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
@@ -26,7 +25,6 @@ import {
   type StudioContext,
 } from "../../core/studio-context";
 import {
-  readValidatedRuntimeEnv,
   readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
@@ -47,12 +45,9 @@ import {
   detectRepoRuntime,
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
-import {
-  DEFAULT_WORKSPACE_BRANCH,
-  PACKAGE_MANAGER_CONFIG,
-} from "@decocms/shared/runtime-defaults";
+import { generateBranchName } from "@decocms/shared/branch-name";
+import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   getThreadGithubRepo,
   setThreadSandboxMapEntry,
@@ -65,7 +60,6 @@ import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
-import type { AgentSandboxSessionStorage } from "../../storage/agent-sandbox-sessions";
 
 type GithubRepo = {
   owner: string;
@@ -76,33 +70,6 @@ type GithubRepo = {
 type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
-
-function usesAgentSandboxSession(kind: SandboxProviderKind): boolean {
-  return kind === "agent-sandbox";
-}
-
-function sessionToSandboxRecord(
-  session: Awaited<
-    ReturnType<StudioContext["storage"]["agentSandboxSessions"]["find"]>
-  > | null,
-): SandboxRecord | null {
-  if (
-    !session ||
-    session.desiredState !== "running" ||
-    session.status !== "ready" ||
-    !session.sandboxHandle
-  ) {
-    return null;
-  }
-  return {
-    sandboxHandle: session.sandboxHandle,
-    previewUrl: session.previewUrl,
-    sandboxApiUrl: session.sandboxApiUrl,
-    sandboxProviderKind: "agent-sandbox",
-    createdAt: Date.parse(session.createdAt),
-    startedWith: session.startedWith as SandboxRecord["startedWith"],
-  };
-}
 
 const sandboxProviderKindInputSchema = z.enum([
   "agent-sandbox",
@@ -128,7 +95,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted, the handler uses the shared `staging` branch. The resolved branch is returned in the response so callers can persist it.",
+        "Optional git branch to check out. When omitted the handler generates a Bayer-style `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
@@ -148,7 +115,11 @@ export const SANDBOX_START = defineTool({
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
     await ctx.access.check();
-    const resolvedBranch = input.branch ?? DEFAULT_WORKSPACE_BRANCH;
+    const resolvedBranch =
+      input.branch ??
+      generateBranchName(
+        ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
+      );
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.
@@ -176,25 +147,16 @@ export const SANDBOX_START = defineTool({
       await resolveSandboxProvider(ctx, {
         userId,
         branch: resolvedBranch,
-        virtualMcpId: input.virtualMcpId,
         virtualMcpMetadata: metadata,
         explicitKind,
       });
 
-    const existing: SandboxRecord | null = usesAgentSandboxSession(providerKind)
-      ? sessionToSandboxRecord(
-          await ctx.storage.agentSandboxSessions.find({
-            organizationId: organization.id,
-            virtualMcpId: input.virtualMcpId,
-            branch: resolvedBranch,
-          }),
-        )
-      : resolveVm(
-          readSandboxMap(metadata),
-          userId,
-          resolvedBranch,
-          providerKind,
-        );
+    const existing: SandboxRecord | null = resolveVm(
+      readSandboxMap(metadata),
+      userId,
+      resolvedBranch,
+      providerKind,
+    );
 
     // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
     // same rule as `ensureSandbox`. Without this the frontend's auto-start
@@ -262,16 +224,14 @@ export async function ensureSandbox(
     throw new Error("Virtual MCP not found");
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const existing: SandboxRecord | null = resolveVm(
+    readSandboxMap(metadata),
+    userId,
+    input.branch,
+    input.sandboxProviderKind,
+  );
+
   const providerKind = input.sandboxProviderKind;
-  const existing: SandboxRecord | null = usesAgentSandboxSession(providerKind)
-    ? sessionToSandboxRecord(
-        await ctx.storage.agentSandboxSessions.find({
-          organizationId: organization.id,
-          virtualMcpId: input.virtualMcpId,
-          branch: input.branch,
-        }),
-      )
-    : resolveVm(readSandboxMap(metadata), userId, input.branch, providerKind);
 
   // Resolve the runner up front: for user-desktop we must verify the cached
   // entry against the live daemon before trusting it (the daemon may have
@@ -280,7 +240,6 @@ export async function ensureSandbox(
   const { provider: runner } = await resolveSandboxProvider(ctx, {
     userId,
     branch: input.branch,
-    virtualMcpId: input.virtualMcpId,
     virtualMcpMetadata: metadata,
     explicitKind: providerKind,
   });
@@ -289,7 +248,7 @@ export async function ensureSandbox(
   // daemon first — a relinked daemon has an empty sandbox map and answers the
   // liveness probe with 404, which means we must reap the stale entry and
   // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
-  if (existing && !usesAgentSandboxSession(providerKind)) {
+  if (existing) {
     if (providerKind !== "user-desktop") return existing;
     const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
     if (alive) return existing;
@@ -351,102 +310,6 @@ type StartParams = {
 async function provisionSandbox(
   params: StartParams,
 ): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
-  if (!usesAgentSandboxSession(params.providerKind)) {
-    return provisionSandboxInner(params, null);
-  }
-
-  const locator = {
-    organizationId: params.orgId,
-    virtualMcpId: params.virtualMcpId,
-    branch: params.branch,
-  };
-  await finishInterruptedSharedTransition(params, locator);
-  const started = await params.ctx.storage.agentSandboxSessions.withLock(
-    locator,
-    (sessions) =>
-      sessions.beginStart(
-        locator,
-        params.userId,
-        threadIdFromBranch(params.branch),
-      ),
-  );
-  try {
-    return await provisionSandboxInner(params, {
-      locator,
-      generation: started.generation,
-      sessions: params.ctx.storage.agentSandboxSessions,
-    });
-  } catch (error) {
-    await params.ctx.storage.agentSandboxSessions
-      .failStart(
-        locator,
-        started.generation,
-        error instanceof Error ? error.message : String(error),
-      )
-      .catch(() => {});
-    throw error;
-  }
-}
-
-async function finishInterruptedSharedTransition(
-  params: StartParams,
-  locator: {
-    organizationId: string;
-    virtualMcpId: string;
-    branch: string;
-  },
-): Promise<void> {
-  const pending = await params.ctx.storage.agentSandboxSessions.withLock(
-    locator,
-    (sessions) => sessions.find(locator),
-  );
-  if (
-    !pending ||
-    (pending.status !== "stopping" && pending.status !== "reaping")
-  ) {
-    return;
-  }
-
-  const sandboxId = sharedSandboxId(
-    composeSandboxRef({
-      orgId: params.orgId,
-      virtualMcpId: params.virtualMcpId,
-      branch: params.branch,
-    }),
-  );
-  if (pending.sandboxHandle) {
-    await params.runner.delete(pending.sandboxHandle, sandboxId);
-  }
-  await params.ctx.storage.agentSandboxSessions.withLock(
-    locator,
-    (sessions) => {
-      if (pending.status === "stopping") {
-        return sessions.completeStop(locator, pending.generation);
-      }
-      if (!pending.sandboxHandle) {
-        throw new Error("Reaping agent sandbox session is missing its handle");
-      }
-      return sessions.completeReap(
-        locator,
-        pending.generation,
-        pending.sandboxHandle,
-      );
-    },
-  );
-}
-
-async function provisionSandboxInner(
-  params: StartParams,
-  sharedStart: {
-    locator: {
-      organizationId: string;
-      virtualMcpId: string;
-      branch: string;
-    };
-    generation: number;
-    sessions: AgentSandboxSessionStorage;
-  } | null,
-): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
   const {
     ctx,
     userId,
@@ -458,14 +321,6 @@ async function provisionSandboxInner(
     existing,
     runner,
   } = params;
-
-  if (sharedStart) {
-    await assertSharedSandboxSecrets(ctx, {
-      orgId,
-      userId,
-      metadata,
-    });
-  }
 
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
@@ -570,7 +425,6 @@ async function provisionSandboxInner(
       orgId,
       userId,
       entries: readValidatedSubmoduleCredentials(metadata),
-      organizationSecretsOnly: !!sharedStart,
     });
 
     repoOpts = {
@@ -658,45 +512,34 @@ async function provisionSandboxInner(
     }
   }
 
-  const sandboxId = sharedStart
-    ? sharedSandboxId(projectRef)
-    : userSandboxId(userId, projectRef);
-  if (sharedStart) {
-    await sharedStart.sessions.recordProvisioningHandle(
-      sharedStart.locator,
-      sharedStart.generation,
-      computeClaimHandle(sandboxId, branch),
-    );
-  }
-  const sandbox = await runner.ensure(sandboxId, {
-    // Pass branch explicitly so the runner-side `computeHandle` agrees with
-    // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
-    // VM falls back to `s-<hash>` while the proxy looks up `<branch>-<hash>`
-    // and every proxy call 404s with `unknown handle` (see resilience
-    // scenarios `link-dispatch-ws-partition` / `link-dispatch-log-replay`).
-    branch,
-    repo: repoOpts,
-    workload,
-    tenant: {
-      orgId,
-      ...(sharedStart ? {} : { userId }),
-      ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
-      ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
-      ...(!sharedStart && ctx.auth.user?.email
-        ? { userEmail: ctx.auth.user.email }
+  const sandbox = await runner.ensure(
+    { userId, projectRef },
+    {
+      // Pass branch explicitly so the runner-side `computeHandle` agrees with
+      // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
+      // VM falls back to `s-<hash>` while the proxy looks up `<branch>-<hash>`
+      // and every proxy call 404s with `unknown handle` (see resilience
+      // scenarios `link-dispatch-ws-partition` / `link-dispatch-log-replay`).
+      branch,
+      repo: repoOpts,
+      workload,
+      tenant: {
+        orgId,
+        userId,
+        ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
+        ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
+        ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
+        ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
+      },
+      ...(offload
+        ? {
+            offloadAllowedHosts: offload.hosts,
+            offloadAllowSameHostDev: offload.allowSameHostDev,
+          }
         : {}),
-      ...(!sharedStart && ctx.auth.user?.name
-        ? { userName: ctx.auth.user.name }
-        : {}),
+      ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
     },
-    ...(offload
-      ? {
-          offloadAllowedHosts: offload.hosts,
-          offloadAllowSameHostDev: offload.allowSameHostDev,
-        }
-      : {}),
-    ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
-  });
+  );
 
   // Resolve declared env (literals + secret refs) and push to the daemon
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
@@ -709,7 +552,6 @@ async function provisionSandboxInner(
     orgId,
     userId,
     entries: envEntries,
-    organizationSecretsOnly: !!sharedStart,
   });
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
@@ -736,78 +578,34 @@ async function provisionSandboxInner(
     },
   };
 
-  if (sharedStart) {
-    const completed = await sharedStart.sessions.completeStart(
-      sharedStart.locator,
-      sharedStart.generation,
-      entry,
-    );
-    if (!completed) {
-      await runner.delete(entry.sandboxHandle, sandboxId).catch(() => {});
-      throw new Error("Sandbox start was superseded by a stop");
-    }
-  } else {
-    await setSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      virtualMcpId,
-      userId,
+  await setSandboxMapEntry(
+    ctx.storage.virtualMcps,
+    virtualMcpId,
+    userId,
+    userId,
+    branch,
+    params.providerKind,
+    entry,
+  );
+  // Thread-scoped branch: the agent write above is a no-op for the synthetic
+  // Decopilot agent, so also persist the record on the thread — the only place
+  // the frontend reads previewUrl/handle from for these sandboxes. Applies to
+  // EVERY provisioning path (load_repo, SANDBOX_START auto-start, fs tools).
+  const threadId = threadIdFromBranch(branch);
+  if (threadId) {
+    await setThreadSandboxMapEntry(
+      ctx,
+      threadId,
       userId,
       branch,
       params.providerKind,
       entry,
     );
-    // Legacy/desktop thread-scoped entries remain user-specific.
-    const threadId = threadIdFromBranch(branch);
-    if (threadId) {
-      await setThreadSandboxMapEntry(
-        ctx,
-        threadId,
-        userId,
-        branch,
-        params.providerKind,
-        entry,
-      );
-    }
   }
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm };
-}
-
-async function assertSharedSandboxSecrets(
-  ctx: StudioContext,
-  args: {
-    orgId: string;
-    userId: string;
-    metadata: Record<string, unknown>;
-  },
-): Promise<void> {
-  const references = [
-    ...(readValidatedRuntimeEnv(args.metadata) ?? []).flatMap((entry) =>
-      entry.kind === "secret"
-        ? [{ id: entry.secretId, label: `environment variable ${entry.key}` }]
-        : [],
-    ),
-    ...(readValidatedSubmoduleCredentials(args.metadata) ?? []).map(
-      (entry) => ({
-        id: entry.secretId,
-        label: `submodule credential ${entry.host}`,
-      }),
-    ),
-  ];
-  for (const reference of references) {
-    const info = await ctx.storage.secrets.findById(
-      reference.id,
-      args.orgId,
-      args.userId,
-    );
-    if (info.scope !== "organization") {
-      throw new Error(
-        `Shared agent sandboxes require organization-scoped secrets (${reference.label})`,
-      );
-    }
-  }
 }
 
 /**

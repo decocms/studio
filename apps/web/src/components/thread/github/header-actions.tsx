@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
+import { generateBranchName } from "@decocms/shared/branch-name";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -104,7 +105,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch } = useChatTask();
+  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
@@ -225,10 +226,10 @@ export function HeaderActions({ virtualMcpId }: Props) {
   if (!githubRepo) return null;
 
   // Live preview URL comes from the sandbox lifecycle, not the raw vMCP
-  // sandboxMap. Hosted (agent-sandbox / shared-staging) sandboxes persist their
-  // previewUrl in `agentSandboxSessions`, which the lifecycle overlays onto the
-  // branch map; the raw `vm.metadata.sandboxMap` never carries it, so reading it
-  // here left "Visit preview" permanently disabled for those sandboxes.
+  // sandboxMap: the lifecycle overlays the thread's own sandbox record onto the
+  // branch map, and the raw `vm.metadata.sandboxMap` does not always carry the
+  // previewUrl — reading it here left "Visit preview" permanently disabled for
+  // hosted sandboxes.
   const { previewUrl } = useSandboxLifecycle();
 
   const button = githubHeadBranch
@@ -303,6 +304,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
     ]);
   };
 
+  const switchToFreshBranch = async () => {
+    const nextBranch = generateBranchName(
+      session?.user?.name ?? session?.user?.email?.split("@")[0],
+    );
+    await setCurrentTaskBranch(nextBranch);
+  };
+
   const handleSquashMerge = async (pullNumber: number) => {
     if (!githubRepo?.connectionId || githubActionPending) return;
     setGithubActionPending(true);
@@ -318,6 +326,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         t("thread.headerActions.publishedPr", { prNumber: String(pullNumber) }),
       );
       await refreshPrState();
+      await switchToFreshBranch();
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -431,6 +440,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
                 : null
           }
           onPullRequestChanged={refreshPrState}
+          onPublished={switchToFreshBranch}
         />
       )}
     </>

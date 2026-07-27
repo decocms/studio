@@ -6,7 +6,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   SidebarMenuButton,
   SidebarMenuItem,
@@ -39,6 +44,7 @@ import { AgentAvatar } from "@/components/agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useThreadActions } from "@/components/chat/store/hooks";
+import { readCachedTaskBranch } from "@/lib/read-cached-task-branch";
 import { authClient } from "@/lib/auth-client";
 import { getServerPinnedIds } from "@/hooks/use-navigate-to-agent";
 import {
@@ -248,17 +254,32 @@ function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
   );
 }
 
-/** Hook for "spawn task on this vMCP" buttons in the browse-agents popover. */
-function useNavigateToNewTask(orgSlug: string) {
+/**
+ * Hook for "spawn task on this vMCP" buttons (used by the browse-agents
+ * popover). When the user clicks a vMCP that matches the URL's current
+ * virtualmcpid, the active task's branch is carried into the new thread
+ * so the new task lands on the same warm sandbox. When the clicked vMCP
+ * differs, no branch is passed and the server picks the most-recently-
+ * touched sandboxMap entry for that vMCP.
+ */
+function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
   const { create } = useThreadActions();
+  const { locator } = useProjectContext();
+  const params = useParams({ strict: false }) as { taskId?: string };
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
 
   return async (clickedVirtualMcpId: string) => {
     const taskId = crypto.randomUUID();
+    const carryBranch =
+      clickedVirtualMcpId === search.virtualmcpid
+        ? readCachedTaskBranch(orgSlug, locator, params.taskId ?? "")
+        : null;
     try {
       await create({
         id: taskId,
         virtual_mcp_id: clickedVirtualMcpId,
+        ...(carryBranch ? { branch: carryBranch } : {}),
       });
     } catch {
       // Toast already fired; navigate anyway so the route loader's
@@ -358,7 +379,7 @@ function PinAgentPopoverContent({
   const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
 
-  const navigateToNewTask = useNavigateToNewTask(org.slug);
+  const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
   // Dev agents are reached via the Develop/Live toggle on their live
   // counterpart, not as standalone browse entries.

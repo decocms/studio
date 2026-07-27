@@ -206,11 +206,11 @@ describe("spawnClone", () => {
     }
   }, 30_000);
 
-  it("does not re-fetch the base when resuming main itself", async () => {
+  it("does not re-fetch the base when resuming the default branch itself", async () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
-      // Resuming `main` hits the `base === branchOnRemote` skip:
+      // Resuming `main` (the default) hits the `base === branchOnRemote` skip:
       // the base is already the cloned branch, so the deferred fetch is a
       // no-op (it early-returns without a second network fetch).
       const { code, fetchBase } = await spawnClone({
@@ -229,11 +229,12 @@ describe("spawnClone", () => {
     }
   }, 30_000);
 
-  it("uses main as the base even when origin/HEAD points elsewhere", async () => {
+  it("refuses a maliciously named default branch instead of running it", async () => {
     const { url, root, cleanup, bare } = setupBareRepo();
     try {
-      // The repository default is remote-controlled and may be unusual or
-      // unsafe. Sandbox divergence still uses the fixed main base.
+      // Git permits `;`/`$()`/backticks in ref names; the default branch name
+      // flows into `sh -c` git commands, so an unsafe name must be rejected
+      // before interpolation rather than executed.
       const evil = "x;whoami";
       const mainSha = execSync(`git -C ${bare} rev-parse refs/heads/main`)
         .toString()
@@ -251,18 +252,20 @@ describe("spawnClone", () => {
         askpassPath: ASKPASS,
         onChunk: () => {},
       });
+      // Best-effort: the clone still succeeds; it just skips the unsafe base.
       expect(code).toBe(0);
+      // The unsafe-ref rejection lives in the deferred base fetch — drive it.
       await fetchBase?.(() => {});
+      // origin/HEAD must NOT have been pointed at the malicious ref.
       expect(
         tryGitOut(repoDir, "symbolic-ref --short refs/remotes/origin/HEAD"),
-      ).toBe("origin/main");
+      ).not.toBe(`origin/${evil}`);
       expect(
         tryGitOut(
           repoDir,
-          "rev-parse --verify --quiet refs/remotes/origin/main",
+          `rev-parse --verify --quiet 'refs/remotes/origin/${evil}'`,
         ),
-      ).toBeTruthy();
-      expect(computeBranchDivergence(repoDir).base).toBe("main");
+      ).toBeNull();
     } finally {
       cleanup();
     }
@@ -289,13 +292,9 @@ describe("spawnClone", () => {
     }
   }, 30_000);
 
-  it("clones main and forks locally when the target is missing on remote", async () => {
-    const { url, root, cleanup, bare } = setupBareRepo();
+  it("clones default and forks a local branch when target is missing on remote", async () => {
+    const { url, root, cleanup } = setupBareRepo();
     try {
-      // Prove the source is fixed to main rather than inferred from origin/HEAD.
-      execSync(`git -C ${bare} symbolic-ref HEAD refs/heads/feature/x`, {
-        stdio: "ignore",
-      });
       const repoDir = join(root, "workspace");
       const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/new"),
@@ -303,7 +302,7 @@ describe("spawnClone", () => {
         onChunk: () => {},
       });
       expect(code).toBe(0);
-      // Local branch was created from main; feature/x's exclusive
+      // Local branch was created from default (main); feature/x's exclusive
       // file should NOT be present, README.md (from main) should be.
       expect(currentBranch(repoDir)).toBe("feature/new");
       expect(existsSync(join(repoDir, "README.md"))).toBe(true);

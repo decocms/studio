@@ -163,8 +163,9 @@ export function usePanelActions() {
   //
   // `branch` lets a "New chat on the branch I'm viewing" caller inherit the
   // current thread's branch. When omitted/null (e.g. a branchless agent, or an
-  // "open agent X" flow), the server assigns the default branch. The schema
-  // only accepts a non-empty branch string, so null/empty is dropped.
+  // "open agent X" flow), the server picks the most-recently-touched branch from
+  // the user's sandboxMap. The schema only accepts a non-empty branch string, so
+  // null/empty is dropped.
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,

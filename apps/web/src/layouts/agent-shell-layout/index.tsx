@@ -44,7 +44,6 @@ import {
 } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { withoutLegacyAgentSandboxEntries } from "@/lib/agent-sandbox-map";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -72,7 +71,6 @@ import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { SidePanel } from "./side-panel";
-import { useAgentSandboxSession } from "@/hooks/use-agent-sandbox-session";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -137,7 +135,7 @@ function NewTaskBridge({
 function VmEventsBridge({
   virtualMcpId,
   hasActiveGithubRepo,
-  sandboxMap: agentRowSandboxMap,
+  sandboxMap,
   children,
 }: {
   virtualMcpId: string;
@@ -145,20 +143,10 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
-  // The agent row is not authoritative for `agent-sandbox` — that kind resolves
-  // from the session registry below, and a leftover entry here would suppress
-  // auto-start while pointing at a reaped sandbox. See the helper.
-  const sandboxMap = withoutLegacyAgentSandboxEntries(agentRowSandboxMap);
   const { currentBranch, activeTask } = useChatTask();
-  const { org } = useProjectContext();
   const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
-  const { data: agentSandboxSession } = useAgentSandboxSession(
-    org.slug,
-    virtualMcpId,
-    currentBranch,
-  );
 
   // Overlay the thread's own sandbox record for the current branch. `load_repo`
   // binds a repo to the thread and persists its sandbox there (the ephemeral
@@ -181,7 +169,7 @@ function VmEventsBridge({
     previewOwnerId && currentBranch
       ? threadSandboxMap?.[previewOwnerId]?.[currentBranch]
       : undefined;
-  const threadEffectiveSandboxMap: SandboxMap | undefined =
+  const effectiveSandboxMap: SandboxMap | undefined =
     userId && currentBranch && threadOwnerBranchMap
       ? {
           ...(sandboxMap ?? {}),
@@ -191,31 +179,6 @@ function VmEventsBridge({
           },
         }
       : sandboxMap;
-  const effectiveSandboxMap: SandboxMap | undefined =
-    userId &&
-    currentBranch &&
-    agentSandboxSession?.desiredState === "running" &&
-    agentSandboxSession.status === "ready" &&
-    agentSandboxSession.sandboxHandle
-      ? {
-          ...(threadEffectiveSandboxMap ?? {}),
-          [userId]: {
-            ...(threadEffectiveSandboxMap?.[userId] ?? {}),
-            [currentBranch]: {
-              ...parseBranchMap(
-                threadEffectiveSandboxMap?.[userId]?.[currentBranch],
-              ),
-              "agent-sandbox": {
-                sandboxHandle: agentSandboxSession.sandboxHandle,
-                previewUrl: agentSandboxSession.previewUrl,
-                sandboxApiUrl: agentSandboxSession.sandboxApiUrl,
-                sandboxProviderKind: "agent-sandbox",
-                startedWith: agentSandboxSession.startedWith ?? undefined,
-              },
-            },
-          },
-        }
-      : threadEffectiveSandboxMap;
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
 
@@ -251,11 +214,7 @@ function VmEventsBridge({
   // vmEntry always agree on which sandbox is active.
   const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect =
-    Object.keys(branchMap).length > 0 ||
-    isStartPending ||
-    agentSandboxSession?.status === "provisioning" ||
-    agentSandboxSession?.status === "reaping";
+  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
   return (
     <SandboxEventsProvider
@@ -271,11 +230,6 @@ function VmEventsBridge({
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
-        sharedDesiredState={agentSandboxSession?.desiredState ?? null}
-        sharedLifecyclePending={
-          agentSandboxSession?.status === "provisioning" ||
-          agentSandboxSession?.status === "reaping"
-        }
         othersThreadLabel={othersThreadLabel}
         othersThreadId={activeTask?.id ?? null}
       >

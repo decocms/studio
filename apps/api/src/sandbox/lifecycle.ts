@@ -19,7 +19,6 @@ import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
-import { KyselyAgentSandboxRunnerStateStore } from "@/storage/agent-sandbox-runner-state";
 import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -141,10 +140,10 @@ async function instantiate(
   kind: SandboxProviderKind,
   db: Kysely<DatabaseSchema>,
 ): Promise<SandboxProvider> {
+  const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
     case "agent-sandbox": {
-      const stateStore = new KyselyAgentSandboxRunnerStateStore(db);
       // Dynamic import — @kubernetes/client-node is heavy and only needed
       // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
       // the hosted provider don't load it.

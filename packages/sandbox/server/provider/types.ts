@@ -6,32 +6,10 @@
 import { z } from "zod";
 import type { ClaimPhase } from "./lifecycle-types";
 
-/**
- * Stable sandbox identity.
- *
- * Hosted agent sandboxes are shared by every authorized user working on the
- * same project ref. Desktop sandboxes remain bound to one user's link daemon.
- * The discriminator makes choosing the wrong identity scope a compile error.
- */
-export type SandboxId =
-  | {
-      scope: "shared";
-      /** Opaque routing key; compose via `composeSandboxRef()`. */
-      projectRef: string;
-    }
-  | {
-      scope: "user";
-      userId: string;
-      /** Opaque routing key; compose via `composeSandboxRef()`. */
-      projectRef: string;
-    };
-
-export function sharedSandboxId(projectRef: string): SandboxId {
-  return { scope: "shared", projectRef };
-}
-
-export function userSandboxId(userId: string, projectRef: string): SandboxId {
-  return { scope: "user", userId, projectRef };
+export interface SandboxId {
+  userId: string;
+  /** Opaque routing key; compose via `composeSandboxRef()`. */
+  projectRef: string;
 }
 
 /** Opaque handle; transport (HTTP/kube-exec/ssh) stays inside the runner. */
@@ -122,8 +100,8 @@ export interface EnsureOptions {
    * org/user. Optional — callers without an org context (smoke tests, internal
    * tool sandboxes) leave it unset and pods get only platform-level labels.
    *
-   * `orgId` and optional `userId` are the stable IDs surfaced as k8s labels
-   * (label values are charset-restricted, so UUIDs only). The remaining fields are
+   * `orgId`/`userId` are the stable IDs surfaced as k8s labels (label values
+   * are charset-restricted, so UUIDs only). The remaining fields are
    * human-readable identity surfaced as k8s *annotations* (no charset limit) so
    * `kubectl describe sandboxclaim` and dashboards can show who owns a sandbox
    * without a join back to the DB. All optional — runners drop any that are
@@ -131,8 +109,7 @@ export interface EnsureOptions {
    */
   tenant?: {
     orgId: string;
-    /** Omitted for org-shared hosted sandboxes. */
-    userId?: string;
+    userId: string;
     orgSlug?: string;
     orgName?: string;
     userEmail?: string;
@@ -193,11 +170,7 @@ export interface SandboxProvider {
   readonly kind: SandboxProviderKind;
 
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
-  /**
-   * Delete a sandbox. Callers deleting a shared hosted sandbox pass its id so
-   * ensure/delete serialize on the same cross-pod lock.
-   */
-  delete(handle: string, id?: SandboxId): Promise<void>;
+  delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
 
   /**
@@ -253,9 +226,5 @@ export interface SandboxProvider {
 }
 
 export function sandboxIdKey(id: SandboxId): string {
-  // Preserve the historical desktop hash input byte-for-byte. Hosted shared
-  // identities deliberately contain no acting-user component.
-  return id.scope === "shared"
-    ? id.projectRef
-    : `${id.userId}:${id.projectRef}`;
+  return `${id.userId}:${id.projectRef}`;
 }
