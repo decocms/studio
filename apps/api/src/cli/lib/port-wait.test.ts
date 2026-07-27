@@ -80,10 +80,27 @@ describe("waitForPort", () => {
 
   it("waits until the port becomes available, then resolves", async () => {
     const port = await ephemeralPort();
-    const promise = waitForPort(port, { intervalMs: 20 });
-    setTimeout(() => {
-      void listenOn("127.0.0.1", port);
-    }, 60);
+    // No real time: the poll loop waits on a test-controlled sleepFn, so the
+    // sequence is explicit — probe misses, listener comes up, poll retries.
+    // (The old version held the port free for a real 60ms setTimeout while
+    // polling on a real 20ms interval; under the parallel suite that both
+    // flaked on timer drift and invited cross-worker ephemeral-port reuse.)
+    const pendingPolls: Array<() => void> = [];
+    const promise = waitForPort(port, {
+      intervalMs: 20,
+      sleepFn: () =>
+        new Promise<void>((resolve) => {
+          pendingPolls.push(resolve);
+        }),
+    });
+    // First probe (real sockets — libuv callbacks, so yield event-loop turns,
+    // not just microtasks) finds the port free and parks on the sleepFn.
+    while (pendingPolls.length === 0) {
+      await new Promise((r) => setImmediate(r));
+    }
+    // Now bring the listener up — awaited, so it's bound before the retry.
+    await listenOn("127.0.0.1", port);
+    pendingPolls.shift()?.();
     expect(await promise).toBe("127.0.0.1");
   });
 });

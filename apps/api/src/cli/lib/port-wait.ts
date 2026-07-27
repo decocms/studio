@@ -18,6 +18,8 @@ export async function findRunningAddr(port: number): Promise<string | null> {
 
 export interface WaitForPortOptions {
   intervalMs?: number;
+  /** Injectable wait — tests sequence polls manually instead of real time. */
+  sleepFn?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -25,12 +27,12 @@ export interface WaitForPortOptions {
  */
 export async function waitForPort(
   port: number,
-  { intervalMs = 1000 }: WaitForPortOptions = {},
+  { intervalMs = 1000, sleepFn = sleep }: WaitForPortOptions = {},
 ): Promise<string> {
   for (;;) {
     const addr = await findRunningAddr(port);
     if (addr) return addr;
-    await sleep(intervalMs);
+    await sleepFn(intervalMs);
   }
 }
 
