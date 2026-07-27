@@ -48,26 +48,16 @@ export async function handleVirtualMcpRequest(
   const ctx = c.get("studioContext");
 
   try {
-    // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup).
-    // External MCP clients (Claude Code/Desktop) send NEITHER — the org is in
-    // the URL path (`/api/:org/mcp`), already resolved into `ctx.organization`
-    // by the resolveOrgFromPath middleware. Fall back to it so the aggregate
-    // (Decopilot) endpoint works without the internal UI's x-org-* headers;
-    // otherwise organizationId stays null and the request 400s with
-    // "Agent ID or organization ID is required".
-    const orgId = c.req.header("x-org-id");
-    const orgSlug = c.req.header("x-org-slug");
-
-    const organizationId = orgId
-      ? orgId
-      : orgSlug
-        ? await ctx.db
-            .selectFrom("organization")
-            .select("id")
-            .where("slug", "=", orgSlug)
-            .executeTakeFirst()
-            .then((org) => org?.id)
-        : (ctx.organization?.id ?? null);
+    // `ctx.organization` is the single source of truth for org context —
+    // context-factory already resolves and MEMBERSHIP-VERIFIES x-org-id /
+    // x-org-slug (and the path org, for the canonical /api/:org route) for
+    // session- and OAuth-session-authenticated callers. Re-reading those
+    // headers here independently would let an API key with no organization
+    // in its own metadata (e.g. a webhook-trigger key scoped only to fire one
+    // automation, see tools/automations/trigger-add.ts) name an arbitrary
+    // x-org-id and reach any org's Virtual MCP — API keys are pre-scoped at
+    // mint time and must never be widened by a caller-supplied header.
+    const organizationId = ctx.organization?.id ?? null;
 
     const virtualId = virtualMcpId
       ? virtualMcpId
