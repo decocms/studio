@@ -106,7 +106,8 @@ test.describe("Organization main agent setting", () => {
       request,
       orgSlug,
       "COLLECTION_VIRTUAL_MCP_CREATE",
-      { data: { title: "Main Agent E2E" } },
+      // `connections` is required by the create schema (empty = exclusion mode).
+      { data: { title: "Main Agent E2E", connections: [] } },
     );
     const agentId = created.item.id;
 
@@ -146,7 +147,7 @@ test.describe("Organization main agent setting", () => {
       request,
       orgSlug,
       "COLLECTION_VIRTUAL_MCP_CREATE",
-      { data: { title: "Landing Agent E2E" } },
+      { data: { title: "Landing Agent E2E", connections: [] } },
     );
     const agentId = created.item.id;
     await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
