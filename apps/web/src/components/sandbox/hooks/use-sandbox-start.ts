@@ -12,6 +12,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { callSandboxTool } from "./call-sandbox-tool";
 
@@ -81,7 +82,8 @@ export function useSandboxStart(client: MinimalMcpClient) {
     mutationKey: SANDBOX_START_MUTATION_KEY,
     // Auto-recover from transient lifecycle/lock contention without a refresh.
     retry: (count, error) => isRetryableSandboxStartError(error) && count < 6,
-    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 5000),
+    retryDelay: (attempt) =>
+      exponentialBackoffWithJitter(5000, 500, attempt, 2, 0),
     mutationFn: async (args) => {
       if (args.branch) sandboxUserStop.clear(args.virtualMcpId, args.branch);
       const key = startKey(args);
