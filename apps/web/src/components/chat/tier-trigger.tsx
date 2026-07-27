@@ -367,6 +367,7 @@ function Segmented({
           key={o.key}
           type="button"
           onClick={o.onSelect}
+          aria-pressed={o.active}
           className={cn(SEG_BTN, o.active ? SEG_ACTIVE : SEG_INACTIVE)}
           title={o.active ? t("chat.tierTrigger.selected") : undefined}
         >
