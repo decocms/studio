@@ -354,7 +354,11 @@ export function useMainPanelTabs(ctx: {
   );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
-  if (hasClonableSource && showContentTab) {
+  // A tab configured as the default main view stays pinned in the bar even
+  // before its runtime data is ready (e.g. Content while the repo is still
+  // cloning) — otherwise the bar would drop the tab the user chose to land on.
+  const contentIsDefaultMain = effectiveDefaultMainView?.type === "content";
+  if (hasClonableSource && (showContentTab || contentIsDefaultMain)) {
     systemTabs.push({
       id: "content",
       title: t("common.mainPanelTabs.content"),

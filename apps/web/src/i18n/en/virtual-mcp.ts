@@ -107,6 +107,7 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.chat": "Chat",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "Chat is always shown when it is the default view",
+  "virtualMcp.layoutTabContent.content": "Content",
   "virtualMcp.layoutTabContent.layout": "Layout",
   "virtualMcp.layoutTabContent.mainView": "Main view",
   "virtualMcp.layoutTabContent.mainViewDescription":

@@ -110,6 +110,7 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.chat": "Chat",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
+  "virtualMcp.layoutTabContent.content": "Conteúdo",
   "virtualMcp.layoutTabContent.layout": "Layout",
   "virtualMcp.layoutTabContent.mainView": "Visualização principal",
   "virtualMcp.layoutTabContent.mainViewDescription":

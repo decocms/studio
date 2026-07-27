@@ -315,6 +315,10 @@ export function LayoutTabContent({
       value: "preview",
       label: t("virtualMcp.layoutTabContent.preview"),
     });
+    defaultMainOptions.push({
+      value: "content",
+      label: t("virtualMcp.layoutTabContent.content"),
+    });
   }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({

@@ -495,7 +495,11 @@ function ContentBrowserReady({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
-  if (decofileLoading || metaLoading) {
+  // While the dev server is still warming up (repo cloning / preview not yet
+  // ready) the decofile/meta queries are disabled, so they report neither
+  // loading nor data. Show a spinner instead of the "could not load" error —
+  // that error is only meaningful once the dev server is actually running.
+  if (!devServerReady || decofileLoading || metaLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Loading01 size={20} className="animate-spin text-muted-foreground" />
