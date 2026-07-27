@@ -6,10 +6,17 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@deco/ui/components/drawer.tsx";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Atom01,
@@ -18,6 +25,7 @@ import {
   Cloud01,
   Lightning01,
   Monitor01,
+  Settings01,
   Stars01,
 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
@@ -30,6 +38,17 @@ import {
   type AgentMode,
 } from "./use-agent-mode";
 import { useChatPrefs, useOptionalChatTask } from "./context";
+import {
+  useEffectiveSimpleMode,
+  useUpdateUserModelPreferences,
+  useUserModelPreferencesQuery,
+} from "@/hooks/use-user-model-preferences";
+import { useSimpleMode } from "@/hooks/use-organization-settings";
+import {
+  useAiProviderKeys,
+  useAutoSimpleModeDefaults,
+} from "@/hooks/collections/use-ai-providers";
+import { TierModelOverridePicker } from "./tier-model-override-row";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import {
   type AgentOption,
@@ -47,6 +66,13 @@ interface TierRow {
   subtitle?: string | null;
   active: boolean;
   onSelect: () => void;
+  /**
+   * When set, a cog appears on the row (on hover for pointer devices, always
+   * on touch) that opens a small popover with this content to the side —
+   * without closing the tier popover itself. Receives a callback to close
+   * just that nested popover (e.g. once a pick is made).
+   */
+  modelOverride?: (closeOverride: () => void) => ReactNode;
 }
 
 /**
@@ -137,7 +163,11 @@ export function TierTriggerPure({
         </TooltipTrigger>
         <TooltipContent>{resolvedPillLabel}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="p-1 w-64">
+      <PopoverContent
+        align="end"
+        className="p-1 w-64"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         {header && (
           <div className="mb-1 border-b border-border/60 pb-1">{header}</div>
         )}
@@ -150,42 +180,129 @@ export function TierTriggerPure({
                 </div>
               )}
               {group.rows.map((row) => (
-                <button
+                <div
                   key={row.key}
-                  type="button"
-                  role="menuitem"
-                  aria-label={
-                    group.label ? `${group.label} ${row.title}` : row.title
-                  }
-                  onClick={() => handleSelect(row)}
-                  className={cn(
-                    "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
-                    "hover:bg-muted",
-                  )}
+                  className="group/tier-row relative flex items-stretch rounded-md hover:bg-muted"
                 >
-                  {row.icon && (
-                    <span className="shrink-0 text-muted-foreground mt-0.5">
-                      {row.icon}
-                    </span>
-                  )}
-                  <div className="flex-1">
-                    <div className="text-sm">{row.title}</div>
-                    {row.subtitle && (
-                      <div className="text-xs text-muted-foreground">
-                        {row.subtitle}
-                      </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-label={
+                      group.label ? `${group.label} ${row.title}` : row.title
+                    }
+                    onClick={() => handleSelect(row)}
+                    className={cn(
+                      "flex flex-1 min-w-0 items-start gap-2 px-2 py-1.5 text-left",
+                      // Reserve room for the cog on touch (always visible,
+                      // no hover to overlay transiently); hover-capable
+                      // devices get the full row width back since the cog
+                      // only floats over it while actually hovered.
+                      row.modelOverride && "pr-7 [@media(hover:hover)]:pr-2",
                     )}
-                  </div>
-                  {row.active && (
-                    <span title={t("chat.tierTrigger.selected")}>
-                      <Check size={14} className="text-foreground mt-0.5" />
-                    </span>
+                  >
+                    {row.icon && (
+                      <span className="shrink-0 text-muted-foreground mt-0.5">
+                        {row.icon}
+                      </span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm">{row.title}</div>
+                      {row.subtitle && (
+                        <div className="text-xs text-muted-foreground">
+                          {row.subtitle}
+                        </div>
+                      )}
+                    </div>
+                    {row.active && (
+                      <span title={t("chat.tierTrigger.selected")}>
+                        <Check size={14} className="text-foreground mt-0.5" />
+                      </span>
+                    )}
+                  </button>
+                  {row.modelOverride && (
+                    <TierRowModelOverride
+                      label={row.title}
+                      render={row.modelOverride}
+                    />
                   )}
-                </button>
+                </div>
               ))}
             </div>
           ))}
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Cog affordance on a tier row that opens that row's `modelOverride` content
+ * without touching the tier popover's own open state. Hidden until the row
+ * is hovered/focused on pointer devices; touch has no hover to reveal it, so
+ * it stays visible there (and stays visible on any device while its own
+ * overlay is open, so mousing toward the content doesn't make the trigger
+ * vanish). Desktop anchors a side popover next to the row; a side popover
+ * has nowhere to go on a narrow phone screen, so mobile opens a bottom
+ * drawer instead — the same mobile pattern the full model picker already
+ * uses elsewhere.
+ */
+function TierRowModelOverride({
+  label,
+  render,
+}: {
+  label: string;
+  render: (closeOverride: () => void) => ReactNode;
+}) {
+  const t = useT();
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+
+  const cogButton = (
+    <button
+      type="button"
+      aria-label={t("chat.modelPreferences.customizeModel", { tier: label })}
+      className={cn(
+        // Absolutely positioned so it never eats into the row's flex layout
+        // width (which would otherwise force the title/subtitle to truncate
+        // even at rest) — it only ever floats on top.
+        "absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center",
+        "size-6 rounded-md bg-background border border-border/60 shadow-sm",
+        "text-muted-foreground hover:text-foreground",
+        "opacity-100 [@media(hover:hover)]:opacity-0",
+        "[@media(hover:hover)]:group-hover/tier-row:opacity-100",
+        "[@media(hover:hover)]:group-focus-within/tier-row:opacity-100",
+        open && "opacity-100",
+      )}
+    >
+      <Settings01 size={14} />
+    </button>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerTrigger asChild>{cogButton}</DrawerTrigger>
+        <DrawerContent className="p-0 flex flex-col max-h-[95vh]">
+          <DrawerTitle className="sr-only">
+            {t("chat.modelPreferences.customizeModel", { tier: label })}
+          </DrawerTitle>
+          {open && render(close)}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{cogButton}</PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="start"
+        collisionPadding={12}
+        className="w-[min(22rem,calc(100vw-2rem))] p-0 overflow-hidden"
+      >
+        {open && render(close)}
       </PopoverContent>
     </Popover>
   );
@@ -200,6 +317,30 @@ function tierIconFor(tier: ChatTier): ReactNode {
   if (tier === "fast") return <Lightning01 size={16} />;
   if (tier === "thinking") return <Atom01 size={16} />;
   return <Stars01 size={16} />;
+}
+
+/**
+ * The model name to show under each cloud tier: this user's override, else the
+ * org slot, else the client-side mirror of the server's default pick — an org
+ * that never saved `simple_mode` has null slots and `resolveTier` auto-picks
+ * from the connected provider's catalog, so a name is still what a run uses.
+ * Undefined only while the catalog is loading (caller falls back to the blurb).
+ */
+function useTierModelNames(
+  autoDefaults: ReturnType<typeof useAutoSimpleModeDefaults>,
+): Record<ChatTier, string | undefined> {
+  const effective = useEffectiveSimpleMode();
+
+  const nameFor = (tier: ChatTier) => {
+    const slot = effective.tiers[tier];
+    if (slot) return slot.title ?? slot.modelId;
+    return autoDefaults.chat[tier]?.title;
+  };
+  return {
+    fast: nameFor("fast"),
+    smart: nameFor("smart"),
+    thinking: nameFor("thinking"),
+  };
 }
 
 const SEG_BTN =
@@ -328,6 +469,21 @@ export function TierTrigger() {
   const locked = taskCtx?.isThreadLocked ?? false;
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
+  // Cloud rows only: org config + this user's overrides, wired into each
+  // row's cog popover below.
+  const org = useSimpleMode();
+  const keys = useAiProviderKeys();
+  // Mirrors the server's default-pick across the org's first few keys (not
+  // just the first one) so an org with more than one provider — e.g. a
+  // self-hosted/local key alongside a cloud one — shows and edits whichever
+  // key the backend would actually pick for a tier, not an arbitrary key.
+  const autoDefaults = useAutoSimpleModeDefaults(keys);
+  // Per-tier model name (user override → org slot → auto-pick) shown as each
+  // cloud row's subtitle.
+  const tierModelNames = useTierModelNames(autoDefaults);
+  const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
+    useUserModelPreferencesQuery();
+  const updateUserModelPreferences = useUpdateUserModelPreferences();
 
   const getTierLabels = (): Record<ChatTier, string> => ({
     fast: t("chat.tierTrigger.tierFast"),
@@ -390,14 +546,56 @@ export function TierTrigger() {
     groups = [
       {
         key: "cloud",
-        rows: TIER_ORDER.map((t) => ({
-          key: `cloud-${t}`,
-          icon: tierIconFor(t),
-          title: tierLabels[t],
-          subtitle: resolveTierSubtitle("cloud-decopilot", t),
-          active: tier === t,
-          onSelect: () => setTier(t),
-        })),
+        rows: TIER_ORDER.map((tierOption) => {
+          const modelName = tierModelNames[tierOption];
+          const userSlot = userModelPrefs.tiers[tierOption];
+          return {
+            key: `cloud-${tierOption}`,
+            icon: tierIconFor(tierOption),
+            title: tierLabels[tierOption],
+            // Show the concrete model backing this tier; fall back to the
+            // intent blurb before the org config has loaded.
+            subtitle:
+              modelName ?? resolveTierSubtitle("cloud-decopilot", tierOption),
+            active: tier === tierOption,
+            onSelect: () => setTier(tierOption),
+            // Local CLI tiers are fixed per harness, so only cloud rows get a
+            // personal-override cog.
+            modelOverride: (closeOverride: () => void) => (
+              <>
+                {/* A failed read would otherwise render every tier as "using
+                    organization default" here too — see useUserModelPreferencesQuery. */}
+                {userModelPrefsError && (
+                  <div className="text-xs text-destructive p-3 pb-0">
+                    {t("chat.modelPreferences.loadFailed")}
+                  </div>
+                )}
+                <TierModelOverridePicker
+                  // Remount when the effective slot changes so the picker's
+                  // "browsing which provider key" state can't go stale.
+                  key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
+                  tier={tierOption}
+                  orgSlot={org.tiers[tierOption]}
+                  userSlot={userSlot}
+                  autoSlot={autoDefaults.chat[tierOption]}
+                  onClose={closeOverride}
+                  onPick={(slot) =>
+                    updateUserModelPreferences.mutate({
+                      tier: tierOption,
+                      slot,
+                    })
+                  }
+                  onReset={() =>
+                    updateUserModelPreferences.mutate({
+                      tier: tierOption,
+                      slot: null,
+                    })
+                  }
+                />
+              </>
+            ),
+          };
+        }),
       },
     ];
   }

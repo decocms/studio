@@ -8,6 +8,31 @@ export interface BlocksQueryState {
   errorStatus?: number;
 }
 
+/** Extract the numeric `.status` a read fallback tags onto its thrown Error. */
+function errorStatus(error: unknown): number | undefined {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return undefined;
+}
+
+/** Map a `useQuery` result to the shape `resolveBlocksTabState` consumes. */
+export function toBlocksQueryState(query: {
+  status: QueryStatus;
+  data: unknown;
+  error: unknown;
+}): BlocksQueryState {
+  return {
+    status: query.status,
+    hasData: query.data !== undefined,
+    errorStatus: errorStatus(query.error),
+  };
+}
+
 export interface BlocksTabStateInput {
   lifecyclePhase: LifecycleState["phase"];
   decofile: BlocksQueryState;

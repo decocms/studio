@@ -135,6 +135,10 @@ import {
   type ProviderKeyCache,
 } from "../storage/provider-key-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
+import {
+  initFlipBroadcast,
+  stopFlipBroadcast,
+} from "./routes/decopilot/flip-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import {
@@ -1151,6 +1155,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("[CancelBroadcast] Deferred start failed:", err);
     });
   });
+
+  // Cross-pod "flip subtask to background" fan-out. Local-only without NATS
+  // (single-pod dev); re-subscribes on reconnect.
+  const flipConnection = () => natsProvider?.getConnection() ?? null;
+  initFlipBroadcast(flipConnection);
+  natsProvider?.onReady(() => initFlipBroadcast(flipConnection));
   streamBuffer.init().catch((err) => {
     console.warn(
       "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
@@ -1163,6 +1173,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();
     cancelBroadcast.stop().catch(() => {});
+    stopFlipBroadcast();
     streamBuffer.teardown();
     mcpListCache?.teardown();
     modelListCache.teardown();

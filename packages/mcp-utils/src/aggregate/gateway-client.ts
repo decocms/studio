@@ -149,6 +149,9 @@ export interface GatewayClientOptions {
 }
 
 export class GatewayClient extends Client {
+  /** Hard cap on pages fetched per client per list call — see `paginate`. */
+  private static readonly MAX_PAGES_PER_CLIENT = 1000;
+
   private readonly clients: Record<string, ClientEntry>;
   private readonly slugToKey = new Map<string, string>();
 
@@ -354,54 +357,79 @@ export class GatewayClient extends Client {
     }
   }
 
-  private async fetchAllTools(client: IClient): Promise<Tool[]> {
-    const tools: Tool[] = [];
+  /**
+   * Follow an MCP `nextCursor` pagination chain, capped at
+   * MAX_PAGES_PER_CLIENT pages. Without a cap, a misbehaving or malicious
+   * upstream MCP server that never returns a falsy `nextCursor` would hang
+   * gateway aggregation forever — this is untrusted input from a
+   * user-configured connection, not a value we control.
+   */
+  private async paginate<T>(
+    clientKey: string,
+    kind: string,
+    fetchPage: (
+      cursor?: string,
+    ) => Promise<{ items: T[]; nextCursor?: string }>,
+  ): Promise<T[]> {
+    const items: T[] = [];
     let cursor: string | undefined;
+    let pages = 0;
     do {
-      const result = await client.listTools(cursor ? { cursor } : undefined);
-      tools.push(...result.tools);
-      cursor = result.nextCursor;
-    } while (cursor);
-    return tools;
+      const page = await fetchPage(cursor);
+      items.push(...page.items);
+      cursor = page.nextCursor;
+      pages++;
+    } while (cursor && pages < GatewayClient.MAX_PAGES_PER_CLIENT);
+    if (cursor) {
+      console.warn(
+        `GatewayClient: client "${clientKey}" exceeded ${GatewayClient.MAX_PAGES_PER_CLIENT} pages listing ${kind} — truncating`,
+      );
+    }
+    return items;
   }
 
-  private async fetchAllResources(client: IClient): Promise<Resource[]> {
-    const resources: Resource[] = [];
-    let cursor: string | undefined;
-    do {
+  private fetchAllTools(client: IClient, clientKey: string): Promise<Tool[]> {
+    return this.paginate(clientKey, "tools", async (cursor) => {
+      const result = await client.listTools(cursor ? { cursor } : undefined);
+      return { items: result.tools, nextCursor: result.nextCursor };
+    });
+  }
+
+  private fetchAllResources(
+    client: IClient,
+    clientKey: string,
+  ): Promise<Resource[]> {
+    return this.paginate(clientKey, "resources", async (cursor) => {
       const result = await client.listResources(
         cursor ? { cursor } : undefined,
       );
-      resources.push(...result.resources);
-      cursor = result.nextCursor;
-    } while (cursor);
-    return resources;
+      return { items: result.resources, nextCursor: result.nextCursor };
+    });
   }
 
-  private async fetchAllResourceTemplates(
+  private fetchAllResourceTemplates(
     client: IClient,
+    clientKey: string,
   ): Promise<ResourceTemplate[]> {
-    const templates: ResourceTemplate[] = [];
-    let cursor: string | undefined;
-    do {
+    return this.paginate(clientKey, "resource templates", async (cursor) => {
       const result = await client.listResourceTemplates(
         cursor ? { cursor } : undefined,
       );
-      templates.push(...result.resourceTemplates);
-      cursor = result.nextCursor;
-    } while (cursor);
-    return templates;
+      return {
+        items: result.resourceTemplates,
+        nextCursor: result.nextCursor,
+      };
+    });
   }
 
-  private async fetchAllPrompts(client: IClient): Promise<Prompt[]> {
-    const prompts: Prompt[] = [];
-    let cursor: string | undefined;
-    do {
+  private fetchAllPrompts(
+    client: IClient,
+    clientKey: string,
+  ): Promise<Prompt[]> {
+    return this.paginate(clientKey, "prompts", async (cursor) => {
       const result = await client.listPrompts(cursor ? { cursor } : undefined);
-      prompts.push(...result.prompts);
-      cursor = result.nextCursor;
-    } while (cursor);
-    return prompts;
+      return { items: result.prompts, nextCursor: result.nextCursor };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -424,7 +452,7 @@ export class GatewayClient extends Client {
     for (const [clientKey, entry] of Object.entries(this.clients)) {
       const clientTools = await this.listFromClient(
         clientKey,
-        (c) => this.fetchAllTools(c),
+        (c) => this.fetchAllTools(c, clientKey),
         "tools",
       );
 
@@ -466,7 +494,7 @@ export class GatewayClient extends Client {
     for (const [clientKey, entry] of Object.entries(this.clients)) {
       const clientResources = await this.listFromClient(
         clientKey,
-        (c) => this.fetchAllResources(c),
+        (c) => this.fetchAllResources(c, clientKey),
         "resources",
       );
 
@@ -521,7 +549,7 @@ export class GatewayClient extends Client {
     for (const [clientKey, _entry] of Object.entries(this.clients)) {
       const clientTemplates = await this.listFromClient(
         clientKey,
-        (c) => this.fetchAllResourceTemplates(c),
+        (c) => this.fetchAllResourceTemplates(c, clientKey),
         "resource templates",
       );
 
@@ -563,7 +591,7 @@ export class GatewayClient extends Client {
     for (const [clientKey, entry] of Object.entries(this.clients)) {
       const clientPrompts = await this.listFromClient(
         clientKey,
-        (c) => this.fetchAllPrompts(c),
+        (c) => this.fetchAllPrompts(c, clientKey),
         "prompts",
       );
 

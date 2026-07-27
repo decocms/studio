@@ -1,6 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Select,
   SelectContent,
@@ -638,6 +639,9 @@ interface ModelSelectorInnerProps {
   selectedModel: AiProviderModel | null;
   onModelChange: (model: AiProviderModel) => void;
   filterModels?: (m: AiProviderModel) => boolean;
+  /** Single-column layout, no hover details panel — for embedding in a small
+   *  popover rather than the full-size Dialog/Drawer. */
+  compact?: boolean;
 }
 
 function ModelSelectorInner({
@@ -647,6 +651,7 @@ function ModelSelectorInner({
   selectedModel,
   onModelChange,
   filterModels,
+  compact,
 }: ModelSelectorInnerProps) {
   const t = useT();
   const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
@@ -678,15 +683,30 @@ function ModelSelectorInner({
 
   if (keys.length === 0) {
     return (
-      <div className="flex items-center justify-center p-8 w-full sm:w-[740px]">
+      <div
+        className={cn(
+          "flex items-center justify-center p-8 w-full",
+          !compact && "sm:w-[740px]",
+        )}
+      >
         <NoAiProviderEmptyState />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-full sm:h-[460px] min-h-0">
-      <div className="flex-1 flex flex-col md:border-r md:w-[420px] md:min-w-[420px] min-h-0 overflow-hidden">
+    <div
+      className={cn(
+        "flex flex-col md:flex-row h-full min-h-0",
+        compact ? "sm:h-[420px]" : "sm:h-[460px]",
+      )}
+    >
+      <div
+        className={cn(
+          "flex-1 flex flex-col min-h-0 overflow-hidden",
+          compact ? "w-full" : "md:border-r md:w-[420px] md:min-w-[420px]",
+        )}
+      >
         <div className="border-b border-border h-12 bg-background/95 backdrop-blur sticky top-0 z-10">
           <label className="flex items-center gap-2.5 h-12 px-4 pr-12 md:pr-4 cursor-text">
             <SearchMd size={16} className="text-muted-foreground shrink-0" />
@@ -829,9 +849,11 @@ function ModelSelectorInner({
         )}
       </div>
 
-      <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
-        <ModelDetailsPanel model={hoveredModel ?? selectedModel ?? null} />
-      </div>
+      {!compact && (
+        <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
+          <ModelDetailsPanel model={hoveredModel ?? selectedModel ?? null} />
+        </div>
+      )}
     </div>
   );
 }

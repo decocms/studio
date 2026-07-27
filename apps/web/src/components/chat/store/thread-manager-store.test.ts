@@ -952,3 +952,164 @@ describe("ThreadManagerStore.mergeThreads", () => {
     store.dispose();
   });
 });
+
+// Regression: the CMS preview/blocks editor is reached by direct link, so its
+// thread is fetched by-id and merged into the slot (see `useEnsureTask`). A
+// branch hop on publish (`setBranch`) must patch that row IN-PLACE — preserving
+// harness_id / metadata — so the active-task branch actually flips and the view
+// re-points to the fresh branch. Before the merge fix, `setBranch` on a row
+// absent from the slot upserted a LOSSY synthetic row instead, corrupting the
+// active task and stranding the user on the just-published branch.
+describe("ThreadManagerStore.setBranch on a deep-linked (by-id) thread", () => {
+  afterEach(() => {
+    __resetManagerRegistry();
+    __resetRegistry();
+  });
+
+  const richThread = {
+    id: "t-cms",
+    title: "CMS session",
+    branch: "old-branch",
+    harness_id: "harness-x",
+    sandbox_provider_kind: "agent-sandbox",
+    metadata: { sandboxMap: { u1: { "old-branch": {} } } },
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  } as unknown as Task;
+
+  it("patches the merged row in-place, preserving harness_id and metadata", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([]);
+    const store = new ThreadManagerStore("org", "loc", { client, sse });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // useEnsureTask merges the by-id row into the slot (it isn't hidden).
+    store.mergeThreads([richThread]);
+
+    await store.setBranch("t-cms", "fresh-branch");
+
+    const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.branch).toBe("fresh-branch");
+    // The full fields survive — the update is not the lossy synthetic path.
+    expect(row?.harness_id).toBe("harness-x");
+    expect(row?.metadata).toEqual({ sandboxMap: { u1: { "old-branch": {} } } });
+    store.dispose();
+  });
+
+  it("upserts a LOSSY synthetic when the row was never merged (the pre-fix bug)", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([]);
+    const store = new ThreadManagerStore("org", "loc", { client, sse });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // No merge: mirrors the old behavior where the by-id row stayed out of the
+    // slot, so setBranch has nothing to patch and fabricates a bare row.
+    await store.setBranch("t-cms", "fresh-branch");
+
+    const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.branch).toBe("fresh-branch");
+    // harness_id / metadata are gone — this is exactly why the active task
+    // (which reads these) breaks without the merge fix.
+    expect(row?.harness_id).toBeUndefined();
+    expect(row?.metadata).toBeUndefined();
+    store.dispose();
+  });
+});
+
+// `fetchThreadIntoSlot` is the actual fix seam (called by `useEnsureTask`): it
+// resolves a thread by id and merges LIVE rows into the slot so the deep-linked
+// active view shares one source of truth with the panel. These tests guard the
+// `!hidden` decision and the win-over-lossy-synthetic race directly.
+describe("ThreadManagerStore.fetchThreadIntoSlot", () => {
+  afterEach(() => {
+    __resetManagerRegistry();
+    __resetRegistry();
+  });
+
+  const richThread = {
+    id: "t-cms",
+    title: "CMS session",
+    branch: "old-branch",
+    harness_id: "harness-x",
+    sandbox_provider_kind: "agent-sandbox",
+    metadata: { sandboxMap: { u1: { "old-branch": {} } } },
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  } as unknown as Task;
+
+  function makeGetClient(item: Task | null): MCPClient {
+    return {
+      callTool: mock(async (args: { name: string }) => {
+        if (args.name === "COLLECTION_THREADS_LIST") {
+          return { structuredContent: { items: [], hasMore: false } };
+        }
+        if (args.name === "COLLECTION_THREADS_GET") {
+          return { structuredContent: { item } };
+        }
+        return {};
+      }),
+    } as unknown as MCPClient;
+  }
+
+  it("merges a non-hidden by-id row into the slot", async () => {
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("org", "loc", {
+      client: makeGetClient(richThread),
+      sse,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const returned = await store.fetchThreadIntoSlot("t-cms");
+    expect(returned?.id).toBe("t-cms");
+    const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.harness_id).toBe("harness-x");
+    store.dispose();
+  });
+
+  it("does NOT merge a hidden (archived) by-id row — panel invariant", async () => {
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("org", "loc", {
+      client: makeGetClient({ ...richThread, hidden: true } as Task),
+      sse,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const returned = await store.fetchThreadIntoSlot("t-cms");
+    // The caller still gets the row (for display), but the panel slot stays clean.
+    expect(returned?.hidden).toBe(true);
+    expect(store.threads.get().some((t) => t.id === "t-cms")).toBe(false);
+    store.dispose();
+  });
+
+  it("wins over a lossy synthetic already in the slot (the /watch race)", async () => {
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("org", "loc", {
+      client: makeGetClient(richThread),
+      sse,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Simulate a concurrent /watch event landing FIRST: a status-only synthetic
+    // with a NEWER updated_at and none of the rich fields.
+    store.mergeThreads([
+      {
+        id: "t-cms",
+        title: "New chat",
+        branch: "old-branch",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2099-01-01T00:00:00Z",
+      } as Task,
+    ]);
+    expect(
+      store.threads.get().find((t) => t.id === "t-cms")?.harness_id,
+    ).toBeUndefined();
+
+    // The authoritative full row must win despite its OLDER updated_at, so the
+    // active task regains harness_id/metadata (otherwise the bug reappears).
+    await store.fetchThreadIntoSlot("t-cms");
+    const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.harness_id).toBe("harness-x");
+    expect(row?.metadata).toEqual({ sandboxMap: { u1: { "old-branch": {} } } });
+    store.dispose();
+  });
+});

@@ -13,9 +13,10 @@ import {
   tryResolveTier,
 } from "@/core/resolve-tier";
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
-import type {
-  ChatTier,
-  SimpleModeTier,
+import {
+  ChatTierSchema,
+  type ChatTier,
+  type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
@@ -58,6 +59,7 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
+import { broadcastFlip } from "./flip-broadcast";
 import { PartEmitter } from "./part-emitter";
 import { uploadFileParts } from "./file-materializer";
 import {
@@ -225,10 +227,7 @@ async function resolvePerRequestModels(
   harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
   if (harnessId === "claude-code" || harnessId === "codex") {
-    const chatTier: ChatTier =
-      tier === "fast" || tier === "smart" || tier === "thinking"
-        ? tier
-        : "smart";
+    const chatTier: ChatTier = ChatTierSchema.safeParse(tier).data ?? "smart";
     const entry = resolveAgentTier(harnessId, chatTier);
     if (!entry) {
       // Should be unreachable — resolveAgentTier returns non-null for
@@ -249,7 +248,9 @@ async function resolvePerRequestModels(
   }
 
   const [chat, image, webSearch, deepResearch] = await Promise.all([
-    resolveTier(ctx, tier ?? "smart"),
+    // The only opt-in site for per-user chat-tier overrides: this is the
+    // interactive chat request, dispatched as the caller themselves.
+    resolveTier(ctx, tier ?? "smart", { applyUserPrefs: true }),
     tryResolveTier(ctx, "image"),
     tryResolveTier(ctx, "web_search"),
     tryResolveTier(ctx, "deep_research"),
@@ -948,6 +949,23 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       await validateThreadOwnership(c);
     await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
     return c.json({ cancelled: true, async: true }, 202);
+  });
+
+  // Flip a still-running FOREGROUND subtask to the background so the thread gate
+  // frees up and the user can keep chatting. Fanned out over NATS to whichever
+  // pod runs the turn (like cancel); that pod's running `subtask` call aborts
+  // its inline run and re-runs it as a durable background job. Owner-only.
+  app.post("/:org/decopilot/flip/:threadId", async (c) => {
+    const { taskId } = await validateThreadOwnership(c);
+    const body = (await c.req.json().catch(() => null)) as {
+      toolCallId?: unknown;
+    } | null;
+    const toolCallId = body?.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) {
+      return c.json({ error: "toolCallId is required" }, 400);
+    }
+    broadcastFlip(taskId, toolCallId);
+    return c.json({ flipped: true, async: true }, 202);
   });
 
   // ==========================================================================

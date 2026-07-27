@@ -69,4 +69,9 @@ describe("isValidVolume", () => {
     expect(isValidVolume("a/b")).toBe(false);
     expect(isValidVolume("../x")).toBe(false);
   });
+
+  test("rejects '.' and '..' — the regex alone would accept them and let fsObjectKey escape the _fs/ namespace once sanitizeKey collapses the dot segments", () => {
+    expect(isValidVolume(".")).toBe(false);
+    expect(isValidVolume("..")).toBe(false);
+  });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { extractToolJson } from "./extract-tool-json";
+import {
+  assertToolOk,
+  extractToolJson,
+  toolErrorMessage,
+} from "./extract-tool-json";
 
 describe("extractToolJson", () => {
   test("returns null for null/undefined input", () => {
@@ -34,5 +38,43 @@ describe("extractToolJson", () => {
     expect(extractToolJson<{ from: string }>(r)).toEqual({
       from: "structured",
     });
+  });
+});
+
+describe("toolErrorMessage / assertToolOk", () => {
+  test("returns null for a successful result", () => {
+    expect(
+      toolErrorMessage({ content: [{ type: "text", text: "{}" }] }),
+    ).toBeNull();
+    expect(toolErrorMessage(null)).toBeNull();
+  });
+
+  test("returns the text payload of an isError result", () => {
+    const r = {
+      isError: true,
+      content: [{ type: "text", text: "unknown method: get_check_runs" }],
+    };
+    expect(toolErrorMessage(r)).toBe("unknown method: get_check_runs");
+  });
+
+  test("falls back to a generic message when isError has no text", () => {
+    expect(toolErrorMessage({ isError: true })).toBe(
+      "GitHub MCP tool returned an error",
+    );
+  });
+
+  test("assertToolOk throws on an isError result (so select surfaces it)", () => {
+    expect(() =>
+      assertToolOk({
+        isError: true,
+        content: [{ type: "text", text: "403 checks:read required" }],
+      }),
+    ).toThrow("403 checks:read required");
+  });
+
+  test("assertToolOk does not throw on a successful result", () => {
+    expect(() =>
+      assertToolOk({ content: [{ type: "text", text: '{"check_runs":[]}' }] }),
+    ).not.toThrow();
   });
 });

@@ -57,6 +57,10 @@ interface StandaloneProps {
   selectedModel: AiProviderModel | null;
   onModelChange: (model: AiProviderModel) => void;
   filterModels?: (m: AiProviderModel) => boolean;
+  /** Single-column layout, no hover details panel — for embedding in a small
+   *  popover rather than the full-size Dialog/Drawer. Ignored for CLI harness
+   *  model sets, which are already a fixed compact list. */
+  compact?: boolean;
 }
 
 export function ModelSelectorStandaloneBody({

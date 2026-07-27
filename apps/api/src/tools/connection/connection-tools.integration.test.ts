@@ -100,6 +100,7 @@ describe("Connection Tools", () => {
             updatedAt: new Date().toISOString(),
           }),
         } as never,
+        userModelPreferences: null as never,
         agentSandboxSessions: null as never,
         organizationBilling: null as never,
         monitoring: null as never,

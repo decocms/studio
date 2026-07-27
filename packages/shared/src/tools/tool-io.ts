@@ -1645,6 +1645,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -1849,6 +1850,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2023,6 +2025,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2208,6 +2211,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2384,6 +2388,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2554,6 +2559,7 @@ export interface StudioToolIO {
                             | null
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
+                          cmsDefaultOpen?: boolean | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2736,6 +2742,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2910,6 +2917,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3255,6 +3263,59 @@ export interface StudioToolIO {
         email: string;
         image: string | null;
       } | null;
+    };
+  };
+  USER_MODEL_PREFERENCES_GET: {
+    input: { [x: string]: never };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+  };
+  USER_MODEL_PREFERENCES_UPDATE: {
+    input: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
+    };
+    output: {
+      tiers: {
+        fast?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        smart?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+        thinking?:
+          | { keyId: string; modelId: string; title?: string | undefined }
+          | null
+          | undefined;
+      };
     };
   };
   COLLECTION_THREADS_CREATE: {
@@ -3886,6 +3947,7 @@ export interface StudioToolIO {
                         | null
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
+                      cmsDefaultOpen?: boolean | null | undefined;
                       tabs?:
                         | {
                             id: string;
