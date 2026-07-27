@@ -31,8 +31,10 @@ describe("HeartbeatEmitter", () => {
       },
     });
     emitter.arm();
-    // ~3.8 windows of headroom: expect at least 3 emits.
-    await sleep(25 * 3 + 20);
+    // ~5.8 windows of headroom for 3 emits: setTimeout chains drift hard on a
+    // loaded 4-vCPU CI runner (parallel bun test workers), and 3.8 windows
+    // already flaked there once.
+    await sleep(25 * 5 + 20);
     emitter.stop();
     expect(emits).toBeGreaterThanOrEqual(3);
   });
