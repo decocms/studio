@@ -35,6 +35,7 @@ export function ObjectField({
     schema,
     objValue,
     breadcrumbPath,
+    decofile,
   );
   const isOpen = open || breadcrumbInside;
   const contentId = `${path}-fields`;

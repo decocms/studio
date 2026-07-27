@@ -501,7 +501,13 @@ export function SchemaForm({
 
   const activeKey =
     breadcrumbPath.length > 0
-      ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
+      ? resolveActiveFieldKey(
+          keys,
+          properties,
+          objValue,
+          breadcrumbPath,
+          decofile,
+        )
       : null;
   const activeSchema = activeKey ? properties[activeKey] : null;
   const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;

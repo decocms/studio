@@ -1,6 +1,7 @@
 import { getArrayItemLabel } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
+import { unwrapBlockReference } from "./unwrap-section";
 
 function humanize(key: string): string {
   return key
@@ -199,12 +200,81 @@ function asObjectRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+// A drilled item is addressed by its display label, which for the common case
+// comes from one of these high-signal naming fields. We match ownership ONLY
+// against these (not the full getArrayItemLabel fallback chain) so a coincidental
+// `href`/`id`/`key` value — or a plain string in an unrelated primitive array —
+// can't spuriously claim to own the crumb.
+const OWNERSHIP_LABEL_KEYS = ["name", "label", "title", "alt"] as const;
+
+function itemOwnershipLabel(item: unknown): string | undefined {
+  if (item == null || typeof item !== "object" || Array.isArray(item)) {
+    return undefined;
+  }
+  const obj = item as Record<string, unknown>;
+  for (const key of OWNERSHIP_LABEL_KEYS) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a (block-ref) field's inline value contains — at any nesting level —
+ * an object array item whose naming field matches `crumb`.
+ *
+ * Drilling into an array item that lives inside a loader's config produces a
+ * bare `[itemLabel]` trail (the array's own label is omitted, and the loader's
+ * label isn't in the trail either). Without this, a multi-field section can't
+ * tell which field owns the item, so {@link resolveActiveFieldKeyInScope}
+ * returns null and the panel keeps showing every sibling prop instead of
+ * narrowing to the item.
+ *
+ * Deliberately conservative — matches only object items via
+ * {@link OWNERSHIP_LABEL_KEYS} (no item schema is available here). Items labeled
+ * via a custom `titleBy`, via `text`/`href`/`id`, or primitive-array items are
+ * NOT detected; those degrade to the pre-fix behavior (all siblings shown)
+ * rather than risk narrowing to the wrong loader. Bounded by depth and a shared
+ * node budget so a large loader config can't stall a render.
+ */
+function valueOwnsItemCrumb(
+  value: unknown,
+  crumb: string,
+  budget = { n: 4000 },
+  depth = 0,
+): boolean {
+  if (
+    depth > 4 ||
+    budget.n <= 0 ||
+    value == null ||
+    typeof value !== "object"
+  ) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (--budget.n <= 0) return false;
+      const label = itemOwnershipLabel(item);
+      if (label && labelsMatch(label, crumb)) return true;
+      if (valueOwnsItemCrumb(item, crumb, budget, depth + 1)) return true;
+    }
+    return false;
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.startsWith("__")) continue;
+    if (--budget.n <= 0) return false;
+    if (valueOwnsItemCrumb(v, crumb, budget, depth + 1)) return true;
+  }
+  return false;
+}
+
 /** Resolve which property at this level should be shown for the breadcrumb trail. */
 function resolveActiveFieldKeyInScope(
   keys: string[],
   properties: Record<string, SchemaProperty>,
   objValue: Record<string, unknown>,
   breadcrumbPath: string[],
+  decofile?: Record<string, unknown>,
 ): string | null {
   if (breadcrumbPath.length === 0) return null;
   const head = breadcrumbPath[0]!;
@@ -247,6 +317,7 @@ function resolveActiveFieldKeyInScope(
       schema.properties,
       childObj,
       breadcrumbPath,
+      decofile,
     );
     if (direct) return key;
 
@@ -256,6 +327,7 @@ function resolveActiveFieldKeyInScope(
         schema.properties,
         childObj,
         breadcrumbPath.slice(1),
+        decofile,
       );
       if (viaLabel) return key;
     }
@@ -277,7 +349,18 @@ function resolveActiveFieldKeyInScope(
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
     const fieldLabel = fieldDisplayLabel(key, schema);
-    if (head !== fieldLabel && head !== key) continue;
+    if (head !== fieldLabel && head !== key) {
+      // The crumb isn't the loader's own label, but the drilled item may live
+      // in an array inside the loader's config — narrow to the loader so its own
+      // form can then narrow to the item (instead of the section showing every
+      // sibling prop of the previous level). For a global/saved loader the value
+      // is just a `{ __resolveType }` reference, so resolve its data from the
+      // decofile before scanning.
+      const rawVal = objValue[key];
+      const saved = decofile ? unwrapBlockReference(rawVal, decofile) : null;
+      if (valueOwnsItemCrumb(saved?.data ?? rawVal, head)) return key;
+      continue;
+    }
 
     if (breadcrumbPath.length > 1) {
       const val = objValue[key];
@@ -306,12 +389,14 @@ export function resolveActiveFieldKey(
   properties: Record<string, SchemaProperty>,
   objValue: Record<string, unknown>,
   breadcrumbPath: string[],
+  decofile?: Record<string, unknown>,
 ): string | null {
   return resolveActiveFieldKeyInScope(
     keys,
     properties,
     objValue,
     breadcrumbPath,
+    decofile,
   );
 }
 
@@ -322,6 +407,7 @@ export function isBreadcrumbInsideObject(
   schema: SchemaProperty,
   objValue: Record<string, unknown>,
   breadcrumbPath: string[],
+  decofile?: Record<string, unknown>,
 ): boolean {
   if (breadcrumbPath.length === 0 || !schema.properties) return false;
 
@@ -332,6 +418,7 @@ export function isBreadcrumbInsideObject(
       schema.properties,
       objValue,
       breadcrumbPath,
+      decofile,
     )
   ) {
     return true;
@@ -347,6 +434,7 @@ export function isBreadcrumbInsideObject(
       schema.properties,
       objValue,
       breadcrumbPath.slice(1),
+      decofile,
     ) !== null
   );
 }

@@ -363,6 +363,16 @@ export function AnyOfField({
       />
     ) : null;
 
+    // Once the breadcrumb has drilled INTO this loader's content (e.g. into an
+    // array item), render that nested content at FULL WIDTH — dropping the
+    // loader type <Select> and the "loader configuration" card chrome — so the
+    // item's form takes over the whole panel instead of staying scoped inside
+    // the loader card. The breadcrumb "back" pops the crumb, `nestedBreadcrumbPath`
+    // empties, and the normal select + card chrome returns.
+    if (isModuleLoaderUnion && nestedProps && nestedBreadcrumbPath.length > 0) {
+      return <div className="min-w-0">{nestedProps}</div>;
+    }
+
     const isNestedBlockRef = path.includes(".");
 
     // Detach: convert a global (saved-block) loader into a local, inline copy.
