@@ -48,14 +48,13 @@ const testFiles = (
 
 console.log(`Running ${testFiles.length} isolated unit test files...`);
 
-for (const testFile of testFiles) {
-  console.log(`\n▶ ${testFile}`);
-  const child = Bun.spawn(["bun", "test", testFile], {
-    cwd: repoRoot,
-    stdio: ["inherit", "inherit", "inherit"],
-  });
-  const exitCode = await child.exited;
-  if (exitCode !== 0) {
-    process.exit(exitCode);
-  }
-}
+// --parallel implies --isolate: each file gets a fresh global object and
+// module registry across a pool of reused worker processes (one per core), so
+// the per-file isolation this tier requires holds without spawning a process
+// per file. Positional args are filters; exact relative paths match only
+// themselves, which is how the tier's filename-based exclusions stay applied.
+const child = Bun.spawn(["bun", "test", "--parallel", ...testFiles], {
+  cwd: repoRoot,
+  stdio: ["inherit", "inherit", "inherit"],
+});
+process.exit(await child.exited);
