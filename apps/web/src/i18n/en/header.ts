@@ -18,4 +18,8 @@ export const header = {
   "header.orgSwitcher.noOrganizationsMatch": 'No organizations match "{query}"',
   "header.orgSwitcher.searchOrganizations": "Search organizations...",
   "header.orgSwitcher.unknownOrganization": "Unknown organization",
+  "header.shellBreadcrumb.openAgentHome": "Open {name} home",
+  "header.shellBreadcrumb.switchOrganization": "{name} — switch organization",
+  "header.shellBreadcrumb.switchOrganizationPendingInvitation":
+    "{name} — switch organization (pending invitation)",
 } as const;

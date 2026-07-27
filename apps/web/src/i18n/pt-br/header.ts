@@ -21,4 +21,8 @@ export const header = {
     'Nenhuma organização coincide com "{query}"',
   "header.orgSwitcher.searchOrganizations": "Pesquisar organizações...",
   "header.orgSwitcher.unknownOrganization": "Organização desconhecida",
+  "header.shellBreadcrumb.openAgentHome": "Abrir início de {name}",
+  "header.shellBreadcrumb.switchOrganization": "{name} — trocar organização",
+  "header.shellBreadcrumb.switchOrganizationPendingInvitation":
+    "{name} — trocar organização (convite pendente)",
 } satisfies Record<keyof typeof headerEn, string>;
