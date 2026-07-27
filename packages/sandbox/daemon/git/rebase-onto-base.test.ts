@@ -304,6 +304,31 @@ describe("rebaseOntoBase", () => {
     }
   });
 
+  it("recovers from a stale rebase-merge left by a crashed prior attempt", () => {
+    const { repoDir, cleanup } = setupConflictingRepo();
+    try {
+      // Simulate a daemon crash mid-rebase: a plain conflicting rebase left
+      // `.git/rebase-merge` on disk and HEAD detached, with no `--abort` ever run.
+      try {
+        execSync(`git -C ${repoDir} rebase origin/main`, { stdio: "ignore" });
+      } catch {
+        // expected: conflicts, rebase-merge left behind
+      }
+      expect(existsSync(join(repoDir, ".git/rebase-merge"))).toBe(true);
+
+      rebaseOntoBase(repoDir, "main", { asUser: false });
+
+      expect(existsSync(join(repoDir, ".git/rebase-merge"))).toBe(false);
+      const content = readFileSync(
+        join(repoDir, ".deco/blocks/shipping.json"),
+        "utf-8",
+      );
+      expect(JSON.parse(content)).toEqual({ threshold: 250 });
+    } finally {
+      cleanup();
+    }
+  });
+
   it("throws RebaseBaseBranchNotFoundError for a base branch missing on origin", () => {
     const { repoDir, cleanup } = setupConflictingRepo();
     try {
