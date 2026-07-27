@@ -59,6 +59,49 @@ export function permissionsWithoutChecks(
   return rest;
 }
 
+/** Minimal shape of a github-mcp MINT_REPO_TOKEN result the fallback inspects. */
+export interface MintToolResultLike {
+  isError?: boolean;
+  content?: Array<{ type?: string; text?: string }>;
+}
+
+/**
+ * Mint a repo token requesting `checks:read` on top of `basePermissions`, and
+ * transparently retry WITHOUT `checks` when the mint is rejected specifically
+ * for it (github-mcp allowlist skew, or an installation that hasn't granted
+ * Checks → 422). Single-sources the retry decision shared by the web provision
+ * flow and the server re-mint path.
+ *
+ * `callTool` performs the actual MINT_REPO_TOKEN call with a given permission
+ * map; the returned `grantedPermissions` is whichever set was ultimately
+ * requested (with or without `checks`) so callers can persist the truth.
+ *
+ * Note: callers that re-mint on a timer (github-mint) always re-add `checks`
+ * here, so a connection whose installation will never grant Checks pays a
+ * second mint each cycle. That's the deliberate cost of picking up a
+ * later-granted Checks without a re-import; provision persists the granted set
+ * and does not re-probe.
+ */
+export async function mintRepoTokenWithChecksFallback<
+  R extends MintToolResultLike,
+>(
+  callTool: (permissions: Record<string, string>) => Promise<R>,
+  basePermissions: Record<string, string>,
+): Promise<{ result: R; grantedPermissions: Record<string, string> }> {
+  const desiredPermissions = { ...basePermissions, checks: "read" };
+  const result = await callTool(desiredPermissions);
+  if (
+    result.isError &&
+    isChecksPermissionRejected(
+      result.content?.find((c) => c.type === "text")?.text,
+    )
+  ) {
+    const grantedPermissions = permissionsWithoutChecks(basePermissions);
+    return { result: await callTool(grantedPermissions), grantedPermissions };
+  }
+  return { result, grantedPermissions: desiredPermissions };
+}
+
 /** The repo grant metadata stored at `connection.metadata.repoScope`. */
 export interface RepoScopeRecipe {
   /** Legacy org mcp-github connection used to mint before refreshable grants. */

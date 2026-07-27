@@ -5,6 +5,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronRight, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
+import { joinCheckOutput } from "./check-run-output.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import * as tpl from "./message-templates.ts";
 import {
@@ -197,14 +198,9 @@ function CheckRunDetail({ checkRunId, ...repo }: CheckRunDetailProps) {
   }
 
   const output = detailQuery.data;
-  // GitHub splits a check's output into `summary` (e.g. URL/verdict) and `text`
-  // (e.g. the step table) and renders BOTH — join them so the detailed section
-  // isn't dropped when a summary is present.
-  const body = [output?.summary?.trim(), output?.text?.trim()]
-    .filter(Boolean)
-    .join("\n\n");
+  const body = joinCheckOutput(output);
 
-  if (!body) {
+  if (!body && !output?.title) {
     return (
       <div className="px-7 py-2 text-xs text-muted-foreground">
         {t("thread.checksTab.noCheckDetail")}
@@ -222,7 +218,7 @@ function CheckRunDetail({ checkRunId, ...repo }: CheckRunDetailProps) {
       {/* Check output is attacker-influenceable (any app with checks:write can
           set it), so render through the sanitizing Markdown — NOT the chat
           renderer, which enables rehype-raw (raw HTML → XSS). */}
-      <Markdown className="max-w-none text-sm">{body}</Markdown>
+      {body && <Markdown className="max-w-none text-sm">{body}</Markdown>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   GITHUB_SCOPED_PERMISSIONS,
   isChecksPermissionRejected,
   isOrgSharedConnection,
+  mintRepoTokenWithChecksFallback,
   permissionsWithoutChecks,
   type RepoScopeRecipe,
 } from "./github-repo-scope";
@@ -72,6 +73,58 @@ describe("permissionsWithoutChecks", () => {
     expect(permissionsWithoutChecks({ contents: "write" })).toEqual({
       contents: "write",
     });
+  });
+});
+
+describe("mintRepoTokenWithChecksFallback", () => {
+  type MintResult = {
+    isError?: boolean;
+    content?: Array<{ type?: string; text?: string }>;
+    structuredContent?: { token?: string };
+  };
+  const ok: MintResult = { structuredContent: { token: "ghs_x" } };
+  const base = { contents: "write", metadata: "read" };
+
+  it("requests checks:read and returns it as granted on success", async () => {
+    const calls: Record<string, string>[] = [];
+    const { result, grantedPermissions } =
+      await mintRepoTokenWithChecksFallback((permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(ok);
+      }, base);
+    expect(calls).toEqual([{ ...base, checks: "read" }]);
+    expect(grantedPermissions).toEqual({ ...base, checks: "read" });
+    expect(result).toBe(ok);
+  });
+
+  it("retries without checks when the mint is rejected for checks", async () => {
+    const calls: Record<string, string>[] = [];
+    const rejected: MintResult = {
+      isError: true,
+      content: [{ type: "text", text: 'Permission "checks" is not allowed.' }],
+    };
+    const { result, grantedPermissions } =
+      await mintRepoTokenWithChecksFallback((permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(calls.length === 1 ? rejected : ok);
+      }, base);
+    expect(calls).toEqual([{ ...base, checks: "read" }, base]);
+    expect(grantedPermissions).toEqual(base);
+    expect(result).toBe(ok);
+  });
+
+  it("does NOT retry on an unrelated error (surfaces it once)", async () => {
+    const calls: Record<string, string>[] = [];
+    const err: MintResult = {
+      isError: true,
+      content: [{ type: "text", text: "GitHub is temporarily unavailable." }],
+    };
+    const { result } = await mintRepoTokenWithChecksFallback((permissions) => {
+      calls.push(permissions);
+      return Promise.resolve(err);
+    }, base);
+    expect(calls).toHaveLength(1);
+    expect(result).toBe(err);
   });
 });
 

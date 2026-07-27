@@ -17,6 +17,7 @@ import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
 import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
+import type { CheckRunOutput } from "./check-run-output.ts";
 
 export interface PrSummary {
   number: number;
@@ -244,12 +245,6 @@ export function useChecks(
       });
     },
   });
-}
-
-export interface CheckRunOutput {
-  title: string | null;
-  summary: string | null;
-  text: string | null;
 }
 
 /**

@@ -1,8 +1,7 @@
 import type { ConnectionEntity } from "@/sdk";
 import {
   GITHUB_SCOPED_PERMISSIONS,
-  isChecksPermissionRejected,
-  permissionsWithoutChecks,
+  mintRepoTokenWithChecksFallback,
 } from "@decocms/shared/github-repo-scope";
 
 type McpCallTool = (req: {
@@ -79,27 +78,19 @@ export async function provisionRepoScopedGithubConnection(params: {
     };
     content?: Array<{ type?: string; text?: string }>;
   };
-  const mintWith = (permissions: Record<string, string>) =>
-    githubCallTool({
-      name: "MINT_REPO_TOKEN",
-      arguments: { installationId, owner, repo, permissions },
-    }) as Promise<MintResult>;
-
-  // Try the full set (incl. checks:read for the PR Checks tab). If the deployed
-  // github-mcp still predates the `checks` allowlist it hard-rejects the mint;
-  // fall back to a checks-less token so importing the repo keeps working until
-  // that deploy lands. The stored recipe records whichever set was granted.
-  let grantedPermissions: Record<string, string> = GITHUB_SCOPED_PERMISSIONS;
-  let mintRes = await mintWith(grantedPermissions);
-  if (
-    mintRes.isError &&
-    isChecksPermissionRejected(
-      mintRes.content?.find((c) => c.type === "text")?.text,
-    )
-  ) {
-    grantedPermissions = permissionsWithoutChecks(GITHUB_SCOPED_PERMISSIONS);
-    mintRes = await mintWith(grantedPermissions);
-  }
+  // Request checks:read for the PR Checks tab, falling back to a checks-less
+  // token when the deployed github-mcp/installation doesn't grant it yet — so
+  // importing the repo keeps working. The stored recipe records whichever set
+  // was granted.
+  const { result: mintRes, grantedPermissions } =
+    await mintRepoTokenWithChecksFallback<MintResult>(
+      (permissions) =>
+        githubCallTool({
+          name: "MINT_REPO_TOKEN",
+          arguments: { installationId, owner, repo, permissions },
+        }) as Promise<MintResult>,
+      GITHUB_SCOPED_PERMISSIONS,
+    );
   const minted = mintRes.structuredContent;
   if (mintRes.isError || !minted?.token) {
     const detail = mintRes.content?.find((c) => c.type === "text")?.text;

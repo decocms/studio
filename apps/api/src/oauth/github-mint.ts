@@ -19,8 +19,7 @@ import {
 } from "@/oauth/token-refresh";
 import {
   getRepoScope,
-  isChecksPermissionRejected,
-  permissionsWithoutChecks,
+  mintRepoTokenWithChecksFallback,
   type RepoScopeRecipe,
 } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
@@ -73,32 +72,24 @@ async function mintRepoToken(
       structuredContent?: { token?: string; expiresAt?: string };
       content?: Array<{ type?: string; text?: string }>;
     };
-    const mintWith = (permissions: Record<string, string>) =>
-      client.callTool({
-        name: "MINT_REPO_TOKEN",
-        arguments: {
-          installationId: recipe.installationId,
-          owner: recipe.owner,
-          repo: recipe.repo,
-          permissions,
-        },
-      }) as Promise<MintResult>;
 
-    // Self-heal legacy connections on their ~1h re-mint: always request
-    // checks:read (even if the stored recipe predates it) so the token gains
-    // check-run access without a re-install. Fall back to the checks-less recipe
-    // when checks isn't available yet (github-mcp allowlist skew, or the
-    // installation hasn't granted Checks → 422).
-    const desiredPermissions = { ...recipe.permissions, checks: "read" };
-    let res = await mintWith(desiredPermissions);
-    if (
-      res.isError &&
-      isChecksPermissionRejected(
-        res.content?.find((c) => c.type === "text")?.text,
-      )
-    ) {
-      res = await mintWith(permissionsWithoutChecks(recipe.permissions));
-    }
+    // Self-heal legacy connections on their ~1h re-mint: request checks:read on
+    // top of the stored recipe so the token gains check-run access without a
+    // re-install, falling back to the checks-less recipe when checks isn't
+    // available yet. (Re-probes each cycle — see the helper's note.)
+    const { result: res } = await mintRepoTokenWithChecksFallback<MintResult>(
+      (permissions) =>
+        client.callTool({
+          name: "MINT_REPO_TOKEN",
+          arguments: {
+            installationId: recipe.installationId,
+            owner: recipe.owner,
+            repo: recipe.repo,
+            permissions,
+          },
+        }) as Promise<MintResult>,
+      recipe.permissions,
+    );
 
     const token = res.structuredContent?.token;
     if (res.isError || !token) {
