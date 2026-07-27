@@ -22,6 +22,7 @@ export const header = {
   "header.orgSwitcher.searchOrganizations": "Pesquisar organizações...",
   "header.orgSwitcher.unknownOrganization": "Organização desconhecida",
   "header.shellBreadcrumb.openAgentHome": "Abrir início de {name}",
+  "header.shellBreadcrumb.superAgentDefaultName": "Super Agent",
   "header.shellBreadcrumb.switchOrganization": "{name} — trocar organização",
   "header.shellBreadcrumb.switchOrganizationPendingInvitation":
     "{name} — trocar organização (convite pendente)",

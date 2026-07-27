@@ -63,7 +63,8 @@ function AgentCrumb({
 }) {
   const t = useT();
   const entity = useVirtualMCP(agentId) ?? fallback ?? null;
-  const title = entity?.title ?? "Super Agent";
+  const title =
+    entity?.title ?? t("header.shellBreadcrumb.superAgentDefaultName");
   return (
     <div className="flex min-w-0 items-center gap-0">
       <button
