@@ -14,6 +14,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@deco/ui/components/tabs.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
@@ -300,6 +301,95 @@ function PostSettings({
         value={post.extraProps}
         onChange={(v) => onChange("extraProps", v)}
       />
+      <SeoFields value={post.seo} onChange={(v) => onChange("seo", v)} />
+    </div>
+  );
+}
+
+/**
+ * Edits the post's optional `seo` object (the blog app's `Seo` type:
+ * title/description/image/canonical/noIndexing). Empty fields fall back to
+ * the post's own title/excerpt/cover on the site side, so none is required.
+ */
+function SeoFields({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (value: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const seo =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const set = (key: string, v: unknown) => onChange({ ...seo, [key]: v });
+
+  return (
+    <div className="space-y-5 border-t pt-5">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">
+          {t("sandbox.postEditor.seoSectionLabel")}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.postEditor.seoSectionHint")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="post-seo-title">
+          {t("sandbox.postEditor.seoTitleLabel")}
+        </Label>
+        <Input
+          id="post-seo-title"
+          value={str(seo.title)}
+          onChange={(e) => set("title", e.target.value)}
+          className="h-10"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="post-seo-description">
+          {t("sandbox.postEditor.seoDescriptionLabel")}
+        </Label>
+        <Textarea
+          id="post-seo-description"
+          value={str(seo.description)}
+          onChange={(e) => set("description", e.target.value)}
+          rows={2}
+        />
+      </div>
+      <ImageField
+        schema={{
+          type: "string",
+          format: "image-uri",
+          title: t("sandbox.postEditor.seoImageLabel"),
+        }}
+        value={seo.image}
+        onChange={(v) => set("image", v)}
+        path="post-seo-image"
+        label={t("sandbox.postEditor.seoImageLabel")}
+      />
+      <div className="space-y-2">
+        <Label htmlFor="post-seo-canonical">
+          {t("sandbox.postEditor.seoCanonicalLabel")}
+        </Label>
+        <Input
+          id="post-seo-canonical"
+          value={str(seo.canonical)}
+          onChange={(e) => set("canonical", e.target.value)}
+          placeholder={t("sandbox.postEditor.seoCanonicalPlaceholder")}
+          className="h-10"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor="post-seo-no-indexing">
+          {t("sandbox.postEditor.seoNoIndexingLabel")}
+        </Label>
+        <Switch
+          id="post-seo-no-indexing"
+          checked={seo.noIndexing === true}
+          onCheckedChange={(checked) => set("noIndexing", checked)}
+        />
+      </div>
     </div>
   );
 }

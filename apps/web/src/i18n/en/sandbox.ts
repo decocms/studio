@@ -340,6 +340,16 @@ export const sandbox = {
   "sandbox.postEditor.seePreview": "See preview",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Select authors",
   "sandbox.postEditor.selectCategoriesPlaceholder": "Select categories",
+  "sandbox.postEditor.seoCanonicalLabel": "Canonical URL",
+  "sandbox.postEditor.seoCanonicalPlaceholder":
+    "https://example.com/blog/my-post",
+  "sandbox.postEditor.seoDescriptionLabel": "SEO description",
+  "sandbox.postEditor.seoImageLabel": "SEO image",
+  "sandbox.postEditor.seoNoIndexingLabel": "Hide from search engines (noindex)",
+  "sandbox.postEditor.seoSectionHint":
+    "Overrides how this post appears in search engines. Empty fields fall back to the post's title, excerpt and cover image.",
+  "sandbox.postEditor.seoSectionLabel": "SEO",
+  "sandbox.postEditor.seoTitleLabel": "SEO title",
   "sandbox.postEditor.settingsTab": "Settings",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "my-post",

@@ -353,6 +353,17 @@ export const sandbox = {
   "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
   "sandbox.postEditor.selectCategoriesPlaceholder": "Selecionar categorias",
+  "sandbox.postEditor.seoCanonicalLabel": "URL canônica",
+  "sandbox.postEditor.seoCanonicalPlaceholder":
+    "https://exemplo.com/blog/meu-post",
+  "sandbox.postEditor.seoDescriptionLabel": "Descrição de SEO",
+  "sandbox.postEditor.seoImageLabel": "Imagem de SEO",
+  "sandbox.postEditor.seoNoIndexingLabel":
+    "Ocultar dos mecanismos de busca (noindex)",
+  "sandbox.postEditor.seoSectionHint":
+    "Sobrescreve como este post aparece nos mecanismos de busca. Campos vazios usam o título, resumo e imagem de capa do post.",
+  "sandbox.postEditor.seoSectionLabel": "SEO",
+  "sandbox.postEditor.seoTitleLabel": "Título de SEO",
   "sandbox.postEditor.settingsTab": "Configurações",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "meu-post",
