@@ -233,6 +233,84 @@ describe("resolveActiveFieldKey", () => {
     ).toBeNull();
   });
 
+  test("does not narrow to a loader whose config does not own the crumb", () => {
+    const properties = {
+      enableCta: { title: "Ativar CTA", type: "boolean" },
+      loader: {
+        title: "Loader",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      enableCta: true,
+      loader: {
+        __resolveType: "shelf/loader.ts",
+        banners: [{ title: "Linha Outdoors" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        "Beach Short",
+      ]),
+    ).toBeNull();
+  });
+
+  test("does not spuriously match primitive arrays or href/id fallbacks", () => {
+    const properties = {
+      loader: {
+        title: "Loader",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    // The crumb "Beach Short" appears only as a primitive tag and as an
+    // `href`/`id` — never as a real item name/label/title — so ownership must
+    // NOT be claimed (would otherwise narrow to the wrong field).
+    const objValue = {
+      loader: {
+        __resolveType: "shelf/loader.ts",
+        tags: ["Beach Short"],
+        links: [{ href: "Beach Short", id: "Beach Short" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        "Beach Short",
+      ]),
+    ).toBeNull();
+  });
+
+  test("narrows to the loader that actually owns the item, not the first block-ref", () => {
+    const properties = {
+      loaderA: {
+        title: "Loader A",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "a/loader.ts", title: "A" }],
+      },
+      loaderB: {
+        title: "Loader B",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "b/loader.ts", title: "B" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      loaderA: {
+        __resolveType: "a/loader.ts",
+        banners: [{ title: "Linha Outdoors" }],
+      },
+      loaderB: {
+        __resolveType: "b/loader.ts",
+        banners: [{ title: "Beach Short" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        "Beach Short",
+      ]),
+    ).toBe("loaderB");
+  });
+
   test("disambiguates block-refs with same label by inner value keys", () => {
     const properties = {
       asideMenu: {

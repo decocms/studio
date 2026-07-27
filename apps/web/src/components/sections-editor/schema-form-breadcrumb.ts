@@ -200,33 +200,70 @@ function asObjectRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+// A drilled item is addressed by its display label, which for the common case
+// comes from one of these high-signal naming fields. We match ownership ONLY
+// against these (not the full getArrayItemLabel fallback chain) so a coincidental
+// `href`/`id`/`key` value — or a plain string in an unrelated primitive array —
+// can't spuriously claim to own the crumb.
+const OWNERSHIP_LABEL_KEYS = ["name", "label", "title", "alt"] as const;
+
+function itemOwnershipLabel(item: unknown): string | undefined {
+  if (item == null || typeof item !== "object" || Array.isArray(item)) {
+    return undefined;
+  }
+  const obj = item as Record<string, unknown>;
+  for (const key of OWNERSHIP_LABEL_KEYS) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
 /**
  * Whether a (block-ref) field's inline value contains — at any nesting level —
- * an array whose item's display label matches `crumb`.
+ * an object array item whose naming field matches `crumb`.
  *
  * Drilling into an array item that lives inside a loader's config produces a
  * bare `[itemLabel]` trail (the array's own label is omitted, and the loader's
  * label isn't in the trail either). Without this, a multi-field section can't
  * tell which field owns the item, so {@link resolveActiveFieldKeyInScope}
  * returns null and the panel keeps showing every sibling prop instead of
- * narrowing to the item. We match without an item schema, so the label is
- * derived from the item's own fields (name/label/title/…); a loader that labels
- * items via a custom `titleBy` won't be detected here.
+ * narrowing to the item.
+ *
+ * Deliberately conservative — matches only object items via
+ * {@link OWNERSHIP_LABEL_KEYS} (no item schema is available here). Items labeled
+ * via a custom `titleBy`, via `text`/`href`/`id`, or primitive-array items are
+ * NOT detected; those degrade to the pre-fix behavior (all siblings shown)
+ * rather than risk narrowing to the wrong loader. Bounded by depth and a shared
+ * node budget so a large loader config can't stall a render.
  */
-function valueOwnsItemCrumb(value: unknown, crumb: string, depth = 0): boolean {
-  if (depth > 4 || value == null || typeof value !== "object") return false;
+function valueOwnsItemCrumb(
+  value: unknown,
+  crumb: string,
+  budget = { n: 4000 },
+  depth = 0,
+): boolean {
+  if (
+    depth > 4 ||
+    budget.n <= 0 ||
+    value == null ||
+    typeof value !== "object"
+  ) {
+    return false;
+  }
   if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      if (labelsMatch(getArrayItemLabel(value[i], i, undefined), crumb)) {
-        return true;
-      }
-      if (valueOwnsItemCrumb(value[i], crumb, depth + 1)) return true;
+    for (const item of value) {
+      if (--budget.n <= 0) return false;
+      const label = itemOwnershipLabel(item);
+      if (label && labelsMatch(label, crumb)) return true;
+      if (valueOwnsItemCrumb(item, crumb, budget, depth + 1)) return true;
     }
     return false;
   }
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (k.startsWith("__")) continue;
-    if (valueOwnsItemCrumb(v, crumb, depth + 1)) return true;
+    if (--budget.n <= 0) return false;
+    if (valueOwnsItemCrumb(v, crumb, budget, depth + 1)) return true;
   }
   return false;
 }
@@ -370,6 +407,7 @@ export function isBreadcrumbInsideObject(
   schema: SchemaProperty,
   objValue: Record<string, unknown>,
   breadcrumbPath: string[],
+  decofile?: Record<string, unknown>,
 ): boolean {
   if (breadcrumbPath.length === 0 || !schema.properties) return false;
 
@@ -380,6 +418,7 @@ export function isBreadcrumbInsideObject(
       schema.properties,
       objValue,
       breadcrumbPath,
+      decofile,
     )
   ) {
     return true;
@@ -395,6 +434,7 @@ export function isBreadcrumbInsideObject(
       schema.properties,
       objValue,
       breadcrumbPath.slice(1),
+      decofile,
     ) !== null
   );
 }
