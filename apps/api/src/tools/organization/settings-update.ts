@@ -27,9 +27,14 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
-    flags: OrgFlagsSchema.optional().describe(
-      "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
-    ),
+    // .strict() here (not on the shared OrgFlagsSchema) so a mistyped flag
+    // name is rejected instead of silently stripped and merged as `{}` —
+    // that no-op was indistinguishable from a successful update.
+    flags: OrgFlagsSchema.strict()
+      .optional()
+      .describe(
+        "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
+      ),
     main_agent_id: z
       .string()
       .nullable()
