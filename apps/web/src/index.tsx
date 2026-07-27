@@ -28,11 +28,13 @@ migrateLegacyStorageKeys(window.localStorage);
 
 const rootRoute = createRootRoute({
   component: () => (
-    <ChunkErrorBoundary>
-      <Suspense fallback={<SplashScreen />}>
-        <Outlet />
-      </Suspense>
-    </ChunkErrorBoundary>
+    <Providers>
+      <ChunkErrorBoundary>
+        <Suspense fallback={<SplashScreen />}>
+          <Outlet />
+        </Suspense>
+      </ChunkErrorBoundary>
+    </Providers>
   ),
 });
 
@@ -700,8 +702,6 @@ const rootElement = document.getElementById("root")!;
 
 createRoot(rootElement).render(
   <StrictMode>
-    <Providers>
-      <RouterProvider router={router} />
-    </Providers>
+    <RouterProvider router={router} />
   </StrictMode>,
 );
