@@ -106,4 +106,10 @@ export const home = {
   "home.tileErrorBoundary.tileCrashed": "This tile crashed",
   "home.projectCard.lastUsed": "Last used {time}",
   "home.projectCard.updated": "Updated {time}",
+  "home.projectCard.setAsMainAgent": "Set as main agent",
+  "home.projectCard.unsetMainAgent": "Remove as main agent",
+  "home.projectCard.mainAgentBadge": "Main agent",
+  "home.projectCard.mainAgentSet": '"{title}" is now the main agent',
+  "home.projectCard.mainAgentUnset": 'Removed "{title}" as the main agent',
+  "home.projectCard.mainAgentError": "Couldn't update the main agent",
 } as const;

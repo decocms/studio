@@ -361,6 +361,16 @@ export const settings = {
   "settings.orgBrandContext.unsetAsDefault": "Unset as default",
   "settings.orgBrandContext.untitledBrand": "Untitled Brand",
   "settings.orgGeneral.organization": "Organization",
+  "settings.mainAgent.title": "Main agent",
+  "settings.mainAgent.description":
+    "The agent this organization opens on. Every member lands here instead of the Super Agent.",
+  "settings.mainAgent.itemTitle": "Landing agent",
+  "settings.mainAgent.itemDescription":
+    "Pick the agent to open when entering this organization.",
+  "settings.mainAgent.superAgentOption": "Super Agent (default)",
+  "settings.mainAgent.setToast": '"{title}" is now the main agent',
+  "settings.mainAgent.resetToast": "Reset to the Super Agent",
+  "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

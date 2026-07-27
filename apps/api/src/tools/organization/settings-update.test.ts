@@ -58,4 +58,35 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
 
     expect(result.organizationId).toBe("org-a");
   });
+
+  it("forwards main_agent_id to storage — a set id and an explicit null to clear", async () => {
+    const upsert = (ctx: ReturnType<typeof makeCtx>): ReturnType<typeof mock> =>
+      (
+        ctx as unknown as {
+          storage: {
+            organizationSettings: { upsert: ReturnType<typeof mock> };
+          };
+        }
+      ).storage.organizationSettings.upsert;
+
+    const setCtx = makeCtx({ id: "org-a" });
+    await ORGANIZATION_SETTINGS_UPDATE.handler(
+      { organizationId: "org-a", main_agent_id: "vmcp-1" },
+      setCtx,
+    );
+    expect(upsert(setCtx).mock.calls[0]?.[1]).toMatchObject({
+      main_agent_id: "vmcp-1",
+    });
+
+    // Explicit null must be forwarded (not dropped) so the storage layer can
+    // clear the column and fall the org landing back to the Super Agent.
+    const clearCtx = makeCtx({ id: "org-a" });
+    await ORGANIZATION_SETTINGS_UPDATE.handler(
+      { organizationId: "org-a", main_agent_id: null },
+      clearCtx,
+    );
+    expect(upsert(clearCtx).mock.calls[0]?.[1]).toMatchObject({
+      main_agent_id: null,
+    });
+  });
 });

@@ -169,6 +169,8 @@ export interface OrganizationSettingsTable {
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   reports_only: boolean | null;
+  // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
+  main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -181,6 +183,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
+  main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }

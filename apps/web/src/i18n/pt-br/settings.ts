@@ -376,6 +376,17 @@ export const settings = {
   "settings.orgBrandContext.unsetAsDefault": "Remover como padr\u00e3o",
   "settings.orgBrandContext.untitledBrand": "Marca Sem T\u00edtulo",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
+  "settings.mainAgent.title": "Agente principal",
+  "settings.mainAgent.description":
+    "O agente em que esta organiza\u00e7\u00e3o abre. Todos os membros chegam aqui em vez do Super Agent.",
+  "settings.mainAgent.itemTitle": "Agente de entrada",
+  "settings.mainAgent.itemDescription":
+    "Escolha o agente que abre ao entrar nesta organiza\u00e7\u00e3o.",
+  "settings.mainAgent.superAgentOption": "Super Agent (padr\u00e3o)",
+  "settings.mainAgent.setToast": '"{title}" agora \u00e9 o agente principal',
+  "settings.mainAgent.resetToast": "Redefinido para o Super Agent",
+  "settings.mainAgent.errorToast":
+    "N\u00e3o foi poss\u00edvel atualizar o agente principal",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

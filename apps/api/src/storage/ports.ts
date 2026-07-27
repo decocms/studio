@@ -308,6 +308,7 @@ export interface OrganizationSettingsStoragePort {
         | "simple_mode"
         | "default_home_agents"
         | "reports_only"
+        | "main_agent_id"
       >
     >,
   ): Promise<OrganizationSettings>;
