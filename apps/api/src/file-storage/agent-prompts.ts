@@ -30,10 +30,17 @@ function dir(agentId: string): string {
   return slugify(agentId);
 }
 
+/**
+ * Width to zero-pad the index to, so filenames sort lexicographically
+ * (as `listDir` returns them) in the same order the prompts were authored in
+ * — e.g. `09-x` before `10-x`, not `10-x` before `2-x`.
+ */
+const INDEX_WIDTH = String(MAX_PROMPTS - 1).length;
+
 /** Local name for the Nth prompt — stable, unique, and a valid file base. */
-function localName(index: number, title: string): string {
+export function localName(index: number, title: string): string {
   const slug = slugify(title) || "prompt";
-  return `${index}-${slug}`;
+  return `${String(index).padStart(INDEX_WIDTH, "0")}-${slug}`;
 }
 
 /**
