@@ -15,6 +15,7 @@ import {
 } from "../../core/studio-context";
 import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
+import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 /**
  * Random icon+color for new agents (server-side, no React deps).
@@ -117,6 +118,14 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
 
     // `prompts` is seeded to org-fs after creation, not stored on the agent row.
     const { prompts, ...createData } = input.data;
+
+    if (createData.connections.length > 0) {
+      await requireConnectionsInOrganization(
+        ctx,
+        organization.id,
+        createData.connections.map((c) => c.connection_id),
+      );
+    }
 
     // Create the virtual MCP (input.data is already in the correct format)
     // Note: The facade creates a VIRTUAL connection in the connections table
