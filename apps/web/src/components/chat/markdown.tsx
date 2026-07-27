@@ -9,7 +9,6 @@ import React, {
   useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -155,9 +154,11 @@ function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   );
 }
 
-// Memoize the plugins arrays to prevent re-creating them on every render
+// Memoize the plugins array to prevent re-creating it on every render.
+// No rehype-raw here: assistant text can carry web-search / tool-output
+// content, and rehype-raw renders embedded raw HTML with no sanitization —
+// a real XSS vector (see the same concern noted in checks-tab.tsx).
 const remarkPluginsMemo = [remarkGfm];
-const rehypePluginsMemo = [rehypeRaw];
 
 // Extend shared markdown components with chat-specific overrides (table with CSV
 // copy, image lightbox, clickable org-file references).
@@ -344,7 +345,6 @@ const MemoizedMarkdownBlock = memo(
     return (
       <ReactMarkdown
         remarkPlugins={remarkPluginsMemo}
-        rehypePlugins={rehypePluginsMemo}
         components={animate ? animatedComponents : markdownComponents}
       >
         {content}
