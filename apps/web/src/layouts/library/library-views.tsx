@@ -11,6 +11,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { homeDisplayName } from "@decocms/shared/organization/home-mount";
 import { useT } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import {
   type OrgFsEntry,
   type ShareMode,
@@ -176,7 +177,7 @@ function VolumeFolderCard({
   volume: string;
   /** Card label when it differs from the volume id (home shows the slug). */
   displayName?: string;
-  descriptionKey: string;
+  descriptionKey: TranslationKey;
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   onOpen: () => void;
 }) {
@@ -190,7 +191,7 @@ function VolumeFolderCard({
           ? t("library.libraryViews.filesCount", { count: usage.data.files })
           : undefined
       }
-      subtitle={t(descriptionKey as any)}
+      subtitle={t(descriptionKey)}
       glyph={glyph}
       onOpen={onOpen}
     />
