@@ -9,6 +9,7 @@
  * Configuration is file-based (auth-config.json), not environment variables.
  */
 
+import { randomBytes } from "crypto";
 import { getSettings } from "../settings";
 import { getToolsByCategory } from "@decocms/shared/tools/registry-metadata";
 import { sso } from "@better-auth/sso";
@@ -467,8 +468,22 @@ const settings = getSettings();
 // set-auth-jwt header.
 const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 
+// Falling back to a fixed string baked into this open-source repo would let
+// anyone who forgets to set BETTER_AUTH_SECRET run with a publicly-known
+// session/cookie signing secret. Generate a random one instead (same
+// trade-off as STUDIO_JWT_SECRET in ./jwt.ts): not persistent across
+// restarts, but never a known constant.
+const authSecret =
+  settings.betterAuthSecret ||
+  (() => {
+    console.warn(
+      "BETTER_AUTH_SECRET not set - generating a random secret (not persistent across restarts)",
+    );
+    return randomBytes(32).toString("base64");
+  })();
+
 export const auth = betterAuth({
-  secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
+  secret: authSecret,
 
   // customAPIKeyGetter probes every `Authorization: Bearer …` as an API key,
   // so OAuth tokens, studio JWTs and stale keys routinely miss and Better Auth
