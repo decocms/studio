@@ -59,15 +59,9 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Setup Bun
+      - name: Setup Bun and install dependencies
         if: steps.tag-check.outputs.exists != 'true'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        if: steps.tag-check.outputs.exists != 'true'
-        run: bun install
+        uses: ./.github/actions/setup-bun
 
       # The Dockerfile copies daemon/dist/daemon.js into the image.
       - name: Build daemon bundle

@@ -121,12 +121,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Install dependencies
-        run: bun install
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
       - name: Build combined Studio distribution
         run: bun run build:studio
       - name: Verify combined distribution layout
