@@ -55,6 +55,7 @@ export const sectionsEditor = {
   "sectionsEditor.fileField.uploading": "Uploading…",
   "sectionsEditor.fileField.videoFileError":
     "Please drop a video file (mp4, webm, …).",
+  "sectionsEditor.generalSeoForm.useDefault": "Use default",
   "sectionsEditor.imageField.browse": "Browse",
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Drop an image or click to browse",
