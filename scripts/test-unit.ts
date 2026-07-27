@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { readdir } from "node:fs/promises";
+import { availableParallelism } from "node:os";
 import { join, relative } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -46,16 +47,45 @@ const testFiles = (
   .flat()
   .sort();
 
-console.log(`Running ${testFiles.length} isolated unit test files...`);
+// One bun process per file keeps the isolation guarantee; a worker pool keeps
+// the wall clock at max(slowest file, total / cores) instead of the serial sum.
+const concurrency = Math.min(availableParallelism(), testFiles.length);
+console.log(
+  `Running ${testFiles.length} isolated unit test files (concurrency ${concurrency})...`,
+);
 
-for (const testFile of testFiles) {
-  console.log(`\n▶ ${testFile}`);
-  const child = Bun.spawn(["bun", "test", testFile], {
-    cwd: repoRoot,
-    stdio: ["inherit", "inherit", "inherit"],
-  });
-  const exitCode = await child.exited;
-  if (exitCode !== 0) {
-    process.exit(exitCode);
+let nextIndex = 0;
+const failures: string[] = [];
+
+async function worker(): Promise<void> {
+  while (nextIndex < testFiles.length) {
+    const testFile = testFiles[nextIndex++];
+    if (!testFile) break;
+    const child = Bun.spawn(["bun", "test", testFile], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    if (exitCode === 0) {
+      console.log(`✓ ${testFile}`);
+    } else {
+      failures.push(testFile);
+      console.error(`\n✗ ${testFile}\n${stdout}${stderr}`);
+    }
   }
+}
+
+await Promise.all(Array.from({ length: concurrency }, worker));
+
+if (failures.length > 0) {
+  console.error(`\n${failures.length} test file(s) failed:`);
+  for (const file of failures) {
+    console.error(`  ✗ ${file}`);
+  }
+  process.exit(1);
 }
