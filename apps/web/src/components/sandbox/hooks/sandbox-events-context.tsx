@@ -31,7 +31,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
 import type {
@@ -336,6 +336,13 @@ export function SandboxEventsProvider({
               lp.state.phase === "running" &&
               prevLifecyclePhase !== "running"
             ) {
+              // The claim response can resolve before the pod finishes writing
+              // `previewUrl` into the entity's `sandboxMap` (60s staleTime on
+              // the collection-item query). Without this, `previewUrl` stays
+              // null in the sandbox lifecycle context and the CMS/Content
+              // panels never mount on a cold-start open — only a hard refresh
+              // re-fetches the entity and picks it up.
+              invalidateVirtualMcpQueries(queryClient, org.id);
               const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
               void queryClient.invalidateQueries({
                 queryKey: KEYS.decofile(cacheKey),
