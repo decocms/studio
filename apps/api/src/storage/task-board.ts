@@ -31,21 +31,29 @@ const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
 /**
  * Should a task advance to In Review now that a thread finished? True iff it's
- * In Progress, has at least one thread, and every thread's run has reached a
- * terminal status. Repo-backed tasks advance here too: the PR-open hook moves
- * them earlier (mid-run, real-time) when it fires, but thread-finish is the
- * backstop so a task doesn't sit in In Progress forever when PR detection misses
- * (shell alias, script wrapper, or a PR opened by any other means). RANK keeps
- * this from moving a card backward, and a re-prompt reopens it. Pure —
- * unit-tested.
+ * In Progress, has at least one thread that was actually used, and every such
+ * thread's run has reached a terminal status. Repo-backed tasks advance here
+ * too: the PR-open hook moves them earlier (mid-run, real-time) when it fires,
+ * but thread-finish is the backstop so a task doesn't sit in In Progress forever
+ * when PR detection misses (shell alias, script wrapper, or a PR opened by any
+ * other means). RANK keeps this from moving a card backward, and a re-prompt
+ * reopens it. Pure — unit-tested.
+ *
+ * Message-less threads are ignored entirely. Clicking "New chat" persists the
+ * thread row before anything is typed, and `ThreadStorage.create` defaults
+ * `status` to "completed" — so an empty chat someone opened next to a card is
+ * born terminal and indistinguishable *by status* from a finished run. Counting
+ * one would advance a card whose work nobody ever started; a card whose only
+ * thread is empty has effectively no thread at all.
  */
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
-  threads: { status: string | null; hasPreview: boolean }[];
+  threads: { status: string | null; hasMessages: boolean }[];
 }): boolean {
   if (item.status !== "in_progress") return false;
-  if (item.threads.length === 0) return false;
-  return item.threads.every(
+  const used = item.threads.filter((t) => t.hasMessages);
+  if (used.length === 0) return false;
+  return used.every(
     (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
   );
 }
@@ -384,7 +392,7 @@ export class TaskBoardStorage {
             .as("lastmsg"),
         (join) => join.onTrue(),
       )
-      .select([
+      .select((eb) => [
         "link.task_board_item_id as taskId",
         "link.thread_id as threadId",
         "link.created_at as createdAt",
@@ -393,6 +401,26 @@ export class TaskBoardStorage {
         "t.virtual_mcp_id as virtualMcpId",
         "t.metadata as metadata",
         "lastmsg.payload as lastMessagePayload",
+        // Was this thread ever used? Both storage formats, any role — v2 writes
+        // parts, deprecated v1 threads still have `thread_messages` rows, and a
+        // run that emitted only tool calls has no assistant *text* so
+        // `lastMessage` can't stand in for this.
+        eb
+          .or([
+            eb.exists(
+              eb
+                .selectFrom("thread_message_parts as mp")
+                .select("mp.id")
+                .whereRef("mp.thread_id", "=", "link.thread_id"),
+            ),
+            eb.exists(
+              eb
+                .selectFrom("thread_messages as tm")
+                .select("tm.id")
+                .whereRef("tm.thread_id", "=", "link.thread_id"),
+            ),
+          ])
+          .as("hasMessages"),
       ])
       .where("link.organization_id", "=", organizationId)
       .where("link.task_board_item_id", "in", ids)
@@ -408,6 +436,7 @@ export class TaskBoardStorage {
         title: row.title ?? null,
         lastMessage: extractPartText(row.lastMessagePayload),
         hasPreview: threadHasClonableRepo(row.metadata),
+        hasMessages: !!row.hasMessages,
         createdAt:
           row.createdAt instanceof Date
             ? row.createdAt.toISOString()

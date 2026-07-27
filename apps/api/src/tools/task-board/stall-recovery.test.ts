@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import { decideStallAction } from "./stall-recovery";
 
-const thread = (status: string | null) => ({ status, hasPreview: false });
-
-/** A thread that actually ran, on the current storage format. */
-const ran = (status: string) => ({
+/** A used thread — `shouldAdvanceToReview` filters out message-less ones. */
+const thread = (status: string | null, hasMessages = true) => ({
   status,
-  hasHistory: true,
-  messageStorageVersion: 2,
+  hasMessages,
 });
+
+/** A thread on the current storage format. */
+const ran = (status: string) => ({ status, messageStorageVersion: 2 });
 
 describe("decideStallAction", () => {
   test("a run that finished advances the card", () => {
@@ -20,49 +20,23 @@ describe("decideStallAction", () => {
     expect(decideStallAction(ran("failed"))).toBe("nudge");
   });
 
-  // Regression: ThreadStorage.create defaults status to "completed", so an empty
-  // chat opened next to a card is born terminal. Prod board_zsKGcXRC9IhyqY_rNHekN
-  // is exactly this — 0 parts, 0 v1 messages, updated_at == created_at — and
-  // advancing it would mark work reviewable that nobody ever started.
-  test("a thread born completed with no history is left alone", () => {
-    expect(
-      decideStallAction({
-        status: "completed",
-        hasHistory: false,
-        messageStorageVersion: 1,
-      }),
-    ).toBe("none");
-  });
-
   test("a v1 thread cannot be nudged — dispatch persists nothing for it", () => {
     expect(
-      decideStallAction({
-        status: "failed",
-        hasHistory: true,
-        messageStorageVersion: 1,
-      }),
+      decideStallAction({ status: "failed", messageStorageVersion: 1 }),
     ).toBe("none");
   });
 
   test("a v1 thread that completed still advances", () => {
     expect(
-      decideStallAction({
-        status: "completed",
-        hasHistory: true,
-        messageStorageVersion: 1,
-      }),
+      decideStallAction({ status: "completed", messageStorageVersion: 1 }),
     ).toBe("advance");
   });
 
   test("non-terminal statuses are never acted on", () => {
     for (const status of ["in_progress", "requires_action", null] as const) {
-      expect(
-        decideStallAction({
-          status,
-          hasHistory: true,
-          messageStorageVersion: 2,
-        }),
-      ).toBe("none");
+      expect(decideStallAction({ status, messageStorageVersion: 2 })).toBe(
+        "none",
+      );
     }
   });
 });
@@ -102,6 +76,16 @@ describe("shouldAdvanceToReview gates the sweep", () => {
     expect(shouldAdvanceToReview({ status: "in_progress", threads: [] })).toBe(
       false,
     );
+  });
+
+  // The one prod straggler: its only thread was created and never typed in.
+  test("a card whose only thread is empty is not a candidate", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [thread("completed", false)],
+      }),
+    ).toBe(false);
   });
 
   test("only In Progress cards stall", () => {

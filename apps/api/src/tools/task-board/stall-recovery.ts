@@ -7,14 +7,17 @@
  * card sits In Progress forever with nothing running behind it. Opening the
  * board re-runs the same decision over the list it just loaded:
  *
- *   every thread terminal, newest `completed` → advance to In Review. This is
- *     the finish hook's own job, done late; costs two queries, no model call.
- *   every thread terminal, newest `failed`    → nudge the thread once: one user
- *     turn asking the agent to finish what it started. Advancing here would
+ *   every used thread terminal, newest `completed` → advance to In Review. This
+ *     is the finish hook's own job, done late; costs two queries, no model call.
+ *   every used thread terminal, newest `failed`    → nudge the thread once: one
+ *     user turn asking the agent to finish what it started. Advancing here would
  *     mark unfinished work as reviewable.
  *   any thread `requires_action` / `in_progress` → leave it. The first is parked
  *     on a `user_ask` (a human owns it), the second is either live or the stall
  *     reaper's to fail — and once it does, the next board open nudges it.
+ *
+ * "Used" is `shouldAdvanceToReview`'s filter: threads with no messages don't
+ * count, because a never-typed-in chat is born `completed`.
  *
  * Called fire-and-forget from TASK_BOARD_ITEM_LIST: it never delays or fails
  * the read.
@@ -32,23 +35,14 @@ import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 export type StallAction = "none" | "advance" | "nudge";
 
 /**
- * What a stalled card needs, given the newest linked thread's authoritative
- * state. Pure — unit-tested.
- *
- * `hasHistory` is load-bearing, not defensive. `ThreadStorage.create` defaults
- * `status` to `"completed"`, so a thread is born terminal: an empty chat
- * someone opened next to a card is indistinguishable *by status* from a run
- * that finished. The projector's finish hook can't be fooled by that — a
- * terminal event proves a run happened — but this runs off state, where that
- * proof has to be fetched. Prod has exactly one card in this shape, and
- * advancing it would call work reviewable that nobody ever started.
+ * What a stalled card needs, given the newest used thread's state. Reached only
+ * for a card `shouldAdvanceToReview` already accepted, so every thread in play
+ * has messages and a terminal status. Pure — unit-tested.
  */
 export function decideStallAction(thread: {
   status: string | null;
-  hasHistory: boolean;
   messageStorageVersion: number;
 }): StallAction {
-  if (!thread.hasHistory) return "none";
   if (thread.status === "completed") return "advance";
   // Only v2 threads can take a new turn: dispatch nulls the part emitter for v1
   // (deprecated, read-only), so a nudge would run with nothing persisted and
@@ -128,12 +122,9 @@ async function nudgeThread(
 }
 
 /**
- * Read the newest thread's authoritative state and decide. Two reads the board
- * list doesn't carry: `message_storage_version` (not in the public thread ref)
- * and whether any message exists at all — the same `limit: 1` probe POST
- * /messages uses to spot a never-used thread, so it spans v1 and v2 alike.
- * Only runs for a card that already looks stalled, so a healthy board pays
- * nothing.
+ * Read the one thing the board list doesn't carry — `message_storage_version`,
+ * which gates whether the thread can take a new turn at all — and decide. Only
+ * runs for a card that already looks stalled, so a healthy board pays nothing.
  */
 async function resolveStallAction(
   ctx: StudioContext,
@@ -141,12 +132,8 @@ async function resolveStallAction(
 ): Promise<StallAction> {
   const thread = await ctx.storage.threads.get(threadId);
   if (!thread) return "none";
-  const { total } = await ctx.storage.threads.listMessages(threadId, {
-    limit: 1,
-  });
   return decideStallAction({
     status: thread.status,
-    hasHistory: total > 0,
     messageStorageVersion: thread.message_storage_version,
   });
 }
@@ -165,10 +152,11 @@ export async function recoverStalledTasks(
 
   for (const item of items) {
     // Narrow off the already-loaded list first, so a board with nothing stuck
-    // costs zero queries. `threads[0]` is the newest link (`attachThreads`
-    // orders by `link.created_at desc`) — the last run to happen decides.
+    // costs zero queries. Threads are newest-first (`attachThreads` orders by
+    // `link.created_at desc`), so the newest *used* one is the last run to have
+    // happened — an empty thread linked afterwards must not shadow it.
     if (!shouldAdvanceToReview(item)) continue;
-    const thread = item.threads[0];
+    const thread = item.threads.find((t) => t.hasMessages);
     if (!thread) continue;
     try {
       const action = await resolveStallAction(ctx, thread.threadId);
