@@ -231,6 +231,7 @@ function useHomeBoard(validIds?: ReadonlySet<string>) {
 
   return {
     homeIds,
+    liveCount,
     isOnHome,
     atLimit,
     addAgent,
@@ -309,7 +310,7 @@ function OnHomeSection({
     <div className="flex flex-col gap-1.5">
       <SectionHeader
         title={t("home.addTileDrawer.onHomeTitle")}
-        hint={`${home.homeIds.length}/${HOME_LIMIT}`}
+        hint={`${home.liveCount}/${HOME_LIMIT}`}
       />
       {agents.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
