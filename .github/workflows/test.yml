@@ -170,12 +170,21 @@ jobs:
       - name: Build daemon bundle
         run: bun run --cwd=packages/sandbox build
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build sandbox image
-        run: |
-          docker build \
-            -t studio-sandbox:ci \
-            -f packages/sandbox/image/Dockerfile \
-            packages/sandbox
+        uses: docker/build-push-action@v5
+        with:
+          context: ./packages/sandbox
+          file: ./packages/sandbox/image/Dockerfile
+          load: true
+          tags: studio-sandbox:ci
+          # Read-only reuse of the layer cache release-studio-sandbox already
+          # publishes from main (cache-to mode=max). Deliberately no cache-to:
+          # PR builds add zero cache-quota pressure, and the heavy apt/node
+          # layer only invalidates when the Dockerfile itself changes.
+          cache-from: type=gha
 
       - name: Smoke test
         run: |
