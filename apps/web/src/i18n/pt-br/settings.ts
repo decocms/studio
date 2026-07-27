@@ -552,6 +552,7 @@ export const settings = {
   "settings.organizationForm.uploadLogoLabel":
     "Enviar logo da organiza\u00e7\u00e3o",
   "settings.organizationForm.urlTitle": "URL",
+  "settings.providerKeyRow.addedTimeAgo": "{label} · adicionada há {time}",
   "settings.providerKeyRow.cancel": "Cancelar",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",

@@ -65,7 +65,10 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     if (isOpenAICompatible) {
       return providerKey.label;
     }
-    return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt), { locale })} ago`;
+    return t("settings.providerKeyRow.addedTimeAgo", {
+      label: providerKey.label,
+      time: formatDistanceToNow(new Date(providerKey.createdAt), { locale }),
+    });
   })();
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({

@@ -521,6 +521,7 @@ export const settings = {
     "Organization updated successfully",
   "settings.organizationForm.uploadLogoLabel": "Upload organization logo",
   "settings.organizationForm.urlTitle": "URL",
+  "settings.providerKeyRow.addedTimeAgo": "{label} · added {time} ago",
   "settings.providerKeyRow.cancel": "Cancel",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
