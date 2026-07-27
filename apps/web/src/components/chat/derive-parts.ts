@@ -274,14 +274,12 @@ export function derivePartsFromTiptapDoc(
           !Array.isArray(meta) &&
           "agentId" in meta
         ) {
-          // Agent mention: instruct the AI to delegate via subtask
-          parts.push({
-            type: "text",
-            text:
-              `[DELEGATE TO AGENT: ${(meta as { title?: string }).title ?? node.attrs.name} (agent_id: ${(meta as { agentId: string }).agentId})]\n` +
-              `Use the subtask tool to delegate this task to the agent above. ` +
-              `Include the full relevant context from this conversation in the prompt field — the subagent has no conversation history.`,
-          });
+          // Agent mention: the mentioned agent ANSWERS THIS TURN itself (see
+          // `extractMentionedAgentId`), so nothing is injected here — the
+          // inline "@Name" already tells every reader who was addressed.
+          // (It used to emit a "[DELEGATE TO AGENT …] use the subtask tool"
+          // instruction, which made the current agent answer on the other
+          // agent's behalf instead of the room hearing the agent itself.)
         } else if (Array.isArray(meta)) {
           // Resource mention: metadata is ReadResourceResult.contents
           parts.push(
@@ -354,6 +352,57 @@ export function derivePartsFromTiptapDoc(
   }
 
   return parts;
+}
+
+/**
+ * The agent an "@" mention addresses this turn, if any — the room's way of
+ * saying "you answer this one". Multiple mentions: the LAST one wins (it reads
+ * as the addressee; earlier ones are references), and only one agent can hold a
+ * turn since a turn is one run.
+ *
+ * Returns null when the draft mentions no agent, in which case the caller keeps
+ * the thread's current agent as the responder.
+ */
+export function extractMentionedAgentId(
+  doc: Metadata["tiptapDoc"],
+): { agentId: string; title: string } | null {
+  if (!doc) return null;
+
+  let found: { agentId: string; title: string } | null = null;
+
+  const walkNode = (node: {
+    type?: string;
+    attrs?: Record<string, unknown>;
+    content?: unknown[];
+  }) => {
+    if (!node) return;
+
+    if (node.type === "mention" && node.attrs?.char === "@") {
+      const meta = node.attrs.metadata;
+      if (
+        meta &&
+        typeof meta === "object" &&
+        !Array.isArray(meta) &&
+        "agentId" in meta &&
+        typeof (meta as { agentId: unknown }).agentId === "string"
+      ) {
+        const { agentId, title } = meta as { agentId: string; title?: string };
+        found = {
+          agentId,
+          title: title ?? String(node.attrs.name ?? "Agent"),
+        };
+      }
+    }
+
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        walkNode(child as typeof node);
+      }
+    }
+  };
+
+  walkNode(doc as Parameters<typeof walkNode>[0]);
+  return found;
 }
 
 /**

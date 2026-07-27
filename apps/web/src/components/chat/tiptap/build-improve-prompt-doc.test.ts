@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { buildImprovePromptDoc } from "./build-improve-prompt-doc";
-import { derivePartsFromTiptapDoc } from "../derive-parts";
+import {
+  derivePartsFromTiptapDoc,
+  extractMentionedAgentId,
+} from "../derive-parts";
 
 const baseInput = {
   managerAgentId: "agent_mgr_123",
@@ -39,7 +42,7 @@ describe("buildImprovePromptDoc", () => {
     );
   });
 
-  test("compiles through derivePartsFromTiptapDoc into a DELEGATE directive", () => {
+  test("compiles through derivePartsFromTiptapDoc addressing the manager", () => {
     const doc = buildImprovePromptDoc(baseInput);
     const parts = derivePartsFromTiptapDoc(
       doc as Parameters<typeof derivePartsFromTiptapDoc>[0],
@@ -49,11 +52,21 @@ describe("buildImprovePromptDoc", () => {
       .map((p) => p.text)
       .join("\n");
     expect(text).toContain("Use @Agent Manager to improve the instructions");
-    expect(text).toContain(
-      "[DELEGATE TO AGENT: Agent Manager (agent_id: agent_mgr_123)]",
-    );
-    expect(text).toContain("subtask tool");
     expect(text).toContain("<current_instructions>");
+    // The mention no longer expands into a "[DELEGATE TO AGENT …] use the
+    // subtask tool" directive: the mentioned agent answers the turn itself
+    // (see `extractMentionedAgentId`), so nothing is injected into the text.
+    expect(text).not.toContain("DELEGATE TO AGENT");
+    expect(text).not.toContain("subtask tool");
+  });
+
+  test("routes the turn to the manager agent", () => {
+    const doc = buildImprovePromptDoc(baseInput);
+    expect(
+      extractMentionedAgentId(
+        doc as Parameters<typeof extractMentionedAgentId>[0],
+      ),
+    ).toEqual({ agentId: "agent_mgr_123", title: "Agent Manager" });
   });
 
   test("handles automation kind", () => {

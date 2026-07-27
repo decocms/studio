@@ -104,7 +104,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useThreadActions, useThreadManager } from "./store/hooks";
-import { derivePartsFromTiptapDoc } from "./derive-parts";
+import {
+  derivePartsFromTiptapDoc,
+  extractMentionedAgentId,
+} from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
@@ -1111,7 +1114,10 @@ export function ActiveTaskProvider({
   async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
-    const capturedVirtualMcpId = virtualMcpId;
+    // The message's own agent wins over the thread's current one: an "@agent"
+    // mention hands THIS turn to that agent (see sendMessageInternal), so a
+    // room can hold several agents without the user leaving the thread.
+    const capturedVirtualMcpId = message.metadata?.agent?.id ?? virtualMcpId;
 
     const appContextEntries = Object.entries(appContexts);
     const appContextSection =
@@ -1265,9 +1271,19 @@ export function ActiveTaskProvider({
     setChatError(null);
     setTiptapDoc(undefined);
 
+    // "@agent" in the draft addresses that agent: it answers this turn itself,
+    // in this thread, as itself — that's what makes a thread a room with more
+    // than one agent in it. With no mention the thread's current agent answers.
+    // Recorded on the message so every later reader (the attribution UI, and
+    // the server's history relabelling) can tell who spoke without a new column.
+    const mentioned = extractMentionedAgentId(params.tiptapDoc);
+
     const messageMetadata: Metadata = {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
+      agent: mentioned
+        ? { id: mentioned.agentId, title: mentioned.title }
+        : { id: virtualMcpId },
       user: {
         avatar: user?.image ?? undefined,
         name: user?.name ?? "you",
