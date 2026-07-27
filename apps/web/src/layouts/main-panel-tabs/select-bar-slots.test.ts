@@ -69,6 +69,45 @@ describe("selectBarSlots — code agents", () => {
     });
     expect(ids(visible)).toEqual(["preview"]);
   });
+
+  test("default main view (leadId) is pinned ahead of Preview", () => {
+    const items = [item("preview"), item("code"), item("content", true)];
+    const { visible, overflow } = selectBarSlots({
+      items,
+      persisted: [],
+      maxVisible: 3,
+      isCodeAgent: true,
+      leadId: "content",
+    });
+    // Content is the configured landing view → leads, Preview stays pinned
+    // beside it. Content is also the active view, so no separate extra slot.
+    expect(ids(visible)).toEqual(["content", "preview"]);
+    expect(ids(overflow)).toEqual(["code"]);
+  });
+
+  test("leadId pins ahead of Preview even before it's the active view", () => {
+    const items = [item("preview", true), item("code"), item("content")];
+    const { visible } = selectBarSlots({
+      items,
+      persisted: [],
+      maxVisible: 3,
+      isCodeAgent: true,
+      leadId: "content",
+    });
+    expect(ids(visible)).toEqual(["content", "preview"]);
+  });
+
+  test("leadId === preview keeps the plain pinned-Preview bar", () => {
+    const items = [item("preview"), item("code"), item("content")];
+    const { visible } = selectBarSlots({
+      items,
+      persisted: [],
+      maxVisible: 3,
+      isCodeAgent: true,
+      leadId: "preview",
+    });
+    expect(ids(visible)).toEqual(["preview"]);
+  });
 });
 
 describe("selectBarSlots — non-code agents", () => {
@@ -98,6 +137,32 @@ describe("selectBarSlots — non-code agents", () => {
       isCodeAgent: false,
     });
     expect(ids(visible)).toEqual(["preview", "content", "files"]);
+  });
+
+  test("leadId promotes the default main view ahead of the lead order", () => {
+    const items = [item("preview"), item("content"), item("files")];
+    const { visible } = selectBarSlots({
+      items,
+      persisted: [],
+      maxVisible: 3,
+      isCodeAgent: false,
+      leadId: "content",
+    });
+    expect(ids(visible)).toEqual(["content", "preview", "files"]);
+  });
+
+  test("Overview stays first even when another view is the default main", () => {
+    const items = [item("overview"), item("preview"), item("content")];
+    const { visible } = selectBarSlots({
+      items,
+      persisted: [],
+      maxVisible: 3,
+      isCodeAgent: false,
+      leadId: "content",
+    });
+    // Overview is the agent's home and keeps the lead; the default main view
+    // slots in just behind it.
+    expect(ids(visible)).toEqual(["overview", "content", "preview"]);
   });
 
   test("persisted ids lead the row", () => {

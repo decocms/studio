@@ -95,6 +95,13 @@ export interface MainPanelTabs {
   expandedTools: ThreadExpandedTool[];
   automationTabParsed: AutomationTabParsed | null;
   tabs: Tab[];
+  /**
+   * The tab id of the configured default main view, when it is a landing view
+   * that should lead the bar (Overview / Preview / Content / a pinned view).
+   * `null` when the default is a trailing/anchored tab (Settings, Automations,
+   * git) or Chat — those keep their position rather than being promoted.
+   */
+  leadTabId: string | null;
 }
 
 function useTaskMetadata(taskId: string): ThreadMetadata | null {
@@ -566,6 +573,18 @@ export function useMainPanelTabs(ctx: {
   const onReportAgent =
     ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
 
+  // The default main view leads the tab bar (see selectBarSlots) — but only
+  // when it's a genuine landing view. The anchored trailing tabs (Settings,
+  // Automations, git) and Chat keep their position rather than jumping to the
+  // front, so they're not promoted.
+  const rawDefaultTabId = resolveDefaultTabId(layoutForDefault);
+  const leadTabId =
+    rawDefaultTabId === "settings" ||
+    rawDefaultTabId === "automations" ||
+    rawDefaultTabId === "git"
+      ? null
+      : rawDefaultTabId;
+
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent
     // (e.g. the Super Agent home), the storefront preview lives on the Report
@@ -604,5 +623,6 @@ export function useMainPanelTabs(ctx: {
     expandedTools,
     automationTabParsed,
     tabs,
+    leadTabId,
   };
 }

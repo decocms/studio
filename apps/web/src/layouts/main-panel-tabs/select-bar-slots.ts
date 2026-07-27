@@ -23,21 +23,33 @@ export interface BarSlotItem {
  *   natural order (stable sort).
  * - Persisted (user-promoted) ids lead, then the rest in default order; stale
  *   persisted ids (no longer present) are dropped.
- * - Code agents pin **Preview** and show the active view beside it; everything
- *   else overflows. Non-code agents delegate to `selectTabSlots`, which keeps
- *   the active item visible within `maxVisible`.
+ * - Code agents pin **Preview** and show the active view beside it; a view
+ *   configured as the default main view (`leadId`, e.g. Content) is pinned
+ *   ahead of Preview. Everything else overflows. Non-code agents delegate to
+ *   `selectTabSlots`, which keeps the active item visible within `maxVisible`.
  */
 export function selectBarSlots<T extends BarSlotItem>(input: {
   items: T[];
   persisted: string[];
   maxVisible: number;
   isCodeAgent: boolean;
+  /**
+   * The tab configured as the agent's default main view (its landing view).
+   * When set, it leads the bar — the view the user chose to land on is pinned
+   * up front — but never ahead of Overview (the agent's home) and always below
+   * an explicit user promotion (`persisted`).
+   */
+  leadId?: string | null;
 }): { visible: T[]; overflow: T[] } {
-  const { items, persisted, maxVisible, isCodeAgent } = input;
+  const { items, persisted, maxVisible, isCodeAgent, leadId } = input;
 
   const leadRank = (id: string) => {
     const i = DEFAULT_LEAD_ORDER.indexOf(id);
-    return i === -1 ? DEFAULT_LEAD_ORDER.length : i;
+    const rank = i === -1 ? DEFAULT_LEAD_ORDER.length : i;
+    // The configured default main view leads the row, but Overview (rank 0)
+    // stays the agent's home when present, so slot the lead just after it.
+    if (leadId && id === leadId && id !== "overview") return 0.5;
+    return rank;
   };
   const defaultOrdered = [...items].sort(
     (a, b) => leadRank(a.id) - leadRank(b.id),
@@ -55,8 +67,16 @@ export function selectBarSlots<T extends BarSlotItem>(input: {
   const activeItem = items.find((i) => i.active);
 
   if (isCodeAgent) {
+    // Preview is the code agent's hallmark pinned view; when a different view
+    // is configured as the default main view (e.g. Content), pin it *ahead* of
+    // Preview so the landing view the user chose reads first. The active view
+    // then shows beside them; everything else overflows.
     const preview = ordered.find((i) => i.id === "preview");
-    const lead = preview ? [preview] : [];
+    const leadItem =
+      leadId && leadId !== "preview"
+        ? ordered.find((i) => i.id === leadId)
+        : undefined;
+    const lead = [leadItem, preview].filter((i): i is T => !!i);
     const extra =
       activeItem && !lead.some((i) => i.id === activeItem.id)
         ? [activeItem]

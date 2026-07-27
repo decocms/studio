@@ -56,10 +56,11 @@ export function MainPanelTabsBar({
   maxVisible?: number;
 }) {
   const navigate = useNavigate();
-  const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
-    virtualMcpId,
-    taskId,
-  });
+  const { tabs, activeTab, mainOpen, setActiveTab, leadTabId } =
+    useMainPanelTabs({
+      virtualMcpId,
+      taskId,
+    });
   const t = useT();
   const library = useMainOverlayToggle("files");
   const tasks = useMainOverlayToggle("board");
@@ -165,6 +166,7 @@ export function MainPanelTabsBar({
     persisted: persistedVisible,
     maxVisible,
     isCodeAgent,
+    leadId: leadTabId,
   });
 
   // Lookup for click handlers + the responsive cap for overflow-promotion.
