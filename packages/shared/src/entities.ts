@@ -18,7 +18,41 @@ export interface ThreadExpandedTool {
 
 export interface ThreadMetadata {
   expanded_tools?: ThreadExpandedTool[];
+  /**
+   * A shared room: every member of the organization may post in it, not just
+   * the person who opened it. Absent/false means a personal chat — teammates
+   * can read it (the sidebar's Team scope lists it) but not write to it.
+   *
+   * Enforced through `canWriteToThread`, which BOTH the API and the composer
+   * call so the two can't drift.
+   */
+  shared?: boolean;
   [key: string]: unknown;
+}
+
+/**
+ * May `userId` post in this thread?
+ *
+ * Org membership is verified upstream (the org-scoped route resolves the org
+ * and rejects non-members, and threads are always fetched org-scoped), so the
+ * only question left here is owner-vs-room:
+ *  - a personal chat is writable by its owner alone;
+ *  - a shared room is writable by any member who can reach it.
+ *
+ * Callers with no identity yet (`userId` null, session still loading) get
+ * `false` — never assume a write is allowed while the actor is unknown.
+ */
+export function canWriteToThread(thread: {
+  created_by?: string | null;
+  metadata?: ThreadMetadata | null;
+  userId: string | null | undefined;
+}): boolean {
+  if (!thread.userId) return false;
+  if (thread.metadata?.shared === true) return true;
+  // An unknown owner (legacy rows, optimistic local rows) stays writable by
+  // whoever is holding it — matching the pre-rooms behavior.
+  if (!thread.created_by) return true;
+  return thread.created_by === thread.userId;
 }
 
 /**
