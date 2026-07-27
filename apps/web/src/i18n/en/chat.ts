@@ -449,4 +449,12 @@ export const chat = {
   "chat.modelPreferences.autoPicked": "auto-picked",
   "chat.modelPreferences.loadFailed":
     "Couldn't load your model choices. What you see below may not match what your chats use.",
+  "chat.roomToggle.personalChat": "Personal chat",
+  "chat.roomToggle.sharedRoom": "Shared room",
+  "chat.roomToggle.tooltipPersonal": "Only you can post here — share the room",
+  "chat.roomToggle.tooltipShared": "Anyone in your organization can post here",
+  "chat.roomToggle.nowShared":
+    "Shared room — anyone in your organization can post",
+  "chat.roomToggle.nowPersonal": "Personal chat — only you can post",
+  "chat.roomToggle.failed": "Couldn't change who can post here",
 } as const;
