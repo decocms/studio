@@ -89,6 +89,19 @@ function assertSandboxBranchParam(branch: string): void {
 
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
+/**
+ * File-op and config bodies (read/write/mkdir/unlink/rename/glob/grep/config)
+ * are read fully into memory via `c.req.text()` in `proxyDaemon` before being
+ * forwarded to the daemon — unlike suggest-commit/judge-review/preview-invoke
+ * above, they had no size cap at all. 10MB comfortably covers any real source
+ * file while bounding how much an oversized/malicious request can buffer.
+ */
+const FILE_OP_MAX_BODY_BYTES = 10 * 1024 * 1024;
+
+const fileOpBodyLimit = bodyLimit({
+  maxSize: FILE_OP_MAX_BODY_BYTES,
+  onError: (c) => c.json({ error: "Payload too large" }, 413),
+});
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -495,43 +508,43 @@ export const createSandboxRoutes = () => {
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
 
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:virtualMcpId/:branch/write", (c) =>
+  app.post("/:virtualMcpId/:branch/write", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/write", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/unlink", (c) =>
+  app.post("/:virtualMcpId/:branch/unlink", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/unlink", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/mkdir", (c) =>
+  app.post("/:virtualMcpId/:branch/mkdir", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/mkdir", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/rename", (c) =>
+  app.post("/:virtualMcpId/:branch/rename", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/rename", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/read", (c) =>
+  app.post("/:virtualMcpId/:branch/read", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/read", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/glob", (c) =>
+  app.post("/:virtualMcpId/:branch/glob", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/glob", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/grep", (c) =>
+  app.post("/:virtualMcpId/:branch/grep", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
@@ -561,7 +574,7 @@ export const createSandboxRoutes = () => {
       redactRepoDirUnlessDesktop: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", (c) =>
+  app.put("/:virtualMcpId/:branch/config", fileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
