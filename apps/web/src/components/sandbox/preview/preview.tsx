@@ -485,6 +485,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewState,
     progressStatus: progress.status,
     productionUrl,
+    foreignSandbox: lifecycle.foreignSandbox,
   });
   const previewSurfaceActive = display.mode !== "none";
   const showBootingOverlay = display.showBlockingOverlay;

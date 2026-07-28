@@ -169,6 +169,12 @@ function VmEventsBridge({
     previewOwnerId && currentBranch
       ? threadSandboxMap?.[previewOwnerId]?.[currentBranch]
       : undefined;
+  // True when that grafted entry is someone ELSE's sandbox. Nothing about its
+  // boot is observable from here — the claim/daemon event stream is keyed to the
+  // viewer's own claim handle, which never materializes — so the preview renders
+  // on `previewUrl` alone (see `foreignSandbox` in preview-display) and the
+  // stream stays closed instead of reporting `claiming` forever.
+  const foreignSandbox = !!threadOwnerBranchMap && previewOwnerId !== userId;
   const effectiveSandboxMap: SandboxMap | undefined =
     userId && currentBranch && threadOwnerBranchMap
       ? {
@@ -214,7 +220,8 @@ function VmEventsBridge({
   // vmEntry always agree on which sandbox is active.
   const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
+  const shouldConnect =
+    (Object.keys(branchMap).length > 0 || isStartPending) && !foreignSandbox;
 
   return (
     <SandboxEventsProvider
@@ -232,6 +239,7 @@ function VmEventsBridge({
         sandboxProviderKind={pendingSandboxProviderKind}
         othersThreadLabel={othersThreadLabel}
         othersThreadId={activeTask?.id ?? null}
+        foreignSandbox={foreignSandbox}
       >
         <BlocksPreviewWorkspaceProvider
           key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}

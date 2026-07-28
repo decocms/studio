@@ -41,6 +41,16 @@ export interface PreviewDisplayInput {
   progressStatus: PhaseStatus;
   /** Live production URL to fall back to while waking, or `null` if unknown. */
   productionUrl: string | null;
+  /**
+   * The resolved sandbox belongs to ANOTHER member (a read-only view of their
+   * thread's already-running sandbox — see the owner graft in `VmEventsBridge`).
+   * Their boot progress is unobservable from here: the claim-phase / daemon
+   * lifecycle stream is keyed to the VIEWER's claim handle, which never
+   * materializes, so `progressStatus` is pinned at `doing` forever. Show the
+   * iframe on `previewUrl` alone instead of waiting out a boot that isn't ours
+   * to watch.
+   */
+  foreignSandbox?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -53,7 +63,7 @@ const NONE: PreviewDisplay = {
 export function resolvePreviewDisplay(
   input: PreviewDisplayInput,
 ): PreviewDisplay {
-  const { previewState, progressStatus, productionUrl } = input;
+  const { previewState, progressStatus, productionUrl, foreignSandbox } = input;
 
   // Suspended / errored / othersThread all render their own dedicated card
   // (the last one is a confirmation gate on a teammate's branch) — hand the
@@ -70,8 +80,13 @@ export function resolvePreviewDisplay(
   // The sandbox surface is showable once a previewUrl exists AND boot is no
   // longer in progress: `done` (running) serves the live app, `failed`/`crashed`
   // serves the daemon's auto-reloading status page — both belong in the iframe,
-  // not behind a "waking" pill.
-  if (previewState.kind === "iframe" && progressStatus !== "doing") {
+  // not behind a "waking" pill. A foreign sandbox skips the progress gate (its
+  // progress is unobservable — see `foreignSandbox`); whatever the owner's
+  // daemon serves is the displayed state.
+  if (
+    previewState.kind === "iframe" &&
+    (foreignSandbox || progressStatus !== "doing")
+  ) {
     return {
       mode: "sandbox",
       iframeBase: previewState.previewUrl,
