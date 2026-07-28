@@ -371,7 +371,7 @@ async function proxyDaemon(
       }
     }
 
-    const rawText = await upstream.text();
+    const rawText = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
     const text =
       opts?.redactRepoDirUnlessDesktop && runner.kind !== "user-desktop"
         ? redactRepoDir(rawText)
@@ -410,9 +410,49 @@ async function proxyDaemon(
     }
     return await resolveAndFetch();
   } catch (err) {
+    if (err instanceof UpstreamPayloadTooLargeError) {
+      return c.json({ error: err.message }, 502);
+    }
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
+}
+
+/** Thrown by {@link readBoundedText} when an upstream body exceeds its cap. */
+export class UpstreamPayloadTooLargeError extends Error {}
+
+/**
+ * Read a response body as text, aborting once it exceeds `maxBytes`. The
+ * request-side equivalent (`bodyLimit`/`forwardedBodyLimit`) caps what
+ * clients can send us; this caps what an upstream (the daemon, or a
+ * customer's own preview server) can send back — otherwise a runaway
+ * `git diff`, a chatty exec script, or a huge preview page gets buffered
+ * fully into the Studio API process's memory with no ceiling.
+ */
+export async function readBoundedText(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return response.text();
+
+  const decoder = new TextDecoder();
+  let text = "";
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new UpstreamPayloadTooLargeError(
+        `Upstream response exceeded ${maxBytes} bytes`,
+      );
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
+  return text;
 }
 
 /**
@@ -475,7 +515,7 @@ async function fetchDaemonJson<T>(
     throw new Error("SANDBOX_GONE");
   }
 
-  const text = await upstream.text();
+  const text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
   if (!upstream.ok) {
     try {
       const err = JSON.parse(text) as { error?: string };
@@ -965,7 +1005,7 @@ export const createSandboxRoutes = () => {
 
     let text: string;
     try {
-      text = await upstream.text();
+      text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
     } catch {
       return c.json({ error: "Preview unreachable" }, 502);
     }
@@ -1035,7 +1075,7 @@ export const createSandboxRoutes = () => {
 
       let text: string;
       try {
-        text = await upstream.text();
+        text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
       } catch {
         return c.json({ error: "Preview unreachable" }, 502);
       }
