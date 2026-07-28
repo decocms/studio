@@ -599,20 +599,28 @@ async fn clone_fresh_body(
     // exists on the remote yet.
     let intended_remote = branch_on_remote.or(branch_to_fork);
     if let (Some(local), Some(remote)) = (target_branch, intended_remote) {
-        let _ = run_git(
-            orch,
-            Some(task_id),
-            &[
-                "-C",
-                &repo_dir_str,
-                "branch",
-                &format!("--set-upstream-to=origin/{remote}"),
-                local,
-            ],
-            None,
-            Some(controller),
-        )
-        .await;
+        // Written as raw config rather than `branch --set-upstream-to`: that
+        // command validates the remote ref EXISTS, so it fails for a branch
+        // this sandbox is about to create and has never pushed. It failed
+        // silently, leaving git's autoSetupMerge default of `origin/main` —
+        // which then made the upstream check believe the sandbox was on main
+        // and fail the whole checkout.
+        for (key, value) in [
+            (format!("branch.{local}.remote"), "origin".to_string()),
+            (
+                format!("branch.{local}.merge"),
+                format!("refs/heads/{remote}"),
+            ),
+        ] {
+            let _ = run_git(
+                orch,
+                Some(task_id),
+                &["-C", &repo_dir_str, "config", &key, &value],
+                None,
+                Some(controller),
+            )
+            .await;
+        }
     }
 
     finish_fresh_checkout(orch, task_id, None, controller).await

@@ -799,18 +799,23 @@ pub(crate) async fn is_git_repo(repo_dir: &Path) -> bool {
 /// the local name says nothing about which branch the sandbox is on. The
 /// upstream does, and it is the same ref a push targets.
 pub(crate) async fn upstream_branch(repo_dir: &Path) -> Option<String> {
+    // Read the CONFIG, not `rev-parse --abbrev-ref @{u}`. That resolves the
+    // upstream ref and fails outright when it does not exist yet — which is
+    // exactly the case for a branch this sandbox just created and has never
+    // pushed. The config records the intent regardless.
+    let local = current_branch(repo_dir).await?;
     try_git(
         repo_dir,
-        &["rev-parse", "--abbrev-ref", "@{u}"],
+        &["config", "--get", &format!("branch.{local}.merge")],
         &ceiling_env(repo_dir),
     )
     .await
-    .filter(|branch| !branch.is_empty())
-    .map(|branch| {
-        branch
-            .split_once('/')
-            .map(|(_remote, name)| name.to_string())
-            .unwrap_or(branch)
+    .filter(|value| !value.is_empty())
+    .map(|value| {
+        value
+            .strip_prefix("refs/heads/")
+            .unwrap_or(&value)
+            .to_string()
     })
 }
 
