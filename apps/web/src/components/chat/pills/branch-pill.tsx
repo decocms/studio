@@ -6,6 +6,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { GitBranch01 } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t.ts";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
 interface Props {
@@ -35,10 +36,11 @@ interface Props {
  * see the active branch without being able to change it.
  */
 export function BranchPill({ locked, placement, value, ...props }: Props) {
+  const t = useT();
   const isHeader = placement === "header";
 
   if (locked) {
-    const branchLabel = value ?? "(no branch)";
+    const branchLabel = value ?? t("chat.branchPill.noBranch");
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -64,8 +66,7 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          This chat is using branch {branchLabel}. Start a new chat to use a
-          different branch.
+          {t("chat.branchPill.lockedTooltip", { branch: branchLabel })}
         </TooltipContent>
       </Tooltip>
     );

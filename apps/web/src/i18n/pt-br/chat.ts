@@ -44,6 +44,9 @@ export const chat = {
     "Retomado — tarefa em segundo plano concluída",
   "chat.assistant.resumingTask": "Retomando tarefa...",
   "chat.assistant.toolCallPlural": "{count} chamada(s) de ferramenta",
+  "chat.branchPill.lockedTooltip":
+    "Este chat está usando a branch {branch}. Inicie um novo chat para usar uma branch diferente.",
+  "chat.branchPill.noBranch": "(sem branch)",
   "chat.brandContext.brand": "Marca",
   "chat.brandContext.brandContextSet": "Contexto de marca definido",
   "chat.brandContext.brandSet": "Marca definida: {name}",
