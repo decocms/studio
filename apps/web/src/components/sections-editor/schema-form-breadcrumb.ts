@@ -333,6 +333,51 @@ function resolveActiveFieldKeyInScope(
     }
   }
 
+  // Inline-union fields ("A or B" plain-data unions) store the chosen branch's
+  // fields flat on the value, so a nested array inside a branch (e.g.
+  // `searchProps: Advanced | Cluster | …` whose Advanced branch has a
+  // `selectedFacets: Facet[]`) drills into an item that writes a bare
+  // `[itemLabel]` crumb — the union's own label never enters the trail. Recurse
+  // into each branch's properties (against the same union value) so the crumb
+  // resolves to this field; otherwise the panel falls back to showing every
+  // sibling prop while the union field alone narrows to the item.
+  for (const key of keys) {
+    const schema = properties[key];
+    if (
+      schema?.type !== "inline-union" ||
+      !schema.inlineUnionBranches?.length
+    ) {
+      continue;
+    }
+    const childObj = asObjectRecord(objValue[key]);
+    const label = fieldDisplayLabel(key, schema);
+    for (const branch of schema.inlineUnionBranches) {
+      const branchProps = branch.schema?.properties;
+      if (!branchProps) continue;
+      const branchKeys = Object.keys(branchProps);
+
+      const direct = resolveActiveFieldKeyInScope(
+        branchKeys,
+        branchProps,
+        childObj,
+        breadcrumbPath,
+        decofile,
+      );
+      if (direct) return key;
+
+      if (labelsMatch(head, label) || labelsMatch(head, key)) {
+        const viaLabel = resolveActiveFieldKeyInScope(
+          branchKeys,
+          branchProps,
+          childObj,
+          breadcrumbPath.slice(1),
+          decofile,
+        );
+        if (viaLabel) return key;
+      }
+    }
+  }
+
   // Block-ref fields (loader/section selectors) can also be "drilled into"
   // via the breadcrumb path when the head matches the field's key or label.
   // This lets loader props like `page: ProductListingPage` participate in
