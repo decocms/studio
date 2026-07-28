@@ -123,6 +123,7 @@ export const reports = {
     "What did the analysis read wrong on this slide?",
   "reports.signalDeck.feedbackThanks": "Thank you! We'll review this slide.",
   "reports.signalDeck.goToSlide": "Go to {title}",
+  "reports.signalDeck.slidesNav": "Slides",
   "reports.signalDeck.languageLabel": "Report language",
   "reports.signalDeck.linkCopied": "Link copied",
   "reports.signalDeck.measured": "{probed}/{total} measured",

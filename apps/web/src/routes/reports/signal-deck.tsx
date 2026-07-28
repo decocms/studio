@@ -660,7 +660,7 @@ export default function SignalDeck({
         <nav
           className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5 transition-opacity duration-300 md:!opacity-100"
           style={{ opacity: navVisible ? 1 : 0 }}
-          aria-label="Slides"
+          aria-label={t("reports.signalDeck.slidesNav")}
         >
           {deck.slides.map((s, i) => (
             <button
