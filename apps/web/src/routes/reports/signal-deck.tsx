@@ -7,6 +7,8 @@ import type {
 } from "@decocms/shared/reports/deck-types";
 import { isPostHogInitialized } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import { VALID_LOCALES } from "@/i18n/locale.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import { authClient } from "@/lib/auth-client";
 import { resolveEmailLinkToken } from "./api";
 import Icon from "./icon";
@@ -31,6 +33,7 @@ export default function SignalDeck({
   sessionUser?: { name?: string; email?: string; image?: string };
 }) {
   const t = useT();
+  const [{ language }, setPreferences] = usePreferences();
   const total = deck.slides.length;
   const [index, setIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -392,7 +395,7 @@ export default function SignalDeck({
   };
 
   const buildShareText = (s: DeckSlide) =>
-    `🔍 ${deck.meta.brand}\n\n"${s.headline.replace(/\n/g, " ")}"\n\nRelatório gratuito do seu site →`;
+    `🔍 ${deck.meta.brand}\n\n"${s.headline.replace(/\n/g, " ")}"\n\n${t("reports.signalDeck.shareText")}`;
 
   const handleShareClick = async (e: React.MouseEvent, s: DeckSlide) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
@@ -504,6 +507,40 @@ export default function SignalDeck({
           </a>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* Language toggle — writes the same `language` preference the rest
+                of Studio reads, and the route re-fetches the deck with `lang`,
+                so both the chrome AND the generated deck copy switch. */}
+            <div
+              className="flex h-9 shrink-0 items-center rounded-full border p-0.5"
+              role="group"
+              aria-label={t("reports.signalDeck.languageLabel")}
+              style={{
+                borderColor: DECK.cardBorder,
+                background: DECK.surface,
+              }}
+            >
+              {VALID_LOCALES.map((locale) => {
+                const on = language === locale;
+                return (
+                  <button
+                    key={locale}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() =>
+                      setPreferences((prev) => ({ ...prev, language: locale }))
+                    }
+                    className="h-8 rounded-full px-3 text-xs font-medium uppercase transition-colors"
+                    style={{
+                      background: on ? DECK.primary : "transparent",
+                      color: on ? DECK.primaryFg : DECK.muted,
+                    }}
+                  >
+                    {/* Locale codes are the label — never translated. */}
+                    {locale === "pt-BR" ? "PT" : "EN"}
+                  </button>
+                );
+              })}
+            </div>
             {sessionUser && (
               <div className="relative" ref={userMenuOutsideRef}>
                 <button

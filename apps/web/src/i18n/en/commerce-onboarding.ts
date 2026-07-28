@@ -2,69 +2,69 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.configure": "Configure",
   "commerceOnboarding.companionCard.configureAriaLabel": "Configure {title}",
   "commerceOnboarding.companionCard.configureDescription":
-    "Configure o {title} para enriquecer os dados",
+    "Configure {title} to enrich the data",
   "commerceOnboarding.companionCard.connect": "Connect",
   "commerceOnboarding.companionCard.connectAriaLabel": "Connect {title}",
-  "commerceOnboarding.companionCard.connected": "Conectado",
+  "commerceOnboarding.companionCard.connected": "Connected",
   "commerceOnboarding.companionCard.disconnect": "Disconnect",
   "commerceOnboarding.companionCard.disconnectAriaLabel": "Disconnect {title}",
   "commerceOnboarding.companionCard.disconnectError":
-    "Não foi possível desconectar. Tente novamente.",
+    "Couldn't disconnect. Please try again.",
   "commerceOnboarding.companionCard.disconnectedSuccess":
-    "{title} desconectado",
-  "commerceOnboarding.companionCard.editConfiguration": "Editar configuração",
+    "{title} disconnected",
+  "commerceOnboarding.companionCard.editConfiguration": "Edit configuration",
   "commerceOnboarding.companionCard.finishSetup": "Finish setup",
   "commerceOnboarding.companionCard.required": "Required",
   "commerceOnboarding.companionCard.grantAccessDescription":
-    "Conceda acesso ao nosso leitor e informe o identificador",
+    "Grant our reader access and provide the identifier",
   "commerceOnboarding.githubConfigForm.cancel": "Cancel",
   "commerceOnboarding.githubConfigForm.failedToSave":
-    "Não foi possível salvar a configuração",
+    "Couldn't save the configuration",
   "commerceOnboarding.githubConfigForm.githubConnectionNotFound":
-    "Conexão do GitHub não encontrada.",
+    "GitHub connection not found.",
   "commerceOnboarding.githubConfigForm.invalidRepository":
-    'Repositório inválido: "{repo}". Use o formato owner/nome.',
+    'Invalid repository: "{repo}". Use the owner/name format.',
   "commerceOnboarding.githubConfigForm.loadingRepositories":
-    "Carregando repositórios...",
+    "Loading repositories...",
   "commerceOnboarding.githubConfigForm.noGithubInstallation":
-    'Nenhuma instalação do GitHub encontrada para "{owner}".',
+    'No GitHub installation found for "{owner}".',
   "commerceOnboarding.githubConfigForm.noRepositoriesFound":
-    "Nenhum repositório encontrado. Digite o nome do repositório (owner/nome) para buscar.",
+    "No repositories found. Type the repository name (owner/name) to search.",
   "commerceOnboarding.githubConfigForm.save": "Save",
-  "commerceOnboarding.githubConfigForm.saving": "Salvando...",
+  "commerceOnboarding.githubConfigForm.saving": "Saving...",
   "commerceOnboarding.githubConfigForm.searchFailedPartial":
-    "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome.",
+    "Part of the search failed — some repositories may be missing. Try again or type owner/name.",
   "commerceOnboarding.githubConfigForm.searchFailedTotal":
-    "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome.",
+    "Couldn't search the repositories (error or timeout). Try again or type the repository as owner/name.",
   "commerceOnboarding.githubConfigForm.searchRepositoryLabel":
-    "Buscar repositório",
+    "Search repository",
   "commerceOnboarding.githubConfigForm.searchRepositoryPlaceholder":
-    "Buscar repositório",
+    "Search repository",
   "commerceOnboarding.githubConfigForm.selectRepository": "Select a repository",
   "commerceOnboarding.saBindingForm.bind": "Bind",
-  "commerceOnboarding.saBindingForm.bindError": "Não foi possível vincular.",
+  "commerceOnboarding.saBindingForm.bindError": "Couldn't bind.",
   "commerceOnboarding.saBindingForm.cancel": "Cancel",
-  "commerceOnboarding.saBindingForm.connectedSuccess": "{label} conectado",
+  "commerceOnboarding.saBindingForm.connectedSuccess": "{label} connected",
   "commerceOnboarding.saBindingForm.copyEmailLabel":
-    "Copiar e-mail do service account",
-  "commerceOnboarding.saBindingForm.emailCopied": "E-mail copiado",
+    "Copy the service account e-mail",
+  "commerceOnboarding.saBindingForm.emailCopied": "E-mail copied",
   "commerceOnboarding.saBindingForm.googleLoginAlternative":
-    "autorizar via login do Google",
+    "authorize via Google login",
   "commerceOnboarding.saBindingForm.resourceIdRequired":
-    "Informe o {resourceLabel}",
+    "Provide the {resourceLabel}",
   "commerceOnboarding.saBindingForm.storeUrlUnavailable":
-    "URL da loja indisponível — recarregue a página.",
-  "commerceOnboarding.saBindingForm.verifying": "Verificando...",
-  "commerceOnboarding.vtexConfigForm.accountNameLabel": "Nome da conta",
+    "Store URL unavailable — reload the page.",
+  "commerceOnboarding.saBindingForm.verifying": "Verifying...",
+  "commerceOnboarding.vtexConfigForm.accountNameLabel": "Account name",
   "commerceOnboarding.vtexConfigForm.accountNamePlaceholder":
-    "Nome da sua conta VTEX",
-  "commerceOnboarding.vtexConfigForm.appKeyLabel": "App Key (opcional)",
-  "commerceOnboarding.vtexConfigForm.appKeyPlaceholder": "App Key da VTEX",
-  "commerceOnboarding.vtexConfigForm.appTokenLabel": "App Token (opcional)",
-  "commerceOnboarding.vtexConfigForm.appTokenPlaceholder": "App Token da VTEX",
+    "Your VTEX account name",
+  "commerceOnboarding.vtexConfigForm.appKeyLabel": "App Key (optional)",
+  "commerceOnboarding.vtexConfigForm.appKeyPlaceholder": "VTEX App Key",
+  "commerceOnboarding.vtexConfigForm.appTokenLabel": "App Token (optional)",
+  "commerceOnboarding.vtexConfigForm.appTokenPlaceholder": "VTEX App Token",
   "commerceOnboarding.vtexConfigForm.cancelButton": "Cancel",
   "commerceOnboarding.vtexConfigForm.saveButton": "Save",
-  "commerceOnboarding.vtexConfigForm.savingButton": "Salvando...",
+  "commerceOnboarding.vtexConfigForm.savingButton": "Saving...",
   "commerceOnboarding.vtexConfigForm.savingError":
-    "Não foi possível salvar a configuração",
+    "Couldn't save the configuration",
 } as const;

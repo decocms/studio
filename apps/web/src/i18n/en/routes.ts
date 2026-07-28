@@ -231,13 +231,11 @@ export const routes = {
   "routes.orgInstall.installing": "Installing {name}…",
   "routes.orgInstall.iosInstructions":
     "Tap the Share button, then choose Add to Home Screen.",
-  "routes.reports.failedToLoadReportAriaLabel":
-    "Não foi possível carregar o relatório",
+  "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the report",
   "routes.reports.failedToLoadReportDescription":
-    "Verifique sua conexão e tente novamente.",
-  "routes.reports.failedToLoadReportTitle":
-    "Não foi possível carregar este relatório.",
-  "routes.reports.retryButton": "Tentar novamente",
+    "Check your connection and try again.",
+  "routes.reports.failedToLoadReportTitle": "Couldn't load this report.",
+  "routes.reports.retryButton": "Try again",
   "routes.resetPassword.passwordResetSuccessful": "Password reset successful",
   "routes.resetPassword.setNewPassword": "Set a new password",
   "routes.resetPassword.invalidOrExpiredLink":

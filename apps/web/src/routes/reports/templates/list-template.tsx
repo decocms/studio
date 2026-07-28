@@ -2,6 +2,7 @@ import Icon from "../icon";
 import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
 import { DECK } from "./tokens";
+import { useT } from "@/i18n/use-t.ts";
 import type { ListProps } from "@decocms/shared/reports/deck-types";
 
 // Severity → badge colour + icon (Figma 8676-3927: bordered octagon badge).
@@ -29,8 +30,9 @@ export default function ListTemplate({
   moreCount,
   active,
 }: ListProps) {
+  const t = useT();
   const ctaHref = useReportCtaHref(domain);
-  const cta = "Destravar minha receita";
+  const cta = t("reports.listTemplate.unlockRevenue");
   const ctaClass =
     "pointer-events-auto inline-flex h-12 items-center rounded-full border px-8 text-base font-medium transition-colors hover:bg-black/[0.03]";
   const ctaStyle = {
@@ -51,7 +53,7 @@ export default function ListTemplate({
           {moreCount && moreCount > 0 ? (
             <>
               <span style={{ color: SEVERITY.error.color }}>+{moreCount}</span>{" "}
-              outros sinais no diagnóstico completo
+              {t("reports.listTemplate.moreSignals")}
             </>
           ) : (
             headline.replace(/\s*\n\s*/g, " ")
