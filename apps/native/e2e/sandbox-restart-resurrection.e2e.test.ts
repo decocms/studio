@@ -26,13 +26,13 @@
  * `SandboxManager` state does not.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterEach, expect, it } from "bun:test";
+import { computeHandle, repoDirFor, sandboxDirFor } from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -49,33 +49,6 @@ import {
   url,
   type LocalApi,
 } from "./helpers";
-
-/** Mirrors `SandboxManager::compute_handle` — see `git-sandbox.e2e.test.ts`'s
- * identical helper for the full rationale (a black-box test has no other way
- * to learn a handle string than deriving it itself). */
-function computeHandle(virtualMcpId: string, branch: string): string {
-  let slug = "";
-  let lastDash = false;
-  for (const ch of branch.toLowerCase()) {
-    if (/[a-z0-9]/.test(ch)) {
-      slug += ch;
-      lastDash = false;
-    } else if (!lastDash) {
-      slug += "-";
-      lastDash = true;
-    }
-  }
-  slug = slug
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
-  if (slug.length === 0) slug = "branch";
-  const hash16 = createHash("sha256")
-    .update(`${virtualMcpId}:${branch}`)
-    .digest("hex")
-    .slice(0, 16);
-  return `${slug}-${hash16}`;
-}
 
 function git(cwd: string, args: string[]): void {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -207,7 +180,13 @@ async function ensureSandbox(
       workload: { runtime: "bun", packageManager: "bun" },
     }),
   });
-  expect(response.status).toBe(200);
+  // Surface the server's reason: a bare status assertion turns every ensure
+  // regression into an unexplained number.
+  if (response.status !== 200) {
+    throw new Error(
+      `ensure ${virtualMcpId} @ ${branch} -> ${response.status}: ${await response.text()}`,
+    );
+  }
   const body = (await response.json()) as { handle?: string };
   expect(body.handle).toBeString();
   return body.handle!;
@@ -349,7 +328,7 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
   const fixture = setupFixtureRepo();
   const upstream = startAuthenticatedUpstream();
   const virtualMcpId = `sandbox-restart-e2e-${vmcpSuffix}`;
-  const handle = computeHandle(virtualMcpId, "main");
+  const handle = computeHandle(fixture.bareDir, "main");
   const a = await startLocalApi(
     stubClaudeBinEnv({
       DECOCMS_UPSTREAM_URL: upstream.url,
@@ -444,9 +423,7 @@ describeLocalApi(
       expect(firstPorts.size).toBeGreaterThanOrEqual(1);
 
       const setupLogPath = join(
-        a.workdir,
-        "sandboxes",
-        handle,
+        sandboxDirFor(a.workdir, handle),
         "logs",
         "app",
         "setup",
@@ -493,11 +470,17 @@ describeLocalApi(
       expect(
         await ensureSandbox(a, "sandbox-control-plane-e2e", fixture.bareDir),
       ).toBe(handle);
-      await ensureSandbox(
+      // A DIFFERENT BRANCH is what makes this a second sandbox. A handle is
+      // `<repo scope>/<branch>` and carries no agent identity, so the same
+      // repo+branch under another virtual MCP id is the SAME sandbox, not a
+      // rival one — asking for it here would assert nothing about binding.
+      const otherHandle = await ensureSandbox(
         a,
         "sandbox-control-plane-e2e-other",
         fixture.bareDir,
+        "control-plane-other",
       );
+      expect(otherHandle).not.toBe(handle);
       await waitForFreshRunningTask(a, handle, "dev", new Set(), 20_000);
       const afterResume = await capture.readUntil((text) => {
         const resumedFrames = text.slice(beforeResumeOffset);
@@ -566,9 +549,7 @@ describeLocalApi(
       ).toBe(handle);
       await waitForFreshRunningTask(a, handle, "dev", new Set(), 30_000);
       const setupLogPath = join(
-        a.workdir,
-        "sandboxes",
-        handle,
+        sandboxDirFor(a.workdir, handle),
         "logs",
         "app",
         "setup",
@@ -649,9 +630,7 @@ describeLocalApi(
       });
       expect(repoDirAfter.status).toBe(200);
       const repoDirBody = (await repoDirAfter.json()) as { repoDir: string };
-      expect(repoDirBody.repoDir).toBe(
-        join(workdir, "sandboxes", handle, "repo"),
-      );
+      expect(repoDirBody.repoDir).toBe(repoDirFor(workdir, handle));
     }, 45_000);
 
     it("an EXPLICIT (stale, pre-restart) handle also resurrects on the first attempt — no frontend round-trip needed", async () => {
@@ -722,7 +701,7 @@ describeLocalApi(
       const upstream = startAuthenticatedUpstream();
       liveUpstream = upstream;
       const virtualMcpId = "sandbox-restart-e2e-stop";
-      const handle = computeHandle(virtualMcpId, "main");
+      const handle = computeHandle(fixture.bareDir, "main");
       const a = await startLocalApi(
         stubClaudeBinEnv({
           DECOCMS_UPSTREAM_URL: upstream.url,

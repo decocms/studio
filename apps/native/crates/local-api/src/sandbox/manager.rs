@@ -1400,12 +1400,12 @@ fn normalized_branch(config: &GitSandboxConfig) -> &str {
 }
 
 /// Lowercases, collapses any run of non-alphanumeric characters to a single
-/// `-`, trims leading/trailing dashes, and caps length — a legible directory
-/// name fragment, not a byte-parity port of any specific TS slugify (no
-/// oracle test pins the exact slug alphabet, only that DIFFERENT branches
-/// slugify to DIFFERENT-enough strings for a human skimming
-/// `<app_root>/worktrees/` to tell them apart; uniqueness itself comes from
-/// the hash suffix, not the slug).
+/// `-`, trims leading/trailing dashes, and caps length, so a branch name is
+/// safe to use as one path segment under `<app_root>/worktrees/<repo scope>/`.
+///
+/// The repo scope above it is what separates two repositories; this only has
+/// to keep two branches OF ONE REPO apart and stay legible to a human reading
+/// the directory listing.
 fn slugify_branch(branch: &str) -> String {
     const MAX_LEN: usize = 40;
     let mut out = String::with_capacity(branch.len());

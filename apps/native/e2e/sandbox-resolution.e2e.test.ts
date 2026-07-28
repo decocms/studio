@@ -20,13 +20,13 @@
  * mirrors `git-sandbox.e2e.test.ts`'s fixture conventions.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
+import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -43,32 +43,6 @@ import {
   url,
   type LocalApi,
 } from "./helpers";
-
-/** Mirrors `SandboxManager::compute_handle` — see
- * `git-sandbox.e2e.test.ts`'s identical helper for the full rationale. */
-function computeHandle(virtualMcpId: string, branch: string): string {
-  let slug = "";
-  let lastDash = false;
-  for (const ch of branch.toLowerCase()) {
-    if (/[a-z0-9]/.test(ch)) {
-      slug += ch;
-      lastDash = false;
-    } else if (!lastDash) {
-      slug += "-";
-      lastDash = true;
-    }
-  }
-  slug = slug
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
-  if (slug.length === 0) slug = "branch";
-  const hash16 = createHash("sha256")
-    .update(`${virtualMcpId}:${branch}`)
-    .digest("hex")
-    .slice(0, 16);
-  return `${slug}-${hash16}`;
-}
 
 function git(cwd: string, args: string[]): void {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -226,10 +200,11 @@ describeLocalApi(
     let fixture: { root: string; bareDir: string };
     let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     const virtualMcpId = "sandbox-resolution-e2e-vmcp";
-    const handle = computeHandle(virtualMcpId, "main");
+    let handle: string;
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
+      handle = computeHandle(fixture.bareDir, "main");
       upstream = startAuthenticatedUpstream();
       a = await startLocalApi(
         stubClaudeBinEnv({
@@ -268,7 +243,7 @@ describeLocalApi(
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { repoDir: string };
-      expect(body.repoDir).toBe(join(a.workdir, "sandboxes", handle, "repo"));
+      expect(body.repoDir).toBe(repoDirFor(a.workdir, handle));
     });
 
     it("reuses the durable harness and sandbox fast path while streaming native run status", async () => {
@@ -317,7 +292,7 @@ describeLocalApi(
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { repoDir: string };
-      expect(body.repoDir).toBe(join(a.workdir, "sandboxes", handle, "repo"));
+      expect(body.repoDir).toBe(repoDirFor(a.workdir, handle));
     });
 
     it("GET /_sandbox/repo-dir with an unknown handle is a 404, never a guess", async () => {

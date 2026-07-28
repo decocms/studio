@@ -29,7 +29,6 @@
  *       dev server"/"Starting" placeholder.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -42,6 +41,7 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
+import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -58,37 +58,6 @@ import {
   url,
   type LocalApi,
 } from "./helpers";
-
-/**
- * Mirrors `SandboxManager::compute_handle` (`apps/native/crates/local-api/
- * src/sandbox/manager.rs`) EXACTLY — a black-box test has no other way to
- * learn a handle string than deriving it itself, the same way the real
- * frontend would (see that module's doc comment: `virtualMcpId`+`branch`
- * are the only hash inputs, userId is constant on desktop and omitted).
- */
-function computeHandle(virtualMcpId: string, branch: string): string {
-  let slug = "";
-  let lastDash = false;
-  for (const ch of branch.toLowerCase()) {
-    if (/[a-z0-9]/.test(ch)) {
-      slug += ch;
-      lastDash = false;
-    } else if (!lastDash) {
-      slug += "-";
-      lastDash = true;
-    }
-  }
-  slug = slug
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
-  if (slug.length === 0) slug = "branch";
-  const hash16 = createHash("sha256")
-    .update(`${virtualMcpId}:${branch}`)
-    .digest("hex")
-    .slice(0, 16);
-  return `${slug}-${hash16}`;
-}
 
 function git(cwd: string, args: string[]): void {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -265,10 +234,10 @@ describeLocalApi(
 
     it("isolates two branches of the same repo into two independent workdirs, each with its own running (sniffed-port) preview", async () => {
       const org = "git-sandbox-org";
-      const handleA = computeHandle(virtualMcpId, "branch-a");
-      const handleB = computeHandle(virtualMcpId, "branch-b");
-      const repoA = join(a.workdir, "sandboxes", handleA, "repo");
-      const repoB = join(a.workdir, "sandboxes", handleB, "repo");
+      const handleA = computeHandle(fixture.bareDir, "branch-a");
+      const handleB = computeHandle(fixture.bareDir, "branch-b");
+      const repoA = repoDirFor(a.workdir, handleA);
+      const repoB = repoDirFor(a.workdir, handleB);
 
       // (a) Dispatch on branch A.
       await dispatchWriteFileTurn(

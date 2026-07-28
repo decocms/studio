@@ -14,7 +14,6 @@
  * into silent cross-chat data corruption.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -27,6 +26,7 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
+import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
   describeLocalApi,
@@ -42,30 +42,6 @@ const ORG = "blocks-native-e2e";
 const VIRTUAL_MCP_ID = "blocks/vmcp/with-slashes";
 const FEATURE_BRANCH = "feature/blocks/save";
 const OTHER_BRANCH = "main";
-
-function computeHandle(virtualMcpId: string, branch: string): string {
-  let slug = "";
-  let lastDash = false;
-  for (const ch of branch.toLowerCase()) {
-    if (/[a-z0-9]/.test(ch)) {
-      slug += ch;
-      lastDash = false;
-    } else if (!lastDash) {
-      slug += "-";
-      lastDash = true;
-    }
-  }
-  slug = slug
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
-  if (slug.length === 0) slug = "branch";
-  const hash16 = createHash("sha256")
-    .update(`${virtualMcpId}:${branch}`)
-    .digest("hex")
-    .slice(0, 16);
-  return `${slug}-${hash16}`;
-}
 
 function git(cwd: string, args: string[]): void {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -140,7 +116,7 @@ async function ensureSandbox(
   });
   expect(response.status).toBe(200);
   const body = (await response.json()) as { handle?: string };
-  expect(body.handle).toBe(computeHandle(VIRTUAL_MCP_ID, branch));
+  expect(body.handle).toBe(computeHandle(cloneUrl, branch));
   return body.handle!;
 }
 
@@ -203,14 +179,14 @@ describeLocalApi(
       appRoot = a.workdir;
 
       featureHandle = await ensureSandbox(a, fixture.bareDir, FEATURE_BRANCH);
-      featureRepo = join(appRoot, "sandboxes", featureHandle, "repo");
+      featureRepo = repoDirFor(appRoot, featureHandle);
       await waitForFile(join(featureRepo, "BRANCH.txt"), "feature\n");
 
       // Ensure this one LAST so it remains the active sandbox. Every request
       // below that names FEATURE_BRANCH must nevertheless resolve the feature
       // sandbox from its URL identity.
       otherHandle = await ensureSandbox(a, fixture.bareDir, OTHER_BRANCH);
-      otherRepo = join(appRoot, "sandboxes", otherHandle, "repo");
+      otherRepo = repoDirFor(appRoot, otherHandle);
       await waitForFile(join(otherRepo, "BRANCH.txt"), "main\n");
     }, HOOK_TIMEOUT_MS);
 

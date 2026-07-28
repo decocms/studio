@@ -499,32 +499,20 @@ async fn clone_fresh_body(
         Some(branch) => format!("refs/remotes/origin/{branch}"),
         None => "refs/remotes/origin/HEAD".to_string(),
     };
-    // The worktree's LOCAL branch is named after the sandbox handle, not the
-    // git branch.
+    // The worktree's local branch is simply the branch that was asked for.
     //
-    // Sandbox identity is `(virtualMcpId, branch)`, but a git branch is global
-    // to the repository and git allows exactly one worktree per branch. Two
-    // agents on the same branch name therefore collided: the second
-    // `worktree add -B <branch>` tried to force-move a ref the first worktree
-    // held, and git refused with "cannot force update the branch ... used by
-    // worktree at ...". Handles are unique by construction, so naming the
-    // local branch after the handle removes the collision entirely.
+    // Handle and branch are one identity — `compute_handle` builds the handle
+    // as `<repo scope>/<slugified branch>` — so the local name, the upstream
+    // name and the worktree directory all derive from the same value and there
+    // is nothing to reconcile. The per-repo bare mirror is what keeps two
+    // agents from colliding: same repo + same branch IS the same sandbox, and
+    // different repos never share a branch namespace.
     //
-    // The upstream is set to `origin/<branch>` immediately below, so pushes
-    // still land on the branch the user actually chose — only the local name
-    // differs, and the UI reads the branch from the sandbox manager rather
-    // than from git.
-    // Derived from the sandbox directory, which IS the handle. Validated
-    // rather than trusted: a path is not guaranteed to be a legal ref name
-    // (a temp dir starting with `.` is not), and an invalid name would fail
-    // the whole checkout instead of falling back to the branch name.
-    let handle = orch
-        .repo_dir
-        .parent()
-        .and_then(|dir| dir.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
-        .filter(|name| is_valid_remote_branch_name(name));
-    let target_branch = handle.as_deref().or(branch_on_remote).or(branch_to_fork);
+    // Naming it after the sandbox DIRECTORY instead (an earlier revision, from
+    // when a handle was independent of the branch) also broke daemon mode,
+    // where `repo_dir` is `<app_root>/repo` and the parent is a caller-chosen
+    // temp dir — every clone came out on a branch named after the mkdtemp.
+    let target_branch = branch_on_remote.or(branch_to_fork);
 
     let canonical_str = canonical.to_string_lossy().into_owned();
     let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
@@ -587,18 +575,18 @@ async fn clone_fresh_body(
         }
     }
 
-    // Point the handle-named local branch at the branch the user chose, so
-    // `git push` still lands on `origin/<branch>` even though the local name
-    // is the handle. Best effort: a sandbox with no upstream still works for
-    // everything except a bare `git push`, and failing here would strand a
-    // worktree that is otherwise complete.
-    // Includes the NEW-branch case: `worktree add` from `origin/HEAD` leaves
+    // Name the upstream explicitly, even though local and remote now agree.
+    //
+    // The NEW-branch case is why: `worktree add` cut from `origin/HEAD` leaves
     // git's own autoSetupMerge tracking `origin/main`, which would make
     // `checkout_is_current` believe the sandbox is on main. The branch the
     // user asked for is the one the upstream must name, whether or not it
     // exists on the remote yet.
-    let intended_remote = branch_on_remote.or(branch_to_fork);
-    if let (Some(local), Some(remote)) = (target_branch, intended_remote) {
+    //
+    // Best effort: a sandbox with no upstream still works for everything
+    // except a bare `git push`, and failing here would strand a worktree that
+    // is otherwise complete.
+    if let Some(branch) = target_branch {
         // Written as raw config rather than `branch --set-upstream-to`: that
         // command validates the remote ref EXISTS, so it fails for a branch
         // this sandbox is about to create and has never pushed. It failed
@@ -606,10 +594,10 @@ async fn clone_fresh_body(
         // which then made the upstream check believe the sandbox was on main
         // and fail the whole checkout.
         for (key, value) in [
-            (format!("branch.{local}.remote"), "origin".to_string()),
+            (format!("branch.{branch}.remote"), "origin".to_string()),
             (
-                format!("branch.{local}.merge"),
-                format!("refs/heads/{remote}"),
+                format!("branch.{branch}.merge"),
+                format!("refs/heads/{branch}"),
             ),
         ] {
             let _ = run_git(
