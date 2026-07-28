@@ -27,7 +27,7 @@ export const chat = {
   "chat.agentModels.gptSolLabel": "GPT-5.6 Sol",
   "chat.agentModels.gptTerraLabel": "GPT-5.6 Terra",
   "chat.agentModels.haikuLabel": "Haiku 4.5",
-  "chat.agentModels.opusLabel": "Opus 4.8 1M",
+  "chat.agentModels.opusLabel": "Opus 5 1M",
   "chat.agentModels.quickerResponses": "Respostas mais rápidas",
   "chat.agentModels.sonnetLabel": "Sonnet 5",
   "chat.approval.acceptButton": "Aceitar",

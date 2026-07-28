@@ -45,10 +45,10 @@ describe("resolveTierSubtitle", () => {
         resolveTierSubtitle("local-claude-code", "smart", explodingT),
       ).toBe("Sonnet 5");
     });
-    it("thinking → Opus 4.8 1M", () => {
+    it("thinking → Opus 5 1M", () => {
       expect(
         resolveTierSubtitle("local-claude-code", "thinking", explodingT),
-      ).toBe("Opus 4.8 1M");
+      ).toBe("Opus 5 1M");
     });
   });
 
