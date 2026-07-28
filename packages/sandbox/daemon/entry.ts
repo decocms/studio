@@ -530,6 +530,11 @@ const configUpdateH = makeConfigUpdateHandler({
 
 function hydrate(): void {
   const diskOutcome = readConfig(bootConfig.repoDir);
+  if (diskOutcome.kind === "invalid") {
+    console.warn(
+      `[daemon] ignoring .decocms/daemon.json: ${diskOutcome.reason}`,
+    );
+  }
   if (diskOutcome.kind !== "valid") return;
   const initial: TenantConfig = diskOutcome.config;
   store.hydrate(initial);

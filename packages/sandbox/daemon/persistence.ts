@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TenantConfig } from "./types";
+import { validateTenantConfig } from "./validate";
 
 const DECOCMS_SUBDIR = ".decocms";
 const DAEMON_JSON = "daemon.json";
@@ -44,5 +45,15 @@ export function readConfig(repoDir: string): ReadOutcome {
   if (!parsed || typeof parsed !== "object") {
     return { kind: "invalid", reason: "not an object" };
   }
-  return { kind: "valid", config: parsed as TenantConfig };
+  const config = parsed as TenantConfig;
+  // This file is tenant-committed, not gated by the daemon-token auth that
+  // protects PUT /config — it must clear the same validation (port range,
+  // package-manager allowlist, env key/size limits, branch format, ...)
+  // before anything trusts it, or a bad committed file could feed
+  // unvalidated values straight into subprocess spawning.
+  const validation = validateTenantConfig(config);
+  if (validation.kind === "invalid") {
+    return { kind: "invalid", reason: validation.reason };
+  }
+  return { kind: "valid", config };
 }
