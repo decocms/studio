@@ -210,85 +210,89 @@ export function TaskBoardItemDialog({
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
           {/* Editor pane — content-height on mobile so it doesn't leave a big
               gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
-            <textarea
-              ref={(el) => {
-                if (!el) return;
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
-              }}
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.preventDefault();
-              }}
-              placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
-              autoFocus
-              rows={1}
-              className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
-            />
-
-            <div className="group relative flex flex-col">
-              {/* Hugs its content (same auto-grow as the title) so a long
-                  description is never clipped behind an inner scrollbar — the
-                  pane scrolls instead. */}
+          <div className="flex min-w-0 flex-col sm:flex-1 sm:overflow-y-auto">
+            {/* Sticky so a long description never scrolls the title out of
+                view — the title is the one thing that should stay put. */}
+            <div className="sticky top-0 z-10 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
               <textarea
                 ref={(el) => {
                   if (!el) return;
                   el.style.height = "auto";
                   el.style.height = `${el.scrollHeight}px`;
                 }}
-                value={description}
+                value={title}
                 onChange={(e) => {
-                  setDescription(e.target.value);
+                  setTitle(e.target.value);
                   e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
                 }}
-                placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
-                // pr-10 reserves the copy button's corner, so text wraps
-                // before it instead of running underneath.
-                className="min-h-[200px] w-full resize-none overflow-hidden border-0 bg-transparent pr-10 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[320px]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
+                placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
+                autoFocus
+                rows={1}
+                className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
               />
-              {description && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t(
-                    "taskBoard.taskDialog.copyDescriptionAriaLabel",
-                  )}
-                  className="absolute right-0 top-0 size-7 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-                  onClick={() => handleCopy(description)}
-                >
-                  {copied ? <Check size={14} /> : <Copy01 size={14} />}
-                </Button>
-              )}
             </div>
 
-            {/* Separates the task itself from the record of it (links,
-                activity). Edit mode only — a new task has neither. */}
-            {item && <hr className="border-border" />}
+            <div className="flex flex-col gap-6 p-6 pt-6 sm:p-8 sm:pt-6">
+              <div className="group relative flex flex-col">
+                {/* Hugs its content (same auto-grow as the title) so a long
+                    description is never clipped behind an inner scrollbar — the
+                    pane scrolls instead. */}
+                <textarea
+                  ref={(el) => {
+                    if (!el) return;
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }}
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
+                  className="min-h-[200px] w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[320px]"
+                />
+                {description && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t(
+                      "taskBoard.taskDialog.copyDescriptionAriaLabel",
+                    )}
+                    className="absolute right-0 top-0 size-7 rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+                    onClick={() => handleCopy(description)}
+                  >
+                    {copied ? <Check size={14} /> : <Copy01 size={14} />}
+                  </Button>
+                )}
+              </div>
 
-            {item?.id && (
-              <LinksSection
-                item={item}
-                description={description}
-                onOpenThread={onOpenThread}
-              />
-            )}
+              {/* Separates the task itself from the record of it (links,
+                  activity). Edit mode only — a new task has neither. */}
+              {item && <hr className="border-border" />}
 
-            {item && (
-              <ActivitySection
-                item={item}
-                members={members}
-                startedBy={assignedBy ?? assignee}
-                onOpenThread={onOpenThread}
-              />
-            )}
+              {item?.id && (
+                <LinksSection
+                  item={item}
+                  description={description}
+                  onOpenThread={onOpenThread}
+                />
+              )}
+
+              {item && (
+                <ActivitySection
+                  item={item}
+                  members={members}
+                  startedBy={assignedBy ?? assignee}
+                  onOpenThread={onOpenThread}
+                />
+              )}
+            </div>
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
@@ -966,10 +970,10 @@ function ActivitySection({
 function ValueChip({ icon, label }: { icon: ReactNode; label: string }) {
   return (
     <>
-      <span className="mr-1 inline-flex h-[1lh] items-center align-top">
+      <span className="ml-1 mr-1 inline-flex h-[1lh] items-center align-top">
         {icon}
       </span>
-      {label}
+      <span className="mr-1">{label}</span>
     </>
   );
 }
