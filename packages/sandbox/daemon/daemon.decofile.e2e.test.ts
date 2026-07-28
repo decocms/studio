@@ -11,6 +11,8 @@ import { join } from "node:path";
 import {
   type Daemon,
   HOOK_TIMEOUT_MS,
+  jsonAuthHeaders,
+  readSseUntil,
   startDaemon,
   stopDaemon,
   url,
@@ -114,4 +116,48 @@ describe("GET /_sandbox/decofile", () => {
     expect(stale.status).toBe(200);
     expect((await stale.text()).length).toBeGreaterThan(0);
   });
+
+  test("announces a new version on the events stream after a block write", async () => {
+    // The signal Studio rebuilds its draft pointer from. Without it a save
+    // would not refresh the preview — Studio would have to poll a multi-MB
+    // payload just to read its hash.
+    await writeBlock(d!, "pages-home", { path: "/", sections: [] });
+
+    // Land the write while the stream is open, so the event is observed live
+    // rather than replayed from connect.
+    const pending = readSseUntil(url(d!, "/_sandbox/events"), {
+      predicate: (acc) => acc.includes("event: decofile"),
+      deadlineMs: 15_000,
+    });
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Write through the daemon's own route rather than straight to disk: that
+    // is how the CMS actually saves a block, and it signals `onWorkingTreeWrite`
+    // directly. A bare fs write would rely on BranchStatusMonitor's watcher,
+    // which only starts once the repo is a real git checkout.
+    const saved = await fetch(url(d!, "/_sandbox/write"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({
+        path: ".deco/blocks/pages-home.json",
+        content: JSON.stringify({ path: "/", sections: [{ n: 1 }] }),
+      }),
+    });
+    expect(saved.status).toBe(200);
+
+    const { text } = await pending;
+    const line = text
+      .split("\n")
+      .find((l) => l.startsWith("data:") && l.includes("version"));
+    expect(line).toBeDefined();
+    const { version } = JSON.parse(line!.slice("data:".length).trim()) as {
+      version: string;
+    };
+
+    // Must be the SAME value the route serves as its ETag — one definition, or
+    // Studio's pointer and the framework's cache key drift apart.
+    const res = await fetch(url(d!, "/_sandbox/decofile"));
+    await res.text();
+    expect(res.headers.get("etag")).toBe(`W/"${version}"`);
+  }, 30_000);
 });
