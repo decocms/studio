@@ -90,16 +90,17 @@ function assertSandboxBranchParam(branch: string): void {
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 /**
- * File-op and config bodies (read/write/mkdir/unlink/rename/glob/grep/config)
- * are read fully into memory via `c.req.text()` in `proxyDaemon` before being
+ * Every route below that passes `forwardJsonBody: true` has its body read
+ * fully into memory via `c.req.text()` in `proxyDaemon` before being
  * forwarded to the daemon — unlike suggest-commit/judge-review/preview-invoke
  * above, they had no size cap at all. 10MB comfortably covers any real source
- * file while bounding how much an oversized/malicious request can buffer.
+ * file or git payload while bounding how much an oversized/malicious request
+ * can buffer.
  */
-const FILE_OP_MAX_BODY_BYTES = 10 * 1024 * 1024;
+const FORWARDED_BODY_MAX_BYTES = 10 * 1024 * 1024;
 
-const fileOpBodyLimit = bodyLimit({
-  maxSize: FILE_OP_MAX_BODY_BYTES,
+const forwardedBodyLimit = bodyLimit({
+  maxSize: FORWARDED_BODY_MAX_BYTES,
   onError: (c) => c.json({ error: "Payload too large" }, 413),
 });
 
@@ -508,43 +509,43 @@ export const createSandboxRoutes = () => {
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
 
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:virtualMcpId/:branch/write", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/write", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/write", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/unlink", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/unlink", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/unlink", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/mkdir", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/mkdir", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/mkdir", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/rename", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/rename", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/rename", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/read", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/read", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/read", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/glob", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/glob", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/glob", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/grep", fileOpBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/grep", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
@@ -574,7 +575,7 @@ export const createSandboxRoutes = () => {
       redactRepoDirUnlessDesktop: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", fileOpBodyLimit, (c) =>
+  app.put("/:virtualMcpId/:branch/config", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
@@ -679,53 +680,57 @@ export const createSandboxRoutes = () => {
       ]),
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/diff", (c) =>
+  app.post("/:virtualMcpId/:branch/git/diff", forwardedBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/git/diff", {
       forwardJsonBody: true,
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/git/publish",
+    forwardedBodyLimit,
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
+      const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
 
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-        const githubRepo = parseGithubRepoFromMetadata(
-          virtualMcpMetadata,
-          connectionIds,
-        );
-        if (githubRepo) {
-          await refreshSandboxGitCredentials(
-            ctx,
-            runner,
-            claimName,
-            githubRepo,
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+          const githubRepo = parseGithubRepoFromMetadata(
+            virtualMcpMetadata,
+            connectionIds,
           );
+          if (githubRepo) {
+            await refreshSandboxGitCredentials(
+              ctx,
+              runner,
+              claimName,
+              githubRepo,
+            );
+          }
+        } catch (err) {
+          if (err instanceof GitPushAuthError) {
+            return c.json(
+              { error: err.message },
+              403,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
         }
-      } catch (err) {
-        if (err instanceof GitPushAuthError) {
-          return c.json(
-            { error: err.message },
-            403,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
 
-      return proxyDaemon(c, "/_sandbox/git/publish", {
-        forwardJsonBody: true,
-        map404to410: true,
+        return proxyDaemon(c, "/_sandbox/git/publish", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
-  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
+    },
+  );
+  app.post("/:virtualMcpId/:branch/git/discard", forwardedBodyLimit, (c) => {
     const { claimName } = c.get("vmClaim");
     return withClaimGitLock(claimName, () =>
       proxyDaemon(c, "/_sandbox/git/discard", {
@@ -734,27 +739,31 @@ export const createSandboxRoutes = () => {
       }),
     );
   });
-  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/git/rebase",
+    forwardedBodyLimit,
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
+      const { claimName } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
 
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        }
 
-      return proxyDaemon(c, "/_sandbox/git/rebase", {
-        forwardJsonBody: true,
-        map404to410: true,
+        return proxyDaemon(c, "/_sandbox/git/rebase", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
+    },
+  );
   app.post(
     "/:virtualMcpId/:branch/git/suggest-commit",
     bodyLimit({
