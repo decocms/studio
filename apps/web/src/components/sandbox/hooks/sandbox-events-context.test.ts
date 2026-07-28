@@ -3,6 +3,7 @@ import {
   buildDirectDaemonEventsUrl,
   isDirectDaemonEventsGoneStatus,
   isLiveMetaKeyForScope,
+  isWorkingTreeReadyPhase,
 } from "./sandbox-events-context";
 
 describe("buildDirectDaemonEventsUrl", () => {
@@ -65,5 +66,35 @@ describe("isLiveMetaKeyForScope", () => {
     expect(isLiveMetaKeyForScope(scope, "acme", "vmid-1", "other-branch")).toBe(
       false,
     );
+  });
+});
+
+describe("isWorkingTreeReadyPhase", () => {
+  test("false before the repo is on disk", () => {
+    // The cold-start window that strands Fast Preview: the daemon answers, but
+    // `.deco/blocks/` doesn't exist, so /read 400s and useDecofile 502s.
+    expect(isWorkingTreeReadyPhase("idle")).toBe(false);
+    expect(isWorkingTreeReadyPhase("cloning")).toBe(false);
+    expect(isWorkingTreeReadyPhase("clone-failed")).toBe(false);
+  });
+
+  test("checking-out is excluded — the tree is mid-write", () => {
+    expect(isWorkingTreeReadyPhase("checking-out")).toBe(false);
+  });
+
+  test("installing is the trigger — clone done, deps pending", () => {
+    // Precisely the window Fast Preview exists to render in.
+    expect(isWorkingTreeReadyPhase("installing")).toBe(true);
+  });
+
+  test("later phases also count — a warm sandbox can skip past installing", () => {
+    expect(isWorkingTreeReadyPhase("starting")).toBe(true);
+    expect(isWorkingTreeReadyPhase("running")).toBe(true);
+  });
+
+  test("failure phases count — a failed install still leaves a readable tree", () => {
+    expect(isWorkingTreeReadyPhase("install-failed")).toBe(true);
+    expect(isWorkingTreeReadyPhase("start-failed")).toBe(true);
+    expect(isWorkingTreeReadyPhase("crashed")).toBe(true);
   });
 });

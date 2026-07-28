@@ -250,6 +250,48 @@ export function computeDrawerStatus(state: PreviewState): DrawerStatus {
   }
 }
 
+/** A `previewUrl` captured from a SANDBOX_START response, scoped to its claim. */
+export interface SeededPreviewUrl {
+  /** `virtualMcpId::branch` this URL was claimed for (see `sandboxPreviewKey`). */
+  key: string;
+  url: string;
+}
+
+/**
+ * Identity of a claim. `branch` is null on a fresh thread — the server names it
+ * in the SANDBOX_START response — so callers seeding from a response pass the
+ * response's branch, not the (still null) prop.
+ */
+export function sandboxPreviewKey(
+  virtualMcpId: string | null,
+  branch: string | null,
+): string {
+  return `${virtualMcpId ?? ""}::${branch ?? ""}`;
+}
+
+/**
+ * The daemon origin to render against.
+ *
+ * SANDBOX_START returns `previewUrl` at claim time, but `vmEntry` reads it from
+ * the entity's `sandboxMap` — a collection query with a 60s staleTime whose only
+ * lifecycle-driven invalidation fires when the dev server reports `running`. So
+ * the recorded value can lag the live daemon by the entire install/boot, which
+ * is exactly the window Fast Preview exists to render in.
+ *
+ * The recorded entry wins when present (authoritative, survives remounts); the
+ * claim response is the fallback. The seed is key-scoped rather than reset on
+ * change, so a stale claim can never paint another branch's sandbox.
+ */
+export function resolvePreviewUrl(args: {
+  vmEntry: BranchMapEntryLike | null;
+  seeded: SeededPreviewUrl | null;
+  key: string;
+}): string | null {
+  const recorded = args.vmEntry?.previewUrl ?? null;
+  if (recorded) return recorded;
+  return args.seeded?.key === args.key ? args.seeded.url : null;
+}
+
 // ---------------------------------------------------------------------------
 // Provider + hook
 // ---------------------------------------------------------------------------
@@ -276,10 +318,36 @@ import {
   sandboxUserStop,
   useSandboxStart,
   type SandboxStartArgs,
+  type SandboxStartResult,
 } from "./use-sandbox-start";
 import { useSandboxEvents } from "./use-sandbox-events";
 import { computePreviewState } from "@/components/sandbox/preview/preview-state";
 import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
+
+/**
+ * Shared SANDBOX_START `onSuccess`: adopt the branch the server named and record
+ * the claim's `previewUrl` (see `resolvePreviewUrl`).
+ *
+ * Module-level on purpose — every call site passes its dependencies explicitly,
+ * so the identity stays stable and the effects that reference it don't re-fire
+ * each render (React 19 bans useCallback here).
+ */
+function recordSandboxStart(args: {
+  data: SandboxStartResult | undefined;
+  virtualMcpId: string | null;
+  branch: string | null;
+  setCurrentTaskBranch: (branch: string) => void;
+  setSeededPreviewUrl: (seed: SeededPreviewUrl) => void;
+}): void {
+  const { data, virtualMcpId, branch } = args;
+  if (data?.branch && !branch) args.setCurrentTaskBranch(data.branch);
+  if (data?.previewUrl) {
+    args.setSeededPreviewUrl({
+      key: sandboxPreviewKey(virtualMcpId, data.branch ?? branch),
+      url: data.previewUrl,
+    });
+  }
+}
 
 export interface SandboxLifecycleValue {
   branch: string | null;
@@ -384,6 +452,12 @@ export function SandboxLifecycleProvider({
   // Destructure mutate/reset so they're stable references for effect deps.
   const { mutate: startVmMutate, reset: startVmReset } = startVm;
 
+  // `previewUrl` straight off the claim, until the entity query catches up.
+  // Lets Fast Preview render while the dev server is still installing — see
+  // resolvePreviewUrl.
+  const [seededPreviewUrl, setSeededPreviewUrl] =
+    useState<SeededPreviewUrl | null>(null);
+
   // Branch-keyed dedup (replaces both legacy taskId-keyed (preview.tsx) and
   // branch-keyed (VmEventsBridge) dedup refs).
   const autoStartAttemptedForBranchRef = useRef<Set<string>>(new Set());
@@ -421,13 +495,24 @@ export function SandboxLifecycleProvider({
   // matching entry wins; with no entry for that kind (or no kind at all) fall
   // back to whatever is serving the branch. See resolveVmEntry.
   const vmEntry = resolveVmEntry(branchMap, sandboxProviderKind);
-  const previewUrl = vmEntry?.previewUrl ?? null;
+  const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
+  const previewUrl = resolvePreviewUrl({
+    vmEntry,
+    // SANDBOX_START returns a previewUrl at claim time, before the pod is
+    // known-healthy. On a terminal claim failure that handle never came up, so
+    // drop the seed: computePreviewState reads any previewUrl as "the sandbox
+    // is live" and would paint a dead iframe over the errored card. A recorded
+    // vmEntry is different — it means the sandbox did serve at some point, and
+    // the existing rule (a failed restart shouldn't blank a working preview)
+    // still applies.
+    seeded: failedPhase ? null : seededPreviewUrl,
+    key: sandboxPreviewKey(virtualMcpId, branch),
+  });
   const userStopped =
     !!virtualMcpId &&
     !!branch &&
     sandboxUserStop.isStopped(virtualMcpId, branch);
   const appPaused = events.status.state === "paused";
-  const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
   // A retryable claim failure keeps the booting overlay (deriveStartError
   // returns null) while bounded auto-retry still has budget; once exhausted (or
   // for a non-retryable reason) it surfaces the errored card.
@@ -487,7 +572,13 @@ export function SandboxLifecycleProvider({
     );
     startVmMutate(args, {
       onSuccess: (data) => {
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+        recordSandboxStart({
+          data,
+          virtualMcpId,
+          branch,
+          setCurrentTaskBranch,
+          setSeededPreviewUrl,
+        });
       },
       onError: (err) => {
         console.error("[sandbox-lifecycle] auto-start failed:", err);
@@ -501,6 +592,7 @@ export function SandboxLifecycleProvider({
     sandboxProviderKind,
     startVmMutate,
     setCurrentTaskBranch,
+    setSeededPreviewUrl,
   ]);
 
   // Self-heal: SSE emits `gone` → reprovision via SANDBOX_START. Dedup by
@@ -527,7 +619,13 @@ export function SandboxLifecycleProvider({
     );
     startVmMutate(args, {
       onSuccess: (data) => {
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+        recordSandboxStart({
+          data,
+          virtualMcpId,
+          branch,
+          setCurrentTaskBranch,
+          setSeededPreviewUrl,
+        });
       },
       onError: (err) => {
         console.error("[sandbox-lifecycle] self-heal failed:", err);
@@ -541,6 +639,7 @@ export function SandboxLifecycleProvider({
     sandboxProviderKind,
     startVmMutate,
     setCurrentTaskBranch,
+    setSeededPreviewUrl,
   ]);
 
   // Auto-retry: a *retryable* terminal claim failure (capacity/scheduling/
@@ -581,7 +680,13 @@ export function SandboxLifecycleProvider({
     );
     startVmMutate(args, {
       onSuccess: (data) => {
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+        recordSandboxStart({
+          data,
+          virtualMcpId,
+          branch,
+          setCurrentTaskBranch,
+          setSeededPreviewUrl,
+        });
       },
       onError: (err) => {
         console.error("[sandbox-lifecycle] claim auto-retry failed:", err);
@@ -595,6 +700,7 @@ export function SandboxLifecycleProvider({
     sandboxProviderKind,
     startVmMutate,
     setCurrentTaskBranch,
+    setSeededPreviewUrl,
   ]);
 
   // User-driven actions.
@@ -607,7 +713,13 @@ export function SandboxLifecycleProvider({
     );
     startVmMutate(args, {
       onSuccess: (data) => {
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+        recordSandboxStart({
+          data,
+          virtualMcpId,
+          branch,
+          setCurrentTaskBranch,
+          setSeededPreviewUrl,
+        });
       },
       onError: (err) => {
         console.error("[sandbox-lifecycle] user start failed:", err);

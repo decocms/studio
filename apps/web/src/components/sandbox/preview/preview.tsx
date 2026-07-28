@@ -491,34 +491,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const fastPreviewEnabled =
     !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
 
-  // The recorded previewUrl flips previewState to "iframe" as soon as the
-  // sandbox handle exists — well before the public preview proxy is routable —
-  // so the sandbox surface is gated on `progress.status` (boot no longer in
-  // progress), not on `previewUrl` alone. `resolvePreviewDisplay` decides what
-  // to paint: the sandbox iframe, the production fallback + a waking pill, or
-  // (no production URL) today's blocking booting overlay.
-  const display = resolvePreviewDisplay({
-    previewState,
-    progressStatus: progress.status,
-    productionUrl,
-    foreignSandbox: lifecycle.foreignSandbox,
-    fastPreviewActive: fastPreviewEnabled,
-  });
-  const previewSurfaceActive = display.mode !== "none";
-
   // Fast Preview render (gated by the CMS switch): render the CURRENT
-  // working-tree draft via the sandbox DAEMON's `/_deco/fast-preview` route,
+  // working-tree draft via the sandbox DAEMON's `/_sandbox/fast-preview` route,
   // which merges `.deco/blocks/*` and POSTs it (server-side, no URL cap) to the
   // site's production `/live/previews`. Available once the daemon is up
-  // (`previewUrl`) — no dev server needed. `null` (daemon not up yet, or no page
-  // matched) → the booting overlay owns the canvas; Fast Preview NEVER falls
-  // back to the published site. `fastPreviewNonce` is bumped after a Blocks save
-  // so the frame re-navigates and the daemon re-reads the fresh draft.
+  // (`previewUrl`) and a page is matched — no dev server needed. `null` means
+  // not renderable yet, and the published site keeps the canvas until it is.
+  // `fastPreviewNonce` is bumped after a Blocks save so the frame re-navigates
+  // and the daemon re-reads the fresh draft.
+  //
+  // Computed BEFORE `display` — it is an input to the display decision (which
+  // needs to know whether the draft is renderable), so it must not depend on
+  // `display.mode` in turn.
   const fastPreviewDaemonUrl =
-    fastPreviewEnabled &&
-    display.mode === "production" &&
-    previewUrl &&
-    currentPageKey
+    fastPreviewEnabled && previewUrl && currentPageKey
       ? buildFastPreviewDaemonUrl({
           previewUrl,
           pageBlockKey: currentPageKey,
@@ -528,13 +514,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         })
       : null;
 
-  // Show the booting overlay while Fast Preview is waiting for the daemon render
-  // (no published-site stopgap), on top of the normal blocking-overlay cases.
-  const showBootingOverlay =
-    display.showBlockingOverlay ||
-    (fastPreviewEnabled &&
-      display.mode === "production" &&
-      !fastPreviewDaemonUrl);
+  // The recorded previewUrl flips previewState to "iframe" as soon as the
+  // sandbox handle exists — well before the public preview proxy is routable —
+  // so the sandbox surface is gated on `progress.status` (boot no longer in
+  // progress), not on `previewUrl` alone. `resolvePreviewDisplay` decides what
+  // to paint: the sandbox iframe, the published site + a waking pill, or
+  // (no production URL) the blocking booting overlay.
+  const display = resolvePreviewDisplay({
+    previewState,
+    progressStatus: progress.status,
+    productionUrl,
+    foreignSandbox: lifecycle.foreignSandbox,
+    fastPreviewActive: fastPreviewEnabled,
+    fastPreviewReady: !!fastPreviewDaemonUrl,
+  });
+  const previewSurfaceActive = display.mode !== "none";
 
   const iframeSrc =
     display.mode === "sandbox"
@@ -546,19 +540,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           workspace.state.variantOverride ?? [],
         )
       : display.mode === "production"
-        ? fastPreviewEnabled
-          ? // Fast Preview: ONLY the daemon draft render — never the published
-            // site. `null` while the page/daemon isn't ready yet → the booting
-            // overlay owns the canvas (see `showBootingOverlay`).
-            fastPreviewDaemonUrl
-            ? withDeviceHint(fastPreviewDaemonUrl, previewDeviceSize)
-            : null
-          : // Fast Preview off: published site best-effort while the sandbox
-            // provisions (its own committed pages).
-            withDeviceHint(
+        ? // The published site is the base for both modes while the sandbox
+          // provisions; Fast Preview layers its daemon draft render over it the
+          // moment that's renderable. Same origin either way (the draft carries
+          // `<base href="<productionUrl>">`), so the swap changes content, not
+          // surface.
+          withDeviceHint(
+            fastPreviewDaemonUrl ??
               new URL(resolvedPath, display.iframeBase!).href,
-              previewDeviceSize,
-            )
+            previewDeviceSize,
+          )
         : null;
 
   // Last visited page (incl. `:param` values), persisted per project+branch.
@@ -1649,7 +1640,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </div>
                 )}
 
-                {showBootingOverlay && (
+                {display.showBlockingOverlay && (
                   <div className="absolute inset-0 z-30">
                     <SandboxStateCard
                       kind="starting"

@@ -415,7 +415,7 @@ export const sandbox = {
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":
-    "You can make changes now — they'll appear once the preview is ready.",
+    "Showing your published site. You can make changes now — they'll appear once the preview is ready.",
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.urlCopiedToClipboard": "URL copied to clipboard",
