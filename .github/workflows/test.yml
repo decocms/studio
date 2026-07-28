@@ -145,6 +145,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    # The suite normally finishes in ~1 min. A single hung file under the
+    # parallel runner stalls the whole job silently (per-file output is
+    # buffered, so the culprit prints nothing) — without this bound that's
+    # GitHub's 6h default; it already cost one 50-minute zombie job.
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
