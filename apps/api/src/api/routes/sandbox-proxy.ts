@@ -97,11 +97,11 @@ const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
  * Every route below that passes `forwardJsonBody: true` has its body read
  * fully into memory via `c.req.text()` in `proxyDaemon` before being
  * forwarded to the daemon — unlike suggest-commit/judge-review/preview-invoke
- * above, they had no size cap at all. 10MB comfortably covers any real source
+ * above, they had no size cap at all. 20MB comfortably covers any real source
  * file or git payload while bounding how much an oversized/malicious request
  * can buffer.
  */
-const FORWARDED_BODY_MAX_BYTES = 10 * 1024 * 1024;
+const FORWARDED_BODY_MAX_BYTES = 20 * 1024 * 1024;
 
 const forwardedBodyLimit = bodyLimit({
   maxSize: FORWARDED_BODY_MAX_BYTES,
