@@ -59,10 +59,11 @@ function TabBody({
 }) {
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
-  // Dev-only — the guard ensures this code path is dead-stripped in production
-  // builds (Vite tree-shakes blocks guarded by `import.meta.env.DEV`).
+  // Dead-stripped from real production builds; alive in dev and in the e2e
+  // build (which serves the prod bundle via vite preview — see
+  // packages/e2e/playwright.config.ts) through the E2E_TEST_HOOKS define.
   if (
-    import.meta.env.DEV &&
+    (import.meta.env.DEV || __E2E_TEST_HOOKS__) &&
     typeof window !== "undefined" &&
     (window as unknown as { __forceTabError?: string }).__forceTabError ===
       activeTab

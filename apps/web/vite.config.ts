@@ -16,9 +16,52 @@ const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 // swallow pull-dispatch work items (e2e: link-proxy.spec.ts,
 // link-dispatch-pull.spec.ts).
 
+// Shared by the dev server AND `vite preview`: e2e serves the production
+// build through preview, and its readiness probe + every spec reach the API
+// through these routes. Both run under Node (see the Bun warning above —
+// preview uses the same http-proxy and needs the same "close" propagation).
+const sharedProxy = {
+  "/api": {
+    target: bunServerTarget,
+    changeOrigin: false,
+    ws: true,
+  },
+  "/mcp": {
+    target: bunServerTarget,
+    changeOrigin: false,
+    ws: true,
+  },
+  "/oauth-proxy": {
+    target: bunServerTarget,
+    changeOrigin: false,
+    ws: true,
+  },
+  "/.well-known": {
+    target: bunServerTarget,
+    changeOrigin: false,
+    ws: true,
+  },
+  "/org": {
+    target: bunServerTarget,
+    changeOrigin: false,
+    ws: true,
+  },
+  "/health": {
+    target: bunServerTarget,
+    changeOrigin: false,
+  },
+  "/metrics": {
+    target: bunServerTarget,
+    changeOrigin: false,
+  },
+};
+
 export default defineConfig({
   define: {
     __STUDIO_VERSION__: JSON.stringify(pkg.version),
+    // Build-time constant so e2e-only hooks (window.__forceTabError) survive
+    // the e2e production build but stay dead-stripped from real prod builds.
+    __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),
   },
   build: {
     outDir: "dist",
@@ -35,41 +78,12 @@ export default defineConfig({
       host: "localhost",
       clientPort: parseInt(process.env.VITE_PORT || "4000", 10),
     },
-    proxy: {
-      "/api": {
-        target: bunServerTarget,
-        changeOrigin: false,
-        ws: true,
-      },
-      "/mcp": {
-        target: bunServerTarget,
-        changeOrigin: false,
-        ws: true,
-      },
-      "/oauth-proxy": {
-        target: bunServerTarget,
-        changeOrigin: false,
-        ws: true,
-      },
-      "/.well-known": {
-        target: bunServerTarget,
-        changeOrigin: false,
-        ws: true,
-      },
-      "/org": {
-        target: bunServerTarget,
-        changeOrigin: false,
-        ws: true,
-      },
-      "/health": {
-        target: bunServerTarget,
-        changeOrigin: false,
-      },
-      "/metrics": {
-        target: bunServerTarget,
-        changeOrigin: false,
-      },
-    },
+    proxy: sharedProxy,
+  },
+  preview: {
+    port: parseInt(process.env.VITE_PORT || "4000", 10),
+    strictPort: true,
+    proxy: sharedProxy,
   },
   clearScreen: false,
   logLevel: "warn",

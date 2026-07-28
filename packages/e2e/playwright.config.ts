@@ -43,7 +43,21 @@ const commerceMockKey = "e2e-commerce-key";
 const vaultServiceToken = "e2e-vault-service-token";
 
 const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
-const webServerCommand = `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev`;
+// CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
+// see apps/web/vite.config.ts): the suite's charter is production-like
+// behavior, and the dev server's on-demand transform inflated browser-heavy
+// specs (chat-input-draft's four tests alone cost 51-60s each against cold
+// Vite). Local keeps the dev server for iteration speed.
+// E2E_SKIP_WEB_BUILD=1 is set by the workflow when apps/web/dist was
+// restored from the input-hash cache — serving a stale dist is prevented by
+// the cache key (exact-match only), not by anything here.
+const webBuildStep =
+  process.env.E2E_SKIP_WEB_BUILD === "1"
+    ? ""
+    : "E2E_TEST_HOOKS=1 bun run build && ";
+const webServerCommand = process.env.CI
+  ? `${webBuildStep}BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run preview`
+  : `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev`;
 
 export default defineConfig({
   testDir: "./tests",
@@ -61,7 +75,11 @@ export default defineConfig({
   // Playwright pick (half the CPU count). Every test mints its own user + org
   // with randomized slugs, so DB assertions stay tenant-scoped and parallel-safe.
   workers: process.env.CI ? 4 : undefined,
-  reporter: [["html", { open: "never" }]],
+  // `list` on CI so the job log shows per-spec durations — that's how fat
+  // specs get found (the html report isn't uploaded anywhere).
+  reporter: process.env.CI
+    ? [["list"], ["html", { open: "never" }]]
+    : [["html", { open: "never" }]],
   use: {
     baseURL: appOrigin,
     trace: "on-first-retry",
