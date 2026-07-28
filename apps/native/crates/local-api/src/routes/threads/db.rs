@@ -1162,6 +1162,11 @@ fn secure_sqlite_files(db_path: &Path) -> std::io::Result<()> {
 
 pub struct ThreadsDb {
     conn: Mutex<Connection>,
+    /// `(account_scope, organization_id)` pairs whose legacy-row adoption has
+    /// already run in this process — the guard that keeps
+    /// `adopt_legacy_account_rows` from opening a write transaction on every
+    /// scoped READ. See that method's comment.
+    adopted_scopes: Mutex<std::collections::HashSet<(String, String)>>,
 }
 
 impl ThreadsDb {
@@ -1204,8 +1209,14 @@ impl ThreadsDb {
         // still succeeds (not an error) in that case, so `?` is safe for
         // both the file-backed and in-memory (test) constructors.
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // NORMAL is the documented pairing for WAL: transactions still cannot
+        // corrupt the database, and a power loss can only cost the tail of
+        // very recent commits. The default FULL fsyncs the WAL on EVERY
+        // commit, which made each write-bearing request pay a disk flush.
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         Ok(Self {
             conn: Mutex::new(conn),
+            adopted_scopes: Mutex::new(std::collections::HashSet::new()),
         })
     }
 
@@ -1236,6 +1247,26 @@ impl ThreadsDb {
             return Ok(());
         }
         let account_scope = scope.storage_key();
+
+        // One-shot per (account, org) per process. This runs on EVERY scoped
+        // read and write — thread lists, message pages, queue polls — and the
+        // IMMEDIATE transaction below takes SQLite's writer lock and commits
+        // (an fsync) even when there is nothing to adopt, which on a hot
+        // chat serialized every reader behind a per-request write. Adoption
+        // is a migration: once this process has claimed a pair, re-running it
+        // can find nothing new (legacy rows are only ever CONSUMED), so the
+        // guard makes every later call free. A second process instance would
+        // re-check once and find zero rows — correct, just not free.
+        {
+            let mut adopted = self
+                .adopted_scopes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !adopted.insert((account_scope.clone(), organization_id.to_string())) {
+                return Ok(());
+            }
+        }
+
         let mut conn = self.lock();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
