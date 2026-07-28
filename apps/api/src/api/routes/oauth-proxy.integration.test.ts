@@ -68,9 +68,13 @@ async function skipIfUpstreamUnreachable(
   serverName: string,
 ): Promise<boolean> {
   // Read a clone so the original body stays intact for callers that parse it.
+  // Beyond timeouts, a decommissioned upstream (dead DNS, refused connection)
+  // surfaces as a 500 whose body carries the connection error — still
+  // connection-shaped, never the shape of a proxy logic bug, so skipping it
+  // keeps the "a genuine 500 is never masked" line intact.
   const isUpstreamTimeout =
     res.status === 500 &&
-    /timed out|timeout/i.test(
+    /timed out|timeout|fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|unreachable/i.test(
       await res
         .clone()
         .text()
@@ -89,7 +93,6 @@ async function skipIfUpstreamUnreachable(
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
   { url: "https://sites-openrouter.deco.site/mcp", name: "OpenRouter" },
-  { url: "https://api.decocms.com/apps/deco/github/mcp", name: "Deco GitHub" },
   {
     url: "https://server.smithery.ai/@exa-labs/exa-code-mcp/mcp",
     name: "Smithery",
