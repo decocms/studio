@@ -28,16 +28,39 @@ interface DecofileDeps {
  * Returns the merged object as raw text (no `JSON.parse` round-trip) to respect
  * the daemon's single-threaded budget: this payload is routinely >10MB.
  */
+/**
+ * Merge the working-tree blocks and derive their version.
+ *
+ * The single definition of "what version is the draft" — the route serves it as
+ * an `ETag` and the `decofile` SSE event announces it, so Studio's pointer and
+ * the framework's cache key can never disagree. Returns null when there is no
+ * `.deco/blocks` directory to merge.
+ *
+ * `generateDecofileFromBlocksDeduped` collapses concurrent callers onto one
+ * merge, so a save that both emits an event and serves a fetch pays for one.
+ */
+export async function readDecofile(
+  deps: DecofileDeps,
+): Promise<{ text: string; version: string } | null> {
+  const app = deps.store.read()?.application;
+  // `.deco/blocks` sits under the package path (the dev-script cwd) when the
+  // project isn't at the repo root; daemon reads resolve against repoDir.
+  const packagePath = app?.packageManager?.path ?? "";
+  const blocksDir = join(deps.repoDir, packagePath, ".deco", "blocks");
+
+  const text = await generateDecofileFromBlocksDeduped(blocksDir);
+  if (text === null) return null;
+
+  // Wyhash over the merged bytes — native speed, so even a multi-MB payload
+  // stays well inside the health probe's budget. Not a security boundary,
+  // only a change detector.
+  return { text, version: Bun.hash(text).toString(16) };
+}
+
 export function makeDecofileHandler(deps: DecofileDeps) {
   return async (req: Request): Promise<Response> => {
-    const app = deps.store.read()?.application;
-    // `.deco/blocks` sits under the package path (the dev-script cwd) when the
-    // project isn't at the repo root; daemon reads resolve against repoDir.
-    const packagePath = app?.packageManager?.path ?? "";
-    const blocksDir = join(deps.repoDir, packagePath, ".deco", "blocks");
-
-    const decofile = await generateDecofileFromBlocksDeduped(blocksDir);
-    if (decofile === null) {
+    const merged = await readDecofile(deps);
+    if (merged === null) {
       return new Response(
         JSON.stringify({ error: "No .deco/blocks to serve." }),
         {
@@ -47,15 +70,12 @@ export function makeDecofileHandler(deps: DecofileDeps) {
       );
     }
 
-    // Wyhash over the merged bytes — native speed, so even a multi-MB payload
-    // stays well inside the health probe's budget. Not a security boundary,
-    // only a change detector.
-    const etag = `W/"${Bun.hash(decofile).toString(16)}"`;
+    const etag = `W/"${merged.version}"`;
     if (req.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { etag } });
     }
 
-    return new Response(decofile, {
+    return new Response(merged.text, {
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",

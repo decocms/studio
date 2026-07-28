@@ -26,7 +26,7 @@ import { PhaseManager } from "./process/phase-manager";
 import { startUpstreamProbe } from "./probe";
 import { makeProxyHandler } from "./proxy";
 import { makeFastPreviewHandler } from "./routes/fast-preview";
-import { makeDecofileHandler } from "./routes/decofile";
+import { makeDecofileHandler, readDecofile } from "./routes/decofile";
 import { jsonResponse } from "./routes/body-parser";
 import { makeBashHandler } from "./routes/bash";
 import {
@@ -335,6 +335,37 @@ let pendingPaths = new Set<string>();
 
 const FILE_CHANGED_DEBOUNCE_MS = 300;
 
+/** `.deco/blocks/*.json` — the sources the draft decofile is merged from. */
+function isDecoBlockPath(filePath: string): boolean {
+  return (
+    filePath.includes(".deco/blocks/") &&
+    filePath.toLowerCase().endsWith(".json")
+  );
+}
+
+/** Version announced by the last `decofile` event; suppresses no-op re-emits. */
+let lastDecofileVersion: string | null = null;
+
+/**
+ * Re-merge the draft and announce its version, if it actually changed.
+ *
+ * Only called for `.deco/blocks/*.json` writes, and only after the debounce, so
+ * a burst of block saves costs one merge. The merge is async and deduped
+ * (`readDecofile`), which matters: this payload is routinely multi-MB and the
+ * daemon runs a single-threaded event loop.
+ */
+async function announceDecofileVersion(): Promise<void> {
+  try {
+    const merged = await readDecofile({ repoDir, store });
+    if (!merged || merged.version === lastDecofileVersion) return;
+    lastDecofileVersion = merged.version;
+    broadcaster.emit("decofile", { version: merged.version });
+  } catch (err) {
+    // Never let a draft-version probe take down the watcher.
+    console.warn("[daemon] decofile version probe failed:", err);
+  }
+}
+
 function emitFileChanged(filePath: string) {
   pendingPaths.add(filePath);
   if (fileChangedDebounce) clearTimeout(fileChangedDebounce);
@@ -342,9 +373,12 @@ function emitFileChanged(filePath: string) {
     fileChangedDebounce = null;
     const paths = pendingPaths;
     pendingPaths = new Set();
+    let touchedBlocks = false;
     for (const p of paths) {
       broadcaster.emit("file-changed", { path: p });
+      touchedBlocks ||= isDecoBlockPath(p);
     }
+    if (touchedBlocks) void announceDecofileVersion();
   }, FILE_CHANGED_DEBOUNCE_MS);
 }
 

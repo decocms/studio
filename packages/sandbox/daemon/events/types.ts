@@ -66,6 +66,15 @@ export interface DaemonEventMap {
   branch: { meta: BranchMeta };
   reload: Record<string, never>;
   "file-changed": { path: string };
+  /**
+   * The working-tree draft decofile changed, and its new content version.
+   *
+   * Same value the `/_sandbox/decofile` route serves as its `ETag` (see
+   * `readDecofile`) — one definition, so a consumer's pointer and the
+   * framework's cache key cannot disagree. Lets Studio rebuild a draft pointer
+   * on save instead of polling for it.
+   */
+  decofile: { version: string };
 }
 
 export type DaemonEventName = keyof DaemonEventMap;
