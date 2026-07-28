@@ -22,7 +22,7 @@ test("string schema → text input", async ({ mount }) => {
   await expect(input).toHaveAttribute("type", "text");
 });
 
-test("number schema → number input", async ({ mount }) => {
+test("number schema → decimal text input", async ({ mount }) => {
   const meta = sectionWithProps({
     count: { type: "number", title: "Count" },
   });
@@ -32,10 +32,13 @@ test("number schema → number input", async ({ mount }) => {
 
   const input = component.getByLabel("Count");
   await expect(input).toBeVisible();
-  await expect(input).toHaveAttribute("type", "number");
+  // NumberField keeps the raw typed string in a text input (so "0." survives
+  // mid-typing) and signals numeric intent via inputmode.
+  await expect(input).toHaveAttribute("type", "text");
+  await expect(input).toHaveAttribute("inputmode", "decimal");
 });
 
-test("integer schema → number input", async ({ mount }) => {
+test("integer schema → numeric text input", async ({ mount }) => {
   const meta = sectionWithProps({
     quantity: { type: "integer", title: "Quantity" },
   });
@@ -45,7 +48,9 @@ test("integer schema → number input", async ({ mount }) => {
 
   const input = component.getByLabel("Quantity");
   await expect(input).toBeVisible();
-  await expect(input).toHaveAttribute("type", "number");
+  // Same raw-string NumberField as `number`, but integer → inputmode=numeric.
+  await expect(input).toHaveAttribute("type", "text");
+  await expect(input).toHaveAttribute("inputmode", "numeric");
 });
 
 test("boolean schema → switch", async ({ mount }) => {

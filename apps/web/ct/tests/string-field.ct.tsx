@@ -74,7 +74,9 @@ test("textarea format renders a <textarea> and round-trips typed value", async (
     .toEqual({ body: "multi\nline\ntext" });
 });
 
-test("rich-text format renders a <textarea> and round-trips typed value", async ({
+// rich-text / rich-text-inline now render a TipTap rich editor (toolbar +
+// contenteditable ProseMirror) instead of a <textarea>; the model value is HTML.
+test("rich-text format renders a rich editor and round-trips typed value as HTML", async ({
   mount,
 }) => {
   const meta = sectionWithProps({
@@ -84,17 +86,18 @@ test("rich-text format renders a <textarea> and round-trips typed value", async 
     <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
-  const field = component.getByLabel("Body");
-  await expect(field).toBeVisible();
-  await expect(component.locator("textarea#body")).toBeVisible();
-  await field.fill("rich content");
+  await expect(component.getByText("Body")).toBeVisible();
+  await expect(component.getByRole("button", { name: "Bold" })).toBeVisible();
+  const editor = component.locator('[contenteditable="true"]');
+  await expect(editor).toBeVisible();
+  await editor.fill("rich content");
 
   await expect
     .poll(() => readFormValue(component))
-    .toEqual({ body: "rich content" });
+    .toEqual({ body: "<p>rich content</p>" });
 });
 
-test("rich-text-inline format renders a <textarea> and round-trips typed value", async ({
+test("rich-text-inline format renders a rich editor and round-trips typed value as HTML", async ({
   mount,
 }) => {
   const meta = sectionWithProps({
@@ -104,14 +107,14 @@ test("rich-text-inline format renders a <textarea> and round-trips typed value",
     <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
-  const field = component.getByLabel("Body");
-  await expect(field).toBeVisible();
-  await expect(component.locator("textarea#body")).toBeVisible();
-  await field.fill("inline content");
+  await expect(component.getByText("Body")).toBeVisible();
+  const editor = component.locator('[contenteditable="true"]');
+  await expect(editor).toBeVisible();
+  await editor.fill("inline content");
 
   await expect
     .poll(() => readFormValue(component))
-    .toEqual({ body: "inline content" });
+    .toEqual({ body: "<p>inline content</p>" });
 });
 
 test("markdown format renders a <textarea> and round-trips typed value", async ({

@@ -1,7 +1,18 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+import type { Locator } from "@playwright/test";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import { readBreadcrumb, readFormValue } from "../harness/ct-utils";
+
+/**
+ * The sortable row wrapper is a role=button whose accessible NAME concatenates
+ * the label with its inline action buttons ("Alpha Hide item Open actions for
+ * Alpha"), so an exact-name query no longer matches. Match rows by the visible
+ * label text instead (the inline action buttons are icon-only, and the array
+ * header label lives outside any button).
+ */
+const itemRow = (component: Locator, label: string) =>
+  component.getByRole("button").filter({ hasText: label });
 
 /**
  * ArrayField with OBJECT items + breadcrumb drill-down, exercised through the
@@ -100,12 +111,8 @@ test("item rows are labelled by titleBy with a count badge", async ({
 
   // Empty breadcrumb -> list view with both rows.
   await expect.poll(() => readBreadcrumb(component)).toEqual([]);
-  await expect(
-    component.getByRole("button", { name: "Alpha", exact: true }),
-  ).toBeVisible();
-  await expect(
-    component.getByRole("button", { name: "Beta", exact: true }),
-  ).toBeVisible();
+  await expect(itemRow(component, "Alpha")).toBeVisible();
+  await expect(itemRow(component, "Beta")).toBeVisible();
 
   // Count badge reflects the number of items.
   await expect(component.getByText("2", { exact: true })).toBeVisible();
@@ -123,7 +130,7 @@ test("clicking a row drills into that item and shows its Name value", async ({
     />,
   );
 
-  await component.getByRole("button", { name: "Alpha", exact: true }).click();
+  await itemRow(component, "Alpha").click();
 
   // Breadcrumb drilled into the Alpha row.
   await expect.poll(() => readBreadcrumb(component)).toContain("Alpha");
@@ -148,7 +155,7 @@ test("editing a drilled-in item updates the correct index", async ({
   );
 
   // Drill into the second row (index 1).
-  await component.getByRole("button", { name: "Beta", exact: true }).click();
+  await itemRow(component, "Beta").click();
   await expect.poll(() => readBreadcrumb(component)).toContain("Beta");
 
   const nameInput = component.getByLabel("Name");
@@ -187,7 +194,7 @@ test("editing a label field whose value equals the array label keeps the editor 
     />,
   );
 
-  await component.getByRole("button", { name: "Banner", exact: true }).click();
+  await itemRow(component, "Banner").click();
   await expect
     .poll(() => readBreadcrumb(component))
     .toEqual(["Banner", "Banner"]);
@@ -225,7 +232,7 @@ test("editing a label to collide with an earlier sibling keeps the opened row", 
     />,
   );
 
-  await component.getByRole("button", { name: "Beta", exact: true }).click();
+  await itemRow(component, "Beta").click();
   const nameInput = component.getByLabel("Name");
   await expect(nameInput).toHaveAttribute("id", "cards.1.name");
 
@@ -254,9 +261,11 @@ test("deleting a row removes the right item from the array", async ({
     />,
   );
 
-  // Open the actions menu for the Alpha row (button is in the DOM though hidden).
+  // Open the actions menu for the Alpha row (button is in the DOM though
+  // hidden). exact: true — the row wrapper is also a role=button whose
+  // accessible name CONTAINS "Open actions for Alpha".
   await component
-    .getByRole("button", { name: "Open actions for Alpha" })
+    .getByRole("button", { name: "Open actions for Alpha", exact: true })
     .click();
   // DropdownMenu content is portaled onto document.body -> query via page.
   await page.getByRole("menuitem", { name: "Delete" }).click();
@@ -292,7 +301,5 @@ test("fallback label 'Item 1' when itemSchema has no titleBy/title and item has 
   );
 
   await expect.poll(() => readBreadcrumb(component)).toEqual([]);
-  await expect(
-    component.getByRole("button", { name: "Item 1", exact: true }),
-  ).toBeVisible();
+  await expect(itemRow(component, "Item 1")).toBeVisible();
 });
