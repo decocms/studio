@@ -1,6 +1,7 @@
 import SlideHeader from "./slide-header";
 import TableTemplate from "./table-template";
 import { DECK } from "./tokens";
+import { useT } from "@/i18n/use-t.ts";
 import type { TableProps } from "@decocms/shared/reports/deck-types";
 
 // Severity chips are graded by the engine's pt-BR badge label — the badge tone
@@ -81,6 +82,7 @@ function Cross({ severity }: { severity: string }) {
  * generic bucket 8× is just noise). Same data, no contract change.
  */
 export default function PaginasVariant(props: TableProps) {
+  const t = useT();
   const { eyebrow, headline, annotation, rows, active } = props;
   const groups = groupRows(rows);
   if (!groups) return <TableTemplate {...props} />;
@@ -133,7 +135,7 @@ export default function PaginasVariant(props: TableProps) {
                     className="text-[11px] tabular-nums"
                     style={{ color: DECK.muted, opacity: 0.7 }}
                   >
-                    {group.issues.length} achados
+                    {group.issues.length} {t("reports.paginasVariant.found")}
                   </span>
                 )}
               </div>

@@ -91,6 +91,7 @@ export const reports = {
   "reports.keywordsTemplate.searchesPerMonth": "Buscas/mês",
   "reports.listTemplate.moreSignals": "outros sinais no diagnóstico completo",
   "reports.listTemplate.unlockRevenue": "Destravar minha receita",
+  "reports.paginasVariant.found": "achados",
   "reports.scanGate.errorBlocked":
     "Este relatório não está disponível publicamente.",
   "reports.scanGate.errorEmpty":
