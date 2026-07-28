@@ -37,7 +37,6 @@ use axum::response::{IntoResponse, Response};
 
 use crate::error::ApiError;
 use crate::routes::events::{events, EventsQuery};
-use crate::sandbox::SandboxManager;
 use crate::state::AppState;
 
 use super::sandbox_fs::decode_identity_segment;
@@ -88,7 +87,15 @@ pub(super) async fn try_dispatch(
         Err(error) => return Some(error.into_response()),
     };
 
-    let handle = SandboxManager::compute_handle(&virtual_mcp_id, &branch);
+    // Keyed by (virtualMcpId, branch); the handle comes from the repository,
+    // so the registry bridges them. No row means never provisioned — the same
+    // thing `is_registered(false)` means below.
+    let Ok(Some(handle)) = state
+        .sandbox_manager
+        .handle_for_agent(&virtual_mcp_id, &branch)
+    else {
+        return Some(gone_stream());
+    };
     match state.sandbox_manager.is_registered(&handle) {
         Ok(true) => {}
         // Never provisioned, or reaped: tell the shell so it can re-start it.

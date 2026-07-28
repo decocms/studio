@@ -558,7 +558,11 @@ mod tests {
         let handle = response.0["handle"].as_str().unwrap();
         assert_eq!(
             handle,
-            crate::sandbox::SandboxManager::compute_handle("vmcp-ensure-route", "main")
+            crate::sandbox::SandboxManager::compute_handle(
+                "https://github.com/acme/repo-ensure-route",
+                "main"
+            )
+            .expect("scopeable clone url")
         );
         assert!(state.sandbox_manager.get(handle).is_some());
         assert_eq!(
@@ -601,7 +605,11 @@ mod tests {
         .expect("the control route returns before git so SSE can observe it");
         assert_eq!(response.0["state"], "provisioning");
 
-        let handle = crate::sandbox::SandboxManager::compute_handle("vmcp-broken-clone", "main");
+        let handle = crate::sandbox::SandboxManager::compute_handle(
+            "https://github.com/acme/repo-broken-clone",
+            "main",
+        )
+        .expect("scopeable clone url");
         let record = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
                 let record = state

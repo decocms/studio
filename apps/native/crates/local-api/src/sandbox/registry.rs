@@ -247,6 +247,31 @@ impl SandboxRegistry {
             .map_err(|error| format!("failed to look up sandbox {handle}: {error}"))
     }
 
+    /// The handle of the worktree an agent is using for `branch`.
+    ///
+    /// The handle is derived from the REPOSITORY and branch, but the routes
+    /// the shell calls are keyed by `(virtualMcpId, branch)` — they never see
+    /// a clone URL. The registry stores all three, so it is the one place that
+    /// can bridge them without a filesystem scan.
+    ///
+    /// `None` when this agent has no worktree for that branch yet.
+    pub(crate) fn handle_for_agent(
+        &self,
+        virtual_mcp_id: &str,
+        branch: &str,
+    ) -> Result<Option<String>, String> {
+        self.connection()
+            .query_row(
+                "SELECT handle FROM sandboxes WHERE virtual_mcp_id = ?1 AND branch = ?2 LIMIT 1",
+                [virtual_mcp_id, branch],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| {
+                format!("failed to resolve a worktree for {virtual_mcp_id}@{branch}: {error}")
+            })
+    }
+
     pub(crate) fn set_active(&self, handle: &str) -> Result<(), String> {
         if !self.contains(handle)? {
             return Err(format!("unknown sandbox handle: {handle}"));
@@ -351,17 +376,35 @@ impl SandboxRegistry {
 
     fn import_legacy_sidecars(&self) -> Result<(), String> {
         let sandboxes_root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
-        let Ok(entries) = std::fs::read_dir(&sandboxes_root) else {
-            return Ok(());
-        };
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
+        // Walk to wherever a sidecar actually is, rather than assuming one
+        // level: a handle is `<host>/<owner>/<repo>/<branch>`, so the scan
+        // that took each top-level directory name as a handle would now find
+        // `github.com` and nothing else.
+        let mut pending = vec![sandboxes_root.clone()];
+        let mut sandbox_dirs: Vec<PathBuf> = Vec::new();
+        while let Some(dir) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
                 continue;
             };
-            if !file_type.is_dir() {
-                continue;
+            for entry in entries.flatten() {
+                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                let path = entry.path();
+                if super::persist::sidecar_exists(&path) {
+                    sandbox_dirs.push(path);
+                } else {
+                    pending.push(path);
+                }
             }
-            let Some(handle) = entry.file_name().to_str().map(str::to_owned) else {
+        }
+        for entry in sandbox_dirs {
+            let Some(handle) = entry
+                .strip_prefix(&sandboxes_root)
+                .ok()
+                .and_then(|rel| rel.to_str())
+                .map(|rel| rel.replace('\\', "/"))
+            else {
                 continue;
             };
             if self.contains(&handle)? {
@@ -370,7 +413,7 @@ impl SandboxRegistry {
             let Some(config) = super::persist::read_sidecar(&self.app_root, &handle) else {
                 continue;
             };
-            let sandbox_path = entry.path();
+            let sandbox_path = entry.clone();
             let workdir_path = sandbox_path.join("repo");
             self.upsert_config(&handle, &config, &sandbox_path, &workdir_path)?;
             if is_valid_git_worktree(&workdir_path) {
@@ -810,8 +853,14 @@ fn validate_identity(handle: &str, config: &GitSandboxConfig) -> Result<(), Stri
     if config.clone_url.trim().is_empty() {
         return Err("repo.cloneUrl is required".to_string());
     }
-    let expected =
-        SandboxManager::compute_handle(&config.virtual_mcp_id, normalized_branch(config));
+    let Some(expected) =
+        SandboxManager::compute_handle(&config.clone_url, normalized_branch(config))
+    else {
+        return Err(format!(
+            "repo.cloneUrl cannot be scoped to a worktree path: {}",
+            config.clone_url
+        ));
+    };
     if handle != expected {
         return Err(format!(
             "sandbox handle/config mismatch: expected {expected}, got {handle}"
@@ -883,8 +932,8 @@ mod tests {
     fn registry_is_wal_and_survives_reopen() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
-        let handle =
-            SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
         let sandbox_path = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
@@ -933,8 +982,8 @@ mod tests {
     fn imports_sidecar_and_active_pointer_once() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
-        let handle =
-            SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
         create_git_checkout(
             &root
                 .path()
@@ -967,8 +1016,8 @@ mod tests {
     fn reconciliation_clears_active_when_its_workdir_is_missing() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
-        let handle =
-            SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
         let sandbox_path = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
@@ -995,8 +1044,8 @@ mod tests {
     fn migrates_v1_to_v2_transactionally_without_losing_records() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
-        let handle =
-            SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
         let sandbox_path = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
@@ -1082,8 +1131,8 @@ mod tests {
     fn quarantines_corruption_and_rebuilds_from_valid_sidecars() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
-        let handle =
-            SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
         let workdir_path = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)

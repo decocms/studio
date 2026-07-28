@@ -165,14 +165,31 @@ where
     result
 }
 
+/// Whether `handle` is safe to use as a RELATIVE path under the worktree root.
+///
+/// The handle is `<host>/<owner>/<repo>/<branch>`, so it is multi-segment by
+/// construction. Each segment is validated separately — the guard this
+/// replaces rejected `/` outright, which was correct when a handle was one
+/// component and would now reject every real handle. What matters is
+/// unchanged: no empty, `.` or `..` segment, and nothing outside the
+/// alphanumeric/`-_.` set, so the result can never escape the root.
 fn is_safe_handle_component(handle: &str) -> bool {
-    !handle.is_empty()
-        && handle.len() <= 255
-        && handle != "."
-        && handle != ".."
-        && handle
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    if handle.is_empty() || handle.len() > 255 || handle.starts_with('/') {
+        return false;
+    }
+    handle.split('/').all(|segment| {
+        !segment.is_empty()
+            && segment != "."
+            && segment != ".."
+            && segment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    })
+}
+
+/// Whether `dir` is a sandbox directory — i.e. carries a sidecar.
+pub(crate) fn sidecar_exists(dir: &Path) -> bool {
+    dir.join(SIDECAR_FILE_NAME).is_file()
 }
 
 fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
@@ -182,19 +199,19 @@ fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
         .join(SIDECAR_FILE_NAME)
 }
 
-fn config_handle(cfg: &GitSandboxConfig) -> String {
+fn config_handle(cfg: &GitSandboxConfig) -> Option<String> {
     let branch = cfg
         .branch
         .as_deref()
         .filter(|branch| !branch.is_empty())
         .unwrap_or("main");
-    SandboxManager::compute_handle(&cfg.virtual_mcp_id, branch)
+    SandboxManager::compute_handle(&cfg.clone_url, branch)
 }
 
 /// Best-effort write of `cfg` as `handle`'s resurrection sidecar. Called by
 /// `SandboxManager::ensure` after a successful config apply.
 pub(crate) fn write_sidecar(app_root: &Path, handle: &str, cfg: &GitSandboxConfig) {
-    if !is_safe_handle_component(handle) || config_handle(cfg) != handle {
+    if !is_safe_handle_component(handle) || config_handle(cfg).as_deref() != Some(handle) {
         tracing::warn!(
             handle,
             "sandbox: refusing to persist mismatched sidecar identity"
@@ -227,7 +244,7 @@ pub(crate) fn read_sidecar(app_root: &Path, handle: &str) -> Option<GitSandboxCo
     }
     let bytes = std::fs::read(sidecar_path(app_root, handle)).ok()?;
     let cfg: GitSandboxConfig = serde_json::from_slice(&bytes).ok()?;
-    if config_handle(&cfg) != handle {
+    if config_handle(&cfg).as_deref() != Some(handle) {
         tracing::warn!(
             handle,
             "sandbox: resurrection sidecar identity does not match its path"
@@ -308,7 +325,7 @@ mod tests {
     }
 
     fn sample_handle() -> String {
-        config_handle(&sample_cfg())
+        config_handle(&sample_cfg()).expect("scopeable clone url")
     }
 
     pub(super) fn temp_files(dir: &Path) -> Vec<PathBuf> {
@@ -360,7 +377,7 @@ mod tests {
         let mut cfg_b = sample_cfg();
         cfg_b.branch = Some("feature".to_string());
         let handle_a = sample_handle();
-        let handle_b = config_handle(&cfg_b);
+        let handle_b = config_handle(&cfg_b).expect("scopeable clone url");
         write_sidecar(dir.path(), &handle_a, &sample_cfg());
         write_sidecar(dir.path(), &handle_b, &cfg_b);
         assert_eq!(
@@ -382,7 +399,9 @@ mod tests {
     #[test]
     fn valid_json_under_the_wrong_handle_fails_closed() {
         let dir = tempfile::tempdir().unwrap();
-        let wrong_handle = SandboxManager::compute_handle("vmcp-other", "main");
+        let wrong_handle =
+            SandboxManager::compute_handle("https://github.com/acme/repo-other", "main")
+                .expect("scopeable clone url");
         let path = sidecar_path(dir.path(), &wrong_handle);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, serde_json::to_vec(&sample_cfg()).unwrap()).unwrap();

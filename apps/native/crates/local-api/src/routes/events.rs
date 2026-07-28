@@ -460,7 +460,8 @@ mod tests {
         let handle = crate::sandbox::SandboxManager::compute_handle(
             &config.virtual_mcp_id,
             config.branch.as_deref().unwrap(),
-        );
+        )
+        .expect("scopeable clone url");
         let sandbox_root = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)

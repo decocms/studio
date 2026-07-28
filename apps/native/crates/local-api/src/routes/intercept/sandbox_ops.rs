@@ -29,7 +29,6 @@ use axum::response::{IntoResponse, Response};
 
 use super::sandbox_fs::{decode_identity_segment, state_for_sandbox};
 use crate::error::ApiError;
-use crate::sandbox::SandboxManager;
 use crate::state::AppState;
 
 pub(super) async fn try_dispatch(
@@ -56,7 +55,23 @@ pub(super) async fn try_dispatch(
         Err(error) => return Some(error.into_response()),
     };
 
-    let handle = SandboxManager::compute_handle(&virtual_mcp_id, &branch);
+    // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
+    // derived from the REPOSITORY — the registry is what bridges them.
+    let handle = match state
+        .sandbox_manager
+        .handle_for_agent(&virtual_mcp_id, &branch)
+    {
+        Ok(Some(handle)) => handle,
+        Ok(None) => {
+            return Some(
+                ApiError::not_found(format!(
+                    "no worktree for {virtual_mcp_id} on branch {branch}"
+                ))
+                .into_response(),
+            )
+        }
+        Err(error) => return Some(ApiError::internal(error).into_response()),
+    };
     let sandbox = match state.sandbox_manager.adopt(&handle).await {
         Ok(Some(sandbox)) => sandbox,
         Ok(None) => {

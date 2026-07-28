@@ -28,6 +28,53 @@ use std::path::{Path, PathBuf};
 /// Returns `None` rather than guessing for anything that would escape the store
 /// or collapse two repositories onto one path: an empty owner or repo, or a
 /// segment that is `.`/`..` or contains a separator.
+/// `<host>/<owner>/<repo>` for a clone URL — the scope a worktree hangs under.
+///
+/// Shared with [`canonical_repo_dir`] so the mirror tree and the worktree tree
+/// are derived by one rule and cannot drift apart.
+pub fn repo_scope(clone_url: &str) -> Option<Vec<String>> {
+    let trimmed = clone_url.trim();
+    // A plain filesystem path is a legitimate remote (`git clone /srv/x.git`,
+    // and every test fixture). It has no host, so it scopes under a reserved
+    // `local` segment using the last two path components — enough to keep two
+    // local remotes apart without embedding an absolute path in the tree.
+    let Some((host, path)) = split_remote(trimmed) else {
+        if !trimmed.starts_with('/') {
+            return None;
+        }
+        let stripped = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        let mut tail: Vec<String> = stripped
+            .rsplit('/')
+            .filter(|segment| !segment.is_empty())
+            .take(2)
+            .filter_map(|segment| sanitize(segment).map(str::to_string))
+            .collect();
+        tail.reverse();
+        if tail.is_empty() {
+            return None;
+        }
+        let mut out = vec!["local".to_string()];
+        out.extend(tail);
+        return Some(out);
+    };
+    let mut segments = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty());
+    // Every segment of the path, with the trailing `.git` dropped. Unlike the
+    // mirror's own layout this does NOT require an owner: `host/repo` is a
+    // valid remote, and refusing it would make the repository unscopeable and
+    // therefore unusable as a sandbox.
+    let mut parts: Vec<&str> = segments.collect();
+    let last = parts.pop()?;
+    let mut out = vec![sanitize(&host.to_lowercase())?.to_string()];
+    for segment in parts {
+        out.push(sanitize(segment)?.to_string());
+    }
+    out.push(sanitize(last.strip_suffix(".git").unwrap_or(last))?.to_string());
+    Some(out)
+}
+
 pub fn canonical_repo_dir(app_root: &Path, clone_url: &str) -> Option<PathBuf> {
     let (host, path) = split_remote(clone_url.trim())?;
     let mut segments = path

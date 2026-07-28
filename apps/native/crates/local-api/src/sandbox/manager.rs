@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 
 use crate::config::ConfigStore;
 use crate::events::Broadcaster;
@@ -222,6 +221,17 @@ impl SandboxManager {
 
     /// Whether `handle` has durable config, independently of whether this
     /// process has materialized its live Rust objects yet.
+    /// The worktree handle an agent uses for `branch`, via the registry —
+    /// the routes the shell calls carry `(virtualMcpId, branch)`, never a
+    /// clone URL, and the handle is derived from the repository.
+    pub fn handle_for_agent(
+        &self,
+        virtual_mcp_id: &str,
+        branch: &str,
+    ) -> Result<Option<String>, String> {
+        self.registry.handle_for_agent(virtual_mcp_id, branch)
+    }
+
     pub fn is_registered(&self, handle: &str) -> Result<bool, String> {
         self.registry.contains(handle)
     }
@@ -239,21 +249,26 @@ impl SandboxManager {
         self.registry.record(handle)
     }
 
-    /// `<branchSlug>-<hash16>` — reuses prod's shape
-    /// (`packages/sandbox/server/provider/shared/handle.ts`) for legibility;
-    /// `userId` is constant on desktop (single-user machine) so it's omitted
-    /// from the hash input entirely rather than hashing a fixed placeholder.
-    /// `hash16` = the first 8 bytes (16 hex chars) of
-    /// `sha256("<virtualMcpId>:<branch>")`.
-    pub fn compute_handle(virtual_mcp_id: &str, branch: &str) -> String {
-        let slug = slugify_branch(branch);
-        let mut hasher = Sha256::new();
-        hasher.update(virtual_mcp_id.as_bytes());
-        hasher.update(b":");
-        hasher.update(branch.as_bytes());
-        let digest = hasher.finalize();
-        let hash16: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
-        format!("{slug}-{hash16}")
+    /// `<host>/<owner>/<repo>/<branch>` — the worktree's path under
+    /// `worktrees/`, and its identity everywhere else.
+    ///
+    /// No hash and no `virtualMcpId`: the repository scope already makes this
+    /// unique, so the handle can simply BE the branch under its repo. That is
+    /// what lets the directory, the local git branch, the remote branch and
+    /// the UI carry ONE name — a hashed handle forced a second, different name
+    /// into the git layer, and every bug that followed came from the two
+    /// disagreeing.
+    ///
+    /// The branch is slugified, so it is always exactly one path segment:
+    /// `feature/foo` becomes `feature-foo` rather than nesting a level.
+    ///
+    /// One worktree per `(repo, branch)` is the deliberate consequence — two
+    /// agents on one branch share it, which is the only honest thing to do
+    /// with two working copies of the same branch.
+    pub fn compute_handle(clone_url: &str, branch: &str) -> Option<String> {
+        let mut scope = super::repo_store::repo_scope(clone_url)?;
+        scope.push(slugify_branch(branch));
+        Some(scope.join("/"))
     }
 
     /// Bring up this sandbox's organization filesystem, and say in the
@@ -328,7 +343,11 @@ impl SandboxManager {
     /// isn't — writes would silently land outside the branch they belong to.
     /// A git-backed run stays under its own handle or it doesn't run at all.
     pub fn workdir_for(&self, cfg: &GitSandboxConfig) -> PathBuf {
-        let handle = Self::compute_handle(&cfg.virtual_mcp_id, normalized_branch(cfg));
+        // An unscopeable clone URL is not a git-backed sandbox; fall back to
+        // the global repo dir exactly as a config with no repository does.
+        let Some(handle) = Self::compute_handle(&cfg.clone_url, normalized_branch(cfg)) else {
+            return self.app_root.join("repo");
+        };
         self.app_root
             .join(crate::sandbox::WORKTREES_DIR)
             .join(handle)
@@ -593,7 +612,8 @@ impl SandboxManager {
             return Err("sandbox manager is shutting down".to_string());
         }
         let branch = normalized_branch(cfg).to_string();
-        let handle = Self::compute_handle(&cfg.virtual_mcp_id, &branch);
+        let handle = Self::compute_handle(&cfg.clone_url, &branch)
+            .ok_or_else(|| format!("clone URL cannot be scoped: {}", cfg.clone_url))?;
         let handle_lock = self.handle_lock(&handle);
         let _permit = handle_lock.lock().await;
         if self.is_closing() {
@@ -851,7 +871,8 @@ impl SandboxManager {
             return Err("sandbox manager is shutting down".to_string());
         }
         let branch = normalized_branch(cfg).to_string();
-        let handle = Self::compute_handle(&cfg.virtual_mcp_id, &branch);
+        let handle = Self::compute_handle(&cfg.clone_url, &branch)
+            .ok_or_else(|| format!("clone URL cannot be scoped: {}", cfg.clone_url))?;
 
         // Serialize the ENTIRE ensure operation for one handle. The previous
         // implementation released this lock immediately after inserting the
@@ -1607,22 +1628,36 @@ mod tests {
     }
 
     #[test]
-    fn compute_handle_is_deterministic_and_branch_sensitive() {
-        let a1 = SandboxManager::compute_handle("vmcp-1", "main");
-        let a2 = SandboxManager::compute_handle("vmcp-1", "main");
+    fn compute_handle_is_the_repository_scope_and_branch() {
+        let a1 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "main")
+            .expect("scopeable clone url");
+        let a2 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "main")
+            .expect("scopeable clone url");
         assert_eq!(a1, a2, "same inputs must hash identically");
 
-        let b = SandboxManager::compute_handle("vmcp-1", "feature");
+        let b = SandboxManager::compute_handle("https://github.com/acme/repo-1", "feature")
+            .expect("scopeable clone url");
         assert_ne!(a1, b, "different branches must produce different handles");
 
-        let c = SandboxManager::compute_handle("vmcp-2", "main");
+        let c = SandboxManager::compute_handle("https://github.com/acme/repo-2", "main")
+            .expect("scopeable clone url");
         assert_ne!(
             a1, c,
-            "different virtualMcpId must produce different handles"
+            "different repositories must produce different handles"
         );
 
-        assert!(a1.starts_with("main-"), "handle should be slug-prefixed");
-        assert!(b.starts_with("feature-"));
+        // The handle IS `<host>/<owner>/<repo>/<branch>` — that identity is
+        // what lets the directory, the git branch and the UI carry one name.
+        assert_eq!(a1, "github.com/acme/repo-1/main");
+        assert_eq!(b, "github.com/acme/repo-1/feature");
+        // A branch with a slash stays ONE segment, so the tree never nests
+        // deeper than the scheme promises.
+        let nested =
+            SandboxManager::compute_handle("https://github.com/acme/repo-1", "feature/foo")
+                .expect("scopeable clone url");
+        assert_eq!(nested, "github.com/acme/repo-1/feature-foo");
+        // A remote this cannot scope is not a git-backed sandbox.
+        assert!(SandboxManager::compute_handle("", "main").is_none());
     }
 
     /// A git-backed run must resolve under its OWN handle even when `ensure`
@@ -1653,9 +1688,13 @@ mod tests {
         // where a later successful ensure will put the checkout.
         assert_eq!(main, manager.workdir_for(&config(None)));
         assert_eq!(main, manager.workdir_for(&config(Some(""))));
-        assert_eq!(
-            main.parent().and_then(|p| p.file_name()),
-            Some(SandboxManager::compute_handle("vmcp-1", "main").as_ref())
+        // The handle is now a multi-segment path (`<host>/<owner>/<repo>/<branch>`),
+        // so the worktree lives at `<app_root>/worktrees/<handle>/repo`.
+        let handle = SandboxManager::compute_handle("https://github.com/acme/site.git", "main")
+            .expect("scopeable clone url");
+        assert!(
+            main.ends_with(std::path::Path::new(&handle).join("repo")),
+            "{main:?} should end with {handle}/repo"
         );
         // Two branches of one agent must not share a directory.
         assert_ne!(main, manager.workdir_for(&config(Some("feature"))));
@@ -2069,7 +2108,9 @@ mod tests {
             branch: Some("main".to_string()),
             ..Default::default()
         };
-        let handle = SandboxManager::compute_handle("vmcp-partial-git", "main");
+        let handle =
+            SandboxManager::compute_handle("https://github.com/acme/repo-partial-git", "main")
+                .expect("scopeable clone url");
         let sandbox_path = app_root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
@@ -2155,39 +2196,26 @@ mod tests {
         assert_ne!(record.error.as_deref(), Some("stale failure"));
     }
 
-    #[tokio::test]
-    async fn ensure_rejects_an_unrelated_clone_url_change_for_the_same_handle() {
-        // `ConfigStore::patch`'s identity-conflict guard fires if the SAME
-        // handle is somehow re-ensured with a genuinely different repo — a
-        // defensive check since `virtualMcpId`+`branch` should always
-        // determine one repo, but a caller bug (or a real handle collision)
-        // must fail loudly, not silently clone over the wrong directory.
-        let (_root, clone_url) = setup_two_branch_repo();
-        let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
-
-        manager
-            .ensure(&GitSandboxConfig {
-                virtual_mcp_id: "vmcp-1".to_string(),
-                clone_url,
-                branch: Some("main".to_string()),
-                ..Default::default()
-            })
-            .await
-            .expect("first ensure succeeds");
-
-        let result = manager
-            .ensure(&GitSandboxConfig {
-                virtual_mcp_id: "vmcp-1".to_string(),
-                clone_url: "https://example.com/totally/different.git".to_string(),
-                branch: Some("main".to_string()),
-                ..Default::default()
-            })
-            .await;
-        let Err(err) = result else {
-            panic!("a different cloneUrl for the same handle must be rejected");
-        };
-        assert!(err.contains("immutable"));
+    /// Inverted: a different repository can no longer reach the same handle.
+    ///
+    /// The handle IS `<host>/<owner>/<repo>/<branch>`, so changing the clone
+    /// URL changes the handle by construction — the identity-conflict guard
+    /// this used to exercise now protects a state that cannot be reached, and
+    /// two repositories simply get two worktrees.
+    #[test]
+    fn two_repositories_can_never_share_a_handle() {
+        let a = SandboxManager::compute_handle("https://github.com/acme/one.git", "main")
+            .expect("scopeable clone url");
+        let b = SandboxManager::compute_handle("https://github.com/acme/two.git", "main")
+            .expect("scopeable clone url");
+        assert_ne!(a, b);
+        // ...and the same repository reached by a different URL spelling does.
+        let ssh = SandboxManager::compute_handle("git@github.com:acme/one.git", "main")
+            .expect("scopeable clone url");
+        assert_eq!(
+            a, ssh,
+            "one repository is one worktree, however it is spelled"
+        );
     }
 
     // --- Resurrection (persisted-sidecar self-heal) -------------------------

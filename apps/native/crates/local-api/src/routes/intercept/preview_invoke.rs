@@ -24,7 +24,6 @@ use serde_json::{Map, Value};
 
 use super::sandbox_fs::decode_identity_segment;
 use crate::error::ApiError;
-use crate::sandbox::SandboxManager;
 use crate::state::AppState;
 
 /// Cap on the invoke body, mirroring `PREVIEW_INVOKE_MAX_BODY_BYTES`.
@@ -76,7 +75,14 @@ async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Byt
         return ApiError::bad_request("Invalid or missing __resolveType").into_response();
     };
 
-    let handle = SandboxManager::compute_handle(virtual_mcp_id, branch);
+    // Keyed by (virtualMcpId, branch); the worktree handle is derived from the
+    // repository, so the registry is what bridges them.
+    let Ok(Some(handle)) = state
+        .sandbox_manager
+        .handle_for_agent(virtual_mcp_id, branch)
+    else {
+        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response();
+    };
     let Some(port) = state
         .sandbox_manager
         .get(&handle)

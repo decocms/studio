@@ -478,7 +478,11 @@ async fn durable_sandbox_repo_dirs(app_root: &Path) -> Vec<PathBuf> {
             .as_deref()
             .filter(|branch| !branch.is_empty())
             .unwrap_or("main");
-        if crate::sandbox::SandboxManager::compute_handle(&config.virtual_mcp_id, branch) != handle
+        // The handle is derived from the REPOSITORY and branch, so a sidecar
+        // whose clone URL cannot be scoped is not a git-backed sandbox and
+        // cannot own this directory either.
+        if crate::sandbox::SandboxManager::compute_handle(&config.clone_url, branch).as_deref()
+            != Some(handle.as_str())
         {
             tracing::warn!(
                 handle,

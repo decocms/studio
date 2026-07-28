@@ -63,7 +63,23 @@ pub(super) async fn try_dispatch(
             return Some(error.into_response());
         }
     }
-    let handle = crate::sandbox::SandboxManager::compute_handle(&virtual_mcp_id, &branch);
+    // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
+    // derived from the REPOSITORY — the registry is what bridges them.
+    let handle = match state
+        .sandbox_manager
+        .handle_for_agent(&virtual_mcp_id, &branch)
+    {
+        Ok(Some(handle)) => handle,
+        Ok(None) => {
+            return Some(
+                ApiError::not_found(format!(
+                    "no worktree for {virtual_mcp_id} on branch {branch}"
+                ))
+                .into_response(),
+            )
+        }
+        Err(error) => return Some(ApiError::internal(error).into_response()),
+    };
 
     let record = match state.sandbox_manager.registry_record(&handle) {
         Ok(Some(record)) => record,

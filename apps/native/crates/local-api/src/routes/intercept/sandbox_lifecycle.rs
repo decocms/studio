@@ -519,7 +519,14 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
         return ApiError::bad_request("branch is required").into_response();
     };
 
-    let handle = crate::sandbox::SandboxManager::compute_handle(virtual_mcp_id, branch);
+    let Ok(Some(handle)) = state
+        .sandbox_manager
+        .handle_for_agent(virtual_mcp_id, branch)
+    else {
+        // Nothing registered for this agent+branch: deleting it is a no-op,
+        // not an error, so a repeated delete stays idempotent.
+        return Json(json!({ "success": true })).into_response();
+    };
     match state.sandbox_manager.stop_registered(&handle).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(error) => {
@@ -572,7 +579,15 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         .branch
         .clone()
         .unwrap_or_else(|| DEFAULT_BRANCH.to_string());
-    let handle = crate::sandbox::SandboxManager::compute_handle(virtual_mcp_id, &resolved_branch);
+    let Some(handle) =
+        crate::sandbox::SandboxManager::compute_handle(&config.clone_url, &resolved_branch)
+    else {
+        return ApiError::bad_request(format!(
+            "this agent's repository URL cannot be scoped: {}",
+            config.clone_url
+        ))
+        .into_response();
+    };
     let existed = state
         .sandbox_manager
         .is_registered(&handle)
