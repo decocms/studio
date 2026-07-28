@@ -47,4 +47,50 @@ describe("authEnvSchema", () => {
       emailProviderId: "sendgrid",
     });
   });
+
+  it("rejects Microsoft SSO configured without a client secret", () => {
+    expect(() =>
+      authEnvSchema.parse({
+        AUTH_SSO_DOMAIN: "acme.com",
+        AUTH_SSO_MS_CLIENT_ID: "client-id",
+        AUTH_SSO_MS_TENANT_ID: "tenant-id",
+      }),
+    ).toThrow(/AUTH_SSO_MS_CLIENT_SECRET/);
+  });
+
+  it("rejects Microsoft SSO configured without a tenant id", () => {
+    expect(() =>
+      authEnvSchema.parse({
+        AUTH_SSO_DOMAIN: "acme.com",
+        AUTH_SSO_MS_CLIENT_ID: "client-id",
+        AUTH_SSO_MS_CLIENT_SECRET: "secret",
+      }),
+    ).toThrow(/AUTH_SSO_MS_TENANT_ID/);
+  });
+
+  it("rejects Google SSO configured without a client secret", () => {
+    expect(() =>
+      authEnvSchema.parse({
+        AUTH_SSO_DOMAIN: "acme.com",
+        AUTH_SSO_GOOGLE_CLIENT_ID: "client-id",
+      }),
+    ).toThrow(/AUTH_SSO_GOOGLE_CLIENT_SECRET/);
+  });
+
+  it("accepts Microsoft SSO when fully configured", () => {
+    const config = authEnvSchema.parse({
+      AUTH_SSO_DOMAIN: "acme.com",
+      AUTH_SSO_MS_CLIENT_ID: "client-id",
+      AUTH_SSO_MS_CLIENT_SECRET: "secret",
+      AUTH_SSO_MS_TENANT_ID: "tenant-id",
+    });
+    expect(config.ssoConfig).toEqual({
+      providerId: "microsoft",
+      domain: "acme.com",
+      MS_TENANT_ID: "tenant-id",
+      MS_CLIENT_ID: "client-id",
+      MS_CLIENT_SECRET: "secret",
+      scopes: ["openid", "email", "profile"],
+    });
+  });
 });

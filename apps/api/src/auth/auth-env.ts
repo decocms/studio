@@ -111,6 +111,38 @@ export const authEnvSchema = z
           "AUTH_EMAIL_OTP_ENABLED=true requires AUTH_RESEND_API_KEY or AUTH_SENDGRID_API_KEY to be set",
       });
     }
+
+    if (env.AUTH_SSO_MS_CLIENT_ID && env.AUTH_SSO_DOMAIN) {
+      if (!env.AUTH_SSO_MS_CLIENT_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["AUTH_SSO_MS_CLIENT_SECRET"],
+          message:
+            "AUTH_SSO_MS_CLIENT_ID and AUTH_SSO_DOMAIN are set but AUTH_SSO_MS_CLIENT_SECRET is not",
+        });
+      }
+      if (!env.AUTH_SSO_MS_TENANT_ID) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["AUTH_SSO_MS_TENANT_ID"],
+          message:
+            "AUTH_SSO_MS_CLIENT_ID and AUTH_SSO_DOMAIN are set but AUTH_SSO_MS_TENANT_ID is not",
+        });
+      }
+    }
+
+    if (
+      env.AUTH_SSO_GOOGLE_CLIENT_ID &&
+      env.AUTH_SSO_DOMAIN &&
+      !env.AUTH_SSO_GOOGLE_CLIENT_SECRET
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_SSO_GOOGLE_CLIENT_SECRET"],
+        message:
+          "AUTH_SSO_GOOGLE_CLIENT_ID and AUTH_SSO_DOMAIN are set but AUTH_SSO_GOOGLE_CLIENT_SECRET is not",
+      });
+    }
   })
   .transform((env) => {
     // ── Social providers ───────────────────────────────────────────
