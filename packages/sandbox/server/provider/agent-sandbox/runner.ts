@@ -1377,7 +1377,6 @@ export class AgentSandboxProvider implements SandboxProvider {
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
       ...(opts ? { cloneOnly: opts.cloneOnly === true } : {}),
-      productionUrl: opts?.workload?.productionUrl,
     });
   }
 

@@ -1,57 +1,71 @@
 import { describe, expect, it } from "bun:test";
-import { buildFastPreviewDaemonUrl } from "./section-preview-url";
+import { buildDraftPreviewUrl } from "./section-preview-url";
 
-describe("buildFastPreviewDaemonUrl", () => {
-  it("targets /_sandbox/fast-preview on the daemon (previewUrl) origin", () => {
-    const href = buildFastPreviewDaemonUrl({
-      previewUrl: "https://abc.deco.host/ignored?x=1",
-      pageBlockKey: "pages-home-abc",
-      path: "/",
-      pathTemplate: "/",
-      nonce: 0,
-    });
-    const url = new URL(href);
-    expect(url.origin).toBe("https://abc.deco.host");
-    expect(url.pathname).toBe("/_sandbox/fast-preview");
-  });
+const PROD = "https://www.acme.com";
 
-  it("passes the page block key, path, and pathTemplate as query params", () => {
+describe("buildDraftPreviewUrl", () => {
+  it("targets the real page on the production origin", () => {
+    // Not the daemon and not /live/previews: the site renders its OWN route, so
+    // hydration and in-preview navigation work.
     const url = new URL(
-      buildFastPreviewDaemonUrl({
-        previewUrl: "https://abc.deco.host",
-        pageBlockKey: "site/pages/Landing.tsx",
-        path: "/lp/shoes",
-        pathTemplate: "/lp/:slug",
-        nonce: 3,
+      buildDraftPreviewUrl({
+        productionUrl: PROD,
+        sandboxHandle: "gimenes-abc-1234",
+        version: "ff00",
+        path: "/blog/hello",
       }),
     );
-    expect(url.searchParams.get("component")).toBe("site/pages/Landing.tsx");
-    expect(url.searchParams.get("path")).toBe("/lp/shoes");
-    expect(url.searchParams.get("pathTemplate")).toBe("/lp/:slug");
+    expect(url.origin).toBe(PROD);
+    expect(url.pathname).toBe("/blog/hello");
   });
 
-  it("carries the nonce so a bump produces a distinct URL (forces reload)", () => {
-    const base = {
-      previewUrl: "https://abc.deco.host",
-      pageBlockKey: "pages-home-abc",
-      path: "/",
-      pathTemplate: "/",
-    };
-    const a = buildFastPreviewDaemonUrl({ ...base, nonce: 1 });
-    const b = buildFastPreviewDaemonUrl({ ...base, nonce: 2 });
-    expect(new URL(a).searchParams.get("__cb")).toBe("1");
-    expect(a).not.toBe(b);
+  it("carries the pointer as <handle>@<version>, never a URL", () => {
+    // A URL here would make the site fetch caller-supplied origins — the SSRF
+    // surface the suffix-based design exists to avoid.
+    const url = new URL(
+      buildDraftPreviewUrl({
+        productionUrl: PROD,
+        sandboxHandle: "gimenes-abc-1234",
+        version: "ff00",
+        path: "/",
+      }),
+    );
+    expect(url.searchParams.get("__draft")).toBe("gimenes-abc-1234@ff00");
   });
 
-  it("does not embed the decofile (no URL-size cap)", () => {
-    const href = buildFastPreviewDaemonUrl({
-      previewUrl: "https://abc.deco.host",
-      pageBlockKey: "pages-home-abc",
-      path: "/",
-      pathTemplate: "/",
-      nonce: 0,
-    });
-    expect(href).not.toContain("__decofile");
-    expect(href.length).toBeLessThan(200);
+  it("changes with the version, so a save re-navigates the frame", () => {
+    const at = (version: string) =>
+      buildDraftPreviewUrl({
+        productionUrl: PROD,
+        sandboxHandle: "h",
+        version,
+        path: "/",
+      });
+    expect(at("v1")).not.toBe(at("v2"));
+  });
+
+  it("preserves a production origin that carries a trailing slash", () => {
+    const url = new URL(
+      buildDraftPreviewUrl({
+        productionUrl: "https://fila.vtex.app/",
+        sandboxHandle: "h",
+        version: "v1",
+        path: "/institucional/historia",
+      }),
+    );
+    expect(url.origin).toBe("https://fila.vtex.app");
+    expect(url.pathname).toBe("/institucional/historia");
+  });
+
+  it("keeps path params already filled in", () => {
+    const url = new URL(
+      buildDraftPreviewUrl({
+        productionUrl: PROD,
+        sandboxHandle: "h",
+        version: "v1",
+        path: "/produto/tenis-123/p",
+      }),
+    );
+    expect(url.pathname).toBe("/produto/tenis-123/p");
   });
 });
