@@ -159,30 +159,45 @@ interface JsonFileStorageOptions {
 export class JsonFileStorage implements TriggerStorage {
   private path: string;
   private cache: Map<string, TriggerState> | null = null;
+  private loading: Promise<Map<string, TriggerState>> | null = null;
 
   constructor(options: JsonFileStorageOptions) {
     this.path = options.path;
   }
 
+  // Concurrent set()/delete() calls before the first load completes must
+  // share one in-flight read — otherwise each independently reads the file,
+  // builds its own Map, and reassigns `this.cache`, silently dropping
+  // whichever write's Map object loses the race.
   private async load(): Promise<Map<string, TriggerState>> {
     if (this.cache) return this.cache;
-    try {
-      const fs = await import("node:fs/promises");
-      const raw = await fs.readFile(this.path, "utf-8");
-      const data = JSON.parse(raw) as Record<string, TriggerState>;
-      this.cache = new Map(Object.entries(data));
-    } catch (err: unknown) {
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err as NodeJS.ErrnoException).code === "ENOENT"
-      ) {
-        this.cache = new Map();
-      } else {
-        throw err;
+    if (this.loading) return this.loading;
+
+    this.loading = (async () => {
+      try {
+        const fs = await import("node:fs/promises");
+        const raw = await fs.readFile(this.path, "utf-8");
+        const data = JSON.parse(raw) as Record<string, TriggerState>;
+        this.cache = new Map(Object.entries(data));
+      } catch (err: unknown) {
+        if (
+          err instanceof Error &&
+          "code" in err &&
+          (err as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+          this.cache = new Map();
+        } else {
+          throw err;
+        }
       }
+      return this.cache as Map<string, TriggerState>;
+    })();
+
+    try {
+      return await this.loading;
+    } finally {
+      this.loading = null;
     }
-    return this.cache;
   }
 
   private async save(): Promise<void> {

@@ -1,5 +1,8 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { StudioKV } from "./trigger-storage.ts";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { JsonFileStorage, StudioKV } from "./trigger-storage.ts";
 
 describe("StudioKV.get", () => {
   const kv = new StudioKV({ url: "https://studio.test", apiKey: "key" });
@@ -46,5 +49,34 @@ describe("StudioKV.get", () => {
       credentials: { callbackUrl: "https://x", callbackToken: "tok" },
       activeTriggerTypes: ["github.push"],
     });
+  });
+});
+
+describe("JsonFileStorage", () => {
+  const state = (token: string) => ({
+    credentials: { callbackUrl: "https://x", callbackToken: token },
+    activeTriggerTypes: ["github.push"],
+  });
+
+  it("keeps both writes when set() is called concurrently before the first load resolves", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+    const path = join(dir, "state.json");
+    const storage = new JsonFileStorage({ path });
+
+    try {
+      await Promise.all([
+        storage.set("conn-a", state("token-a")),
+        storage.set("conn-b", state("token-b")),
+      ]);
+
+      expect(await storage.get("conn-a")).toEqual(state("token-a"));
+      expect(await storage.get("conn-b")).toEqual(state("token-b"));
+
+      const onDisk = JSON.parse(await readFile(path, "utf-8"));
+      expect(onDisk["conn-a"]).toEqual(state("token-a"));
+      expect(onDisk["conn-b"]).toEqual(state("token-b"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
