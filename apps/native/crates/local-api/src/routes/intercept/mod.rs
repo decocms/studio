@@ -68,6 +68,7 @@
 
 mod agent_sessions;
 pub mod decopilot;
+mod git_assist;
 pub mod link_current;
 mod preview_invoke;
 pub(crate) mod run_spool;
@@ -153,7 +154,7 @@ pub async fn try_intercept(
         return Some(response);
     }
 
-    if let Some(response) = agent_sessions::try_dispatch(state, method, path, &rest, query).await {
+    if let Some(response) = agent_sessions::try_dispatch(state, method, &rest, query).await {
         return Some(response);
     }
 
