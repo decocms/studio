@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +59,11 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
+import {
+  useTaskBoardActivity,
+  type TaskBoardActivity,
+} from "@/hooks/use-task-board-activity";
+import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 
@@ -184,7 +189,7 @@ export function TaskBoardItemDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[85vh] sm:max-h-[640px] sm:max-w-[850px]"
+        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
@@ -227,12 +232,12 @@ export function TaskBoardItemDialog({
               className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
             />
 
-            <div className="group relative flex flex-1 flex-col">
+            <div className="group relative flex flex-col">
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
-                className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
+                className="min-h-[96px] w-full resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
               />
               {description && (
                 <Button
@@ -258,17 +263,13 @@ export function TaskBoardItemDialog({
               />
             )}
 
-            {item && item.threads.length > 0 && (
-              <div className="flex flex-col gap-3">
-                {item.threads.map((th) => (
-                  <ThreadActivityItem
-                    key={th.threadId}
-                    thread={th}
-                    startedBy={assignedBy ?? assignee}
-                    onOpen={onOpenThread}
-                  />
-                ))}
-              </div>
+            {item && (
+              <ActivitySection
+                item={item}
+                members={members}
+                startedBy={assignedBy ?? assignee}
+                onOpenThread={onOpenThread}
+              />
             )}
           </div>
 
@@ -840,6 +841,207 @@ function LinksSection({
             className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
           />
         </a>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Activity feed: the task's change timeline (created, moved, (re)assigned) and
+ * its linked agent sessions, interleaved oldest-first. Consecutive timeline
+ * events render as one run joined by a rail; a thread renders as a card.
+ */
+function ActivitySection({
+  item,
+  members,
+  startedBy,
+  onOpenThread,
+}: {
+  item: TaskBoardItem;
+  members: Member[];
+  startedBy?: Member;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
+  const t = useT();
+  const { data: activity } = useTaskBoardActivity(item.id);
+  const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  type Ev =
+    | { kind: "activity"; at: number; activity: TaskBoardActivity }
+    | { kind: "thread"; at: number; thread: TaskBoardItemThread };
+  const events: Ev[] = [
+    ...(activity ?? []).map(
+      (a): Ev => ({
+        kind: "activity",
+        at: new Date(a.createdAt).getTime(),
+        activity: a,
+      }),
+    ),
+    ...item.threads.map(
+      (thread): Ev => ({
+        kind: "thread",
+        at: new Date(thread.createdAt).getTime(),
+        thread,
+      }),
+    ),
+  ].sort((a, b) => a.at - b.at);
+
+  if (events.length === 0) return null;
+
+  // Group consecutive timeline events so their avatars connect with a rail.
+  const blocks: (
+    | { type: "timeline"; items: TaskBoardActivity[] }
+    | { type: "thread"; thread: TaskBoardItemThread }
+  )[] = [];
+  for (const ev of events) {
+    if (ev.kind === "thread") {
+      blocks.push({ type: "thread", thread: ev.thread });
+      continue;
+    }
+    const last = blocks[blocks.length - 1];
+    if (last?.type === "timeline") last.items.push(ev.activity);
+    else blocks.push({ type: "timeline", items: [ev.activity] });
+  }
+
+  return (
+    <div className="flex flex-col gap-5 pb-2">
+      <span className="text-xs font-medium text-muted-foreground">
+        {t("taskBoard.taskDialog.activityLabel")}
+      </span>
+      {blocks.map((block, i) =>
+        block.type === "timeline" ? (
+          <TimelineBlock
+            // Blocks are positional runs of the same feed, so the index IS the
+            // identity here — there's no stabler key for a group.
+            key={`timeline-${i}`}
+            items={block.items}
+            memberByUserId={memberByUserId}
+          />
+        ) : (
+          <ThreadActivityItem
+            key={`thread-${block.thread.threadId}`}
+            thread={block.thread}
+            startedBy={startedBy}
+            onOpen={onOpenThread}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** Human-readable text for one timeline event. */
+function describeActivity(
+  a: TaskBoardActivity,
+  t: ReturnType<typeof useT>,
+  memberByUserId: Map<string, Member>,
+): string {
+  const statusLabel = (s: unknown) => {
+    const cfg =
+      typeof s === "string"
+        ? STATUS_CONFIG[s as keyof typeof STATUS_CONFIG]
+        : undefined;
+    return cfg ? t(cfg.labelKey) : String(s ?? "");
+  };
+  const d = a.data;
+  switch (a.kind) {
+    case "created":
+      return t("taskBoard.taskDialog.activityCreated");
+    case "status_changed":
+      return d.from
+        ? t("taskBoard.taskDialog.activityMovedFromTo", {
+            from: statusLabel(d.from),
+            to: statusLabel(d.to),
+          })
+        : t("taskBoard.taskDialog.activityMovedTo", {
+            to: statusLabel(d.to),
+          });
+    case "assignee_changed":
+      if (d.to === SUPER_AGENT_ASSIGNEE_ID)
+        return t("taskBoard.taskDialog.activityDelegated");
+      if (d.to == null) return t("taskBoard.taskDialog.activityUnassigned");
+      return t("taskBoard.taskDialog.activityAssigned", {
+        name:
+          (typeof d.to === "string" && memberByUserId.get(d.to)?.user?.name) ||
+          t("taskBoard.taskDialog.someoneLabel"),
+      });
+    default: {
+      const _exhaustive: never = a.kind;
+      return String(_exhaustive);
+    }
+  }
+}
+
+/** True for the machine actor behind an agent-driven change. */
+function isMachineActor(actorId: string | null): boolean {
+  return (
+    !actorId || actorId === "system" || actorId === SUPER_AGENT_ASSIGNEE_ID
+  );
+}
+
+/** A run of consecutive timeline events, avatars joined by a vertical rail. */
+function TimelineBlock({
+  items,
+  memberByUserId,
+}: {
+  items: TaskBoardActivity[];
+  memberByUserId: Map<string, Member>;
+}) {
+  const t = useT();
+
+  const actorName = (actorId: string | null) => {
+    if (isMachineActor(actorId)) {
+      return t("taskBoard.taskDialog.superAgentLabel");
+    }
+    return (
+      memberByUserId.get(actorId!)?.user?.name ??
+      t("taskBoard.taskDialog.someoneLabel")
+    );
+  };
+
+  const actorAvatar = (actorId: string | null): ReactNode => {
+    if (isMachineActor(actorId)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <SuperAgentIcon size={16} />
+        </span>
+      );
+    }
+    const member = memberByUserId.get(actorId!);
+    return (
+      <span className="z-10 shrink-0 rounded-full bg-background">
+        <Avatar
+          url={member?.user?.image ?? undefined}
+          fallback={getInitials(member?.user?.name)}
+          shape="circle"
+          size="2xs"
+        />
+      </span>
+    );
+  };
+
+  return (
+    <div className="relative flex flex-col gap-4">
+      {items.length > 1 && (
+        <span
+          aria-hidden
+          className="absolute bottom-3 left-2 top-3 w-px bg-border"
+        />
+      )}
+      {items.map((a) => (
+        <div key={a.id} className="relative flex items-center gap-2.5">
+          {actorAvatar(a.actorId)}
+          <span className="min-w-0 truncate text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {actorName(a.actorId)}
+            </span>{" "}
+            {describeActivity(a, t, memberByUserId)}
+            <span className="text-muted-foreground/60">
+              {" · "}
+              {formatTimeAgo(new Date(a.createdAt))}
+            </span>
+          </span>
+        </div>
       ))}
     </div>
   );

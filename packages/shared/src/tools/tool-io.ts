@@ -412,6 +412,19 @@ export interface StudioToolIO {
       }[];
     };
   };
+  TASK_BOARD_ACTIVITY_LIST: {
+    input: { taskBoardItemId: string };
+    output: {
+      activity: {
+        id: string;
+        taskBoardItemId: string;
+        kind: "created" | "status_changed" | "assignee_changed";
+        actorId: string | null;
+        data: Record<string, unknown>;
+        createdAt: string;
+      }[];
+    };
+  };
   BRAND_CONTEXT_LIST: {
     input: { includeArchived?: boolean | undefined };
     output: {

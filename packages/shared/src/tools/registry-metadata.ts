@@ -233,6 +233,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
+  "TASK_BOARD_ACTIVITY_LIST",
 ] as const;
 
 /**
@@ -1099,6 +1100,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get a task board item's linked pull requests with live state",
     category: "Task Board",
   },
+  {
+    name: "TASK_BOARD_ACTIVITY_LIST",
+    description: "List a task board item's change history",
+    category: "Task Board",
+  },
 ];
 
 // ============================================================================
@@ -1202,6 +1208,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
+      "TASK_BOARD_ACTIVITY_LIST",
     ],
   },
   // Organization

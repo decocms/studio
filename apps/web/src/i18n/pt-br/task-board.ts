@@ -46,6 +46,13 @@ export const taskBoard = {
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
+  "taskBoard.taskDialog.activityLabel": "Atividade",
+  "taskBoard.taskDialog.activityCreated": "criou a tarefa",
+  "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
+  "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
+  "taskBoard.taskDialog.activityAssigned": "atribuiu para {name}",
+  "taskBoard.taskDialog.activityUnassigned": "removeu a atribuição",
+  "taskBoard.taskDialog.activityDelegated": "delegou ao Super Agent",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.assignToPlaceholder": "Atribuir a…",
   "taskBoard.taskDialog.clearDueDateAriaLabel": "Limpar data de vencimento",

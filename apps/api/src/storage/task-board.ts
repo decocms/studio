@@ -8,6 +8,8 @@
 import type { Kysely } from "kysely";
 import type {
   Database,
+  TaskBoardActivity,
+  TaskBoardActivityKind,
   TaskBoardItem,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
@@ -461,6 +463,59 @@ export class TaskBoardStorage {
     }
 
     for (const item of items) item.threads = byItem.get(item.id) ?? [];
+  }
+
+  // --------------------------------------------------------------------------
+  // Activity log (the card's change timeline)
+  // --------------------------------------------------------------------------
+
+  /** Append one activity event. Best-effort at the call site — never let a log
+   *  write fail the change it describes. */
+  async recordActivity(params: {
+    organizationId: string;
+    taskBoardItemId: string;
+    kind: TaskBoardActivityKind;
+    actorId: string | null;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.db
+      .insertInto("task_board_activity")
+      .values({
+        id: generatePrefixedId("act"),
+        organization_id: params.organizationId,
+        task_board_item_id: params.taskBoardItemId,
+        kind: params.kind,
+        actor_id: params.actorId,
+        data: params.data ? JSON.stringify(params.data) : null,
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+  }
+
+  /** A task's activity, oldest first (timeline order). */
+  async listActivity(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardActivity[]> {
+    const rows = await this.db
+      .selectFrom("task_board_activity")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .orderBy("created_at", "asc")
+      .execute();
+    return rows.map((row) => ({
+      id: row.id,
+      taskBoardItemId: row.task_board_item_id,
+      kind: row.kind as TaskBoardActivityKind,
+      actorId: row.actor_id,
+      data:
+        typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? {}),
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : row.created_at,
+    }));
   }
 
   private itemFromDbRow(row: {

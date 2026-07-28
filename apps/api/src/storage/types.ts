@@ -1713,6 +1713,37 @@ export interface TaskBoardItem {
   updatedAt: string;
 }
 
+/** One entry in a task's change timeline. */
+export type TaskBoardActivityKind =
+  | "created"
+  | "status_changed"
+  | "assignee_changed";
+
+export interface TaskBoardActivityTable {
+  id: string;
+  organization_id: string;
+  task_board_item_id: string;
+  kind: string;
+  /** User id, or the "system" sentinel for machine actors. */
+  actor_id: string | null;
+  data: ColumnType<
+    Record<string, unknown> | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface TaskBoardActivity {
+  id: string;
+  taskBoardItemId: string;
+  kind: TaskBoardActivityKind;
+  actorId: string | null;
+  /** Event payload — e.g. { from, to } for a status/assignee change. */
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -1865,6 +1896,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_sites: OrgSiteTable;
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
+  task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
