@@ -65,14 +65,14 @@ export interface PreviewDisplayInput {
    * Preview swaps in the daemon's draft render (ready after the clone) where the
    * normal path waits for the dev server (ready at `running`).
    */
-  fastPreviewActive: boolean;
+  fastPreviewActive?: boolean;
   /**
    * The caller could actually build `previewUrl/_sandbox/fast-preview` — it has
    * both the daemon origin and a matched page. Only meaningful with
    * `fastPreviewActive`. False means the draft render isn't renderable yet, so
    * the published site keeps the canvas (with the waking pill) instead.
    */
-  fastPreviewReady: boolean;
+  fastPreviewReady?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -90,8 +90,10 @@ export function resolvePreviewDisplay(
     progressStatus,
     productionUrl,
     foreignSandbox,
-    fastPreviewActive,
-    fastPreviewReady,
+    // Optional like `foreignSandbox`: a caller that knows nothing about Fast
+    // Preview gets exactly the pre-existing behaviour.
+    fastPreviewActive = false,
+    fastPreviewReady = false,
   } = input;
 
   // Suspended / errored / othersThread all render their own dedicated card
