@@ -9,6 +9,11 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.44: opt-in L2 cross-node golden archive (depsCache.remote.*,
+# default off) — mounts an RWX PVC READ-ONLY and sets
+# GOLDEN_CACHE_REMOTE so the daemon can restore a per-(repo,lockfile)
+# tar.zst on any node/zone. Additive; no change unless enabled.
+# Requires depsCache.enabled and a zstd-bearing sandbox image.
 # 0.9.20: Studio terminology and compatibility documentation refresh. The
 # legacy `mesh.*` values key remains supported; no runtime behavior changes.
 # 0.9.14: sandbox pod memory request 1Gi -> 2Gi (= measured p95 of per-pod peak
@@ -47,7 +52,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.43
+version: 0.9.44
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.26.1"
 kubeVersion: ">=1.30.0-0"

@@ -25,7 +25,7 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        bash ca-certificates curl git gnupg libatomic1 locales python3 \
-       python3-pip ripgrep unzip \
+       python3-pip ripgrep unzip zstd \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
   && node --version \

@@ -35,6 +35,7 @@ import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { configureGitIdentity } from "./identity";
 import { denoCacheEnv, resolveCloneUrl, spawnInstall } from "./install";
+import { publishRemoteGolden, tryRestoreRemoteGolden } from "./remote-golden";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -149,13 +150,24 @@ export class SetupOrchestrator {
     this.pendingGolden = null;
     const config = this.currentConfig();
     if (!config) return;
+    const log = (m: string) => this.rawChunk(`${m}\r\n`);
     await publishGolden({
       config,
       installRoot: pending.installRoot,
       pm: pending.pm,
-      log: (m) => this.rawChunk(`${m}\r\n`),
+      log,
     });
     pruneGoldens();
+    // L2 after L1, and only from this same healthy-boot gate. A broken
+    // install published to the shared store would poison every node in the
+    // fleet, not just this one. No-op when the archive already exists, so the
+    // common "L2 hit, then seed L1" path costs one stat.
+    await publishRemoteGolden({
+      config,
+      installRoot: pending.installRoot,
+      pm: pending.pm,
+      log,
+    });
   }
 
   pendingCount(): number {
@@ -401,18 +413,29 @@ export class SetupOrchestrator {
     // probe (stat, partial reflink, cleanup) is real boot latency, and on a
     // miss the cost L2 would replace is probe + install, not install alone.
     const depsStartedAt = Date.now();
-    if (
-      await tryRestoreGolden({
-        config,
-        installRoot,
-        pm,
-        log: (m) => this.chunk(`${m}\r\n`),
-      })
-    ) {
+    const log = (m: string) => this.chunk(`${m}\r\n`);
+    if (await tryRestoreGolden({ config, installRoot, pm, log })) {
       // Restored from an existing golden — nothing to publish.
       this.pendingGolden = null;
       emitDepsRestore({
         source: "l1",
+        cloneUrl: resolveCloneUrl(config),
+        durationMs: Date.now() - depsStartedAt,
+        bootId: process.env.DAEMON_BOOT_ID ?? "",
+      });
+      this.markInstallSucceeded(config);
+      return true;
+    }
+
+    // L1 missed: this node isn't warm for this repo. Before paying a full
+    // install, try the shared cross-node archive (remote-golden.ts). A hit
+    // here also leaves a fresh node_modules that publishPendingGolden will
+    // seed into THIS node's L1, so the next pod on this node gets the ~1s
+    // reflink instead of another extract.
+    if (await tryRestoreRemoteGolden({ config, installRoot, pm, log })) {
+      this.pendingGolden = { installRoot, pm };
+      emitDepsRestore({
+        source: "l2",
         cloneUrl: resolveCloneUrl(config),
         durationMs: Date.now() - depsStartedAt,
         bootId: process.env.DAEMON_BOOT_ID ?? "",

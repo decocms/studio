@@ -225,6 +225,12 @@ spec:
             # to a normal install otherwise. See setup/golden-cache.ts.
             - name: GOLDEN_CACHE_ENABLED
               value: "1"
+            {{- if .Values.depsCache.remote.enabled }}
+            # L2 shared archive store (read-only mount below). Absent →
+            # daemon is L1-only, i.e. today's behavior.
+            - name: GOLDEN_CACHE_REMOTE
+              value: {{ .Values.depsCache.remote.mountPath | quote }}
+            {{- end }}
             {{- end }}
             {{- end }}
             - name: DAEMON_PORT
@@ -278,6 +284,15 @@ spec:
             {{- if .Values.depsCache.enabled }}
             - name: deps-cache
               mountPath: /deps-cache
+            {{- if .Values.depsCache.remote.enabled }}
+            # readOnly is the load-bearing control, not a hint: this pod runs
+            # untrusted code and bun installs cached content as-is, so write
+            # access here would let one tenant poison another repo's archive
+            # fleet-wide. Publishing belongs to a trusted writer.
+            - name: golden-remote
+              mountPath: {{ .Values.depsCache.remote.mountPath }}
+              readOnly: true
+            {{- end }}
             {{- end }}
             - name: home
               mountPath: /home/sandbox
@@ -338,6 +353,12 @@ spec:
           hostPath:
             path: {{ .Values.depsCache.hostPath }}
             type: DirectoryOrCreate
+        {{- if .Values.depsCache.remote.enabled }}
+        - name: golden-remote
+          persistentVolumeClaim:
+            claimName: {{ required "depsCache.remote.pvcName is required when depsCache.remote.enabled" .Values.depsCache.remote.pvcName }}
+            readOnly: true
+        {{- end }}
         {{- end }}
         {{- if not .Values.disableFsSidecar }}
         # Mount surface (volumes attach under it) + relay control files.

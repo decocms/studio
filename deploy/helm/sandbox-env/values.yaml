@@ -293,6 +293,32 @@ depsCache:
   # same unreaped-growth caveat as above (a golden ≈ a full node_modules).
   golden: false
 
+  # ── L2: cross-node golden archive (opt-in, off) ──────────────────────
+  # The golden above is NODE-LOCAL: it only hits when the pod lands on a
+  # node already warm for its repo. This tier removes that dependency by
+  # keeping a per-(repo, lockfile) tar.zst on an RWX volume (EFS), so any
+  # node in any zone can restore it. Requires `zstd` in the sandbox image.
+  #
+  # STORE A TARBALL, NEVER MOUNT node_modules HERE. EFS/NFS charges
+  # per-operation metadata latency: fatal across ~100k small files, a
+  # non-issue for one large sequential blob. The per-file cost is paid by
+  # the local extract.
+  #
+  # READ-ONLY to tenant pods, always. Sandboxes run untrusted code and bun
+  # installs cached content as-is, so a writable shared store would widen
+  # that from a node-local RCE surface to a fleet-wide one — a compromised
+  # pod could poison another repo's archive. Publishing must come from a
+  # trusted writer, not from here. This is the same rule the depsCache
+  # comment above states; a shared store is exactly the case it warns about.
+  remote:
+    enabled: false
+    # Existing RWX PVC backed by the shared filesystem. Required when
+    # enabled. Mounted read-only; the daemon reads only its own
+    # <repoHash>/ prefix. Whole-volume (not a per-repo subPath) because
+    # warm-pool pods are bound before they know their repo.
+    pvcName: ""
+    mountPath: /golden-cache
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to
