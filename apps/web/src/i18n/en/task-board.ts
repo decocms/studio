@@ -1,4 +1,17 @@
 export const taskBoard = {
+  "taskBoard.backlogPaywall.bannerSubtitle":
+    "Unlock the full diagnostic and its tasks land here, from highest priority to lowest.",
+  "taskBoard.backlogPaywall.bannerTitle": "Your action plan is one click away",
+  "taskBoard.backlogPaywall.benefitAgentResolves":
+    "The agent resolves each task and leaves it ready for your review",
+  "taskBoard.backlogPaywall.benefitPrioritizedTasks":
+    "Every diagnostic task, prioritized on your board",
+  "taskBoard.backlogPaywall.benefitRecurringReport":
+    "A recurring report on your site, always up to date",
+  "taskBoard.backlogPaywall.exploreButton": "Explore",
+  "taskBoard.backlogPaywall.modalTitle": "Unlock your action plan",
+  "taskBoard.backlogPaywall.previewAlt": "Preview of your unlocked task board",
+  "taskBoard.backlogPaywall.unlockButton": "Unlock diagnostic",
   "taskBoard.config.priorityHigh": "High",
   "taskBoard.config.priorityLow": "Low",
   "taskBoard.config.priorityMedium": "Medium",

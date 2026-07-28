@@ -1,6 +1,20 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.backlogPaywall.bannerSubtitle":
+    "Desbloqueie o diagnóstico completo e as tarefas entram aqui, da maior prioridade para a menor.",
+  "taskBoard.backlogPaywall.bannerTitle": "Seu plano de ação está a um clique",
+  "taskBoard.backlogPaywall.benefitAgentResolves":
+    "O agente resolve cada tarefa e deixa pronta para a sua revisão",
+  "taskBoard.backlogPaywall.benefitPrioritizedTasks":
+    "Todas as tarefas do diagnóstico, priorizadas no seu quadro",
+  "taskBoard.backlogPaywall.benefitRecurringReport":
+    "Um relatório recorrente do seu site, sempre atualizado",
+  "taskBoard.backlogPaywall.exploreButton": "Explorar",
+  "taskBoard.backlogPaywall.modalTitle": "Desbloqueie seu plano de trabalho",
+  "taskBoard.backlogPaywall.previewAlt":
+    "Prévia do seu quadro de tarefas desbloqueado",
+  "taskBoard.backlogPaywall.unlockButton": "Desbloquear diagnóstico",
   "taskBoard.config.priorityHigh": "Alta",
   "taskBoard.config.priorityLow": "Baixa",
   "taskBoard.config.priorityMedium": "Média",
