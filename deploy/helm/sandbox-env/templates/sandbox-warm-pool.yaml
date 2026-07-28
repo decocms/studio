@@ -1,19 +1,33 @@
 {{- if .Values.warmPool.enabled }}
-# Pre-warms N sandbox pods against the shared SandboxTemplate so new claims
-# bind instantly rather than waiting on image pull + kubelet start. Disabled
-# by default — enable only after measuring cold-start pain; every pool
-# replica costs the full sandbox resource request.
+# Pre-warms N sandbox pods per tier so new claims bind instantly rather than
+# waiting on image pull + kubelet start. Disabled by default — enable only
+# after measuring cold-start pain; every pool replica costs the full sandbox
+# resource request of ITS tier.
+#
+# A pool is rendered for every tier even at replicas: 0. Claims always carry
+# `warmpool: "default"` (the runner can't inject per-claim env otherwise), so
+# the pool must exist for the reference to resolve; an empty one just falls
+# through to a cold render — the same path a fully-claimed pool already takes
+# in prod. Size the tiers you actually want warm and leave the rest at 0.
 #
 # Schema (v1alpha1): see sandbox-operator/crds/agent-sandbox-crds.yaml.
+{{- range $tier, $cfg := .Values.tiers }}
+{{- $cfg = default dict $cfg }}
+{{- $name := include "sandbox-env.tierTemplateName" (dict "root" $ "tier" $tier) }}
+---
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}
+  name: {{ $name }}
   namespace: agent-sandbox-system
   labels:
-    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+    {{ include "sandbox-env.tierLabelKey" $ }}: {{ $tier | quote }}
 spec:
-  replicas: {{ .Values.warmPool.size }}
+  {{- /* hasKey, not `default`: an explicit warmPoolSize: 0 must win over a
+         non-zero global size, and `default` treats 0 as empty. */}}
+  replicas: {{ if hasKey $cfg "warmPoolSize" }}{{ $cfg.warmPoolSize }}{{ else }}{{ $.Values.warmPool.size }}{{ end }}
   sandboxTemplateRef:
-    name: {{ include "sandbox-env.sandboxName" . }}
+    name: {{ $name }}
+{{- end }}
 {{- end }}

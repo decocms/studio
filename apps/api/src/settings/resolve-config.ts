@@ -162,6 +162,66 @@ function resolveSandboxProviderKind(
   return kind as SandboxProviderKind;
 }
 
+// Tier names are opaque to Studio but end up composed into provider-side
+// identifiers, so keep them to a conservative lowercase identifier here rather
+// than passing arbitrary strings through. Matches the shape the sandbox-env
+// chart accepts for a `tiers` key.
+const SANDBOX_TIER_RE = /^[a-z]([a-z0-9-]{0,14}[a-z0-9])?$/;
+
+/**
+ * Parse `STUDIO_SANDBOX_TIER_MAP` — a JSON object of sandbox size-tier
+ * OVERRIDES, keyed by `<orgSlug>/<owner>/<repo>` or `<orgSlug>`:
+ *
+ *   {"acme/acme/monorepo": "large", "acme": "medium"}
+ *
+ * Only overrides; anything unlisted gets the active sandbox provider's own
+ * default, which is why Studio never needs to know the default tier's name.
+ *
+ * Malformed input degrades to "no overrides" rather than throwing: this gates
+ * sandbox provisioning for every org, and a typo in one deploy env var must
+ * not take the whole fleet's sandboxes down. Bad individual entries are
+ * dropped with a warning, so an operator sees which ones didn't take.
+ *
+ * A tier name that passes the shape check but that the provider doesn't offer
+ * fails at provisioning time for that (org, repo) only (on the hosted provider:
+ * "sandboxtemplate not found"). Studio can't enumerate a provider's tiers, so
+ * this map and the provider's tier set have to be changed together.
+ */
+function resolveSandboxTierMap(
+  raw: string | undefined,
+): Record<string, string> {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    console.warn(
+      "[settings] STUDIO_SANDBOX_TIER_MAP is not valid JSON — ignoring it; every sandbox falls back to the provider's default tier.",
+    );
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    console.warn(
+      '[settings] STUDIO_SANDBOX_TIER_MAP must be a JSON object of {"<orgSlug>[/<owner>/<repo>]": "<tier>"} — ignoring it.',
+    );
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const scope = key.trim().toLowerCase();
+    const tier = typeof value === "string" ? value.trim() : "";
+    if (scope === "" || !SANDBOX_TIER_RE.test(tier)) {
+      console.warn(
+        `[settings] STUDIO_SANDBOX_TIER_MAP entry ${JSON.stringify(key)} dropped: value must be a DNS-label tier name (got ${JSON.stringify(value)}).`,
+      );
+      continue;
+    }
+    out[scope] = tier;
+  }
+  return out;
+}
+
 export interface ResolvedConfig {
   settings: Omit<Settings, "databaseUrl" | "natsUrls">;
   externalDatabaseUrl: string | null;
@@ -303,6 +363,7 @@ export function resolveConfig(
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
+    sandboxTierMap: resolveSandboxTierMap(envVars.STUDIO_SANDBOX_TIER_MAP),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,

@@ -11,6 +11,7 @@ only really matters for Helm's own bookkeeping.
 */ -}}
 {{- include "sandbox-env.validatePreviewGateway" . -}}
 {{- include "sandbox-env.validateWarmPoolAutoscaling" . -}}
+{{- include "sandbox-env.validateTiers" . -}}
 {{- /* Force envName validation to run at template time even when no
 resource references it directly (pure-validation render). Discard the
 return value into a local so it doesn't leak into the rendered YAML. */ -}}

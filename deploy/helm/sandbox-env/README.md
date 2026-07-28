@@ -7,11 +7,12 @@ is suffixed with `envName` so multiple releases coexist in the shared
 
 Renders:
 
-- `SandboxTemplate` `studio-sandbox-<envName>`
+- One `SandboxTemplate` per size tier: `studio-sandbox-<envName>` for the
+  default tier, `studio-sandbox-<envName>-<tier>` for the rest (see [Tiers](#tiers))
 - `Role` + `RoleBinding` `studio-sandbox-runner-<envName>` (for the Studio
   ServiceAccount of THIS env's studio install)
 - `Secret` `studio-sandbox-sentinel-<envName>` (initial daemon token)
-- `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
+- One `SandboxWarmPool` per tier, named after its template (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
   per-claim HTTPRoutes are minted by the Studio runner, not by this chart)
@@ -120,6 +121,9 @@ configMap:
     STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
+    # Optional per-(org, repo) size-tier overrides; see Tiers below. Omitted =
+    # every sandbox uses the chart's defaultTier.
+    STUDIO_SANDBOX_TIER_MAP: '{"acme/acme/monorepo":"large"}'
     # The next three values are required only when previewGateway.enabled=true.
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
     # Per-claim HTTPRoute attaches to this Gateway. Both required whenever
@@ -131,6 +135,59 @@ configMap:
     STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-staging"
     STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"
 ```
+
+## Tiers
+
+The chart renders one `SandboxTemplate` per entry in `values.tiers` — the
+size/placement combos a claim can pick from. `defaultTier` renders at the
+**unsuffixed** name (`studio-sandbox-<envName>`) and every other tier at
+`studio-sandbox-<envName>-<tier>`, so adding tiers to a running environment is
+a pure addition: existing claims and an existing
+`STUDIO_SANDBOX_TEMPLATE_NAME` keep resolving untouched.
+
+A tier owns resources **and** placement — `nodeSelector`, `tolerations`,
+`affinity`, `topologySpreadConstraints`, `podLabels`, `podAnnotations`,
+`warmPoolSize` — each wholesale-overriding the top-level value of the same
+name. That's the seam for "this tier runs on on-demand capacity only", or for
+per-tier labels a cost dashboard groups by. `podLabels`/`podAnnotations` may
+not use the `studio.decocms.com/` prefix (the Studio runner owns it; the
+operator rejects claims that redefine a key the template already set) — the
+chart fails at install time rather than at first claim.
+
+Every tier also gets a `SandboxWarmPool`, even at `warmPoolSize: 0`: claims
+always carry `warmpool: "default"`, so the pool has to exist for the reference
+to resolve, and an empty one falls through to a cold render. Warm the tiers you
+want warm and leave the rest at 0 — a warm replica costs its own tier's full
+resource request.
+
+### Assigning a tier
+
+Assignment is Studio-side and operator-controlled, via
+`STUDIO_SANDBOX_TIER_MAP` in the studio release's `configMap.meshConfig`: a
+JSON object of overrides keyed by `<orgSlug>/<owner>/<repo>` (one repo) or
+`<orgSlug>` (every repo of an org), most specific first.
+
+```yaml
+configMap:
+  meshConfig:
+    # Anything unlisted gets the chart's defaultTier.
+    STUDIO_SANDBOX_TIER_MAP: '{"acme/acme/monorepo":"large","acme":"medium"}'
+```
+
+Deliberately not a per-agent setting in the product: agent metadata is writable
+by any org member, so a tenant could assign itself the largest tier. Keep
+`defaultTier` the cheapest option for the same reason.
+
+Two consequences worth knowing:
+
+- **Tier names are not validated against the chart.** Studio can't enumerate a
+  provider's tiers, so a name with no matching `tiers` key fails claim creation
+  with `sandboxtemplate not found` for that (org, repo). Change both sides
+  together.
+- **A tier is frozen for a sandbox's lifetime.** The claim handle can't encode
+  it (the sandbox proxy derives the handle from the URL and has no tier
+  context), so a re-assignment applies on the next cold provision. To resize a
+  running sandbox now, delete it (`SANDBOX_DELETE`) and let it re-provision.
 
 ### Warm-pool token wiring
 
@@ -207,9 +264,9 @@ sandbox-env/
 │   └── values-kind.yaml                 # local dev overrides
 └── templates/
     ├── _helpers.tpl
-    ├── validations.yaml                 # envName + Gateway API + cert-manager preflight
-    ├── sandbox-template.yaml            # SandboxTemplate (per-env)
-    ├── sandbox-warm-pool.yaml           # SandboxWarmPool (optional)
+    ├── validations.yaml                 # envName + tiers + Gateway API + cert-manager preflight
+    ├── sandbox-template.yaml            # SandboxTemplate (one per tier, per env)
+    ├── sandbox-warm-pool.yaml           # SandboxWarmPool (one per tier, optional)
     ├── sandbox-warmpool-hpa.yaml         # Warm-pool HPA (optional)
     ├── sandbox-sentinel-secret.yaml      # Initial daemon token
     ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to Studio SA
@@ -231,7 +288,9 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `envName` | _(required)_ | DNS-label suffix on every resource name |
 | `image.repository` | `ghcr.io/decocms/studio/studio-sandbox` | studio-sandbox image |
 | `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
-| `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
+| `resources.*` | 0.5/2 CPU, 2/4Gi RAM | per sandbox pod — the `defaultTier` baseline |
+| `emptyDirSizeLimits.*` | 4Gi / 1Gi / 5Gi | workdir / tmp / home slices of the ephemeral-storage limit |
+| `defaultTier` / `tiers.*` | `small` / small+medium+large | per-tier size + placement; see [Tiers](#tiers) |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `readOnlyRootFilesystem` | `true` | RO rootfs + emptyDirs on /app, /tmp, /home |

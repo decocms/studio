@@ -1,14 +1,25 @@
 apiVersion: v2
 name: sandbox-env
 description: |
-  Studio-side resources that consume the agent-sandbox operator: the
-  shared SandboxTemplate, Studio runner RBAC, sandbox-pod NetworkPolicy,
-  optional SandboxWarmPool, and optional preview Gateway / HTTPRoute /
-  Certificate. Install one release per environment (dev / staging /
+  Studio-side resources that consume the agent-sandbox operator: a
+  SandboxTemplate per size tier, Studio runner RBAC, sandbox-pod
+  NetworkPolicy, optional SandboxWarmPools, and optional preview Gateway /
+  HTTPRoute / Certificate. Install one release per environment (dev / staging /
   prod / ...). Resource names are suffixed with `envName` so multiple
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.10.0: sandbox tiers. One SandboxTemplate + SandboxWarmPool per entry in
+# `values.tiers` (small / medium / large ship by default), each with its own
+# resources, emptyDir size limits, and placement (nodeSelector / tolerations /
+# affinity / spread / podLabels / podAnnotations). `defaultTier` renders at the
+# unsuffixed name, so existing claims and STUDIO_SANDBOX_TEMPLATE_NAME are
+# unaffected and the default tier's rendered pod spec is unchanged apart from a
+# new `studio.decocms.com/tier` label. Minor bump, not patch: the chart now
+# creates additional objects (2 templates + up to 3 warm pools) and the
+# previously-hardcoded emptyDir sizeLimits moved into
+# `values.emptyDirSizeLimits`. Studio assigns a tier per (org, repo) via
+# STUDIO_SANDBOX_TIER_MAP; unassigned sandboxes keep landing on defaultTier.
 # 0.9.20: Studio terminology and compatibility documentation refresh. The
 # legacy `mesh.*` values key remains supported; no runtime behavior changes.
 # 0.9.14: sandbox pod memory request 1Gi -> 2Gi (= measured p95 of per-pod peak
@@ -47,7 +58,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.43
+version: 0.10.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.26.1"
 kubeVersion: ">=1.30.0-0"

@@ -388,3 +388,43 @@ describe("resolveConfig topup fee percent", () => {
     ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
   });
 });
+
+describe("resolveConfig sandbox tier map", () => {
+  it("defaults to no assignments", () => {
+    expect(resolveConfig(flags, {}).settings.sandboxTierMap).toEqual({});
+  });
+
+  it("parses org- and repo-scoped assignments, lowercasing the keys", () => {
+    expect(
+      resolveConfig(flags, {
+        STUDIO_SANDBOX_TIER_MAP:
+          '{"acme/Acme/Monorepo":"large","acme":"medium"}',
+      }).settings.sandboxTierMap,
+    ).toEqual({ "acme/acme/monorepo": "large", acme: "medium" });
+  });
+
+  it("ignores malformed JSON instead of failing boot", () => {
+    // This gates sandbox provisioning for the whole deployment — a typo in one
+    // env var must not take every org's sandboxes down with it.
+    expect(
+      resolveConfig(flags, { STUDIO_SANDBOX_TIER_MAP: "{oops" }).settings
+        .sandboxTierMap,
+    ).toEqual({});
+  });
+
+  it("ignores a non-object JSON value", () => {
+    expect(
+      resolveConfig(flags, { STUDIO_SANDBOX_TIER_MAP: '["large"]' }).settings
+        .sandboxTierMap,
+    ).toEqual({});
+  });
+
+  it("drops entries whose tier is not a valid name, keeping the rest", () => {
+    expect(
+      resolveConfig(flags, {
+        STUDIO_SANDBOX_TIER_MAP:
+          '{"acme":"Large","beta":42,"gamma":"","delta":"medium"}',
+      }).settings.sandboxTierMap,
+    ).toEqual({ delta: "medium" });
+  });
+});

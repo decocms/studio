@@ -1,18 +1,39 @@
-# Shared SandboxTemplate consumed by every SandboxClaim the Studio runner
-# creates for THIS environment. Resource ceilings come from values.resources.
+# One SandboxTemplate per entry in values.tiers — the size/placement "combos"
+# a SandboxClaim can pick from (small / medium / large / ...). Everything
+# below except the per-tier knobs is shared, so the tiers can't drift in
+# security posture, netinit, or org-fs wiring.
+#
+# `defaultTier` renders at the UNSUFFIXED name (studio-sandbox-<env>), every
+# other tier at studio-sandbox-<env>-<tier>. That keeps an existing
+# STUDIO_SANDBOX_TEMPLATE_NAME (and every live claim referencing it) valid, so
+# adding tiers is a pure addition to a running environment.
 #
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
 # default. The template *name* is suffixed with envName so multiple
 # environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
+{{- range $tier, $cfg := .Values.tiers }}
+{{- $cfg = default dict $cfg }}
+{{- /* Per-tier overrides. Wholesale (not deep-merged) per key: merging
+       toleration/affinity lists silently produces a placement nobody wrote.
+       An empty value ({} / []) reads as "unset" and inherits, so a tier
+       cannot override *back* to empty — set the top-level default instead. */}}
+{{- $resources := $cfg.resources | default $.Values.resources }}
+{{- $nodeSelector := $cfg.nodeSelector | default $.Values.nodeSelector }}
+{{- $tolerations := $cfg.tolerations | default $.Values.tolerations }}
+{{- $affinity := $cfg.affinity | default $.Values.affinity }}
+{{- $spread := $cfg.topologySpreadConstraints | default $.Values.topologySpreadConstraints }}
+{{- $sizeLimits := $cfg.emptyDirSizeLimits | default dict }}
+---
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}
+  name: {{ include "sandbox-env.tierTemplateName" (dict "root" $ "tier" $tier) }}
   namespace: agent-sandbox-system
   labels:
-    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+    {{ include "sandbox-env.tierLabelKey" $ }}: {{ $tier | quote }}
 spec:
   # The operator's controller rejects per-claim env outright when
   # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
@@ -29,8 +50,9 @@ spec:
   networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
-      {{- if .Values.netinit.enabled }}
+      {{- if or $.Values.netinit.enabled $cfg.podAnnotations }}
       annotations:
+        {{- if $.Values.netinit.enabled }}
         # Best-effort AWS VPC CNI opt-out. The real safety net is that no
         # NetworkPolicy selects these pods (networkPolicyManagement:
         # Unmanaged + no chart-rendered NP), so the agent's policy-endpoint
@@ -38,6 +60,10 @@ spec:
         # in aws-network-policy-agent's source — verify it's honored before
         # relying on it if a future NP starts matching these pods.
         vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
+        {{- end }}
+        {{- with $cfg.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
@@ -45,40 +71,52 @@ spec:
         # SandboxClaim.additionalPodMetadata (driven by
         # STUDIO_SANDBOX_TEMPLATE_NAME pointing at the env-suffixed
         # template) — keep these in lockstep.
-        app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" . }}
+        #
+        # Deliberately NOT tier-suffixed: the housekeeper's podSelector and
+        # any topologySpreadConstraints labelSelector key off this value, so
+        # tiering it would silently drop the other tiers out of idle reaping.
+        # Tier lives in its own label below.
+        app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" $ }}
+        # Cost attribution: joins cAdvisor/kubelet pod metrics to a tier.
+        {{ include "sandbox-env.tierLabelKey" $ }}: {{ $tier | quote }}
+        {{- with $cfg.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         # Do NOT set `studio.decocms.com/role` here. The operator (v0.4.2+)
         # rejects claims whose additionalPodMetadata defines a label key
         # already present in the template — even when the values differ —
         # with "metadata override conflict". The runner sets role=claimed
         # via additionalPodMetadata, so the template must leave that key
         # undefined. Warm-pool pods end up without the role label;
-        # dashboards filter by absence-of-handle instead.
+        # dashboards filter by absence-of-handle instead. Same reason
+        # validateTiers rejects any `studio.decocms.com/*` key in a tier's
+        # podLabels/podAnnotations.
     spec:
       automountServiceAccountToken: false
       # Room for the daemon's SIGTERM git-sync (commit + push, push bounded at
       # 30s) before SIGKILL — the pushed branch is the only durable copy of the
       # user's work. See values.yaml.
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
-      {{- with .Values.nodeSelector }}
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      {{- with $nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with $tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with $affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.topologySpreadConstraints }}
+      {{- with $spread }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.dnsPolicy }}
-      dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- if $.Values.dnsPolicy }}
+      dnsPolicy: {{ $.Values.dnsPolicy }}
       {{- end }}
-      {{- with .Values.dnsConfig }}
+      {{- with $.Values.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -89,7 +127,7 @@ spec:
       # untrusted agent container is locked down independently either way
       # (drop ALL caps, no privilege escalation, runAsNonRoot, seccomp
       # RuntimeDefault below); only the org-fs sidecar is privileged.
-      hostUsers: {{ not .Values.disableFsSidecar }}
+      hostUsers: {{ not $.Values.disableFsSidecar }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -97,16 +135,16 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      {{- if or .Values.netinit.enabled .Values.depsCache.enabled }}
+      {{- if or $.Values.netinit.enabled $.Values.depsCache.enabled }}
       initContainers:
-        {{- if .Values.depsCache.enabled }}
+        {{- if $.Values.depsCache.enabled }}
         # hostPath dirs are created root:root and fsGroup does not apply to
         # hostPath volumes, so hand the cache root to the sandbox uid once
         # per pod (idempotent). Reuses the sandbox image — already on the
         # node, no extra pull.
         - name: deps-cache-init
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
           resources:
             requests:
@@ -126,10 +164,10 @@ spec:
             - name: deps-cache
               mountPath: /deps-cache
         {{- end }}
-        {{- if .Values.netinit.enabled }}
+        {{- if $.Values.netinit.enabled }}
         - name: setup-netpol
-          image: "{{ .Values.netinit.image }}:{{ .Values.netinit.tag }}"
-          imagePullPolicy: {{ .Values.netinit.pullPolicy }}
+          image: "{{ $.Values.netinit.image }}:{{ $.Values.netinit.tag }}"
+          imagePullPolicy: {{ $.Values.netinit.pullPolicy }}
           command:
             - sh
             - -c
@@ -152,13 +190,13 @@ spec:
               iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                 || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                 || { echo "ERROR: neither -m conntrack nor -m state available; cannot install ESTABLISHED,RELATED rule. Preview ingress would silently break. Failing the init container so the pod does not come up." >&2; exit 1; }
-              {{- range .Values.netinit.blockCIDRs }}
+              {{- range $.Values.netinit.blockCIDRs }}
               iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
-              {{- range .Values.netinit.allowedUDPPorts }}
+              {{- range $.Values.netinit.allowedUDPPorts }}
               iptables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
               {{- end }}
-              {{- range .Values.netinit.allowedTCPPorts }}
+              {{- range $.Values.netinit.allowedTCPPorts }}
               iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
               {{- end }}
               iptables -A OUTPUT -j REJECT
@@ -171,13 +209,13 @@ spec:
                 ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                   || ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                   || { echo "ERROR: neither -m conntrack nor -m state available (ip6tables); cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container." >&2; exit 1; }
-                {{- range .Values.netinit.blockCIDRsIPv6 }}
+                {{- range $.Values.netinit.blockCIDRsIPv6 }}
                 ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
                 {{- end }}
-                {{- range .Values.netinit.allowedUDPPorts }}
+                {{- range $.Values.netinit.allowedUDPPorts }}
                 ip6tables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
                 {{- end }}
-                {{- range .Values.netinit.allowedTCPPorts }}
+                {{- range $.Values.netinit.allowedTCPPorts }}
                 ip6tables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
                 {{- end }}
                 ip6tables -A OUTPUT -j REJECT
@@ -207,18 +245,18 @@ spec:
       {{- end }}
       containers:
         - name: sandbox
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           workingDir: /app
           env:
             - name: WORKDIR
               value: "/app"
-            {{- if .Values.depsCache.enabled }}
+            {{- if $.Values.depsCache.enabled }}
             # Root of the node-local dependency cache; the daemon derives a
             # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).
             - name: DEPS_CACHE_ROOT
               value: "/deps-cache"
-            {{- if .Values.depsCache.golden }}
+            {{- if $.Values.depsCache.golden }}
             # Golden node_modules reflink cache (opt-in, off by default — it
             # touches the boot install path). Requires a reflink-capable
             # filesystem shared between the cache and the workdir; falls back
@@ -232,9 +270,9 @@ spec:
             - name: DAEMON_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "sandbox-env.sentinelSecretName" . }}
+                  name: {{ include "sandbox-env.sentinelSecretName" $ }}
                   key: daemonToken
-            {{- if .Values.readOnlyRootFilesystem }}
+            {{- if $.Values.readOnlyRootFilesystem }}
             # With RO rootfs + emptyDir on /app, the mount root is owned
             # root:1000 (fsGroup). Git 2.35+'s "dubious ownership" check
             # would refuse to operate. Disable the check inside the
@@ -246,7 +284,7 @@ spec:
             - name: GIT_CONFIG_VALUE_0
               value: "*"
             {{- end }}
-            {{- if not .Values.disableFsSidecar }}
+            {{- if not $.Values.disableFsSidecar }}
             # org-fs relay: the daemon writes the mount config here for the
             # sidecar, and gates the per-run output link on its status file.
             - name: ORGFS_SIDECAR_CONFIG_PATH
@@ -262,26 +300,26 @@ spec:
               containerPort: 3000
               protocol: TCP
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml $resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            readOnlyRootFilesystem: {{ .Values.readOnlyRootFilesystem }}
+            readOnlyRootFilesystem: {{ $.Values.readOnlyRootFilesystem }}
           volumeMounts:
-            {{- if .Values.readOnlyRootFilesystem }}
+            {{- if $.Values.readOnlyRootFilesystem }}
             - name: workdir
               mountPath: /app
             - name: tmp
               mountPath: /tmp
             {{- end }}
-            {{- if .Values.depsCache.enabled }}
+            {{- if $.Values.depsCache.enabled }}
             - name: deps-cache
               mountPath: /deps-cache
             {{- end }}
             - name: home
               mountPath: /home/sandbox
-            {{- if not .Values.disableFsSidecar }}
+            {{- if not $.Values.disableFsSidecar }}
             # The sidecar's FUSE mounts under /app/org surface here.
             - name: orgfs-org
               mountPath: /app/org
@@ -289,15 +327,15 @@ spec:
             - name: orgfs-ctl
               mountPath: /run/orgfs
             {{- end }}
-        {{- if not .Values.disableFsSidecar }}
+        {{- if not $.Values.disableFsSidecar }}
         # Privileged org-fs mounter: waits for the daemon to relay the mount
         # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
         # under the shared /app/org, and Bidirectional propagation surfaces
         # them in the (unprivileged) sandbox container. See
         # packages/sandbox/daemon/org-fs/sidecar.ts.
         - name: orgfs-sidecar
-          image: "{{ .Values.orgFs.image.repository }}:{{ .Values.orgFs.image.tag }}"
-          imagePullPolicy: {{ .Values.orgFs.image.pullPolicy }}
+          image: "{{ $.Values.orgFs.image.repository }}:{{ $.Values.orgFs.image.tag }}"
+          imagePullPolicy: {{ $.Values.orgFs.image.pullPolicy }}
           env:
             - name: APP_ROOT
               value: "/app"
@@ -308,7 +346,7 @@ spec:
             runAsUser: 0
             runAsNonRoot: false
           resources:
-            {{- toYaml .Values.orgFs.resources | nindent 12 }}
+            {{- toYaml $.Values.orgFs.resources | nindent 12 }}
           volumeMounts:
             - name: orgfs-org
               mountPath: /app/org
@@ -317,29 +355,31 @@ spec:
               mountPath: /run/orgfs
         {{- end }}
       volumes:
-        {{- if .Values.readOnlyRootFilesystem }}
-        # Sized to match the per-container ephemeral-storage limit shape;
-        # individual mounts get a slice. Adjust if a workload needs more.
+        {{- if $.Values.readOnlyRootFilesystem }}
+        # Slices of the per-container ephemeral-storage limit. A tier that
+        # raises that limit must raise these too, or the checkout hits the
+        # emptyDir cap long before the tier's ceiling — hence the per-tier
+        # emptyDirSizeLimits override.
         - name: workdir
           emptyDir:
-            sizeLimit: 4Gi
+            sizeLimit: {{ $sizeLimits.workdir | default $.Values.emptyDirSizeLimits.workdir }}
         - name: tmp
           emptyDir:
-            sizeLimit: 1Gi
+            sizeLimit: {{ $sizeLimits.tmp | default $.Values.emptyDirSizeLimits.tmp }}
         {{- end }}
         - name: home
           emptyDir:
-            sizeLimit: 5Gi
-        {{- if .Values.depsCache.enabled }}
+            sizeLimit: {{ $sizeLimits.home | default $.Values.emptyDirSizeLimits.home }}
+        {{- if $.Values.depsCache.enabled }}
         # Node-local package cache shared across sandbox pods (see the
         # depsCache comment in values.yaml for the hardlink + isolation
         # rationale).
         - name: deps-cache
           hostPath:
-            path: {{ .Values.depsCache.hostPath }}
+            path: {{ $.Values.depsCache.hostPath }}
             type: DirectoryOrCreate
         {{- end }}
-        {{- if not .Values.disableFsSidecar }}
+        {{- if not $.Values.disableFsSidecar }}
         # Mount surface (volumes attach under it) + relay control files.
         - name: orgfs-org
           emptyDir:
@@ -348,3 +388,4 @@ spec:
           emptyDir:
             sizeLimit: 1Mi
         {{- end }}
+{{- end }}

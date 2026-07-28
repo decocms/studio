@@ -9,6 +9,11 @@
 # at whatever signals pool pressure in your cluster (e.g. a Prometheus
 # External/Object metric on claim-creation rate or pending-claim count via
 # the Prometheus adapter). See validations.yaml for the enforced minimum.
+#
+# Scopes to the DEFAULT tier's pool only — the non-default tiers are opt-in
+# overrides for a handful of tenants, so their pools stay at the fixed
+# tiers.<name>.warmPoolSize. Autoscale one of those by adding an HPA of your
+# own against SandboxWarmPool/studio-sandbox-<env>-<tier>.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

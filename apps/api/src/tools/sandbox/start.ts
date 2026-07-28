@@ -52,6 +52,7 @@ import {
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { resolveSandboxTier } from "../../sandbox/tier";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
@@ -532,25 +533,32 @@ async function provisionSandbox(
     !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
-  // so chat-ephemeral sandboxes get mounts too.
+  // so chat-ephemeral sandboxes get mounts too (and so a tier assignment,
+  // which is keyed by slug, applies on that path as well).
+  const orgSlug =
+    ctx.organization?.slug ??
+    (
+      await ctx.db
+        .selectFrom("organization")
+        .select(["slug"])
+        .where("id", "=", orgId)
+        .executeTakeFirst()
+    )?.slug;
+
+  // Size/placement tier for this (org, repo). Undefined → the provider's
+  // default tier; providers without tiering ignore it entirely.
+  const tier = resolveSandboxTier(getSettings().sandboxTierMap, {
+    orgSlug,
+    repo: githubRepo,
+  });
+
   let orgFsConfigJson: string | undefined;
-  if (wantsOrgFs) {
-    const orgSlug =
-      ctx.organization?.slug ??
-      (
-        await ctx.db
-          .selectFrom("organization")
-          .select(["slug"])
-          .where("id", "=", orgId)
-          .executeTakeFirst()
-      )?.slug;
-    if (orgSlug) {
-      orgFsConfigJson = await mintOrgFsConfigJson(ctx, {
-        orgSlug,
-        orgId,
-        baseUrl: getPublicUrl(),
-      });
-    }
+  if (wantsOrgFs && orgSlug) {
+    orgFsConfigJson = await mintOrgFsConfigJson(ctx, {
+      orgSlug,
+      orgId,
+      baseUrl: getPublicUrl(),
+    });
   }
 
   const sandbox = await runner.ensure(
@@ -564,6 +572,7 @@ async function provisionSandbox(
       branch,
       repo: repoOpts,
       workload,
+      ...(tier ? { tier } : {}),
       tenant: {
         orgId,
         // The sandbox's owner, so the pod's `user_id` label/metric matches the

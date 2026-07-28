@@ -85,6 +85,7 @@ import {
   SandboxError,
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
+import { templateNameForTier } from "./template-name";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "../lifecycle-types";
 
@@ -306,7 +307,11 @@ export interface AgentSandboxProviderOptions {
   kubeConfig?: KubeConfig;
   /** Shared namespace for both SandboxTemplate and SandboxClaims. */
   namespace?: string;
-  /** SandboxTemplate all claims reference. */
+  /**
+   * SandboxTemplate an untiered claim references — also the base name the
+   * per-tier templates are derived from (`<name>-<tier>`, see
+   * `EnsureOptions.tier` and ./template-name.ts).
+   */
   sandboxTemplateName?: string;
   /**
    * Shared sentinel token baked into the SandboxTemplate's pod env (via the
@@ -1170,7 +1175,16 @@ export class AgentSandboxProvider implements SandboxProvider {
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: this.sandboxTemplateName },
+        sandboxTemplateRef: {
+          name: templateNameForTier(
+            this.sandboxTemplateName,
+            opts.tier,
+            (tier) =>
+              console.warn(
+                `[${LOG_LABEL}] ignoring malformed tier ${JSON.stringify(tier)}; using default template ${this.sandboxTemplateName}`,
+              ),
+          ),
+        },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`

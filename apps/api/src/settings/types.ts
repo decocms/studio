@@ -141,6 +141,12 @@ export interface Settings {
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
   sandboxProviderKind: "agent-sandbox" | "user-desktop";
+  /** Sandbox size-tier assignments, parsed from STUDIO_SANDBOX_TIER_MAP.
+   *  Keys are `<orgSlug>/<owner>/<repo>` or `<orgSlug>`; values are opaque
+   *  tier names the active sandbox provider resolves to a size/placement
+   *  profile of its own. Only overrides live here — an unlisted (org, repo)
+   *  gets the provider's default. See `sandbox/tier.ts` for the lookup. */
+  sandboxTierMap: Record<string, string>;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

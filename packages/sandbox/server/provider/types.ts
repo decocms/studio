@@ -90,6 +90,17 @@ export interface EnsureOptions {
   };
   /** Image override. Non-image runners MUST ignore. */
   image?: string;
+  /**
+   * Size/placement tier. Selects one of the per-tier SandboxTemplates the
+   * sandbox-env chart renders; omitted → the chart's default tier (which
+   * renders at the unsuffixed template name), so callers never need to know
+   * the default tier's name. Runners without tiering MUST ignore (not error).
+   *
+   * Frozen for the sandbox's lifetime, like `env`: the claim handle can't
+   * encode the tier (the sandbox proxy derives the handle from the URL and has
+   * no tier context), so re-tiering a *running* sandbox requires deleting it.
+   */
+  tier?: string;
   workload?: Workload;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;

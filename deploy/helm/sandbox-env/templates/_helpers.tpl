@@ -38,6 +38,72 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
+Per-tier SandboxTemplate / SandboxWarmPool name. `defaultTier` renders at the
+UNSUFFIXED `sandboxName` so an existing STUDIO_SANDBOX_TEMPLATE_NAME (and every
+claim already referencing it) stays valid — adding tiers is a pure addition.
+Studio therefore never needs to know which tier is the default: it omits the
+suffix when it has no tier assignment. Takes a dict: (dict "root" $ "tier" $t).
+*/}}
+{{- define "sandbox-env.tierTemplateName" -}}
+{{- $base := include "sandbox-env.sandboxName" .root -}}
+{{- if eq .tier .root.Values.defaultTier -}}
+{{- $base -}}
+{{- else -}}
+{{- printf "%s-%s" $base .tier -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Label key carrying the tier on SandboxTemplates, warm pools, and sandbox pods.
+Single definition because it's a join key for cost-attribution dashboards.
+*/}}
+{{- define "sandbox-env.tierLabelKey" -}}
+studio.decocms.com/tier
+{{- end }}
+
+{{/*
+Validate values.tiers before anything renders. Four failure modes, all of
+which would otherwise surface as a broken tier at first claim rather than at
+install time:
+  - defaultTier not a key of tiers: nothing would render at the unsuffixed
+    name, so every existing claim + STUDIO_SANDBOX_TEMPLATE_NAME breaks with
+    "sandboxtemplate not found".
+  - empty tiers map: same, plus no templates at all.
+  - a tier name that isn't a DNS label: the suffixed object name is rejected
+    by the API server.
+  - a podLabels/podAnnotations key under `studio.decocms.com/` — that prefix
+    belongs to the Studio runner's additionalPodMetadata, and the operator
+    rejects a claim whose additionalPodMetadata redefines a key the template
+    already set ("metadata override conflict"). Every claim on that tier
+    would fail. Banning the whole prefix keeps this in sync with the runner's
+    LABEL_KEYS/ANNOTATION_KEYS without duplicating the list here.
+*/}}
+{{- define "sandbox-env.validateTiers" -}}
+{{- if not .Values.tiers -}}
+{{- fail "sandbox-env: values.tiers must define at least one tier (e.g. tiers.small={})." -}}
+{{- end -}}
+{{- $default := .Values.defaultTier | default "" -}}
+{{- if not (hasKey .Values.tiers $default) -}}
+{{- fail (printf "sandbox-env: defaultTier=%q is not a key of values.tiers (%s). The default tier renders at the unsuffixed template name every existing claim references." $default (keys .Values.tiers | sortAlpha | join ",")) -}}
+{{- end -}}
+{{- range $tier, $cfg := .Values.tiers -}}
+{{- if not (regexMatch "^[a-z]([a-z0-9-]{0,14}[a-z0-9])?$" $tier) -}}
+{{- fail (printf "sandbox-env: tier name %q must be a DNS label: lowercase alphanumeric or '-', start with a letter, end alphanumeric, 1-16 chars" $tier) -}}
+{{- end -}}
+{{- range $key, $_ := (default dict (default dict $cfg).podLabels) -}}
+{{- if hasPrefix "studio.decocms.com/" $key -}}
+{{- fail (printf "sandbox-env: tiers.%s.podLabels may not set %q — the studio.decocms.com/ prefix is owned by the Studio runner's additionalPodMetadata, and the operator rejects claims that redefine a key the template already set." $tier $key) -}}
+{{- end -}}
+{{- end -}}
+{{- range $key, $_ := (default dict (default dict $cfg).podAnnotations) -}}
+{{- if hasPrefix "studio.decocms.com/" $key -}}
+{{- fail (printf "sandbox-env: tiers.%s.podAnnotations may not set %q — see the podLabels restriction." $tier $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Studio runner Role / RoleBinding name. Stays under 63 chars even with a
 32-char envName.
 */}}
