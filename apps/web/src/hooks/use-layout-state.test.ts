@@ -40,6 +40,21 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanel: null, mainOpen: true });
   });
 
+  test("a Content default with chatDefaultOpen:false keeps the chat closed", () => {
+    // The reported bug: an agent whose main view is Content and that opted out
+    // of the chat panel must land Main-only when no `sidepanel` param is present
+    // (the switch/new-chat paths now omit it — see resolve-task-switch-search).
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: {
+          defaultMainView: { type: "content" },
+          chatDefaultOpen: false,
+        },
+        ...absentSearch,
+      }),
+    ).toEqual({ sidePanel: null, mainOpen: true });
+  });
+
   test("chatDefaultOpen maps to the Chat side panel", () => {
     expect(
       resolveDefaultPanelState({

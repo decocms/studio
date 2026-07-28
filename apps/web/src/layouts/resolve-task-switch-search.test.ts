@@ -17,9 +17,11 @@ function resolve(
   });
 }
 
-describe("resolveTaskSwitchSearch — no memory (legacy behavior)", () => {
-  test("defaults to chat side panel open, no main", () => {
-    expect(resolve()).toEqual({ sidepanel: "chat" });
+describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => {
+  test("omits sidepanel so the agent-configured default applies", () => {
+    // No saved layout → don't pin the chat panel; resolveDefaultPanelState
+    // decides from the target agent's chatDefaultOpen / defaultMainView.
+    expect(resolve()).toEqual({});
   });
 
   test("carries a system tab forward within the same agent", () => {
@@ -28,7 +30,7 @@ describe("resolveTaskSwitchSearch — no memory (legacy behavior)", () => {
         prev: { virtualmcpid: "repo-1", main: "git" },
         virtualMcpId: "repo-1",
       }),
-    ).toEqual({ virtualmcpid: "repo-1", main: "git", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-1", main: "git" });
   });
 
   test("drops per-thread tabs when carrying forward", () => {
@@ -37,7 +39,7 @@ describe("resolveTaskSwitchSearch — no memory (legacy behavior)", () => {
         prev: { virtualmcpid: "repo-1", main: "file:abc" },
         virtualMcpId: "repo-1",
       }),
-    ).toEqual({ virtualmcpid: "repo-1", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-1" });
   });
 
   test("agent switch drops the previous view", () => {
@@ -46,7 +48,7 @@ describe("resolveTaskSwitchSearch — no memory (legacy behavior)", () => {
         prev: { virtualmcpid: "repo-1", main: "git" },
         virtualMcpId: "repo-2",
       }),
-    ).toEqual({ virtualmcpid: "repo-2", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-2" });
   });
 
   test("param-less Super Agent → repo agent counts as a switch", () => {
@@ -55,21 +57,32 @@ describe("resolveTaskSwitchSearch — no memory (legacy behavior)", () => {
       resolve({ prev: { main: "overview" }, virtualMcpId: "repo-1" }),
     ).toEqual({
       virtualmcpid: "repo-1",
-      sidepanel: "chat",
     });
   });
 
   test("opts.main is an explicit intent that wins", () => {
     expect(
       resolve({ prev: { virtualmcpid: "repo-1" }, opts: { main: "preview" } }),
-    ).toEqual({ virtualmcpid: "repo-1", main: "preview", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-1", main: "preview" });
   });
 
   test("opts.autosend appends the sentinel", () => {
     expect(resolve({ opts: { autosend: true } })).toEqual({
-      sidepanel: "chat",
       autosend: AUTOSEND,
     });
+  });
+
+  test("omits sidepanel on agent switch (no saved layout)", () => {
+    // Regression guard: the switch must not pin `sidepanel` in the URL. Its
+    // omission is what lets resolveDefaultPanelState honor the target agent's
+    // chatDefaultOpen / defaultMainView (see use-layout-state.test.ts) instead
+    // of forcing chat open — this function has no access to that config itself.
+    expect(
+      resolve({
+        prev: { virtualmcpid: "repo-1", main: "git" },
+        virtualMcpId: "content-agent",
+      }),
+    ).toEqual({ virtualmcpid: "content-agent" });
   });
 });
 
@@ -84,10 +97,10 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
   });
 
   test("restores a per-thread tab the thread owned (keyed by task id)", () => {
+    // No remembered sidepanel → omitted, so the agent default applies.
     const savedLayout: ThreadLayout = { main: "file:abc" };
     expect(resolve({ savedLayout })).toEqual({
       main: "file:abc",
-      sidepanel: "chat",
     });
   });
 
@@ -105,7 +118,7 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
         virtualMcpId: "repo-1",
         savedLayout,
       }),
-    ).toEqual({ virtualmcpid: "repo-1", main: "preview", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-1", main: "preview" });
   });
 
   test("empty saved layout restores the default (no carry-forward)", () => {
@@ -117,14 +130,15 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
         virtualMcpId: "repo-1",
         savedLayout: {},
       }),
-    ).toEqual({ virtualmcpid: "repo-1", sidepanel: "chat" });
+    ).toEqual({ virtualmcpid: "repo-1" });
   });
 
   test("opts.main still beats saved layout", () => {
+    // opts.main wins the main slot; the saved sidepanel is not consulted, so it
+    // is omitted and the agent default applies.
     const savedLayout: ThreadLayout = { main: "preview", sidepanel: 0 };
     expect(resolve({ opts: { main: "settings" }, savedLayout })).toEqual({
       main: "settings",
-      sidepanel: "chat",
     });
   });
 });

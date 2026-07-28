@@ -11,7 +11,11 @@
  *      (git/preview/settings/…) but drop per-thread tabs from the source thread.
  *      Skipped on an agent switch so the new agent's own default resolves.
  *
- * The side panel defaults to chat-open unless the restored layout closed it.
+ * The side panel is only pinned in the URL when the target thread's own
+ * remembered layout recorded one. Otherwise `sidepanel` is omitted so
+ * resolveDefaultPanelState derives the default from the target agent's layout
+ * config (chatDefaultOpen / defaultMainView) — a fresh thread on an agent that
+ * opts out of the chat panel must not be forced chat-open.
  */
 
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
@@ -50,7 +54,10 @@ export function resolveTaskSwitchSearch(
   const targetVmcp = virtualMcpId ?? prevVmcp;
   const isAgentSwitch = targetVmcp !== prevVmcp;
 
-  let sidepanel: "chat" | 0 = "chat";
+  // Only pin a side-panel value when the target thread remembered one; leaving
+  // it undefined omits `sidepanel` from the URL so the agent-configured default
+  // (resolveDefaultPanelState) applies instead of forcing chat open.
+  let sidepanel: "chat" | 0 | undefined;
 
   if (opts?.main) {
     // Explicit intent wins outright — ignore saved/carried layout.
@@ -68,7 +75,7 @@ export function resolveTaskSwitchSearch(
     }
   }
 
-  next.sidepanel = sidepanel;
+  if (sidepanel !== undefined) next.sidepanel = sidepanel;
   if (opts?.autosend) next.autosend = autosendValue;
   return next;
 }
