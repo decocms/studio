@@ -64,45 +64,4 @@ describe("computePreviewState", () => {
       }),
     ).toEqual({ kind: "suspended" });
   });
-
-  test("othersThreadGate with no previewUrl → othersThread (before starting)", () => {
-    expect(
-      computePreviewState({
-        ...base,
-        previewUrl: null,
-        othersThreadGate: { label: "tavano-321312" },
-      }),
-    ).toEqual({ kind: "othersThread", label: "tavano-321312" });
-  });
-
-  test("othersThreadGate but a live previewUrl → iframe (acknowledged, VM is running)", () => {
-    expect(
-      computePreviewState({
-        ...base,
-        othersThreadGate: { label: "tavano-321312" },
-      }),
-    ).toEqual({ kind: "iframe", previewUrl: "http://localhost:5173" });
-  });
-
-  test("gate beats userStopped when no previewUrl (never boot someone else's branch)", () => {
-    expect(
-      computePreviewState({
-        ...base,
-        previewUrl: null,
-        userStopped: true,
-        othersThreadGate: { label: "tavano-321312" },
-      }),
-    ).toEqual({ kind: "othersThread", label: "tavano-321312" });
-  });
-
-  test("gate beats startError when no previewUrl", () => {
-    expect(
-      computePreviewState({
-        ...base,
-        previewUrl: null,
-        startError: { code: null, message: "boom" },
-        othersThreadGate: { label: "tavano-321312" },
-      }),
-    ).toEqual({ kind: "othersThread", label: "tavano-321312" });
-  });
 });

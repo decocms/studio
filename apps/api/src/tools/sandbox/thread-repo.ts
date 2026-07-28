@@ -77,6 +77,39 @@ export function threadIdFromBranch(
   return id || null;
 }
 
+/**
+ * The user a sandbox is KEYED by: a thread-scoped branch (`thread:<id>[/<conn>]`)
+ * keys by the thread's creator, everything else by the caller.
+ *
+ * Sandbox identity is per-user in three places that must agree — the claim
+ * handle (`computeClaimHandle`), `sandbox_runner_state`'s PK, and the
+ * `sandboxMap` key. Keyed by the CALLER, an org member opening a teammate's
+ * thread got a SECOND sandbox: a private clone of the same git branch that
+ * nobody can prompt (the chat is read-only for them) and whose shutdown
+ * force-push races the owner's on that one branch. Keyed by the thread's
+ * creator there is exactly one sandbox per thread, and every member resolves it
+ * identically — a viewer's `/events`, `/read`, git and exec reach the live
+ * daemon, and SANDBOX_START on an evicted one resumes it instead of forking a
+ * copy.
+ *
+ * This is sandbox IDENTITY only. Credential resolution (env secrets, submodule
+ * PATs) and audit fields stay keyed to the CALLER, so viewing a thread never
+ * mints someone else's secrets into a sandbox: a secret the caller can't read is
+ * skipped, exactly as it is today.
+ *
+ * Never throws; an absent thread falls back to the caller.
+ */
+export async function resolveSandboxUserId(
+  ctx: StudioContext,
+  branch: string | null | undefined,
+  callerUserId: string,
+): Promise<string> {
+  const threadId = threadIdFromBranch(branch);
+  if (!threadId) return callerUserId;
+  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
+  return thread?.created_by ?? callerUserId;
+}
+
 /** Read a thread's metadata JSON. Returns `null` only when the thread is
  *  absent (so writers can skip a non-existent row); an existing thread with a
  *  null metadata column returns `{}`. Never throws. `ctx.storage.threads` is

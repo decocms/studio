@@ -62,7 +62,7 @@ import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events
 import {
   SandboxLifecycleProvider,
   resolveVmEntry,
-  deriveOthersThreadLabel,
+  overlayThreadSandboxMap,
   type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
@@ -148,56 +148,20 @@ function VmEventsBridge({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  // Overlay the thread's own sandbox record for the current branch. `load_repo`
-  // binds a repo to the thread and persists its sandbox there (the ephemeral
-  // Decopilot agent's sandboxMap never persists), so the preview must read the
-  // thread's entry, not just the agent's.
-  const threadSandboxMap = activeTask?.metadata?.sandboxMap as
-    | SandboxMap
-    | undefined;
-  // The thread persists its sandbox under the thread OWNER's user id — yours for
-  // your own thread, the creator's when you're viewing someone else's (read-only).
-  // Read the owner's entry, not the viewer's: for another member's thread the
-  // viewer-keyed lookup misses, `previewUrl` stays null, and the gate's ack then
-  // fires a fresh clone on the owner's branch that never resolves ("Cloning your
-  // repo…" forever). Grafting the owner's entry under the viewer's key lets
-  // previewUrl resolve to the owner's already-running sandbox, so it renders
-  // read-only with no clone. `created_by` absent → falls back to the viewer
-  // (own-thread behavior unchanged).
-  const previewOwnerId = activeTask?.created_by ?? userId;
-  const threadOwnerBranchMap =
-    previewOwnerId && currentBranch
-      ? threadSandboxMap?.[previewOwnerId]?.[currentBranch]
-      : undefined;
-  // True when that grafted entry is someone ELSE's sandbox. Nothing about its
-  // boot is observable from here — the claim/daemon event stream is keyed to the
-  // viewer's own claim handle, which never materializes — so the preview renders
-  // on `previewUrl` alone (see `foreignSandbox` in preview-display) and the
-  // stream stays closed instead of reporting `claiming` forever.
-  const foreignSandbox = !!threadOwnerBranchMap && previewOwnerId !== userId;
-  const effectiveSandboxMap: SandboxMap | undefined =
-    userId && currentBranch && threadOwnerBranchMap
-      ? {
-          ...(sandboxMap ?? {}),
-          [userId]: {
-            ...(sandboxMap?.[userId] ?? {}),
-            [currentBranch]: threadOwnerBranchMap,
-          },
-        }
-      : sandboxMap;
+  // Overlay the thread's own sandbox record for the current branch. A thread has
+  // ONE sandbox, recorded under its creator and resolved server-side for every
+  // member who opens the thread — see overlayThreadSandboxMap.
+  const effectiveSandboxMap = overlayThreadSandboxMap({
+    agentSandboxMap: sandboxMap,
+    threadSandboxMap: activeTask?.metadata?.sandboxMap as
+      | SandboxMap
+      | undefined,
+    userId,
+    ownerId: activeTask?.created_by,
+    branch: currentBranch,
+  });
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
-
-  // Someone else's thread: hold auto-start behind a confirmation gate so the
-  // sandbox doesn't silently boot on the creator's branch (mirrors the chat
-  // composer's read-only banner). Ownership rule lives in the pure, tested
-  // deriveOthersThreadLabel; own thread → null (no gate).
-  const othersThreadLabel = deriveOthersThreadLabel({
-    userId: userId ?? null,
-    createdBy: activeTask?.created_by,
-    branch: activeTask?.branch,
-    title: activeTask?.title,
-  });
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -220,8 +184,7 @@ function VmEventsBridge({
   // vmEntry always agree on which sandbox is active.
   const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect =
-    (Object.keys(branchMap).length > 0 || isStartPending) && !foreignSandbox;
+  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
   return (
     <SandboxEventsProvider
@@ -237,9 +200,7 @@ function VmEventsBridge({
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
-        othersThreadLabel={othersThreadLabel}
-        othersThreadId={activeTask?.id ?? null}
-        foreignSandbox={foreignSandbox}
+        threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider
           key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}

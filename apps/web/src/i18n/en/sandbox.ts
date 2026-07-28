@@ -594,11 +594,6 @@ export const sandbox = {
   "sandbox.sectionsRightPane.selectSectionTitle": "Select a section to edit",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
     "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
-  "sandbox.stateCard.othersThreadTitle": "You're in someone else's chat",
-  "sandbox.stateCard.othersThreadMessage":
-    "This conversation ({label}) belongs to another member. Continuing here means picking up their work — start a new chat to work on your own instead.",
-  "sandbox.stateCard.othersThreadContinue": "Continue anyway",
-  "sandbox.stateCard.othersThreadNewChat": "Start new chat",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.resumeToContinue": "Resume to continue.",

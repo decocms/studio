@@ -6,8 +6,7 @@ import {
   shouldSelfHeal,
   computeDrawerStatus,
   buildSandboxStartArgs,
-  deriveOthersThreadLabel,
-  computeOthersThreadGate,
+  overlayThreadSandboxMap,
   deriveStartError,
   isRetryableClaimFailure,
   shouldAutoRetryClaim,
@@ -103,15 +102,10 @@ describe("shouldAutoStart", () => {
     userStopped: false,
     isPending: false,
     attempted: false,
-    autoStartBlocked: false,
   };
 
   test("all conditions met → true", () => {
     expect(shouldAutoStart(base)).toBe(true);
-  });
-
-  test("blocked on another member's thread → false", () => {
-    expect(shouldAutoStart({ ...base, autoStartBlocked: true })).toBe(false);
   });
 
   test("no github repo → false", () => {
@@ -157,15 +151,10 @@ describe("shouldSelfHeal", () => {
     lastDeadVmId: null as string | null,
     isPending: false,
     userStopped: false,
-    autoStartBlocked: false,
   };
 
   test("fresh dead vm → true", () => {
     expect(shouldSelfHeal(base)).toBe(true);
-  });
-
-  test("blocked on another member's thread → false (no silent reprovision)", () => {
-    expect(shouldSelfHeal({ ...base, autoStartBlocked: true })).toBe(false);
   });
 
   test("not notFound → false", () => {
@@ -232,79 +221,88 @@ describe("computeDrawerStatus", () => {
       }),
     ).toBe("errored");
   });
-
-  test("othersThread → idle", () => {
-    expect(computeDrawerStatus({ kind: "othersThread", label: "main" })).toBe(
-      "idle",
-    );
-  });
 });
 
-describe("deriveOthersThreadLabel", () => {
-  test("own thread (created_by === userId) → null", () => {
-    expect(
-      deriveOthersThreadLabel({
-        userId: "u1",
-        createdBy: "u1",
-        branch: "main",
-        title: "New chat",
-      }),
-    ).toBeNull();
+describe("overlayThreadSandboxMap", () => {
+  const branch = "thread:t1/conn_1";
+  const threadMap = {
+    owner: { [branch]: { "agent-sandbox": entry("agent-sandbox", "the-one") } },
+  } as never;
+
+  test("re-keys the thread owner's record onto the viewer", () => {
+    // A thread has ONE sandbox, recorded under its creator and resolved
+    // server-side for whoever opens the thread (resolveSandboxUserId). The
+    // viewer-keyed lookups downstream must find it, or auto-start boots a
+    // second sandbox on the same git branch.
+    const result = overlayThreadSandboxMap({
+      agentSandboxMap: undefined,
+      threadSandboxMap: threadMap,
+      userId: "viewer",
+      ownerId: "owner",
+      branch,
+    });
+    expect(result?.viewer?.[branch]?.["agent-sandbox"]?.sandboxHandle).toBe(
+      "the-one",
+    );
   });
 
-  test("no userId → null (unauthenticated, don't gate)", () => {
+  test("own thread: ownerId absent falls back to the viewer", () => {
+    const result = overlayThreadSandboxMap({
+      agentSandboxMap: undefined,
+      threadSandboxMap: {
+        me: { [branch]: { "agent-sandbox": entry("agent-sandbox", "mine") } },
+      } as never,
+      userId: "me",
+      ownerId: null,
+      branch,
+    });
+    expect(result?.me?.[branch]?.["agent-sandbox"]?.sandboxHandle).toBe("mine");
+  });
+
+  test("keeps sibling branches on the agent's map", () => {
+    const agentMap = {
+      viewer: { main: { "agent-sandbox": entry("agent-sandbox", "agent") } },
+    } as never;
+    const result = overlayThreadSandboxMap({
+      agentSandboxMap: agentMap,
+      threadSandboxMap: threadMap,
+      userId: "viewer",
+      ownerId: "owner",
+      branch,
+    });
+    expect(result?.viewer?.main?.["agent-sandbox"]?.sandboxHandle).toBe(
+      "agent",
+    );
+    expect(result?.viewer?.[branch]?.["agent-sandbox"]?.sandboxHandle).toBe(
+      "the-one",
+    );
+  });
+
+  test("no entry for this branch → the agent's map, unchanged reference", () => {
+    const agentMap = {
+      viewer: { main: { "agent-sandbox": entry("agent-sandbox", "agent") } },
+    } as never;
     expect(
-      deriveOthersThreadLabel({
+      overlayThreadSandboxMap({
+        agentSandboxMap: agentMap,
+        threadSandboxMap: undefined,
+        userId: "viewer",
+        ownerId: "owner",
+        branch,
+      }),
+    ).toBe(agentMap);
+  });
+
+  test("no userId / no branch → passthrough", () => {
+    expect(
+      overlayThreadSandboxMap({
+        agentSandboxMap: undefined,
+        threadSandboxMap: threadMap,
         userId: null,
-        createdBy: "u2",
-        branch: "main",
-        title: "New chat",
+        ownerId: "owner",
+        branch,
       }),
-    ).toBeNull();
-  });
-
-  test("no created_by → null (own/new unsaved thread)", () => {
-    expect(
-      deriveOthersThreadLabel({
-        userId: "u1",
-        createdBy: null,
-        branch: "main",
-        title: "New chat",
-      }),
-    ).toBeNull();
-  });
-
-  test("others thread with a branch → branch (encodes owner)", () => {
-    expect(
-      deriveOthersThreadLabel({
-        userId: "u1",
-        createdBy: "u2",
-        branch: "tavano-321312",
-        title: "New chat",
-      }),
-    ).toBe("tavano-321312");
-  });
-
-  test("others thread with no branch → title fallback", () => {
-    expect(
-      deriveOthersThreadLabel({
-        userId: "u1",
-        createdBy: "u2",
-        branch: null,
-        title: "Fix the banner",
-      }),
-    ).toBe("Fix the banner");
-  });
-
-  test("others thread with neither branch nor title → null", () => {
-    expect(
-      deriveOthersThreadLabel({
-        userId: "u1",
-        createdBy: "u2",
-        branch: null,
-        title: null,
-      }),
-    ).toBeNull();
+    ).toBeUndefined();
   });
 });
 
@@ -401,7 +399,6 @@ describe("shouldAutoRetryClaim", () => {
     attempts: 0,
     isPending: false,
     userStopped: false,
-    autoStartBlocked: false,
     alreadyHandled: false,
   };
 
@@ -436,12 +433,6 @@ describe("shouldAutoRetryClaim", () => {
   test("user stopped → false", () => {
     expect(shouldAutoRetryClaim({ ...base, userStopped: true })).toBe(false);
   });
-
-  test("blocked on another member's thread → false", () => {
-    expect(shouldAutoRetryClaim({ ...base, autoStartBlocked: true })).toBe(
-      false,
-    );
-  });
 });
 
 describe("reconcileClaimRetryEpisode", () => {
@@ -469,58 +460,5 @@ describe("reconcileClaimRetryEpisode", () => {
       count: 0,
       handled: false,
     });
-  });
-});
-
-describe("computeOthersThreadGate", () => {
-  test("own thread (no label) → not blocked regardless of ack", () => {
-    expect(
-      computeOthersThreadGate({
-        othersThreadLabel: null,
-        acknowledgedThreadId: null,
-        threadId: "t1",
-      }).autoStartBlocked,
-    ).toBe(false);
-  });
-
-  test("others thread, never acknowledged → blocked", () => {
-    expect(
-      computeOthersThreadGate({
-        othersThreadLabel: "main",
-        acknowledgedThreadId: null,
-        threadId: "t1",
-      }).autoStartBlocked,
-    ).toBe(true);
-  });
-
-  test("others thread, acknowledged this thread → not blocked", () => {
-    expect(
-      computeOthersThreadGate({
-        othersThreadLabel: "main",
-        acknowledgedThreadId: "t1",
-        threadId: "t1",
-      }).autoStartBlocked,
-    ).toBe(false);
-  });
-
-  test("acknowledged a DIFFERENT thread → blocked (re-arms per thread)", () => {
-    expect(
-      computeOthersThreadGate({
-        othersThreadLabel: "main",
-        acknowledgedThreadId: "t1",
-        threadId: "t2",
-      }).autoStartBlocked,
-    ).toBe(true);
-  });
-
-  test("acknowledgement survives a null → assigned branch on the same thread", () => {
-    // Same thread id, so acknowledging while branch was null stays valid once
-    // the server assigns a branch — no re-prompt, no double SANDBOX_START.
-    const acked = computeOthersThreadGate({
-      othersThreadLabel: "New chat", // title fallback (branch was null)
-      acknowledgedThreadId: "t1",
-      threadId: "t1",
-    });
-    expect(acked.autoStartBlocked).toBe(false);
   });
 });

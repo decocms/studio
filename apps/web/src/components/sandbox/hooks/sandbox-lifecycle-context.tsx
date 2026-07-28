@@ -39,10 +39,6 @@ export interface ShouldAutoStartArgs {
   userStopped: boolean;
   isPending: boolean;
   attempted: boolean;
-  /** Held back until the user confirms opening another member's thread — see
-   *  `othersThreadLabel` on the provider. Prevents silently booting a sandbox
-   *  on someone else's branch. */
-  autoStartBlocked: boolean;
 }
 
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
@@ -52,8 +48,7 @@ export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
     !args.vmEntry &&
     !args.userStopped &&
     !args.isPending &&
-    !args.attempted &&
-    !args.autoStartBlocked
+    !args.attempted
   );
 }
 
@@ -63,9 +58,6 @@ export interface ShouldSelfHealArgs {
   lastDeadVmId: string | null;
   isPending: boolean;
   userStopped: boolean;
-  /** Same gate as auto-start: never silently reprovision a sandbox on another
-   *  member's branch while the confirmation gate is up. */
-  autoStartBlocked: boolean;
 }
 
 export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
@@ -74,41 +66,44 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
     !!args.deadVmId &&
     !args.isPending &&
     !args.userStopped &&
-    !args.autoStartBlocked &&
     args.deadVmId !== args.lastDeadVmId
   );
 }
 
-/** The gate label for an active thread: non-null iff the thread belongs to
- *  another member (its branch — which encodes the owner — or title as a
- *  fallback). Extracted from the layout so the ownership rule is unit-testable:
- *  an inverted comparison here would silently gate the user's own thread. */
-export function deriveOthersThreadLabel(args: {
-  userId: string | null;
-  createdBy: string | null | undefined;
+/**
+ * Overlay the active thread's sandbox record onto the agent's `sandboxMap` for
+ * the current branch. `load_repo` persists a thread-scoped sandbox on the THREAD
+ * row (the ephemeral Decopilot agent's own map never persists), so the preview
+ * has to read it from there.
+ *
+ * Read under the thread's OWNER (`ownerId`), written under the VIEWER
+ * (`userId`) — a thread has exactly ONE sandbox, recorded under its creator, and
+ * the server resolves that same sandbox for every org member who opens the
+ * thread (`resolveSandboxUserId`: the claim handle, runner state and sandboxMap
+ * are all keyed by the creator, not the caller). So the owner's record IS the
+ * viewer's sandbox; re-keying it to the viewer is what makes the rest of this
+ * module — which looks up `sandboxMap[viewerId][branch]` — find it. `ownerId`
+ * absent (a new, unsaved thread) falls back to the viewer.
+ */
+export function overlayThreadSandboxMap(args: {
+  agentSandboxMap: SandboxMap | undefined;
+  threadSandboxMap: SandboxMap | undefined;
+  userId: string | null | undefined;
+  ownerId: string | null | undefined;
   branch: string | null | undefined;
-  title: string | null | undefined;
-}): string | null {
-  const isOthers =
-    !!args.userId && !!args.createdBy && args.createdBy !== args.userId;
-  if (!isOthers) return null;
-  return args.branch ?? args.title ?? null;
-}
-
-/** Whether auto-start (and self-heal) must be held back pending confirmation.
- *  Keyed by thread id, not branch: acknowledging a null-branch thread survives
- *  the server later assigning it a branch (no re-prompt / double-start), and
- *  two different members' threads that collide on a branch name don't share an
- *  acknowledgement. Re-arms when the active thread id changes. */
-export function computeOthersThreadGate(args: {
-  othersThreadLabel: string | null;
-  acknowledgedThreadId: string | null;
-  threadId: string | null;
-}): { autoStartBlocked: boolean } {
-  const acknowledged =
-    args.acknowledgedThreadId !== null &&
-    args.acknowledgedThreadId === args.threadId;
-  return { autoStartBlocked: !!args.othersThreadLabel && !acknowledged };
+}): SandboxMap | undefined {
+  const { agentSandboxMap, threadSandboxMap, userId, branch } = args;
+  const ownerId = args.ownerId ?? userId;
+  if (!userId || !ownerId || !branch) return agentSandboxMap;
+  const threadBranchMap = threadSandboxMap?.[ownerId]?.[branch];
+  if (!threadBranchMap) return agentSandboxMap;
+  return {
+    ...(agentSandboxMap ?? {}),
+    [userId]: {
+      ...(agentSandboxMap?.[userId] ?? {}),
+      [branch]: threadBranchMap,
+    },
+  };
 }
 
 /** Shared SANDBOX_START arg-builder so every call site (auto-start,
@@ -159,7 +154,6 @@ export interface ShouldAutoRetryClaimArgs {
   attempts: number;
   isPending: boolean;
   userStopped: boolean;
-  autoStartBlocked: boolean;
   /** Guard so a single failed episode fires exactly one retry (re-armed when the
    *  phase leaves `failed`). Without it the persistent `failed` phase would
    *  re-fire every render once the mutation settles. */
@@ -173,7 +167,6 @@ export function shouldAutoRetryClaim(args: ShouldAutoRetryClaimArgs): boolean {
     args.attempts < MAX_CLAIM_AUTO_RETRIES &&
     !args.isPending &&
     !args.userStopped &&
-    !args.autoStartBlocked &&
     !args.alreadyHandled
   );
 }
@@ -245,8 +238,6 @@ export function computeDrawerStatus(state: PreviewState): DrawerStatus {
       return "starting";
     case "errored":
       return "errored";
-    case "othersThread":
-      return "idle";
   }
 }
 
@@ -272,6 +263,7 @@ import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useChatTask } from "@/components/chat/context";
+import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import {
   sandboxUserStop,
   useSandboxStart,
@@ -293,13 +285,6 @@ export interface SandboxLifecycleValue {
   restart: () => Promise<void>;
   retry: () => void;
   resume: () => void;
-  /** Confirm opening another member's thread: releases the auto-start gate so
-   *  the sandbox boots on that thread's branch. See `othersThreadLabel`. */
-  acknowledgeOthersThread: () => void;
-  /** The resolved sandbox is another member's (read-only view of their running
-   *  sandbox). Its boot progress is unobservable from here — see
-   *  `PreviewDisplayInput.foreignSandbox`. */
-  foreignSandbox: boolean;
 }
 
 const DEFAULT_VALUE: SandboxLifecycleValue = {
@@ -314,8 +299,6 @@ const DEFAULT_VALUE: SandboxLifecycleValue = {
   restart: async () => {},
   retry: () => {},
   resume: () => {},
-  acknowledgeOthersThread: () => {},
-  foreignSandbox: false,
 };
 
 const SandboxLifecycleContext =
@@ -332,9 +315,7 @@ export function SandboxLifecycleProvider({
   hasActiveGithubRepo,
   sandboxMap,
   sandboxProviderKind,
-  othersThreadLabel,
-  othersThreadId,
-  foreignSandbox = false,
+  threadId,
   children,
 }: {
   virtualMcpId: string | null;
@@ -346,41 +327,35 @@ export function SandboxLifecycleProvider({
    *  (unlocked). When non-null, entry selection and SANDBOX_START are scoped to
    *  this kind so the preview never silently shows a different-provider sibling. */
   sandboxProviderKind: SandboxProviderKind | null;
-  /** Non-null when the active thread belongs to another member: label to show
-   *  in the confirmation gate (its branch, or title). While set and not yet
-   *  acknowledged, auto-start is held back so we never silently boot a sandbox
-   *  on someone else's branch. Null on the user's own thread. */
-  othersThreadLabel: string | null;
-  /** Active thread id — the acknowledgement key (see computeOthersThreadGate). */
-  othersThreadId: string | null;
-  /** The `sandboxMap` entry for this branch is another member's, grafted in so a
-   *  read-only viewer resolves their running sandbox (see `VmEventsBridge`).
-   *  Forwarded to the preview display, whose progress gate can never clear for
-   *  it. Defaults false (own sandbox). */
-  foreignSandbox?: boolean;
+  /** Active thread id — the row re-read after a successful start (see
+   *  `onStarted` below). */
+  threadId: string | null;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
   const { setCurrentTaskBranch } = useChatTask();
+  const manager = useOptionalThreadManager();
   const events = useSandboxEvents();
   const queryClient = useQueryClient();
-
-  // Confirmation gate for another member's thread (see computeOthersThreadGate).
-  const [acknowledgedThreadId, setAcknowledgedThreadId] = useState<
-    string | null
-  >(null);
-  const { autoStartBlocked } = computeOthersThreadGate({
-    othersThreadLabel,
-    acknowledgedThreadId,
-    threadId: othersThreadId,
-  });
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const startVm = useSandboxStart(mcpClient);
+  // Re-read the thread row after every successful start: a thread-scoped sandbox
+  // (`thread:<id>…` — every `load_repo` sandbox) records itself on the THREAD,
+  // not on the agent, so `invalidateVirtualMcpQueries` can't surface it, and the
+  // live `data-open-preview` chunk that patches the row client-side only reaches
+  // whoever ran the tool. Without this the fresh `previewUrl` never reaches the
+  // store and the preview holds the booting overlay until a page reload. Most
+  // visible when booting your own sandbox on a teammate's thread — nothing else
+  // writes that row for you there.
+  const startVm = useSandboxStart(mcpClient, {
+    onStarted: () => {
+      if (threadId) void manager?.refreshThreadMetadata(threadId);
+    },
+  });
   // Destructure mutate/reset so they're stable references for effect deps.
   const { mutate: startVmMutate, reset: startVmReset } = startVm;
 
@@ -449,10 +424,6 @@ export function SandboxLifecycleProvider({
     appPaused,
     userStopped,
     startError,
-    othersThreadGate:
-      autoStartBlocked && othersThreadLabel
-        ? { label: othersThreadLabel }
-        : null,
   });
   const status = computeDrawerStatus(previewState);
 
@@ -474,7 +445,6 @@ export function SandboxLifecycleProvider({
     userStopped,
     isPending: startVm.isPending,
     attempted,
-    autoStartBlocked,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges external state into a one-shot mutation; no render-time equivalent
   useEffect(() => {
@@ -513,7 +483,6 @@ export function SandboxLifecycleProvider({
     lastDeadVmId: reprovisionedForVmIdRef.current,
     isPending: startVm.isPending,
     userStopped,
-    autoStartBlocked,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot reprovision trigger gated on notFound→deadVmId
   useEffect(() => {
@@ -552,7 +521,6 @@ export function SandboxLifecycleProvider({
     attempts: claimRetryEpisode.count,
     isPending: startVm.isPending,
     userStopped,
-    autoStartBlocked,
     alreadyHandled: claimRetryEpisode.handled,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges the SSE failed phase into a one-shot bounded reprovision
@@ -655,10 +623,6 @@ export function SandboxLifecycleProvider({
   };
   const resume = retry;
 
-  // Confirm opening another member's thread → release the gate. Auto-start
-  // becomes eligible on the next render and fires SANDBOX_START for this branch.
-  const acknowledgeOthersThread = () => setAcknowledgedThreadId(othersThreadId);
-
   // Value is recomputed each render; React 19 Compiler handles memoization.
   const value: SandboxLifecycleValue = {
     branch,
@@ -672,8 +636,6 @@ export function SandboxLifecycleProvider({
     restart,
     retry,
     resume,
-    acknowledgeOthersThread,
-    foreignSandbox,
   };
 
   return (

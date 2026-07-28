@@ -205,12 +205,16 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  /** Row returned by `storage.threads.get` — set `created_by` to exercise the
+   *  thread-owner keying (see resolveSandboxUserId). */
+  thread?: { created_by: string; metadata: Record<string, unknown> } | null;
 }): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
     virtualMcp,
     updateSpy = mock(async () => {}),
+    thread = null,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -240,10 +244,11 @@ function makeCtx(overrides: {
       connections: {
         findById: mock(async (_id: string) => ({ metadata: null })),
       },
-      // A `thread:` branch resolves the thread's bound repo; return no thread so
-      // provisioning falls back to the VM's own githubRepo.
+      // A `thread:` branch resolves the thread's creator + bound repo. Default
+      // is no thread, so provisioning falls back to the VM's own githubRepo and
+      // keys the sandbox by the caller.
       threads: {
-        get: mock(async (_id: string) => null),
+        get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
     } as never,
@@ -372,6 +377,39 @@ describe("SANDBOX_START", () => {
         branch: synthetic,
       }),
     );
+  });
+
+  it("keys a thread-scoped sandbox by the thread's creator, not the caller", async () => {
+    // A teammate opening the thread must resume the ONE sandbox that thread has.
+    // Keyed by the caller they got a second sandbox on the same git branch —
+    // undrivable (its claim handle never existed for them) and a rival
+    // shutdown-force-push target. Audit fields stay the caller's.
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      userId: "user_viewer",
+      thread: { created_by: USER_ID, metadata: {} },
+    });
+
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: "thread:t1/conn_a" },
+      ctx,
+    );
+
+    const [id] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(id.userId).toBe(USER_ID);
+
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    // Acting user (audit) is the caller...
+    expect(updateCall[1]).toBe("user_viewer");
+    // ...while the sandboxMap slot belongs to the thread's creator, which is
+    // what the sandbox-proxy's owner-keyed claim lookup resolves.
+    const updated = updateCall[2] as {
+      metadata: { sandboxMap: SandboxMap };
+    };
+    expect(Object.keys(updated.metadata.sandboxMap)).toEqual([USER_ID]);
   });
 
   it("persists sandboxMap entry with handle + previewUrl + sandboxProviderKind", async () => {
