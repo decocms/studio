@@ -932,11 +932,6 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   taskManager.shutdown();
   branchStatus.stop();
-  // Start the metric export NOW so it runs concurrently with the git sync
-  // below, and await it only at the very end. Awaiting here would put
-  // telemetry ahead of the user's work in a 30s grace period; not awaiting at
-  // all would let the process.exit() below cut the export mid-flight.
-  const flushed = flushTelemetry();
   // Publish BEFORE unmount: syncing the user's work is the only irrecoverable
   // step. A stale mount is backstopped (sync `exit` handler + next-boot
   // reclaim), so a hanging unmount must never eat the push's slice of the grace
@@ -966,7 +961,12 @@ async function shutdown(): Promise<void> {
   if (mountManager) {
     await mountManager.stop().catch(() => {});
   }
-  await flushed;
+  // Last, after the user's work is safely pushed — telemetry never competes
+  // with it for the grace period. Can't usefully start earlier either: the
+  // publish above is synchronous (spawnSync), so it blocks the loop and the
+  // exporter's request couldn't make progress alongside it. Self-bounded, so
+  // a dead collector can't hold the process open.
+  await flushTelemetry();
   process.exit(0);
 }
 

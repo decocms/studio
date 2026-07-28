@@ -369,7 +369,10 @@ export class SetupOrchestrator {
       config.repoDir,
       config.application?.packageManager?.path,
     );
-    const restoreStartedAt = Date.now();
+    // Times the WHOLE dependency step, not just the install: a failed golden
+    // probe (stat, partial reflink, cleanup) is real boot latency, and on a
+    // miss the cost L2 would replace is probe + install, not install alone.
+    const depsStartedAt = Date.now();
     if (
       await tryRestoreGolden({
         config,
@@ -383,14 +386,13 @@ export class SetupOrchestrator {
       recordDepsRestore({
         source: "l1",
         cloneUrl: resolveCloneUrl(config),
-        durationMs: Date.now() - restoreStartedAt,
+        durationMs: Date.now() - depsStartedAt,
       });
       this.markInstallSucceeded(config);
       return true;
     }
 
     this.chunk(`[orchestrator] installing dependencies\r\n`);
-    const installStartedAt = Date.now();
 
     const installLogPath = appLogPath(this.deps.logsDir, "install");
     try {
@@ -430,7 +432,7 @@ export class SetupOrchestrator {
     recordDepsRestore({
       source: "miss",
       cloneUrl: resolveCloneUrl(config),
-      durationMs: Date.now() - installStartedAt,
+      durationMs: Date.now() - depsStartedAt,
     });
     this.markInstallSucceeded(config);
     // Install scripts (postinstall/prepare — lefthook, husky, etc.) can

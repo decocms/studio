@@ -45,10 +45,29 @@ function getInstruments(): Instruments {
     installMs: meter.createHistogram("studio.sandbox.deps.install_ms", {
       description: "Wall-clock cost of a full dependency install (cache miss)",
       unit: "ms",
+      // Without this advice the SDK applies its default millisecond
+      // boundaries, which top out at 10s — and installs run for tens of
+      // seconds, so every real point would land in the +Inf overflow bucket
+      // and p50 would equal p95. That number is the whole reason this
+      // instrument exists, so the range has to cover 1s–5min.
+      advice: {
+        explicitBucketBoundaries: [
+          1_000, 2_500, 5_000, 10_000, 20_000, 30_000, 45_000, 60_000, 90_000,
+          120_000, 180_000, 300_000,
+        ],
+      },
     }),
     restoreMs: meter.createHistogram("studio.sandbox.deps.restore_ms", {
       description: "Wall-clock cost of restoring dependencies from a cache",
       unit: "ms",
+      // Sub-second at the fast end (a reflink is ~1s) but an L2 archive
+      // extract is seconds. The defaults would collapse a healthy 200ms
+      // restore and a degraded 2s one into neighbouring buckets.
+      advice: {
+        explicitBucketBoundaries: [
+          50, 100, 250, 500, 750, 1_000, 2_000, 4_000, 8_000, 15_000, 30_000,
+        ],
+      },
     }),
   };
 }

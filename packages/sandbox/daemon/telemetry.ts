@@ -29,11 +29,10 @@ import { sleep } from "@decocms/shared/std";
 
 const EXPORT_INTERVAL_MS = 60_000;
 
-// Tail budget for the shutdown flush. `shutdown()` starts the flush before the
-// git sync and awaits it after, so this is only the slice left over once the
-// user's work is safely pushed — it must not eat into the 30s grace period the
-// push depends on. OTLP acks 202 without waiting on downstream ingestion, so a
-// healthy collector answers in well under a second.
+// Tail budget for the shutdown flush, which runs only after the user's work is
+// pushed — it must never eat into the grace period that push depends on. OTLP
+// acks 202 without waiting on downstream ingestion, so a healthy collector
+// answers in well under a second; this cap is for an unreachable one.
 const FLUSH_TIMEOUT_MS = 3_000;
 
 let provider: MeterProvider | null = null;
