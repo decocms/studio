@@ -27,6 +27,15 @@ export const MCPClient = new Proxy(
             connection,
           });
       }
+
+      if (name === "forClient") {
+        return <TDefinition extends readonly ToolBinder[]>(
+          client: ServerClient,
+        ) =>
+          createMCPFetchStub<TDefinition>({
+            client,
+          });
+      }
       return globalThis[name as keyof typeof globalThis];
     },
   },
