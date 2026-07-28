@@ -1334,11 +1334,17 @@ pub(crate) async fn terminate_tasks_by_log_name(
 }
 
 /// Make the durable registry the canonical source for fields the frontend may
-/// omit on a later `ensure` call. A handle intentionally identifies only a
-/// virtual MCP + branch, so accepting a different repository URL for an
-/// existing handle would silently retarget the worktree. Optional workload and
-/// git-identity hints, on the other hand, are merged from the prior record so a
-/// sparse control-plane request cannot erase them.
+/// omit on a later `ensure` call. A handle identifies a repository + branch, so
+/// accepting a different repository URL for an existing handle would silently
+/// retarget the worktree. Optional workload and git-identity hints, on the
+/// other hand, are merged from the prior record so a sparse control-plane
+/// request cannot erase them.
+///
+/// The AGENT is deliberately not part of this check. A handle carries no agent
+/// identity, so two agents on one repo+branch share the sandbox by design —
+/// rejecting the second as an "identity mismatch" was a leftover from when a
+/// handle was `(virtualMcpId, branch)`, and it made a perfectly ordinary
+/// second agent fail with a 409. Both are recorded in `sandbox_agents`.
 fn merge_durable_config(
     incoming: &GitSandboxConfig,
     previous: Option<&super::registry::SandboxRecord>,
@@ -1347,11 +1353,9 @@ fn merge_durable_config(
         return Ok(incoming.clone());
     };
     let persisted = &previous.config;
-    if persisted.virtual_mcp_id != incoming.virtual_mcp_id
-        || normalized_branch(persisted) != normalized_branch(incoming)
-    {
+    if normalized_branch(persisted) != normalized_branch(incoming) {
         return Err(format!(
-            "sandbox {} identity does not match its durable registry record",
+            "sandbox {} branch does not match its durable registry record",
             previous.handle
         ));
     }

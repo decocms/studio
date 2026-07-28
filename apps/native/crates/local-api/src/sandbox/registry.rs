@@ -15,7 +15,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, TransactionBeha
 use super::manager::{GitSandboxConfig, SandboxManager};
 
 const DATABASE_FILE_NAME: &str = "sandboxes.sqlite";
-const CURRENT_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug)]
 enum RegistryOpenError {
@@ -171,6 +171,16 @@ impl SandboxRegistry {
                 ],
             )
             .map_err(|error| format!("failed to persist sandbox {handle}: {error}"))?;
+        // Additive: a second agent joining a repo+branch someone else already
+        // opened must not displace the first, or the first's handle lookup
+        // stops resolving while its sandbox is still very much alive.
+        self.connection()
+            .execute(
+                "INSERT OR IGNORE INTO sandbox_agents (handle, virtual_mcp_id, created_at)
+                 VALUES (?1, ?2, ?3)",
+                params![handle, config.virtual_mcp_id, now],
+            )
+            .map_err(|error| format!("failed to record agent for sandbox {handle}: {error}"))?;
         self.secure_database_files()?;
         Ok(())
     }
@@ -260,9 +270,15 @@ impl SandboxRegistry {
         virtual_mcp_id: &str,
         branch: &str,
     ) -> Result<Option<String>, String> {
+        // Joined through `sandbox_agents` rather than read off `sandboxes`:
+        // several agents can share one repo+branch sandbox, and the column on
+        // `sandboxes` only remembers the latest of them.
         self.connection()
             .query_row(
-                "SELECT handle FROM sandboxes WHERE virtual_mcp_id = ?1 AND branch = ?2 LIMIT 1",
+                "SELECT s.handle FROM sandboxes s
+                 JOIN sandbox_agents a ON a.handle = s.handle
+                 WHERE a.virtual_mcp_id = ?1 AND s.branch = ?2
+                 ORDER BY s.last_seen_at DESC LIMIT 1",
                 [virtual_mcp_id, branch],
                 |row| row.get(0),
             )
@@ -629,8 +645,13 @@ fn migrate_schema(
             // containing the v1 table. CREATE IF NOT EXISTS cannot add the v2
             // column, so make that upgrade explicit inside the same transaction.
             add_resume_step_if_missing(&transaction)?;
+            add_sandbox_agents_if_missing(&transaction)?;
         }
-        1 => add_resume_step_if_missing(&transaction)?,
+        1 => {
+            add_resume_step_if_missing(&transaction)?;
+            add_sandbox_agents_if_missing(&transaction)?;
+        }
+        2 => add_sandbox_agents_if_missing(&transaction)?,
         CURRENT_SCHEMA_VERSION => {}
         version => return Err(RegistryOpenError::UnsupportedVersion(version)),
     }
@@ -663,6 +684,34 @@ fn add_resume_step_if_missing(connection: &Connection) -> Result<(), RegistryOpe
     Ok(())
 }
 
+/// v3: every agent that has claimed a handle, not just the most recent one.
+///
+/// A handle is `<repo scope>/<branch>` and carries no agent identity, so two
+/// agents working the same repo+branch legitimately share ONE sandbox — and
+/// one `virtual_mcp_id` column on a table keyed by handle can only remember
+/// whichever of them wrote last, silently losing the other's lookup.
+///
+/// Backfilled from the column it replaces, so an upgraded database resolves
+/// every sandbox it already knew about.
+fn add_sandbox_agents_if_missing(connection: &Connection) -> Result<(), RegistryOpenError> {
+    connection
+        .execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS sandbox_agents (
+                handle TEXT NOT NULL REFERENCES sandboxes(handle) ON DELETE CASCADE,
+                virtual_mcp_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (handle, virtual_mcp_id)
+            );
+            CREATE INDEX IF NOT EXISTS sandbox_agents_by_agent
+                ON sandbox_agents(virtual_mcp_id);
+            INSERT OR IGNORE INTO sandbox_agents (handle, virtual_mcp_id, created_at)
+                SELECT handle, virtual_mcp_id, created_at FROM sandboxes;
+            "#,
+        )
+        .map_err(|error| RegistryOpenError::sqlite("failed to migrate schema to v3", error))
+}
+
 fn validate_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
     connection
         .prepare(
@@ -673,10 +722,13 @@ fn validate_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
             FROM sandboxes LIMIT 0
             "#,
         )
-        .map_err(|error| RegistryOpenError::sqlite("sandbox table does not match v2", error))?;
+        .map_err(|error| RegistryOpenError::sqlite("sandbox table does not match v3", error))?;
     connection
         .prepare("SELECT key, value FROM sandbox_metadata LIMIT 0")
-        .map_err(|error| RegistryOpenError::sqlite("metadata table does not match v2", error))?;
+        .map_err(|error| RegistryOpenError::sqlite("metadata table does not match v3", error))?;
+    connection
+        .prepare("SELECT handle, virtual_mcp_id, created_at FROM sandbox_agents LIMIT 0")
+        .map_err(|error| RegistryOpenError::sqlite("agent table does not match v3", error))?;
     Ok(())
 }
 
@@ -928,6 +980,59 @@ mod tests {
             .unwrap();
     }
 
+    /// A handle is `<repo scope>/<branch>` and names no agent, so two agents
+    /// on one repo+branch share the sandbox. The second must not evict the
+    /// first from its own handle lookup — that is what one `virtual_mcp_id`
+    /// column on a handle-keyed table used to do.
+    #[test]
+    fn two_agents_on_one_repo_and_branch_share_a_sandbox() {
+        let root = tempfile::tempdir().unwrap();
+        let first = config();
+        let branch = first.branch.clone().unwrap();
+        let handle =
+            SandboxManager::compute_handle(&first.clone_url, &branch).expect("scopeable clone url");
+        let sandbox_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
+        let workdir_path = sandbox_path.join("repo");
+        create_git_checkout(&workdir_path);
+
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry
+            .upsert_config(&handle, &first, &sandbox_path, &workdir_path)
+            .unwrap();
+
+        let second = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-second-agent".to_string(),
+            ..first.clone()
+        };
+        registry
+            .upsert_config(&handle, &second, &sandbox_path, &workdir_path)
+            .unwrap();
+
+        // Same repo + branch => one sandbox, reachable by BOTH agents.
+        assert_eq!(
+            registry
+                .handle_for_agent(&first.virtual_mcp_id, &branch)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        assert_eq!(
+            registry
+                .handle_for_agent(&second.virtual_mcp_id, &branch)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        let sandbox_rows: i64 = registry
+            .connection()
+            .query_row("SELECT COUNT(*) FROM sandboxes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sandbox_rows, 1, "two agents must not fork two sandboxes");
+    }
+
     #[test]
     fn registry_is_wal_and_survives_reopen() {
         let root = tempfile::tempdir().unwrap();
@@ -1104,8 +1209,13 @@ mod tests {
     fn rejects_future_schema_without_quarantining_or_mutating_it() {
         let root = tempfile::tempdir().unwrap();
         let database_path = root.path().join(DATABASE_FILE_NAME);
+        // One past whatever is current, so bumping the schema never silently
+        // turns this test into an assertion about a version we now support.
+        let future = CURRENT_SCHEMA_VERSION + 1;
         let connection = Connection::open(&database_path).unwrap();
-        connection.pragma_update(None, "user_version", 3).unwrap();
+        connection
+            .pragma_update(None, "user_version", future)
+            .unwrap();
         drop(connection);
 
         let error = SandboxRegistry::open(root.path().to_path_buf())
@@ -1117,7 +1227,7 @@ mod tests {
         let version: i64 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, future);
         let has_quarantine = std::fs::read_dir(root.path()).unwrap().any(|entry| {
             entry
                 .ok()

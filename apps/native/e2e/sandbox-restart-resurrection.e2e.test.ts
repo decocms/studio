@@ -470,10 +470,19 @@ describeLocalApi(
       expect(
         await ensureSandbox(a, "sandbox-control-plane-e2e", fixture.bareDir),
       ).toBe(handle);
-      // A DIFFERENT BRANCH is what makes this a second sandbox. A handle is
-      // `<repo scope>/<branch>` and carries no agent identity, so the same
-      // repo+branch under another virtual MCP id is the SAME sandbox, not a
-      // rival one — asking for it here would assert nothing about binding.
+      // A handle is `<repo scope>/<branch>` and carries no agent identity, so
+      // a SECOND agent on the same repo+branch joins this sandbox rather than
+      // forking or colliding with it. It used to 409 on an identity guard left
+      // over from when a handle was `(virtualMcpId, branch)`.
+      expect(
+        await ensureSandbox(
+          a,
+          "sandbox-control-plane-e2e-second",
+          fixture.bareDir,
+        ),
+      ).toBe(handle);
+      // So a DIFFERENT BRANCH is what makes a genuinely rival sandbox — which
+      // is what this test needs to prove A's explicit stream stays bound to A.
       const otherHandle = await ensureSandbox(
         a,
         "sandbox-control-plane-e2e-other",
