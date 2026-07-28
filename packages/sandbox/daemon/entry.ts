@@ -528,8 +528,8 @@ const configUpdateH = makeConfigUpdateHandler({
   },
 });
 
-function hydrate(): void {
-  const diskOutcome = readConfig(bootConfig.repoDir);
+async function hydrate(): Promise<void> {
+  const diskOutcome = await readConfig(bootConfig.repoDir);
   if (diskOutcome.kind === "invalid") {
     console.warn(
       `[daemon] ignoring .decocms/daemon.json: ${diskOutcome.reason}`,
@@ -541,7 +541,7 @@ function hydrate(): void {
   orchestrator.handle({ kind: "bootstrap", config: initial });
 }
 
-hydrate();
+await hydrate();
 
 if (!store.read()) {
   console.log(
