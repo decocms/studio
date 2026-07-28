@@ -223,7 +223,7 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     };
 
     let mut out_headers = build_forward_headers(&parts.headers);
-    attach_persisted_cookie(&mut out_headers, &session).await;
+    let cookie_attached = attach_persisted_cookie(&mut out_headers, &session).await;
     // A payload we intend to rewrite must arrive uncompressed — reqwest is
     // built without `gzip`, so a compressed body would fail to parse and the
     // rewrite would silently fail open.
@@ -241,6 +241,7 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         &out_headers,
         &body_bytes,
         access_token,
+        cookie_attached,
     )
     .await
     {
@@ -697,26 +698,38 @@ fn is_better_auth_set_cookie(set_cookie: &str) -> bool {
 }
 
 /// Attaches the durable, Keychain-persisted Better Auth session cookie (see
-/// `upstream::UpstreamSession::cookie_header`'s doc comment) to an
-/// org-data/bearer-branch request, in ADDITION to the `Authorization:
-/// Bearer` token already attached by [`send_once`]/[`send_with_retry`] — a
-/// no-op when this session has no persisted cookie (the system-browser
-/// login path, or before any embedded sign-in has ever completed). This is
-/// what makes the real production web shell's own sign-in gate and org
-/// switcher (both native Better Auth `/api/auth/*` endpoints, reached via
-/// [`proxy_auth_path`] above) AND every ordinary org-scoped data call
-/// (reached via THIS branch) agree on the same signed-in identity, for
-/// every request this proxy forwards — not just `/api/auth/*`.
-async fn attach_persisted_cookie(headers: &mut HeaderMap, session: &upstream::UpstreamSession) {
+/// `upstream::UpstreamSession::cookie_header`'s doc comment) to an org-data
+/// request — a no-op when this session has no persisted cookie (the
+/// system-browser login path, or before any embedded sign-in has ever
+/// completed). This is what makes the real production web shell's own
+/// sign-in gate and org switcher (both native Better Auth `/api/auth/*`
+/// endpoints, reached via [`proxy_auth_path`] above) AND every ordinary
+/// org-scoped data call (reached via the bearer branch) agree on the same
+/// signed-in identity, for every request this proxy forwards.
+///
+/// When the cookie IS attached, [`send_with_retry`] leads with it and holds
+/// the bearer back. Sending both broke upstream tools that make NESTED
+/// Better Auth calls with the forwarded headers (`boundAuth.organization.*`):
+/// Better Auth's api-key plugin probes any `Authorization: Bearer` as an API
+/// key and throws `Invalid API key.` before the valid cookie beside it is
+/// ever consulted. A browser sends only the cookie and works; so must we.
+/// Returns whether a cookie was actually attached, so the caller can decide
+/// which credential leads the request (see [`send_with_retry`]).
+async fn attach_persisted_cookie(
+    headers: &mut HeaderMap,
+    session: &upstream::UpstreamSession,
+) -> bool {
     let Some(cookie) = session.cookie_header().await else {
-        return;
+        return false;
     };
     match HeaderValue::from_str(&cookie) {
         Ok(value) => {
             headers.insert(header::COOKIE, value);
+            true
         }
         Err(err) => {
             tracing::warn!(error = %err, "persisted cookie was not a valid header value; forwarding without it");
+            false
         }
     }
 }
@@ -964,12 +977,24 @@ pub(crate) async fn call_org_tool(
     headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
 
     let body = axum::body::Bytes::from(serde_json::to_vec(input).map_err(|e| e.to_string())?);
-    let response = send_with_retry(&session, &Method::POST, &path, &headers, &body, token)
-        .await
-        .map_err(|error| match error {
-            ProxyError::Network(msg) => format!("upstream unreachable: {msg}"),
-            ProxyError::HardUnauthorized => "not signed in to the upstream deployment".to_string(),
-        })?;
+    // Same browser-shaped credential rule as the proxy branch: cookie leads,
+    // bearer in reserve — tool handlers upstream can make nested Better Auth
+    // calls with these headers, and a bearer poisons those (api-key probe).
+    let cookie_attached = attach_persisted_cookie(&mut headers, &session).await;
+    let response = send_with_retry(
+        &session,
+        &Method::POST,
+        &path,
+        &headers,
+        &body,
+        token,
+        cookie_attached,
+    )
+    .await
+    .map_err(|error| match error {
+        ProxyError::Network(msg) => format!("upstream unreachable: {msg}"),
+        ProxyError::HardUnauthorized => "not signed in to the upstream deployment".to_string(),
+    })?;
 
     let status = response.status();
     let bytes = response
@@ -1021,14 +1046,34 @@ pub(crate) async fn send_org_request(
         .access_token()
         .await
         .map_err(|_| UpstreamCallError::NotSignedIn)?;
-    send_with_retry(&session, &method, path_and_query, &headers, &body, token)
-        .await
-        .map_err(|error| match error {
-            ProxyError::Network(msg) => UpstreamCallError::Unreachable(msg),
-            ProxyError::HardUnauthorized => UpstreamCallError::NotSignedIn,
-        })
+    let mut headers = headers;
+    // Cookie leads for the same reason as the proxy branch — see
+    // [`attach_persisted_cookie`].
+    let cookie_attached = attach_persisted_cookie(&mut headers, &session).await;
+    send_with_retry(
+        &session,
+        &method,
+        path_and_query,
+        &headers,
+        &body,
+        token,
+        cookie_attached,
+    )
+    .await
+    .map_err(|error| match error {
+        ProxyError::Network(msg) => UpstreamCallError::Unreachable(msg),
+        ProxyError::HardUnauthorized => UpstreamCallError::NotSignedIn,
+    })
 }
 
+/// `cookie_leads`: the headers carry the persisted Better Auth session
+/// cookie, so the request goes out BROWSER-SHAPED — cookie only, no bearer.
+/// The bearer stays in reserve for the 401 path (an expired or revoked
+/// cookie session), where the existing revalidate-and-retry flow takes over
+/// unchanged. Sending both at once is not an option: upstream tools that
+/// re-authenticate from the forwarded headers (`boundAuth.organization.*`)
+/// die on Better Auth's api-key plugin probing the bearer — the exact
+/// failure the browser never sees because it only ever sends the cookie.
 async fn send_with_retry(
     session: &upstream::UpstreamSession,
     method: &Method,
@@ -1036,8 +1081,19 @@ async fn send_with_retry(
     headers: &HeaderMap,
     body: &axum::body::Bytes,
     token: String,
+    cookie_leads: bool,
 ) -> Result<reqwest::Response, ProxyError> {
     let url = format!("{}{path_and_query}", session.target());
+
+    if cookie_leads {
+        let first = send_once_no_bearer(method, &url, headers, body.clone()).await?;
+        if first.status() != StatusCode::UNAUTHORIZED {
+            return Ok(first);
+        }
+        // Cookie session rejected — fall through to the bearer flow below,
+        // which also revalidates the whole session state.
+    }
+
     let first = send_once(method, &url, headers, body.clone(), &token).await?;
     if first.status() != StatusCode::UNAUTHORIZED {
         return Ok(first);
@@ -1850,6 +1906,7 @@ mod tests {
             &headers,
             &body,
             "good-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -1902,6 +1959,7 @@ mod tests {
             &HeaderMap::new(),
             &axum::body::Bytes::new(),
             "good-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -1959,6 +2017,7 @@ mod tests {
             &headers,
             &body,
             "old-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -2037,6 +2096,7 @@ mod tests {
             &HeaderMap::new(),
             &axum::body::Bytes::new(),
             "old-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -2101,6 +2161,7 @@ mod tests {
             &HeaderMap::new(),
             &axum::body::Bytes::new(),
             "old-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -2157,6 +2218,7 @@ mod tests {
             &HeaderMap::new(),
             &axum::body::Bytes::new(),
             "old-token".to_string(),
+            false,
         )
         .await
         .unwrap_err();
@@ -2198,6 +2260,7 @@ mod tests {
             &headers,
             &body,
             "good-token".to_string(),
+            false,
         )
         .await
         .unwrap();
@@ -2316,6 +2379,120 @@ mod tests {
     }
 
     // --- The real-UI course-correction: durable cookie on every proxied call ---
+
+    /// The regression that broke `TASK_BOARD_ITEM_UPDATE` with an assignee on
+    /// desktop: sending `Authorization: Bearer` ALONGSIDE the session cookie
+    /// makes upstream tools that re-authenticate from the forwarded headers
+    /// (`boundAuth.organization.listMembers`) die on Better Auth's api-key
+    /// plugin probing the bearer — `Invalid API key.` — while the browser,
+    /// which sends only the cookie, works. When the cookie leads, the bearer
+    /// must be ABSENT from the wire.
+    #[tokio::test]
+    async fn a_cookie_led_request_carries_no_bearer_on_the_wire() {
+        let seen = Arc::new(std::sync::Mutex::new(
+            None::<(Option<String>, Option<String>)>,
+        ));
+        let seen_for_route = seen.clone();
+        let app = Router::new().route(
+            "/api/org/tools/X",
+            axum::routing::post(move |headers: HeaderMap| {
+                let seen = seen_for_route.clone();
+                async move {
+                    *seen.lock().unwrap() = Some((
+                        headers
+                            .get(header::AUTHORIZATION)
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_string),
+                        headers
+                            .get(header::COOKIE)
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_string),
+                    ));
+                    StatusCode::OK
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let target = format!("http://{addr}");
+
+        let session = signed_in_session(&target, "tok").await;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("better-auth.session_token=abc"),
+        );
+        let response = send_with_retry(
+            &session,
+            &Method::POST,
+            "/api/org/tools/X",
+            &headers,
+            &axum::body::Bytes::new(),
+            "tok".to_string(),
+            true, // cookie leads
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let (auth, cookie) = seen.lock().unwrap().clone().expect("request must arrive");
+        assert_eq!(auth, None, "cookie-led request must not carry a bearer");
+        assert_eq!(cookie.as_deref(), Some("better-auth.session_token=abc"));
+    }
+
+    /// A dead cookie session must not strand the request: the bearer flow is
+    /// the 401 fallback, exactly as it was before the cookie led.
+    #[tokio::test]
+    async fn a_rejected_cookie_falls_back_to_the_bearer() {
+        let attempts = Arc::new(std::sync::Mutex::new(Vec::<Option<String>>::new()));
+        let attempts_for_route = attempts.clone();
+        let app = Router::new().route(
+            "/api/org/tools/X",
+            axum::routing::post(move |headers: HeaderMap| {
+                let attempts = attempts_for_route.clone();
+                async move {
+                    let auth = headers
+                        .get(header::AUTHORIZATION)
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    let had_bearer = auth.is_some();
+                    attempts.lock().unwrap().push(auth);
+                    if had_bearer {
+                        StatusCode::OK
+                    } else {
+                        // The cookie session is dead upstream.
+                        StatusCode::UNAUTHORIZED
+                    }
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let target = format!("http://{addr}");
+
+        let session = signed_in_session(&target, "tok").await;
+        let response = send_with_retry(
+            &session,
+            &Method::POST,
+            "/api/org/tools/X",
+            &HeaderMap::new(),
+            &axum::body::Bytes::new(),
+            "tok".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let attempts = attempts.lock().unwrap().clone();
+        assert_eq!(attempts.len(), 2, "cookie attempt, then bearer attempt");
+        assert_eq!(attempts[0], None);
+        assert_eq!(attempts[1].as_deref(), Some("Bearer tok"));
+    }
 
     #[tokio::test]
     async fn attach_persisted_cookie_sets_the_header_when_a_cookie_is_stored() {
@@ -2496,6 +2673,7 @@ mod tests {
             &out_headers,
             &axum::body::Bytes::new(),
             "good-token".to_string(),
+            false,
         )
         .await
         .unwrap();

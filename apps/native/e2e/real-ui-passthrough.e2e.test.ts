@@ -49,8 +49,16 @@ const STUB_SESSION_COOKIE = "better-auth.session_token=passthrough-stub";
  *  only needs ONE representative to prove the interception table leaves
  *  it alone. */
 function startStubMesh() {
-  const connectionsCalls: { authHeader: string | null; path: string }[] = [];
-  const wellKnownCalls: { authHeader: string | null; path: string }[] = [];
+  const connectionsCalls: {
+    authHeader: string | null;
+    cookieHeader: string | null;
+    path: string;
+  }[] = [];
+  const wellKnownCalls: {
+    authHeader: string | null;
+    cookieHeader: string | null;
+    path: string;
+  }[] = [];
 
   const server = Bun.serve({
     port: 0,
@@ -69,6 +77,7 @@ function startStubMesh() {
       ) {
         wellKnownCalls.push({
           authHeader: req.headers.get("authorization"),
+          cookieHeader: req.headers.get("cookie"),
           path: u.pathname,
         });
         return Response.json({ issuer: "stub-issuer" });
@@ -132,6 +141,7 @@ function startStubMesh() {
       ) {
         connectionsCalls.push({
           authHeader: req.headers.get("authorization"),
+          cookieHeader: req.headers.get("cookie"),
           path: u.pathname,
         });
         return Response.json({
@@ -181,7 +191,7 @@ describeLocalApi(
       expect(bridge.status).toBe(200);
     }
 
-    it("a non-intercepted org route (GET /api/:org/connections) forwards to the stub upstream with the bearer attached", async () => {
+    it("a non-intercepted org route (GET /api/:org/connections) forwards to the stub upstream cookie-led, with no bearer", async () => {
       await signInAndBridge();
 
       const res = await fetch(url(a, "/api/acme/connections"), {
@@ -192,9 +202,13 @@ describeLocalApi(
       expect(body.connections[0]?.id).toBe("conn-1");
 
       expect(stub.connectionsCalls).toHaveLength(1);
-      expect(stub.connectionsCalls[0]?.authHeader).toBe(
-        "Bearer stub-access-token",
-      );
+      // Browser-shaped: the durable session cookie authenticates the forward
+      // and the bearer stays OFF the wire. Sending both broke upstream tools
+      // that re-authenticate from the forwarded headers — Better Auth's
+      // api-key plugin probes any bearer as an API key ("Invalid API key.")
+      // before the valid cookie beside it is consulted.
+      expect(stub.connectionsCalls[0]?.authHeader).toBeNull();
+      expect(stub.connectionsCalls[0]?.cookieHeader).toBe(STUB_SESSION_COOKIE);
       expect(stub.connectionsCalls[0]?.path).toBe("/api/acme/connections");
     });
 
@@ -229,7 +243,7 @@ describeLocalApi(
 
     // --- Thin reverse-proxy catchall: non-/api paths forward too ------------
 
-    it("a non-/api path (/.well-known/*) forwards to the stub upstream with the bearer attached, not a local 404", async () => {
+    it("a non-/api path (/.well-known/*) forwards to the stub upstream cookie-led, not a local 404", async () => {
       await signInAndBridge();
 
       const res = await fetch(
@@ -241,9 +255,8 @@ describeLocalApi(
       expect(body.issuer).toBe("stub-issuer");
 
       expect(stub.wellKnownCalls).toHaveLength(1);
-      expect(stub.wellKnownCalls[0]?.authHeader).toBe(
-        "Bearer stub-access-token",
-      );
+      expect(stub.wellKnownCalls[0]?.authHeader).toBeNull();
+      expect(stub.wellKnownCalls[0]?.cookieHeader).toBe(STUB_SESSION_COOKIE);
       expect(stub.wellKnownCalls[0]?.path).toBe(
         "/.well-known/oauth-authorization-server",
       );

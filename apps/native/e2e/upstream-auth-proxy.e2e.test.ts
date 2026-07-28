@@ -494,7 +494,7 @@ describeLocalApi(
       expect(stub.getSessionCalls[1]?.cookieHeader).toBe(STUB_SESSION_COOKIE);
     });
 
-    it("ordinary org-data calls (the bearer branch) ALSO carry the durable cookie, alongside the bearer", async () => {
+    it("ordinary org-data calls carry the durable cookie INSTEAD of the bearer", async () => {
       await signInAndBridge();
 
       const res = await fetch(url(a, "/api/acme/threads"), {
@@ -502,7 +502,13 @@ describeLocalApi(
       });
       expect(res.status).toBe(200);
       expect(stub.orgDataCalls).toHaveLength(1);
-      expect(stub.orgDataCalls[0]?.authHeader).toBe("Bearer stub-access-token");
+      // Browser-shaped forwarding: with a durable cookie stored, the cookie
+      // authenticates and the bearer stays OFF the wire (it remains the 401
+      // fallback). Sending both broke upstream tools whose handlers make
+      // nested Better Auth calls with the forwarded headers — the api-key
+      // plugin probes any bearer as an API key ("Invalid API key.") before
+      // the valid cookie beside it is ever consulted.
+      expect(stub.orgDataCalls[0]?.authHeader).toBeNull();
       expect(stub.orgDataCalls[0]?.cookieHeader).toBe(STUB_SESSION_COOKIE);
     });
 
@@ -777,7 +783,9 @@ describeLocalApi(
       });
       expect(orgData.status).toBe(200);
       expect(stub.orgDataCalls.at(-1)).toEqual({
-        authHeader: "Bearer stub-access-token",
+        // Cookie-led, bearer held back — same wire contract as every other
+        // org-data forward once a durable cookie exists.
+        authHeader: null,
         cookieHeader: STUB_SESSION_COOKIE,
       });
 
