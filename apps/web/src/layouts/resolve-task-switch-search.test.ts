@@ -72,17 +72,17 @@ describe("resolveTaskSwitchSearch — no memory (agent default applies)", () => 
     });
   });
 
-  test("agent switch never forces sidepanel (agent may opt out of chat)", () => {
-    // Regression: switching to an agent configured with a non-chat main view +
-    // chatDefaultOpen:false must not pin `sidepanel=chat`, which would override
-    // that config and open the chat panel anyway. Omitting it lets
-    // resolveDefaultPanelState keep the chat closed per the agent's config.
-    const result = resolve({
-      prev: { virtualmcpid: "repo-1", main: "git" },
-      virtualMcpId: "content-agent",
-    });
-    expect(result).not.toHaveProperty("sidepanel");
-    expect(result).toEqual({ virtualmcpid: "content-agent" });
+  test("omits sidepanel on agent switch (no saved layout)", () => {
+    // Regression guard: the switch must not pin `sidepanel` in the URL. Its
+    // omission is what lets resolveDefaultPanelState honor the target agent's
+    // chatDefaultOpen / defaultMainView (see use-layout-state.test.ts) instead
+    // of forcing chat open — this function has no access to that config itself.
+    expect(
+      resolve({
+        prev: { virtualmcpid: "repo-1", main: "git" },
+        virtualMcpId: "content-agent",
+      }),
+    ).toEqual({ virtualmcpid: "content-agent" });
   });
 });
 
