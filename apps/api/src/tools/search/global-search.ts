@@ -37,6 +37,9 @@ const SearchResultSchema = z.discriminatedUnion("type", [ThreadResultSchema]);
 const InputSchema = z.object({
   query: z
     .string()
+    // Bounded to keep an authenticated caller from forcing a pathologically
+    // long ILIKE substring scan across every searchable resource type.
+    .max(256)
     .describe(
       "Free-text search query. Empty string returns the most recently updated resources.",
     ),
