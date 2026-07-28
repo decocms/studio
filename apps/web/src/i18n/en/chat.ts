@@ -40,6 +40,9 @@ export const chat = {
   "chat.assistant.resumedBackgroundTask": "Resumed — background task completed",
   "chat.assistant.resumingTask": "Resuming task...",
   "chat.assistant.toolCallPlural": "{count} tool call(s)",
+  "chat.branchPill.lockedTooltip":
+    "This chat is using branch {branch}. Start a new chat to use a different branch.",
+  "chat.branchPill.noBranch": "(no branch)",
   "chat.brandContext.brand": "Brand",
   "chat.brandContext.brandContextSet": "Brand context set",
   "chat.brandContext.brandSet": "Brand set: {name}",
