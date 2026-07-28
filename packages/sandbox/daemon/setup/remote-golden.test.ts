@@ -8,6 +8,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { randomFillSync } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../types";
@@ -42,6 +43,33 @@ async function seedNodeModules(root: string): Promise<void> {
   // Pod-local caches — must not travel in a shared archive.
   await mkdir(join(root, "node_modules", ".vite", "deps"), { recursive: true });
   await writeFile(join(root, "node_modules", ".vite", "deps", "x"), "junk");
+}
+
+/**
+ * A tree big enough that `tar -x` (many small writes) falls behind
+ * `zstd -dc`, so the transfer actually has to survive backpressure.
+ *
+ * Incompressible content on purpose: zstd must move real bytes, not collapse
+ * the whole thing into a few KB. 1500 files x 6 KB ≈ 9 MB — comfortably past
+ * the ~1 MB floor below which a relayed pipe never drops anything, which is
+ * exactly why the small fixtures above missed this.
+ */
+const BIG_FILES = 1500;
+const BIG_FILE_BYTES = 6 * 1024;
+
+async function seedBigNodeModules(root: string): Promise<void> {
+  const dir = join(root, "node_modules", "bulk");
+  await mkdir(dir, { recursive: true });
+  await Promise.all(
+    Array.from({ length: BIG_FILES }, (_, i) => {
+      const buf = Buffer.alloc(BIG_FILE_BYTES);
+      randomFillSync(buf);
+      // Stamp the index so a truncated-but-plausible extract can't pass by
+      // having the right count with the wrong contents.
+      buf.write(`file-${i};`, 0);
+      return writeFile(join(dir, `f${i}.bin`), buf);
+    }),
+  );
 }
 
 /** The one archive under the store: <root>/golden/<repoHash>/<pm>-<lock>.tar.zst */
@@ -122,6 +150,54 @@ describe("remote golden (L2)", () => {
     const leftovers = join(nodeB, `.node_modules.l2.${process.pid}`);
     expect(await exists(leftovers)).toBe(false);
   });
+
+  test("round-trips a tree large enough to apply backpressure", async () => {
+    // The regression guard for the fd-to-fd pipe. Relaying the archive through
+    // this process (`p.stdout.pipe(c.stdin)`) silently dropped the tail once
+    // the consumer fell behind — and BOTH children still exited 0, so the
+    // truncation surfaced only later as `tar: Unexpected EOF in archive`, or
+    // worse, as a permanently-published archive holding half its members.
+    // Every other test here uses a ~1 KB fixture, under the size where the
+    // loss ever happened; without this one a revert to the relayed pipe stays
+    // green.
+    const nodeA = await makeInstallRoot(base, "big-a");
+    await seedBigNodeModules(nodeA);
+    await publishRemoteGolden({
+      config: config(),
+      installRoot: nodeA,
+      pm: "bun",
+    });
+
+    // Publish must not declare success on a truncated archive.
+    const { path } = await soleArchive(remoteRoot);
+    expect(await exists(path)).toBe(true);
+
+    const nodeB = await makeInstallRoot(base, "big-b");
+    expect(
+      await tryRestoreRemoteGolden({
+        config: config(),
+        installRoot: nodeB,
+        pm: "bun",
+      }),
+    ).toBe(true);
+
+    // Exact count, not "some files" — the observed failure delivered 532 of
+    // 1069 members and looked fine at a glance.
+    const restored = await readdir(join(nodeB, "node_modules", "bulk"));
+    expect(restored.length).toBe(BIG_FILES);
+
+    // Spot-check both ends of the stream: a dropped tail is what this catches,
+    // so the LAST member matters most.
+    for (const i of [0, BIG_FILES - 1]) {
+      const buf = await readFile(
+        join(nodeB, "node_modules", "bulk", `f${i}.bin`),
+      );
+      expect(buf.length).toBe(BIG_FILE_BYTES);
+      expect(buf.subarray(0, `file-${i};`.length).toString()).toBe(
+        `file-${i};`,
+      );
+    }
+  }, 60_000);
 
   test("does nothing when the shared store is not configured", async () => {
     // The discriminating case: identical setup, feature off. Without this the
