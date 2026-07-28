@@ -192,6 +192,46 @@ pub(crate) fn sidecar_exists(dir: &Path) -> bool {
     dir.join(SIDECAR_FILE_NAME).is_file()
 }
 
+/// Every handle under `<app_root>/worktrees` that carries a sidecar.
+///
+/// Walks down to wherever a sidecar actually IS rather than assuming one
+/// level. A handle is `<host>/<owner>/<repo>/<branch>`, so a scan that reads
+/// one level and treats each directory name as a handle finds `github.com`
+/// and nothing else — every caller of it silently sees zero sandboxes.
+///
+/// One shared walk on purpose: this is the third site that needed it, and the
+/// first two were found only after the one-level version had already shipped
+/// a silent empty result.
+pub(crate) fn handles_with_sidecars(app_root: &Path) -> Vec<String> {
+    let root = app_root.join(crate::sandbox::WORKTREES_DIR);
+    let mut pending = vec![root.clone()];
+    let mut handles = Vec::new();
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let path = entry.path();
+            if !sidecar_exists(&path) {
+                pending.push(path);
+                continue;
+            }
+            if let Some(handle) = path
+                .strip_prefix(&root)
+                .ok()
+                .and_then(|rel| rel.to_str())
+                .map(|rel| rel.replace('\\', "/"))
+            {
+                handles.push(handle);
+            }
+        }
+    }
+    handles
+}
+
 fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
     app_root
         .join(crate::sandbox::WORKTREES_DIR)
@@ -309,6 +349,35 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier};
+
+    /// A handle nests (`<host>/<owner>/<repo>/<branch>`), so a scan that reads
+    /// one level of `worktrees/` and calls each name a handle finds only
+    /// `github.com` — and every caller silently reports zero sandboxes. That
+    /// shipped three times: the registry import, the git repo-dir walk, and
+    /// the shell's `sandboxMap` publisher (which left the events stream
+    /// disabled, so no clone output ever reached the terminal).
+    #[test]
+    fn finds_sidecars_nested_under_a_multi_segment_handle() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let app_root = root.path();
+        let handle = "github.com/acme/repo/feature-x";
+
+        let mut cfg = sample_cfg();
+        cfg.clone_url = "https://github.com/acme/repo.git".to_string();
+        cfg.branch = Some("feature-x".to_string());
+        write_sidecar(app_root, handle, &cfg);
+
+        // A directory on the way down is NOT itself a sandbox.
+        std::fs::create_dir_all(
+            app_root
+                .join(crate::sandbox::WORKTREES_DIR)
+                .join("github.com/other"),
+        )
+        .expect("mkdir");
+
+        assert_eq!(handles_with_sidecars(app_root), vec![handle.to_string()]);
+        assert!(read_sidecar(app_root, handle).is_some());
+    }
 
     fn sample_cfg() -> GitSandboxConfig {
         GitSandboxConfig {

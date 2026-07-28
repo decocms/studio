@@ -138,17 +138,11 @@ pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return EPHEMERAL_BRANCH.to_string();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
-        return EPHEMERAL_BRANCH.to_string();
-    };
     // Prefer whichever sandbox this agent has registered. A sidecar with no
     // registry row is a leftover directory, not a sandbox — the same rule
     // `local_sandbox_sessions` applies.
     let mut fallback = None;
-    for handle in dir
-        .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok())
-    {
+    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
         let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
             continue;
         };
@@ -351,15 +345,8 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
-        return Vec::new();
-    };
-
     let mut sessions = Vec::new();
-    for handle in dir
-        .flatten()
-        .filter_map(|e| e.file_name().into_string().ok())
-    {
+    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
         let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
             continue;
         };
@@ -404,15 +391,8 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
-        return Vec::new();
-    };
-
     let mut entries = Vec::new();
-    for handle in dir
-        .flatten()
-        .filter_map(|e| e.file_name().into_string().ok())
-    {
+    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
         let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
             continue;
         };

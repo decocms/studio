@@ -392,44 +392,14 @@ impl SandboxRegistry {
 
     fn import_legacy_sidecars(&self) -> Result<(), String> {
         let sandboxes_root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
-        // Walk to wherever a sidecar actually is, rather than assuming one
-        // level: a handle is `<host>/<owner>/<repo>/<branch>`, so the scan
-        // that took each top-level directory name as a handle would now find
-        // `github.com` and nothing else.
-        let mut pending = vec![sandboxes_root.clone()];
-        let mut sandbox_dirs: Vec<PathBuf> = Vec::new();
-        while let Some(dir) = pending.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                let path = entry.path();
-                if super::persist::sidecar_exists(&path) {
-                    sandbox_dirs.push(path);
-                } else {
-                    pending.push(path);
-                }
-            }
-        }
-        for entry in sandbox_dirs {
-            let Some(handle) = entry
-                .strip_prefix(&sandboxes_root)
-                .ok()
-                .and_then(|rel| rel.to_str())
-                .map(|rel| rel.replace('\\', "/"))
-            else {
-                continue;
-            };
+        for handle in super::persist::handles_with_sidecars(&self.app_root) {
             if self.contains(&handle)? {
                 continue;
             }
             let Some(config) = super::persist::read_sidecar(&self.app_root, &handle) else {
                 continue;
             };
-            let sandbox_path = entry.clone();
+            let sandbox_path = sandboxes_root.join(&handle);
             let workdir_path = sandbox_path.join("repo");
             self.upsert_config(&handle, &config, &sandbox_path, &workdir_path)?;
             if is_valid_git_worktree(&workdir_path) {

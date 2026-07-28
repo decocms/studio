@@ -56,7 +56,7 @@ pub fn sandbox_org_dir(app_root: &Path, handle: &str) -> Option<PathBuf> {
     Some(
         app_root
             .join(crate::sandbox::WORKTREES_DIR)
-            .join(safe_segment(handle)?)
+            .join(safe_handle(handle)?)
             .join("org"),
     )
 }
@@ -172,6 +172,20 @@ fn safe_segment(segment: &str) -> Option<&str> {
     Some(segment)
 }
 
+/// A handle is `<host>/<owner>/<repo>/<branch>` — several path segments, so it
+/// cannot go through [`safe_segment`], which exists for single-segment org
+/// slugs and rejects the `/` outright. Each segment is still validated on its
+/// own, so `..` can never climb out of the worktrees root.
+fn safe_handle(handle: &str) -> Option<&str> {
+    if handle.is_empty() || handle.contains('\\') {
+        return None;
+    }
+    handle
+        .split('/')
+        .all(|part| !part.is_empty() && part != "." && part != "..")
+        .then_some(handle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,8 +195,18 @@ mod tests {
         let root = Path::new("/app");
         for bad in ["", ".", "..", "a/b", "a\\b"] {
             assert_eq!(org_mount_root(root, bad), None, "slug {bad:?}");
+        }
+        // A handle is multi-segment, so `/` is legal in one where it is not
+        // legal in an org slug — but a segment that would climb out is not.
+        for bad in ["", ".", "..", "a\\b", "a/../b", "a//b"] {
             assert_eq!(sandbox_org_dir(root, bad), None, "handle {bad:?}");
         }
+        assert_eq!(
+            sandbox_org_dir(root, "github.com/acme/repo/feat"),
+            Some(PathBuf::from(
+                "/app/worktrees/github.com/acme/repo/feat/org"
+            ))
+        );
         assert_eq!(
             org_mount_root(root, "acme"),
             Some(PathBuf::from("/app/orgs/acme"))
