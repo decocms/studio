@@ -64,10 +64,17 @@ jobs:
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
 
-  e2e:
+  e2e-shard:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    # Backstop above playwright's own 30min globalTimeout so its report wins.
+    timeout-minutes: 35
+    strategy:
+      # One slow/broken shard shouldn't hide the other's result.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: apps/api
@@ -186,7 +193,25 @@ jobs:
 
       - name: Run e2e tests
         # The suite lives in packages/e2e; its Playwright config spawns the API
-        # from apps/api and Vite from apps/web via separate webServer entries.
-        # DB/NATS/S3 env are job-level, so both inherit them.
+        # from apps/api and the web app from apps/web via separate webServer
+        # entries. DB/NATS/S3 env are job-level, so both inherit them. Each
+        # shard runs its half of the specs against its own full stack.
         working-directory: packages/e2e
-        run: bun run test:e2e
+        run: bun run test:e2e --shard=${{ matrix.shard }}/2
+
+  # Aggregator carrying the required-check name: branch protection requires a
+  # check called "e2e", and matrix jobs report as "e2e-shard (1)"/"(2)" — a
+  # renamed required check would block merges forever. This job is the one
+  # the protection rule sees; skipped shards (docs-only PRs) count as pass,
+  # same as the changes-gate semantics everywhere else.
+  e2e:
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify shard results
+        run: |
+          case "${{ needs.e2e-shard.result }}" in
+            success|skipped) echo "shards: ${{ needs.e2e-shard.result }}"; exit 0 ;;
+            *) echo "shards: ${{ needs.e2e-shard.result }}"; exit 1 ;;
+          esac
