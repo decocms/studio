@@ -65,3 +65,132 @@ pub fn handle_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .and_then(|v| v.to_str().ok())
         .filter(|s| !s.is_empty())
 }
+
+/// Longest DNS label the preview host may use. 63 is the protocol limit.
+const MAX_PREVIEW_LABEL: usize = 63;
+
+/// The single DNS label a sandbox's preview is served from:
+/// `<label>.<control host>`.
+///
+/// A handle CANNOT be used directly. It is `<owner>/<repo>/<branch>`, and
+/// interpolating a value with slashes into a hostname produced
+/// `https://acme/repo/branch.local.studio.decocms.com:PORT/` — which every URL
+/// parser reads as host `acme` with the rest as a PATH. (When the handle still
+/// carried a host segment this pointed the preview iframe at github.com, which
+/// is how it was found.) One label is also what the
+/// wildcard certificate covers (`*.local.studio.decocms.com` matches exactly
+/// one label) and what keeps each sandbox in its own cookie jar.
+///
+/// Slug plus a digest of the full handle: the slug keeps the host readable in
+/// the URL bar and in logs, and the digest is what actually carries
+/// uniqueness — slugging alone maps `a.b/c` and `a/b/c` onto one label, and a
+/// silent collision here routes a preview at the wrong sandbox. The slug is
+/// truncated from the FRONT so the branch, the part that differs between two
+/// sandboxes of one repo, is the part that survives.
+pub fn preview_label(handle: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(handle.as_bytes());
+    let hash: String = digest
+        .iter()
+        .take(4)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+
+    let mut slug = String::with_capacity(handle.len());
+    let mut last_dash = false;
+    for ch in handle.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            slug.push(lower);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-');
+
+    // `-<hash>` is always kept; the slug yields whatever room is left.
+    let room = MAX_PREVIEW_LABEL - hash.len() - 1;
+    let kept = if slug.len() > room {
+        slug.char_indices()
+            .nth(slug.chars().count() - room)
+            .map(|(index, _)| &slug[index..])
+            .unwrap_or(slug)
+    } else {
+        slug
+    };
+    let kept = kept.trim_matches('-');
+    if kept.is_empty() {
+        format!("s-{hash}")
+    } else {
+        format!("{kept}-{hash}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HANDLE: &str = "deco-sites/faststore-fila/gimenes-akw515sm";
+
+    /// The regression: a handle contains `/`, so interpolating it as a
+    /// subdomain produced a URL whose HOST was the handle's FIRST segment and
+    /// whose PATH was everything else — the preview iframe loaded that host
+    /// (github.com, back when the handle still carried one) instead of the
+    /// sandbox.
+    #[test]
+    fn the_preview_host_is_one_label_and_not_the_repository_host() {
+        let label = preview_label(HANDLE);
+        assert!(!label.contains('/'), "{label}");
+        assert!(!label.contains('.'), "{label}");
+        assert!(!label.is_empty());
+        assert!(label.len() <= MAX_PREVIEW_LABEL, "{} chars", label.len());
+        assert!(
+            label
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+            "{label}"
+        );
+        assert!(!label.starts_with('-') && !label.ends_with('-'), "{label}");
+
+        // The host the browser would actually resolve.
+        let host = format!("{label}.local.studio.decocms.com");
+        assert!(host.starts_with(&label));
+        assert_eq!(host.split('.').next(), Some(label.as_str()));
+    }
+
+    /// Slugging alone maps these onto one label, and a collision routes a
+    /// preview at the wrong sandbox — which is why the digest is not optional.
+    #[test]
+    fn handles_that_slug_alike_still_get_distinct_labels() {
+        let a = preview_label("acme/my.site/main");
+        let b = preview_label("acme/my-site/main");
+        assert_ne!(a, b, "slug-only collision");
+        assert_ne!(
+            preview_label("acme/repo/feat-a"),
+            preview_label("acme/repo/feat-b")
+        );
+    }
+
+    /// A long handle must still yield a legal label, and must keep the branch
+    /// — the part that distinguishes two sandboxes of the same repository.
+    #[test]
+    fn a_long_handle_is_truncated_from_the_front_and_stays_legal() {
+        let long = format!(
+            "github.com/{}/{}/my-feature-branch",
+            "o".repeat(60),
+            "r".repeat(60)
+        );
+        let label = preview_label(&long);
+        assert!(label.len() <= MAX_PREVIEW_LABEL, "{} chars", label.len());
+        assert!(label.contains("my-feature-branch"), "{label}");
+        assert!(!label.starts_with('-') && !label.ends_with('-'), "{label}");
+    }
+
+    #[test]
+    fn the_label_is_stable_for_one_handle() {
+        assert_eq!(preview_label(HANDLE), preview_label(HANDLE));
+    }
+}

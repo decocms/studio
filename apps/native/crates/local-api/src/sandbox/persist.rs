@@ -360,7 +360,7 @@ mod tests {
     fn finds_sidecars_nested_under_a_multi_segment_handle() {
         let root = tempfile::tempdir().expect("tempdir");
         let app_root = root.path();
-        let handle = "github.com/acme/repo/feature-x";
+        let handle = "acme/repo/feature-x";
 
         let mut cfg = sample_cfg();
         cfg.clone_url = "https://github.com/acme/repo.git".to_string();
@@ -371,7 +371,7 @@ mod tests {
         std::fs::create_dir_all(
             app_root
                 .join(crate::sandbox::WORKTREES_DIR)
-                .join("github.com/other"),
+                .join("acme/other"),
         )
         .expect("mkdir");
 

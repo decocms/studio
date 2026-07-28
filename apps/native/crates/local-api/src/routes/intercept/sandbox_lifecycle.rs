@@ -104,7 +104,10 @@ fn preview_url(handle: &str) -> Option<String> {
     // shared jar, so this stays single-origin until the app is served from a
     // real domain. See `src-tauri/src/control_origin.rs`.
     if base.contains('.') {
-        Some(format!("{}://{handle}.{base}:{port}/", preview_scheme()))
+        // ONE label, derived from the handle — a handle itself contains `/`
+        // and would turn the host into `github.com` with the rest as a path.
+        let label = crate::sandbox::preview_label(handle);
+        Some(format!("{}://{label}.{base}:{port}/", preview_scheme()))
     } else {
         Some(format!("{}://{base}:{port}/", preview_scheme()))
     }

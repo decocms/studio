@@ -307,11 +307,25 @@ pub async fn set_preview_handle(
 /// caller checks it against the sandbox manager, so a bare `localhost` (or any
 /// other name pointed at this listener) falls through to the previous
 /// behaviour rather than resolving to a wrong sandbox.
-fn handle_from_host(headers: &HeaderMap) -> Option<String> {
+/// The sandbox a preview request's `Host` names, if any.
+///
+/// The leading label is NOT the handle — a handle is
+/// `<host>/<owner>/<repo>/<branch>` and cannot be a hostname. It is
+/// `sandbox::preview_label(handle)`, which is one-way, so the handle is
+/// recovered by finding the registered sandbox whose label matches. The set
+/// is tiny (one entry per worktree on this machine) and the alternative — a
+/// second persisted label->handle index — is a thing that can disagree with
+/// `preview_label`.
+fn handle_from_host(state: &AppState, headers: &HeaderMap) -> Option<String> {
     let host = headers.get(header::HOST)?.to_str().ok()?;
     let host = host.split(':').next()?;
     let (label, rest) = host.split_once('.')?;
-    (!label.is_empty() && !rest.is_empty()).then(|| label.to_string())
+    if label.is_empty() || rest.is_empty() {
+        return None;
+    }
+    crate::sandbox::persist::handles_with_sidecars(&state.app_root)
+        .into_iter()
+        .find(|handle| crate::sandbox::preview_label(handle) == label)
 }
 
 fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {
@@ -322,7 +336,7 @@ fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {
     // A preview iframe cannot set the handle header, but its Host names the
     // sandbox — this is the per-handle preview origin resolving itself.
     if let Some(sandbox) =
-        handle_from_host(headers).and_then(|handle| state.sandbox_manager.get(&handle))
+        handle_from_host(state, headers).and_then(|handle| state.sandbox_manager.get(&handle))
     {
         return dev_port_for(&sandbox.setup, &sandbox.config);
     }
@@ -401,7 +415,7 @@ fn resolve_preview(state: &AppState, headers: &HeaderMap) -> PreviewResolution {
     // Per-handle preview origin (`<handle>.<preview-host>`): the iframe's Host
     // names the sandbox even though it cannot set the handle header.
     if let Some(sandbox) =
-        handle_from_host(headers).and_then(|handle| state.sandbox_manager.get(&handle))
+        handle_from_host(state, headers).and_then(|handle| state.sandbox_manager.get(&handle))
     {
         return preview_from(&sandbox.setup, &sandbox.config);
     }

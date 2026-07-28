@@ -60,44 +60,21 @@ function splitRemote(url: string): [string, string] | null {
   return [at === -1 ? before : before.slice(at + 1), path];
 }
 
-/** Mirrors `repo_scope` in `sandbox/repo_store.rs`. */
+/** Mirrors `repo_scope` in `sandbox/repo_store.rs` — the LAST TWO path
+ * segments, with no host level. GitHub is the only provider, so a `host`
+ * segment put a literal `github.com` in every path for no information. */
 function repoScope(cloneUrl: string): string[] | null {
   const trimmed = cloneUrl.trim();
   const split = splitRemote(trimmed);
-  if (split === null) {
-    // A plain filesystem path is a legitimate remote (every test fixture is
-    // one). No host, so it scopes under a reserved `local` segment using the
-    // last two path components.
-    if (!trimmed.startsWith("/")) return null;
-    const stripped = trimmed.endsWith(".git")
-      ? trimmed.slice(0, -".git".length)
-      : trimmed;
-    const tail = stripped
-      .split("/")
-      .filter((segment) => segment !== "")
-      .slice(-2)
-      .map(sanitize)
-      .filter((segment): segment is string => segment !== null);
-    if (tail.length === 0) return null;
-    return ["local", ...tail];
-  }
-  const [host, path] = split;
-  const parts = path.split("/").filter((segment) => segment !== "");
-  const last = parts.pop();
-  if (last === undefined) return null;
-  const hostSegment = sanitize(host.toLowerCase());
-  if (hostSegment === null) return null;
-  const out = [hostSegment];
-  for (const segment of parts) {
-    const clean = sanitize(segment);
-    if (clean === null) return null;
-    out.push(clean);
-  }
-  const repo = last.endsWith(".git") ? last.slice(0, -".git".length) : last;
-  const cleanRepo = sanitize(repo);
-  if (cleanRepo === null) return null;
-  out.push(cleanRepo);
-  return out;
+  const path = split === null ? trimmed : split[1];
+  const stripped = path.endsWith(".git") ? path.slice(0, -".git".length) : path;
+  const tail = stripped
+    .split("/")
+    .filter((segment) => segment !== "")
+    .slice(-2)
+    .map(sanitize)
+    .filter((segment): segment is string => segment !== null);
+  return tail.length > 0 ? tail : null;
 }
 
 /** Mirrors `slugify_branch` in `sandbox/manager.rs`. */

@@ -28,51 +28,40 @@ use std::path::{Path, PathBuf};
 /// Returns `None` rather than guessing for anything that would escape the store
 /// or collapse two repositories onto one path: an empty owner or repo, or a
 /// segment that is `.`/`..` or contains a separator.
-/// `<host>/<owner>/<repo>` for a clone URL — the scope a worktree hangs under.
+/// `<owner>/<repo>` for a clone URL — the scope a worktree hangs under.
 ///
-/// Shared with [`canonical_repo_dir`] so the mirror tree and the worktree tree
-/// are derived by one rule and cannot drift apart.
+/// No host segment. GitHub is the only provider the app accepts, so a `host`
+/// level bought nothing and cost a great deal: it put a literal `github.com`
+/// in the middle of every worktree path, handle, and log line, and made the
+/// handle four segments deep for no information gain.
+///
+/// The rule is the LAST TWO path segments of whatever git accepts as a remote
+/// — `https://github.com/acme/repo.git`, `git@github.com:acme/repo`, and the
+/// bare filesystem paths every test fixture uses all reduce to `acme/repo`.
+/// Two remotes that agree on owner and repo are treated as the same
+/// repository, which under a single provider is simply true.
+///
+/// Returns `None` rather than guessing for anything that would escape the
+/// store: no usable segment at all, or one that is `.`/`..`.
 pub fn repo_scope(clone_url: &str) -> Option<Vec<String>> {
     let trimmed = clone_url.trim();
-    // A plain filesystem path is a legitimate remote (`git clone /srv/x.git`,
-    // and every test fixture). It has no host, so it scopes under a reserved
-    // `local` segment using the last two path components — enough to keep two
-    // local remotes apart without embedding an absolute path in the tree.
-    let Some((host, path)) = split_remote(trimmed) else {
-        if !trimmed.starts_with('/') {
-            return None;
-        }
-        let stripped = trimmed.strip_suffix(".git").unwrap_or(trimmed);
-        let mut tail: Vec<String> = stripped
-            .rsplit('/')
-            .filter(|segment| !segment.is_empty())
-            .take(2)
-            .filter_map(|segment| sanitize(segment).map(str::to_string))
-            .collect();
-        tail.reverse();
-        if tail.is_empty() {
-            return None;
-        }
-        let mut out = vec!["local".to_string()];
-        out.extend(tail);
-        return Some(out);
+    // Everything after a scheme/host, or the whole thing for a plain path —
+    // only the tail matters, so the remote spellings need no special cases.
+    let path = match split_remote(trimmed) {
+        Some((_, path)) => path,
+        None => trimmed.to_string(),
     };
-    let segments = path
-        .trim_matches('/')
-        .split('/')
-        .filter(|segment| !segment.is_empty());
-    // Every segment of the path, with the trailing `.git` dropped. Unlike the
-    // mirror's own layout this does NOT require an owner: `host/repo` is a
-    // valid remote, and refusing it would make the repository unscopeable and
-    // therefore unusable as a sandbox.
-    let mut parts: Vec<&str> = segments.collect();
-    let last = parts.pop()?;
-    let mut out = vec![sanitize(&host.to_lowercase())?.to_string()];
-    for segment in parts {
-        out.push(sanitize(segment)?.to_string());
-    }
-    out.push(sanitize(last.strip_suffix(".git").unwrap_or(last))?.to_string());
-    Some(out)
+    let stripped = path.strip_suffix(".git").unwrap_or(&path);
+    let mut tail: Vec<String> = stripped
+        .rsplit('/')
+        .filter(|segment| !segment.is_empty())
+        .take(2)
+        .filter_map(|segment| sanitize(segment).map(str::to_string))
+        .collect();
+    tail.reverse();
+    // One segment is enough for an owner-less remote (`host/repo`, and the
+    // bare-path fixtures); GitHub always supplies both.
+    (!tail.is_empty()).then_some(tail)
 }
 
 pub fn canonical_repo_dir(app_root: &Path, clone_url: &str) -> Option<PathBuf> {

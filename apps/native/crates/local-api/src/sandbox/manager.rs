@@ -1650,16 +1650,24 @@ mod tests {
             "different repositories must produce different handles"
         );
 
-        // The handle IS `<host>/<owner>/<repo>/<branch>` — that identity is
-        // what lets the directory, the git branch and the UI carry one name.
-        assert_eq!(a1, "github.com/acme/repo-1/main");
-        assert_eq!(b, "github.com/acme/repo-1/feature");
+        // The handle IS `<owner>/<repo>/<branch>` — that identity is what lets
+        // the directory, the git branch and the UI carry one name. No host
+        // segment: GitHub is the only provider, so `github.com` in the middle
+        // of every path carried no information.
+        assert_eq!(a1, "acme/repo-1/main");
+        assert_eq!(b, "acme/repo-1/feature");
+        // A different host with the same owner/repo is the same repository
+        // under a single provider — and scp-style spells it the same way.
+        assert_eq!(
+            SandboxManager::compute_handle("git@github.com:acme/repo-1.git", "main").as_deref(),
+            Some("acme/repo-1/main")
+        );
         // A branch with a slash stays ONE segment, so the tree never nests
         // deeper than the scheme promises.
         let nested =
             SandboxManager::compute_handle("https://github.com/acme/repo-1", "feature/foo")
                 .expect("scopeable clone url");
-        assert_eq!(nested, "github.com/acme/repo-1/feature-foo");
+        assert_eq!(nested, "acme/repo-1/feature-foo");
         // A remote this cannot scope is not a git-backed sandbox.
         assert!(SandboxManager::compute_handle("", "main").is_none());
     }
