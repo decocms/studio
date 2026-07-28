@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { delay } from "@decocms/shared/std";
-import { redactRepoDir, withClaimGitLock } from "./sandbox-proxy";
+import {
+  readBoundedText,
+  redactRepoDir,
+  UpstreamPayloadTooLargeError,
+  withClaimGitLock,
+} from "./sandbox-proxy";
 
 describe("redactRepoDir", () => {
   it("nulls a container-internal repoDir while preserving other fields", () => {
@@ -31,6 +36,20 @@ describe("redactRepoDir", () => {
   it("passes through JSON that is not an object", () => {
     expect(redactRepoDir("[1,2,3]")).toBe("[1,2,3]");
     expect(redactRepoDir('"repoDir"')).toBe('"repoDir"');
+  });
+});
+
+describe("readBoundedText", () => {
+  it("returns the full body when under the cap", async () => {
+    const res = new Response("hello world");
+    expect(await readBoundedText(res, 1024)).toBe("hello world");
+  });
+
+  it("throws instead of buffering a body over the cap", async () => {
+    const res = new Response("x".repeat(100));
+    await expect(readBoundedText(res, 10)).rejects.toThrow(
+      UpstreamPayloadTooLargeError,
+    );
   });
 });
 
