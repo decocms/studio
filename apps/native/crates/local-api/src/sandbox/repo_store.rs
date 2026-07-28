@@ -57,7 +57,7 @@ pub fn repo_scope(clone_url: &str) -> Option<Vec<String>> {
         out.extend(tail);
         return Some(out);
     };
-    let mut segments = path
+    let segments = path
         .trim_matches('/')
         .split('/')
         .filter(|segment| !segment.is_empty());

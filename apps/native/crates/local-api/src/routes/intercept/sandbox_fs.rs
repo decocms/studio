@@ -73,7 +73,7 @@ pub(super) async fn try_dispatch(
         Ok(None) => {
             return Some(
                 ApiError::not_found(format!(
-                    "no worktree for {virtual_mcp_id} on branch {branch}"
+                    "sandbox not found: {virtual_mcp_id}@{branch}"
                 ))
                 .into_response(),
             )
