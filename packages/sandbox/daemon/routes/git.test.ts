@@ -43,6 +43,61 @@ function onFeatureBranch(repoDir: string): void {
   gitSync(["checkout", "-b", "feature/x"], { cwd: repoDir, asUser: false });
 }
 
+// A working repo on a feature branch wired to a real bare `origin`, so the
+// push path in publish() actually runs (the initRepo() tests have no remote and
+// only assert the pre-push commit landed). Returns the branch already pushed to
+// origin at its initial commit.
+function initRepoWithRemote(): {
+  appRoot: string;
+  repoDir: string;
+  bare: string;
+  branch: string;
+} {
+  const appRoot = mkdtempSync(join(tmpdir(), "git-route-remote-"));
+  const bare = join(appRoot, "origin.git");
+  const repoDir = join(appRoot, "app");
+  const branch = "feature/x";
+  const g = (args: string[], cwd: string) =>
+    gitSync(args, { cwd, asUser: false });
+
+  g(["-c", "init.defaultBranch=main", "init", "--bare", bare], appRoot);
+  mkdirSync(repoDir, { recursive: true });
+  g(["-c", "init.defaultBranch=main", "init"], repoDir);
+  g(["config", "user.email", "test@example.com"], repoDir);
+  g(["config", "user.name", "Test"], repoDir);
+  g(["config", "commit.gpgsign", "false"], repoDir);
+  writeFileSync(join(repoDir, "README.md"), "hello\n");
+  g(["add", "README.md"], repoDir);
+  g(["commit", "-m", "init"], repoDir);
+  g(["branch", "-M", "main"], repoDir);
+  g(["remote", "add", "origin", bare], repoDir);
+  g(["push", "-u", "origin", "main"], repoDir);
+  g(["checkout", "-b", branch], repoDir);
+  g(["push", "-u", "origin", branch], repoDir);
+  return { appRoot, repoDir, bare, branch };
+}
+
+// Push a commit to origin/<branch> from a *separate* clone, so the sandbox repo
+// (which never fetches) diverges from the true remote tip — the exact state that
+// makes a plain `git push` fail with "fetch first".
+function pushDivergentCommitToRemote(
+  appRoot: string,
+  bare: string,
+  branch: string,
+): void {
+  const other = join(appRoot, "other");
+  const g = (args: string[], cwd: string) =>
+    gitSync(args, { cwd, asUser: false });
+  g(["clone", "--branch", branch, bare, other], appRoot);
+  g(["config", "user.email", "other@example.com"], other);
+  g(["config", "user.name", "Other"], other);
+  g(["config", "commit.gpgsign", "false"], other);
+  writeFileSync(join(other, "OTHER.md"), "from another clone\n");
+  g(["add", "OTHER.md"], other);
+  g(["commit", "-m", "divergent commit on origin"], other);
+  g(["push", "origin", branch], other);
+}
+
 describe("git routes", () => {
   it("status reports modified files", async () => {
     const { appRoot, repoDir } = initRepo();
@@ -652,6 +707,68 @@ describe("git routes", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/authenticated clone URL/);
+  });
+
+  it("publish route fast-forwards a normal (non-diverged) remote branch", async () => {
+    const { appRoot, repoDir, bare, branch } = initRepoWithRemote();
+    writeFileSync(join(repoDir, "README.md"), "ff change\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "ff publish" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);
+    const remote = gitSync(["show", `refs/heads/${branch}:README.md`], {
+      cwd: bare,
+      asUser: false,
+    });
+    expect(remote).toContain("ff change");
+  });
+
+  it("publish route reconciles a diverged remote branch instead of failing 'fetch first'", async () => {
+    const { appRoot, repoDir, bare, branch } = initRepoWithRemote();
+    // origin/<branch> gains a commit the sandbox never saw → plain push rejects.
+    pushDivergentCommitToRemote(appRoot, bare, branch);
+    writeFileSync(join(repoDir, "README.md"), "sandbox change\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "publish from sandbox" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);
+    // The sandbox's state won: origin/<branch> now carries its README and the
+    // divergent commit was force-reconciled away.
+    const readme = gitSync(["show", `refs/heads/${branch}:README.md`], {
+      cwd: bare,
+      asUser: false,
+    });
+    expect(readme).toContain("sandbox change");
+    const tree = gitSync(["ls-tree", "--name-only", `refs/heads/${branch}`], {
+      cwd: bare,
+      asUser: false,
+    });
+    expect(tree).not.toContain("OTHER.md");
+  });
+
+  it("publish() (shutdown path) does NOT reconcile — it refuses to clobber a diverged remote", () => {
+    const { appRoot, repoDir, bare, branch } = initRepoWithRemote();
+    pushDivergentCommitToRemote(appRoot, bare, branch);
+    writeFileSync(join(repoDir, "README.md"), "sandbox change\n");
+    // Default opts → reconcileRemote off: the shutdown-sync contract must never
+    // force-push over a concurrent sandbox's work.
+    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow();
+    // origin/<branch> keeps the divergent commit — nothing was clobbered.
+    const tree = gitSync(["ls-tree", "--name-only", `refs/heads/${branch}`], {
+      cwd: bare,
+      asUser: false,
+    });
+    expect(tree).toContain("OTHER.md");
   });
 
   it("publish skips failing pre-commit hooks", async () => {
