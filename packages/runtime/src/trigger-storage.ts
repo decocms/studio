@@ -200,10 +200,32 @@ export class JsonFileStorage implements TriggerStorage {
     }
   }
 
-  private async save(): Promise<void> {
-    const data = Object.fromEntries(this.cache ?? new Map());
-    const fs = await import("node:fs/promises");
-    await fs.writeFile(this.path, JSON.stringify(data, null, 2));
+  // Serializes writes. The shared-load fix above kept concurrent `set()`s from
+  // clobbering each other's Map, but both still reached `save()`, and two
+  // overlapping `writeFile` calls to the same path interleave their bytes into
+  // unparseable JSON. Chaining makes each write start only after the previous
+  // one finishes.
+  private writing: Promise<void> = Promise.resolve();
+
+  private save(): Promise<void> {
+    const next = this.writing.then(async () => {
+      const fs = await import("node:fs/promises");
+      // Snapshot inside the chained callback, not before it, so a queued write
+      // persists every key committed to the cache while it waited.
+      const data = Object.fromEntries(this.cache ?? new Map());
+      // tmp + rename: rename is atomic, so a crash mid-write (or any reader,
+      // including the next boot's `load()`) never observes a half-written file —
+      // `load()` rethrows a parse error, which would take the process down.
+      // Deterministic tmp name, so a failed write leaves one stale file that the
+      // next save overwrites rather than accumulating.
+      const tmp = `${this.path}.${process.pid}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify(data, null, 2));
+      await fs.rename(tmp, this.path);
+    });
+    // The chain must survive a failed write: swallow here (the caller still sees
+    // the rejection via `next`) so one ENOSPC doesn't poison every later save.
+    this.writing = next.catch(() => {});
+    return next;
   }
 
   async get(connectionId: string): Promise<TriggerState | null> {
