@@ -13,6 +13,7 @@
 import {
   CIRCUIT_BREAKER_COOLDOWN_MS,
   CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+  CIRCUIT_BREAKER_HALF_OPEN_PROBE_TIMEOUT_MS,
   CIRCUIT_BREAKER_MAX_ENTRIES,
 } from "../core/constants";
 import { meter } from "../observability";
@@ -24,6 +25,7 @@ interface CircuitEntry {
   consecutiveFailures: number;
   lastFailureTime: number;
   halfOpenInFlight: boolean;
+  halfOpenStartedAt: number;
 }
 
 const circuits = new Map<string, CircuitEntry>();
@@ -70,9 +72,16 @@ export function assertCircuitClosed(connectionId: string): void {
 
   if (circuit.state === "HALF_OPEN") {
     if (circuit.halfOpenInFlight) {
-      throw new CircuitOpenError(connectionId, 0);
+      const probeAge = Date.now() - circuit.halfOpenStartedAt;
+      if (probeAge < CIRCUIT_BREAKER_HALF_OPEN_PROBE_TIMEOUT_MS) {
+        throw new CircuitOpenError(connectionId, 0);
+      }
+      // The previous probe never reported an outcome (caller threw without
+      // calling recordSuccess/recordFailure) — treat it as abandoned rather
+      // than wedging the circuit open forever, and grant a fresh probe.
     }
     circuit.halfOpenInFlight = true;
+    circuit.halfOpenStartedAt = Date.now();
     return;
   }
 
@@ -81,6 +90,7 @@ export function assertCircuitClosed(connectionId: string): void {
   if (elapsed >= CIRCUIT_BREAKER_COOLDOWN_MS) {
     circuit.state = "HALF_OPEN";
     circuit.halfOpenInFlight = true;
+    circuit.halfOpenStartedAt = Date.now();
     return;
   }
 
@@ -110,6 +120,7 @@ export function recordFailure(connectionId: string): void {
       consecutiveFailures: 1,
       lastFailureTime: Date.now(),
       halfOpenInFlight: false,
+      halfOpenStartedAt: 0,
     });
     return;
   }

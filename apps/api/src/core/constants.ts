@@ -26,6 +26,17 @@ export const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
 /** Cooldown period in ms before allowing a probe request (half-open state) */
 export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000; // 30 seconds
 
+/**
+ * Max age of an in-flight half-open probe before it's considered abandoned.
+ * A caller can grant itself the probe via assertCircuitClosed() and then throw
+ * before calling recordSuccess/recordFailure (e.g. a caller path that
+ * deliberately skips both, like an auth-recoverable error). Without this
+ * bound, that circuit would fail-fast forever since no future request could
+ * ever win the single-probe slot. Set above the MCP SDK's 60s connect
+ * timeout so a genuinely slow (not abandoned) probe isn't preempted.
+ */
+export const CIRCUIT_BREAKER_HALF_OPEN_PROBE_TIMEOUT_MS = 65_000; // 65 seconds
+
 /** Maximum number of circuit breaker entries to retain in memory */
 export const CIRCUIT_BREAKER_MAX_ENTRIES = 1000;
 
