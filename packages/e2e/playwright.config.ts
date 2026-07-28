@@ -56,12 +56,20 @@ export default defineConfig({
   // last-resort ceiling.
   globalTimeout: 30 * 60 * 1000,
   retries: process.env.CI ? 2 : 0,
-  // CI: cap at 4 to keep host CPU + the Postgres connection budget predictable
-  // (each worker opens its own pg client alongside the app pool). Local: let
-  // Playwright pick (half the CPU count). Every test mints its own user + org
-  // with randomized slugs, so DB assertions stay tenant-scoped and parallel-safe.
-  workers: process.env.CI ? 4 : undefined,
-  reporter: [["html", { open: "never" }]],
+  // CI: 6 workers on the 4-core runner — the specs are HTTP-wait-heavy (they
+  // spend most of their time awaiting the API server, not burning CPU), so
+  // oversubscribing past the core count keeps the pipeline full; 4 (the old
+  // cap) left it ~5min wall, and the Postgres connection budget (each worker
+  // opens its own pg client alongside the app pool) has plenty of headroom at
+  // 6. Local: let Playwright pick (half the CPU count). Every test mints its
+  // own user + org with randomized slugs, so DB assertions stay tenant-scoped
+  // and parallel-safe.
+  workers: process.env.CI ? 6 : undefined,
+  // `list` on CI so the job log shows per-spec durations — that's how fat
+  // specs get found (the html report isn't uploaded anywhere).
+  reporter: process.env.CI
+    ? [["list"], ["html", { open: "never" }]]
+    : [["html", { open: "never" }]],
   use: {
     baseURL: appOrigin,
     trace: "on-first-retry",
