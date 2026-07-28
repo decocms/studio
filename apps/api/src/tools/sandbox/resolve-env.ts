@@ -5,6 +5,10 @@ import {
   SecretNotFoundError,
 } from "../../storage/secrets";
 import type { StudioContext } from "../../core/studio-context";
+import { readBoundedText } from "../../lib/bounded-text";
+
+/** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
+const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 
 interface ResolveAndPushParams {
   ctx: StudioContext;
@@ -70,7 +74,9 @@ export async function resolveAndPushEnv({
     body: JSON.stringify({ env }),
   });
   if (!res.ok) {
-    const body = await res.text().catch(() => res.statusText);
+    const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(
+      () => res.statusText,
+    );
     console.warn(
       `[SANDBOX_START] daemon rejected env patch (${res.status}): ${body}`,
     );

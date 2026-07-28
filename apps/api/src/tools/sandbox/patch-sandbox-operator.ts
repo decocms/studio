@@ -1,6 +1,10 @@
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
+import { readBoundedText } from "../../lib/bounded-text";
 import type { StudioContext } from "../../core/studio-context";
+
+/** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
+const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Sync the authenticated Studio user into daemon tenant config for co-author. */
 export async function patchSandboxOperator(
@@ -18,7 +22,9 @@ export async function patchSandboxOperator(
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => res.statusText);
+    const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(
+      () => res.statusText,
+    );
     throw new Error(
       `Failed to patch sandbox operator (${res.status}): ${body}`,
     );

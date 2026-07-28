@@ -2,10 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { delay } from "@decocms/shared/std";
 import {
   readBoundedText,
-  redactRepoDir,
   UpstreamPayloadTooLargeError,
-  withClaimGitLock,
-} from "./sandbox-proxy";
+} from "../../lib/bounded-text";
+import { redactRepoDir, withClaimGitLock } from "./sandbox-proxy";
 
 describe("redactRepoDir", () => {
   it("nulls a container-internal repoDir while preserving other fields", () => {
