@@ -70,7 +70,7 @@ type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
 
 const SANDBOX_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
 
-function assertSandboxBranchParam(branch: string): void {
+export function assertSandboxBranchParam(branch: string): void {
   // "thread:<id>" is a synthetic sandbox-identity branch (bound by `load_repo`
   // for thread-scoped repos) — the daemon accepts it and never checks it out as
   // a git ref, so the ':' is legal here even though the git-ref charset below

@@ -4,7 +4,11 @@ import {
   readBoundedText,
   UpstreamPayloadTooLargeError,
 } from "../../lib/bounded-text";
-import { redactRepoDir, withClaimGitLock } from "./sandbox-proxy";
+import {
+  assertSandboxBranchParam,
+  redactRepoDir,
+  withClaimGitLock,
+} from "./sandbox-proxy";
 
 describe("redactRepoDir", () => {
   it("nulls a container-internal repoDir while preserving other fields", () => {
@@ -35,6 +39,49 @@ describe("redactRepoDir", () => {
   it("passes through JSON that is not an object", () => {
     expect(redactRepoDir("[1,2,3]")).toBe("[1,2,3]");
     expect(redactRepoDir('"repoDir"')).toBe('"repoDir"');
+  });
+});
+
+describe("assertSandboxBranchParam", () => {
+  it("accepts a plain branch name", () => {
+    expect(() => assertSandboxBranchParam("main")).not.toThrow();
+    expect(() => assertSandboxBranchParam("feature/foo-bar_123")).not.toThrow();
+  });
+
+  it("accepts a thread: synthetic branch id", () => {
+    expect(() => assertSandboxBranchParam("thread:abc123")).not.toThrow();
+  });
+
+  it("rejects an empty branch", () => {
+    expect(() => assertSandboxBranchParam("")).toThrow();
+  });
+
+  it("rejects a thread: branch with no id after the prefix", () => {
+    expect(() => assertSandboxBranchParam("thread:")).toThrow();
+  });
+
+  it("rejects path traversal via ..", () => {
+    expect(() => assertSandboxBranchParam("a/../b")).toThrow();
+    expect(() => assertSandboxBranchParam("thread:../etc")).toThrow();
+  });
+
+  it("rejects a leading or trailing slash", () => {
+    expect(() => assertSandboxBranchParam("/leading")).toThrow();
+    expect(() => assertSandboxBranchParam("trailing/")).toThrow();
+  });
+
+  it("rejects a git lock-file ref", () => {
+    expect(() => assertSandboxBranchParam("refs/heads/main.lock")).toThrow();
+  });
+
+  it("rejects a branch name over 255 chars", () => {
+    expect(() => assertSandboxBranchParam("a".repeat(256))).toThrow();
+  });
+
+  it("rejects characters outside the git-ref charset", () => {
+    expect(() => assertSandboxBranchParam("has space")).toThrow();
+    expect(() => assertSandboxBranchParam("a:b")).toThrow();
+    expect(() => assertSandboxBranchParam("-leading-dash")).toThrow();
   });
 });
 
