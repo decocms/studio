@@ -89,6 +89,7 @@ export const reports = {
   "reports.keywordsTemplate.searchesPerMonth": "Searches/mo",
   "reports.listTemplate.moreSignals": "more signals in the full diagnostic",
   "reports.listTemplate.unlockRevenue": "Unlock my revenue",
+  "reports.paginasVariant.found": "found",
   "reports.scanGate.errorBlocked": "This report is not publicly available.",
   "reports.scanGate.errorEmpty":
     "We scanned your store, but the report is still being assembled. Check back soon.",
