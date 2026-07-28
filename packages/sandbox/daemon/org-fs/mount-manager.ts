@@ -155,7 +155,15 @@ export class MountManager {
     private readonly platform: string = process.platform,
   ) {}
 
-  /** Serve + mount every configured volume. Never throws. */
+  /**
+   * Serve + mount every configured volume. Never throws. Volumes are
+   * independent (own client/server/rclone process) and each is already a
+   * "never throws, skip on failure" unit, so they mount concurrently instead
+   * of paying every volume's full rclone-spawn + up-to-15s rc-ready wait back
+   * to back — that serialization was pure added sandbox-boot latency once a
+   * deployment mounts more than one or two volumes (home/outputs/uploads +
+   * one entry per public skill set).
+   */
   async start(config: OrgFsMountConfig, appRoot: string): Promise<void> {
     this.config = config;
     this.appRoot = appRoot;
@@ -166,9 +174,7 @@ export class MountManager {
       );
       return;
     }
-    for (const m of config.mounts) {
-      await this.mountOne(m);
-    }
+    await Promise.all(config.mounts.map((m) => this.mountOne(m)));
   }
 
   /**
