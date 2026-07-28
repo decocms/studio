@@ -26,6 +26,7 @@ function run(overrides: Partial<PreviewDisplayInput>) {
     progressStatus: "doing",
     productionUrl: PROD,
     fastPreviewActive: false,
+    fastPreviewReady: false,
     ...overrides,
   });
 }
@@ -109,49 +110,82 @@ describe("resolvePreviewDisplay", () => {
   });
 
   describe("Fast Preview", () => {
-    const previewUrl = IFRAME.kind === "iframe" ? IFRAME.previewUrl : "";
-
-    it("renders on the daemon (previewUrl), never the published site", () => {
-      const result = run({
-        previewState: IFRAME,
-        progressStatus: "doing",
-        fastPreviewActive: true,
+    it("drops the pill once the draft render is ready, still based on production", () => {
+      // `iframeBase` stays the PUBLISHED url — the caller layers the daemon
+      // draft URL over it, so the base is always navigable and the URL-bar
+      // label doesn't jump origins when the draft swaps in.
+      expect(
+        run({
+          previewState: IFRAME,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+        }),
+      ).toEqual({
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: false,
       });
-      expect(result.mode).toBe("production");
-      // The daemon origin, NOT productionUrl — Fast Preview never shows the
-      // published site.
-      expect(result.iframeBase).toBe(previewUrl);
-      expect(result.iframeBase).not.toBe(PROD);
-      expect(result.showWakingPill).toBe(false);
     });
 
-    it("shows a booting overlay (not the published site) while the sandbox provisions", () => {
-      // No previewUrl yet → the daemon can't serve the render; show the overlay,
-      // never fall back to productionUrl.
+    it("shows the published site + pill while the sandbox provisions", () => {
+      // Inverted from the original rule (blocking overlay, never the published
+      // site). Boot should be invisible: the published site holds the canvas
+      // until the draft render is renderable.
       expect(
         run({
           previewState: STARTING,
           progressStatus: "doing",
           fastPreviewActive: true,
+          fastPreviewReady: false,
         }),
       ).toEqual({
-        mode: "none",
-        iframeBase: null,
-        showBlockingOverlay: true,
-        showWakingPill: false,
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: true,
       });
     });
 
-    it("never swaps to the sandbox — stays on the daemon render regardless of dev-server state", () => {
+    it("holds the published site when the daemon is up but no page matched yet", () => {
+      // previewUrl exists, but the decofile hasn't yielded a page key, so the
+      // draft URL isn't buildable. Keep the pill rather than blanking.
+      const result = run({
+        previewState: IFRAME,
+        progressStatus: "doing",
+        fastPreviewActive: true,
+        fastPreviewReady: false,
+      });
+      expect(result.mode).toBe("production");
+      expect(result.iframeBase).toBe(PROD);
+      expect(result.showWakingPill).toBe(true);
+    });
+
+    it("never swaps to the sandbox — the draft render owns the canvas regardless of dev-server state", () => {
       for (const progressStatus of ["done", "failed"] as const) {
         const result = run({
           previewState: IFRAME,
           progressStatus,
           fastPreviewActive: true,
+          fastPreviewReady: true,
         });
         expect(result.mode).toBe("production");
-        expect(result.iframeBase).toBe(previewUrl);
+        expect(result.iframeBase).toBe(PROD);
       }
+    });
+
+    it("does not fall through to the sandbox while waiting for the draft", () => {
+      // Even with the dev server up, Fast Preview must not hand the canvas to
+      // the sandbox iframe — that's the surface it deliberately replaces.
+      const result = run({
+        previewState: IFRAME,
+        progressStatus: "done",
+        fastPreviewActive: true,
+        fastPreviewReady: false,
+      });
+      expect(result.mode).toBe("production");
+      expect(result.showWakingPill).toBe(true);
     });
   });
 });

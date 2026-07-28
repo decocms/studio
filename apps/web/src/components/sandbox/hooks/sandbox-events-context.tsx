@@ -169,6 +169,37 @@ export function isDirectDaemonEventsGoneStatus(status: number): boolean {
   return status === 404;
 }
 
+/**
+ * Phases that guarantee the repo is checked out on disk.
+ *
+ * The daemon serves the CMS decofile without a dev server: `/read` of
+ * `.deco/blocks.gen.json` falls back to merging `.deco/blocks/*.json` on the
+ * fly. That fallback returns 400 while `.deco/blocks/` is missing — i.e. during
+ * `cloning`/`checking-out` — and `useDecofile` turns that into a 502 it
+ * deliberately never retries. So the read has exactly one good moment to be
+ * re-driven: the first phase that implies a populated working tree.
+ *
+ * `installing` is that moment (clone + checkout done, only deps pending) and is
+ * precisely the window Fast Preview renders in. The later phases are included
+ * because a warm sandbox with cached deps can skip past `installing` between
+ * two SSE frames — and the failure phases because a repo that failed to install
+ * still has a tree the CMS can read.
+ *
+ * `checking-out` is deliberately excluded: the tree is mid-write there.
+ */
+export function isWorkingTreeReadyPhase(
+  phase: LifecycleState["phase"],
+): boolean {
+  return (
+    phase === "installing" ||
+    phase === "install-failed" ||
+    phase === "starting" ||
+    phase === "start-failed" ||
+    phase === "running" ||
+    phase === "crashed"
+  );
+}
+
 async function probeDirectDaemonEventsGone(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, {
@@ -275,7 +306,7 @@ export function SandboxEventsProvider({
     // Tracks the dev-server lifecycle so we can invalidate the CMS queries once
     // it comes up (switching them from the committed `.deco/*.gen.json` snapshot
     // to the live `/.decofile` + `/live/_meta` routes).
-    let prevLifecyclePhase: string | null = null;
+    let prevLifecyclePhase: LifecycleState["phase"] | null = null;
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -343,6 +374,30 @@ export function SandboxEventsProvider({
           case "lifecycle": {
             const lp = payload as DaemonEventPayload<"lifecycle">;
             setLifecycle(lp.state);
+            const cacheKeyForBranch = `${org.slug}/${virtualMcpId}/${branch}`;
+            // Working tree just landed (see isWorkingTreeReadyPhase). Re-drive
+            // the two things Fast Preview needs but that nothing else retries:
+            // the decofile — whose cold-start read 502s while the repo is still
+            // cloning and is never retried — and the entity, which carries
+            // `previewUrl` in `sandboxMap` behind a 60s staleTime. Without this
+            // both stay stale until `running` below, stranding Fast Preview
+            // behind the very install it exists to skip.
+            if (
+              isWorkingTreeReadyPhase(lp.state.phase) &&
+              !(
+                prevLifecyclePhase &&
+                isWorkingTreeReadyPhase(prevLifecyclePhase)
+              )
+            ) {
+              invalidateVirtualMcpQueries(queryClient, org.id);
+              // Only when the decofile never loaded (the 502 case) — a
+              // populated cache can hold an optimistic block edit a refetch
+              // would revert, the same hazard the post-write path guards.
+              const decofileKey = KEYS.decofile(cacheKeyForBranch);
+              if (queryClient.getQueryData(decofileKey) === undefined) {
+                void queryClient.invalidateQueries({ queryKey: decofileKey });
+              }
+            }
             // Dev server just came up: swap the CMS queries off the committed
             // `.deco/*.gen.json` snapshot and onto the live routes. This is the
             // trigger they rely on (they're enabled as soon as the daemon is up,
@@ -359,15 +414,14 @@ export function SandboxEventsProvider({
               // panels never mount on a cold-start open — only a hard refresh
               // re-fetches the entity and picks it up.
               invalidateVirtualMcpQueries(queryClient, org.id);
-              const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
               void queryClient.invalidateQueries({
-                queryKey: KEYS.decofile(cacheKey),
+                queryKey: KEYS.decofile(cacheKeyForBranch),
               });
               void queryClient.invalidateQueries({
                 predicate: (query) =>
                   query.queryKey[0] === "live-meta" &&
                   typeof query.queryKey[1] === "string" &&
-                  query.queryKey[1].startsWith(`${cacheKey}/`),
+                  query.queryKey[1].startsWith(`${cacheKeyForBranch}/`),
               });
             }
             prevLifecyclePhase = lp.state.phase;
