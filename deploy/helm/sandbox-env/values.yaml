@@ -293,6 +293,41 @@ depsCache:
   # same unreaped-growth caveat as above (a golden ≈ a full node_modules).
   golden: false
 
+# ── daemon telemetry ───────────────────────────────────────────────────
+# The daemon pushes metrics over OTLP rather than being scraped: sandbox
+# pods are too ephemeral to be a Prometheus target, and the numbers worth
+# having (dependency-install cost, cache hit rate) are produced at boot —
+# a pod reclaimed between two scrape windows would report nothing. Push
+# also lets the daemon flush on SIGTERM so the last interval still ships.
+#
+# Off by default: with no endpoint the daemon registers no MeterProvider
+# and every `getMeter()` stays the API's no-op, which is the behavior
+# before this existed.
+#
+# CHOOSING AN ENDPOINT — read this first. Sandbox egress is enforced by
+# the netinit iptables init container (see above), which appends:
+#
+#   lo ACCEPT → conntrack ACCEPT → blockCIDRs REJECT
+#     → allowedUDPPorts ACCEPT → allowedTCPPorts ACCEPT → default REJECT
+#
+# The CIDR REJECT fires BEFORE the port ACCEPTs, so a collector on an
+# in-cluster ClusterIP (which lands in RFC1918, i.e. inside blockCIDRs) is
+# unreachable no matter which port you add to allowedTCPPorts. An endpoint
+# here must clear that rule — e.g. the collector's LoadBalancer address on
+# 443, which is already allowed and needs no netinit change. If you must
+# reach a ClusterIP instead, that requires a destination-scoped ACCEPT
+# inserted ahead of the blockCIDRs loop; adding the port alone will
+# silently drop every export.
+#
+# Note this opens a path from pods running untrusted user code to your
+# collector: a compromised sandbox can emit arbitrary series. The daemon
+# only ever sends fixed instrument names with derived attribute values.
+telemetry:
+  # OTLP HTTP endpoint (protobuf). Empty = telemetry off.
+  otlpEndpoint: ""
+  # resource `service.name` for the daemon's metrics.
+  serviceName: studio-sandbox-daemon
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to

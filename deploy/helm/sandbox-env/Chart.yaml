@@ -24,6 +24,11 @@ type: application
 # orgfs-sidecar is SIGKILLed on teardown and its Sandbox CR is already gone) +
 # grants the housekeeper Role `delete` on pods. Additive; existing reap paths
 # unchanged.
+# 0.9.34: opt-in daemon OTLP metrics (telemetry.otlpEndpoint, default
+# empty) — sets OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_SERVICE_NAME so the
+# daemon registers a MeterProvider and pushes. Additive; no change unless
+# set. The endpoint must clear netinit's blockCIDRs REJECT (which fires
+# before the port ACCEPTs) — see values.yaml before picking one.
 # 0.9.4: default studio-sandbox image tag bumped to 1.12.0 (Node.js 26).
 # 0.9.3: opt-in HPA for the warm pool (warmPool.autoscaling.*, default off) —
 # scales SandboxWarmPool via its native scale subresource. No default metric
@@ -47,7 +52,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.33
+version: 0.9.34
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.24.2"
 kubeVersion: ">=1.30.0-0"

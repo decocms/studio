@@ -227,6 +227,17 @@ spec:
               value: "1"
             {{- end }}
             {{- end }}
+            {{- with .Values.telemetry.otlpEndpoint }}
+            # Enables the daemon's MeterProvider (absent → no provider is
+            # registered and every daemon metric stays the API's no-op). The
+            # endpoint MUST be one a sandbox pod can actually reach — netinit
+            # REJECTs the blockCIDRs before the port ACCEPTs, so an in-cluster
+            # ClusterIP is unreachable whatever port is allowed. See values.yaml.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ $.Values.telemetry.serviceName | quote }}
+            {{- end }}
             - name: DAEMON_PORT
               value: "9000"
             - name: DAEMON_TOKEN
