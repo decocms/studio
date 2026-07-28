@@ -398,6 +398,121 @@ describe("resolveActiveFieldKey", () => {
       ),
     ).toBe("flags");
   });
+
+  describe("inline-union branch drill-down", () => {
+    // `searchProps` is an "A or B" plain-data union; its "Busca avançada" branch
+    // holds a `selectedFacets: Facet[]`. Drilling into a Facet writes a bare
+    // ["Facet"] trail (the union's own label never enters it), so the section
+    // must still narrow to `searchProps` instead of showing every sibling prop.
+    const properties = {
+      searchProps: {
+        title: "Parâmetros de busca",
+        type: "inline-union",
+        inlineUnionBranches: [
+          {
+            title: "Busca avançada",
+            discriminators: { type: "advanced" },
+            schema: {
+              type: "object",
+              properties: {
+                term: { type: "string", title: "Termo de busca" },
+                selectedFacets: {
+                  title: "Filtros base",
+                  type: "array",
+                  items: {
+                    type: "object",
+                    title: "Facet",
+                    properties: {
+                      key: { type: "string", title: "Chave do facet" },
+                      value: { type: "string", title: "Valor do facet" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          {
+            title: "ID de coleção",
+            discriminators: { type: "cluster" },
+            schema: {
+              type: "object",
+              properties: { clusterId: { type: "string", title: "Cluster" } },
+            },
+          },
+        ],
+      },
+      titlesSEOPLPs: {
+        title: "Títulos e textos SEO (PLP)",
+        type: "array",
+        items: { type: "object", properties: { label: { type: "string" } } },
+      },
+      floatingControls: { title: "Controles flutuantes", type: "boolean" },
+    } as Record<string, SchemaProperty>;
+
+    test("narrows to the union field whose selected branch owns the item", () => {
+      // Empty facet ({}) → label falls back to the item schema title "Facet".
+      const objValue = {
+        searchProps: { type: "advanced", selectedFacets: [{}] },
+        titlesSEOPLPs: [],
+        floatingControls: true,
+      };
+      expect(
+        resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+          "Facet",
+        ]),
+      ).toBe("searchProps");
+    });
+
+    test("resolves via the union's own label crumb (viaLabel path)", () => {
+      // Trail led by the union field's label — the drill kept it as a
+      // disambiguator. Must resolve through the `labelsMatch(head, label)` +
+      // slice(1) branch of the inline-union loop, not the direct one.
+      const objValue = {
+        searchProps: { type: "advanced", selectedFacets: [{}] },
+        titlesSEOPLPs: [],
+        floatingControls: true,
+      };
+      expect(
+        resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+          "Parâmetros de busca",
+          "Facet",
+        ]),
+      ).toBe("searchProps");
+    });
+
+    test("does not narrow off an inactive branch's schema", () => {
+      // The "cluster" branch is active (no `selectedFacets` in the value). A
+      // "Facet" crumb — a field only the inactive "advanced" branch declares —
+      // must NOT spuriously narrow to searchProps: the match is gated by the
+      // union value's actual data, which carries no facets here.
+      const objValue = {
+        searchProps: { type: "cluster", clusterId: "123" },
+        titlesSEOPLPs: [],
+        floatingControls: true,
+      };
+      expect(
+        resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+          "Facet",
+        ]),
+      ).toBeNull();
+    });
+
+    test("does not hijack a crumb owned by a sibling array", () => {
+      // Ordering guard: the pre-existing array-item loop resolves the sibling
+      // array before the inline-union loop runs, so adding the union loop must
+      // not pre-empt a real sibling match.
+      const objValue = {
+        searchProps: { type: "advanced", selectedFacets: [{}] },
+        titlesSEOPLPs: [{ label: "Home SEO" }],
+        floatingControls: true,
+      };
+      expect(
+        resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+          "Home SEO",
+        ]),
+      ).toBe("titlesSEOPLPs");
+    });
+  });
 });
 
 describe("isArrayDrillDownField", () => {
