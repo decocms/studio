@@ -8,7 +8,7 @@ interface FastPreviewDeps {
 }
 
 /**
- * `GET /_deco/fast-preview?component=<blockKey>&path=<path>&pathTemplate=<t>`
+ * `GET /_sandbox/fast-preview?component=<blockKey>&path=<path>&pathTemplate=<t>`
  *
  * Renders the working-tree DRAFT without the dev server: merge `.deco/blocks/*`
  * into a decofile, POST it to the linked site's production `/live/previews/<component>`
@@ -16,10 +16,15 @@ interface FastPreviewDeps {
  * production so the storefront's assets/relative URLs resolve there instead of
  * against the daemon origin the frame is served from.
  *
- * Public (browser-reachable, like the dev-server proxy) — it exposes the same
- * draft content the dev server would. All work is async (fs + fetch), and the
- * decofile is forwarded as raw text (no multi-MB `JSON.parse`) to respect the
- * daemon's single-thread budget (CONTRIBUTING rule #4).
+ * Unauthenticated, like its neighbours `/_sandbox/{events,scripts,idle}`: the
+ * CMS loads this straight into an iframe cross-origin, so it cannot carry the
+ * bearer token the rest of `/_sandbox/*` requires. `entry.ts` therefore matches
+ * it ahead of the token gate. Safe because it exposes only the draft content
+ * the dev server would serve anyway on the same origin.
+ *
+ * All work is async (fs + fetch), and the decofile is forwarded as raw text
+ * (no multi-MB `JSON.parse`) to respect the daemon's single-thread budget
+ * (CONTRIBUTING rule #4).
  */
 export function makeFastPreviewHandler(deps: FastPreviewDeps) {
   return async (req: Request): Promise<Response> => {

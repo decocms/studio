@@ -73,7 +73,7 @@ export interface Application {
   /**
    * Live production URL of the linked site (the deco runtime that serves
    * `/live/previews`). Set from the vMCP's `metadata.productionUrl` when Fast
-   * Preview is enabled — the `/_deco/fast-preview` daemon route POSTs the
+   * Preview is enabled — the `/_sandbox/fast-preview` daemon route POSTs the
    * working-tree decofile there to render the draft without the dev server.
    */
   readonly productionUrl?: string;
