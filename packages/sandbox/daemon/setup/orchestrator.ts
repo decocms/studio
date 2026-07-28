@@ -540,7 +540,7 @@ export class SetupOrchestrator {
    * read-then-write.
    */
   private async fillApplicationDefaults(repoDir: string): Promise<void> {
-    const outcome = readConfig(repoDir);
+    const outcome = await readConfig(repoDir);
     const diskApp =
       outcome.kind === "valid" ? outcome.config.application : undefined;
 

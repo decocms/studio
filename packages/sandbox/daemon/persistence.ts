@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TenantConfig } from "./types";
 import { validateTenantConfig } from "./validate";
@@ -22,10 +22,10 @@ export type ReadOutcome =
  * never writes this file; it exists only if a tenant committed one to the
  * repo themselves.
  */
-export function readConfig(repoDir: string): ReadOutcome {
+export async function readConfig(repoDir: string): Promise<ReadOutcome> {
   let raw: string;
   try {
-    raw = readFileSync(configPath(repoDir), "utf-8");
+    raw = await readFile(configPath(repoDir), "utf-8");
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
     if (err.code === "ENOENT") return { kind: "absent" };
