@@ -971,6 +971,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "upstream",
+ "urlencoding",
  "uuid",
 ]
 

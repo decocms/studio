@@ -31,6 +31,8 @@ pub enum SetupError {
     LocalTls(#[from] crate::local_tls::TlsError),
     #[error("invalid control URL: {0}")]
     ControlUrl(String),
+    #[error("{host} does not resolve to this machine: {detail}")]
+    ControlDns { host: String, detail: String },
     #[error("failed to build the main window: {0}")]
     Window(#[source] tauri::Error),
 }
@@ -223,11 +225,33 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     // Trusting the root prompts the user once, in the USER trust domain, so it
     // needs their own password rather than an administrator.
     let control = control_origin::current(selftest_mode);
+    // The control origin is a PUBLIC name that must resolve to loopback, and
+    // resolvers with DNS-rebinding protection (dnsmasq's stop-dns-rebind,
+    // pfSense, many corporate/VPN resolvers) strip exactly that answer. On
+    // such a network the user is online, everything else works, and the
+    // webview simply cannot load — so check up front and fail with a message
+    // that names the actual problem instead of showing a dead window.
+    if control.secure {
+        preflight_control_dns(control.host()).await?;
+    }
     // Selftest runs headless on CI, where no keychain can be unlocked — it
     // stays on plain `localhost`, which is a secure context for free.
     let tls = if control.secure {
-        let tls = crate::local_tls::ensure(&app_root)?;
-        crate::local_tls::ensure_trusted(&tls.ca_cert)?;
+        // On a blocking thread: minting keys is CPU work, the file IO is
+        // sync, and `security add-trusted-cert` blocks on a password or
+        // Touch-ID prompt on first run. None of that belongs on a runtime
+        // worker (and, before setup moved off the main thread, this exact
+        // call froze the UI thread while the prompt was up).
+        let tls_root = app_root.clone();
+        let tls = tauri::async_runtime::spawn_blocking(move || {
+            let tls = crate::local_tls::ensure(&tls_root)?;
+            crate::local_tls::ensure_trusted(&tls.ca_cert)?;
+            Ok::<_, crate::local_tls::TlsError>(tls)
+        })
+        .await
+        .map_err(|join| {
+            SetupError::LocalTls(crate::local_tls::TlsError::Trust(join.to_string()))
+        })??;
         tracing::info!(ca = %tls.ca_cert.display(), "local TLS material ready and trusted");
         Some(tls)
     } else {
@@ -416,4 +440,99 @@ mod tests {
             tauri::webview::NewWindowResponse::Deny
         ));
     }
+}
+
+/// Resolve the control host and require a loopback answer.
+///
+/// Failure modes this catches, in order of likelihood: DNS-rebinding
+/// protection stripping the loopback A record (the record IS public and IS
+/// `127.0.0.1` — that is the canonical rebind signature), a VPN/corporate
+/// split-horizon resolver that never reaches the public zone, and plain
+/// offline. Each would otherwise present as a webview that never loads.
+async fn preflight_control_dns(host: &str) -> Result<(), SetupError> {
+    let lookup = tokio::net::lookup_host((host, 443)).await;
+    let addrs: Vec<std::net::SocketAddr> = match lookup {
+        Ok(addrs) => addrs.collect(),
+        Err(error) => {
+            return Err(SetupError::ControlDns {
+                host: host.to_string(),
+                detail: format!(
+                    "DNS lookup failed ({error}). If you are online, your DNS resolver \
+                     (or VPN) is likely blocking public names that resolve to 127.0.0.1 \
+                     — a DNS-rebinding protection. Allowlist this domain in the resolver, \
+                     or add it to /etc/hosts pointing at 127.0.0.1."
+                ),
+            });
+        }
+    };
+    if addrs.iter().any(|addr| addr.ip().is_loopback()) {
+        return Ok(());
+    }
+    Err(SetupError::ControlDns {
+        host: host.to_string(),
+        detail: format!(
+            "the name resolved, but not to 127.0.0.1 (got {:?}). A DNS filter or \
+             captive portal is rewriting the answer; allowlist the domain or add a \
+             127.0.0.1 entry for it in /etc/hosts.",
+            addrs.iter().map(|addr| addr.ip()).collect::<Vec<_>>()
+        ),
+    })
+}
+
+/// Render a boot failure the user can actually read.
+///
+/// Setup runs off the main thread, so a failure no longer aborts the process
+/// — but without this, it would strand a running app with no window at all.
+/// A minimal data-URL page needs no listener, no assets and no CSP, which
+/// matters because the failing step may be exactly the one that provides
+/// those.
+pub fn show_boot_failure(app: &tauri::AppHandle, error: &SetupError) {
+    let detail = html_escape(&error.to_string());
+    let hint = match error {
+        SetupError::ControlDns { .. } => {
+            "The app's local address could not be resolved. This is usually a DNS \
+             filter or VPN blocking loopback answers — see the detail below."
+        }
+        SetupError::LocalTls(_) => {
+            "The app could not set up its local HTTPS certificate. If a trust prompt \
+             was cancelled, reopen the app and accept it — the certificate only \
+             secures traffic that never leaves this machine."
+        }
+        SetupError::LocalApi(_) => {
+            "The app's local server could not start. If another copy of the app is \
+             already running, use that one — only a single instance can hold the port."
+        }
+        _ => "The app could not finish starting.",
+    };
+    let page = format!(
+        "<!doctype html><meta charset=\"utf-8\"><title>Studio could not start</title>\
+         <body style=\"font-family:-apple-system,sans-serif;max-width:34rem;margin:15vh auto;padding:0 1.5rem;color:#1c1c1e\">\
+         <h1 style=\"font-size:1.3rem\">Studio could not start</h1>\
+         <p>{hint}</p>\
+         <pre style=\"white-space:pre-wrap;background:#f2f2f7;padding:1rem;border-radius:8px;font-size:0.8rem\">{detail}</pre>\
+         <p style=\"color:#6e6e73;font-size:0.85rem\">Quit and reopen the app to try again.</p>"
+    );
+    let url = format!(
+        "data:text/html;charset=utf-8,{}",
+        urlencoding::encode(&page)
+    );
+    let Ok(url) = url.parse::<tauri::Url>() else {
+        return;
+    };
+    if let Err(window_error) =
+        WebviewWindowBuilder::new(app, "boot-error", WebviewUrl::External(url))
+            .title("Studio")
+            .inner_size(560.0, 480.0)
+            .build()
+    {
+        // No window is possible at all — exiting beats a silent zombie.
+        tracing::error!(%window_error, "could not present the boot failure window");
+        app.exit(1);
+    }
+}
+
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }

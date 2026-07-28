@@ -27,8 +27,15 @@
 //!
 //! A wildcard certificate bundled with the app would need its private key on
 //! every user's disk — extractable, and therefore public in practice. Minting
-//! a CA per machine keeps every private key local to the machine that made it:
-//! a leak compromises one laptop's loopback, not the domain.
+//! a CA per machine keeps every private key local to the machine that made it.
+//!
+//! The root is NAME-CONSTRAINED to the control domain, `localhost` and
+//! 127.0.0.1, and its trust is scoped to the SSL policy at install time
+//! (`add-trusted-cert -p ssl`). Both matter: without them a stolen
+//! `ca-key.pem` — readable by any process running as this user, including
+//! code the app itself runs in sandboxes — would be a general-purpose
+//! authority for every TLS connection this user makes. With them, a leak is
+//! worth exactly what the comment used to claim: this machine's loopback.
 //!
 //! The user is asked to trust the ROOT once. Only the root persists; the leaf
 //! is re-minted on every launch (Apple rejects TLS leaves valid for more than
@@ -40,8 +47,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rcgen::{
-    BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
-    KeyPair, KeyUsagePurpose, SanType,
+    BasicConstraints, CertificateParams, CidrSubnet, DistinguishedName, DnType,
+    ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints,
+    SanType,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -52,6 +60,13 @@ use crate::control_origin::CONTROL_HOST;
 /// and is not subject to it.
 const LEAF_DAYS: i64 = 390;
 const ROOT_DAYS: i64 = 3650;
+
+/// Bumped when the ROOT's shape changes in a way that requires re-minting it
+/// (v2 added the name constraints). A mismatch regenerates the CA and asks
+/// for trust again — one explainable prompt, instead of silently keeping an
+/// unconstrained root forever.
+const CA_VERSION: &str = "2";
+const CA_VERSION_FILE: &str = "ca-version";
 
 #[derive(Debug, thiserror::Error)]
 pub enum TlsError {
@@ -95,19 +110,36 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
     };
     let ca_key = dir.join("ca-key.pem");
 
-    // The CA is only regenerated when it is missing outright. Rotating it
+    // The CA is regenerated only when it is missing outright or its VERSION
+    // is behind (a shape change like adding name constraints). Casual rotation
     // would silently invalidate the trust the user already granted, which
-    // presents as an unexplained TLS failure rather than a new prompt.
-    let (ca_params, ca_keypair) = if paths.ca_cert.exists() && ca_key.exists() {
+    // presents as an unexplained TLS failure rather than a new prompt — but
+    // keeping an unconstrained root to avoid one prompt is the wrong trade.
+    let version_path = dir.join(CA_VERSION_FILE);
+    let version_current = std::fs::read_to_string(&version_path)
+        .map(|value| value.trim() == CA_VERSION)
+        .unwrap_or(false);
+    let (ca_params, ca_keypair) = if paths.ca_cert.exists() && ca_key.exists() && version_current {
         let key_pem = read(&ca_key)?;
         let keypair = KeyPair::from_pem(&key_pem)?;
         (ca_params()?, keypair)
     } else {
+        // Retire the outgoing root's trust before overwriting its file —
+        // after the overwrite there is nothing left to name it by. Best
+        // effort: a failure leaves a stale trusted cert, which the new
+        // prompt supersedes for every name this app uses.
+        if paths.ca_cert.exists() {
+            let _ = Command::new("security")
+                .arg("remove-trusted-cert")
+                .arg(&paths.ca_cert)
+                .output();
+        }
         let keypair = KeyPair::generate()?;
         let params = ca_params()?;
         let cert = params.self_signed(&keypair)?;
         write(&paths.ca_cert, cert.pem().as_bytes())?;
         write_private(&ca_key, keypair.serialize_pem().as_bytes())?;
+        write(&version_path, CA_VERSION.as_bytes())?;
         (ca_params()?, keypair)
     };
     let ca_cert = ca_params.self_signed(&ca_keypair)?;
@@ -132,6 +164,21 @@ fn ca_params() -> Result<CertificateParams, rcgen::Error> {
     // `pathlen:0` — this CA may sign leaves and nothing else, so a stolen key
     // cannot be used to mint further CAs.
     params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
+    // `pathlen:0` stops intermediate minting; the NAME constraints stop the
+    // far worse thing — a stolen key minting a trusted leaf for an arbitrary
+    // host. Every name the leaf legitimately carries is permitted here and
+    // nothing else is.
+    params.name_constraints = Some(NameConstraints {
+        permitted_subtrees: vec![
+            GeneralSubtree::DnsName(CONTROL_HOST.to_string()),
+            GeneralSubtree::DnsName("localhost".to_string()),
+            GeneralSubtree::IpAddress(CidrSubnet::from_addr_prefix(
+                std::net::IpAddr::from([127, 0, 0, 1]),
+                32,
+            )),
+        ],
+        excluded_subtrees: Vec::new(),
+    });
     params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
     params.not_before = OffsetDateTime::now_utc() - Duration::days(1);
     params.not_after = OffsetDateTime::now_utc() + Duration::days(ROOT_DAYS);
@@ -179,6 +226,11 @@ pub fn ensure_trusted(ca_cert: &Path) -> Result<(), TlsError> {
     let login_keychain = login_keychain_path();
     let output = Command::new("security")
         .arg("add-trusted-cert")
+        // Trust for the SSL policy ONLY. Without `-p`, the root would be
+        // trusted for code signing, S/MIME and everything else — none of
+        // which this CA has any business vouching for.
+        .arg("-p")
+        .arg("ssl")
         .arg("-r")
         .arg("trustRoot")
         .arg("-k")
@@ -279,6 +331,27 @@ mod tests {
         let joined = names.join(" ");
         assert!(joined.contains(CONTROL_HOST), "{joined}");
         assert!(joined.contains(&format!("*.{CONTROL_HOST}")), "{joined}");
+    }
+
+    /// The name constraints are what make "a leak compromises one laptop's
+    /// loopback" TRUE: without them, a stolen `ca-key.pem` mints a trusted
+    /// leaf for any host this user's browsers will accept.
+    #[test]
+    fn the_ca_is_name_constrained_to_its_own_names() {
+        let params = ca_params().expect("params");
+        let constraints = params
+            .name_constraints
+            .as_ref()
+            .expect("the CA must carry name constraints");
+        assert!(constraints.excluded_subtrees.is_empty());
+        let rendered = format!("{:?}", constraints.permitted_subtrees);
+        assert!(rendered.contains(CONTROL_HOST), "{rendered}");
+        assert!(rendered.contains("localhost"), "{rendered}");
+        // rcgen renders the CIDR as octet arrays, not dotted-quad text.
+        assert!(rendered.contains("[127, 0, 0, 1]"), "{rendered}");
+        // Exactly the leaf's names, nothing else: a new SAN on the leaf must
+        // consciously widen the constraint too.
+        assert_eq!(constraints.permitted_subtrees.len(), 3, "{rendered}");
     }
 
     /// A CA that could mint further CAs would turn one stolen laptop key into

@@ -43,7 +43,24 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            tauri::async_runtime::block_on(setup::run(&handle))?;
+            // Selftest keeps the synchronous path: `boot-smoke.ts` treats
+            // "setup returned" as "everything is up", and CI depends on that
+            // ordering. Real launches run setup OFF the main thread — the
+            // first-run `security add-trusted-cert` call blocks on a
+            // password/Touch-ID prompt, and under `block_on` that froze the
+            // main thread before any window existed. A failure now renders an
+            // error window naming the failing step instead of aborting the
+            // process with nothing on screen.
+            if selftest::is_enabled() {
+                tauri::async_runtime::block_on(setup::run(&handle))?;
+            } else {
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = setup::run(&handle).await {
+                        tracing::error!(%error, "desktop setup failed");
+                        setup::show_boot_failure(&handle, &error);
+                    }
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
