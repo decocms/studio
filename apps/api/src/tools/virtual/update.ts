@@ -14,6 +14,7 @@ import {
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
+import { requireConnectionsInOrganization } from "./require-connections-in-org";
 
 /**
  * Input schema for updating a virtual MCP
@@ -77,6 +78,14 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
 
     if (data.pinned !== undefined && data.pinned !== existing.pinned) {
       requireOrgAdminForPinnedField(ctx);
+    }
+
+    if (data.connections?.length) {
+      await requireConnectionsInOrganization(
+        ctx,
+        organization.id,
+        data.connections.map((c) => c.connection_id),
+      );
     }
 
     const virtualMcp = await ctx.storage.virtualMcps.update(
