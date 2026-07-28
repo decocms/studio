@@ -323,9 +323,10 @@ fn handle_from_host(state: &AppState, headers: &HeaderMap) -> Option<String> {
     if label.is_empty() || rest.is_empty() {
         return None;
     }
-    crate::sandbox::persist::handles_with_sidecars(&state.app_root)
-        .into_iter()
-        .find(|handle| crate::sandbox::preview_label(handle) == label)
+    // A cached in-memory lookup: this runs on EVERY preview asset request,
+    // and the walk-the-worktrees version it replaces enumerated directories
+    // and hashed every handle each time.
+    state.sandbox_manager.handle_for_preview_label(label)
 }
 
 fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {

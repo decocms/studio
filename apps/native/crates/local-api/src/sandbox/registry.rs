@@ -191,65 +191,113 @@ impl SandboxRegistry {
     }
 
     pub(crate) fn record(&self, handle: &str) -> Result<Option<SandboxRecord>, String> {
-        let raw = self
-            .connection()
-            .query_row(
-                r#"
-                SELECT handle, config_json, sandbox_path, workdir_path,
-                       desired_status, observed_status, resume_step,
-                       error, created_at, updated_at, last_seen_at
-                FROM sandboxes WHERE handle = ?1
-                "#,
-                [handle],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, String>(5)?,
-                        row.get::<_, String>(6)?,
-                        row.get::<_, Option<String>>(7)?,
-                        row.get::<_, i64>(8)?,
-                        row.get::<_, i64>(9)?,
-                        row.get::<_, i64>(10)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(|error| format!("failed to read sandbox {handle}: {error}"))?;
-        let Some((
-            handle,
-            config_json,
-            sandbox_path,
-            workdir_path,
-            desired_status,
-            observed_status,
-            resume_step,
-            error,
-            created_at,
-            updated_at,
-            last_seen_at,
-        )) = raw
-        else {
-            return Ok(None);
-        };
-        let config = serde_json::from_str(&config_json)
-            .map_err(|error| format!("sandbox {handle} has an invalid stored config: {error}"))?;
-        Ok(Some(SandboxRecord {
-            handle,
-            config,
-            sandbox_path: PathBuf::from(sandbox_path),
-            workdir_path: PathBuf::from(workdir_path),
-            desired_status,
-            observed_status,
-            resume_step,
-            error,
-            created_at,
-            updated_at,
-            last_seen_at,
-        }))
+        let mut rows = self.query_records(
+            "SELECT handle, config_json, sandbox_path, workdir_path,
+                    desired_status, observed_status, resume_step,
+                    error, created_at, updated_at, last_seen_at
+             FROM sandboxes WHERE handle = ?1",
+            [handle],
+        )?;
+        Ok(rows.pop())
+    }
+
+    /// Every durable sandbox this agent has claimed, joined through
+    /// `sandbox_agents` — the `virtual_mcp_id` COLUMN on `sandboxes` only
+    /// remembers whichever agent wrote last (see `handle_for_agent`).
+    ///
+    /// This is the registry-backed replacement for walking `worktrees/` and
+    /// reading sidecars on request paths: one indexed query instead of a
+    /// recursive directory scan per request.
+    pub(crate) fn records_for_agent(
+        &self,
+        virtual_mcp_id: &str,
+    ) -> Result<Vec<SandboxRecord>, String> {
+        self.query_records(
+            "SELECT s.handle, s.config_json, s.sandbox_path, s.workdir_path,
+                    s.desired_status, s.observed_status, s.resume_step,
+                    s.error, s.created_at, s.updated_at, s.last_seen_at
+             FROM sandboxes s
+             JOIN sandbox_agents a ON a.handle = s.handle
+             WHERE a.virtual_mcp_id = ?1
+             ORDER BY s.handle",
+            [virtual_mcp_id],
+        )
+    }
+
+    /// Every registered handle. The set is one row per worktree on this
+    /// machine — small by construction.
+    pub(crate) fn handles(&self) -> Result<Vec<String>, String> {
+        let connection = self.connection();
+        let mut statement = connection
+            .prepare("SELECT handle FROM sandboxes ORDER BY handle")
+            .map_err(|error| format!("failed to list sandbox handles: {error}"))?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| format!("failed to list sandbox handles: {error}"))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("failed to list sandbox handles: {error}"))
+    }
+
+    fn query_records<P: rusqlite::Params>(
+        &self,
+        sql: &str,
+        params: P,
+    ) -> Result<Vec<SandboxRecord>, String> {
+        let connection = self.connection();
+        let mut statement = connection
+            .prepare(sql)
+            .map_err(|error| format!("failed to read sandboxes: {error}"))?;
+        let rows = statement
+            .query_map(params, |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, i64>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
+                ))
+            })
+            .map_err(|error| format!("failed to read sandboxes: {error}"))?;
+
+        let mut records = Vec::new();
+        for raw in rows {
+            let (
+                handle,
+                config_json,
+                sandbox_path,
+                workdir_path,
+                desired_status,
+                observed_status,
+                resume_step,
+                error,
+                created_at,
+                updated_at,
+                last_seen_at,
+            ) = raw.map_err(|error| format!("failed to read sandboxes: {error}"))?;
+            let config = serde_json::from_str(&config_json).map_err(|error| {
+                format!("sandbox {handle} has an invalid stored config: {error}")
+            })?;
+            records.push(SandboxRecord {
+                handle,
+                config,
+                sandbox_path: PathBuf::from(sandbox_path),
+                workdir_path: PathBuf::from(workdir_path),
+                desired_status,
+                observed_status,
+                resume_step,
+                error,
+                created_at,
+                updated_at,
+                last_seen_at,
+            });
+        }
+        Ok(records)
     }
 
     pub(crate) fn contains(&self, handle: &str) -> Result<bool, String> {

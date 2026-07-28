@@ -106,6 +106,11 @@ pub struct SandboxManager {
     /// DISTINCT (virtualMcpId, branch) pairs a session ever dispatches, not by
     /// call volume.
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// `preview_label(handle) → handle`, lazily built from the registry and
+    /// dropped whenever a registry row changes. The preview proxy resolves a
+    /// label on EVERY asset request; without this it walked `worktrees/`
+    /// recursively and hashed every handle per request.
+    preview_labels: std::sync::RwLock<Option<HashMap<String, String>>>,
     /// The handle whose dev server the reverse proxy serves for a plain
     /// (headerless) preview request — see [`SandboxManager::active`]. A
     /// browser iframe navigation cannot attach the `x-decocms-sandbox-handle`
@@ -145,6 +150,7 @@ impl SandboxManager {
             closing: AtomicBool::new(false),
             sandboxes: Mutex::new(HashMap::new()),
             locks: Mutex::new(HashMap::new()),
+            preview_labels: std::sync::RwLock::new(None),
             active_handle: Mutex::new(persisted_active.clone()),
             active_watch: tokio::sync::watch::channel(persisted_active).0,
             generation_watches: Mutex::new(HashMap::new()),
@@ -247,6 +253,52 @@ impl SandboxManager {
         handle: &str,
     ) -> Result<Option<super::registry::SandboxRecord>, String> {
         self.registry.record(handle)
+    }
+
+    /// Every durable sandbox this agent has claimed — the registry-backed
+    /// replacement for walking `worktrees/` and reading sidecars on request
+    /// paths.
+    pub(crate) fn records_for_agent(
+        &self,
+        virtual_mcp_id: &str,
+    ) -> Result<Vec<super::registry::SandboxRecord>, String> {
+        self.registry.records_for_agent(virtual_mcp_id)
+    }
+
+    /// The handle whose preview label matches `label`, if any.
+    ///
+    /// Served from an in-memory map so the preview proxy's per-asset lookups
+    /// never touch the filesystem or the database; the map is rebuilt from
+    /// the registry after any registration change.
+    pub(crate) fn handle_for_preview_label(&self, label: &str) -> Option<String> {
+        if let Some(cached) = self
+            .preview_labels
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            return cached.get(label).cloned();
+        }
+        let handles = self.registry.handles().ok()?;
+        let map: HashMap<String, String> = handles
+            .into_iter()
+            .map(|handle| (super::preview_label(&handle), handle))
+            .collect();
+        let found = map.get(label).cloned();
+        *self
+            .preview_labels
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(map);
+        found
+    }
+
+    /// Drop the label map so the next lookup rebuilds it. Called wherever a
+    /// registry row is created or replaced.
+    fn invalidate_preview_labels(&self) {
+        *self
+            .preview_labels
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     /// `<host>/<owner>/<repo>/<branch>` — the worktree's path under
@@ -641,6 +693,7 @@ impl SandboxManager {
             .join(&handle);
         self.registry
             .upsert_config(&handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
+        self.invalidate_preview_labels();
         // The sandbox's view onto the shared org filesystem. Best-effort by
         // design (see `org_view`): a sandbox whose view cannot be built still
         // runs, the agent simply has no org files — the same outcome as a
@@ -898,6 +951,7 @@ impl SandboxManager {
             .join(&handle);
         self.registry
             .upsert_config(&handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
+        self.invalidate_preview_labels();
         // The sandbox's view onto the shared org filesystem. Best-effort by
         // design (see `org_view`): a sandbox whose view cannot be built still
         // runs, the agent simply has no org files — the same outcome as a

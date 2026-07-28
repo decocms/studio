@@ -1,30 +1,25 @@
 //! `GET /api/:org/agent-sandbox-sessions/:virtualMcpId` — the agent's sandbox
 //! sessions, with this machine's included.
 //!
-//! Upstream answers from the cloud's session table, which has no row for a
-//! sandbox that only exists here. The shell, the branch picker and the runtime
-//! card all read this list, so a desktop-run agent otherwise looks like it has
-//! no sessions at all.
-//!
-//! Same treatment as `sandbox_lifecycle`'s `sandboxMap` merge: proxy upstream
-//! first, then EXTEND the response with local sandboxes rather than replacing
-//! it — one user can have cloud sandboxes on some branches and desktop ones on
-//! others, and the list has to show both.
+//! Answered ENTIRELY from this machine. Upstream's session table describes
+//! cloud sandboxes, and the desktop deliberately shows none of those: every
+//! proxy route in the sandbox family resolves against local worktrees only
+//! (a cloud branch would render a dead file explorer, git panel and preview),
+//! so offering cloud rows in the branch picker would be offering branches the
+//! app cannot open. Local sandboxes are the ONLY sandboxes here — an earlier
+//! revision merged upstream's list in, and the mixed list was the bug.
 
-use axum::body::Bytes;
-use axum::http::{header, HeaderMap, Method, StatusCode};
+use axum::http::Method;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::{json, Map, Value};
 
 use super::sandbox_lifecycle::local_sandbox_sessions;
-use crate::routes::upstream;
 use crate::state::AppState;
 
 pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
-    path_and_query: &str,
     rest: &[&str],
     query: Option<&str>,
 ) -> Option<Response> {
@@ -39,70 +34,24 @@ pub(super) async fn try_dispatch(
         .unwrap_or_else(|_| (*encoded_virtual_mcp_id).to_string());
 
     let branch_filter = query.and_then(branch_param);
-    Some(
-        merged_sessions(
-            state,
-            path_and_query,
-            &virtual_mcp_id,
-            branch_filter.as_deref(),
-        )
-        .await,
-    )
+    Some(local_sessions(
+        state,
+        &virtual_mcp_id,
+        branch_filter.as_deref(),
+    ))
 }
 
-async fn merged_sessions(
-    state: &AppState,
-    path_and_query: &str,
-    virtual_mcp_id: &str,
-    branch_filter: Option<&str>,
-) -> Response {
-    let mut items = upstream_items(path_and_query).await;
-
-    // Local sandboxes WIN on a branch the cloud also lists: for a desktop
-    // agent this process is the authority on whether its own sandbox is
-    // running, and a stale cloud row would otherwise mask it.
-    for local in local_sandbox_sessions(state, virtual_mcp_id) {
-        let branch = local.get("branch").and_then(Value::as_str).unwrap_or("");
-        if branch_filter.is_some_and(|wanted| wanted != branch) {
-            continue;
-        }
-        items.retain(|item| item.get("branch").and_then(Value::as_str) != Some(branch));
-        items.push(local);
-    }
-
+fn local_sessions(state: &AppState, virtual_mcp_id: &str, branch_filter: Option<&str>) -> Response {
+    let items: Vec<Value> = local_sandbox_sessions(state, virtual_mcp_id)
+        .into_iter()
+        .filter(|local| {
+            let branch = local.get("branch").and_then(Value::as_str).unwrap_or("");
+            branch_filter.is_none_or(|wanted| wanted == branch)
+        })
+        .collect();
     Json(json!({ "items": items })).into_response()
 }
 
-/// The cloud's own list, or an empty one.
-///
-/// Upstream being unreachable must NOT hide this machine's sandboxes — the
-/// desktop can run them with no network at all — so a failure degrades to
-/// "cloud contributed nothing" rather than to an error.
-async fn upstream_items(path_and_query: &str) -> Vec<Value> {
-    let mut headers = HeaderMap::new();
-    // A payload we parse must not arrive gzipped; reqwest is built without it.
-    headers.insert(
-        header::ACCEPT_ENCODING,
-        header::HeaderValue::from_static("identity"),
-    );
-    let Ok(response) =
-        upstream::send_org_request(Method::GET, path_and_query, headers, Bytes::new()).await
-    else {
-        return Vec::new();
-    };
-    if response.status() != StatusCode::OK {
-        return Vec::new();
-    }
-    let Ok(bytes) = response.bytes().await else {
-        return Vec::new();
-    };
-    serde_json::from_slice::<Value>(&bytes)
-        .ok()
-        .and_then(|value| value.get("items")?.as_array().cloned())
-        .unwrap_or_default()
-}
-
-/// The `branch` value from a raw query string.
 fn branch_param(query: &str) -> Option<String> {
     query.split('&').find_map(|pair| {
         let (key, value) = pair.split_once('=')?;

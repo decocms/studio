@@ -141,21 +141,23 @@ pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return EPHEMERAL_BRANCH.to_string();
     }
-    // Prefer whichever sandbox this agent has registered. A sidecar with no
-    // registry row is a leftover directory, not a sandbox — the same rule
-    // `local_sandbox_sessions` applies.
+    // Prefer whichever sandbox this agent has LIVE in this process; any
+    // durable row is the fallback. Read from the registry — walking
+    // `worktrees/` and parsing sidecars per request was the old, slow way,
+    // and the registry is the authority anyway.
     let mut fallback = None;
-    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
-        let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
+    for record in state
+        .sandbox_manager
+        .records_for_agent(virtual_mcp_id)
+        .unwrap_or_default()
+    {
+        let Some(branch) = record.config.branch.clone().filter(|b| !b.is_empty()) else {
             continue;
         };
-        if config.virtual_mcp_id != virtual_mcp_id {
-            continue;
-        }
-        let Some(branch) = config.branch.filter(|branch| !branch.is_empty()) else {
-            continue;
-        };
-        if matches!(state.sandbox_manager.is_registered(&handle), Ok(true)) {
+        if matches!(
+            state.sandbox_manager.is_registered(&record.handle),
+            Ok(true)
+        ) {
             return branch;
         }
         fallback.get_or_insert(branch);
@@ -324,10 +326,42 @@ fn enrich_entity(state: &AppState, entity: &mut Value, user_id: &str) {
     let Some(id) = entity.get("id").and_then(Value::as_str).map(str::to_string) else {
         return;
     };
+    // Cloud sandboxes are INVISIBLE on desktop, by design: every sandbox
+    // route here resolves against local worktrees only, so a cloud entry in
+    // the map would offer a branch whose file explorer, git panel and preview
+    // are all dead. Strip the hosted kinds upstream reported before adding
+    // this machine's own. `user-desktop` entries from OTHER users survive —
+    // they are what tells the shell a teammate's desktop owns a branch.
+    strip_hosted_sandbox_entries(entity);
     let local = local_sandbox_entries(state, &id);
     if !local.is_empty() {
         merge_sandbox_map(entity, user_id, local);
     }
+}
+
+/// Remove every non-`user-desktop` kind from `metadata.sandboxMap`, dropping
+/// branch and user levels that empty out.
+fn strip_hosted_sandbox_entries(entity: &mut Value) {
+    let Some(by_user) = entity
+        .get_mut("metadata")
+        .and_then(|metadata| metadata.get_mut("sandboxMap"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    by_user.retain(|_, by_branch| {
+        let Some(by_branch) = by_branch.as_object_mut() else {
+            return false;
+        };
+        by_branch.retain(|_, by_kind| {
+            let Some(by_kind) = by_kind.as_object_mut() else {
+                return false;
+            };
+            by_kind.retain(|kind, _| kind == "user-desktop");
+            !by_kind.is_empty()
+        });
+        !by_branch.is_empty()
+    });
 }
 
 /// `(branch, record)` for every sandbox on this machine that belongs to
@@ -349,19 +383,14 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
         return Vec::new();
     }
     let mut sessions = Vec::new();
-    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
-        let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
-            continue;
-        };
-        if config.virtual_mcp_id != virtual_mcp_id {
-            continue;
-        }
-        let Ok(Some(record)) = state.sandbox_manager.registry_record(&handle) else {
-            // A sidecar with no registry row is a leftover directory, not a
-            // session — the same reasoning `local_sandbox_entries` applies.
-            continue;
-        };
-        let branch = config
+    for record in state
+        .sandbox_manager
+        .records_for_agent(virtual_mcp_id)
+        .unwrap_or_default()
+    {
+        let handle = record.handle.clone();
+        let branch = record
+            .config
             .branch
             .as_deref()
             .filter(|branch| !branch.is_empty())
@@ -395,13 +424,13 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
         return Vec::new();
     }
     let mut entries = Vec::new();
-    for handle in crate::sandbox::persist::handles_with_sidecars(&state.app_root) {
-        let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
-            continue;
-        };
-        if config.virtual_mcp_id != virtual_mcp_id {
-            continue;
-        }
+    for record in state
+        .sandbox_manager
+        .records_for_agent(virtual_mcp_id)
+        .unwrap_or_default()
+    {
+        let handle = record.handle;
+        let config = record.config;
         // Publish ONLY a sandbox that is live in this process — not merely one
         // the registry still has a row for.
         //
@@ -647,9 +676,10 @@ mod tests {
 
     #[test]
     fn merge_sandbox_map_publishes_desktop_entries_without_disturbing_hosted_ones() {
-        // The shell reads sandboxMap[userId][branch][kind]; a desktop entry has
-        // to appear as a SIBLING of any hosted one, never replace it, or
-        // switching runtimes would lose the cloud sandbox.
+        // merge_sandbox_map is a pure merge and never clobbers sibling kinds.
+        // (In the enrich pipeline, hosted kinds are stripped BEFORE this merge
+        // runs — see strip_hosted_sandbox_entries — so what this preserves in
+        // practice is other users' user-desktop entries, not cloud rows.)
         let mut entity = json!({
             "id": "vm-1",
             "metadata": {
@@ -676,6 +706,40 @@ mod tests {
             entity["metadata"]["githubRepo"]["url"],
             "https://github.com/acme/site"
         );
+    }
+
+    /// Cloud sandboxes are invisible on desktop: hosted kinds are stripped
+    /// from the upstream entity, while a TEAMMATE's desktop entry survives —
+    /// it is what marks a branch as foreign-owned.
+    #[test]
+    fn hosted_sandbox_entries_are_stripped_and_desktop_ones_survive() {
+        let mut entity = json!({
+            "id": "vm-1",
+            "metadata": {
+                "sandboxMap": {
+                    "user-1": {
+                        "main": {
+                            "agent-sandbox": { "sandboxHandle": "cloud-1" },
+                            "sprite": { "sandboxHandle": "cloud-2" }
+                        }
+                    },
+                    "user-2": {
+                        "feature": { "user-desktop": { "sandboxHandle": "their-local" } },
+                        "hosted-only": { "agent-sandbox": { "sandboxHandle": "cloud-3" } }
+                    }
+                }
+            }
+        });
+        strip_hosted_sandbox_entries(&mut entity);
+
+        let map = &entity["metadata"]["sandboxMap"];
+        // user-1 had only hosted kinds — the whole user level empties out.
+        assert!(map.get("user-1").is_none(), "{map}");
+        assert_eq!(
+            map["user-2"]["feature"]["user-desktop"]["sandboxHandle"],
+            "their-local"
+        );
+        assert!(map["user-2"].get("hosted-only").is_none(), "{map}");
     }
 
     #[test]
