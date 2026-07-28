@@ -248,6 +248,69 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+/// On-disk name of the merged decofile artifact, and the directory it merges.
+const DECOFILE_GEN_BASENAME: &str = "blocks.gen.json";
+const DECOFILE_BLOCKS_DIRNAME: &str = "blocks";
+
+/// Rebuild `.deco/blocks.gen.json` from the sibling `.deco/blocks/*.json`.
+///
+/// Each file becomes `{ decodeURIComponent(<stem>): <file contents> }` — the
+/// filename stem is the percent-encoded block id, which is what the deco
+/// runtime emits. Contents are spliced in as RAW TEXT rather than parsed and
+/// re-serialized: the payload is routinely multi-megabyte and only the small
+/// keys need encoding.
+///
+/// `None` when there is no `blocks` directory or nothing mergeable in it, so
+/// the caller falls through to its normal not-found path. A malformed block is
+/// not rejected here — the client's own parse fails and it falls back to "no
+/// snapshot", exactly as when the file is genuinely absent.
+async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<String> {
+    let mut dir = tokio::fs::read_dir(blocks_dir).await.ok()?;
+    let mut names: Vec<String> = Vec::new();
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        if !entry
+            .file_type()
+            .await
+            .map(|t| t.is_file())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.to_ascii_lowercase().ends_with(".json") {
+            names.push(name);
+        }
+    }
+    if names.is_empty() {
+        return None;
+    }
+    // Sorted so the merged artifact is byte-for-byte deterministic.
+    names.sort();
+
+    let mut parts: Vec<String> = Vec::with_capacity(names.len());
+    for name in names {
+        let stem = &name[..name.len() - ".json".len()];
+        // A stem that is not valid percent-encoding keeps its literal form,
+        // mirroring the frontend's own fallback.
+        let key = urlencoding::decode(stem)
+            .map(|decoded| decoded.into_owned())
+            .unwrap_or_else(|_| stem.to_string());
+        let Ok(raw) = tokio::fs::read_to_string(blocks_dir.join(&name)).await else {
+            continue;
+        };
+        let raw = raw.trim();
+        // An empty file would emit `"key":` with no value and break the merge.
+        if raw.is_empty() {
+            continue;
+        }
+        let Ok(encoded_key) = serde_json::to_string(&key) else {
+            continue;
+        };
+        parts.push(format!("{encoded_key}:{raw}"));
+    }
+    Some(format!("{{{}}}", parts.join(",")))
+}
+
 pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
     let body: ReadBody = match parse_body(&body) {
         Ok(b) => b,
@@ -260,7 +323,33 @@ pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
     let meta = match tokio::fs::metadata(&file_path).await {
         Ok(m) => m,
         Err(_) => {
-            return ApiError::bad_request(format!("File not found: {user_path}")).into_response()
+            // Decofile fallback: `.deco/blocks.gen.json` is the runtime's merge
+            // of every `.deco/blocks/*.json`, and repos commonly gitignore it
+            // (a multi-MB single line that conflicts on every content PR), so a
+            // FRESH worktree has the block sources but not the merged file.
+            // Rebuilding it on read is what makes the CMS readable before the
+            // dev server has booted — without this the sections editor reports
+            // "File not found: .deco/blocks.gen.json" against a repo that
+            // plainly has its blocks. Byte-parity with `daemon/routes/fs.ts`.
+            if file_path.file_name().and_then(|name| name.to_str()) == Some(DECOFILE_GEN_BASENAME) {
+                if let Some(dir) = file_path
+                    .parent()
+                    .map(|dir| dir.join(DECOFILE_BLOCKS_DIRNAME))
+                {
+                    if let Some(merged) = generate_decofile_from_blocks(&dir).await {
+                        // `lineCount` is advisory: the client consumes this as
+                        // one blob and its line-number stripper is a no-op on
+                        // output that never carries a `\d+\t` prefix.
+                        return Json(json!({
+                            "kind": "text",
+                            "content": merged,
+                            "lineCount": 1,
+                        }))
+                        .into_response();
+                    }
+                }
+            }
+            return ApiError::bad_request(format!("File not found: {user_path}")).into_response();
         }
     };
     if meta.is_dir() {
@@ -1431,6 +1520,45 @@ pub async fn tools_sync(State(state): State<AppState>, body: Bytes) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fresh worktree has `.deco/blocks/*.json` but not the merged
+    /// `blocks.gen.json` (repos gitignore it), and without this rebuild the
+    /// sections editor reports "File not found" against a repo that plainly
+    /// has its blocks.
+    #[tokio::test]
+    async fn decofile_merge_decodes_stems_sorts_and_skips_empty_files() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let blocks = root.path().join("blocks");
+        std::fs::create_dir_all(&blocks).expect("mkdir");
+        // The stem is the percent-encoded block id.
+        std::fs::write(blocks.join("Card%20config.json"), "{\"a\":1}").unwrap();
+        std::fs::write(blocks.join("Alpha.json"), "  {\"b\":2}  ").unwrap();
+        // Empty would emit `"key":` with no value and break the merge.
+        std::fs::write(blocks.join("Empty.json"), "   ").unwrap();
+        // Not JSON, not merged.
+        std::fs::write(blocks.join("notes.txt"), "ignored").unwrap();
+
+        let merged = generate_decofile_from_blocks(&blocks)
+            .await
+            .expect("blocks dir merges");
+        assert_eq!(merged, r#"{"Alpha":{"b":2},"Card config":{"a":1}}"#);
+        // Valid JSON, and the space in the key really was decoded.
+        let parsed: serde_json::Value = serde_json::from_str(&merged).expect("valid json");
+        assert!(parsed.get("Card config").is_some(), "{merged}");
+    }
+
+    /// No blocks directory (or nothing mergeable) must fall through to the
+    /// caller's normal not-found path rather than inventing an empty decofile.
+    #[tokio::test]
+    async fn decofile_merge_is_none_when_there_is_nothing_to_merge() {
+        let root = tempfile::tempdir().expect("tempdir");
+        assert!(generate_decofile_from_blocks(&root.path().join("absent"))
+            .await
+            .is_none());
+        let empty = root.path().join("blocks");
+        std::fs::create_dir_all(&empty).expect("mkdir");
+        assert!(generate_decofile_from_blocks(&empty).await.is_none());
+    }
 
     #[test]
     fn base64_encode_matches_known_vectors() {
