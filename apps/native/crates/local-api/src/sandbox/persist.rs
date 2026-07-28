@@ -383,7 +383,7 @@ mod tests {
         GitSandboxConfig {
             org_slug: Some("acme".to_string()),
             virtual_mcp_id: "vmcp-1".to_string(),
-            clone_url: "https://example.com/repo.git".to_string(),
+            clone_url: "https://example.com/acme/repo.git".to_string(),
             branch: Some("main".to_string()),
             runtime: Some("node".to_string()),
             package_manager: Some("npm".to_string()),
@@ -418,7 +418,7 @@ mod tests {
         write_sidecar(dir.path(), &handle, &sample_cfg());
         let read_back = read_sidecar(dir.path(), &handle).expect("sidecar readable");
         assert_eq!(read_back.virtual_mcp_id, "vmcp-1");
-        assert_eq!(read_back.clone_url, "https://example.com/repo.git");
+        assert_eq!(read_back.clone_url, "https://example.com/acme/repo.git");
         assert_eq!(read_back.branch.as_deref(), Some("main"));
         assert_eq!(read_back.runtime.as_deref(), Some("node"));
         assert_eq!(read_back.package_manager.as_deref(), Some("npm"));

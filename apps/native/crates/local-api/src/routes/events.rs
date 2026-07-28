@@ -453,7 +453,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let config = crate::sandbox::GitSandboxConfig {
             virtual_mcp_id: "vmcp-replay-after-restart".to_string(),
-            clone_url: "https://example.invalid/repo.git".to_string(),
+            clone_url: "https://example.invalid/acme/repo.git".to_string(),
             branch: Some("feature/replay".to_string()),
             ..Default::default()
         };

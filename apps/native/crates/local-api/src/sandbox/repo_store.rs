@@ -7,7 +7,7 @@
 //!
 //! ## Why the key is the clone URL, not the Studio org
 //!
-//! [`canonical_repo_dir`] keys on the normalized remote (host + owner + repo),
+//! [`canonical_repo_dir`] keys on the normalized remote (owner + repo),
 //! deliberately NOT on the org that reached it: the same repository opened from
 //! two orgs must not clone twice — which is the entire point of the store — and
 //! an org rename must not orphan it. This is the one place that decision lives;
@@ -15,19 +15,6 @@
 
 use std::path::{Path, PathBuf};
 
-/// `<app_root>/repos/<host>/<owner>/<repo>` for a remote URL, or `None` when
-/// the URL isn't one we can key safely.
-///
-/// Accepts the forms git itself does — `https://host/owner/repo(.git)`,
-/// `ssh://git@host/owner/repo`, and the scp-style `git@host:owner/repo` — and
-/// normalizes them to the SAME directory, so two sandboxes that name one
-/// repository differently still share objects. Case is folded on the host
-/// (DNS is case-insensitive) but preserved on the path, which is not
-/// universally so.
-///
-/// Returns `None` rather than guessing for anything that would escape the store
-/// or collapse two repositories onto one path: an empty owner or repo, or a
-/// segment that is `.`/`..` or contains a separator.
 /// `<owner>/<repo>` for a clone URL — the scope a worktree hangs under.
 ///
 /// No host segment. GitHub is the only provider the app accepts, so a `host`
@@ -45,13 +32,25 @@ use std::path::{Path, PathBuf};
 /// store: no usable segment at all, or one that is `.`/`..`.
 pub fn repo_scope(clone_url: &str) -> Option<Vec<String>> {
     let trimmed = clone_url.trim();
-    // Everything after a scheme/host, or the whole thing for a plain path —
-    // only the tail matters, so the remote spellings need no special cases.
+    // Everything after a scheme/host, or the whole thing for a filesystem
+    // remote — only the tail matters, so the remote spellings need no special
+    // cases. A scheme-less remote must be an absolute path: anything else
+    // ("not a url") is garbage that must not key a store directory.
     let path = match split_remote(trimmed) {
         Some((_, path)) => path,
-        None => trimmed.to_string(),
+        None if trimmed.starts_with('/') => trimmed.to_string(),
+        None => return None,
     };
     let stripped = path.strip_suffix(".git").unwrap_or(&path);
+    // A `.`/`..` anywhere marks a garbage remote. The tail alone can never
+    // escape the store, but keying `../../etc/passwd` under it would still
+    // mint a directory for a URL git was never going to clone.
+    if stripped
+        .split('/')
+        .any(|segment| segment == "." || segment == "..")
+    {
+        return None;
+    }
     let mut tail: Vec<String> = stripped
         .rsplit('/')
         .filter(|segment| !segment.is_empty())
@@ -59,31 +58,27 @@ pub fn repo_scope(clone_url: &str) -> Option<Vec<String>> {
         .filter_map(|segment| sanitize(segment).map(str::to_string))
         .collect();
     tail.reverse();
-    // One segment is enough for an owner-less remote (`host/repo`, and the
-    // bare-path fixtures); GitHub always supplies both.
-    (!tail.is_empty()).then_some(tail)
+    // Exactly two: under one provider a repository is always `owner/repo`, and
+    // a URL with a single path segment ("https://github.com/acme") is not a
+    // repository. Bare-path fixtures always have a parent directory to supply
+    // the second segment.
+    (tail.len() == 2 && tail.iter().all(|segment| sanitize(segment).is_some())).then_some(tail)
 }
 
+/// `<app_root>/repos/<owner>/<repo>` for a remote URL, or `None` when the URL
+/// isn't one we can key safely.
+///
+/// Derived from [`repo_scope`] — the SAME rule the worktree tree uses — so the
+/// mirror tree and the worktree tree cannot drift apart:
+/// `repos/deco-sites/faststore-fila` mirrors what
+/// `worktrees/deco-sites/faststore-fila/<branch>` checks out. Like the scope,
+/// it carries no host segment: GitHub is the only provider, so
+/// `repos/github.com/…` was a level of nesting that told nobody anything.
 pub fn canonical_repo_dir(app_root: &Path, clone_url: &str) -> Option<PathBuf> {
-    let (host, path) = split_remote(clone_url.trim())?;
-    let mut segments = path
-        .trim_matches('/')
-        .split('/')
-        .filter(|segment| !segment.is_empty());
-
-    let owner = segments.next()?;
-    // Everything before the final segment is the owner namespace — GitLab-style
-    // subgroups (`group/subgroup/repo`) must not collapse onto one directory.
-    let rest: Vec<&str> = segments.collect();
-    let (repo, middle) = rest.split_last()?;
-    let repo = repo.strip_suffix(".git").unwrap_or(repo);
-
-    let mut dir = app_root.join("repos").join(sanitize(&host.to_lowercase())?);
-    dir.push(sanitize(owner)?);
-    for segment in middle {
-        dir.push(sanitize(segment)?);
+    let mut dir = app_root.join("repos");
+    for segment in repo_scope(clone_url)? {
+        dir.push(segment);
     }
-    dir.push(sanitize(repo)?);
     Some(dir)
 }
 
@@ -222,7 +217,7 @@ mod tests {
     #[test]
     fn every_spelling_of_one_repo_maps_to_the_same_directory() {
         // The whole point of the store: name it differently, share objects.
-        let expected = Some("/app/repos/github.com/acme/site".to_string());
+        let expected = Some("/app/repos/acme/site".to_string());
         for url in [
             "https://github.com/acme/site.git",
             "https://github.com/acme/site",
@@ -242,7 +237,9 @@ mod tests {
             dir("https://github.com/acme/site"),
             dir("https://github.com/other/site")
         );
-        assert_ne!(
+        // No host segment: under a single provider, two spellings that agree
+        // on owner/repo ARE the same repository, whatever host they name.
+        assert_eq!(
             dir("https://github.com/acme/site"),
             dir("https://gitlab.com/acme/site")
         );
@@ -254,26 +251,30 @@ mod tests {
     }
 
     #[test]
-    fn subgroups_keep_their_namespace() {
-        // Collapsing `group/sub/repo` to `group/repo` would alias two repos.
+    fn deep_paths_key_on_their_last_two_segments() {
+        // GitHub has no subgroups, so only the trailing `owner/repo` matters.
         assert_eq!(
             dir("https://gitlab.com/group/sub/repo.git"),
-            Some("/app/repos/gitlab.com/group/sub/repo".to_string())
+            Some("/app/repos/sub/repo".to_string())
         );
     }
 
     #[test]
-    fn local_file_remotes_keep_their_whole_path() {
+    fn local_file_remotes_key_on_their_last_two_segments() {
         // `file://` has no host, but local clones must still share a canonical
-        // store — and two repos whose directories are both named `site` must
-        // not collapse onto one.
+        // store — and two repos whose PARENT directories differ stay apart.
         assert_eq!(
             dir("file:///Users/dev/work/site"),
-            Some("/app/repos/local/Users/dev/work/site".to_string())
+            Some("/app/repos/work/site".to_string())
         );
         assert_ne!(
             dir("file:///Users/dev/a/site"),
             dir("file:///Users/dev/b/site")
+        );
+        // A bare path is the same remote as its file:// spelling.
+        assert_eq!(
+            dir("/Users/dev/work/site"),
+            dir("file:///Users/dev/work/site")
         );
     }
 
@@ -466,9 +467,11 @@ mod tests {
         // `host:22/owner/repo` is a URL with a port, not scp-style — treating
         // the port as the owner would key every such repo under "22".
         assert_eq!(dir("github.com:22/acme/site.git"), None);
+        // With no host segment in the key, the port-bearing spelling lands on
+        // the same directory as every other spelling of the repo.
         assert_eq!(
             dir("ssh://git@github.com:22/acme/site.git"),
-            Some("/app/repos/github.com:22/acme/site".to_string()),
+            Some("/app/repos/acme/site".to_string()),
         );
     }
 }

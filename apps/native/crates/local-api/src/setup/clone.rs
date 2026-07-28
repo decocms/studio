@@ -657,6 +657,21 @@ async fn ensure_canonical_repo(
         // still carry their frozen `refs/heads/*`; clean them here so an
         // existing mirror converges on the same shape as a fresh one.
         prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
+        // Drop registrations whose worktree directory is gone. Without this, a
+        // re-bootstrap onto an emptied workdir finds git still holding the OLD
+        // registration's branch ("cannot force update the branch ... used by
+        // worktree at ..."), falls into the detached-HEAD fallback, and the
+        // sandbox silently comes up off-branch. `worktree prune` only removes
+        // registrations whose directories no longer exist — live checkouts are
+        // untouched.
+        let _ = run_git(
+            orch,
+            Some(task_id),
+            &["-C", &canonical_str, "worktree", "prune"],
+            None,
+            Some(controller),
+        )
+        .await;
         return Ok(());
     }
 
@@ -1320,7 +1335,9 @@ mod tests {
             .logs()
             .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
             .await;
-        assert_eq!(first.matches("clone --depth 1").count(), 1);
+        // A filesystem remote is keyed like any other, so a fresh clone goes
+        // through the shared mirror: exactly one `worktree add` per run.
+        assert_eq!(first.matches("worktree add").count(), 1, "{first:?}");
 
         // A second "fresh" clone run against the SAME orchestrator (mirrors
         // a real re-bootstrap onto an emptied workdir).
@@ -1336,9 +1353,9 @@ mod tests {
         // Truncated, not appended: the second transcript describes ONLY the
         // second clone, not both concatenated.
         assert_eq!(
-            second.matches("clone --depth 1").count(),
+            second.matches("worktree add").count(),
             1,
-            "second transcript should describe exactly one clone, not two concatenated: {second:?}"
+            "second transcript should describe exactly one checkout, not two concatenated: {second:?}"
         );
     }
 }
