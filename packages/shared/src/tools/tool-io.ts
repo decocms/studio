@@ -418,7 +418,14 @@ export interface StudioToolIO {
       activity: {
         id: string;
         taskBoardItemId: string;
-        kind: "created" | "status_changed" | "assignee_changed";
+        kind:
+          | "created"
+          | "status_changed"
+          | "assignee_changed"
+          | "priority_changed"
+          | "due_date_changed"
+          | "title_changed"
+          | "description_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         createdAt: string;

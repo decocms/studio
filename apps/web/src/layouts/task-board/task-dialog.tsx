@@ -955,6 +955,18 @@ function describeActivity(
         : undefined;
     return cfg ? t(cfg.labelKey) : String(s ?? "");
   };
+  // "none" is priority's unset value, so it reads as a set/clear, not a move.
+  const priorityLabel = (p: unknown) => {
+    const cfg =
+      typeof p === "string"
+        ? PRIORITY_CONFIG[p as keyof typeof PRIORITY_CONFIG]
+        : undefined;
+    return cfg ? t(cfg.labelKey) : String(p ?? "");
+  };
+  const dateLabel = (iso: unknown) => {
+    const date = parseIsoDate(typeof iso === "string" ? iso : null);
+    return date ? DUE_DATE_FMT.format(date) : "";
+  };
   const d = a.data;
   switch (a.kind) {
     case "created":
@@ -977,6 +989,33 @@ function describeActivity(
           (typeof d.to === "string" && memberByUserId.get(d.to)?.user?.name) ||
           t("taskBoard.taskDialog.someoneLabel"),
       });
+    case "priority_changed":
+      if (d.to === "none")
+        return t("taskBoard.taskDialog.activityPriorityCleared");
+      if (!d.from || d.from === "none")
+        return t("taskBoard.taskDialog.activityPrioritySet", {
+          to: priorityLabel(d.to),
+        });
+      return t("taskBoard.taskDialog.activityPriorityFromTo", {
+        from: priorityLabel(d.from),
+        to: priorityLabel(d.to),
+      });
+    case "due_date_changed":
+      if (d.to == null) return t("taskBoard.taskDialog.activityDueDateCleared");
+      if (d.from == null)
+        return t("taskBoard.taskDialog.activityDueDateSet", {
+          to: dateLabel(d.to),
+        });
+      return t("taskBoard.taskDialog.activityDueDateFromTo", {
+        from: dateLabel(d.from),
+        to: dateLabel(d.to),
+      });
+    case "title_changed":
+      return t("taskBoard.taskDialog.activityRenamed", {
+        to: String(d.to ?? ""),
+      });
+    case "description_changed":
+      return t("taskBoard.taskDialog.activityDescriptionUpdated");
     default: {
       const _exhaustive: never = a.kind;
       return String(_exhaustive);

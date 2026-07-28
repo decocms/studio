@@ -1717,7 +1717,11 @@ export interface TaskBoardItem {
 export type TaskBoardActivityKind =
   | "created"
   | "status_changed"
-  | "assignee_changed";
+  | "assignee_changed"
+  | "priority_changed"
+  | "due_date_changed"
+  | "title_changed"
+  | "description_changed";
 
 export interface TaskBoardActivityTable {
   id: string;

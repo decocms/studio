@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import type { TaskBoardItem } from "@/storage/types";
+import type { TaskBoardActivityKind, TaskBoardItem } from "@/storage/types";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
@@ -12,6 +12,25 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
+
+/**
+ * Fields whose change earns a from/to timeline entry, and the kind it logs as.
+ * Diffed against the pre-update item, so an edit that doesn't move a field logs
+ * nothing. `description` is logged separately, without its values — the
+ * timeline records THAT it changed rather than copying a whole body into the
+ * log. Deliberately absent: `sortOrder` (drag-to-reorder is noise) and thread
+ * links.
+ */
+const LOGGED_FIELDS: {
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title";
+  kind: TaskBoardActivityKind;
+}[] = [
+  { field: "status", kind: "status_changed" },
+  { field: "assigneeId", kind: "assignee_changed" },
+  { field: "priority", kind: "priority_changed" },
+  { field: "dueDate", kind: "due_date_changed" },
+  { field: "title", kind: "title_changed" },
+];
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
@@ -132,26 +151,25 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       item = fetched;
     }
 
-    // Log the meaningful changes to the activity timeline (status, assignee) by
-    // diffing against the pre-update item. Best-effort.
+    // Log every changed field to the activity timeline. Best-effort.
     if (previous) {
       const actorId = getUserId(ctx)!;
-      if (item.status !== previous.status) {
+      for (const { field, kind } of LOGGED_FIELDS) {
+        if (item[field] === previous[field]) continue;
         await recordTaskActivity(ctx, {
           organizationId,
           taskBoardItemId: item.id,
-          kind: "status_changed",
+          kind,
           actorId,
-          data: { from: previous.status, to: item.status },
+          data: { from: previous[field], to: item[field] },
         });
       }
-      if (item.assigneeId !== previous.assigneeId) {
+      if (item.description !== previous.description) {
         await recordTaskActivity(ctx, {
           organizationId,
           taskBoardItemId: item.id,
-          kind: "assignee_changed",
+          kind: "description_changed",
           actorId,
-          data: { from: previous.assigneeId, to: item.assigneeId },
         });
       }
     }

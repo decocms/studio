@@ -53,6 +53,17 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityAssigned": "atribuiu para {name}",
   "taskBoard.taskDialog.activityUnassigned": "removeu a atribuição",
   "taskBoard.taskDialog.activityDelegated": "delegou ao Super Agent",
+  "taskBoard.taskDialog.activityPrioritySet": "definiu a prioridade como {to}",
+  "taskBoard.taskDialog.activityPriorityFromTo":
+    "mudou a prioridade de {from} para {to}",
+  "taskBoard.taskDialog.activityPriorityCleared": "removeu a prioridade",
+  "taskBoard.taskDialog.activityDueDateSet":
+    "definiu a data de vencimento para {to}",
+  "taskBoard.taskDialog.activityDueDateFromTo":
+    "mudou a data de vencimento de {from} para {to}",
+  "taskBoard.taskDialog.activityDueDateCleared": "removeu a data de vencimento",
+  "taskBoard.taskDialog.activityRenamed": "renomeou a tarefa para {to}",
+  "taskBoard.taskDialog.activityDescriptionUpdated": "atualizou a descrição",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.assignToPlaceholder": "Atribuir a…",
   "taskBoard.taskDialog.clearDueDateAriaLabel": "Limpar data de vencimento",

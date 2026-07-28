@@ -73,6 +73,10 @@ const TaskBoardActivityKindSchema = z.enum([
   "created",
   "status_changed",
   "assignee_changed",
+  "priority_changed",
+  "due_date_changed",
+  "title_changed",
+  "description_changed",
 ]);
 
 /** One entry in a task's change timeline. */
