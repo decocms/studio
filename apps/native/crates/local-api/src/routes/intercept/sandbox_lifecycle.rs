@@ -114,6 +114,58 @@ fn preview_url(handle: &str) -> Option<String> {
 /// `SandboxManager::ensure`'s own missing/empty-branch normalization.
 const DEFAULT_BRANCH: &str = "main";
 
+/// The branch reported for a thread with no git-backed sandbox of its own.
+///
+/// A sentinel rather than `main`: an agent with no repository has no branch,
+/// and saying `main` is a claim that is both false and indistinguishable from
+/// a real branch — which is exactly how a defaulted value came to overwrite a
+/// live one and strand the UI on `main` after a restart.
+pub(crate) const EPHEMERAL_BRANCH: &str = "ephemeral";
+
+/// The branch a thread's sandbox is actually on, according to the sandbox
+/// manager — the single source of truth.
+///
+/// The branch is encoded in the handle the manager registered, so it cannot
+/// silently disagree with the sandbox that is really running. Anything that
+/// reports a thread's branch derives it here rather than echoing back whatever
+/// the caller happened to send: a request that omits the branch used to fall
+/// through to [`DEFAULT_BRANCH`], and that default was then persisted over the
+/// thread's real branch.
+///
+/// Returns [`EPHEMERAL_BRANCH`] when this agent has no sandbox — not-yet
+/// provisioned, or not git-backed at all.
+pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> String {
+    if virtual_mcp_id.is_empty() {
+        return EPHEMERAL_BRANCH.to_string();
+    }
+    let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
+        return EPHEMERAL_BRANCH.to_string();
+    };
+    // Prefer whichever sandbox this agent has registered. A sidecar with no
+    // registry row is a leftover directory, not a sandbox — the same rule
+    // `local_sandbox_sessions` applies.
+    let mut fallback = None;
+    for handle in dir
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+    {
+        let Some(config) = crate::sandbox::persist::read_sidecar(&state.app_root, &handle) else {
+            continue;
+        };
+        if config.virtual_mcp_id != virtual_mcp_id {
+            continue;
+        }
+        let Some(branch) = config.branch.filter(|branch| !branch.is_empty()) else {
+            continue;
+        };
+        if matches!(state.sandbox_manager.is_registered(&handle), Ok(true)) {
+            return branch;
+        }
+        fallback.get_or_insert(branch);
+    }
+    fallback.unwrap_or_else(|| EPHEMERAL_BRANCH.to_string())
+}
+
 /// `metadata.runtime.selected` names a package manager; `application.runtime`
 /// wants the JS runtime that drives it. Byte-parity with
 /// `packages/shared/src/runtime-defaults.ts::PACKAGE_MANAGER_CONFIG[pm].runtime`.
@@ -531,10 +583,15 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
             .into_response();
     }
 
+    // Derived from the manager AFTER `ensure`, so the value reported is the
+    // one actually registered rather than the one this request happened to
+    // ask for.
+    let reported_branch = branch_for_virtual_mcp(state, virtual_mcp_id);
+
     Json(json!({
         "previewUrl": preview_url(&handle),
         "sandboxHandle": handle,
-        "branch": resolved_branch,
+        "branch": reported_branch,
         "isNewVm": !existed,
         "sandboxProviderKind": "user-desktop",
     }))
@@ -657,6 +714,19 @@ mod tests {
     /// Under a single-label host every handle would be its own SITE, which
     /// costs the preview iframe ALL cookie storage in WebKit — worse than one
     /// shared jar. So the per-handle form is gated on a real domain.
+    /// An agent with no sandbox has no branch, and must not be reported as
+    /// being on `main` — that claim is false AND indistinguishable from a real
+    /// branch, which is how a default came to overwrite a live value and
+    /// strand the UI on `main` after a restart.
+    #[test]
+    fn an_agent_without_a_sandbox_reports_the_ephemeral_branch() {
+        // The sentinel must be distinguishable from any branch a repository
+        // could actually have — `main` is not, which is the whole bug.
+        assert_ne!(EPHEMERAL_BRANCH, DEFAULT_BRANCH);
+        assert_ne!(EPHEMERAL_BRANCH, "main");
+        assert!(!EPHEMERAL_BRANCH.is_empty());
+    }
+
     #[test]
     fn handles_share_one_origin_until_a_real_domain_is_configured() {
         set_preview_port(51_234);
