@@ -267,6 +267,10 @@ export function TaskBoardItemDialog({
               )}
             </div>
 
+            {/* Separates the task itself from the record of it (links,
+                activity). Edit mode only — a new task has neither. */}
+            {item && <hr className="border-border" />}
+
             {item?.id && (
               <LinksSection
                 item={item}
