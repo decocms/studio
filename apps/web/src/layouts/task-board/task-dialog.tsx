@@ -954,13 +954,23 @@ function ActivitySection({
  * A value named by a timeline line, carrying the same glyph the board uses for
  * it (status icon, priority dot, assignee avatar, calendar) so the line reads at
  * a glance.
+ *
+ * The label is plain inline text, so it shares the sentence's baseline instead
+ * of inheriting one synthesized from a wrapper box. Only the glyph is an atomic
+ * inline box, sized to exactly one line-height and top-aligned: it spans the
+ * line box precisely, so it can never make the row taller, and centering within
+ * it puts the glyph on the middle of the cap-height band — Inter's ascent minus
+ * descent equals its cap height, so the line box's midpoint IS the cap band's.
+ * Give glyphs an even pixel size to keep them on whole pixels.
  */
 function ValueChip({ icon, label }: { icon: ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 align-middle">
-      {icon}
+    <>
+      <span className="mr-1 inline-flex h-[1lh] items-center align-top">
+        {icon}
+      </span>
       {label}
-    </span>
+    </>
   );
 }
 
@@ -1005,7 +1015,7 @@ function describeActivity(
     const Icon = cfg.icon;
     return (
       <ValueChip
-        icon={<Icon size={13} className={cfg.iconClassName} />}
+        icon={<Icon size={14} className={cfg.iconClassName} />}
         label={t(cfg.labelKey)}
       />
     );
@@ -1028,7 +1038,7 @@ function describeActivity(
     if (!date) return "";
     return (
       <ValueChip
-        icon={<Calendar size={13} className="text-muted-foreground" />}
+        icon={<Calendar size={14} className="text-muted-foreground" />}
         label={DUE_DATE_FMT.format(date)}
       />
     );
