@@ -79,4 +79,34 @@ describe("JsonFileStorage", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("writes valid JSON under many concurrent set()/delete() calls", async () => {
+    // Two writers only interleave ~75% of the time, so the case above let the
+    // unserialized-`save()` race through as a flake. A wider fan-out makes the
+    // corrupt-file regression deterministic instead of statistical.
+    const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+    const path = join(dir, "state.json");
+    const storage = new JsonFileStorage({ path });
+    const ids = Array.from({ length: 12 }, (_, i) => `conn-${i}`);
+
+    try {
+      await Promise.all(ids.map((id) => storage.set(id, state(id))));
+      // Deletes share the same save() path — interleave them too.
+      await Promise.all([
+        ...ids.slice(0, 4).map((id) => storage.delete(id)),
+        ...ids.slice(4).map((id) => storage.set(id, state(`${id}-v2`))),
+      ]);
+
+      const onDisk = JSON.parse(await readFile(path, "utf-8"));
+      for (const id of ids.slice(0, 4)) {
+        expect(onDisk[id]).toBeUndefined();
+        expect(await storage.get(id)).toBeNull();
+      }
+      for (const id of ids.slice(4)) {
+        expect(onDisk[id]).toEqual(state(`${id}-v2`));
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
