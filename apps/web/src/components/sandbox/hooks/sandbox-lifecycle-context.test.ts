@@ -7,6 +7,7 @@ import {
   computeDrawerStatus,
   buildSandboxStartArgs,
   deriveOthersThreadLabel,
+  overlayThreadSandboxMap,
   computeOthersThreadGate,
   deriveStartError,
   isRetryableClaimFailure,
@@ -237,6 +238,63 @@ describe("computeDrawerStatus", () => {
     expect(computeDrawerStatus({ kind: "othersThread", label: "main" })).toBe(
       "idle",
     );
+  });
+});
+
+describe("overlayThreadSandboxMap", () => {
+  const branch = "thread:t1/conn_1";
+  const threadMap = {
+    u1: { [branch]: { "agent-sandbox": entry("agent-sandbox", "mine") } },
+    u2: { [branch]: { "agent-sandbox": entry("agent-sandbox", "theirs") } },
+  } as never;
+
+  test("overlays the viewer's own thread-scoped entry", () => {
+    const result = overlayThreadSandboxMap({
+      agentSandboxMap: undefined,
+      threadSandboxMap: threadMap,
+      userId: "u1",
+      branch,
+    });
+    expect(result?.u1?.[branch]?.["agent-sandbox"]?.sandboxHandle).toBe("mine");
+  });
+
+  test("never adopts another member's entry as the viewer's", () => {
+    // The bug: grafting the owner's record under the viewer's key made vmEntry
+    // non-null, which suppressed auto-start AND the others-thread gate — the
+    // viewer ended up with an iframe backed by a claim they can't drive and no
+    // way to start their own sandbox.
+    const result = overlayThreadSandboxMap({
+      agentSandboxMap: undefined,
+      threadSandboxMap: threadMap,
+      userId: "u3",
+      branch,
+    });
+    expect(result?.u3).toBeUndefined();
+  });
+
+  test("keeps the agent's map untouched when the thread has no entry", () => {
+    const agentMap = {
+      u1: { main: { "agent-sandbox": entry("agent-sandbox", "agent") } },
+    } as never;
+    expect(
+      overlayThreadSandboxMap({
+        agentSandboxMap: agentMap,
+        threadSandboxMap: undefined,
+        userId: "u1",
+        branch: "main",
+      }),
+    ).toBe(agentMap);
+  });
+
+  test("no userId / no branch → passthrough", () => {
+    expect(
+      overlayThreadSandboxMap({
+        agentSandboxMap: undefined,
+        threadSandboxMap: threadMap,
+        userId: null,
+        branch,
+      }),
+    ).toBeUndefined();
   });
 });
 

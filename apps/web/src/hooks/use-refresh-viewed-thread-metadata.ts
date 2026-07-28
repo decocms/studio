@@ -6,10 +6,10 @@
  * the live `data-open-preview` stream chunk that patches `githubRepo` /
  * `sandboxMap` onto the client row reaches only the user who ran the tool, and
  * the thread-status SSE carries no metadata. That stale row makes the preview
- * show "no source to preview" and hides the owner's already-running sandbox
- * (the owner-keyed sandbox lookup finds nothing). Force a fresh
- * `COLLECTION_THREADS_GET` and merge it into the store so `activeTask` picks up
- * the current metadata.
+ * show "no source to preview" — and with no `githubRepo` the viewer can't start
+ * their own sandbox on the thread's branch either (`hasActiveGithubRepo` gates
+ * auto-start). Force a fresh `COLLECTION_THREADS_GET` and merge it into the
+ * store so `activeTask` picks up the current metadata.
  *
  * Gated to OTHERS' threads: the owner's own row is kept current by the live
  * stream, so there's nothing to refresh.

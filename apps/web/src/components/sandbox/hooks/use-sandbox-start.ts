@@ -76,7 +76,16 @@ export const sandboxUserStop = {
     userStoppedSandboxes.has(`${virtualMcpId}::${branch}`),
 };
 
-export function useSandboxStart(client: MinimalMcpClient) {
+export function useSandboxStart(
+  client: MinimalMcpClient,
+  opts?: {
+    /** Ran after every successful start, whichever call site fired it. Lives
+     *  here rather than in each caller's per-call `onSuccess` so it can't be
+     *  forgotten by a new call site — and so it never becomes an effect
+     *  dependency (mutation options are re-read per render; effect deps are not). */
+    onStarted?: () => void;
+  },
+) {
   const queryClient = useQueryClient();
   return useMutation<SandboxStartResult, Error, SandboxStartArgs>({
     mutationKey: SANDBOX_START_MUTATION_KEY,
@@ -107,6 +116,7 @@ export function useSandboxStart(client: MinimalMcpClient) {
     // Per-call onSuccess (via `mutate(args, { onSuccess })`) runs AFTER this.
     onSuccess: () => {
       invalidateVirtualMcpQueries(queryClient);
+      opts?.onStarted?.();
     },
   });
 }
