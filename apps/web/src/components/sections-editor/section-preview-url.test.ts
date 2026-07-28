@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { buildFastPreviewDaemonUrl } from "./section-preview-url";
 
 describe("buildFastPreviewDaemonUrl", () => {
-  it("targets /_deco/fast-preview on the daemon (previewUrl) origin", () => {
+  it("targets /_sandbox/fast-preview on the daemon (previewUrl) origin", () => {
     const href = buildFastPreviewDaemonUrl({
       previewUrl: "https://abc.deco.host/ignored?x=1",
       pageBlockKey: "pages-home-abc",
@@ -12,7 +12,7 @@ describe("buildFastPreviewDaemonUrl", () => {
     });
     const url = new URL(href);
     expect(url.origin).toBe("https://abc.deco.host");
-    expect(url.pathname).toBe("/_deco/fast-preview");
+    expect(url.pathname).toBe("/_sandbox/fast-preview");
   });
 
   it("passes the page block key, path, and pathTemplate as query params", () => {
