@@ -620,11 +620,6 @@ export const sandbox = {
     "Selecione uma seção para editar",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
     "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
-  "sandbox.stateCard.othersThreadTitle": "Você está no chat de outra pessoa",
-  "sandbox.stateCard.othersThreadMessage":
-    "Esta conversa ({label}) é de outro membro. Continuar aqui significa dar sequência ao trabalho dela — comece um novo chat para trabalhar no seu.",
-  "sandbox.stateCard.othersThreadContinue": "Continuar mesmo assim",
-  "sandbox.stateCard.othersThreadNewChat": "Começar novo chat",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",

@@ -50,6 +50,7 @@ import {
   ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
 import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
+import { resolveSandboxUserId } from "@/tools/sandbox/thread-repo";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
 import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "@/links/link-work-item";
@@ -1945,11 +1946,18 @@ export async function prepareLinkWorkDispatch(
       let sandboxConfig: WorkItemSandbox | null = null;
       if (input.target?.sandboxProviderKind === "user-desktop") {
         try {
+          const branch = input.branch ?? "ephemeral";
           const sandboxHandle = computeDesktopSandboxHandle({
             agentId: input.agent.id,
-            userId: input.userId,
+            // Sandbox identity, not the dispatcher: a thread-scoped branch keys
+            // by the thread's creator, the same resolution SANDBOX_START and the
+            // sandbox proxy use. Normally identical (only the owner can prompt);
+            // keeping it here means a run dispatched on someone else's behalf
+            // still targets that thread's one sandbox instead of a second,
+            // dispatcher-keyed handle the daemon would cold-spawn.
+            userId: await resolveSandboxUserId(ctx, branch, input.userId),
             organizationId: input.organizationId,
-            branch: input.branch ?? "ephemeral",
+            branch,
           });
           sandboxConfig = await resolveLinkSandboxConfig(
             input,

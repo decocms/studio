@@ -62,7 +62,6 @@ import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events
 import {
   SandboxLifecycleProvider,
   resolveVmEntry,
-  deriveOthersThreadLabel,
   overlayThreadSandboxMap,
   type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -149,29 +148,20 @@ function VmEventsBridge({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  // Overlay the thread's own sandbox record for the current branch — see
-  // overlayThreadSandboxMap for why it's keyed by the VIEWER, not the owner.
+  // Overlay the thread's own sandbox record for the current branch. A thread has
+  // ONE sandbox, recorded under its creator and resolved server-side for every
+  // member who opens the thread — see overlayThreadSandboxMap.
   const effectiveSandboxMap = overlayThreadSandboxMap({
     agentSandboxMap: sandboxMap,
     threadSandboxMap: activeTask?.metadata?.sandboxMap as
       | SandboxMap
       | undefined,
     userId,
+    ownerId: activeTask?.created_by,
     branch: currentBranch,
   });
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
-
-  // Someone else's thread: hold auto-start behind a confirmation gate so the
-  // sandbox doesn't silently boot on the creator's branch (mirrors the chat
-  // composer's read-only banner). Ownership rule lives in the pure, tested
-  // deriveOthersThreadLabel; own thread → null (no gate).
-  const othersThreadLabel = deriveOthersThreadLabel({
-    userId: userId ?? null,
-    createdBy: activeTask?.created_by,
-    branch: activeTask?.branch,
-    title: activeTask?.title,
-  });
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -210,7 +200,6 @@ function VmEventsBridge({
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
-        othersThreadLabel={othersThreadLabel}
         threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider

@@ -55,15 +55,9 @@ export function resolvePreviewDisplay(
 ): PreviewDisplay {
   const { previewState, progressStatus, productionUrl } = input;
 
-  // Suspended / errored / othersThread all render their own dedicated card
-  // (the last one is a confirmation gate on a teammate's branch) — hand the
-  // canvas over so we don't paint a toolbar or load the production iframe
-  // behind/around it.
-  if (
-    previewState.kind === "suspended" ||
-    previewState.kind === "errored" ||
-    previewState.kind === "othersThread"
-  ) {
+  // Suspended / errored render their own dedicated card — hand the canvas over
+  // so we don't paint a toolbar or load the production iframe behind/around it.
+  if (previewState.kind === "suspended" || previewState.kind === "errored") {
     return NONE;
   }
 

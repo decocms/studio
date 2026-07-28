@@ -61,14 +61,17 @@ export const SANDBOX_DELETE = defineTool({
       }
       throw err;
     }
-    const { entry, userId } = vmEntry;
+    // `sandboxUserId` is the sandbox's owner (the thread's creator on a
+    // thread-scoped branch), `userId` the caller — so stopping a thread's
+    // sandbox reaches the one sandbox it has, from either side.
+    const { entry, userId, sandboxUserId } = vmEntry;
 
     if (!entry) {
       return { success: true };
     }
 
     const { provider: runner } = await resolveSandboxProvider(ctx, {
-      userId,
+      userId: sandboxUserId,
       branch: input.branch,
       virtualMcpMetadata: vmEntry.metadata,
       explicitKind: kind,
@@ -79,7 +82,7 @@ export const SANDBOX_DELETE = defineTool({
       ctx.storage.virtualMcps,
       input.virtualMcpId,
       userId,
-      userId,
+      sandboxUserId,
       input.branch,
       kind,
     );

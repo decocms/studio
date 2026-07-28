@@ -261,11 +261,6 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const previewUrl = lifecycle.previewUrl;
   const sandboxState = lifecycle.previewState;
 
-  // Another member's thread, not yet acknowledged: blank the editor rather
-  // than booting their sandbox — the confirmation gate lives on Preview. This
-  // also narrows `sandboxState` for SandboxStateRenderer below.
-  if (sandboxState.kind === "othersThread") return null;
-
   if (sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer

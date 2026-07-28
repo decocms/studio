@@ -1576,36 +1576,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </div>
                 )}
 
-                {previewState.kind === "othersThread" && (
-                  <div className="absolute inset-0 z-30">
-                    <SandboxStateCard
-                      kind="othersThread"
-                      label={previewState.label}
-                      onContinue={lifecycle.acknowledgeOthersThread}
-                      onStartNewThread={() =>
-                        navigate({
-                          to: "/$org/$taskId",
-                          params: {
-                            org: org.slug,
-                            taskId: crypto.randomUUID(),
-                          },
-                          // Fresh thread on the SAME agent: keep only
-                          // `virtualmcpid` and drop the viewed thread's params
-                          // (its per-thread `main` tab, and `sidepanel`) so the
-                          // target agent's configured default layout resolves —
-                          // don't force chat open on an agent that opts out of
-                          // it (chatDefaultOpen / non-chat defaultMainView).
-                          search: (prev) => ({
-                            ...(typeof prev.virtualmcpid === "string"
-                              ? { virtualmcpid: prev.virtualmcpid }
-                              : {}),
-                          }),
-                        })
-                      }
-                    />
-                  </div>
-                )}
-
                 {previewState.kind === "suspended" && (
                   <div className="absolute inset-0 z-30">
                     <SandboxStateCard

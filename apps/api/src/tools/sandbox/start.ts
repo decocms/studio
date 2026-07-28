@@ -1,5 +1,9 @@
 /**
- * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
+ * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual
+ * MCP's `sandboxMap`, where `userId` is the sandbox's OWNER — the thread's
+ * creator on a thread-scoped branch, so a member opening a teammate's thread
+ * resumes that thread's single sandbox instead of booting a private copy of the
+ * same git branch (see `resolveSandboxUserId`).
  * Provider-agnostic — dispatches through the active `SandboxProvider`; this
  * handler only does `sandboxMap` bookkeeping. Branch defaults to a Bayer-style
  * `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) when omitted.
@@ -51,6 +55,7 @@ import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
+  resolveSandboxUserId,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
@@ -128,6 +133,17 @@ export const SANDBOX_START = defineTool({
     const userId = getUserId(ctx);
     if (!userId) throw new Error("User ID required");
 
+    // Whose sandbox this is: the thread's creator for a thread-scoped branch, so
+    // a member opening a teammate's thread resumes the ONE sandbox that thread
+    // has instead of booting a private copy of the same git branch. `userId`
+    // stays the caller for credential resolution + audit — see
+    // resolveSandboxUserId.
+    const sandboxUserId = await resolveSandboxUserId(
+      ctx,
+      resolvedBranch,
+      userId,
+    );
+
     const virtualMcp = await ctx.storage.virtualMcps.findById(
       input.virtualMcpId,
     );
@@ -147,7 +163,7 @@ export const SANDBOX_START = defineTool({
       : undefined;
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
-        userId,
+        userId: sandboxUserId,
         branch: resolvedBranch,
         virtualMcpMetadata: metadata,
         explicitKind,
@@ -155,7 +171,7 @@ export const SANDBOX_START = defineTool({
 
     const existing: SandboxRecord | null = resolveVm(
       readSandboxMap(metadata),
-      userId,
+      sandboxUserId,
       resolvedBranch,
       providerKind,
     );
@@ -176,6 +192,7 @@ export const SANDBOX_START = defineTool({
     const { entry, isNewVm } = await provisionSandbox({
       ctx,
       userId,
+      sandboxUserId,
       orgId: organization.id,
       virtualMcpId: input.virtualMcpId,
       branch: resolvedBranch,
@@ -226,9 +243,11 @@ export async function ensureSandbox(
     throw new Error("Virtual MCP not found");
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
+  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
   const existing: SandboxRecord | null = resolveVm(
     readSandboxMap(metadata),
-    userId,
+    sandboxUserId,
     input.branch,
     input.sandboxProviderKind,
   );
@@ -240,7 +259,7 @@ export async function ensureSandbox(
   // restarted via `deco link` relink, leaving the sandboxMap pointing at a
   // dead handle). resolveSandboxProvider is cheap and idempotent.
   const { provider: runner } = await resolveSandboxProvider(ctx, {
-    userId,
+    userId: sandboxUserId,
     branch: input.branch,
     virtualMcpMetadata: metadata,
     explicitKind: providerKind,
@@ -258,7 +277,7 @@ export async function ensureSandbox(
       ctx.storage.virtualMcps,
       input.virtualMcpId,
       userId,
-      userId,
+      sandboxUserId,
       input.branch,
       providerKind,
     ).catch((err) => {
@@ -284,6 +303,7 @@ export async function ensureSandbox(
   const { entry } = await provisionSandbox({
     ctx,
     userId,
+    sandboxUserId,
     orgId: organization.id,
     virtualMcpId: input.virtualMcpId,
     branch: input.branch,
@@ -298,7 +318,13 @@ export async function ensureSandbox(
 
 type StartParams = {
   ctx: StudioContext;
+  /** The caller. Resolves credentials (env secrets, submodule PATs) and stamps
+   *  the audit fields on storage writes. */
   userId: string;
+  /** Whose sandbox this is — the thread's creator for a thread-scoped branch,
+   *  else the caller. Keys the claim, the runner state and the sandboxMap. See
+   *  resolveSandboxUserId. */
+  sandboxUserId: string;
   orgId: string;
   virtualMcpId: string;
   branch: string;
@@ -315,6 +341,7 @@ async function provisionSandbox(
   const {
     ctx,
     userId,
+    sandboxUserId,
     orgId,
     virtualMcpId,
     branch,
@@ -527,7 +554,7 @@ async function provisionSandbox(
   }
 
   const sandbox = await runner.ensure(
-    { userId, projectRef },
+    { userId: sandboxUserId, projectRef },
     {
       // Pass branch explicitly so the runner-side `computeHandle` agrees with
       // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
@@ -539,7 +566,9 @@ async function provisionSandbox(
       workload,
       tenant: {
         orgId,
-        userId,
+        // The sandbox's owner, so the pod's `user_id` label/metric matches the
+        // claim handle it answers on.
+        userId: sandboxUserId,
         ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
         ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
         ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
@@ -596,7 +625,7 @@ async function provisionSandbox(
     ctx.storage.virtualMcps,
     virtualMcpId,
     userId,
-    userId,
+    sandboxUserId,
     branch,
     params.providerKind,
     entry,
@@ -610,7 +639,7 @@ async function provisionSandbox(
     await setThreadSandboxMapEntry(
       ctx,
       threadId,
-      userId,
+      sandboxUserId,
       branch,
       params.providerKind,
       entry,

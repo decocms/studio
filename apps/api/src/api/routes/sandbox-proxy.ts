@@ -19,6 +19,7 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
+import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
@@ -56,6 +57,10 @@ import {
 
 interface VmClaim {
   claimName: string;
+  /** The authenticated caller. Only credential resolution uses it — sandbox
+   *  identity is `userId` below, which may be someone else (see
+   *  `resolveSandboxUserId`). */
+  callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance. */
   runner: SandboxProvider | null;
   virtualMcpId: string;
@@ -181,7 +186,16 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpId,
     branch,
   });
-  const claimName = computeClaimHandle({ userId, projectRef }, branch);
+  // Sandbox identity, NOT the caller: a thread-scoped branch keys by the
+  // thread's creator, so every org member viewing that thread resolves the same
+  // claim and reaches the one sandbox it has. Keyed by the caller, a viewer's
+  // handle never existed — /events reported `claiming` forever and every other
+  // route 404'd. See `resolveSandboxUserId`.
+  const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
+  const claimName = computeClaimHandle(
+    { userId: sandboxUserId, projectRef },
+    branch,
+  );
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
@@ -200,7 +214,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   let runner: SandboxProvider | null;
   try {
     const resolved = await resolveSandboxProvider(ctx, {
-      userId,
+      userId: sandboxUserId,
       branch,
       virtualMcpMetadata,
     });
@@ -215,10 +229,11 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
 
   c.set("vmClaim", {
     claimName,
+    callerUserId: userId,
     runner,
     virtualMcpId,
     branch,
-    userId,
+    userId: sandboxUserId,
     projectRef,
     virtualMcpMetadata,
     connectionIds:
@@ -618,7 +633,9 @@ export const createSandboxRoutes = () => {
             runner: claim.runner,
             handle: claim.claimName,
             orgId: organization.id,
-            userId: claim.userId,
+            // Secrets resolve as the CALLER — viewing a teammate's thread must
+            // never mint their private secrets into the sandbox.
+            userId: claim.callerUserId,
             entries,
           });
         } catch (err) {

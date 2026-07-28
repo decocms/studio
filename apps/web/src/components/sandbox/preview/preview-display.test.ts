@@ -12,7 +12,6 @@ const ERRORED: PreviewState = {
   kind: "errored",
   error: { code: null, message: "boom" },
 };
-const OTHERS_THREAD: PreviewState = { kind: "othersThread", label: "Alice" };
 
 const PROD = "https://acme.com";
 
@@ -114,23 +113,6 @@ describe("resolvePreviewDisplay", () => {
       resolvePreviewDisplay({
         previewState: ERRORED,
         progressStatus: "failed",
-        productionUrl: PROD,
-      }),
-    ).toEqual({
-      mode: "none",
-      iframeBase: null,
-      showBlockingOverlay: false,
-      showWakingPill: false,
-    });
-  });
-
-  it("yields the canvas to the othersThread gate — no production leak", () => {
-    // A teammate's branch: even with a productionUrl set, don't paint a toolbar
-    // or load the production iframe behind the confirmation card.
-    expect(
-      resolvePreviewDisplay({
-        previewState: OTHERS_THREAD,
-        progressStatus: "doing",
         productionUrl: PROD,
       }),
     ).toEqual({
