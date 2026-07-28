@@ -33,6 +33,7 @@ import {
 } from "@/hooks/use-commerce-diagnostic";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import { track } from "@/lib/posthog-client";
+import { useT } from "@/i18n/use-t.ts";
 
 /** A preview of the unlocked board (carries the brand-lime edge), used as the
  *  modal hero — hosted on the deco CDN. */
@@ -40,11 +41,11 @@ const KANBAN_PREVIEW_SRC =
   "https://decoims.com/image?src=decocms%2F7263a67f-fb83-410b-a5f2-e54e87deaaac%2Freport-kanban.png&quality=original&fit=cover";
 
 /** What the unlock buys — kept true to what the paid product delivers. */
-const BENEFITS = [
-  "Todas as tarefas do diagnóstico, priorizadas no seu quadro",
-  "Um relatório recorrente do seu site, sempre atualizado",
-  "O agente resolve cada tarefa e deixa pronta para a sua revisão",
-];
+const BENEFIT_KEYS = [
+  "taskBoard.backlogPaywall.benefitPrioritizedTasks",
+  "taskBoard.backlogPaywall.benefitRecurringReport",
+  "taskBoard.backlogPaywall.benefitAgentResolves",
+] as const;
 
 /** Display-only offer strings (mirrors the report's one-time unlock). */
 const OFFER = { price: "R$ 99", anchor: "R$ 499" };
@@ -52,6 +53,7 @@ const OFFER = { price: "R$ 99", anchor: "R$ 499" };
 /** Pure presentational banner — no hooks, so it renders anywhere (incl. the
  *  dev preview). The container below wires the data + navigation. */
 function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
@@ -60,11 +62,10 @@ function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
         </span>
         <div className="flex min-w-0 flex-col">
           <span className="text-sm font-medium text-foreground">
-            Seu plano de ação está a um clique
+            {t("taskBoard.backlogPaywall.bannerTitle")}
           </span>
           <span className="text-sm text-muted-foreground">
-            Desbloqueie o diagnóstico completo e as tarefas entram aqui, da
-            maior prioridade para a menor.
+            {t("taskBoard.backlogPaywall.bannerSubtitle")}
           </span>
         </div>
       </div>
@@ -73,7 +74,7 @@ function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
         onClick={onOpen}
         className="w-full gap-2 sm:w-auto sm:shrink-0"
       >
-        Desbloquear diagnóstico
+        {t("taskBoard.backlogPaywall.unlockButton")}
         <ArrowRight size={16} />
       </Button>
     </div>
@@ -95,6 +96,7 @@ function BacklogPaywallModal({
    *  that can (no client) — falls back to opening it. */
   onExpired: () => void;
 }) {
+  const t = useT();
   const [starting, setStarting] = useState(false);
 
   const startCheckout = async () => {
@@ -135,7 +137,7 @@ function BacklogPaywallModal({
         <div className="overflow-hidden rounded-xl bg-muted">
           <img
             src={KANBAN_PREVIEW_SRC}
-            alt="Prévia do seu quadro de tarefas desbloqueado"
+            alt={t("taskBoard.backlogPaywall.previewAlt")}
             className="h-[208px] w-full object-cover object-left-top"
           />
         </div>
@@ -144,17 +146,17 @@ function BacklogPaywallModal({
         <div className="flex flex-col gap-7 px-3 pb-3 pt-7">
           <div className="flex flex-col gap-5">
             <DialogTitle className="text-xl font-semibold text-foreground">
-              Desbloqueie seu plano de trabalho
+              {t("taskBoard.backlogPaywall.modalTitle")}
             </DialogTitle>
             <ul className="flex flex-col gap-3.5">
-              {BENEFITS.map((b) => (
-                <li key={b} className="flex items-start gap-3 text-sm">
+              {BENEFIT_KEYS.map((key) => (
+                <li key={key} className="flex items-start gap-3 text-sm">
                   <CheckCircle
                     size={18}
                     className="mt-0.5 shrink-0 text-success"
                     aria-hidden
                   />
-                  <span className="leading-snug text-foreground">{b}</span>
+                  <span className="leading-snug text-foreground">{t(key)}</span>
                 </li>
               ))}
             </ul>
@@ -178,7 +180,7 @@ function BacklogPaywallModal({
                 disabled={starting}
                 className="order-2 w-full sm:order-none sm:w-auto"
               >
-                Explorar
+                {t("taskBoard.backlogPaywall.exploreButton")}
               </Button>
               <Button
                 onClick={startCheckout}
@@ -188,7 +190,7 @@ function BacklogPaywallModal({
                 {starting ? (
                   <Loading01 size={16} className="animate-spin" />
                 ) : null}
-                Desbloquear diagnóstico
+                {t("taskBoard.backlogPaywall.unlockButton")}
                 {!starting && <ArrowRight size={16} />}
               </Button>
             </div>
