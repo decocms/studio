@@ -293,12 +293,14 @@ export function useWorkspaceLayoutState(
       // Toast already fired by useCollectionActions; navigate anyway so the
       // route loader's ensure-fallback can retry.
     }
+    // Omit `sidepanel` so the agent-configured default (resolveDefaultPanelState
+    // — honors chatDefaultOpen / defaultMainView) drives whether the chat opens,
+    // instead of forcing it open on an agent that opts out of the chat panel.
     navigate({
       to: routeBase,
       params: makeParams(newTaskId),
       search: (_prev: Record<string, unknown>) => ({
         ...preserveVirtualMcp,
-        sidepanel: "chat" as const,
       }),
     });
   };
