@@ -85,11 +85,17 @@ import { makeScriptsHandler } from "./routes/scripts";
 import { discoverScripts } from "./process/script-discovery";
 import { SetupOrchestrator } from "./setup/orchestrator";
 import type { Config, TenantConfig } from "./types";
+import { flushTelemetry, initTelemetry } from "./telemetry";
 import { makeWsUpgrader, type WsProxyData } from "./ws-proxy";
 
 if (!process.env.DAEMON_BOOT_ID) {
   process.env.DAEMON_BOOT_ID = randomUUID();
 }
+
+// Before ANY getMeter() call in this module body (dispatchMeter below). The
+// metrics API resolves the global provider at call time and does not proxy a
+// later registration, so a meter taken before this line stays no-op forever.
+initTelemetry();
 
 // Corepack walks UP from cwd to find the closest `packageManager` field and
 // rejects mismatched invocations. On host runners the daemon's workdir lives
@@ -926,6 +932,11 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   taskManager.shutdown();
   branchStatus.stop();
+  // Start the metric export NOW so it runs concurrently with the git sync
+  // below, and await it only at the very end. Awaiting here would put
+  // telemetry ahead of the user's work in a 30s grace period; not awaiting at
+  // all would let the process.exit() below cut the export mid-flight.
+  const flushed = flushTelemetry();
   // Publish BEFORE unmount: syncing the user's work is the only irrecoverable
   // step. A stale mount is backstopped (sync `exit` handler + next-boot
   // reclaim), so a hanging unmount must never eat the push's slice of the grace
@@ -955,6 +966,7 @@ async function shutdown(): Promise<void> {
   if (mountManager) {
     await mountManager.stop().catch(() => {});
   }
+  await flushed;
   process.exit(0);
 }
 

@@ -33,7 +33,8 @@ import { emitInstalledDeps } from "./dep-metrics";
 import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { configureGitIdentity } from "./identity";
-import { denoCacheEnv, spawnInstall } from "./install";
+import { denoCacheEnv, resolveCloneUrl, spawnInstall } from "./install";
+import { recordDepsRestore } from "./install-metrics";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -368,6 +369,7 @@ export class SetupOrchestrator {
       config.repoDir,
       config.application?.packageManager?.path,
     );
+    const restoreStartedAt = Date.now();
     if (
       await tryRestoreGolden({
         config,
@@ -378,11 +380,17 @@ export class SetupOrchestrator {
     ) {
       // Restored from an existing golden — nothing to publish.
       this.pendingGolden = null;
+      recordDepsRestore({
+        source: "l1",
+        cloneUrl: resolveCloneUrl(config),
+        durationMs: Date.now() - restoreStartedAt,
+      });
       this.markInstallSucceeded(config);
       return true;
     }
 
     this.chunk(`[orchestrator] installing dependencies\r\n`);
+    const installStartedAt = Date.now();
 
     const installLogPath = appLogPath(this.deps.logsDir, "install");
     try {
@@ -419,6 +427,11 @@ export class SetupOrchestrator {
       this.deps.lifecycle.transition({ phase: "install-failed", error });
       return false;
     }
+    recordDepsRestore({
+      source: "miss",
+      cloneUrl: resolveCloneUrl(config),
+      durationMs: Date.now() - installStartedAt,
+    });
     this.markInstallSucceeded(config);
     // Install scripts (postinstall/prepare — lefthook, husky, etc.) can
     // overwrite .git/hooks/pre-push; reinstall so branch protection survives.

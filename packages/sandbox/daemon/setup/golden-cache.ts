@@ -67,7 +67,7 @@ const LOCKFILES: Record<string, readonly string[]> = {
 };
 
 /** 16 hex chars of sha256, credential-stripped — matches depsCacheEnv's key. */
-function repoHash(cloneUrl: string): string {
+export function repoHash(cloneUrl: string): string {
   let key = cloneUrl;
   try {
     const u = new URL(cloneUrl);
