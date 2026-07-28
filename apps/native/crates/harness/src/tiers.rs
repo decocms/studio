@@ -41,7 +41,7 @@ pub const CLAUDE_CODE_TIERS: [ModelTier; 3] = [
     },
     ModelTier {
         id: "claude-code:opus-1m",
-        label: "Opus 4.8 1M",
+        label: "Opus 5 1M",
     },
 ];
 
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(CLAUDE_CODE_TIERS[1].id, "claude-code:sonnet");
         assert_eq!(CLAUDE_CODE_TIERS[1].label, "Sonnet 5");
         assert_eq!(CLAUDE_CODE_TIERS[2].id, "claude-code:opus-1m");
-        assert_eq!(CLAUDE_CODE_TIERS[2].label, "Opus 4.8 1M");
+        assert_eq!(CLAUDE_CODE_TIERS[2].label, "Opus 5 1M");
     }
 
     #[test]
