@@ -530,6 +530,35 @@ describe("fs handlers", () => {
     },
   );
 
+  (hasRg ? it : it.skip)(
+    "grep: content search covers .deco and gitignored files but skips node_modules",
+    async () => {
+      // .deco is a hidden dir (skipped by rg's default dotfile rule) and is
+      // often gitignored — the filename glob still surfaces it, so content
+      // search must too, or the two searches disagree.
+      mkdirSync(join(appRoot, ".deco/blocks"), { recursive: true });
+      writeFileSync(
+        join(appRoot, ".deco/blocks/pages-home.json"),
+        '{"matcher":"needle"}\n',
+      );
+      writeFileSync(join(appRoot, ".gitignore"), ".deco/\nignored.txt\n");
+      writeFileSync(join(appRoot, "ignored.txt"), "needle\n");
+      // node_modules is pure noise the glob walk excludes — grep must keep
+      // excluding it even with --hidden/--no-ignore on.
+      mkdirSync(join(appRoot, "node_modules/pkg"), { recursive: true });
+      writeFileSync(join(appRoot, "node_modules/pkg/index.js"), "needle\n");
+      const h = makeGrepHandler({ appRoot, repoDir: appRoot });
+      const res = await h(
+        post("/_sandbox/grep", { pattern: "needle", output_mode: "files" }),
+      );
+      const body = (await res.json()) as { results: string };
+      const files = body.results.split("\n").filter(Boolean).sort();
+      expect(files).toContain(".deco/blocks/pages-home.json");
+      expect(files).toContain("ignored.txt");
+      expect(files).not.toContain("node_modules/pkg/index.js");
+    },
+  );
+
   (hasRg ? it : it.skip)("glob: returns matching file names", async () => {
     writeFileSync(join(appRoot, "x.txt"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });

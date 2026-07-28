@@ -536,6 +536,15 @@ export function makeGrepHandler(deps: FsDeps) {
     if (body.context && mode === "content")
       args.push("-C", String(body.context));
     if (body.glob) args.push("--glob", body.glob);
+    // Mirror glob's file-set semantics: the filename walk includes dotfiles
+    // (`dot: true`) and ignores .gitignore, so grep must too — otherwise the
+    // two searches disagree (e.g. `.deco/` shows up by name but never by
+    // content). `--hidden` searches dot-dirs, `--no-ignore` disables the
+    // .gitignore/.git skip, and the exclude globs re-apply the same
+    // GLOB_EXCLUDE_DIRS noise filter the walk uses. These trail any caller
+    // `--glob` so the noise dirs stay excluded regardless of an include glob.
+    args.push("--hidden", "--no-ignore");
+    for (const dir of GLOB_EXCLUDE_DIRS) args.push("--glob", `!${dir}`);
     args.push("--", body.pattern, searchPath);
 
     const limit = resolveGrepResultLimit(body.limit);
