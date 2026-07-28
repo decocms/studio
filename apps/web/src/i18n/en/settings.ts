@@ -4,6 +4,7 @@ export const settings = {
   "settings.nav.general": "General",
   "settings.nav.brandContext": "Brand Context",
   "settings.nav.aiProviders": "AI Providers",
+  "settings.nav.apiKeys": "API Keys",
   "settings.nav.secrets": "Secrets",
   "settings.nav.buckets": "Buckets",
   "settings.nav.build": "Build",

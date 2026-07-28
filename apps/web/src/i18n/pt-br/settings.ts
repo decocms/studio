@@ -6,6 +6,7 @@ export const settings = {
   "settings.nav.general": "Geral",
   "settings.nav.brandContext": "Contexto da marca",
   "settings.nav.aiProviders": "Provedores de IA",
+  "settings.nav.apiKeys": "Chaves de API",
   "settings.nav.secrets": "Segredos",
   "settings.nav.buckets": "Buckets",
   "settings.nav.build": "Criação",

@@ -124,6 +124,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           requires: "ai-providers:manage",
         },
         {
+          key: "api-keys",
+          label: t("settings.nav.apiKeys"),
+          icon: <Key01 size={14} />,
+          to: "/$org/settings/api-keys",
+          requires: "api-keys:manage",
+        },
+        {
           key: "secrets",
           label: t("settings.nav.secrets"),
           icon: <Key01 size={14} />,
