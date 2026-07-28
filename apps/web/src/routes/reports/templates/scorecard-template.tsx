@@ -3,6 +3,7 @@ import { useState } from "react";
 import Icon from "../icon";
 import SlideHeader from "./slide-header";
 import { DECK, TONE_COLOR } from "./tokens";
+import { useT } from "@/i18n/use-t.ts";
 import type { ScorecardProps } from "@decocms/shared/reports/deck-types";
 
 // Parse a display value ("1,08M", "54,5k", "59,7%", "7.504", "62") into a number
@@ -96,6 +97,7 @@ export default function ScorecardTemplate({
   faviconUrl,
   active,
 }: ScorecardProps) {
+  const t = useT();
   const sorted = dimensions
     .map((d, i) => ({ d, i }))
     .sort((a, b) => rank(a.d.tone) - rank(b.d.tone) || a.i - b.i);
@@ -179,12 +181,17 @@ export default function ScorecardTemplate({
                       />
                     )}
                     {youLeads
-                      ? "Você lidera"
+                      ? t("reports.scorecardTemplate.youLead")
                       : rivalLeads
-                        ? `${rivalDisplay(d.rivalName) || rivalLabel || "Concorrente"} lidera`
+                        ? t("reports.scorecardTemplate.rivalLeads", {
+                            rival:
+                              rivalDisplay(d.rivalName) ||
+                              rivalLabel ||
+                              t("reports.competitorTemplate.competitor"),
+                          })
                         : hasRival
-                          ? "Empate"
-                          : "Sem comparação"}
+                          ? t("reports.scorecardTemplate.tie")
+                          : t("reports.scorecardTemplate.noComparison")}
                   </span>
                 </div>
 

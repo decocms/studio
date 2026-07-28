@@ -85,9 +85,12 @@ export const reports = {
     "389 verificações em 15 dimensões, cada problema com uma",
   "reports.ctaTemplate.subheading.part2":
     "próxima ação clara. A Deco corrige por você.",
+  "reports.geoDimensionsVariant.chip": "{measured} de {total}",
   "reports.keywordsTemplate.keyword": "Palavra-chave",
   "reports.keywordsTemplate.position": "Posição",
   "reports.keywordsTemplate.searchesPerMonth": "Buscas/mês",
+  "reports.listTemplate.moreSignals": "outros sinais no diagnóstico completo",
+  "reports.listTemplate.unlockRevenue": "Destravar minha receita",
   "reports.scanGate.errorBlocked":
     "Este relatório não está disponível publicamente.",
   "reports.scanGate.errorEmpty":
@@ -106,6 +109,10 @@ export const reports = {
   "reports.scanGate.subtitle":
     "Você pode acompanhar por aqui. Também avisaremos quando estiver pronto.",
   "reports.scanGate.tryAnother": "Tentar outra loja",
+  "reports.scorecardTemplate.noComparison": "Sem comparação",
+  "reports.scorecardTemplate.rivalLeads": "{rival} lidera",
+  "reports.scorecardTemplate.tie": "Empate",
+  "reports.scorecardTemplate.youLead": "Você lidera",
   "reports.signalDeck.copyError": "Erro ao copiar",
   "reports.signalDeck.copyLink": "Copiar link",
   "reports.signalDeck.coverageTooltip":
@@ -117,6 +124,7 @@ export const reports = {
     "O que a análise leu errado neste slide?",
   "reports.signalDeck.feedbackThanks": "Obrigado! Iremos revisar esse slide.",
   "reports.signalDeck.goToSlide": "Ir para {title}",
+  "reports.signalDeck.languageLabel": "Idioma do relatório",
   "reports.signalDeck.linkCopied": "Link copiado",
   "reports.signalDeck.measured": "{probed}/{total} medidos",
   "reports.signalDeck.methodology": "Como medimos",
@@ -129,9 +137,11 @@ export const reports = {
   "reports.signalDeck.shareButton": "Compartilhar",
   "reports.signalDeck.shareOnLinkedIn": "Compartilhar no LinkedIn",
   "reports.signalDeck.shareOnX": "Compartilhar no X",
+  "reports.signalDeck.shareText": "Relatório gratuito do seu site →",
   "reports.signalDeck.viewFullDiagnostic": "Ver diagnóstico completo",
   "reports.signalDeck.signOut": "Sair",
   "reports.signalDeck.userMenuLabel": "Menu do usuário",
+  "reports.socialProof.alreadyReceived": "Já receberam",
   "reports.commerceBanner.storeDefault": "sua loja",
   "reports.commerceBanner.generatingTitle": "Gerando seu diagnóstico",
   "reports.commerceBanner.readyTitle": "Seu relatório está pronto",

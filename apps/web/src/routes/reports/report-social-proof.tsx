@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { DECK } from "./templates/tokens";
+import { useT } from "@/i18n/use-t.ts";
 
 // Intrinsic pixel dimensions keep SVGs with preserveAspectRatio="none" from
 // stretching when they are rendered inside the carousel cells.
@@ -129,6 +130,7 @@ function LogoCarousel() {
 }
 
 export function ReportSocialProof({ compact = false }: { compact?: boolean }) {
+  const t = useT();
   return (
     <div
       className={cn(compact ? "mt-5 pt-5" : "mt-8 pt-6")}
@@ -138,7 +140,7 @@ export function ReportSocialProof({ compact = false }: { compact?: boolean }) {
         className="mb-4 text-center text-[11px] uppercase tracking-[0.04em]"
         style={{ color: DECK.faint }}
       >
-        Já receberam
+        {t("reports.socialProof.alreadyReceived")}
       </p>
       <LogoCarousel />
     </div>

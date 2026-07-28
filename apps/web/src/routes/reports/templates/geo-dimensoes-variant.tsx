@@ -1,5 +1,6 @@
 import SlideHeader from "./slide-header";
 import { DECK } from "./tokens";
+import { useT } from "@/i18n/use-t.ts";
 import type { BarsProps, Tone } from "@decocms/shared/reports/deck-types";
 
 // Same zone palette as the categorias rings. The generic TONE_COLOR maps
@@ -14,11 +15,16 @@ const TONE_ZONE: Record<Tone, { color: string; tint: string }> = {
 
 const MIN_PCT = 2;
 
-/** "Dados estruturados (2/2)" → { name, chip: "2 de 2" }. Falls back to the
- *  raw label (no chip) when the engine's suffix shape surprises. */
-function splitLabel(label: string): { name: string; chip?: string } {
+/** "Dados estruturados (2/2)" → { name, measured: "2", total: "2" }. The chip is
+ *  worded by the caller (it needs the viewer's locale). Falls back to the raw
+ *  label (no counts) when the engine's suffix shape surprises. */
+function splitLabel(label: string): {
+  name: string;
+  measured?: string;
+  total?: string;
+} {
   const m = label.match(/^(.*?)\s*\((\d+)\/(\d+)\)$/);
-  if (m) return { name: m[1] ?? "", chip: `${m[2]} de ${m[3]}` };
+  if (m) return { name: m[1] ?? "", measured: m[2], total: m[3] };
   return { name: label };
 }
 
@@ -36,6 +42,7 @@ export default function GeoDimensoesVariant({
   items,
   active,
 }: BarsProps) {
+  const t = useT();
   const ranked = [...items].sort(
     (a, b) => (Number(a.value) || 0) - (Number(b.value) || 0),
   );
@@ -53,7 +60,11 @@ export default function GeoDimensoesVariant({
           {ranked.map((it, i) => {
             const zone = TONE_ZONE[it.tone ?? "neutral"];
             const pct = Math.max(MIN_PCT, Math.min(100, it.ratio * 100));
-            const { name, chip } = splitLabel(it.label);
+            const { name, measured, total } = splitLabel(it.label);
+            const chip =
+              measured && total
+                ? t("reports.geoDimensionsVariant.chip", { measured, total })
+                : undefined;
             return (
               <div
                 key={i}
