@@ -792,6 +792,28 @@ pub(crate) async fn is_git_repo(repo_dir: &Path) -> bool {
 /// Current local branch, or `None` for a non-repository/detached checkout.
 /// Setup uses this single probe to fast-path an unchanged sandbox without
 /// rerunning checkout and the much heavier branch-divergence snapshot.
+/// The remote branch this worktree tracks, without the `origin/` prefix.
+///
+/// The worktree's LOCAL branch is named after the sandbox handle so two agents
+/// can hold the same git branch without colliding (see `setup/clone.rs`), so
+/// the local name says nothing about which branch the sandbox is on. The
+/// upstream does, and it is the same ref a push targets.
+pub(crate) async fn upstream_branch(repo_dir: &Path) -> Option<String> {
+    try_git(
+        repo_dir,
+        &["rev-parse", "--abbrev-ref", "@{u}"],
+        &ceiling_env(repo_dir),
+    )
+    .await
+    .filter(|branch| !branch.is_empty())
+    .map(|branch| {
+        branch
+            .split_once('/')
+            .map(|(_remote, name)| name.to_string())
+            .unwrap_or(branch)
+    })
+}
+
 pub(crate) async fn current_branch(repo_dir: &Path) -> Option<String> {
     try_git(
         repo_dir,

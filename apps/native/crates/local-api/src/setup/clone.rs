@@ -54,7 +54,7 @@ use super::SetupOrchestrator;
 use crate::log_store::app_key;
 use crate::process_group::ProcessGroupChild;
 use crate::routes::git::{
-    current_branch, emit_branch_event, is_git_repo, is_valid_remote_branch_name,
+    current_branch, emit_branch_event, is_git_repo, is_valid_remote_branch_name, upstream_branch,
 };
 use crate::routes::scripts::{classify_status, exit_status_to_code};
 use crate::tasks::{
@@ -323,9 +323,18 @@ pub(crate) async fn checkout_is_current(orch: &Arc<SetupOrchestrator>, config: &
     match get_str(config, &["git", "repository", "branch"])
         .filter(|branch| !branch.is_empty() && !is_synthetic_branch(branch))
     {
-        Some(expected) => current_branch(&orch.repo_dir)
-            .await
-            .is_some_and(|current| current == expected),
+        // Compare the UPSTREAM, not the local branch name: the worktree's
+        // local branch is named after the sandbox handle so two agents can
+        // hold the same git branch without colliding, so the local name never
+        // equals the configured branch. Falls back to the local name for
+        // worktrees created before that change, which have neither an
+        // upstream nor a renamed branch.
+        Some(expected) => match upstream_branch(&orch.repo_dir).await {
+            Some(upstream) => upstream == expected,
+            None => current_branch(&orch.repo_dir)
+                .await
+                .is_some_and(|current| current == expected),
+        },
         None => is_git_repo(&orch.repo_dir).await,
     }
 }
@@ -490,7 +499,32 @@ async fn clone_fresh_body(
         Some(branch) => format!("refs/remotes/origin/{branch}"),
         None => "refs/remotes/origin/HEAD".to_string(),
     };
-    let target_branch = branch_on_remote.or(branch_to_fork);
+    // The worktree's LOCAL branch is named after the sandbox handle, not the
+    // git branch.
+    //
+    // Sandbox identity is `(virtualMcpId, branch)`, but a git branch is global
+    // to the repository and git allows exactly one worktree per branch. Two
+    // agents on the same branch name therefore collided: the second
+    // `worktree add -B <branch>` tried to force-move a ref the first worktree
+    // held, and git refused with "cannot force update the branch ... used by
+    // worktree at ...". Handles are unique by construction, so naming the
+    // local branch after the handle removes the collision entirely.
+    //
+    // The upstream is set to `origin/<branch>` immediately below, so pushes
+    // still land on the branch the user actually chose — only the local name
+    // differs, and the UI reads the branch from the sandbox manager rather
+    // than from git.
+    // Derived from the sandbox directory, which IS the handle. Validated
+    // rather than trusted: a path is not guaranteed to be a legal ref name
+    // (a temp dir starting with `.` is not), and an invalid name would fail
+    // the whole checkout instead of falling back to the branch name.
+    let handle = orch
+        .repo_dir
+        .parent()
+        .and_then(|dir| dir.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| is_valid_remote_branch_name(name));
+    let target_branch = handle.as_deref().or(branch_on_remote).or(branch_to_fork);
 
     let canonical_str = canonical.to_string_lossy().into_owned();
     let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
@@ -527,7 +561,11 @@ async fn clone_fresh_body(
         // files; only the branch pointer is missing.
         let already_checked_out = out.contains("already used by worktree")
             || out.contains("already checked out")
-            || out.contains("is already used");
+            || out.contains("is already used")
+            // `-B` on a branch another worktree holds reports this instead of
+            // any of the above, which is how a same-branch collision slipped
+            // past the fallback and failed the sandbox outright.
+            || out.contains("cannot force update the branch");
         if !already_checked_out || target_branch.is_none() {
             return Err(format!("git worktree add exited {code}: {}", out.trim()));
         }
@@ -547,6 +585,34 @@ async fn clone_fresh_body(
         if code != 0 {
             return Err(format!("git worktree add exited {code}: {}", out.trim()));
         }
+    }
+
+    // Point the handle-named local branch at the branch the user chose, so
+    // `git push` still lands on `origin/<branch>` even though the local name
+    // is the handle. Best effort: a sandbox with no upstream still works for
+    // everything except a bare `git push`, and failing here would strand a
+    // worktree that is otherwise complete.
+    // Includes the NEW-branch case: `worktree add` from `origin/HEAD` leaves
+    // git's own autoSetupMerge tracking `origin/main`, which would make
+    // `checkout_is_current` believe the sandbox is on main. The branch the
+    // user asked for is the one the upstream must name, whether or not it
+    // exists on the remote yet.
+    let intended_remote = branch_on_remote.or(branch_to_fork);
+    if let (Some(local), Some(remote)) = (target_branch, intended_remote) {
+        let _ = run_git(
+            orch,
+            Some(task_id),
+            &[
+                "-C",
+                &repo_dir_str,
+                "branch",
+                &format!("--set-upstream-to=origin/{remote}"),
+                local,
+            ],
+            None,
+            Some(controller),
+        )
+        .await;
     }
 
     finish_fresh_checkout(orch, task_id, None, controller).await
