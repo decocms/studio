@@ -160,6 +160,7 @@ export class JsonFileStorage implements TriggerStorage {
   private path: string;
   private cache: Map<string, TriggerState> | null = null;
   private loading: Promise<Map<string, TriggerState>> | null = null;
+  private writing: Promise<void> = Promise.resolve();
 
   constructor(options: JsonFileStorageOptions) {
     this.path = options.path;
@@ -200,10 +201,18 @@ export class JsonFileStorage implements TriggerStorage {
     }
   }
 
-  private async save(): Promise<void> {
-    const data = Object.fromEntries(this.cache ?? new Map());
-    const fs = await import("node:fs/promises");
-    await fs.writeFile(this.path, JSON.stringify(data, null, 2));
+  // Concurrent set()/delete() calls each call save() independently; without
+  // serializing them, two overlapping fs.writeFile calls to the same path can
+  // interleave, either dropping one call's write or corrupting the file with
+  // interleaved bytes. Chain writes so each one starts only after the
+  // previous write has fully landed, reading the map fresh at that point.
+  private save(): Promise<void> {
+    this.writing = this.writing.then(async () => {
+      const data = Object.fromEntries(this.cache ?? new Map());
+      const fs = await import("node:fs/promises");
+      await fs.writeFile(this.path, JSON.stringify(data, null, 2));
+    });
+    return this.writing;
   }
 
   async get(connectionId: string): Promise<TriggerState | null> {

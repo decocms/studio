@@ -79,4 +79,30 @@ describe("JsonFileStorage", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("keeps every write when set() is called concurrently after the cache is warm", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+    const path = join(dir, "state.json");
+    const storage = new JsonFileStorage({ path });
+
+    try {
+      // Warm the cache first so subsequent set() calls skip load() entirely
+      // and race only on the overlapping fs.writeFile calls inside save().
+      await storage.set("conn-a", state("token-a"));
+
+      await Promise.all([
+        storage.set("conn-b", state("token-b")),
+        storage.set("conn-c", state("token-c")),
+        storage.set("conn-d", state("token-d")),
+      ]);
+
+      const onDisk = JSON.parse(await readFile(path, "utf-8"));
+      expect(onDisk["conn-a"]).toEqual(state("token-a"));
+      expect(onDisk["conn-b"]).toEqual(state("token-b"));
+      expect(onDisk["conn-c"]).toEqual(state("token-c"));
+      expect(onDisk["conn-d"]).toEqual(state("token-d"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
