@@ -90,7 +90,11 @@ export function useIframeLoadRecovery({
       const iframe = iframeRef.current;
       const currentSrc = srcRef.current;
       if (!iframe || !currentSrc || !activeRef.current) return;
-      // Reassign `src` to re-trigger the navigation that never completed.
+      // Reassigning `src` to the identical string is a no-op in some browsers
+      // (e.g. Firefox skips the navigation entirely when the URL is unchanged) —
+      // exactly the case here, since the stuck frame never left this URL. Force
+      // a real reload via a blank interstitial before restoring the target.
+      iframe.src = "about:blank";
       iframe.src = currentSrc;
       armWatchdog();
     }, delay);
