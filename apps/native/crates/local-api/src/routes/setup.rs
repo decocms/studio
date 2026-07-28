@@ -558,11 +558,10 @@ mod tests {
         let handle = response.0["handle"].as_str().unwrap();
         assert_eq!(
             handle,
-            crate::sandbox::SandboxManager::compute_handle(
-                "https://github.com/acme/repo-ensure-route",
-                "main"
-            )
-            .expect("scopeable clone url")
+            // From the clone URL the request actually used — the handle is
+            // the repository scope, so any other URL names another worktree.
+            crate::sandbox::SandboxManager::compute_handle(&bare_dir.to_string_lossy(), "main")
+                .expect("scopeable clone url")
         );
         assert!(state.sandbox_manager.get(handle).is_some());
         assert_eq!(
@@ -605,8 +604,9 @@ mod tests {
         .expect("the control route returns before git so SSE can observe it");
         assert_eq!(response.0["state"], "provisioning");
 
+        // Same clone URL the request used — the handle is the repository scope.
         let handle = crate::sandbox::SandboxManager::compute_handle(
-            "https://github.com/acme/repo-broken-clone",
+            &app_root.path().join("missing.git").to_string_lossy(),
             "main",
         )
         .expect("scopeable clone url");

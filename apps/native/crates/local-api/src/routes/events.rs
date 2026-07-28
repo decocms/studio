@@ -458,7 +458,7 @@ mod tests {
             ..Default::default()
         };
         let handle = crate::sandbox::SandboxManager::compute_handle(
-            &config.virtual_mcp_id,
+            &config.clone_url,
             config.branch.as_deref().unwrap(),
         )
         .expect("scopeable clone url");

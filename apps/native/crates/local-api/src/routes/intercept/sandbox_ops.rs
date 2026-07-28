@@ -64,10 +64,8 @@ pub(super) async fn try_dispatch(
         Ok(Some(handle)) => handle,
         Ok(None) => {
             return Some(
-                ApiError::not_found(format!(
-                    "sandbox not found: {virtual_mcp_id}@{branch}"
-                ))
-                .into_response(),
+                ApiError::not_found(format!("sandbox not found: {virtual_mcp_id}@{branch}"))
+                    .into_response(),
             )
         }
         Err(error) => return Some(ApiError::internal(error).into_response()),

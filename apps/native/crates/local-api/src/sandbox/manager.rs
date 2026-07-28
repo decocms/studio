@@ -2108,9 +2108,10 @@ mod tests {
             branch: Some("main".to_string()),
             ..Default::default()
         };
+        // Derived from the config's OWN clone URL — the handle is the
+        // repository scope, so a hardcoded URL would name a different worktree.
         let handle =
-            SandboxManager::compute_handle("https://github.com/acme/repo-partial-git", "main")
-                .expect("scopeable clone url");
+            SandboxManager::compute_handle(&config.clone_url, "main").expect("scopeable clone url");
         let sandbox_path = app_root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)

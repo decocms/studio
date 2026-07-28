@@ -441,33 +441,37 @@ async fn publish_all_on_shutdown(state: &AppState) {
 /// the direct child directory before its existing `repo` is considered.
 async fn durable_sandbox_repo_dirs(app_root: &Path) -> Vec<PathBuf> {
     let root = app_root.join(crate::sandbox::WORKTREES_DIR);
-    let mut entries = match tokio::fs::read_dir(&root).await {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
-        Err(error) => {
-            tracing::warn!(path = %root.display(), %error, "shutdown: failed to enumerate durable sandboxes");
-            return Vec::new();
-        }
-    };
-    let mut repo_dirs = Vec::new();
-    loop {
-        let entry = match entries.next_entry().await {
-            Ok(Some(entry)) => entry,
-            Ok(None) => break,
-            Err(error) => {
-                tracing::warn!(path = %root.display(), %error, "shutdown: failed while enumerating durable sandboxes");
-                break;
+    // Walk to wherever a sidecar is rather than assuming one level: a handle
+    // is `<host>/<owner>/<repo>/<branch>`, so a direct-children scan would see
+    // only `github.com` and publish nothing.
+    let mut pending = vec![root.clone()];
+    let mut sandbox_dirs: Vec<PathBuf> = Vec::new();
+    while let Some(dir) = pending.pop() {
+        let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            // `DirEntry::file_type` does not follow symlinks. Refusing anything
+            // but a real directory keeps the shutdown hook confined to app_root.
+            if !entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
             }
-        };
-        let Ok(file_type) = entry.file_type().await else {
-            continue;
-        };
-        // `DirEntry::file_type` does not follow symlinks. Refusing anything
-        // but a real directory keeps the shutdown hook confined to app_root.
-        if !file_type.is_dir() {
-            continue;
+            let path = entry.path();
+            if crate::sandbox::persist::sidecar_exists(&path) {
+                sandbox_dirs.push(path);
+            } else {
+                pending.push(path);
+            }
         }
-        let Some(handle) = entry.file_name().to_str().map(str::to_string) else {
+    }
+    let mut repo_dirs = Vec::new();
+    for entry in sandbox_dirs {
+        let Some(handle) = entry
+            .strip_prefix(&root)
+            .ok()
+            .and_then(|rel| rel.to_str())
+            .map(|rel| rel.replace('\\', "/"))
+        else {
             continue;
         };
         let Some(config) = crate::sandbox::persist::read_sidecar(app_root, &handle) else {
@@ -490,7 +494,7 @@ async fn durable_sandbox_repo_dirs(app_root: &Path) -> Vec<PathBuf> {
             );
             continue;
         }
-        let repo_dir = entry.path().join("repo");
+        let repo_dir = entry.join("repo");
         if tokio::fs::symlink_metadata(&repo_dir)
             .await
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
