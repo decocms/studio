@@ -29,11 +29,11 @@ import type { Application, Config } from "../types";
 import { materializeAskpass } from "./askpass";
 import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
-import { emitInstalledDeps } from "./dep-metrics";
+import { emitDepsRestore, emitInstalledDeps } from "./dep-metrics";
 import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { configureGitIdentity } from "./identity";
-import { denoCacheEnv, spawnInstall } from "./install";
+import { denoCacheEnv, resolveCloneUrl, spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -368,6 +368,10 @@ export class SetupOrchestrator {
       config.repoDir,
       config.application?.packageManager?.path,
     );
+    // Times the WHOLE dependency step, not just the install: a failed golden
+    // probe (stat, partial reflink, cleanup) is real boot latency, and on a
+    // miss the cost L2 would replace is probe + install, not install alone.
+    const depsStartedAt = Date.now();
     if (
       await tryRestoreGolden({
         config,
@@ -378,6 +382,12 @@ export class SetupOrchestrator {
     ) {
       // Restored from an existing golden — nothing to publish.
       this.pendingGolden = null;
+      emitDepsRestore({
+        source: "l1",
+        cloneUrl: resolveCloneUrl(config),
+        durationMs: Date.now() - depsStartedAt,
+        bootId: process.env.DAEMON_BOOT_ID ?? "",
+      });
       this.markInstallSucceeded(config);
       return true;
     }
@@ -419,6 +429,12 @@ export class SetupOrchestrator {
       this.deps.lifecycle.transition({ phase: "install-failed", error });
       return false;
     }
+    emitDepsRestore({
+      source: "miss",
+      cloneUrl: resolveCloneUrl(config),
+      durationMs: Date.now() - depsStartedAt,
+      bootId: process.env.DAEMON_BOOT_ID ?? "",
+    });
     this.markInstallSucceeded(config);
     // Install scripts (postinstall/prepare — lefthook, husky, etc.) can
     // overwrite .git/hooks/pre-push; reinstall so branch protection survives.

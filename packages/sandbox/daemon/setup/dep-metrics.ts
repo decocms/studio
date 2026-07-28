@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { PackageManager } from "../types";
+import { repoHash } from "./golden-cache";
 
 // Guard against a pathological node_modules blowing up the log line.
 const MAX_DEPS = 10_000;
@@ -57,6 +58,60 @@ export interface DepMetricsInput {
   bootId: string;
   repoName?: string;
   branch?: string;
+}
+
+/**
+ * `l1` — reflinked the node-local golden, install skipped.
+ * `miss` — no golden for this (repo, lockfile) on this node; ran a full install.
+ */
+export type RestoreSource = "l1" | "miss";
+
+export interface DepsRestoreInput {
+  source: RestoreSource;
+  /** Credential-bearing is fine — only its stripped hash is emitted. */
+  cloneUrl: string | undefined;
+  /** Whole dependency step, golden probe included (what L2 would replace). */
+  durationMs: number;
+  bootId: string;
+}
+
+/**
+ * One line per completed dependency step, recording which cache tier served
+ * it. This is the number the golden cache cannot report about itself: a hit
+ * needs the pod to land on a node already warm for its repo, so the hit rate
+ * is a property of fleet churn, not of the cache code.
+ *
+ * A log line rather than a metric, for three reasons:
+ *  - it is the only channel that leaves a sandbox pod (see the note on
+ *    `emitInstalledDeps` — egress is locked to 53/443, so no in-cluster OTLP
+ *    collector is reachable);
+ *  - `bootId` is free here and unbounded cardinality as a metric attribute.
+ *    Without it a counter cannot tell "one pod installed three times" from
+ *    "three pods", and `stepInstall` does re-run within a boot (config change,
+ *    reprovision);
+ *  - raw durations beat pre-bucketed histograms when the range is unknown,
+ *    which is the whole point of measuring.
+ *
+ * Sized for the pipeline that drops big lines and samples bursts: ~150 bytes,
+ * one per boot. Both limits are orders of magnitude away — no chunking, no
+ * `sample_rate` correction.
+ */
+export function buildDepsRestoreLine(input: DepsRestoreInput): string {
+  return JSON.stringify({
+    msg: "sandbox.deps.restore",
+    source: input.source,
+    repo_hash: input.cloneUrl ? repoHash(input.cloneUrl) : "unknown",
+    duration_ms: Math.round(input.durationMs),
+    bootId: input.bootId,
+  });
+}
+
+export function emitDepsRestore(input: DepsRestoreInput): void {
+  try {
+    console.log(buildDepsRestoreLine(input));
+  } catch {
+    // never let telemetry break the install path
+  }
 }
 
 // Cap each emitted line SMALL. Measured in prod: the log pipeline stores only
