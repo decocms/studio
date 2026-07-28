@@ -5,11 +5,11 @@
 //! for retained logs) can be RESURRECTED instead of orphaned. The in-memory
 //! `SandboxManager::sandboxes` map (and `active_handle`) are process-lifetime
 //! only (see that module's doc comment) — a real sandbox's clone lives on
-//! disk under `<app_root>/sandboxes/<handle>/repo` for as long as the user's
+//! disk under `<app_root>/worktrees/<handle>/repo` for as long as the user's
 //! laptop keeps the directory. Two small sidecar files close the gap between
 //! "the workdir survives" and "the process remembers what it's for":
 //!
-//! - `<app_root>/sandboxes/<handle>/sandbox-config.json` — the exact
+//! - `<app_root>/worktrees/<handle>/sandbox-config.json` — the exact
 //!   [`super::manager::GitSandboxConfig`] `ensure()` was last called with for
 //!   this handle. `SandboxManager::compute_handle` is a ONE-WAY hash (no
 //!   reverse mapping) — without this file a restarted process has no way to
@@ -19,7 +19,7 @@
 //!   the native desktop-runtime audit's investigation
 //!   into the sandbox-drawer restart bug for the empirical trace that led
 //!   here.
-//! - `<app_root>/sandboxes/.active-handle` — the last handle
+//! - `<app_root>/worktrees/.active-handle` — the last handle
 //!   `SandboxManager::set_active` pointed at, so a HEADERLESS resolve (the
 //!   preview iframe, and the drawer's Restart/Stop buttons before a handle
 //!   header is known/attached) can ALSO self-heal after a restart, not just
@@ -40,7 +40,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::manager::{GitSandboxConfig, SandboxManager};
 
-const ACTIVE_HANDLE_RELATIVE_PATH: &str = "sandboxes/.active-handle";
+const ACTIVE_HANDLE_RELATIVE_PATH: &str = "worktrees/.active-handle";
 const SIDECAR_FILE_NAME: &str = "sandbox-config.json";
 const MAX_TEMP_CREATE_ATTEMPTS: usize = 128;
 
@@ -177,7 +177,7 @@ fn is_safe_handle_component(handle: &str) -> bool {
 
 fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
     app_root
-        .join("sandboxes")
+        .join(crate::sandbox::WORKTREES_DIR)
         .join(handle)
         .join(SIDECAR_FILE_NAME)
 }

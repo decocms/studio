@@ -8,10 +8,10 @@
 //!
 //! ```text
 //! <app_root>/orgs/<slug>/{home,public,uploads,outputs}   ← the real mounts
-//! <app_root>/sandboxes/<handle>/org/home    -> ../../../orgs/<slug>/home
-//! <app_root>/sandboxes/<handle>/org/public  -> ../../../orgs/<slug>/public
-//! <app_root>/sandboxes/<handle>/org/uploads -> ../../../orgs/<slug>/uploads
-//! <app_root>/sandboxes/<handle>/org/outputs -> ../../../orgs/<slug>/outputs
+//! <app_root>/worktrees/<handle>/org/home    -> ../../../orgs/<slug>/home
+//! <app_root>/worktrees/<handle>/org/public  -> ../../../orgs/<slug>/public
+//! <app_root>/worktrees/<handle>/org/uploads -> ../../../orgs/<slug>/uploads
+//! <app_root>/worktrees/<handle>/org/outputs -> ../../../orgs/<slug>/outputs
 //! ```
 //!
 //! ## Why `org` is a SIBLING of `repo`, never inside it
@@ -51,11 +51,11 @@ pub fn org_mount_root(app_root: &Path, org_slug: &str) -> Option<PathBuf> {
     Some(app_root.join("orgs").join(safe_segment(org_slug)?))
 }
 
-/// `<app_root>/sandboxes/<handle>/org` — the sandbox's view directory.
+/// `<app_root>/worktrees/<handle>/org` — the sandbox's view directory.
 pub fn sandbox_org_dir(app_root: &Path, handle: &str) -> Option<PathBuf> {
     Some(
         app_root
-            .join("sandboxes")
+            .join(crate::sandbox::WORKTREES_DIR)
             .join(safe_segment(handle)?)
             .join("org"),
     )
@@ -197,7 +197,7 @@ mod tests {
         assert!(ensure_org_view(app_root, "h1", "acme").await);
 
         for volume in ORG_VOLUMES {
-            let link = app_root.join("sandboxes/h1/org").join(volume);
+            let link = app_root.join("worktrees/h1/org").join(volume);
             let expected = app_root.join("orgs/acme").join(volume);
             // Resolves to the shared mount point, and the mount point exists
             // so the agent reads an empty dir rather than hitting ENOENT.
@@ -221,7 +221,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         assert!(ensure_org_view(root.path(), "h1", "acme").await);
 
-        let target = std::fs::read_link(root.path().join("sandboxes/h1/org/home")).unwrap();
+        let target = std::fs::read_link(root.path().join("worktrees/h1/org/home")).unwrap();
         assert_eq!(target, PathBuf::from("../../../orgs/acme/home"));
     }
 
@@ -236,7 +236,7 @@ mod tests {
         );
 
         // Repoint one volume at the wrong org, as a stale view would be.
-        let link = app_root.join("sandboxes/h1/org/home");
+        let link = app_root.join("worktrees/h1/org/home");
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("../../../orgs/other/home", &link).unwrap();
 

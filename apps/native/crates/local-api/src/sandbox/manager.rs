@@ -43,7 +43,7 @@ fn dev_task_running(sandbox: &Sandbox) -> bool {
 /// patch applied to whichever [`Sandbox`] that handle resolves to.
 ///
 /// `Serialize`/`Deserialize`: this is also the exact shape persisted to
-/// `<app_root>/sandboxes/<handle>/sandbox-config.json` (see the `persist`
+/// `<app_root>/worktrees/<handle>/sandbox-config.json` (see the `persist`
 /// module doc) so a restarted process can RE-`ensure()` a handle it forgot
 /// in memory — `compute_handle` is a one-way hash, so this sidecar is the
 /// only way back from a bare handle string to "what repo/branch is this".
@@ -73,7 +73,7 @@ pub struct GitSandboxConfig {
 }
 
 /// One handle's isolated slice of the sandbox pipeline: its own workdir
-/// (`<app_root>/sandboxes/<handle>/repo`) and its own
+/// (`<app_root>/worktrees/<handle>/repo`) and its own
 /// config/tasks/broadcaster/orchestrator quadruple — deliberately the SAME
 /// four types `crate::lib::start()` wires up for the single global sandbox,
 /// just constructed again per handle instead of once per process.
@@ -318,7 +318,7 @@ impl SandboxManager {
     }
 
     /// Where a git-backed run's checkout belongs —
-    /// `<app_root>/sandboxes/<handle>/repo` — computed from the config alone,
+    /// `<app_root>/worktrees/<handle>/repo` — computed from the config alone,
     /// so it is known even when [`Self::ensure`] never succeeded.
     ///
     /// Exists so a failed `ensure` cannot route a git-backed run into the
@@ -329,7 +329,10 @@ impl SandboxManager {
     /// A git-backed run stays under its own handle or it doesn't run at all.
     pub fn workdir_for(&self, cfg: &GitSandboxConfig) -> PathBuf {
         let handle = Self::compute_handle(&cfg.virtual_mcp_id, normalized_branch(cfg));
-        self.app_root.join("sandboxes").join(handle).join("repo")
+        self.app_root
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(handle)
+            .join("repo")
     }
 
     /// Looks up an already-created sandbox by handle — used by
@@ -612,7 +615,10 @@ impl SandboxManager {
                 return Err(error);
             }
         };
-        let sandbox_path = self.app_root.join("sandboxes").join(&handle);
+        let sandbox_path = self
+            .app_root
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         self.registry
             .upsert_config(&handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
         // The sandbox's view onto the shared org filesystem. Best-effort by
@@ -865,7 +871,10 @@ impl SandboxManager {
         let canonical_config = merge_durable_config(cfg, previous_record.as_ref())?;
         let sandbox = self.get_or_create_locked(&handle)?;
         let transition = self.apply_config(&sandbox, &canonical_config, &branch)?;
-        let sandbox_path = self.app_root.join("sandboxes").join(&handle);
+        let sandbox_path = self
+            .app_root
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         self.registry
             .upsert_config(&handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
         // The sandbox's view onto the shared org filesystem. Best-effort by
@@ -996,13 +1005,16 @@ impl SandboxManager {
             return Ok(sandbox.clone());
         }
 
-        let sandbox_root = self.app_root.join("sandboxes").join(handle);
+        let sandbox_root = self
+            .app_root
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(handle);
         let workdir = sandbox_root.join("repo");
         std::fs::create_dir_all(&workdir)
             .map_err(|e| format!("failed to create sandbox workdir {workdir:?}: {e}"))?;
 
         let config = Arc::new(ConfigStore::new());
-        // `<app_root>/sandboxes/<handle>/logs` — a sibling of `repo` above,
+        // `<app_root>/worktrees/<handle>/logs` — a sibling of `repo` above,
         // this handle's OWN durable log home (see the `log_store` module doc).
         // Isolated per handle so two branches of the same repo never share
         // (or race) a "setup"/"dev" transcript.
@@ -1371,7 +1383,7 @@ fn normalized_branch(config: &GitSandboxConfig) -> &str {
 /// name fragment, not a byte-parity port of any specific TS slugify (no
 /// oracle test pins the exact slug alphabet, only that DIFFERENT branches
 /// slugify to DIFFERENT-enough strings for a human skimming
-/// `<app_root>/sandboxes/` to tell them apart; uniqueness itself comes from
+/// `<app_root>/worktrees/` to tell them apart; uniqueness itself comes from
 /// the hash suffix, not the slug).
 fn slugify_branch(branch: &str) -> String {
     const MAX_LEN: usize = 40;
@@ -1629,8 +1641,9 @@ mod tests {
 
         let main = manager.workdir_for(&config(Some("main")));
         assert!(
-            main.starts_with(root.path().join("sandboxes")) && main.ends_with("repo"),
-            "expected <app_root>/sandboxes/<handle>/repo, got {main:?}"
+            main.starts_with(root.path().join(crate::sandbox::WORKTREES_DIR))
+                && main.ends_with("repo"),
+            "expected <app_root>/worktrees/<handle>/repo, got {main:?}"
         );
         // The shared dir every non-git-backed run uses — see `lib.rs`.
         assert_ne!(main, root.path().join("repo"));
@@ -2057,7 +2070,10 @@ mod tests {
             ..Default::default()
         };
         let handle = SandboxManager::compute_handle("vmcp-partial-git", "main");
-        let sandbox_path = app_root.path().join("sandboxes").join(&handle);
+        let sandbox_path = app_root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         let workdir = sandbox_path.join("repo");
         std::fs::create_dir_all(workdir.join(".git")).unwrap();
         std::fs::write(workdir.join("partial-object"), "incomplete clone").unwrap();

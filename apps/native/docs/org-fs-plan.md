@@ -62,7 +62,7 @@ told to read a path that does not exist. Prompt work must therefore come
 ├── uploads/<threadId>/            rw   (subdir layout = cluster contract)
 └── outputs/<threadId>/            rw
 
-<appRoot>/sandboxes/<handle>/
+<appRoot>/worktrees/<handle>/
 ├── repo/                          ← git worktree, harness cwd — nothing org-related inside
 └── org/                           ← per-sandbox view: symlinks into the org mounts
     ├── home    -> ../../../orgs/<orgSlug>/home

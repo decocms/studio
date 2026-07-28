@@ -461,7 +461,10 @@ mod tests {
             &config.virtual_mcp_id,
             config.branch.as_deref().unwrap(),
         );
-        let sandbox_root = root.path().join("sandboxes").join(&handle);
+        let sandbox_root = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         init_repo(&sandbox_root.join("repo"), "feature/replay");
         tokio::fs::create_dir_all(sandbox_root.join("logs/app"))
             .await

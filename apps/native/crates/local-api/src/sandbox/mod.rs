@@ -28,6 +28,14 @@
 //! the SNIFFED dev port for that specific handle (see that file's module
 //! doc for the header-based routing convention).
 
+/// Directory under `<app_root>` holding one directory per sandbox.
+///
+/// Named for what these actually are: `git worktree`s of the shared bare
+/// mirror in `repos/`. A constant rather than a literal repeated at every
+/// call site, because a directory name spelled twenty-one different places is
+/// exactly the kind of thing that drifts.
+pub(crate) const WORKTREES_DIR: &str = "worktrees";
+
 pub mod manager;
 pub mod org_mount;
 pub mod org_prompt;

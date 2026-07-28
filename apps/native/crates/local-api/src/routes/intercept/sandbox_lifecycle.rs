@@ -138,7 +138,7 @@ pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return EPHEMERAL_BRANCH.to_string();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
+    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
         return EPHEMERAL_BRANCH.to_string();
     };
     // Prefer whichever sandbox this agent has registered. A sidecar with no
@@ -351,7 +351,7 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
+    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
         return Vec::new();
     };
 
@@ -404,7 +404,7 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
     if virtual_mcp_id.is_empty() {
         return Vec::new();
     }
-    let Ok(dir) = std::fs::read_dir(state.app_root.join("sandboxes")) else {
+    let Ok(dir) = std::fs::read_dir(state.app_root.join(crate::sandbox::WORKTREES_DIR)) else {
         return Vec::new();
     };
 

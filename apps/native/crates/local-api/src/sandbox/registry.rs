@@ -350,7 +350,7 @@ impl SandboxRegistry {
     }
 
     fn import_legacy_sidecars(&self) -> Result<(), String> {
-        let sandboxes_root = self.app_root.join("sandboxes");
+        let sandboxes_root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
         let Ok(entries) = std::fs::read_dir(&sandboxes_root) else {
             return Ok(());
         };
@@ -393,7 +393,7 @@ impl SandboxRegistry {
     /// worktrees are still valid, but any formerly transitional/running state
     /// is observed as stopped until `ensure` re-adopts and starts it.
     fn reconcile_after_process_start(&self) -> Result<(), String> {
-        let root = self.app_root.join("sandboxes");
+        let root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
         let mut connection = self.connection();
         // IMMEDIATE for the same reason as `set_active` above — this one
         // reads every row and then writes, and runs at EVERY registry open,
@@ -885,7 +885,10 @@ mod tests {
         let cfg = config();
         let handle =
             SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
-        let sandbox_path = root.path().join("sandboxes").join(&handle);
+        let sandbox_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         let workdir_path = sandbox_path.join("repo");
         create_git_checkout(&workdir_path);
 
@@ -932,7 +935,13 @@ mod tests {
         let cfg = config();
         let handle =
             SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
-        create_git_checkout(&root.path().join("sandboxes").join(&handle).join("repo"));
+        create_git_checkout(
+            &root
+                .path()
+                .join(crate::sandbox::WORKTREES_DIR)
+                .join(&handle)
+                .join("repo"),
+        );
         super::super::persist::write_sidecar(root.path(), &handle, &cfg);
         super::super::persist::write_active_handle(root.path(), &handle);
 
@@ -960,7 +969,10 @@ mod tests {
         let cfg = config();
         let handle =
             SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
-        let sandbox_path = root.path().join("sandboxes").join(&handle);
+        let sandbox_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         let workdir_path = sandbox_path.join("repo");
         create_git_checkout(&workdir_path);
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
@@ -985,7 +997,10 @@ mod tests {
         let cfg = config();
         let handle =
             SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
-        let sandbox_path = root.path().join("sandboxes").join(&handle);
+        let sandbox_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
         let workdir_path = sandbox_path.join("repo");
         create_git_checkout(&workdir_path);
 
@@ -1069,7 +1084,11 @@ mod tests {
         let cfg = config();
         let handle =
             SandboxManager::compute_handle(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap());
-        let workdir_path = root.path().join("sandboxes").join(&handle).join("repo");
+        let workdir_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle)
+            .join("repo");
         create_git_checkout(&workdir_path);
         super::super::persist::write_sidecar(root.path(), &handle, &cfg);
         super::super::persist::write_active_handle(root.path(), &handle);

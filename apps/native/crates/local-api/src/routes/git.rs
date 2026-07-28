@@ -440,7 +440,7 @@ async fn publish_all_on_shutdown(state: &AppState) {
 /// after admission is closed, so the durable sidecar is used only to validate
 /// the direct child directory before its existing `repo` is considered.
 async fn durable_sandbox_repo_dirs(app_root: &Path) -> Vec<PathBuf> {
-    let root = app_root.join("sandboxes");
+    let root = app_root.join(crate::sandbox::WORKTREES_DIR);
     let mut entries = match tokio::fs::read_dir(&root).await {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),

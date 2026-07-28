@@ -3,7 +3,7 @@
 //! Every sandbox used to be its own full `git clone`, so N threads on one
 //! repository paid N copies of the object store. Instead there is now ONE bare
 //! clone per upstream repository under `<app_root>/repos/…`, and each sandbox's
-//! `<app_root>/sandboxes/<handle>/repo` is a `git worktree` of it.
+//! `<app_root>/worktrees/<handle>/repo` is a `git worktree` of it.
 //!
 //! ## Why the key is the clone URL, not the Studio org
 //!
@@ -303,7 +303,7 @@ mod tests {
             app_root,
         );
 
-        let wt = app_root.join("sandboxes/h1/repo");
+        let wt = app_root.join("worktrees/h1/repo");
         std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
         let add = |dest: &Path| {
             Command::new("git")
@@ -380,7 +380,7 @@ mod tests {
                 vec!["clone", "--bare", "-q", origin.to_str().unwrap(), path],
                 app_root,
             );
-            let wt = app_root.join("sandboxes").join(format!(
+            let wt = app_root.join(crate::sandbox::WORKTREES_DIR).join(format!(
                 "h-{}",
                 canonical.file_name().unwrap().to_string_lossy()
             ));
