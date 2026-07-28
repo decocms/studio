@@ -38,7 +38,7 @@
     "ai-sdk-provider-claude-code": "^3.5.0",
     "ai-sdk-provider-codex-cli": "^1.2.2",
     "nanoid": "^5.1.6",
-    "zod": "^4.0.0"
+    "zod": "4.3.6"
   },
   "engines": {
     "node": ">=24.0.0"

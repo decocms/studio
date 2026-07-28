@@ -9,7 +9,7 @@
   "dependencies": {
     "@decocms/mcp-utils": "^1.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "zod": "^4.0.0",
+    "zod": "4.3.6",
     "zod-from-json-schema": "^0.5.2"
   },
   "exports": {
