@@ -49,7 +49,7 @@ const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServ
 // specs (chat-input-draft's four tests alone cost 51-60s each against cold
 // Vite). Local keeps the dev server for iteration speed.
 const webServerCommand = process.env.CI
-  ? `bun run build && BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run preview`
+  ? `E2E_TEST_HOOKS=1 bun run build && BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run preview`
   : `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev`;
 
 export default defineConfig({
@@ -68,7 +68,11 @@ export default defineConfig({
   // Playwright pick (half the CPU count). Every test mints its own user + org
   // with randomized slugs, so DB assertions stay tenant-scoped and parallel-safe.
   workers: process.env.CI ? 4 : undefined,
-  reporter: [["html", { open: "never" }]],
+  // `list` on CI so the job log shows per-spec durations — that's how fat
+  // specs get found (the html report isn't uploaded anywhere).
+  reporter: process.env.CI
+    ? [["list"], ["html", { open: "never" }]]
+    : [["html", { open: "never" }]],
   use: {
     baseURL: appOrigin,
     trace: "on-first-retry",

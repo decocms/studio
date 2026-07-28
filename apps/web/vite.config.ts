@@ -59,6 +59,9 @@ const sharedProxy = {
 export default defineConfig({
   define: {
     __STUDIO_VERSION__: JSON.stringify(pkg.version),
+    // Build-time constant so e2e-only hooks (window.__forceTabError) survive
+    // the e2e production build but stay dead-stripped from real prod builds.
+    __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),
   },
   build: {
     outDir: "dist",

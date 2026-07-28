@@ -1,4 +1,5 @@
 declare const __STUDIO_VERSION__: string;
+declare const __E2E_TEST_HOOKS__: boolean;
 
 declare module "*?raw" {
   const content: string;
