@@ -561,7 +561,9 @@ export function TaskBoardItemDialog({
               disabled={!title.trim() || isSaving}
               onClick={submit}
             >
-              <Plus size={16} />
+              {/* The + belongs to creating a task; saving an existing one
+                  isn't adding anything. */}
+              {item ? null : <Plus size={16} />}
               {item
                 ? t("taskBoard.taskDialog.saveButton")
                 : t("taskBoard.taskDialog.createTaskButton")}
