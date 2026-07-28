@@ -1,4 +1,4 @@
-name: Sandbox Daemon E2E
+name: Sandbox
 
 # packages/sandbox/daemon/daemon.e2e.test.ts spawns the built daemon binary
 # and exercises real HTTP/SSE endpoints — it's an integration test that
@@ -93,3 +93,48 @@ jobs:
         # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
         # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
         run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
+
+  docker-smoke:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Build daemon bundle
+        run: bun run --cwd=packages/sandbox build
+
+      - name: Build sandbox image
+        run: |
+          docker build \
+            -t studio-sandbox:ci \
+            -f packages/sandbox/image/Dockerfile \
+            packages/sandbox
+
+      - name: Smoke test
+        run: |
+          docker run -d --name sandbox-smoke -p 19999:9000 \
+            -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
+            -e DAEMON_BOOT_ID="ci-smoke" \
+            -e APP_ROOT=/app \
+            -e PROXY_PORT=9000 \
+            -e DAEMON_NO_AUTOSTART=1 \
+            studio-sandbox:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
+              echo "ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "smoke test failed — daemon did not return /health with ci-smoke bootId"
+          docker logs sandbox-smoke
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f sandbox-smoke || true

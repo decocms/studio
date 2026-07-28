@@ -29,15 +29,10 @@ jobs:
   # `paths` filters — a never-scheduled required check blocks the merge forever.
   # A job skipped via `if`, by contrast, reports as passed. So we keep the
   # trigger broad and skip at the job level. Pushes to main always run.
-  #
-  # `sandbox` additionally scopes docker-smoke: the job only exercises the
-  # sandbox daemon bundle + image, so it's skipped unless the PR touches the
-  # packages that feed that build.
   changes:
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
-      sandbox: ${{ steps.filter.outputs.sandbox }}
       web: ${{ steps.filter.outputs.web }}
     steps:
       - name: Detect relevant changes
@@ -53,12 +48,10 @@ jobs:
             case "$HEAD_MSG" in
               '[release]:'*)
                 echo "relevant=false" >> "$GITHUB_OUTPUT"
-                echo "sandbox=false" >> "$GITHUB_OUTPUT"
                 echo "web=false" >> "$GITHUB_OUTPUT"
                 ;;
               *)
                 echo "relevant=true" >> "$GITHUB_OUTPUT"
-                echo "sandbox=true" >> "$GITHUB_OUTPUT"
                 echo "web=true" >> "$GITHUB_OUTPUT"
                 ;;
             esac
@@ -70,16 +63,14 @@ jobs:
             --jq '.[].filename'); then
             echo "Could not list PR files — running to be safe."
             echo "relevant=true" >> "$GITHUB_OUTPUT"
-            echo "sandbox=true" >> "$GITHUB_OUTPUT"
             echo "web=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Changed files:"; echo "$FILES"
           # relevant: run unless every changed file is workflow/docs/markdown.
-          # sandbox: run docker-smoke only when the sandbox build's inputs
-          # change (the daemon bundle pulls in typegen, shared, and harness).
+          # web: gate for web-component-tests (browser tests only when web
+          # code can be affected).
           relevant=false
-          sandbox=false
           web=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
@@ -88,14 +79,10 @@ jobs:
               *) relevant=true ;;
             esac
             case "$f" in
-              packages/sandbox/*|packages/typegen/*|packages/shared/*|packages/harness/*) sandbox=true ;;
-            esac
-            case "$f" in
               apps/web/*|packages/ui/*) web=true ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
-          echo "sandbox=$sandbox" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
 
   format:
@@ -198,55 +185,10 @@ jobs:
       - name: Verify web output
         run: test -f apps/web/dist/index.html
 
-  docker-smoke:
-    needs: changes
-    if: needs.changes.outputs.sandbox == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Bun and install dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Build daemon bundle
-        run: bun run --cwd=packages/sandbox build
-
-      - name: Build sandbox image
-        run: |
-          docker build \
-            -t studio-sandbox:ci \
-            -f packages/sandbox/image/Dockerfile \
-            packages/sandbox
-
-      - name: Smoke test
-        run: |
-          docker run -d --name sandbox-smoke -p 19999:9000 \
-            -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
-            -e DAEMON_BOOT_ID="ci-smoke" \
-            -e APP_ROOT=/app \
-            -e PROXY_PORT=9000 \
-            -e DAEMON_NO_AUTOSTART=1 \
-            studio-sandbox:ci
-          for _ in $(seq 1 30); do
-            if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
-              echo "ok"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "smoke test failed — daemon did not return /health with ci-smoke bootId"
-          docker logs sandbox-smoke
-          exit 1
-
-      - name: Tear down
-        if: always()
-        run: docker rm -f sandbox-smoke || true
-
   # Playwright component tests for the sections-editor field widgets
   # (apps/web/ct). Self-contained — real chromium, no server/DB — so it lives
   # here rather than e2e.yml, gated to web changes only.
-  component-tests:
+  web-component-tests:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
