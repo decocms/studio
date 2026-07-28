@@ -9,6 +9,7 @@ import { startCmsTour } from "@/components/cms-tour/cms-tour";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
+import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -609,6 +610,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
+
+  // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
+  // lands on the browser's connection-refused page and fires no load/error
+  // event, so nothing reloads it once the server is back. This watchdog retries
+  // (backoff) until a load fires. Sandbox surface only — never thrash the
+  // best-effort production fallback frame.
+  const iframeRecovery = useIframeLoadRecovery({
+    iframeRef: previewIframeRef,
+    src: display.mode === "sandbox" ? iframeSrc : null,
+    active: display.mode === "sandbox",
+  });
 
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
@@ -1669,7 +1681,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       src={iframeSrc}
                       className="w-full h-full border-0"
                       title={t("sandbox.preview.devServerPreviewTitle")}
+                      onError={iframeRecovery.handleError}
                       onLoad={() => {
+                        // A load reached the frame — cancel the recovery watchdog
+                        // and reset its backoff before anything else.
+                        iframeRecovery.handleLoad();
                         // The page finished loading — always clear the navigation
                         // indicator first, before any of the early returns below.
                         endNavigation();
