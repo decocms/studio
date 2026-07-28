@@ -15,7 +15,7 @@
 import { join } from "node:path";
 
 /** Sandbox workdirs live under this directory of the app root. */
-export const WORKTREES_DIR = "worktrees";
+const WORKTREES_DIR = "worktrees";
 
 /** Mirrors `sanitize` in `sandbox/repo_store.rs`. */
 function sanitize(segment: string): string | null {
@@ -101,7 +101,7 @@ function repoScope(cloneUrl: string): string[] | null {
 }
 
 /** Mirrors `slugify_branch` in `sandbox/manager.rs`. */
-export function slugifyBranch(branch: string): string {
+function slugifyBranch(branch: string): string {
   const MAX_LEN = 40;
   let out = "";
   let lastDash = false;
