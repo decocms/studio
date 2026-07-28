@@ -186,9 +186,6 @@ export async function startLinkDaemon(
               ? { path: config.workload.packageManagerPath }
               : {}),
           };
-          if (config.workload.productionUrl) {
-            application.productionUrl = config.workload.productionUrl;
-          }
         }
         const payload: Record<string, unknown> = { application };
         const operator = normalizeCoAuthorIdentity(config.operator ?? null);

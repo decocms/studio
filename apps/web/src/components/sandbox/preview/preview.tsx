@@ -83,7 +83,7 @@ import {
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
-  buildFastPreviewDaemonUrl,
+  buildDraftPreviewUrl,
   buildGlobalSectionPreviewUrl,
 } from "@/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
@@ -266,7 +266,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   // Bumped after a Blocks save so the Fast Preview daemon frame re-navigates and
   // the daemon re-reads the fresh `.deco/blocks/*` (the "save → refresh" step).
-  const [fastPreviewNonce, setFastPreviewNonce] = useState(0);
   const [activeGlobalSection, setActiveGlobalSection] =
     useState<GlobalSectionEntry | null>(null);
   /** Overrides iframe src for global-section live previews (stable URL, not recomputed). */
@@ -310,6 +309,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEntry = lifecycle.vmEntry;
   const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
+  const decofileVersion = vmEvents.decofileVersion;
   const devServerReady = lifecyclePhase === "running";
 
   const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
@@ -466,7 +466,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // which can be a custom one — so we store it rather than guess it). Used as a
   // published-site fallback while the sandbox provisions (non-blocking) instead
   // of a blank overlay; once the daemon is up, Fast Preview swaps to the daemon
-  // render (`fastPreviewDaemonUrl` below). `null` (no field, or a site imported
+  // render (`draftPreviewUrl` below). `null` (no field, or a site imported
   // before this was persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
   const productionUrl =
@@ -491,26 +491,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const fastPreviewEnabled =
     !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
 
-  // Fast Preview render (gated by the CMS switch): render the CURRENT
-  // working-tree draft via the sandbox DAEMON's `/_sandbox/fast-preview` route,
-  // which merges `.deco/blocks/*` and POSTs it (server-side, no URL cap) to the
-  // site's production `/live/previews`. Available once the daemon is up
-  // (`previewUrl`) and a page is matched — no dev server needed. `null` means
-  // not renderable yet, and the published site keeps the canvas until it is.
-  // `fastPreviewNonce` is bumped after a Blocks save so the frame re-navigates
-  // and the daemon re-reads the fresh draft.
+  // Fast Preview (gated by the CMS switch): render the site's REAL page on
+  // `productionUrl`, carrying a `?__draft=<handle>@<version>` pointer that the
+  // site's framework resolves by pulling the merged working-tree decofile from
+  // the sandbox daemon. Replaces POSTing the decofile at `/live/previews`,
+  // which only deco's own runtime honoured and could only render one component
+  // statically.
   //
-  // Computed BEFORE `display` — it is an input to the display decision (which
-  // needs to know whether the draft is renderable), so it must not depend on
-  // `display.mode` in turn.
-  const fastPreviewDaemonUrl =
-    fastPreviewEnabled && previewUrl && currentPageKey
-      ? buildFastPreviewDaemonUrl({
-          previewUrl,
-          pageBlockKey: currentPageKey,
+  // Needs the sandbox handle and a draft version — NOT the dev server, and
+  // notably not `currentPageKey` any more: the site does its own routing, so
+  // the preview no longer waits on the decofile query that used to stall the
+  // whole surface behind a cold-start 502.
+  //
+  // `version` changes on every `.deco/blocks/*` save (the daemon's `decofile`
+  // event), which re-navigates the frame — no cache-busting nonce needed.
+  //
+  // Computed BEFORE `display`: it is an input to that decision, so it must not
+  // depend on `display.mode` in turn.
+  const draftPreviewUrl =
+    fastPreviewEnabled &&
+    productionUrl &&
+    vmEntry?.sandboxHandle &&
+    decofileVersion
+      ? buildDraftPreviewUrl({
+          productionUrl,
+          sandboxHandle: vmEntry.sandboxHandle,
+          version: decofileVersion,
           path: resolvedPath,
-          pathTemplate: currentPath,
-          nonce: fastPreviewNonce,
         })
       : null;
 
@@ -526,7 +533,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     productionUrl,
     foreignSandbox: lifecycle.foreignSandbox,
     fastPreviewActive: fastPreviewEnabled,
-    fastPreviewReady: !!fastPreviewDaemonUrl,
+    fastPreviewReady: !!draftPreviewUrl,
   });
   const previewSurfaceActive = display.mode !== "none";
 
@@ -546,8 +553,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           // `<base href="<productionUrl>">`), so the swap changes content, not
           // surface.
           withDeviceHint(
-            fastPreviewDaemonUrl ??
-              new URL(resolvedPath, display.iframeBase!).href,
+            draftPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
             previewDeviceSize,
           )
         : null;
@@ -668,22 +674,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   });
 
   // Fast Preview refresh backstop: the daemon frame is cross-origin (the daemon
-  // host), so the shared reload path can't `.reload()` it. When the daemon URL
-  // changes — a page switch or a nonce bump after a save — force-navigate the
-  // frame. The nonce guarantees a distinct URL, and the ref guard makes the
+  // host), so the shared reload path can't `.reload()` it. When the draft URL
+  // changes — a page switch, or a new version after a save — force-navigate the
+  // frame. The version makes the URL distinct, and the ref guard makes the
   // first paint (React already set `src`) and unrelated re-renders no-ops.
-  const lastFastPreviewUrlRef = useRef<string | null>(null);
+  const lastDraftUrlRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on draft change; .reload() throws cross-origin
   useEffect(() => {
-    if (!fastPreviewDaemonUrl || !iframeSrc) return;
-    if (lastFastPreviewUrlRef.current === fastPreviewDaemonUrl) return;
-    lastFastPreviewUrlRef.current = fastPreviewDaemonUrl;
+    if (!draftPreviewUrl || !iframeSrc) return;
+    if (lastDraftUrlRef.current === draftPreviewUrl) return;
+    lastDraftUrlRef.current = draftPreviewUrl;
     const iframe = previewIframeRef.current;
     if (iframe && iframe.getAttribute("src") !== iframeSrc) {
       beginNavigation();
       iframe.src = iframeSrc;
     }
-  }, [fastPreviewDaemonUrl, iframeSrc]);
+  }, [draftPreviewUrl, iframeSrc]);
 
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped. Gates surfaces (FileExplorer,
@@ -877,15 +883,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Fires on the daemon "reload" event and on debounced `.deco/` file changes
   // (Blocks saves, external/agent decofile writes) — the only refresh path for
-  // decofile edits, which the framework's HMR doesn't cover. In Fast Preview the
-  // frame is the daemon render, so "refresh" = bump the nonce (new URL → the
-  // frame re-navigates, the daemon re-reads the just-saved `.deco/blocks/*`);
-  // the sandbox path uses the normal reload.
+  // decofile edits, which the framework's HMR doesn't cover. In Fast Preview
+  // the refresh is already driven by the draft VERSION: the same write emits a
+  // `decofile` event, the new version changes `draftPreviewUrl`, and the effect
+  // above re-navigates the frame. Reloading here as well would race that with a
+  // stale URL, so this path yields; the sandbox path uses the normal reload.
   useSandboxReloadHandler(() => {
-    if (fastPreviewDaemonUrl) {
-      setFastPreviewNonce((n) => n + 1);
-      return;
-    }
+    if (draftPreviewUrl) return;
     reloadPreviewPreservingScroll();
   });
   // Show the loading overlay the instant a `.deco/` change is detected, ahead of

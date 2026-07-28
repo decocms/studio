@@ -67,10 +67,10 @@ export interface PreviewDisplayInput {
    */
   fastPreviewActive?: boolean;
   /**
-   * The caller could actually build `previewUrl/_sandbox/fast-preview` — it has
-   * both the daemon origin and a matched page. Only meaningful with
-   * `fastPreviewActive`. False means the draft render isn't renderable yet, so
-   * the published site keeps the canvas (with the waking pill) instead.
+   * The caller could actually build the draft URL — it has the sandbox handle
+   * and a draft version. Only meaningful with `fastPreviewActive`. False means
+   * the draft isn't addressable yet, so the published site keeps the canvas
+   * (with the waking pill) instead.
    */
   fastPreviewReady?: boolean;
 }

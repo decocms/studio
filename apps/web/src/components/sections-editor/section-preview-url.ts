@@ -30,31 +30,37 @@ export function buildGlobalSectionPreviewUrl(
 }
 
 /**
- * Fast Preview URL. Points at the sandbox **daemon**'s `/_sandbox/fast-preview`
- * route (served from `previewUrl`, the daemon origin). The daemon merges the
- * working-tree `.deco/blocks/*` into a decofile and POSTs it — server-side, no
- * URL-size cap, no CORS — to the site's production `/live/previews/<pageBlockKey>`
- * (the always-on deco runtime), returning the rendered draft with a `<base>`
- * pointing at production so assets resolve there.
+ * Fast Preview URL — the site's own page, rendered against the working-tree
+ * draft.
  *
- * The decofile is NOT in this URL (the daemon reads it from disk), so the frame
- * just needs re-navigating when content changes — bump `nonce` to force it.
- * `pageBlockKey` is the decofile key of the page (e.g. `pages-home-…`).
+ * Points at the REAL page on `productionUrl` and carries a `?__draft=` pointer.
+ * The site's framework resolves that pointer by fetching the merged decofile
+ * from the sandbox daemon (`<handle>.<suffix>/_sandbox/decofile`) and rendering
+ * its own routes against it.
+ *
+ * This replaces pushing the decofile into a POST body: only deco's own runtime
+ * honours a POST render, while Next.js and most frameworks render on GET. Going
+ * through the site's normal route also means hydration and in-preview
+ * navigation work, instead of a single statically-rendered component.
+ *
+ * The pointer is `<handle>@<version>`, never a URL — the site builds the origin
+ * from a configured suffix, so there is no SSRF surface. `version` is the
+ * daemon's content ETag, so the site caches per version and re-fetches only
+ * when the draft actually changes; a new version after a save is what refreshes
+ * the frame, which is why no cache-busting nonce is needed here.
  */
-export function buildFastPreviewDaemonUrl(input: {
-  previewUrl: string;
-  pageBlockKey: string;
+export function buildDraftPreviewUrl(input: {
+  /** Published site origin — the draft renders against this deployment. */
+  productionUrl: string;
+  /** Sandbox handle; the site resolves it under its configured origin suffix. */
+  sandboxHandle: string;
+  /** Draft content version (the daemon's ETag), from the `decofile` event. */
+  version: string;
+  /** Path to render, with any `:param` values already filled in. */
   path: string;
-  pathTemplate: string;
-  nonce: number | string;
 }): string {
-  const url = new URL("/_sandbox/fast-preview", input.previewUrl);
-  url.searchParams.set("component", input.pageBlockKey);
-  url.searchParams.set("path", input.path);
-  url.searchParams.set("pathTemplate", input.pathTemplate);
-  // Re-navigation nonce: the daemon re-reads `.deco/blocks/*` on each request,
-  // so a fresh value forces the frame to reload the latest draft after a save.
-  url.searchParams.set("__cb", String(input.nonce));
+  const url = new URL(input.path, input.productionUrl);
+  url.searchParams.set("__draft", `${input.sandboxHandle}@${input.version}`);
   return url.toString();
 }
 

@@ -25,7 +25,6 @@ import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
 import { startUpstreamProbe } from "./probe";
 import { makeProxyHandler } from "./proxy";
-import { makeFastPreviewHandler } from "./routes/fast-preview";
 import { makeDecofileHandler, readDecofile } from "./routes/decofile";
 import { jsonResponse } from "./routes/body-parser";
 import { makeBashHandler } from "./routes/bash";
@@ -486,7 +485,6 @@ const eventsH = makeEventsHandler({
 
 const idleH = makeIdleHandler();
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
-const fastPreviewH = makeFastPreviewHandler({ repoDir, store });
 const decofileH = makeDecofileHandler({ repoDir, store });
 
 // ─── Harness dispatch ──────────────────────────────────────────────────
@@ -711,14 +709,10 @@ async function vmRouteH(
   if (method === "GET" && vmPath === "/idle") return idleH();
   if (method === "GET" && vmPath === "/events") return eventsH(req);
   if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
-  // Browser-reachable like `/events` above: the CMS loads this straight into an
-  // iframe cross-origin, so it cannot carry the bearer token the routes below
-  // require. Serves only draft content the dev server would serve anyway.
-  // Deliberately ahead of the token gate — and ahead of `proxyH`, which would
-  // need a running dev server (the wait this route exists to skip).
-  if (method === "GET" && vmPath === "/fast-preview") return fastPreviewH(req);
   // Draft decofile for a production site to pull (pull-based Fast Preview).
-  // Same public tier and same rationale as /fast-preview above.
+  // Browser/server-reachable like `/events` above: the fetcher is an arbitrary
+  // production server, not the cluster, so it carries no daemon token —
+  // matched ahead of the bearer gate for the same reason.
   if (method === "GET" && vmPath === "/decofile") return decofileH(req);
   if (method === "OPTIONS")
     return new Response(null, { status: 204, headers: CORS_HEADERS });

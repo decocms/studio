@@ -19,7 +19,7 @@ interface DecofileDeps {
  * fetcher is an arbitrary production server, not the cluster, so it cannot
  * carry the daemon bearer token. `entry.ts` matches it ahead of the token gate.
  * Readable by anyone holding the sandbox handle — the same capability boundary
- * `/_sandbox/fast-preview` already relies on.
+ * `/_sandbox/events` already relies on.
  *
  * Content-addressed: the response carries an `ETag` over the merged bytes, so
  * callers cache by version and re-fetch only when the draft actually changes.

@@ -70,13 +70,6 @@ export interface Application {
   readonly runtime?: RuntimeName;
   /** Port the dev script binds to (set as PORT env). Studio always supplies this. */
   readonly port?: number;
-  /**
-   * Live production URL of the linked site (the deco runtime that serves
-   * `/live/previews`). Set from the vMCP's `metadata.productionUrl` when Fast
-   * Preview is enabled — the `/_sandbox/fast-preview` daemon route POSTs the
-   * working-tree decofile there to render the draft without the dev server.
-   */
-  readonly productionUrl?: string;
 }
 
 /**
