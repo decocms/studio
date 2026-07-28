@@ -23,7 +23,6 @@
     "noPropertyAccessFromIndexSignature": false,
     "types": ["bun", "vite/client"],
     "allowJs": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/test/*": ["./test/*"]

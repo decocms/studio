@@ -27,7 +27,7 @@ export const MCPClient = new Proxy(
             connection,
           });
       }
-      return global[name as keyof typeof global];
+      return globalThis[name as keyof typeof globalThis];
     },
   },
 );

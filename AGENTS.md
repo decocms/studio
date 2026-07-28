@@ -394,7 +394,11 @@ Located in `plugins/`:
 ### TypeScript
 - Favor explicit types over `any`
 - Use Zod for runtime validation and schema definitions
-- TypeScript 5.9+ with strict mode enabled
+- TypeScript 7 (native compiler) with strict mode enabled. The programmatic
+  compiler API is absent from TS 7.0 (returns in 7.1) — consumers of it are
+  pinned to 5.9: `apps/api/scripts/generate-tool-contracts.ts` (via the
+  `typescript5` alias) and `packages/typegen` (its tsup dts build). Drop both
+  pins when 7.1 lands.
 
 ## Testing
 

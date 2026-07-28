@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 
-import ts from "typescript";
+// typescript5 = npm:typescript@5.9 — TS 7.0 ships without the programmatic
+// compiler API (ts.sys, readConfigFile, ...); it returns in 7.1. Typechecking
+// runs on 7; only this script needs the legacy API. Drop the alias at 7.1.
+import ts from "typescript5";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolIO } from "../src/tools/io-types";

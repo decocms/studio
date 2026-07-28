@@ -7,10 +7,10 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
-    "knip": "^5.83.1",
+    "knip": "^6.29.0",
     "oxlint": "1.23.0",
     "react": "^19.2.6",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "worktree-devservers": "0.3.1"
   },
   "engines": {
