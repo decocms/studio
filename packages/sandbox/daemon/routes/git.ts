@@ -3,6 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
+import {
+  forcePushWithLease,
+  type GitRunner,
+  remoteBranchSha,
+} from "../git/force-push";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { protectedBranches } from "../git/protect-branch";
 import {
@@ -69,6 +74,18 @@ function tryGit(repoDir: string, args: string[]): string | null {
     return null;
   }
 }
+
+// Adapts this file's runGit/tryGit to the shared force-push helper's interface.
+const gitRunner: GitRunner = {
+  run: (repoDir, args, opts) => runGit(repoDir, args, opts),
+  tryRun: (repoDir, args, opts) => {
+    try {
+      return runGit(repoDir, args, opts);
+    } catch {
+      return null;
+    }
+  },
+};
 
 // Async twins of runGit/tryGit for the git/diff hot path. The expensive steps
 // there — network `git fetch` and reading large blobs via `git show` — must not
@@ -512,33 +529,98 @@ function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   return rel;
 }
 
-function pushBranch(repoDir: string, branch: string): void {
-  runGit(
-    repoDir,
-    [
-      "-c",
-      "credential.helper=",
-      "-c",
-      "safe.directory=*",
-      "push",
-      // Skip native pre-push hooks (parity with the --no-verify commit above).
-      // A repo's pre-push script can fail or hang the push, and the shutdown
-      // sync — which shares this path — has no room to wait it out before the
-      // pod's grace period elapses and SIGKILL drops the unsynced work.
-      "--no-verify",
-      "-u",
-      "origin",
-      branch,
-    ],
-    {
-      env: {
-        GIT_TERMINAL_PROMPT: "0",
-        GIT_ASKPASS: "true",
-        LEFTHOOK: "0",
-        HUSKY: "0",
-      },
-    },
+const PUSH_ENV: Record<string, string> = {
+  GIT_TERMINAL_PROMPT: "0",
+  GIT_ASKPASS: "true",
+  LEFTHOOK: "0",
+  HUSKY: "0",
+};
+
+// git config prefixed to every push/fetch on the publish path: an empty
+// credential.helper forces the URL-embedded token (never a system helper or an
+// interactive prompt), and safe.directory=* clears the dubious-ownership guard
+// the daemon's uid mismatch would otherwise trip.
+const GIT_PUSH_CONFIG = ["-c", "credential.helper=", "-c", "safe.directory=*"];
+
+/**
+ * A non-fast-forward push rejection: origin/<branch> has commits the sandbox's
+ * local branch lacks. Match ONLY the fragments git prints for a divergence
+ * rejection — deliberately NOT the generic "failed to push some refs" summary,
+ * which git also emits for server-side hook / branch-protection / quota
+ * rejections. Those print "[remote rejected]" (which does not contain the
+ * substring "[rejected]"), so the matches below exclude them. Keeping this
+ * narrow stops the reconcile force-push from firing on non-divergence failures
+ * and lets their real error surface instead.
+ *
+ * Exported for the unit table that pins this classification.
+ */
+export function isNonFastForwardError(err: unknown): boolean {
+  const message = formatGitError(err);
+  return (
+    message.includes("fetch first") ||
+    message.includes("non-fast-forward") ||
+    message.includes("[rejected]")
   );
+}
+
+/**
+ * Reconcile a diverged feature branch by force-pushing the sandbox's local
+ * state. This uses --force-with-lease (via forcePushWithLease) but that is NOT a
+ * concurrent-writer safeguard here: the lease is derived from a fetch taken
+ * microseconds earlier, so it only narrows the fetch→push race — a commit that
+ * diverged before that fetch is clobbered. Safe under the
+ * single-writer-per-thread-branch invariant. Its job is to let the initial
+ * publish push succeed instead of failing "fetch first" when origin/<branch>
+ * already holds a prior publish's rewritten history; the Studio-orchestrated
+ * rebase step (a separate /git/rebase call, not invoked here) force-pushes the
+ * same branch afterward in the PR flow.
+ */
+function forcePushBranchWithLease(repoDir: string, branch: string): void {
+  runGit(repoDir, [...GIT_PUSH_CONFIG, "fetch", "origin", branch], {
+    env: PUSH_ENV,
+  });
+  const leaseSha = remoteBranchSha(gitRunner, repoDir, branch);
+  forcePushWithLease(gitRunner, repoDir, branch, leaseSha, {
+    configArgs: GIT_PUSH_CONFIG,
+    pushArgs: ["--no-verify"],
+    env: PUSH_ENV,
+  });
+}
+
+function pushBranch(
+  repoDir: string,
+  branch: string,
+  opts: { reconcileRemote: boolean } = { reconcileRemote: false },
+): void {
+  try {
+    runGit(
+      repoDir,
+      [
+        ...GIT_PUSH_CONFIG,
+        "push",
+        // Skip native pre-push hooks (parity with the --no-verify commit above).
+        // A repo's pre-push script can fail or hang the push, and the shutdown
+        // sync — which shares this path — has no room to wait it out before the
+        // pod's grace period elapses and SIGKILL drops the unsynced work.
+        "--no-verify",
+        "-u",
+        "origin",
+        branch,
+      ],
+      { env: PUSH_ENV },
+    );
+  } catch (err) {
+    // origin/<branch> diverged: a prior publish force-pushed a rebased history,
+    // or the sandbox was re-provisioned from base and lost the branch's local
+    // commits. Interactive publish reconciles by force-pushing the sandbox's
+    // current state (the work the user sees). Shutdown sync leaves
+    // reconcileRemote off so a stale teardown never clobbers a concurrent
+    // sandbox's work.
+    if (!opts.reconcileRemote || !isNonFastForwardError(err)) {
+      throw err;
+    }
+    forcePushBranchWithLease(repoDir, branch);
+  }
 }
 
 /**
@@ -556,7 +638,7 @@ class InvalidDecofileBlockError extends Error {
 export function publish(
   deps: GitDeps,
   message: string,
-  opts: { onInvalidBlock?: "throw" | "skip" } = {},
+  opts: { onInvalidBlock?: "throw" | "skip"; reconcileRemote?: boolean } = {},
 ): { pushed: boolean } {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
@@ -661,7 +743,9 @@ export function publish(
     );
   }
 
-  pushBranch(repoDir, branch);
+  pushBranch(repoDir, branch, {
+    reconcileRemote: opts.reconcileRemote ?? false,
+  });
   return { pushed: true };
 }
 
@@ -799,7 +883,11 @@ export function makeGitPublishHandler(deps: GitDeps) {
     }
     try {
       return jsonResponse(
-        publish(deps, typeof body.message === "string" ? body.message : ""),
+        publish(deps, typeof body.message === "string" ? body.message : "", {
+          // Interactive publish: reconcile a diverged origin/<branch> instead of
+          // failing with "fetch first". Shutdown sync (entry.ts) omits this.
+          reconcileRemote: true,
+        }),
       );
     } catch (err) {
       // An invalid-block refusal is a client/data condition, not a server fault.
