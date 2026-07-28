@@ -20,7 +20,7 @@ const csv = (fallback: string[]) =>
 
 // ── Schema ───────────────────────────────────────────────────────────
 
-const authEnvSchema = z
+export const authEnvSchema = z
   .object({
     AUTH_EMAIL_PASSWORD_ENABLED: bool(true),
 
@@ -66,6 +66,51 @@ const authEnvSchema = z
     // SSO (Google)
     AUTH_SSO_GOOGLE_CLIENT_ID: z.string().optional(),
     AUTH_SSO_GOOGLE_CLIENT_SECRET: z.string().optional(),
+  })
+  .superRefine((env, ctx) => {
+    const configured = new Set<"resend" | "sendgrid">();
+    if (env.AUTH_RESEND_API_KEY) configured.add("resend");
+    if (env.AUTH_SENDGRID_API_KEY) configured.add("sendgrid");
+
+    const providerRefFields = [
+      "AUTH_INVITE_EMAIL_PROVIDER",
+      "AUTH_RESET_PASSWORD_EMAIL_PROVIDER",
+      "AUTH_MAGIC_LINK_EMAIL_PROVIDER",
+      "AUTH_EMAIL_OTP_EMAIL_PROVIDER",
+    ] as const;
+
+    for (const field of providerRefFields) {
+      const provider = env[field];
+      if (provider && !configured.has(provider)) {
+        const apiKeyVar =
+          provider === "resend"
+            ? "AUTH_RESEND_API_KEY"
+            : "AUTH_SENDGRID_API_KEY";
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field}="${provider}" but ${apiKeyVar} is not set`,
+        });
+      }
+    }
+
+    if (env.AUTH_MAGIC_LINK_ENABLED && configured.size === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_MAGIC_LINK_ENABLED"],
+        message:
+          "AUTH_MAGIC_LINK_ENABLED=true requires AUTH_RESEND_API_KEY or AUTH_SENDGRID_API_KEY to be set",
+      });
+    }
+
+    if (env.AUTH_EMAIL_OTP_ENABLED && configured.size === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_EMAIL_OTP_ENABLED"],
+        message:
+          "AUTH_EMAIL_OTP_ENABLED=true requires AUTH_RESEND_API_KEY or AUTH_SENDGRID_API_KEY to be set",
+      });
+    }
   })
   .transform((env) => {
     // ── Social providers ───────────────────────────────────────────
