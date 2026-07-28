@@ -251,7 +251,7 @@ export function TaskBoardItemDialog({
                 placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
                 // pr-10 reserves the copy button's corner, so text wraps
                 // before it instead of running underneath.
-                className="min-h-[160px] w-full resize-none overflow-hidden border-0 bg-transparent pr-10 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[240px]"
+                className="min-h-[200px] w-full resize-none overflow-hidden border-0 bg-transparent pr-10 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[320px]"
               />
               {description && (
                 <Button
