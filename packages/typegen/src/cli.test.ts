@@ -85,16 +85,17 @@ const TOOLS = [
 ];
 
 let httpServer: ReturnType<typeof Bun.serve>;
+let mcpServer: Server;
 let baseUrl: string;
 let tmp: string;
 
 // A fresh server per test: one stateful transport accepts a single session,
 // and each CLI invocation is its own client session.
 beforeEach(async () => {
-  const server = new Server(
+  const server = (mcpServer = new Server(
     { name: "fake-crm", version: "1.0.0" },
     { capabilities: { tools: {} } },
-  );
+  ));
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS,
   }));
@@ -132,7 +133,15 @@ beforeEach(async () => {
   baseUrl = `http://localhost:${httpServer.port}`;
 });
 
-afterEach(() => httpServer?.stop(true));
+afterEach(async () => {
+  // Close the MCP server (which closes its transport and any session
+  // streams) BEFORE stopping the HTTP server: a lingering session stream
+  // keeps the worker's event loop alive after the suite finishes — under
+  // `bun test --parallel` that hangs the whole run at exit (the coordinator
+  // waits on worker exit; this cost a 10-minute timeout on CI once).
+  await mcpServer?.close().catch(() => {});
+  httpServer?.stop(true);
+});
 
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), "typegen-e2e-"));
