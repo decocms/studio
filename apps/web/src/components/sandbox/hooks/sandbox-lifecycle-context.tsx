@@ -296,6 +296,10 @@ export interface SandboxLifecycleValue {
   /** Confirm opening another member's thread: releases the auto-start gate so
    *  the sandbox boots on that thread's branch. See `othersThreadLabel`. */
   acknowledgeOthersThread: () => void;
+  /** The resolved sandbox is another member's (read-only view of their running
+   *  sandbox). Its boot progress is unobservable from here — see
+   *  `PreviewDisplayInput.foreignSandbox`. */
+  foreignSandbox: boolean;
 }
 
 const DEFAULT_VALUE: SandboxLifecycleValue = {
@@ -311,6 +315,7 @@ const DEFAULT_VALUE: SandboxLifecycleValue = {
   retry: () => {},
   resume: () => {},
   acknowledgeOthersThread: () => {},
+  foreignSandbox: false,
 };
 
 const SandboxLifecycleContext =
@@ -329,6 +334,7 @@ export function SandboxLifecycleProvider({
   sandboxProviderKind,
   othersThreadLabel,
   othersThreadId,
+  foreignSandbox = false,
   children,
 }: {
   virtualMcpId: string | null;
@@ -347,6 +353,11 @@ export function SandboxLifecycleProvider({
   othersThreadLabel: string | null;
   /** Active thread id — the acknowledgement key (see computeOthersThreadGate). */
   othersThreadId: string | null;
+  /** The `sandboxMap` entry for this branch is another member's, grafted in so a
+   *  read-only viewer resolves their running sandbox (see `VmEventsBridge`).
+   *  Forwarded to the preview display, whose progress gate can never clear for
+   *  it. Defaults false (own sandbox). */
+  foreignSandbox?: boolean;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -662,6 +673,7 @@ export function SandboxLifecycleProvider({
     retry,
     resume,
     acknowledgeOthersThread,
+    foreignSandbox,
   };
 
   return (

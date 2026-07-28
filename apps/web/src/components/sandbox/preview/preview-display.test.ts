@@ -124,6 +124,56 @@ describe("resolvePreviewDisplay", () => {
     });
   });
 
+  it("shows a foreign sandbox's iframe immediately — its boot is unobservable", () => {
+    // Viewing a teammate's thread: previewUrl is their running sandbox, but the
+    // claim/lifecycle stream is keyed to OUR handle so progressStatus never
+    // leaves "doing". Without the foreignSandbox bypass this pins the blocking
+    // overlay ("Reserving sandbox") forever.
+    const result = resolvePreviewDisplay({
+      previewState: IFRAME,
+      progressStatus: "doing",
+      productionUrl: null,
+      foreignSandbox: true,
+    });
+    expect(result.mode).toBe("sandbox");
+    expect(result.iframeBase).toBe(
+      IFRAME.kind === "iframe" ? IFRAME.previewUrl : null,
+    );
+    expect(result.showBlockingOverlay).toBe(false);
+  });
+
+  it("prefers a foreign sandbox over the production fallback", () => {
+    const result = resolvePreviewDisplay({
+      previewState: IFRAME,
+      progressStatus: "doing",
+      productionUrl: PROD,
+      foreignSandbox: true,
+    });
+    expect(result.mode).toBe("sandbox");
+    expect(result.showWakingPill).toBe(false);
+  });
+
+  it("foreignSandbox does not override the othersThread gate or a bare start", () => {
+    // No previewUrl yet → still the gate / booting path; the bypass only applies
+    // to an already-resolved foreign previewUrl.
+    expect(
+      resolvePreviewDisplay({
+        previewState: OTHERS_THREAD,
+        progressStatus: "doing",
+        productionUrl: PROD,
+        foreignSandbox: true,
+      }).mode,
+    ).toBe("none");
+    expect(
+      resolvePreviewDisplay({
+        previewState: STARTING,
+        progressStatus: "doing",
+        productionUrl: null,
+        foreignSandbox: true,
+      }).showBlockingOverlay,
+    ).toBe(true);
+  });
+
   it("yields the canvas to the othersThread gate — no production leak", () => {
     // A teammate's branch: even with a productionUrl set, don't paint a toolbar
     // or load the production iframe behind the confirmation card.
