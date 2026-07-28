@@ -14,6 +14,7 @@
  * `Error` for transient HTTP/network problems (the job may still be running,
  * keep the handle for a future reconnect).
  */
+import { sleep as stdSleep } from "@decocms/shared/std";
 import { AsyncResearchTerminalError } from "./async-research-terminal-error";
 
 /**
@@ -365,18 +366,13 @@ function parseUsage(payload: Record<string, unknown>): {
   return { inputTokens, outputTokens };
 }
 
+// `@decocms/shared/std`'s `sleep` may reject with a raw AbortSignal `reason`
+// (e.g. a DOMException, which is NOT `instanceof Error`) — normalize through
+// `makeAbortError` so callers (and `classifyStreamError`'s `instanceof Error`
+// check) keep seeing the same shape as before this used the shared primitive.
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(makeAbortError(signal));
-    const t = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(t);
-      reject(makeAbortError(signal));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
+  return stdSleep(ms, { signal }).catch(() => {
+    throw makeAbortError(signal);
   });
 }
 
