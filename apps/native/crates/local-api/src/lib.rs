@@ -667,22 +667,6 @@ pub async fn start_with_client_auth(
         .await
         .map_err(|message| StartError::LocalStore { message })?;
 
-    // A WILDCARD host, because previews are now per-sandbox
-    // (`<handle>.<preview-host>`) rather than one shared origin. A CSP host
-    // wildcard matches at least one label, which is exactly a handle — and
-    // deliberately does NOT match the bare preview host itself.
-    let app = router::build(
-        state.clone(),
-        client_auth,
-        ui_assets,
-        format!(
-            "http://*.{}:{preview_port}",
-            routes::intercept::preview_host_base()
-        ),
-    );
-    let preview_app =
-        router::build_preview(state.clone(), preview_port, preview_cookie_selftest_origin);
-
     // One rustls config shared by both listeners: they serve the same leaf,
     // which covers the control host and the `*.<host>` preview wildcard.
     // Loaded BEFORE either task spawns so a bad certificate fails the whole
@@ -705,6 +689,26 @@ pub async fn start_with_client_auth(
         }
         None => None,
     };
+
+    // Mirrors `preview_url`'s gate. Under a real domain each sandbox has its
+    // own host, so the CSP needs a WILDCARD — which matches at least one
+    // label, exactly a handle, and deliberately NOT the bare host. Under a
+    // single-label host every sandbox shares one origin, and a wildcard would
+    // match none of it.
+    let preview_base = routes::intercept::preview_host_base();
+    let preview_scheme = if tls_config.is_some() {
+        "https"
+    } else {
+        "http"
+    };
+    let preview_csp_origin = if preview_base.contains('.') {
+        format!("{preview_scheme}://*.{preview_base}:{preview_port}")
+    } else {
+        format!("{preview_scheme}://{preview_base}:{preview_port}")
+    };
+    let app = router::build(state.clone(), client_auth, ui_assets, preview_csp_origin);
+    let preview_app =
+        router::build_preview(state.clone(), preview_port, preview_cookie_selftest_origin);
 
     // Previews follow the listeners' scheme; the webview refuses a plain-http
     // iframe inside an https shell (mixed content) and the URL must match.
