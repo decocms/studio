@@ -26,8 +26,15 @@ import {
 import {
   getThreadSandboxMap,
   removeThreadSandboxMapEntry,
+  setThreadHeadRef,
+  syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
+import {
+  pickRecordableHeadRef,
+  type DaemonHeadStatus,
+} from "../../sandbox/head-ref";
+import { readBoundedText } from "../../lib/bounded-text";
 import type { Env } from "../hono-env";
 
 /**
@@ -153,6 +160,21 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       });
       if (!lifecycleOk || abortCtl.signal.aborted) return;
 
+      // The daemon is up: this is Studio's chance to learn which branch the
+      // sandbox is ACTUALLY on. Whoever works in there owns HEAD (the Super
+      // Agent commits on a fresh PR branch), and the next boot has to ask for
+      // that ref or it forks from the repo default and the preview serves
+      // pre-change code. Fire-and-forget — one request that must never delay or
+      // fail the stream. See `sandbox/head-ref.ts`.
+      void recordDaemonHeadRef({
+        ctx,
+        runner,
+        claimName,
+        branch,
+        threadId,
+        signal: abortCtl.signal,
+      });
+
       // ---- Phase 2: daemon SSE proxy --------------------------------------
       await proxyDaemonEvents({
         stream,
@@ -164,6 +186,61 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       clearInterval(heartbeat);
     }
   });
+}
+
+/** Cap on the branch probe — a slow daemon must not keep a request alive. */
+const HEAD_REF_PROBE_TIMEOUT_MS = 5_000;
+/** The probe reads one small JSON object; refuse anything absurd. */
+const HEAD_REF_RESPONSE_MAX_BYTES = 256 * 1024;
+
+/**
+ * Ask the live daemon which branch it's on and persist it on the thread, so the
+ * next provision restores THAT branch instead of the derived one (which the
+ * daemon's HEAD-based shutdown push may never have created). Only for
+ * thread-scoped sandboxes — an agent-level branch is already a real ref.
+ *
+ * Best-effort by construction: every failure path is swallowed. The cost of
+ * losing it is one boot that falls back to today's behavior.
+ */
+async function recordDaemonHeadRef(args: {
+  ctx: StudioContext;
+  runner: SandboxProvider;
+  claimName: string;
+  branch: string;
+  threadId: string | null;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { ctx, runner, claimName, branch, threadId, signal } = args;
+  if (!threadId || !branch.startsWith("thread:")) return;
+  try {
+    const res = await runner.proxyDaemonRequest(
+      claimName,
+      "/_sandbox/git/status",
+      {
+        method: "GET",
+        headers: new Headers({ accept: "application/json" }),
+        body: null,
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(HEAD_REF_PROBE_TIMEOUT_MS),
+        ]),
+      },
+    );
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      return;
+    }
+    const body = await readBoundedText(res, HEAD_REF_RESPONSE_MAX_BYTES);
+    const status = JSON.parse(body) as DaemonHeadStatus;
+    const headRef = pickRecordableHeadRef({
+      status,
+      requestedRef: syntheticBranchToGitRef(branch),
+    });
+    if (!headRef) return;
+    await setThreadHeadRef(ctx, threadId, headRef);
+  } catch {
+    // Daemon unreachable / bad JSON / aborted — the hint is optional.
+  }
 }
 
 async function isStaleHandle(

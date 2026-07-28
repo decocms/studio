@@ -91,6 +91,40 @@ async function getThreadMeta(
   return (thread.metadata as Record<string, unknown> | null) ?? {};
 }
 
+/**
+ * Read the branch the thread's sandbox was last actually on
+ * (`metadata.headRef`), or null. See `sandbox/head-ref.ts` for why the derived
+ * ref isn't enough. Never throws.
+ */
+export async function getThreadHeadRef(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<string | null> {
+  const meta = await getThreadMeta(ctx, threadId);
+  const ref = (meta as { headRef?: unknown } | null)?.headRef;
+  return typeof ref === "string" && ref.length > 0 ? ref : null;
+}
+
+/**
+ * Persist the branch a live daemon reports for this thread's sandbox. Merged
+ * into existing metadata (never a blind overwrite — `githubRepo` and
+ * `sandboxMap` live in the same bag). No-op when the thread is gone or the ref
+ * is already recorded, so the caller can fire this on every daemon connect.
+ * Never throws: losing the hint only costs the next boot its restore.
+ */
+export async function setThreadHeadRef(
+  ctx: StudioContext,
+  threadId: string,
+  headRef: string,
+): Promise<void> {
+  const meta = await getThreadMeta(ctx, threadId);
+  if (!meta) return;
+  if (meta.headRef === headRef) return;
+  await ctx.storage.threads
+    .update(threadId, { metadata: { ...meta, headRef } })
+    .catch((err) => console.warn("[thread-repo] setThreadHeadRef failed", err));
+}
+
 /** Read the repo bound to a thread, or null. Never throws. */
 export async function getThreadGithubRepo(
   ctx: StudioContext,

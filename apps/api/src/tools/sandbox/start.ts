@@ -50,10 +50,12 @@ import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getThreadGithubRepo,
+  getThreadHeadRef,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "./thread-repo";
+import { isStickyHeadRefEnabled, pickGitBranch } from "../../sandbox/head-ref";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
@@ -413,9 +415,21 @@ async function provisionSandbox(
     // isolation key (thread:*) maps to a real, deterministic ref so work is
     // persisted to git on its own branch — never the repo default. The isolation
     // key itself (projectRef, handle, sandboxMap) stays synthetic below.
-    const gitBranch = branch.startsWith("thread:")
-      ? syntheticBranchToGitRef(branch)
-      : branch;
+    //
+    // A recorded `headRef` (the branch a live daemon last reported for this
+    // thread — e.g. the PR branch the Super Agent committed on) wins over the
+    // derived ref: the derived ref may never have been pushed, in which case
+    // cloning it forks from the repo default and the preview serves pre-change
+    // code while the work sits on the PR branch. Flagged off by default.
+    const stickyHeadRef = isStickyHeadRefEnabled();
+    const gitBranch = pickGitBranch({
+      branch,
+      derivedRef: syntheticBranchToGitRef(branch),
+      recordedHeadRef: stickyHeadRef
+        ? await getThreadHeadRef(ctx, threadIdFromBranch(branch))
+        : null,
+      sticky: stickyHeadRef,
+    });
 
     // Private submodules live in repos the per-repo clone token can't reach;
     // resolve the user's per-host PATs here so they ride the initial daemon
