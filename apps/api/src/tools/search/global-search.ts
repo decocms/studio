@@ -35,7 +35,11 @@ const ThreadResultSchema = z.object({
 const SearchResultSchema = z.discriminatedUnion("type", [ThreadResultSchema]);
 
 const InputSchema = z.object({
-  query: z.string().min(1).describe("Free-text search query."),
+  query: z
+    .string()
+    .describe(
+      "Free-text search query. Empty string returns the most recently updated resources.",
+    ),
   limit: z
     .number()
     .int()
