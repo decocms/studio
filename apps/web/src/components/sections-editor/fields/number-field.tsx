@@ -2,9 +2,7 @@ import { useState } from "react";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
-
-/** Intermediate numeric strings the user can be mid-typing: "", "-", "+", ".", "0.", "1e-", "1e+5". */
-const PARTIAL_NUMBER = /^[+-]?\d*\.?\d*(?:[eE][+-]?\d*)?$/;
+import { isPartialNumericInput } from "./partial-number-input";
 
 /**
  * Number input that keeps the raw typed string in local state instead of
@@ -51,7 +49,8 @@ export function NumberField({
         value={raw}
         onChange={(e) => {
           const next = e.target.value;
-          if (next !== "" && !PARTIAL_NUMBER.test(next)) return;
+          const isInteger = schema.type === "integer";
+          if (next !== "" && !isPartialNumericInput(next, isInteger)) return;
           setRaw(next);
           const parsed = Number(next);
           onChange(next === "" || Number.isNaN(parsed) ? undefined : parsed);
