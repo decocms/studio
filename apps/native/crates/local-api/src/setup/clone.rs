@@ -435,7 +435,7 @@ async fn clone_fresh_body(
                         Some(task_id),
                         OutputStream::Stdout,
                         &format!(
-                            "[worktree] branch '{b}' not on origin; creating it from HEAD in a new worktree\r\n"
+                            "[worktree] branch '{b}' not on origin; creating it from origin's default branch in a new worktree\r\n"
                         ),
                     )
                     .await;
@@ -472,11 +472,24 @@ async fn clone_fresh_body(
 
     ensure_canonical_repo(orch, task_id, clone_url, &canonical, controller).await?;
 
-    // Start point for the new worktree. A BARE clone keeps upstream heads at
-    // `refs/heads/*` and creates no remote-tracking refs at all, so the branch
-    // is named plainly — `origin/<branch>` does not resolve here the way it
-    // would in a normal clone.
-    let start_point = branch_on_remote.unwrap_or("HEAD").to_string();
+    // Start point for the new worktree: always a REMOTE-TRACKING ref.
+    //
+    // These bare clones do have remote-tracking refs — the fetch refspec is
+    // `+refs/heads/*:refs/remotes/origin/*`, which by design writes only to
+    // `refs/remotes/origin/*` and never to `refs/heads/*`. So the repo's own
+    // `refs/heads/main` (and therefore `HEAD`) stays frozen at whatever it was
+    // when the repo was first cloned, while `refs/remotes/origin/main` tracks
+    // reality. Branching from `HEAD` cut every new worktree from that frozen
+    // commit — a fetch ran, reported success, and the worktree still landed on
+    // month-old code with nothing in the transcript to say so.
+    //
+    // Fully qualified rather than the `origin/<branch>` shorthand: a stale
+    // `refs/heads/<branch>` of the same name exists in these repos and would
+    // be a candidate for the shorthand to resolve to.
+    let start_point = match branch_on_remote {
+        Some(branch) => format!("refs/remotes/origin/{branch}"),
+        None => "refs/remotes/origin/HEAD".to_string(),
+    };
     let target_branch = branch_on_remote.or(branch_to_fork);
 
     let canonical_str = canonical.to_string_lossy().into_owned();
@@ -578,6 +591,10 @@ async fn ensure_canonical_repo(
             )
             .await;
         }
+        // Repos cloned before the start point moved to remote-tracking refs
+        // still carry their frozen `refs/heads/*`; clean them here so an
+        // existing mirror converges on the same shape as a fresh one.
+        prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
         return Ok(());
     }
 
@@ -607,7 +624,133 @@ async fn ensure_canonical_repo(
     if code != 0 {
         return Err(format!("git clone --bare exited {code}: {}", out.trim()));
     }
+    // `git clone --bare` populates `refs/heads/*` and sets NO fetch refspec,
+    // so there are no remote-tracking refs at all — and the worktree start
+    // point is now one. Establish them here so both paths (fresh clone and
+    // existing mirror) present the same shape, and so `refs/heads/*` can be
+    // pruned without losing the ability to resolve a branch.
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &[
+            "-C",
+            &canonical_str,
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+        None,
+        Some(controller),
+    )
+    .await?;
+    let (code, out) = run_git(
+        orch,
+        Some(task_id),
+        &["-C", &canonical_str, "fetch", "--prune", "origin"],
+        None,
+        Some(controller),
+    )
+    .await?;
+    if code != 0 {
+        return Err(format!(
+            "git fetch after bare clone exited {code}: {}",
+            out.trim()
+        ));
+    }
+    // `refs/remotes/origin/HEAD` is the fallback start point for a branch that
+    // does not exist upstream, and a bare clone does not create it.
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &["-C", &canonical_str, "remote", "set-head", "origin", "-a"],
+        None,
+        Some(controller),
+    )
+    .await;
+    prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
     Ok(())
+}
+
+/// Delete `refs/heads/*` that no worktree is using.
+///
+/// `git clone --bare` copies the remote's heads into `refs/heads/*`, but the
+/// fetch refspec (`+refs/heads/*:refs/remotes/origin/*`) only ever updates
+/// `refs/remotes/origin/*`. So those copies are frozen at clone time and can
+/// never be right again — they are pure misdirection, and branching from one
+/// is exactly the bug this file just fixed.
+///
+/// The only `refs/heads/*` worth keeping are the ones `worktree add -B`
+/// creates for live sandboxes, so anything a worktree holds is skipped. Best
+/// effort: failing to prune costs nothing now that the start point is a
+/// remote-tracking ref, so a failure here must never block provisioning.
+async fn prune_stale_local_heads(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical_str: &str,
+    controller: &ProcessController,
+) {
+    let Ok((_, held_out)) = run_git(
+        orch,
+        Some(task_id),
+        &["-C", canonical_str, "worktree", "list", "--porcelain"],
+        None,
+        Some(controller),
+    )
+    .await
+    else {
+        return;
+    };
+    let held: std::collections::HashSet<&str> = held_out
+        .lines()
+        .filter_map(|line| line.strip_prefix("branch "))
+        .map(str::trim)
+        .collect();
+
+    let Ok((_, refs_out)) = run_git(
+        orch,
+        Some(task_id),
+        &[
+            "-C",
+            canonical_str,
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/heads",
+        ],
+        None,
+        Some(controller),
+    )
+    .await
+    else {
+        return;
+    };
+    let stale: Vec<String> = refs_out
+        .lines()
+        .map(str::trim)
+        .filter(|refname| refname.starts_with("refs/heads/") && !held.contains(refname))
+        .map(str::to_string)
+        .collect();
+    if stale.is_empty() {
+        return;
+    }
+
+    // One `git branch -D` with every name rather than N processes: these repos
+    // routinely carry hundreds of stale heads. git additionally refuses to
+    // delete a branch a worktree holds, so that is a second guard under the
+    // filter above.
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        canonical_str.to_string(),
+        "branch".into(),
+        "-D".into(),
+    ];
+    args.extend(
+        stale
+            .iter()
+            .filter_map(|refname| refname.strip_prefix("refs/heads/"))
+            .map(str::to_string),
+    );
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let _ = run_git(orch, Some(task_id), &borrowed, None, Some(controller)).await;
 }
 
 /// The post-acquisition local fork step, shared by the worktree and
@@ -915,9 +1058,10 @@ mod tests {
     /// keyable, so this one goes through `ensure_canonical_repo` +
     /// `git worktree add` for real.
     ///
-    /// The specific regression: a bare clone keeps upstream heads at
-    /// `refs/heads/*` and creates NO remote-tracking refs, so starting the
-    /// worktree at `origin/<branch>` failed with "invalid reference".
+    /// The specific regression: the worktree start point must be a
+    /// remote-tracking ref. `refs/heads/*` in the mirror is frozen at clone
+    /// time — the fetch refspec only writes `refs/remotes/origin/*` — so
+    /// branching from `HEAD` silently produced month-old worktrees.
     #[tokio::test]
     async fn worktree_path_checks_out_a_branch_that_exists_on_the_remote() {
         let (origin_root, bare_str) = bare_repo_with_one_commit();
@@ -1055,7 +1199,7 @@ mod tests {
             .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
             .await;
         assert!(
-            transcript.contains("not on origin; creating it from HEAD in a new worktree"),
+            transcript.contains("not on origin; creating it from origin's default branch"),
             "transcript: {transcript:?}"
         );
 
