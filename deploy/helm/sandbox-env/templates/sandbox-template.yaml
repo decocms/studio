@@ -225,12 +225,17 @@ spec:
             # to a normal install otherwise. See setup/golden-cache.ts.
             - name: GOLDEN_CACHE_ENABLED
               value: "1"
+            {{- end }}
             {{- if .Values.depsCache.remote.enabled }}
             # L2 shared archive store (read-only mount below). Absent →
-            # daemon is L1-only, i.e. today's behavior.
+            # daemon is L1-only, i.e. today's behavior. Deliberately NOT nested
+            # under `golden`: the volume below is mounted whenever
+            # `remote.enabled` is set, so gating only the env var here would
+            # mount an RWX PVC into every sandbox pod that the daemon then
+            # never reads. L2 restore does not need L1 enabled (it only seeds
+            # L1 opportunistically, which is a no-op when golden is off).
             - name: GOLDEN_CACHE_REMOTE
               value: {{ .Values.depsCache.remote.mountPath | quote }}
-            {{- end }}
             {{- end }}
             {{- end }}
             - name: DAEMON_PORT

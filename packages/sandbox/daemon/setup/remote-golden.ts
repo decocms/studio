@@ -22,7 +22,6 @@
  * immediately and the boot path is exactly L1-then-install as today.
  */
 
-import { spawn } from "node:child_process";
 import { mkdir, rename, rm, stat, utimes } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Config } from "../types";
@@ -97,6 +96,17 @@ function resolveRemote(opts: RemoteGoldenOpts): string | null {
 type Cmd = [string, string[]];
 
 /**
+ * Exit code plus the failing side's first stderr line. The message is the
+ * whole point: "tar exit 2" alone is unactionable — it took a hand-run of the
+ * pipe to learn it meant "Unexpected EOF in archive", i.e. a truncated
+ * archive rather than a permissions or disk problem.
+ */
+interface PipeResult {
+  code: number;
+  stderr: string;
+}
+
+/**
  * Stream `producer | consumer` to completion, resolving to the first non-zero
  * exit (0 only when both succeed).
  *
@@ -108,48 +118,46 @@ type Cmd = [string, string[]];
  * format". Both verified. `zstd -dc | tar -xf -` behaves identically
  * everywhere.
  *
- * Spawned and streamed, never *Sync and never buffered here: this is the boot
- * path, the daemon is a single-threaded event loop, and a 2 GB tree passing
- * through it would stop the health probe answering — which Studio reads as a
- * dead sandbox and tears down.
+ * The consumer's stdin IS the producer's stdout fd — the kernel moves the
+ * bytes, nothing traverses this process. Relaying them in JS
+ * (`p.stdout.pipe(c.stdin)`) loses the tail of the stream once the consumer
+ * applies backpressure: a `tar -x` writing ~100k small files is slower than
+ * `zstd -dc` produces, and the truncated stream surfaces as tar's "Unexpected
+ * EOF in archive". Measured on a 2 MB archive in the sandbox image: 5 of 12
+ * restores failed that way, 12 of 12 pass wired fd-to-fd. It also keeps a
+ * multi-GB tree off the daemon's single event loop, which is what lets the
+ * health probe keep answering during a restore.
  */
-function runPiped(producer: Cmd, consumer: Cmd): Promise<number> {
-  return new Promise((resolve) => {
-    const p = spawn(producer[0], producer[1], {
-      stdio: ["ignore", "pipe", "ignore"],
+async function runPiped(producer: Cmd, consumer: Cmd): Promise<PipeResult> {
+  try {
+    const p = Bun.spawn([producer[0], ...producer[1]], {
+      stdout: "pipe",
+      stderr: "pipe",
     });
-    const c = spawn(consumer[0], consumer[1], {
-      stdio: ["pipe", "ignore", "ignore"],
+    const c = Bun.spawn([consumer[0], ...consumer[1]], {
+      stdin: p.stdout,
+      stdout: "ignore",
+      stderr: "pipe",
     });
-    let pCode: number | null = null;
-    let cCode: number | null = null;
-    const settle = () => {
-      if (pCode === null || cCode === null) return;
-      resolve(pCode !== 0 ? pCode : cCode);
-    };
-    // If the consumer dies first the producer's writes raise EPIPE; swallow it
-    // so an expected teardown can't crash the daemon on an unhandled 'error'.
-    c.stdin.on("error", () => {});
-    p.stdout.on("error", () => {});
-    p.stdout.pipe(c.stdin);
-    p.on("error", () => {
-      pCode = 1;
-      c.stdin.end();
-      settle();
-    });
-    c.on("error", () => {
-      cCode = 1;
-      settle();
-    });
-    p.on("close", (code) => {
-      pCode = code ?? 1;
-      settle();
-    });
-    c.on("close", (code) => {
-      cCode = code ?? 1;
-      settle();
-    });
-  });
+    // Both stderrs are drained concurrently with the transfer — a tool that
+    // writes more than a pipe buffer of diagnostics would otherwise block
+    // forever waiting for someone to read it.
+    const [pCode, cCode, pErr, cErr] = await Promise.all([
+      p.exited,
+      c.exited,
+      new Response(p.stderr).text(),
+      new Response(c.stderr).text(),
+    ]);
+    const failed = pCode !== 0 ? pCode : cCode;
+    // Whichever side failed owns the message; keep it short enough for a log
+    // line, since a tar failure can repeat per member.
+    const why = (pCode !== 0 ? pErr : cErr).trim().split("\n")[0] ?? "";
+    return { code: failed, stderr: why.slice(0, 200) };
+  } catch (e) {
+    // A missing binary (no `zstd` in the image) lands here; treat it as a miss
+    // so the caller falls back to a normal install.
+    return { code: 1, stderr: (e as Error).message };
+  }
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -185,12 +193,14 @@ export async function tryRestoreRemoteGolden(
     await mkdir(staging, { recursive: true });
     // The archive stores a `node_modules/` prefix, so it lands at
     // <staging>/node_modules.
-    const code = await runPiped(
+    const r = await runPiped(
       ["zstd", ["-dc", archive]],
       ["tar", ["-xf", "-", "-C", staging]],
     );
-    if (code !== 0) {
-      log(`[golden-l2] restore failed (tar exit ${code}) — falling back`);
+    if (r.code !== 0) {
+      log(
+        `[golden-l2] restore failed (exit ${r.code}: ${r.stderr}) — falling back`,
+      );
       await rm(staging, { recursive: true, force: true });
       return false;
     }
@@ -239,7 +249,7 @@ export async function publishRemoteGolden(
     // PID keeps concurrent publishers from different nodes off each other's
     // temp file; the rename below is what makes the result atomic.
     const tmp = `${archive}.tmp.${process.pid}`;
-    const code = await runPiped(
+    const r = await runPiped(
       [
         "tar",
         [
@@ -254,8 +264,21 @@ export async function publishRemoteGolden(
       ],
       ["zstd", [...ZSTD_ARGS, "-q", "-o", tmp]],
     );
-    if (code !== 0) {
-      log(`[golden-l2] publish failed (tar exit ${code})`);
+    if (r.code !== 0) {
+      log(`[golden-l2] publish failed (exit ${r.code}: ${r.stderr})`);
+      await rm(tmp, { force: true }).catch(() => {});
+      return;
+    }
+    // A bad archive here is PERMANENT: publish no-ops once the key exists, so
+    // every node in the fleet would keep failing its restore and paying a full
+    // install, with nothing to repair it. Read it back before making it
+    // visible — publish already runs after the boot is healthy, off the
+    // critical path, and this is one sequential pass.
+    const check = await runPiped(["zstd", ["-dc", tmp]], ["tar", ["-tf", "-"]]);
+    if (check.code !== 0) {
+      log(
+        `[golden-l2] publish discarded — archive failed read-back (${check.stderr})`,
+      );
       await rm(tmp, { force: true }).catch(() => {});
       return;
     }
