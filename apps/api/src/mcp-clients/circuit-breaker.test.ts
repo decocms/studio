@@ -68,6 +68,28 @@ describe("circuit-breaker", () => {
     expect(() => assertCircuitClosed("conn_a")).toThrow(CircuitOpenError);
   });
 
+  it("recovers a half-open probe abandoned without recordSuccess/recordFailure", () => {
+    for (let i = 0; i < 3; i++) recordFailure("conn_a");
+
+    const circuit = _getCircuitForTest("conn_a");
+    expect(circuit).toBeDefined();
+    circuit!.lastFailureTime = Date.now() - 60_000;
+
+    // Grant the single probe (e.g. a caller path that returns early on an
+    // auth-recoverable error without ever calling recordSuccess/recordFailure).
+    expect(() => assertCircuitClosed("conn_a")).not.toThrow();
+    expect(circuit!.state).toBe("HALF_OPEN");
+
+    // Immediately after, a second request is correctly blocked.
+    expect(() => assertCircuitClosed("conn_a")).toThrow(CircuitOpenError);
+
+    // Simulate the abandoned probe aging past the timeout.
+    circuit!.halfOpenStartedAt = Date.now() - 70_000;
+
+    // A fresh probe should now be granted instead of failing fast forever.
+    expect(() => assertCircuitClosed("conn_a")).not.toThrow();
+  });
+
   it("isolates circuits per connection", () => {
     for (let i = 0; i < 3; i++) recordFailure("conn_a");
 
