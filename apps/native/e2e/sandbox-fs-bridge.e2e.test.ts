@@ -312,7 +312,7 @@ describeLocalApi(
       );
 
       // No setup/ensure call after relaunch: this request must recover the
-      // explicit URL identity from sandboxes.sqlite. The persisted active
+      // explicit URL identity from the registry (studio.db). The persisted active
       // pointer still names OTHER_BRANCH, so active fallback would fail this.
       const persistedRead = await readSandboxFile(a, FEATURE_BRANCH, path);
       expect(persistedRead.status).toBe(200);

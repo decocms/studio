@@ -14,8 +14,13 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, TransactionBeha
 
 use super::manager::{GitSandboxConfig, SandboxManager};
 
-const DATABASE_FILE_NAME: &str = "sandboxes.sqlite";
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+/// Registry schema version, stored as a `sandbox_metadata` row — NOT
+/// `PRAGMA user_version`, which belongs to the threads migration ladder now
+/// that both subsystems share one `studio.db`. v4 is the merge itself; the
+/// v0–v3 ladder lived in the retired `sandboxes.sqlite` and was dropped with
+/// it, so any pre-merge file simply reads as fresh.
+const CURRENT_SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION_KEY: &str = "registry_schema_version";
 
 #[derive(Debug)]
 enum RegistryOpenError {
@@ -92,9 +97,9 @@ impl SandboxRegistry {
         // A handful of old unit helpers intentionally use the process-wide
         // temp directory as an app root. Giving those managers isolated
         // in-memory registries prevents otherwise unrelated parallel tests
-        // from sharing `/tmp/sandboxes.sqlite`; real app roots and unique
+        // from sharing `/tmp/studio.db`; real app roots and unique
         // tempdirs always exercise the durable file-backed database.
-        let database_path = app_root.join(DATABASE_FILE_NAME);
+        let database_path = app_root.join(crate::STUDIO_DB_FILE_NAME);
         #[cfg(test)]
         let use_memory_database = app_root == std::env::temp_dir();
         #[cfg(not(test))]
@@ -540,19 +545,11 @@ fn open_configured_connection(path: Option<&Path>) -> Result<Connection, Registr
         .busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|error| RegistryOpenError::sqlite("failed to configure busy timeout", error))?;
 
-    // Read the version before enabling WAL or running any DDL. In particular,
-    // opening a DB from a newer app build must be a read-only rejection rather
-    // than silently rewriting its header or creating journal companions.
-    let schema_version: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(|error| RegistryOpenError::sqlite("failed to read schema version", error))?;
-    if schema_version > CURRENT_SCHEMA_VERSION {
-        return Err(RegistryOpenError::FutureVersion(schema_version));
-    }
-    if schema_version < 0 {
-        return Err(RegistryOpenError::UnsupportedVersion(schema_version));
-    }
-
+    // `PRAGMA user_version` is deliberately never read or written here: the
+    // shared `studio.db` uses it for the THREADS migration ladder, and a
+    // registry that inspected it would reject its own database the moment the
+    // threads side stamped a version. The registry's own version gate lives in
+    // `ensure_schema`, on a `sandbox_metadata` row.
     if path.is_some() {
         connection
             .pragma_update(None, "journal_mode", "WAL")
@@ -562,7 +559,7 @@ fn open_configured_connection(path: Option<&Path>) -> Result<Connection, Registr
         .pragma_update(None, "foreign_keys", "ON")
         .map_err(|error| RegistryOpenError::sqlite("failed to enable foreign keys", error))?;
 
-    migrate_schema(&mut connection, schema_version)?;
+    ensure_schema(&mut connection)?;
 
     let quick_check: String = connection
         .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
@@ -574,99 +571,66 @@ fn open_configured_connection(path: Option<&Path>) -> Result<Connection, Registr
     Ok(connection)
 }
 
-fn migrate_schema(
-    connection: &mut Connection,
-    schema_version: i64,
-) -> Result<(), RegistryOpenError> {
+fn ensure_schema(connection: &mut Connection) -> Result<(), RegistryOpenError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| RegistryOpenError::sqlite("failed to begin schema migration", error))?;
+        .map_err(|error| RegistryOpenError::sqlite("failed to begin schema setup", error))?;
 
-    match schema_version {
-        0 => {
-            transaction
-                .execute_batch(
-                    r#"
-                    CREATE TABLE IF NOT EXISTS sandboxes (
-                        handle TEXT PRIMARY KEY NOT NULL,
-                        virtual_mcp_id TEXT NOT NULL,
-                        clone_url TEXT NOT NULL,
-                        branch TEXT NOT NULL,
-                        config_json TEXT NOT NULL,
-                        sandbox_path TEXT NOT NULL,
-                        workdir_path TEXT NOT NULL,
-                        desired_status TEXT NOT NULL,
-                        observed_status TEXT NOT NULL,
-                        resume_step TEXT NOT NULL DEFAULT 'clone',
-                        error TEXT,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL,
-                        last_seen_at INTEGER NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS sandbox_metadata (
-                        key TEXT PRIMARY KEY NOT NULL,
-                        value TEXT NOT NULL
-                    );
-                    "#,
-                )
-                .map_err(|error| RegistryOpenError::sqlite("failed to create schema", error))?;
-
-            // A version-zero file can predate version tracking while already
-            // containing the v1 table. CREATE IF NOT EXISTS cannot add the v2
-            // column, so make that upgrade explicit inside the same transaction.
-            add_resume_step_if_missing(&transaction)?;
-            add_sandbox_agents_if_missing(&transaction)?;
-        }
-        1 => {
-            add_resume_step_if_missing(&transaction)?;
-            add_sandbox_agents_if_missing(&transaction)?;
-        }
-        2 => add_sandbox_agents_if_missing(&transaction)?,
-        CURRENT_SCHEMA_VERSION => {}
-        version => return Err(RegistryOpenError::UnsupportedVersion(version)),
-    }
-
-    validate_schema(&transaction)?;
+    // The metadata table first: it carries the version row the gate below
+    // reads, so it must exist before the gate can run.
     transaction
-        .pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
-        .map_err(|error| RegistryOpenError::sqlite("failed to record schema version", error))?;
-    transaction
-        .commit()
-        .map_err(|error| RegistryOpenError::sqlite("failed to commit schema migration", error))
-}
-
-fn add_resume_step_if_missing(connection: &Connection) -> Result<(), RegistryOpenError> {
-    let has_resume_step: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sandboxes') WHERE name = 'resume_step')",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v1 schema", error))?;
-    if !has_resume_step {
-        connection
-            .execute(
-                "ALTER TABLE sandboxes ADD COLUMN resume_step TEXT NOT NULL DEFAULT 'clone'",
-                [],
-            )
-            .map_err(|error| RegistryOpenError::sqlite("failed to migrate schema to v2", error))?;
-    }
-    Ok(())
-}
-
-/// v3: every agent that has claimed a handle, not just the most recent one.
-///
-/// A handle is `<repo scope>/<branch>` and carries no agent identity, so two
-/// agents working the same repo+branch legitimately share ONE sandbox — and
-/// one `virtual_mcp_id` column on a table keyed by handle can only remember
-/// whichever of them wrote last, silently losing the other's lookup.
-///
-/// Backfilled from the column it replaces, so an upgraded database resolves
-/// every sandbox it already knew about.
-fn add_sandbox_agents_if_missing(connection: &Connection) -> Result<(), RegistryOpenError> {
-    connection
         .execute_batch(
             r#"
+            CREATE TABLE IF NOT EXISTS sandbox_metadata (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            );
+            "#,
+        )
+        .map_err(|error| RegistryOpenError::sqlite("failed to create metadata table", error))?;
+
+    // Fail closed on a version this build does not understand, in either
+    // direction. An ABSENT row is a fresh database (pre-merge files never
+    // carried it and are treated as fresh); anything other than absent-or-
+    // current is a database this build must not touch.
+    let stored: Option<i64> = transaction
+        .query_row(
+            "SELECT value FROM sandbox_metadata WHERE key = ?1",
+            [SCHEMA_VERSION_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| RegistryOpenError::sqlite("failed to read schema version", error))?
+        .and_then(|value| value.parse::<i64>().ok());
+    match stored {
+        Some(version) if version > CURRENT_SCHEMA_VERSION => {
+            return Err(RegistryOpenError::FutureVersion(version));
+        }
+        Some(version) if version < CURRENT_SCHEMA_VERSION => {
+            return Err(RegistryOpenError::UnsupportedVersion(version));
+        }
+        _ => {}
+    }
+
+    transaction
+        .execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS sandboxes (
+                handle TEXT PRIMARY KEY NOT NULL,
+                virtual_mcp_id TEXT NOT NULL,
+                clone_url TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                sandbox_path TEXT NOT NULL,
+                workdir_path TEXT NOT NULL,
+                desired_status TEXT NOT NULL,
+                observed_status TEXT NOT NULL,
+                resume_step TEXT NOT NULL DEFAULT 'clone',
+                error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sandbox_agents (
                 handle TEXT NOT NULL REFERENCES sandboxes(handle) ON DELETE CASCADE,
                 virtual_mcp_id TEXT NOT NULL,
@@ -675,11 +639,21 @@ fn add_sandbox_agents_if_missing(connection: &Connection) -> Result<(), Registry
             );
             CREATE INDEX IF NOT EXISTS sandbox_agents_by_agent
                 ON sandbox_agents(virtual_mcp_id);
-            INSERT OR IGNORE INTO sandbox_agents (handle, virtual_mcp_id, created_at)
-                SELECT handle, virtual_mcp_id, created_at FROM sandboxes;
             "#,
         )
-        .map_err(|error| RegistryOpenError::sqlite("failed to migrate schema to v3", error))
+        .map_err(|error| RegistryOpenError::sqlite("failed to create schema", error))?;
+
+    validate_schema(&transaction)?;
+    transaction
+        .execute(
+            "INSERT INTO sandbox_metadata (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION.to_string()],
+        )
+        .map_err(|error| RegistryOpenError::sqlite("failed to record schema version", error))?;
+    transaction
+        .commit()
+        .map_err(|error| RegistryOpenError::sqlite("failed to commit schema setup", error))
 }
 
 fn validate_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
@@ -921,35 +895,6 @@ mod tests {
         std::fs::write(workdir.join(".git/HEAD"), b"ref: refs/heads/main\n").unwrap();
     }
 
-    fn create_v1_schema(connection: &Connection) {
-        connection
-            .execute_batch(
-                r#"
-                CREATE TABLE sandboxes (
-                    handle TEXT PRIMARY KEY NOT NULL,
-                    virtual_mcp_id TEXT NOT NULL,
-                    clone_url TEXT NOT NULL,
-                    branch TEXT NOT NULL,
-                    config_json TEXT NOT NULL,
-                    sandbox_path TEXT NOT NULL,
-                    workdir_path TEXT NOT NULL,
-                    desired_status TEXT NOT NULL,
-                    observed_status TEXT NOT NULL,
-                    error TEXT,
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    last_seen_at INTEGER NOT NULL
-                );
-                CREATE TABLE sandbox_metadata (
-                    key TEXT PRIMARY KEY NOT NULL,
-                    value TEXT NOT NULL
-                );
-                PRAGMA user_version = 1;
-                "#,
-            )
-            .unwrap();
-    }
-
     /// A handle is `<repo scope>/<branch>` and names no agent, so two agents
     /// on one repo+branch share the sandbox. The second must not evict the
     /// first from its own handle lookup — that is what one `virtual_mcp_id`
@@ -1036,7 +981,7 @@ mod tests {
             Some(handle.as_str())
         );
 
-        let connection = Connection::open(root.path().join(DATABASE_FILE_NAME)).unwrap();
+        let connection = Connection::open(root.path().join(crate::STUDIO_DB_FILE_NAME)).unwrap();
         let journal_mode: String = connection
             .pragma_query_value(None, "journal_mode", |row| row.get(0))
             .unwrap();
@@ -1044,7 +989,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(root.path().join(DATABASE_FILE_NAME))
+            let mode = std::fs::metadata(root.path().join(crate::STUDIO_DB_FILE_NAME))
                 .unwrap()
                 .permissions()
                 .mode()
@@ -1116,75 +1061,20 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v1_to_v2_transactionally_without_losing_records() {
-        let root = tempfile::tempdir().unwrap();
-        let cfg = config();
-        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
-            .expect("scopeable clone url");
-        let sandbox_path = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        let workdir_path = sandbox_path.join("repo");
-        create_git_checkout(&workdir_path);
-
-        let database_path = root.path().join(DATABASE_FILE_NAME);
-        let connection = Connection::open(&database_path).unwrap();
-        create_v1_schema(&connection);
-        connection
-            .execute(
-                r#"
-                INSERT INTO sandboxes (
-                    handle, virtual_mcp_id, clone_url, branch, config_json,
-                    sandbox_path, workdir_path, desired_status, observed_status,
-                    error, created_at, updated_at, last_seen_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running', 'running',
-                          NULL, 1, 2, 3)
-                "#,
-                params![
-                    handle,
-                    cfg.virtual_mcp_id,
-                    cfg.clone_url,
-                    normalized_branch(&cfg),
-                    serde_json::to_string(&cfg).unwrap(),
-                    sandbox_path.to_string_lossy(),
-                    workdir_path.to_string_lossy(),
-                ],
-            )
-            .unwrap();
-        drop(connection);
-
-        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        let record = registry.record(&handle).unwrap().unwrap();
-        assert_eq!(record.config, cfg);
-        assert_eq!(record.resume_step, "clone");
-        assert_eq!(record.observed_status, "stopped");
-
-        let connection = registry.connection();
-        let version: i64 = connection
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .unwrap();
-        assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        let has_resume_step: bool = connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sandboxes') WHERE name = 'resume_step')",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert!(has_resume_step);
-    }
-
-    #[test]
     fn rejects_future_schema_without_quarantining_or_mutating_it() {
         let root = tempfile::tempdir().unwrap();
-        let database_path = root.path().join(DATABASE_FILE_NAME);
-        // One past whatever is current, so bumping the schema never silently
-        // turns this test into an assertion about a version we now support.
-        let future = CURRENT_SCHEMA_VERSION + 1;
+        let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
+        // A first open stamps the schema; then push the version row one past
+        // current, so bumping the schema never silently turns this into an
+        // assertion about a version we now support.
+        drop(SandboxRegistry::open(root.path().to_path_buf()).unwrap());
+        let future = (CURRENT_SCHEMA_VERSION + 1).to_string();
         let connection = Connection::open(&database_path).unwrap();
         connection
-            .pragma_update(None, "user_version", future)
+            .execute(
+                "UPDATE sandbox_metadata SET value = ?1 WHERE key = ?2",
+                params![future, SCHEMA_VERSION_KEY],
+            )
             .unwrap();
         drop(connection);
 
@@ -1193,11 +1083,17 @@ mod tests {
             .expect("future schema must fail closed");
         assert!(error.contains("newer than supported"), "{error}");
 
+        // Fail closed means CLOSED: the version row is untouched and the file
+        // was not quarantined out from under the newer build that owns it.
         let connection = Connection::open(&database_path).unwrap();
-        let version: i64 = connection
-            .pragma_query_value(None, "user_version", |row| row.get(0))
+        let stored: String = connection
+            .query_row(
+                "SELECT value FROM sandbox_metadata WHERE key = ?1",
+                [SCHEMA_VERSION_KEY],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(version, future);
+        assert_eq!(stored, future);
         let has_quarantine = std::fs::read_dir(root.path()).unwrap().any(|entry| {
             entry
                 .ok()
@@ -1222,7 +1118,7 @@ mod tests {
         super::super::persist::write_sidecar(root.path(), &handle, &cfg);
         super::super::persist::write_active_handle(root.path(), &handle);
 
-        let database_path = root.path().join(DATABASE_FILE_NAME);
+        let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
         let corrupt_bytes = b"this is not a sqlite database";
         std::fs::write(&database_path, corrupt_bytes).unwrap();
 
@@ -1240,16 +1136,20 @@ mod tests {
             .find(|path| {
                 path.file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("sandboxes.sqlite.corrupt-"))
+                    .is_some_and(|name| name.starts_with("studio.db.corrupt-"))
             })
             .expect("corrupt database must be retained beside its replacement");
         assert_eq!(std::fs::read(quarantine).unwrap(), corrupt_bytes);
 
         let connection = registry.connection();
-        let version: i64 = connection
-            .pragma_query_value(None, "user_version", |row| row.get(0))
+        let stored: String = connection
+            .query_row(
+                "SELECT value FROM sandbox_metadata WHERE key = ?1",
+                [SCHEMA_VERSION_KEY],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(stored, CURRENT_SCHEMA_VERSION.to_string());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -1111,19 +1111,6 @@ fn validate_foreign_keys(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
-fn create_private_dir(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-
-        let mut builder = fs::DirBuilder::new();
-        builder.recursive(true).mode(0o700).create(path)?;
-    }
-    #[cfg(not(unix))]
-    fs::create_dir_all(path)?;
-    Ok(())
-}
-
 fn create_private_file(path: &Path) -> std::io::Result<()> {
     let mut options = OpenOptions::new();
     options.create(true).read(true).write(true);
@@ -1135,18 +1122,6 @@ fn create_private_file(path: &Path) -> std::io::Result<()> {
     }
     drop(options.open(path)?);
     set_owner_only_file(path)
-}
-
-#[cfg(unix)]
-fn set_owner_only_dir(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-}
-
-#[cfg(not(unix))]
-fn set_owner_only_dir(_path: &Path) -> std::io::Result<()> {
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -1190,20 +1165,18 @@ pub struct ThreadsDb {
 }
 
 impl ThreadsDb {
-    /// Opens (creating if absent) `<app_root>/.decocms/local.db`. `main.rs`
-    /// already `mkdir -p`s `.decocms/` at boot (see its module doc), but
-    /// this creates it too so `ThreadsDb::open` is self-sufficient for
-    /// tests/tools that construct one directly.
+    /// Opens (creating if absent) `<app_root>/studio.db` — the ONE local
+    /// SQLite file, shared with the sandbox registry (which versions itself
+    /// through its own metadata table, never `user_version`; that pragma
+    /// belongs to this ladder).
+    ///
+    /// The file sits at the app root, so unlike the old `.decocms/local.db`
+    /// there is no private parent directory to arrange — only the database
+    /// files themselves are chmodded. Do not chmod `app_root` itself: the
+    /// standalone local-api may be pointed at an existing project directory
+    /// owned by the user.
     pub fn open(app_root: &Path) -> DbResult<Self> {
-        let dir = app_root.join(".decocms");
-        create_private_dir(&dir)?;
-        // This database contains chat transcripts and must never inherit the
-        // usual 0755/0644 defaults from a developer's umask. Do not chmod
-        // `app_root` itself: the standalone local-api may be pointed at an
-        // existing project directory owned by the user.
-        set_owner_only_dir(&dir)?;
-
-        let db_path = dir.join("local.db");
+        let db_path = app_root.join(crate::STUDIO_DB_FILE_NAME);
         create_private_file(&db_path)?;
         secure_sqlite_files(&db_path)?;
         let conn = Connection::open(&db_path)?;
@@ -4739,7 +4712,7 @@ mod tests {
     type ForeignKeyShapeRow = (i64, i64, String, String, String, String, String, String);
 
     fn local_db_path(app_root: &Path) -> PathBuf {
-        app_root.join(".decocms/local.db")
+        app_root.join(crate::STUDIO_DB_FILE_NAME)
     }
 
     fn schema_version(path: &Path) -> u32 {
@@ -6325,18 +6298,20 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
 
         let parent = tempfile::tempdir().unwrap();
         let app_root = parent.path().join("existing-project");
-        let store_dir = app_root.join(".decocms");
-        fs::create_dir_all(&store_dir).unwrap();
-        fs::set_permissions(&store_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::create_dir_all(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o755)).unwrap();
         let path = local_db_path(&app_root);
         drop(Connection::open(&path).unwrap());
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
         let db = ThreadsDb::open(&app_root).unwrap();
         db.create_thread("permission check".to_string()).unwrap();
+        // The db sits at the app root now, and the app root is the USER'S
+        // directory — open() secures the database files themselves and must
+        // not chmod the directory around them.
         assert_eq!(
-            fs::metadata(&store_dir).unwrap().permissions().mode() & 0o777,
-            0o700
+            fs::metadata(&app_root).unwrap().permissions().mode() & 0o777,
+            0o755
         );
         for path in [
             path,

@@ -4,7 +4,7 @@
 //! `apps/native/e2e/threads.e2e.test.ts`.
 //!
 //! Implementer notes:
-//! - Storage: `<state.app_root>/.decocms/local.db` (WAL-mode SQLite via the
+//! - Storage: `<state.app_root>/studio.db` (WAL-mode SQLite via the
 //!   `rusqlite` dependency already in `Cargo.toml`). Distinct from a
 //!   project's `.deco/tools/` catalog dir used by `fs::tools_sync` — do not
 //!   collide the two directories.
@@ -39,7 +39,7 @@
 /// stream lands (see that file's module doc) — can reach `ThreadsDb`,
 /// `DbError`, and `DbResult` directly (`crate::routes::threads::db::*`)
 /// without a second, independently-opened SQLite connection to the SAME
-/// `.decocms/local.db` file.
+/// `studio.db` file.
 pub(crate) mod db;
 
 use std::sync::OnceLock;

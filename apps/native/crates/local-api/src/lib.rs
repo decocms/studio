@@ -245,6 +245,15 @@ pub struct ServerHandle {
 /// long-lived `/_sandbox/events` SSE stream never completes on its own — it
 /// ends only when the webview is torn down, which is AFTER we return — so an
 /// unbounded wait deadlocks app quit.
+/// The ONE local SQLite file, at the top of the app root.
+///
+/// Threads/chat history and the sandbox registry share it: two databases were
+/// two files, two WALs and two version stories for one process's local state.
+/// `PRAGMA user_version` belongs to the threads migration ladder; the sandbox
+/// registry versions itself through its own `sandbox_metadata` table, so the
+/// two subsystems never fight over the header field.
+pub(crate) const STUDIO_DB_FILE_NAME: &str = "studio.db";
+
 const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 const HARNESS_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 const FS_MUTATION_REAP_TIMEOUT: Duration = Duration::from_secs(3);
@@ -536,8 +545,8 @@ pub async fn start_with_client_auth(
         source,
     })?;
     // `.decocms/` is local-api's OWN directory (distinct from a project's
-    // `.deco/tools/` catalog dir); the threads family's SQLite store lives
-    // under it.
+    // `.deco/tools/` catalog dir): lockfiles, run-stream spools and staged
+    // mutations. The SQLite store itself is `<app_root>/studio.db`.
     let decocms_dir = opts.app_root.join(".decocms");
     std::fs::create_dir_all(&decocms_dir).map_err(|source| StartError::DecocmsDir {
         path: decocms_dir.clone(),

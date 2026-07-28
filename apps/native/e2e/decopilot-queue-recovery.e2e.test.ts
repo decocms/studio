@@ -193,7 +193,7 @@ function readSessionCheckpoint(
   workdir: string,
   workflowId: string,
 ): { harnessId: string; sessionId: string } | null {
-  const database = new Database(join(workdir, ".decocms", "local.db"), {
+  const database = new Database(join(workdir, "studio.db"), {
     readonly: true,
   });
   try {
