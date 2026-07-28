@@ -90,6 +90,8 @@ studio-demo/
 # Playwright
 apps/web/test-results/
 apps/web/playwright-report/
+# Playwright component-testing's vite build cache (test:ct)
+apps/web/ct/playwright/.cache/
 apps/web/screenshots/
 packages/e2e/test-results/
 packages/e2e/playwright-report/

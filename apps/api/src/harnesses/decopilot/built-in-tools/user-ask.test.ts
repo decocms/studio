@@ -1,14 +1,13 @@
 /**
- * user_ask Built-in Tool E2E Tests
+ * user_ask built-in tool registration/schema tests
  *
- * End-to-end tests that verify the complete integration of user_ask tool:
+ * Verifies the user_ask tool wiring in getBuiltInTools():
  * - Tool is registered in getBuiltInTools()
  * - Tool has correct metadata (description, schemas)
  * - Tool has no execute function (client-side only)
  * - Input schema validates correctly
  * - Output schema is defined correctly
  *
- * Run with: bun test user-ask.e2e.test.ts
  */
 
 import { describe, expect, test } from "bun:test";

@@ -135,4 +135,4 @@ jobs:
             echo "::group::$f"
             bun test "$f"
             echo "::endgroup::"
-          done < <(find apps/api -name '*.integration.test.ts' | sort)
+          done < <(find apps/api packages -name '*.integration.test.ts' -not -path '*/node_modules/*' | sort)

@@ -38,6 +38,7 @@ jobs:
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
       sandbox: ${{ steps.filter.outputs.sandbox }}
+      web: ${{ steps.filter.outputs.web }}
     steps:
       - name: Detect relevant changes
         id: filter
@@ -53,10 +54,12 @@ jobs:
               '[release]:'*)
                 echo "relevant=false" >> "$GITHUB_OUTPUT"
                 echo "sandbox=false" >> "$GITHUB_OUTPUT"
+                echo "web=false" >> "$GITHUB_OUTPUT"
                 ;;
               *)
                 echo "relevant=true" >> "$GITHUB_OUTPUT"
                 echo "sandbox=true" >> "$GITHUB_OUTPUT"
+                echo "web=true" >> "$GITHUB_OUTPUT"
                 ;;
             esac
             exit 0
@@ -68,6 +71,7 @@ jobs:
             echo "Could not list PR files — running to be safe."
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "sandbox=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Changed files:"; echo "$FILES"
@@ -76,6 +80,7 @@ jobs:
           # change (the daemon bundle pulls in typegen, shared, and harness).
           relevant=false
           sandbox=false
+          web=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
@@ -85,9 +90,13 @@ jobs:
             case "$f" in
               packages/sandbox/*|packages/typegen/*|packages/shared/*|packages/harness/*) sandbox=true ;;
             esac
+            case "$f" in
+              apps/web/*|packages/ui/*) web=true ;;
+            esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
           echo "sandbox=$sandbox" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
 
   format:
     needs: changes
@@ -233,3 +242,38 @@ jobs:
       - name: Tear down
         if: always()
         run: docker rm -f sandbox-smoke || true
+
+  # Playwright component tests for the sections-editor field widgets
+  # (apps/web/ct). Self-contained — real chromium, no server/DB — so it lives
+  # here rather than e2e.yml, gated to web changes only.
+  component-tests:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ct-${{ runner.os }}-${{ hashFiles('apps/web/package.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        working-directory: apps/web
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright system deps
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        working-directory: apps/web
+        run: npx playwright install-deps chromium
+
+      - name: Run component tests
+        run: bun run --cwd=apps/web test:ct
