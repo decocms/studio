@@ -47,6 +47,10 @@ import {
   parseGithubRepoFromMetadata,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
+import {
+  readBoundedText,
+  UpstreamPayloadTooLargeError,
+} from "../../lib/bounded-text";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -416,43 +420,6 @@ async function proxyDaemon(
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
-}
-
-/** Thrown by {@link readBoundedText} when an upstream body exceeds its cap. */
-export class UpstreamPayloadTooLargeError extends Error {}
-
-/**
- * Read a response body as text, aborting once it exceeds `maxBytes`. The
- * request-side equivalent (`bodyLimit`/`forwardedBodyLimit`) caps what
- * clients can send us; this caps what an upstream (the daemon, or a
- * customer's own preview server) can send back — otherwise a runaway
- * `git diff`, a chatty exec script, or a huge preview page gets buffered
- * fully into the Studio API process's memory with no ceiling.
- */
-export async function readBoundedText(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return response.text();
-
-  const decoder = new TextDecoder();
-  let text = "";
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
-      throw new UpstreamPayloadTooLargeError(
-        `Upstream response exceeded ${maxBytes} bytes`,
-      );
-    }
-    text += decoder.decode(value, { stream: true });
-  }
-  text += decoder.decode();
-  return text;
 }
 
 /**

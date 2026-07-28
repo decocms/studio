@@ -3,10 +3,14 @@ import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
+import { readBoundedText } from "../../lib/bounded-text";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
 } from "../../shared/github-clone-info";
+
+/** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
+const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 
 export class GitPushAuthError extends Error {
   constructor(message: string) {
@@ -82,7 +86,9 @@ export async function refreshSandboxGitCredentials(
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => res.statusText);
+    const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(
+      () => res.statusText,
+    );
     throw new Error(
       `Failed to refresh sandbox git credentials (${res.status}): ${body}`,
     );
