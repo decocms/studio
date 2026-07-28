@@ -109,6 +109,30 @@ export type LifecycleState =
   /** Was running, stopped responding to the probe. */
   | { phase: "crashed" };
 
+/**
+ * Phases that guarantee the repo is checked out on disk.
+ *
+ * `installing` is the first: clone and checkout are done, only dependency
+ * installation remains — which is precisely the window draft preview renders
+ * in. `checking-out` is excluded because the tree is mid-write. The failure
+ * phases count: a repo that failed to install still has a readable tree.
+ *
+ * Shared so the daemon (when to announce a draft version) and Studio (when to
+ * re-drive the CMS queries) cannot drift apart on what "the tree exists" means.
+ */
+export function isWorkingTreeReadyPhase(
+  phase: LifecycleState["phase"],
+): boolean {
+  return (
+    phase === "installing" ||
+    phase === "install-failed" ||
+    phase === "starting" ||
+    phase === "start-failed" ||
+    phase === "running" ||
+    phase === "crashed"
+  );
+}
+
 /** Git metadata, separate from lifecycle. `unknown` until the first compute. */
 export type BranchMeta =
   | { kind: "unknown" }
@@ -154,6 +178,15 @@ export interface DaemonEventMap {
   branch: { meta: BranchMeta };
   reload: Record<string, never>;
   "file-changed": { path: string };
+  /**
+   * The working-tree draft decofile changed, and its new content version.
+   *
+   * Same value the `/_sandbox/decofile` route serves as its `ETag` — one
+   * definition, so a consumer's pointer and the framework's cache key cannot
+   * disagree. Lets Studio rebuild a draft pointer on save instead of polling
+   * for it.
+   */
+  decofile: { version: string };
 }
 
 export type DaemonEventName = keyof DaemonEventMap;

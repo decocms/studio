@@ -7,6 +7,7 @@ export type {
   DaemonStatus,
   LifecycleState,
 } from "./daemon-protocol";
+export { isWorkingTreeReadyPhase } from "./daemon-protocol";
 
 export const PLUGIN_ID = "MCP User Sandbox";
 export const PLUGIN_DESCRIPTION =

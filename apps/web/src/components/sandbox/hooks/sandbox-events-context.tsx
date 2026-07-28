@@ -49,6 +49,10 @@ import type {
   DaemonStatus,
   LifecycleState,
 } from "@decocms/sandbox/shared";
+// One definition, shared with the daemon: it decides when to announce a draft
+// version, Studio decides when to re-drive the CMS queries. They must agree.
+export { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
+import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
 
 export type { BranchMeta, DaemonStatus, LifecycleState };
 
@@ -177,37 +181,6 @@ export function buildDirectDaemonEventsUrl(
 
 export function isDirectDaemonEventsGoneStatus(status: number): boolean {
   return status === 404;
-}
-
-/**
- * Phases that guarantee the repo is checked out on disk.
- *
- * The daemon serves the CMS decofile without a dev server: `/read` of
- * `.deco/blocks.gen.json` falls back to merging `.deco/blocks/*.json` on the
- * fly. That fallback returns 400 while `.deco/blocks/` is missing — i.e. during
- * `cloning`/`checking-out` — and `useDecofile` turns that into a 502 it
- * deliberately never retries. So the read has exactly one good moment to be
- * re-driven: the first phase that implies a populated working tree.
- *
- * `installing` is that moment (clone + checkout done, only deps pending) and is
- * precisely the window Fast Preview renders in. The later phases are included
- * because a warm sandbox with cached deps can skip past `installing` between
- * two SSE frames — and the failure phases because a repo that failed to install
- * still has a tree the CMS can read.
- *
- * `checking-out` is deliberately excluded: the tree is mid-write there.
- */
-export function isWorkingTreeReadyPhase(
-  phase: LifecycleState["phase"],
-): boolean {
-  return (
-    phase === "installing" ||
-    phase === "install-failed" ||
-    phase === "starting" ||
-    phase === "start-failed" ||
-    phase === "running" ||
-    phase === "crashed"
-  );
 }
 
 async function probeDirectDaemonEventsGone(url: string): Promise<boolean> {
