@@ -233,11 +233,23 @@ export function TaskBoardItemDialog({
             />
 
             <div className="group relative flex flex-col">
+              {/* Hugs its content (same auto-grow as the title) so a long
+                  description is never clipped behind an inner scrollbar — the
+                  pane scrolls instead. */}
               <textarea
+                ref={(el) => {
+                  if (!el) return;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+                }}
                 placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
-                className="min-h-[96px] w-full resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
+                className="min-h-[160px] w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[240px]"
               />
               {description && (
                 <Button
