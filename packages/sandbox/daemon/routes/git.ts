@@ -3,6 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
+import {
+  forcePushWithLease,
+  type GitRunner,
+  remoteBranchSha,
+} from "../git/force-push";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { protectedBranches } from "../git/protect-branch";
 import {
@@ -69,6 +74,18 @@ function tryGit(repoDir: string, args: string[]): string | null {
     return null;
   }
 }
+
+// Adapts this file's runGit/tryGit to the shared force-push helper's interface.
+const gitRunner: GitRunner = {
+  run: (repoDir, args, opts) => runGit(repoDir, args, opts),
+  tryRun: (repoDir, args, opts) => {
+    try {
+      return runGit(repoDir, args, opts);
+    } catch {
+      return null;
+    }
+  },
+};
 
 // Async twins of runGit/tryGit for the git/diff hot path. The expensive steps
 // there — network `git fetch` and reading large blobs via `git show` — must not
@@ -527,95 +544,47 @@ const GIT_PUSH_CONFIG = ["-c", "credential.helper=", "-c", "safe.directory=*"];
 
 /**
  * A non-fast-forward push rejection: origin/<branch> has commits the sandbox's
- * local branch lacks. git phrases this a few ways across versions, so match the
- * stable fragments.
+ * local branch lacks. Match ONLY the fragments git prints for a divergence
+ * rejection — deliberately NOT the generic "failed to push some refs" summary,
+ * which git also emits for server-side hook / branch-protection / quota
+ * rejections. Those print "[remote rejected]" (which does not contain the
+ * substring "[rejected]"), so the matches below exclude them. Keeping this
+ * narrow stops the reconcile force-push from firing on non-divergence failures
+ * and lets their real error surface instead.
+ *
+ * Exported for the unit table that pins this classification.
  */
-function isNonFastForwardError(err: unknown): boolean {
+export function isNonFastForwardError(err: unknown): boolean {
   const message = formatGitError(err);
   return (
     message.includes("fetch first") ||
     message.includes("non-fast-forward") ||
-    message.includes("failed to push some refs") ||
     message.includes("[rejected]")
   );
 }
 
-function remoteBranchSha(repoDir: string, branch: string): string | null {
-  return tryGit(repoDir, [
-    "rev-parse",
-    "--verify",
-    `refs/remotes/origin/${branch}`,
-  ]);
-}
-
 /**
  * Reconcile a diverged feature branch by force-pushing the sandbox's local
- * state, preferring --force-with-lease so a concurrent writer isn't silently
- * clobbered. Mirrors forcePushRebasedBranch() in git/rebase-onto-base.ts — the
- * publish flow's very next step (rebaseOntoBase) force-pushes this same branch
- * anyway, so reconciling here only stops the initial push from spuriously
- * failing when origin/<branch> already holds a prior publish's rewritten
- * (force-pushed) history.
+ * state. This uses --force-with-lease (via forcePushWithLease) but that is NOT a
+ * concurrent-writer safeguard here: the lease is derived from a fetch taken
+ * microseconds earlier, so it only narrows the fetch→push race — a commit that
+ * diverged before that fetch is clobbered. Safe under the
+ * single-writer-per-thread-branch invariant. Its job is to let the initial
+ * publish push succeed instead of failing "fetch first" when origin/<branch>
+ * already holds a prior publish's rewritten history; the Studio-orchestrated
+ * rebase step (a separate /git/rebase call, not invoked here) force-pushes the
+ * same branch afterward in the PR flow.
  */
 function forcePushBranchWithLease(repoDir: string, branch: string): void {
   runGit(repoDir, [...GIT_PUSH_CONFIG, "fetch", "origin", branch], {
     env: PUSH_ENV,
   });
-  const leaseSha = remoteBranchSha(repoDir, branch);
-  if (leaseSha) {
-    try {
-      runGit(
-        repoDir,
-        [
-          ...GIT_PUSH_CONFIG,
-          "push",
-          "--no-verify",
-          `--force-with-lease=refs/heads/${branch}:${leaseSha}`,
-          "origin",
-          branch,
-        ],
-        { env: PUSH_ENV },
-      );
-      return;
-    } catch (err) {
-      // A racing writer moved origin/<branch> between our fetch and push, so the
-      // lease is stale. Re-fetch, refresh the lease, and retry once.
-      const message = formatGitError(err);
-      const retriable =
-        message.includes("stale info") ||
-        message.includes("failed to push some refs");
-      if (!retriable) {
-        throw err;
-      }
-      runGit(repoDir, [...GIT_PUSH_CONFIG, "fetch", "origin", branch], {
-        env: PUSH_ENV,
-      });
-      const refreshed = remoteBranchSha(repoDir, branch);
-      if (refreshed) {
-        runGit(
-          repoDir,
-          [
-            ...GIT_PUSH_CONFIG,
-            "push",
-            "--no-verify",
-            `--force-with-lease=refs/heads/${branch}:${refreshed}`,
-            "origin",
-            branch,
-          ],
-          { env: PUSH_ENV },
-        );
-        return;
-      }
-    }
-  }
-  // No remote-tracking ref to lease against (branch deleted, or the fetch found
-  // nothing): fall back to a plain force. On a single-writer per-thread branch
-  // the sandbox is authoritative, matching the rebase step's final fallback.
-  runGit(
-    repoDir,
-    [...GIT_PUSH_CONFIG, "push", "--no-verify", "--force", "origin", branch],
-    { env: PUSH_ENV },
-  );
+  const leaseSha = remoteBranchSha(gitRunner, repoDir, branch);
+  forcePushWithLease(gitRunner, repoDir, branch, leaseSha, {
+    configArgs: GIT_PUSH_CONFIG,
+    pushArgs: ["--no-verify"],
+    env: PUSH_ENV,
+  });
 }
 
 function pushBranch(

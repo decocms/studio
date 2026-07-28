@@ -2,6 +2,11 @@ import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
+import {
+  forcePushWithLease,
+  type GitRunner,
+  remoteBranchSha,
+} from "./force-push";
 import { gitSync as rawGitSync } from "./git-sync";
 import { parsePorcelainEntry } from "./porcelain";
 import { protectedBranches } from "./protect-branch";
@@ -279,54 +284,12 @@ function resolveConflictsRecursively(
   }
 }
 
-function remoteBranchSha(repoDir: string, branch: string): string | null {
-  return tryGit(repoDir, [
-    "rev-parse",
-    "--verify",
-    `refs/remotes/origin/${branch}`,
-  ]);
-}
-
-function forcePushRebasedBranch(
-  repoDir: string,
-  branch: string,
-  leaseSha: string | null,
-): void {
-  if (leaseSha) {
-    const leaseRef = `refs/heads/${branch}:${leaseSha}`;
-    try {
-      runGit(repoDir, [
-        "push",
-        `--force-with-lease=${leaseRef}`,
-        "origin",
-        branch,
-      ]);
-      return;
-    } catch (err) {
-      const message = formatGitError(err);
-      const retriable =
-        message.includes("stale info") ||
-        message.includes("failed to push some refs");
-      if (!retriable) {
-        throw err;
-      }
-
-      runGit(repoDir, ["fetch", "origin", branch]);
-      const refreshed = remoteBranchSha(repoDir, branch);
-      if (refreshed) {
-        runGit(repoDir, [
-          "push",
-          `--force-with-lease=refs/heads/${branch}:${refreshed}`,
-          "origin",
-          branch,
-        ]);
-        return;
-      }
-    }
-  }
-
-  runGit(repoDir, ["push", "--force", "origin", branch]);
-}
+// Adapts this file's runGit/tryGit (which honor the rebaseGitAsUser toggle) to
+// the shared force-push helper's interface.
+const gitRunner: GitRunner = {
+  run: (repoDir, args, opts) => runGit(repoDir, args, opts),
+  tryRun: (repoDir, args, opts) => tryGit(repoDir, args, opts),
+};
 
 /**
  * Rebase the current branch onto `origin/{base}` using the legacy deco CMS
@@ -383,7 +346,7 @@ function rebaseOntoBaseInner(
   // also skip fetching `branch` (needed for the force-push lease).
   tryGit(repoDir, ["fetch", "-p", "origin", base]);
   runGit(repoDir, ["fetch", "-p", "origin", branch]);
-  const leaseSha = remoteBranchSha(repoDir, branch);
+  const leaseSha = remoteBranchSha(gitRunner, repoDir, branch);
 
   tryGit(repoDir, [
     "submodule",
@@ -423,6 +386,6 @@ function rebaseOntoBaseInner(
     throw new Error("Rebase did not complete");
   }
 
-  forcePushRebasedBranch(repoDir, branch, leaseSha);
+  forcePushWithLease(gitRunner, repoDir, branch, leaseSha);
   return { rebased: true };
 }

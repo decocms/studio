@@ -13,6 +13,7 @@ import { describe, expect, it } from "bun:test";
 import { gitSync } from "../git/git-sync";
 import {
   computeDiffAgainstBase,
+  isNonFastForwardError,
   makeGitDiffHandler,
   makeGitDiscardHandler,
   makeGitPublishHandler,
@@ -771,6 +772,35 @@ describe("git routes", () => {
     expect(tree).toContain("OTHER.md");
   });
 
+  it("publish route does NOT force-push when the remote rejects for a non-divergence reason (fails closed)", async () => {
+    const { appRoot, repoDir, bare, branch } = initRepoWithRemote();
+    const beforeSha = gitSync(["rev-parse", `refs/heads/${branch}`], {
+      cwd: bare,
+      asUser: false,
+    }).trim();
+    // A bare-repo pre-receive hook that rejects every push simulates a
+    // server-side rejection (branch protection / hook), NOT a fast-forward
+    // divergence. The reconcile path must NOT treat this as non-ff and must
+    // never leave origin/<branch> force-updated.
+    const hook = join(bare, "hooks", "pre-receive");
+    writeFileSync(hook, "#!/bin/sh\nexit 1\n");
+    chmodSync(hook, 0o755);
+    writeFileSync(join(repoDir, "README.md"), "sandbox change\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "blocked publish" }),
+      }),
+    );
+    expect(res.status).toBe(500);
+    const afterSha = gitSync(["rev-parse", `refs/heads/${branch}`], {
+      cwd: bare,
+      asUser: false,
+    }).trim();
+    expect(afterSha).toBe(beforeSha); // origin untouched — no destructive force
+  });
+
   it("publish skips failing pre-commit hooks", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
@@ -969,4 +999,34 @@ describe("git routes", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/protected branch "main"/);
   });
+});
+
+describe("isNonFastForwardError", () => {
+  // These are the ONLY failures that should trigger the reconcile force-push.
+  const nonFastForward = [
+    "! [rejected]        feature/x -> feature/x (fetch first)",
+    "! [rejected]        feature/x -> feature/x (non-fast-forward)",
+    "Updates were rejected because the remote contains work that you do not have locally. fetch first",
+  ];
+  for (const message of nonFastForward) {
+    it(`classifies as non-fast-forward: ${message.slice(0, 40)}`, () => {
+      expect(isNonFastForwardError(new Error(message))).toBe(true);
+    });
+  }
+
+  // These MUST NOT trigger a force-push — they are server-side or transport
+  // failures, not a divergence. "[remote rejected]" must not match "[rejected]".
+  const notDivergence = [
+    "! [remote rejected] feature/x -> feature/x (pre-receive hook declined)\nerror: failed to push some refs to 'origin'",
+    "! [remote rejected] feature/x -> feature/x (protected branch hook declined)\nerror: failed to push some refs",
+    "! [remote rejected] feature/x -> feature/x (shallow update not allowed)\nerror: failed to push some refs",
+    "fatal: Authentication failed for 'https://github.com/owner/repo.git/'",
+    "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+    "fatal: unable to access 'https://github.com/owner/repo.git/': Could not resolve host: github.com",
+  ];
+  for (const message of notDivergence) {
+    it(`does NOT classify as non-fast-forward: ${message.slice(0, 40)}`, () => {
+      expect(isNonFastForwardError(new Error(message))).toBe(false);
+    });
+  }
 });
