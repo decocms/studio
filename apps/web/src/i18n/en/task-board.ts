@@ -47,7 +47,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMovedTo": "moved to {to}",
   "taskBoard.taskDialog.activityAssigned": "assigned to {name}",
   "taskBoard.taskDialog.activityUnassigned": "removed the assignee",
-  "taskBoard.taskDialog.activityDelegated": "delegated to Super Agent",
+  "taskBoard.taskDialog.activityDelegated": "delegated to {name}",
   "taskBoard.taskDialog.activityPrioritySet": "set priority to {to}",
   "taskBoard.taskDialog.activityPriorityFromTo":
     "changed priority from {from} to {to}",

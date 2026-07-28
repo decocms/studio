@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -925,7 +925,7 @@ function ActivitySection({
 
   return (
     <div className="flex flex-col gap-5 pb-2">
-      <span className="text-xs font-medium text-muted-foreground">
+      <span className="text-sm font-medium text-muted-foreground">
         {t("taskBoard.taskDialog.activityLabel")}
       </span>
       {blocks.map((block, i) =>
@@ -950,74 +950,157 @@ function ActivitySection({
   );
 }
 
-/** Human-readable text for one timeline event. */
+/**
+ * A value named by a timeline line, carrying the same glyph the board uses for
+ * it (status icon, priority dot, assignee avatar, calendar) so the line reads at
+ * a glance.
+ */
+function ValueChip({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 align-middle">
+      {icon}
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Slot a chip into the sentence where `t()` interpolated its placeholder.
+ *
+ * Sentences stay single translatable strings (`"moved from {from} to {to}"`);
+ * we interpolate a sentinel for each value, then split on it and drop the chip
+ * in. Keyed by name, not position, so a translation that reorders the
+ * placeholders still pairs each chip with its own value.
+ */
+const SENTINEL = "\u0000";
+
+function chipSentinel(name: string): string {
+  return `${SENTINEL}${name}${SENTINEL}`;
+}
+
+function interleaveChips(
+  text: string,
+  chips: Record<string, ReactNode>,
+): ReactNode {
+  // Capturing split → even indices are literal text, odd ones are chip names.
+  return text
+    .split(new RegExp(`${SENTINEL}(\\w+)${SENTINEL}`))
+    .map((part, i) => (
+      <Fragment key={i}>{i % 2 === 0 ? part : chips[part]}</Fragment>
+    ));
+}
+
+/** One timeline line: prose from `t()`, values rendered as chips. */
 function describeActivity(
   a: TaskBoardActivity,
   t: ReturnType<typeof useT>,
   memberByUserId: Map<string, Member>,
-): string {
-  const statusLabel = (s: unknown) => {
+): ReactNode {
+  const statusChip = (s: unknown) => {
     const cfg =
       typeof s === "string"
         ? STATUS_CONFIG[s as keyof typeof STATUS_CONFIG]
         : undefined;
-    return cfg ? t(cfg.labelKey) : String(s ?? "");
+    if (!cfg) return String(s ?? "");
+    const Icon = cfg.icon;
+    return (
+      <ValueChip
+        icon={<Icon size={13} className={cfg.iconClassName} />}
+        label={t(cfg.labelKey)}
+      />
+    );
   };
-  // "none" is priority's unset value, so it reads as a set/clear, not a move.
-  const priorityLabel = (p: unknown) => {
+  const priorityChip = (p: unknown) => {
     const cfg =
       typeof p === "string"
         ? PRIORITY_CONFIG[p as keyof typeof PRIORITY_CONFIG]
         : undefined;
-    return cfg ? t(cfg.labelKey) : String(p ?? "");
+    if (!cfg) return String(p ?? "");
+    return (
+      <ValueChip
+        icon={<span className={cn("size-2 rounded-full", cfg.dotClassName)} />}
+        label={t(cfg.labelKey)}
+      />
+    );
   };
-  const dateLabel = (iso: unknown) => {
+  const dateChip = (iso: unknown) => {
     const date = parseIsoDate(typeof iso === "string" ? iso : null);
-    return date ? DUE_DATE_FMT.format(date) : "";
+    if (!date) return "";
+    return (
+      <ValueChip
+        icon={<Calendar size={13} className="text-muted-foreground" />}
+        label={DUE_DATE_FMT.format(date)}
+      />
+    );
   };
+  const assigneeChip = (userId: unknown) => {
+    if (userId === SUPER_AGENT_ASSIGNEE_ID) {
+      return (
+        <ValueChip
+          icon={<SuperAgentIcon size={14} />}
+          label={t("taskBoard.taskDialog.superAgentLabel")}
+        />
+      );
+    }
+    const member =
+      typeof userId === "string" ? memberByUserId.get(userId) : undefined;
+    return (
+      <ValueChip
+        icon={
+          <Avatar
+            url={member?.user?.image ?? undefined}
+            fallback={getInitials(member?.user?.name)}
+            shape="circle"
+            size="2xs"
+          />
+        }
+        label={member?.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
+      />
+    );
+  };
+
   const d = a.data;
+  const from = chipSentinel("from");
+  const to = chipSentinel("to");
   switch (a.kind) {
     case "created":
       return t("taskBoard.taskDialog.activityCreated");
     case "status_changed":
-      return d.from
-        ? t("taskBoard.taskDialog.activityMovedFromTo", {
-            from: statusLabel(d.from),
-            to: statusLabel(d.to),
-          })
-        : t("taskBoard.taskDialog.activityMovedTo", {
-            to: statusLabel(d.to),
-          });
+      return interleaveChips(
+        d.from
+          ? t("taskBoard.taskDialog.activityMovedFromTo", { from, to })
+          : t("taskBoard.taskDialog.activityMovedTo", { to }),
+        { from: statusChip(d.from), to: statusChip(d.to) },
+      );
     case "assignee_changed":
-      if (d.to === SUPER_AGENT_ASSIGNEE_ID)
-        return t("taskBoard.taskDialog.activityDelegated");
       if (d.to == null) return t("taskBoard.taskDialog.activityUnassigned");
-      return t("taskBoard.taskDialog.activityAssigned", {
-        name:
-          (typeof d.to === "string" && memberByUserId.get(d.to)?.user?.name) ||
-          t("taskBoard.taskDialog.someoneLabel"),
-      });
+      return interleaveChips(
+        t(
+          d.to === SUPER_AGENT_ASSIGNEE_ID
+            ? "taskBoard.taskDialog.activityDelegated"
+            : "taskBoard.taskDialog.activityAssigned",
+          { name: chipSentinel("name") },
+        ),
+        { name: assigneeChip(d.to) },
+      );
+    // "none" is priority's unset value, so it reads as a set/clear, not a move.
     case "priority_changed":
       if (d.to === "none")
         return t("taskBoard.taskDialog.activityPriorityCleared");
-      if (!d.from || d.from === "none")
-        return t("taskBoard.taskDialog.activityPrioritySet", {
-          to: priorityLabel(d.to),
-        });
-      return t("taskBoard.taskDialog.activityPriorityFromTo", {
-        from: priorityLabel(d.from),
-        to: priorityLabel(d.to),
-      });
+      return interleaveChips(
+        !d.from || d.from === "none"
+          ? t("taskBoard.taskDialog.activityPrioritySet", { to })
+          : t("taskBoard.taskDialog.activityPriorityFromTo", { from, to }),
+        { from: priorityChip(d.from), to: priorityChip(d.to) },
+      );
     case "due_date_changed":
       if (d.to == null) return t("taskBoard.taskDialog.activityDueDateCleared");
-      if (d.from == null)
-        return t("taskBoard.taskDialog.activityDueDateSet", {
-          to: dateLabel(d.to),
-        });
-      return t("taskBoard.taskDialog.activityDueDateFromTo", {
-        from: dateLabel(d.from),
-        to: dateLabel(d.to),
-      });
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.taskDialog.activityDueDateSet", { to })
+          : t("taskBoard.taskDialog.activityDueDateFromTo", { from, to }),
+        { from: dateChip(d.from), to: dateChip(d.to) },
+      );
     case "title_changed":
       return t("taskBoard.taskDialog.activityRenamed", {
         to: String(d.to ?? ""),
