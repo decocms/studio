@@ -536,6 +536,19 @@ export function makeGrepHandler(deps: FsDeps) {
     if (body.context && mode === "content")
       args.push("-C", String(body.context));
     if (body.glob) args.push("--glob", body.glob);
+    // `.deco/blocks/*.json` (the decofile sources) are tracked but live under a
+    // dot-dir, so ripgrep's default dotfile skip hides them from content search
+    // even though the filename glob (`dot: true`) surfaces them — the two
+    // searches disagree. `--hidden` fixes that. We deliberately keep honoring
+    // .gitignore/.git/info/exclude: the only gitignored `.deco` entries are the
+    // multi-MB generated merge (`blocks.gen.json`, a duplicate of the sources)
+    // and the sandbox's own local-only artifacts, plus repo secrets like
+    // `.env` — none of which grep should re-admit into the file explorer or the
+    // agent's Grep tool. `--hidden` re-enables descent into `.git` itself, so
+    // the `!.git` entry below is load-bearing; the rest mirror the glob walk's
+    // noise filter and trail any caller `--glob` so those dirs stay excluded.
+    args.push("--hidden");
+    for (const dir of GLOB_EXCLUDE_DIRS) args.push("--glob", `!${dir}`);
     args.push("--", body.pattern, searchPath);
 
     const limit = resolveGrepResultLimit(body.limit);

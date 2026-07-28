@@ -530,6 +530,48 @@ describe("fs handlers", () => {
     },
   );
 
+  (hasRg ? it : it.skip)(
+    "grep: content search reaches tracked dot-dirs (.deco) but still honors .gitignore, node_modules and .git",
+    async () => {
+      // rg only honors .gitignore inside a git tree — a bare marker dir is
+      // enough to switch it on, so the gitignore assertions below actually
+      // exercise the skip (without this they'd pass regardless).
+      mkdirSync(join(appRoot, ".git"), { recursive: true });
+      // `.deco/blocks/*.json` are the tracked decofile sources — hidden (dot
+      // dir) so rg's default skips them, but the filename glob surfaces them.
+      // --hidden must bring content search in line.
+      mkdirSync(join(appRoot, ".deco/blocks"), { recursive: true });
+      writeFileSync(
+        join(appRoot, ".deco/blocks/pages-home.json"),
+        '{"matcher":"needle"}\n',
+      );
+      // The only gitignored `.deco` entry is the generated merge (a duplicate
+      // of the sources) — plus repo secrets. Neither should be re-admitted.
+      writeFileSync(
+        join(appRoot, ".gitignore"),
+        ".deco/blocks.gen.json\n.env\n",
+      );
+      writeFileSync(join(appRoot, ".deco/blocks.gen.json"), '{"x":"needle"}\n');
+      writeFileSync(join(appRoot, ".env"), "SECRET=needle\n");
+      // node_modules and .git are pure noise; --hidden re-enables descent into
+      // .git, so the !.git exclude must still keep it out.
+      mkdirSync(join(appRoot, "node_modules/pkg"), { recursive: true });
+      writeFileSync(join(appRoot, "node_modules/pkg/index.js"), "needle\n");
+      writeFileSync(join(appRoot, ".git/config"), "needle\n");
+      const h = makeGrepHandler({ appRoot, repoDir: appRoot });
+      const res = await h(
+        post("/_sandbox/grep", { pattern: "needle", output_mode: "files" }),
+      );
+      const body = (await res.json()) as { results: string };
+      const files = body.results.split("\n").filter(Boolean).sort();
+      expect(files).toContain(".deco/blocks/pages-home.json");
+      expect(files).not.toContain(".deco/blocks.gen.json");
+      expect(files).not.toContain(".env");
+      expect(files).not.toContain("node_modules/pkg/index.js");
+      expect(files).not.toContain(".git/config");
+    },
+  );
+
   (hasRg ? it : it.skip)("glob: returns matching file names", async () => {
     writeFileSync(join(appRoot, "x.txt"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
