@@ -1,6 +1,11 @@
 import { signUpViaApi } from "../fixtures/auth-api";
 import { expect, newApiContext, test } from "../fixtures/test";
 
+// The report chrome renders in the viewer's language (defaulted from
+// navigator.language), so the copy asserted below only holds under an English
+// locale. Pin it rather than inherit the runner's.
+test.use({ locale: "en-US" });
+
 test("anonymous shared report shows login over a blurred preview", async ({
   page,
 }) => {
@@ -8,12 +13,12 @@ test("anonymous shared report shows login over a blurred preview", async ({
     "/report/example.com?share_id=example%3Aslide%3Atest&utm_source=share#overview",
   );
 
-  const dialog = page.getByRole("dialog", { name: "Acesse seu relatório" });
+  const dialog = page.getByRole("dialog", { name: "Access your report" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Já receberam")).toBeVisible();
+  await expect(dialog.getByText("Already received by")).toBeVisible();
 
   const preview = page.locator('div[aria-hidden="true"]').filter({
-    hasText: "Uma visão completa da sua loja e onde crescer primeiro.",
+    hasText: "A complete view of your store and where to grow first.",
   });
   await expect(preview).toHaveCSS("filter", "blur(9px)");
   await expect(page).toHaveURL(/share_id=example%3Aslide%3Atest/);
@@ -71,7 +76,7 @@ test("an expired report session returns to the inline login", async ({
   await page.goto("/report/session-expired.example");
 
   await expect(
-    page.getByRole("dialog", { name: "Acesse seu relatório" }),
+    page.getByRole("dialog", { name: "Access your report" }),
   ).toBeVisible();
 });
 
@@ -97,9 +102,7 @@ test("a failed initial read never triggers a scan", async ({ page }) => {
   await page.goto("/report/read-error.example");
 
   await expect(
-    page.getByRole("alert", {
-      name: "Não foi possível carregar o relatório",
-    }),
+    page.getByRole("alert", { name: "Couldn't load the report" }),
   ).toBeVisible();
   expect(scanRequests).toBe(0);
 });
