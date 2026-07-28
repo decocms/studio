@@ -550,10 +550,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         )
       : display.mode === "production"
         ? // The published site is the base for both modes while the sandbox
-          // provisions; Fast Preview layers its daemon draft render over it the
-          // moment that's renderable. Same origin either way (the draft carries
-          // `<base href="<productionUrl>">`), so the swap changes content, not
-          // surface.
+          // provisions; Fast Preview swaps in the same page carrying a
+          // `?__draft=` pointer the moment one exists. Same origin either way,
+          // so the swap changes content, not surface.
           withDeviceHint(
             draftPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
             previewDeviceSize,
@@ -567,8 +566,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     ? ("sandbox.preview.openInBrowser" as const)
     : ("sandbox.preview.openInNewTab" as const);
 
+  /**
+   * URL for "open in new tab" — the same page, minus Studio's viewport hint.
+   *
+   * `deviceHint` exists to make the embedded frame mimic the selected device;
+   * it has no business in a link someone pastes to a colleague. Under Fast
+   * Preview this is the draft URL itself, which is shareable precisely because
+   * the pointer is a query param on the site's own route.
+   */
+  const openInNewTabUrl =
+    display.mode === "production"
+      ? (draftPreviewUrl ??
+        (display.iframeBase
+          ? new URL(resolvedPath, display.iframeBase).href
+          : null))
+      : (iframeSrc ?? display.iframeBase);
+
   const handleOpenPreview = async () => {
-    const url = iframeSrc ?? display.iframeBase;
+    const url = openInNewTabUrl;
     if (!url) return;
     if (!isDesktopApp) {
       window.open(url, "_blank", "noopener");
@@ -1350,6 +1365,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </div>
         )}
       </div>
+      {/* Available on every surface. Under Fast Preview `iframeSrc` is the
+          site's own page URL carrying `?__draft=<handle>@<version>`, so the
+          opened tab renders the same draft — an ordinary, shareable link. That
+          was not true of the old `/live/previews` render, which is why this
+          button used to be sandbox-only. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
