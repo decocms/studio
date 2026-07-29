@@ -12,6 +12,54 @@ const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 const JPEG_QUALITY = 80;
+/**
+ * Anthropic rejects any image over 8000px on either side, and an oversized
+ * screenshot poisons the thread permanently: it is inlined as base64 into the
+ * message history, so every later turn replays it and gets the same 400. A
+ * full-page capture of a long landing page blows past this easily.
+ */
+const MAX_SCREENSHOT_HEIGHT = 7000;
+
+/** Puppeteer rejects `clip` together with `fullPage` — they are exclusive. */
+export function buildScreenshotOptions(fullPage: boolean, clamped = false) {
+  return {
+    ...(fullPage && clamped
+      ? {
+          clip: {
+            x: 0,
+            y: 0,
+            width: DEFAULT_VIEWPORT.width,
+            height: MAX_SCREENSHOT_HEIGHT,
+          },
+        }
+      : { fullPage }),
+    type: "jpeg" as const,
+    quality: JPEG_QUALITY,
+  };
+}
+
+/**
+ * Height of a JPEG, read off its SOF marker. Returns null if the bytes aren't
+ * a JPEG we can parse — callers treat that as "assume it's fine".
+ */
+export function jpegHeight(bytes: Uint8Array): number | null {
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) return null;
+    const marker = bytes[i + 1] as number;
+    // SOF0-SOF15 carry the frame dimensions; C4/C8/CC are other segments.
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      ![0xc4, 0xc8, 0xcc].includes(marker)
+    )
+      return view.getUint16(i + 5);
+    i += 2 + view.getUint16(i + 2);
+  }
+  return null;
+}
 
 export interface PortableMediaObjectStorage {
   put(
@@ -332,22 +380,22 @@ export function createPortableTakeScreenshotTool(
             error: "BROWSERLESS_TOKEN is not configured.",
           };
         }
-        const response = await fetch(
-          `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              url: input.url,
-              options: {
-                fullPage: input.fullPage ?? false,
-                type: "jpeg",
-                quality: JPEG_QUALITY,
-              },
-              viewport: DEFAULT_VIEWPORT,
-            }),
-          },
-        );
+        const fullPage = input.fullPage ?? false;
+        const shoot = async (clamped: boolean) =>
+          await fetch(
+            `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: input.url,
+                options: buildScreenshotOptions(fullPage, clamped),
+                viewport: DEFAULT_VIEWPORT,
+              }),
+            },
+          );
+
+        let response = await shoot(false);
         if (!response.ok) {
           const errorText = await response.text().catch(() => "Unknown error");
           return {
@@ -357,7 +405,24 @@ export function createPortableTakeScreenshotTool(
           };
         }
 
-        const imgBytes = new Uint8Array(await response.arrayBuffer());
+        let imgBytes = new Uint8Array(await response.arrayBuffer());
+        const height = jpegHeight(imgBytes);
+        if (fullPage && height !== null && height > MAX_SCREENSHOT_HEIGHT) {
+          response = await shoot(true);
+          const clipped = response.ok
+            ? new Uint8Array(await response.arrayBuffer())
+            : null;
+          // Emitting an oversized capture would brick the thread, so fail the
+          // tool call instead — the model can retry without `fullPage`.
+          if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
+            return {
+              success: false as const,
+              error: `Full-page screenshot of ${input.url} is ${height}px tall, over the ${MAX_SCREENSHOT_HEIGHT}px limit, and the clipped retry did not come back within it. Retry with fullPage: false.`,
+              url: input.url,
+            };
+          }
+          imgBytes = clipped;
+        }
         const mediaType = "image/jpeg";
         const key = `screenshots/${crypto.randomUUID()}.jpg`;
         let uri: string;
