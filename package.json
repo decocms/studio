@@ -30,6 +30,7 @@
     "check": "bun run check:readmes && bun run --workspaces check",
     "check:ci": "bun run check",
     "check:readmes": "bun run scripts/check-workspace-readmes.ts",
+    "check:web-bundle": "bun run scripts/check-web-bundle-desktop-free.ts",
     "fmt:check": "biome format",
     "test": "bun run scripts/test-unit.ts",
     "docs:dev": "bun run --cwd=apps/docs dev",

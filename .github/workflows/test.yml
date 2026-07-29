@@ -179,11 +179,17 @@ jobs:
           test -f apps/api/dist/server/migrate.js
           test -f apps/api/dist/server/cli.js
 
+      # `build:web` rather than `build` so VITE_TAURI_APP=0 is stated, not
+      # inherited from the variable happening to be unset — the desktop-free
+      # assertion below is only meaningful against a known browser build.
       - name: Build web app
-        run: bun run --cwd=apps/web build
+        run: bun run --cwd=apps/web build:web
 
       - name: Verify web output
         run: test -f apps/web/dist/index.html
+
+      - name: Assert no Tauri desktop code in the browser bundle
+        run: bun run check:web-bundle
 
   # Playwright component tests for the sections-editor field widgets
   # (apps/web/ct). Self-contained — real chromium, no server/DB — so it lives
