@@ -495,7 +495,12 @@ export function TaskBoardPage() {
           }
           onAssign={(id, userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
-            actions.update.mutate({ id, assigneeId: userId ?? undefined });
+            // `userId` is `null` for "Unassigned" — `?? undefined` used to
+            // coalesce that into "field not provided", silently no-opping the
+            // unassign since TASK_BOARD_ITEM_UPDATE treats undefined as
+            // unchanged. `assigneeId` is nullable in the update schema, so
+            // pass `userId` through as-is.
+            actions.update.mutate({ id, assigneeId: userId });
           }}
           onAutoFix={
             reportsOnly
