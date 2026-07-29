@@ -71,6 +71,19 @@ describe("GET /_sandbox/decofile", () => {
     expect(body["pages-home"]).toEqual({ path: "/", sections: [] });
   });
 
+  test("decodes double-encoded filenames to the real block key", async () => {
+    // Real repos carry both encodings: `Compre%20Junto.json` (single) and
+    // `Compre%2520Junto.json` (double). Both must merge under "Compre Junto" —
+    // a single decode leaves the double-encoded one keyed "Compre%20Junto",
+    // which no `__resolveType` reference resolves.
+    await writeBlock(d!, "Compre%2520Junto", { curated: true });
+    await writeBlock(d!, "Card%20config", { plain: true });
+
+    const res = await fetch(url(d!, "/_sandbox/decofile"));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["Card config", "Compre Junto"]);
+  });
+
   test("is unauthenticated — the fetcher is a site, not the cluster", async () => {
     // Deliberately no Authorization header: the production server pulling this
     // has no daemon token. Matched ahead of the bearer gate in entry.ts.
