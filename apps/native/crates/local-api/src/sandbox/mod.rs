@@ -87,11 +87,28 @@ pub const DEFAULT_BRANCH: &str = "staging";
 /// is no repository yet. A repo whose default IS `staging` therefore still
 /// lands on it — the push guard remains the backstop for that case.
 pub fn normalize_branch(branch: Option<&str>) -> &str {
-    match branch.map(str::trim) {
-        None | Some("") | Some("main") | Some("master") => DEFAULT_BRANCH,
-        Some(other) => other,
+    let Some(trimmed) = branch.map(str::trim).filter(|value| !value.is_empty()) else {
+        return DEFAULT_BRANCH;
+    };
+    // Case-INSENSITIVE. `slugify_branch` folds case on the way to a handle, so
+    // `MAIN` produced a worktree directory named `.../main`; on the
+    // case-insensitive volumes macOS ships by default git then resolves it to
+    // the protected ref itself. A rule described as "impossible by
+    // construction" must not fall to one shift key.
+    if PROTECTED_BRANCHES
+        .iter()
+        .any(|protected| trimmed.eq_ignore_ascii_case(protected))
+    {
+        return DEFAULT_BRANCH;
     }
+    trimmed
 }
+
+/// Branches a sandbox may never occupy — kept here, beside the normalization
+/// that enforces it, so the push guard in `routes::git` and this rule cannot
+/// drift apart. `routes::git` additionally protects the REMOTE default branch,
+/// which is only knowable per repository.
+pub const PROTECTED_BRANCHES: [&str; 2] = ["main", "master"];
 
 /// Longest DNS label the preview host may use. 63 is the protocol limit.
 const MAX_PREVIEW_LABEL: usize = 63;

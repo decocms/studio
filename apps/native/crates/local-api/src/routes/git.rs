@@ -404,7 +404,7 @@ async fn publish_all_on_shutdown(state: &AppState) {
         .snapshot()
         .into_iter()
         .map(|sandbox| sandbox.workdir.clone());
-    let durable = durable_sandbox_repo_dirs(&state.app_root).await;
+    let durable = durable_sandbox_repo_dirs(state).await;
     for repo_dir in materialized
         .chain(durable)
         .chain(std::iter::once(state.repo_dir.clone()))
@@ -433,76 +433,44 @@ async fn publish_all_on_shutdown(state: &AppState) {
 }
 
 /// Enumerates persisted sandbox worktrees without resurrecting their runtime.
+///
 /// A fresh process starts with an empty `SandboxManager` map, but worktrees
 /// with unsynced user changes may remain from a prior crash. Shutdown must
-/// publish those too—even when the user never focused that chat during the
-/// current launch. Re-running `ensure()` here would start install/dev work
-/// after admission is closed, so the durable sidecar is used only to validate
-/// the direct child directory before its existing `repo` is considered.
-async fn durable_sandbox_repo_dirs(app_root: &Path) -> Vec<PathBuf> {
-    let root = app_root.join(crate::sandbox::WORKTREES_DIR);
-    // Walk to wherever a sidecar is rather than assuming one level: a handle
-    // is `<host>/<owner>/<repo>/<branch>`, so a direct-children scan would see
-    // only `github.com` and publish nothing.
-    let mut pending = vec![root.clone()];
-    let mut sandbox_dirs: Vec<PathBuf> = Vec::new();
-    while let Some(dir) = pending.pop() {
-        let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
-            continue;
-        };
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            // `DirEntry::file_type` does not follow symlinks. Refusing anything
-            // but a real directory keeps the shutdown hook confined to app_root.
-            if !entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let path = entry.path();
-            if crate::sandbox::persist::sidecar_exists(&path) {
-                sandbox_dirs.push(path);
-            } else {
-                pending.push(path);
-            }
+/// publish those too — even when the user never focused that chat during this
+/// launch. Re-running `ensure()` here would start install/dev work after
+/// admission is closed, so this reads the durable record only.
+///
+/// Reads the REGISTRY, not the sidecars. The registry is the declared
+/// authority (see `sandbox::registry`'s module doc); sidecars are a legacy
+/// mirror whose writes are explicitly best-effort and swallowed. Enumerating
+/// by sidecar meant a sandbox that registered fine but whose sidecar write
+/// failed was invisible here — and its unsynced work silently never pushed.
+/// The old identity re-derivation is gone with it: the registry row IS the
+/// identity, already validated by `validate_identity` on the way in, so there
+/// is no second `compute_handle` call to drift out of step with
+/// `normalize_branch` (it did: it defaulted a missing branch to `main`, so
+/// every `staging` worktree failed its own check and was skipped).
+async fn durable_sandbox_repo_dirs(state: &AppState) -> Vec<PathBuf> {
+    let handles = match state.sandbox_manager.registered_handles() {
+        Ok(handles) => handles,
+        Err(error) => {
+            tracing::warn!(%error, "shutdown: could not list registered sandboxes to publish");
+            return Vec::new();
         }
-    }
-    let mut repo_dirs = Vec::new();
-    for entry in sandbox_dirs {
-        let Some(handle) = entry
-            .strip_prefix(&root)
-            .ok()
-            .and_then(|rel| rel.to_str())
-            .map(|rel| rel.replace('\\', "/"))
-        else {
-            continue;
-        };
-        let Some(config) = crate::sandbox::persist::read_sidecar(app_root, &handle) else {
-            continue;
-        };
-        let branch = config
-            .branch
-            .as_deref()
-            .filter(|branch| !branch.is_empty())
-            .unwrap_or("main");
-        // The handle is derived from the REPOSITORY and branch, so a sidecar
-        // whose clone URL cannot be scoped is not a git-backed sandbox and
-        // cannot own this directory either.
-        if crate::sandbox::SandboxManager::compute_handle(&config.clone_url, branch).as_deref()
-            != Some(handle.as_str())
-        {
-            tracing::warn!(
+    };
+    let mut dirs = Vec::new();
+    for handle in handles {
+        match state.sandbox_manager.registry_record(&handle) {
+            Ok(Some(record)) => dirs.push(record.workdir_path),
+            Ok(None) => {}
+            Err(error) => tracing::warn!(
                 handle,
-                "shutdown: ignored sandbox sidecar whose identity does not match its directory"
-            );
-            continue;
-        }
-        let repo_dir = entry.join("repo");
-        if tokio::fs::symlink_metadata(&repo_dir)
-            .await
-            .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
-        {
-            repo_dirs.push(repo_dir);
+                %error,
+                "shutdown: could not read a sandbox record; skipping its publish"
+            ),
         }
     }
-    repo_dirs
+    dirs
 }
 
 async fn require_git_repo(repo_dir: &Path) -> ApiResult<()> {
@@ -1567,13 +1535,42 @@ async fn resolve_remote_default_branch(repo_dir: &Path) -> String {
 /// — this in-code guard is the only enforcement, same as the daemon's own
 /// comment notes.
 async fn protected_branches(repo_dir: &Path) -> HashSet<String> {
-    let mut set = HashSet::new();
-    set.insert("main".to_string());
-    set.insert("master".to_string());
-    set.insert(resolve_remote_default_branch(repo_dir).await);
+    // Lowercased, and compared case-insensitively by `is_protected_branch`:
+    // `MAIN` is the same ref as `main` on the case-insensitive volumes macOS
+    // ships by default, so a case-sensitive guard is not a guard.
+    let mut set: HashSet<String> = crate::sandbox::PROTECTED_BRANCHES
+        .iter()
+        .map(|branch| branch.to_ascii_lowercase())
+        .collect();
+    set.insert(
+        resolve_remote_default_branch(repo_dir)
+            .await
+            .to_ascii_lowercase(),
+    );
     set
 }
 
+/// Whether `branch` may not be pushed to from a sandbox.
+async fn is_protected_branch(repo_dir: &Path, branch: &str) -> bool {
+    protected_branches(repo_dir)
+        .await
+        .contains(&branch.to_ascii_lowercase())
+}
+
+/// Push `branch` to origin.
+///
+/// Deliberately does NOT clear `credential.helper`, unlike the cluster daemon
+/// it is otherwise byte-parity with. Prod embeds a cluster-minted token in the
+/// clone URL and clears the helper so a stale cached credential cannot shadow
+/// it; the desktop has no such token — its clone URLs come straight from the
+/// agent's `metadata.githubRepo.url` — so clearing the helper left the push
+/// with NO credential source at all and every private-repo publish failed,
+/// including the shutdown publish that exists to save unsynced work. Same
+/// reasoning, and same conclusion, as `setup/clone.rs::base_argv`.
+///
+/// `GIT_TERMINAL_PROMPT=0` + `GIT_ASKPASS=true` still stand: the helper is
+/// consulted first, and a repo the user genuinely cannot reach fails fast
+/// instead of hanging on a prompt no one can answer.
 async fn push_branch(repo_dir: &Path, branch: &str) -> Result<(), GitError> {
     let mut env = route_env(repo_dir);
     env.push(("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()));
@@ -1586,15 +1583,7 @@ async fn push_branch(repo_dir: &Path, branch: &str) -> Result<(), GitError> {
     // work — byte-parity with `routes/git.ts::pushBranch`.
     run_git(
         repo_dir,
-        &[
-            "-c",
-            "credential.helper=",
-            "push",
-            "--no-verify",
-            "-u",
-            "origin",
-            branch,
-        ],
+        &["push", "--no-verify", "-u", "origin", branch],
         &env,
     )
     .await?;
@@ -1627,7 +1616,7 @@ async fn publish_internal(repo_dir: &Path, message: &str) -> Result<bool, RouteE
 
     // The pre-push hook the daemon installs also guards this, but publish
     // runs --no-verify and skips it — the in-code check MUST stand alone.
-    if protected_branches(repo_dir).await.contains(&branch) {
+    if is_protected_branch(repo_dir, &branch).await {
         return Err(RouteError::Generic(format!(
             "Refusing to push to protected branch \"{branch}\" from a sandbox. Work on a feature branch; changes reach the default branch via PR."
         )));
@@ -1680,13 +1669,47 @@ async fn publish_internal(repo_dir: &Path, message: &str) -> Result<bool, RouteE
 // Rebase
 // ---------------------------------------------------------------------------
 
-fn is_rebase_in_progress(repo_dir: &Path) -> bool {
-    repo_dir.join(".git").join("rebase-merge").exists()
-        || repo_dir.join(".git").join("rebase-apply").exists()
+/// Resolve a path INSIDE this checkout's git directory.
+///
+/// Every sandbox workdir is created by `git worktree add`, so `.git` is a
+/// FILE containing a gitdir pointer, not a directory — the real state lives
+/// under `<canonical>/.git/worktrees/<name>/`. Probing `<repo>/.git/<x>`
+/// therefore answered "no" for every worktree, which made
+/// `is_rebase_in_progress` permanently false (so a conflicted rebase returned
+/// an error without aborting, leaving the tree wedged) and
+/// `ensure_git_exclude` a permanent no-op (so the tool catalog and its
+/// endpoint credential file were staged onto the user's branch).
+///
+/// `rev-parse --git-path` is the only correct answer: git resolves it against
+/// whichever layout this checkout actually has.
+pub(crate) async fn git_path(repo_dir: &Path, relative: &str) -> Option<PathBuf> {
+    let env = route_env(repo_dir);
+    let resolved = try_git(repo_dir, &["rev-parse", "--git-path", relative], &env).await?;
+    let resolved = resolved.trim();
+    if resolved.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(resolved);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        repo_dir.join(path)
+    })
+}
+
+async fn is_rebase_in_progress(repo_dir: &Path) -> bool {
+    for state_dir in ["rebase-merge", "rebase-apply"] {
+        if let Some(path) = git_path(repo_dir, state_dir).await {
+            if path.exists() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn abort_rebase(repo_dir: &Path, env: &[(String, String)]) {
-    if is_rebase_in_progress(repo_dir) {
+    if is_rebase_in_progress(repo_dir).await {
         let _ = try_git(repo_dir, &["rebase", "--abort"], env).await;
     }
 }
@@ -1781,7 +1804,7 @@ async fn continue_rebase(repo_dir: &Path, env: &[(String, String)]) -> Result<()
                 &commit_env,
             )
             .await?;
-            if is_rebase_in_progress(repo_dir) {
+            if is_rebase_in_progress(repo_dir).await {
                 run_git(repo_dir, &["rebase", "--continue"], &cenv).await?;
             }
             Ok(())
@@ -1826,7 +1849,7 @@ async fn resolve_conflicts(repo_dir: &Path, env: &[(String, String)]) -> Result<
                 let remaining = get_conflicted_files(repo_dir, env).await;
                 if (!message.contains("CONFLICT")
                     && remaining.is_empty()
-                    && !is_rebase_in_progress(repo_dir))
+                    && !is_rebase_in_progress(repo_dir).await)
                     || remaining.is_empty()
                 {
                     abort_rebase(repo_dir, env).await;
@@ -1970,7 +1993,7 @@ async fn rebase_onto_base(repo_dir: &Path, base: &str) -> Result<(), RouteError>
     )
     .await
     {
-        if !is_rebase_in_progress(repo_dir) {
+        if !is_rebase_in_progress(repo_dir).await {
             return Err(RouteError::from(e));
         }
         resolve_conflicts(repo_dir, &env)
@@ -1978,7 +2001,7 @@ async fn rebase_onto_base(repo_dir: &Path, base: &str) -> Result<(), RouteError>
             .map_err(RouteError::from)?;
     }
 
-    if is_rebase_in_progress(repo_dir) {
+    if is_rebase_in_progress(repo_dir).await {
         abort_rebase(repo_dir, &env).await;
         return Err(RouteError::Generic("Rebase did not complete".to_string()));
     }

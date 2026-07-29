@@ -633,6 +633,7 @@ mod tests {
             "127.0.0.1:43120".into(),
             "http://127.0.0.1:43120".into(),
             vec!["one-time-bootstrap".into()],
+            "test-session-token".into(),
         )
         .unwrap();
         (
@@ -935,6 +936,7 @@ mod tests {
             "127.0.0.1:43120".into(),
             "http://127.0.0.1:43120".into(),
             vec!["bootstrap".into()],
+            "test-session-token".into(),
         )
         .unwrap();
         let set_cookie = auth

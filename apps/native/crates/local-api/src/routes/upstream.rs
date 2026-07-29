@@ -1085,15 +1085,23 @@ async fn send_with_retry(
 ) -> Result<reqwest::Response, ProxyError> {
     let url = format!("{}{path_and_query}", session.target());
 
+    let mut headers = headers.clone();
     if cookie_leads {
-        let first = send_once_no_bearer(method, &url, headers, body.clone()).await?;
+        let first = send_once_no_bearer(method, &url, &headers, body.clone()).await?;
         if first.status() != StatusCode::UNAUTHORIZED {
             return Ok(first);
         }
         // Cookie session rejected — fall through to the bearer flow below,
-        // which also revalidates the whole session state.
+        // which also revalidates the whole session state. DROP the cookie
+        // first: sending both is the exact combination the cookie-lead rule
+        // exists to avoid (Better Auth's api-key plugin probes the bearer and
+        // throws before the cookie beside it is read), so keeping a dead
+        // cookie here would make the recovery fail on precisely the nested
+        // `boundAuth` handlers it is meant to rescue.
+        headers.remove(header::COOKIE);
     }
 
+    let headers = &headers;
     let first = send_once(method, &url, headers, body.clone(), &token).await?;
     if first.status() != StatusCode::UNAUTHORIZED {
         return Ok(first);

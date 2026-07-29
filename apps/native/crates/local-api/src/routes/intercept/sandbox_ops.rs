@@ -85,7 +85,7 @@ pub(super) async fn try_dispatch(
         }
     };
     let target = state_for_sandbox(state, &sandbox);
-    Some(route(&target, method, tail, query, body.clone()).await)
+    Some(route(&target, method, tail, query, body.clone(), &handle).await)
 }
 
 /// Whether this module owns `tail`. Checked BEFORE the sandbox is adopted, so
@@ -109,12 +109,24 @@ async fn route(
     tail: &[&str],
     query: Option<&str>,
     body: Bytes,
+    handle: &str,
 ) -> Response {
     let state = State(target.clone());
-    // These handlers take the sandbox from headers; `state_for_sandbox` has
-    // already pointed this state's own target at it, so an empty map resolves
-    // to the right sandbox.
-    let headers = HeaderMap::new();
+    // The handle MUST be carried in the header, not left to `state_for_sandbox`.
+    //
+    // That helper retargets `repo_dir`/`config`/`setup`/`tasks`, which is
+    // enough for the handlers that read those fields (`config`, `git/*`,
+    // `preview-fetch`) — but `setup/*` and `exec/*` resolve their sandbox
+    // through `sandbox_manager`, which it deliberately does NOT rewrite. With
+    // an empty map those fell back to `sandbox_manager.active()`, so Stop /
+    // Restart / exec issued against a URL naming sandbox A operated on
+    // whichever sandbox happened to be active — and answered 200. In a
+    // multi-sandbox launcher that is the worst possible failure: destructive,
+    // silent, and addressed at the wrong tenant.
+    let mut headers = HeaderMap::new();
+    if let Ok(value) = axum::http::HeaderValue::from_str(handle) {
+        headers.insert(crate::sandbox::SANDBOX_HANDLE_HEADER, value);
+    }
 
     match (method, tail) {
         (&Method::GET, ["config"]) => crate::routes::config::read(state).await.into_response(),

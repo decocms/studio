@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use axum::http::{header, HeaderMap, Method};
-use rand::RngCore;
 
 use crate::auth::{constant_time_eq, require_bearer};
 use crate::error::ApiError;
@@ -54,10 +53,18 @@ impl ClientAuth {
         }
     }
 
+    /// `session_token`: the value the control cookie carries. Supplied by the
+    /// caller (rather than minted here) so it can be PERSISTED across
+    /// launches — see `stable_session_token` in `lib.rs`. Minting it per
+    /// launch invalidated every cookie the webview already held, so after any
+    /// backend restart a live page 401'd on every request, forever, with no
+    /// path back: the frontend's bootstrap runs once at module init, so
+    /// nothing re-established the session until the user manually reloaded.
     pub(crate) fn embedded(
         expected_host: String,
         control_origin: String,
         bootstrap_secrets: Vec<String>,
+        session_token: String,
     ) -> Result<Self, String> {
         validate_control_identity(&expected_host, &control_origin)?;
         let mut unique_secrets = Vec::<String>::new();
@@ -81,7 +88,7 @@ impl ClientAuth {
             session: Arc::new(EmbeddedSession {
                 expected_host: expected_host.into(),
                 control_origin: control_origin.into(),
-                session_token: generate_secret().into(),
+                session_token: session_token.into(),
                 bootstrap_secrets: Mutex::new(bootstrap_secrets),
             }),
         })
@@ -255,12 +262,6 @@ fn cookie_values<'a>(
         })
 }
 
-fn generate_secret() -> String {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use axum::http::HeaderValue;
@@ -272,6 +273,7 @@ mod tests {
             "studio.localhost:43120".into(),
             "http://studio.localhost:43120".into(),
             vec!["bootstrap-a".into(), "bootstrap-b".into()],
+            "test-session-token".into(),
         )
         .unwrap()
     }
@@ -295,18 +297,21 @@ mod tests {
             "studio.localhost:43120".into(),
             "http://studio.localhost:43120".into(),
             vec!["secret".into()],
+            "test-session-token".into(),
         )
         .is_ok());
         assert!(ClientAuth::embedded(
             "studio.localhost:43121".into(),
             "http://studio.localhost:4420".into(),
             vec!["secret".into()],
+            "test-session-token".into(),
         )
         .is_err());
         assert!(ClientAuth::embedded(
             "studio.localhost:43120".into(),
             "http://studio.localhost:43120/path".into(),
             vec!["secret".into()],
+            "test-session-token".into(),
         )
         .is_err());
     }

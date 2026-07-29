@@ -252,6 +252,51 @@ pub struct ServerHandle {
 /// `PRAGMA user_version` belongs to the threads migration ladder; the sandbox
 /// registry versions itself through its own `sandbox_metadata` table, so the
 /// two subsystems never fight over the header field.
+/// The control-cookie value, stable across launches for one app-data dir.
+///
+/// Deliberately NOT per-launch. The desktop dev loop restarts the backend on
+/// every rebuild, and a fresh token invalidated the HttpOnly cookie the live
+/// webview still held — so every request 401'd (including `/_auth/status`,
+/// which is why the shell showed no sandboxes and the preview iframe never
+/// opened) and nothing recovered, because the frontend bootstraps once at
+/// module init. A stable token makes a backend restart invisible to a page
+/// that is already open, which is how any ordinary web session behaves.
+///
+/// Stored 0600 beside the other local-api state. This is no weaker than what
+/// already lives there: the same directory holds the OAuth refresh token and
+/// the TLS CA key, and both are readable by any process running as this user.
+/// A rotation is one `rm` away.
+fn stable_session_token(app_root: &Path) -> String {
+    let path = app_root.join(".decocms").join("session-token");
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        let existing = existing.trim();
+        if !existing.is_empty() {
+            return existing.to_string();
+        }
+    }
+    let minted = generate_token();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // Created 0600 rather than written-then-chmod'ed: the window between the
+    // two is exactly when another local process could read it.
+    let write = || -> std::io::Result<()> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        use std::io::Write;
+        options.open(&path)?.write_all(minted.as_bytes())
+    };
+    if let Err(error) = write() {
+        tracing::warn!(%error, "could not persist the local session token; it will not survive a restart");
+    }
+    minted
+}
+
 pub(crate) const STUDIO_DB_FILE_NAME: &str = "studio.db";
 
 const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
@@ -511,6 +556,7 @@ pub async fn start_with_client_auth(
                 embedded.expected_host,
                 embedded.control_origin,
                 bootstrap_secrets,
+                stable_session_token(&opts.app_root),
             )
             .map_err(|message| StartError::EmbeddedAuth { message })?;
             // The org-filesystem mounts run `rclone` as a child, and it has to
