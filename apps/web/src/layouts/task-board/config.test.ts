@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { insertSortOrder } from "./config";
+import { insertSortOrder, runSortOrders } from "./config";
 import type { TaskBoardItem } from "./config";
 
 function item(id: string, sortOrder: number): TaskBoardItem {
@@ -48,5 +48,24 @@ describe("insertSortOrder", () => {
 
   test("hovering the last card's own row still resolves to the end", () => {
     expect(insertSortOrder(lane, "c", "c")).toBe(11);
+  });
+});
+
+describe("runSortOrders", () => {
+  test("a single card lands exactly on the drop slot", () => {
+    expect(runSortOrders(10, 1)).toEqual([10]);
+  });
+
+  test("a dragged group keeps its order and ends at the drop slot", () => {
+    const orders = runSortOrders(10, 3);
+    // Ascending — lanes sort by sortOrder asc, so input order must survive the
+    // round trip through the DB. Reversing the offset here reverses the group.
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
+    expect(orders.at(-1)).toBe(10);
+  });
+
+  test("the whole run sits at or before the drop slot", () => {
+    for (const order of runSortOrders(10, 5))
+      expect(order).toBeLessThanOrEqual(10);
   });
 });

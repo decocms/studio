@@ -52,7 +52,10 @@ import {
   useConnections,
   useProjectContext,
 } from "@/sdk";
-import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import {
+  getRepoScope,
+  isOrgSharedConnection,
+} from "@decocms/shared/github-repo-scope";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
@@ -67,6 +70,7 @@ import {
   primaryThread,
   PRIORITIES,
   PRIORITY_CONFIG,
+  runSortOrders,
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -323,8 +327,12 @@ export function TaskBoardPage() {
   // assigns to the Super Agent (Auto-fix, the lane assignee picker, the task
   // dialog) prompts to connect + pick a repo instead of enqueueing a run that
   // has nothing to load.
+  // Org-shared specifically: the virtual-MCP loader only injects `mcp-github`
+  // connections into an agent's toolset when `isOrgSharedConnection` holds, so a
+  // teammate's per-agent import child would satisfy a repoScope-only check
+  // while leaving the Super Agent with no repo at all.
   const hasRepo = useConnections({ slug: "mcp-github" }).some(
-    (c) => getRepoScope(c) !== null,
+    (c) => getRepoScope(c) !== null && isOrgSharedConnection(c),
   );
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
@@ -584,13 +592,14 @@ export function TaskBoardPage() {
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(ids, status, sortOrder) => {
-            // Cards dragged together keep their relative order, landing as a
-            // consecutive run right before the drop point.
+            // Cards dragged together land as a consecutive run ending at the
+            // drop point, keeping `ids` order.
+            const orders = runSortOrders(sortOrder, ids.length);
             ids.forEach((id, i) =>
               actions.update.mutate({
                 id,
                 status,
-                sortOrder: sortOrder - i * 1e-4,
+                sortOrder: orders[i]!,
               }),
             );
           }}
@@ -720,7 +729,7 @@ export function TaskBoardPage() {
           onAssign={(userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
             for (const id of selectedIds)
-              actions.update.mutate({ id, assigneeId: userId ?? undefined });
+              actions.update.mutate({ id, assigneeId: userId });
             clearSelection();
           }}
           onSetDueDate={(date) => {
@@ -938,10 +947,8 @@ function SelectionBar({
                       onClick={() => onAddTag(tag.id)}
                     >
                       <span
-                        className={cn(
-                          "size-2 rounded-full",
-                          tagDotClassName(tag.color),
-                        )}
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: tagDotColor(tag.color) }}
                       />
                       {tag.name}
                     </DropdownMenuItem>
