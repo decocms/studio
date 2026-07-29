@@ -36,6 +36,7 @@
 /// exactly the kind of thing that drifts.
 pub(crate) const WORKTREES_DIR: &str = "worktrees";
 
+pub(crate) mod dev_port;
 pub mod manager;
 pub mod org_mount;
 pub mod org_prompt;

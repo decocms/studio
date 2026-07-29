@@ -381,10 +381,19 @@ fn dev_port_for(
             return Some(port);
         }
     }
+    // The sandbox's held allocation — the port EVERY spawn path binds (the
+    // orchestrator and the UI's exec relaunch share `dev_port::resolve`).
+    // Consulted before the config's static value: outside a lifecycle-owned
+    // run (a server relaunched from the run button never transitions the
+    // lifecycle) the allocation is where the server actually is, and the
+    // config port is merely what seeded it.
+    let sandbox_root = crate::sandbox::dev_port::sandbox_root_for(&setup.repo_dir);
+    if let Some(port) = crate::sandbox::dev_port::assigned(&sandbox_root) {
+        return Some(port);
+    }
     let snapshot = config.snapshot();
     let cfg = snapshot.config?;
-    let port = cfg.get("application")?.get("port")?.as_u64()?;
-    u16::try_from(port).ok()
+    crate::sandbox::dev_port::configured_port(&cfg)
 }
 
 /// Phase-aware outcome for the preview `fallback` — distinguishes "a dev

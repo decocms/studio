@@ -180,7 +180,19 @@ pub async fn exec(
     let timeout_ms = exec_body.timeout_ms;
 
     let command = format!("{run_prefix} {name}");
-    let env = build_env(&snapshot.config, exec_body.env.as_ref());
+    // The PORT default must be the SAME port the preview proxy targets — the
+    // sandbox's allocation, not the config's static value. See
+    // `setup::dev::resolve_dev_port`; the config port only seeds a first
+    // allocation.
+    let sandbox_root = crate::sandbox::dev_port::sandbox_root_for(&target.repo_dir);
+    let default_port = crate::sandbox::dev_port::resolve(
+        &sandbox_root,
+        snapshot
+            .config
+            .as_ref()
+            .and_then(crate::sandbox::dev_port::configured_port),
+    );
+    let env = build_env(&snapshot.config, exec_body.env.as_ref(), default_port);
 
     let Some(admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
@@ -662,10 +674,13 @@ pub(crate) fn discover_scripts(cwd: &Path, pm: Option<&str>) -> Vec<String> {
 /// deep-merge-free env layering: process env (inherited by
 /// `tokio::process::Command` by default) < config's `env` map < body's
 /// `env` overrides < HOST/HOSTNAME/PORT defaults when still unset. See the
-/// module doc's deviation note #1.
+/// module doc's deviation note #1. `default_port` is the sandbox's resolved
+/// dev port ([`crate::setup::dev::resolve_dev_port`]); an explicit `PORT` in
+/// the config's env or the request body still wins.
 fn build_env(
     config: &Option<Value>,
     body_env: Option<&HashMap<String, String>>,
+    default_port: Option<u16>,
 ) -> HashMap<String, String> {
     let mut env = HashMap::new();
     if let Some(cfg_env) = config
@@ -689,12 +704,7 @@ fn build_env(
     env.entry("HOSTNAME".to_string())
         .or_insert_with(|| "0.0.0.0".to_string());
     if !env.contains_key("PORT") {
-        if let Some(port) = config
-            .as_ref()
-            .and_then(|c| c.get("application"))
-            .and_then(|a| a.get("port"))
-            .and_then(|p| p.as_u64())
-        {
+        if let Some(port) = default_port {
             env.insert("PORT".to_string(), port.to_string());
         }
     }
@@ -800,11 +810,31 @@ mod tests {
         }));
         let mut body_env = HashMap::new();
         body_env.insert("FOO".to_string(), "from-body".to_string());
-        let env = build_env(&cfg, Some(&body_env));
+        let env = build_env(&cfg, Some(&body_env), Some(4000));
         assert_eq!(env.get("FOO"), Some(&"from-body".to_string()));
         assert_eq!(env.get("HOST"), Some(&"custom-host".to_string()));
         assert_eq!(env.get("HOSTNAME"), Some(&"0.0.0.0".to_string()));
         assert_eq!(env.get("PORT"), Some(&"4000".to_string()));
+    }
+
+    /// The resolved allocation is a DEFAULT: someone who writes `PORT` into
+    /// the VM config's env or the exec body has said where the server goes,
+    /// and the allocator must not override them.
+    #[test]
+    fn an_explicit_port_beats_the_resolved_default() {
+        let cfg = Some(json!({ "env": { "PORT": "9999" } }));
+        let env = build_env(&cfg, None, Some(4000));
+        assert_eq!(env.get("PORT"), Some(&"9999".to_string()));
+
+        let mut body_env = HashMap::new();
+        body_env.insert("PORT".to_string(), "8888".to_string());
+        let env = build_env(&None, Some(&body_env), Some(4000));
+        assert_eq!(env.get("PORT"), Some(&"8888".to_string()));
+
+        // No default and nothing explicit: PORT stays unset so the dev
+        // server picks for itself (the pre-allocation behaviour).
+        let env = build_env(&None, None, None);
+        assert!(!env.contains_key("PORT"));
     }
 
     #[test]
