@@ -62,9 +62,15 @@ export interface DepMetricsInput {
 
 /**
  * `l1` — reflinked the node-local golden, install skipped.
- * `miss` — no golden for this (repo, lockfile) on this node; ran a full install.
+ * `l2` — extracted the shared cross-node archive; this node was cold.
+ * `miss` — neither tier had it; ran a full install.
+ *
+ * The split is the whole point: `l1`/`miss` alone cannot tell you whether
+ * adding L2 helped, only that some boots are still cold. `l2` is the count of
+ * boots that L2 rescued from a full install, and its `duration_ms` next to
+ * `miss`'s is what says whether the rescue was worth the shared store.
  */
-export type RestoreSource = "l1" | "miss";
+export type RestoreSource = "l1" | "l2" | "miss";
 
 export interface DepsRestoreInput {
   source: RestoreSource;

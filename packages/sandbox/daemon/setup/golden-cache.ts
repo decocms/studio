@@ -48,8 +48,8 @@ import { resolveCloneUrl } from "./install";
  * the number kept per repo (newest by mtime win). Restore touches a golden's
  * mtime, so an actively-used lockfile never ages out.
  */
-const GOLDEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const GOLDEN_MAX_PER_REPO = 5;
+export const GOLDEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const GOLDEN_MAX_PER_REPO = 5;
 
 /** Pod-local runtime caches that must not travel in a shared golden. */
 const RUNTIME_CACHE_DIRS = [".vite", ".cache"];

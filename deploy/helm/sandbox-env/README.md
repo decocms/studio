@@ -238,6 +238,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `netinit.enabled` | `true` | installs the iptables egress policy before user code starts |
 | `disableFsSidecar` | `false` | debug-only opt-out from the mandatory privileged org-fs sidecar |
 | `depsCache.enabled` / `depsCache.golden` | `false` / `false` | opt-in node-local dependency caches |
+| `depsCache.remote.enabled` / `depsCache.remote.pvcName` | `false` / `""` | opt-in L2 cross-node golden archive on an RWX PVC, mounted read-only |
 | `warmPool.enabled` / `warmPool.size` | `false` / `0` | only after measuring cold-start pain |
 | `warmPool.autoscaling.enabled` | `false` | HPA; requires at least one explicit metric |
 | `previewGateway.enabled` | `false` | wildcard `*.preview.<domain>` Gateway + cert |

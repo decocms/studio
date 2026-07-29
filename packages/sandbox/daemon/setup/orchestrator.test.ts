@@ -14,6 +14,7 @@ import { installProtectedBranchHook } from "../git/protect-branch";
 import { LifecycleManager } from "../lifecycle/manager";
 import type { LifecycleState } from "../events/types";
 import { SetupOrchestrator } from "./orchestrator";
+import { publishRemoteGolden } from "./remote-golden";
 
 function tempRoot(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "orch-"));
@@ -808,4 +809,119 @@ describe("SetupOrchestrator install-step branch protection", () => {
       cleanup();
     }
   }, 20_000);
+});
+
+describe("SetupOrchestrator dependency-cache reporting", () => {
+  async function drain(o: {
+    isRunning: () => boolean;
+    pendingCount: () => number;
+  }) {
+    const deadline = Date.now() + 15_000;
+    while (o.isRunning() || o.pendingCount() > 0) {
+      if (Date.now() > deadline) throw new Error("orchestrator hung");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  /**
+   * The label is the deliverable. `l1` vs `l2` vs `miss` is the only thing
+   * that answers "is the shared tier worth its store" — mislabel an L2 hit as
+   * `l1` and the dashboard reports a node-local cache doing work it never did,
+   * which is worse than no metric at all. Nothing else in the suite pins the
+   * label to the branch that actually ran.
+   */
+  it("reports source=l2 when the shared archive served the install", async () => {
+    const { dir, cleanup } = tempRoot();
+    const prevRemote = process.env.GOLDEN_CACHE_REMOTE;
+    const prevGolden = process.env.GOLDEN_CACHE_ENABLED;
+    const logged: string[] = [];
+    const realLog = console.log;
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      writeFileSync(join(repoDir, "package.json"), JSON.stringify({}));
+      writeFileSync(join(repoDir, "bun.lock"), '{"lockfileVersion":1}');
+
+      // Publish through the real code, from a DIFFERENT root — this stands in
+      // for another node having warmed the shared store.
+      const other = join(dir, "other-node");
+      mkdirSync(join(other, "node_modules", "left-pad"), { recursive: true });
+      writeFileSync(join(other, "bun.lock"), '{"lockfileVersion":1}');
+      writeFileSync(
+        join(other, "node_modules", "left-pad", "index.js"),
+        "module.exports = 1;",
+      );
+      const remoteRoot = join(dir, "shared");
+      mkdirSync(remoteRoot);
+      process.env.GOLDEN_CACHE_REMOTE = remoteRoot;
+      // L1 stays OFF, so a hit here can only have come from L2.
+      delete process.env.GOLDEN_CACHE_ENABLED;
+      const cloneUrl = "https://github.com/acme/site.git";
+      await publishRemoteGolden({
+        config: { git: { repository: { cloneUrl } } } as never,
+        installRoot: other,
+        pm: "bun",
+      });
+
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "bun" }, runtime: "node" },
+            git: { repository: { cloneUrl } },
+            runtimePathDirs: [],
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => null,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => false, mark: () => {} } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      console.log = (...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      };
+      orchestrator.resumeFrom("install");
+      await drain(orchestrator);
+      console.log = realLog;
+
+      const line = logged.find((l) => l.includes('"sandbox.deps.restore"'));
+      expect(line).toBeDefined();
+      expect(JSON.parse(line as string).source).toBe("l2");
+
+      // And the install really was skipped in favour of the archive.
+      expect(
+        readFileSync(
+          join(repoDir, "node_modules", "left-pad", "index.js"),
+          "utf8",
+        ),
+      ).toBe("module.exports = 1;");
+    } finally {
+      console.log = realLog;
+      if (prevRemote === undefined) delete process.env.GOLDEN_CACHE_REMOTE;
+      else process.env.GOLDEN_CACHE_REMOTE = prevRemote;
+      if (prevGolden === undefined) delete process.env.GOLDEN_CACHE_ENABLED;
+      else process.env.GOLDEN_CACHE_ENABLED = prevGolden;
+      cleanup();
+    }
+  });
 });
