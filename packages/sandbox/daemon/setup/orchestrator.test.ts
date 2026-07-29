@@ -925,3 +925,88 @@ describe("SetupOrchestrator dependency-cache reporting", () => {
     }
   });
 });
+
+describe("SetupOrchestrator no-install reporting", () => {
+  async function drain(o: {
+    isRunning: () => boolean;
+    pendingCount: () => number;
+  }) {
+    const deadline = Date.now() + 15_000;
+    while (o.isRunning() || o.pendingCount() > 0) {
+      if (Date.now() > deadline) throw new Error("orchestrator hung");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  /**
+   * Measured in prod: most live sandboxes are Deno, which needs no install and
+   * so emitted nothing at all — making "the cache cannot help this runtime"
+   * indistinguishable from "no traffic", and the hit-rate denominator
+   * unknowable. This pins the label to that branch.
+   */
+  it("reports source=no-install for a runtime with no install step", async () => {
+    const { dir, cleanup } = tempRoot();
+    const logged: string[] = [];
+    const realLog = console.log;
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      // Deno project: a task-bearing deno.json and no package manifest, so
+      // spawnInstall has nothing to run.
+      writeFileSync(
+        join(repoDir, "deno.json"),
+        JSON.stringify({ tasks: { dev: "echo hi" } }),
+      );
+
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "deno" }, runtime: "deno" },
+            git: {
+              repository: { cloneUrl: "https://github.com/acme/site.git" },
+            },
+            runtimePathDirs: [],
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => null,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => false, mark: () => {} } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      console.log = (...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      };
+      orchestrator.resumeFrom("install");
+      await drain(orchestrator);
+      console.log = realLog;
+
+      const line = logged.find((l) => l.includes('"sandbox.deps.restore"'));
+      expect(line).toBeDefined();
+      expect(JSON.parse(line as string).source).toBe("no-install");
+    } finally {
+      console.log = realLog;
+      cleanup();
+    }
+  });
+});
