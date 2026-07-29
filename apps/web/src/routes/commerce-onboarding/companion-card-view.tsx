@@ -134,16 +134,53 @@ export function ConfigureAction({
 }
 
 /** The "Connected ✓" label + trailing controls (gear, unlink) passed as
- *  `controls`. Kept presentational so the preview can render mock controls. */
-export function ConnectedAction({ controls }: { controls?: ReactNode }) {
+ *  `controls`. `detail` (repo full name, GA4 property, etc.) replaces the
+ *  generic "Conectado" text once known, so the label itself identifies what's
+ *  linked instead of repeating it next to the gear. Kept presentational so the
+ *  preview can render mock controls. */
+export function ConnectedAction({
+  detail,
+  controls,
+}: {
+  detail?: string | null;
+  controls?: ReactNode;
+}) {
   const t = useT();
   return (
     <div className="flex items-center gap-1">
       <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <CheckCircle size={16} className="text-success" />{" "}
-        {t("commerceOnboarding.companionCard.connected")}
+        {detail ? (
+          <span className="max-w-40 truncate text-foreground">{detail}</span>
+        ) : (
+          t("commerceOnboarding.companionCard.connected")
+        )}
       </span>
       {controls}
     </div>
+  );
+}
+
+/** The gear config trigger for a connected source. Shared by both the
+ *  shared-SA and OAuth lanes in {@link CompanionCard} so they can't drift, and
+ *  by the dev preview so it renders pixel-identical to production. */
+export function ConnectedConfigButton({
+  ariaLabel,
+  onClick,
+}: {
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="shrink-0"
+      onClick={onClick}
+      aria-label={ariaLabel}
+    >
+      <Settings01 size={16} />
+    </Button>
   );
 }
