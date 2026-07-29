@@ -15,6 +15,7 @@ import type { Broadcaster } from "../events/broadcast";
 import type { DaemonStatus } from "../events/types";
 import type { BranchStatusMonitor } from "../git/branch-status";
 import { ensureGitExclude } from "../git-exclude";
+import { fastForwardToBase } from "../git/fast-forward-to-base";
 import { gitSync } from "../git/git-sync";
 import { spawnCheckoutBranch } from "../git/checkout-branch";
 import { syncOriginRemote } from "../git/sync-origin-remote";
@@ -338,8 +339,36 @@ export class SetupOrchestrator {
     // exec, and repoDir doesn't exist until clone returns).
     await this.gitSetup(config);
     await this.fillApplicationDefaults(config.repoDir);
+    // Advance an idle-and-unchanged sandbox to its base branch BEFORE install,
+    // so install runs against the up-to-date lockfile. No-op unless the branch
+    // is clean-of-commits + behind base. Only fires on boot (fresh/adopt/
+    // warm-pool re-bootstrap) — a live resume keeps the same daemon and is
+    // intentionally out of scope for now (its content is at most idle-TTL stale,
+    // not the days-stale case this targets).
+    await this.maybeFastForwardToBase(config.repoDir);
     this.deps.branchStatus.refresh();
     return true;
+  }
+
+  /**
+   * Fast-forward the checked-out branch to `origin/<base>` when it has no local
+   * commits and merely fell behind while idle. Best-effort and non-throwing, so
+   * a failure never blocks the boot.
+   */
+  private async maybeFastForwardToBase(repoDir: string): Promise<void> {
+    try {
+      const result = await fastForwardToBase(repoDir);
+      if (result.fastForwarded) {
+        this.chunk(
+          `[orchestrator] fast-forwarded ${result.branch} to origin/${result.base} ` +
+            `(+${result.behindBase} commits${result.pushed ? ", pushed" : ""})\r\n`,
+        );
+      }
+    } catch (e) {
+      this.rawChunk(
+        `\r\n[orchestrator] fast-forward to base failed: ${(e as Error).message}\r\n`,
+      );
+    }
   }
 
   /**
