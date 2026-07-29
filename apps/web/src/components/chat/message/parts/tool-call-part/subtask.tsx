@@ -444,6 +444,7 @@ function BackgroundSubtaskBody({
  *  (`…/jobs/:jobId/stream`) while the panel is open, falling back to the
  *  persisted nested rows once the run completes / the live buffer is purged. */
 function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
+  const t = useT();
   const jobId = (part.output as { jobId?: string } | undefined)?.jobId;
   const { taskId: threadId } = useChatTask();
   const { org } = useProjectContext();
@@ -474,13 +475,13 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
       icon={
         <IntegrationIcon
           icon={undefined}
-          name="Subtask"
+          name={t("chat.subtask.subtaskNoun")}
           size="2xs"
           className="rounded-xs"
           fallbackIcon={<Users03 />}
         />
       }
-      title="Subtask"
+      title={t("chat.subtask.subtaskNoun")}
       summary={summary}
       state={running ? "loading" : "idle"}
       onOpenChange={setOpen}
@@ -496,6 +497,7 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
 }
 
 export function SubtaskPartFallback(props: SubtaskPartProps) {
+  const t = useT();
   const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
@@ -505,7 +507,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
       icon={
         <IntegrationIcon
           icon={undefined}
-          name="Subtask"
+          name={t("chat.subtask.subtaskNoun")}
           size="2xs"
           className="rounded-xs"
           fallbackIcon={<Users03 />}
@@ -529,6 +531,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
  * <Suspense fallback={<SubtaskPartFallback ... />}> by the caller.
  */
 export function SubtaskPart(props: SubtaskPartProps) {
+  const t = useT();
   const target = useConnection(props.part.input?.agent_id);
   const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
@@ -540,7 +543,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
       icon={
         <IntegrationIcon
           icon={target?.icon}
-          name={target?.title ?? "Subtask"}
+          name={target?.title ?? t("chat.subtask.subtaskNoun")}
           size="2xs"
           className="rounded-xs"
           fallbackIcon={<Users03 />}

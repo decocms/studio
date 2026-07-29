@@ -371,6 +371,7 @@ export const chat = {
   "chat.subtask.resultLabel": "Result",
   "chat.subtask.running": "Running…",
   "chat.subtask.runningInBackground": "Running in the background…",
+  "chat.subtask.subtaskNoun": "Subtask",
   "chat.subtask.taskLabel": "Task",
   "chat.takeScreenshot.failed": "Failed",
   "chat.takeScreenshot.screenshot": "Screenshot",
