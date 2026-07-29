@@ -22,10 +22,15 @@
  * immediately and the boot path is exactly L1-then-install as today.
  */
 
-import { mkdir, rename, rm, stat, utimes } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Config } from "../types";
-import { lockfileHash, repoHash } from "./golden-cache";
+import {
+  GOLDEN_MAX_PER_REPO,
+  GOLDEN_TTL_MS,
+  lockfileHash,
+  repoHash,
+} from "./golden-cache";
 import { resolveCloneUrl } from "./install";
 
 /**
@@ -289,8 +294,74 @@ export async function publishRemoteGolden(
       // Lost the race to another node — its archive is equally valid for this
       // key, so drop ours.
       await rm(tmp, { force: true }).catch(() => {});
+      return;
     }
+    await pruneRemoteGoldens(opts.remoteRoot, { log });
   } catch (e) {
     log(`[golden-l2] publish skipped: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Bound shared-store growth, same rule as the node-local store
+ * (golden-cache.ts `pruneGoldens`): per repo, drop archives untouched for
+ * longer than the TTL, then keep only the newest GOLDEN_MAX_PER_REPO. Restore
+ * touches an archive's mtime, so a lockfile still booting never ages out.
+ *
+ * Async throughout — the store is NFS, where a readdir over the whole tree is
+ * a network round trip per entry. `pruneGoldens` may use *Sync on local disk;
+ * here that would park the daemon's event loop and stall its health probe
+ * (CONTRIBUTING rule #1).
+ *
+ * Opportunistic (after a successful publish) and best-effort, so it only ever
+ * runs where publish does — i.e. wherever the store is writable. Racing a
+ * concurrent restore is safe: the reader either finished its extract or falls
+ * back to install.
+ */
+export async function pruneRemoteGoldens(
+  remoteRoot: string | undefined = process.env.GOLDEN_CACHE_REMOTE,
+  opts: {
+    ttlMs?: number;
+    maxPerRepo?: number;
+    now?: number;
+    log?: Log;
+  } = {},
+): Promise<void> {
+  if (!remoteRoot) return;
+  const ttlMs = opts.ttlMs ?? GOLDEN_TTL_MS;
+  const maxPerRepo = opts.maxPerRepo ?? GOLDEN_MAX_PER_REPO;
+  const now = opts.now ?? Date.now();
+  const root = join(remoteRoot, "golden");
+  let repos: string[];
+  try {
+    repos = await readdir(root);
+  } catch {
+    return; // nothing published yet
+  }
+  for (const repo of repos) {
+    const repoDir = join(root, repo);
+    let entries: { path: string; mtime: number }[];
+    try {
+      const names = await readdir(repoDir);
+      entries = await Promise.all(
+        names
+          .filter((n) => n.endsWith(".tar.zst")) // skip in-flight `.tmp.<pid>`
+          .map(async (n) => {
+            const path = join(repoDir, n);
+            return { path, mtime: (await stat(path)).mtimeMs };
+          }),
+      );
+    } catch {
+      continue;
+    }
+    entries.sort((a, b) => b.mtime - a.mtime);
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (!e) continue;
+      if (i >= maxPerRepo || now - e.mtime > ttlMs) {
+        await rm(e.path, { force: true }).catch(() => {});
+        opts.log?.(`[golden-l2] pruned ${e.path}`);
+      }
+    }
   }
 }

@@ -6,6 +6,7 @@ import {
   readFile,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { randomFillSync } from "node:crypto";
@@ -14,6 +15,7 @@ import { join } from "node:path";
 import type { Config } from "../types";
 import {
   publishRemoteGolden,
+  pruneRemoteGoldens,
   remoteGoldenPath,
   tryRestoreRemoteGolden,
 } from "./remote-golden";
@@ -268,5 +270,72 @@ describe("remote golden (L2)", () => {
 
     // And no temp file survived.
     expect((await readdir(dir)).filter((e) => e.includes(".tmp."))).toEqual([]);
+  });
+
+  test("prune bounds the store by TTL and per-repo cap", async () => {
+    const nodeA = await makeInstallRoot(base, "gc-a");
+    await seedNodeModules(nodeA);
+    await publishRemoteGolden({
+      config: config(),
+      installRoot: nodeA,
+      pm: "bun",
+    });
+    const { dir, path: fresh } = await soleArchive(remoteRoot);
+
+    // Three older archives (one already past the TTL) plus an in-flight temp
+    // from a concurrent publisher on another node.
+    const day = 24 * 60 * 60 * 1000;
+    const aged: string[] = [];
+    for (const [i, ageDays] of [1, 2, 9].entries()) {
+      const p = join(dir, `bun-old${i}.tar.zst`);
+      await writeFile(p, "x");
+      const t = new Date(Date.now() - ageDays * day);
+      await utimes(p, t, t);
+      aged.push(p);
+    }
+    const inflight = join(dir, "bun-new.tar.zst.tmp.999");
+    await writeFile(inflight, "half an archive");
+
+    await pruneRemoteGoldens(remoteRoot, { maxPerRepo: 2 });
+
+    // Newest 2 by mtime survive the cap; the 9-day-old one is past the TTL and
+    // would be dropped even under a generous cap.
+    expect(await exists(fresh)).toBe(true);
+    expect(await exists(aged[0] as string)).toBe(true);
+    expect(await exists(aged[1] as string)).toBe(false);
+    expect(await exists(aged[2] as string)).toBe(false);
+    // A temp file is another node's in-flight publish, not a prunable entry —
+    // reaping it would corrupt a publish already in progress.
+    expect(await exists(inflight)).toBe(true);
+  });
+
+  test("a successful publish prunes the store", async () => {
+    // The wiring, not the rule: without this the store still grows forever
+    // however correct pruneRemoteGoldens is on its own.
+    const nodeA = await makeInstallRoot(base, "gcw-a");
+    await seedNodeModules(nodeA);
+    await publishRemoteGolden({
+      config: config(),
+      installRoot: nodeA,
+      pm: "bun",
+    });
+    const { dir } = await soleArchive(remoteRoot);
+
+    const stale = join(dir, "bun-stale.tar.zst");
+    await writeFile(stale, "x");
+    const old = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);
+    await utimes(stale, old, old);
+
+    // A new lockfile is a new key, so this publish is not the idempotent no-op.
+    await writeFile(join(nodeA, "bun.lock"), '{"lockfileVersion":2}');
+    await publishRemoteGolden({
+      config: config(),
+      installRoot: nodeA,
+      pm: "bun",
+    });
+
+    expect(await exists(stale)).toBe(false);
+    // Both real keys are recent, so the cap keeps them.
+    expect((await readdir(dir)).length).toBe(2);
   });
 });
