@@ -64,13 +64,21 @@ export interface DepMetricsInput {
  * `l1` — reflinked the node-local golden, install skipped.
  * `l2` — extracted the shared cross-node archive; this node was cold.
  * `miss` — neither tier had it; ran a full install.
+ * `no-install` — the runtime needed no install step at all, so no cache of
+ *   any tier could have helped. Deno projects take this path (deno fetches at
+ *   runtime and there is no `node_modules`), as does a repo with no manifest.
  *
- * The split is the whole point: `l1`/`miss` alone cannot tell you whether
- * adding L2 helped, only that some boots are still cold. `l2` is the count of
- * boots that L2 rescued from a full install, and its `duration_ms` next to
- * `miss`'s is what says whether the rescue was worth the shared store.
+ * The split is the whole point. `l1`/`miss` alone cannot say whether adding L2
+ * helped, only that some boots are still cold: `l2` is the count of boots the
+ * shared archive rescued, and its `duration_ms` beside `miss`'s is the saving.
+ *
+ * `no-install` is what makes the DENOMINATOR knowable, and it is load-bearing
+ * for the buy decision. Without it, a boot the cache cannot serve is
+ * indistinguishable from no boot at all — so a fleet that is mostly Deno reads
+ * as "barely any dependency traffic" instead of "this cache is inapplicable
+ * here", and its share is the ceiling on what any golden tier can ever win.
  */
-export type RestoreSource = "l1" | "l2" | "miss";
+export type RestoreSource = "l1" | "l2" | "miss" | "no-install";
 
 export interface DepsRestoreInput {
   source: RestoreSource;

@@ -466,6 +466,15 @@ export class SetupOrchestrator {
     // the install fingerprint so resume doesn't retry on every boot.
     if (!installPromise) {
       installTee.close();
+      // Reported, not silent: this is the path every Deno project takes, and
+      // without a line here "no data" and "the cache is irrelevant for this
+      // runtime" look identical in the log store.
+      emitDepsRestore({
+        source: "no-install",
+        cloneUrl: resolveCloneUrl(config),
+        durationMs: Date.now() - depsStartedAt,
+        bootId: process.env.DAEMON_BOOT_ID ?? "",
+      });
       this.markInstallSucceeded(config);
       return true;
     }
