@@ -1713,8 +1713,9 @@ export interface TaskBoardItem {
   updatedAt: string;
 }
 
-/** One entry in a task's change timeline. */
-export type TaskBoardActivityKind =
+/** What happened, for one entry in a task's change timeline. Mirrored by a
+ *  CHECK constraint in migration 150 — widen both together. */
+export type TaskBoardActivityAction =
   | "created"
   | "status_changed"
   | "assignee_changed"
@@ -1723,29 +1724,30 @@ export type TaskBoardActivityKind =
   | "title_changed"
   | "description_changed";
 
+/** Append-only: who did what to a task, and when. */
 export interface TaskBoardActivityTable {
   id: string;
-  organization_id: string;
   task_board_item_id: string;
-  kind: string;
-  /** User id, or the "system" sentinel for machine actors. */
+  action: TaskBoardActivityAction;
+  /** The user who did it; null when the agent/system did, or when that user's
+   *  account was deleted (FK `on delete set null`). */
   actor_id: string | null;
   data: ColumnType<
     Record<string, unknown> | null,
     string | null | undefined,
     string | null
   >;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
+  occurred_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 export interface TaskBoardActivity {
   id: string;
   taskBoardItemId: string;
-  kind: TaskBoardActivityKind;
+  action: TaskBoardActivityAction;
   actorId: string | null;
   /** Event payload — e.g. { from, to } for a status/assignee change. */
   data: Record<string, unknown>;
-  createdAt: string;
+  occurredAt: string;
 }
 
 // ============================================================================

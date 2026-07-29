@@ -129,13 +129,13 @@ export async function advanceTaskBoardForRun(
         { status },
         ctx.auth?.user?.id ?? current.updatedBy,
       );
-      // Timeline entry for the agent-driven move (actor "system"). Best-effort.
+      // Timeline entry for the agent-driven move — no human actor, hence null.
+      // Best-effort.
       await ctx.storage.taskBoard
         .recordActivity({
-          organizationId: orgId,
           taskBoardItemId: itemId,
-          kind: "status_changed",
-          actorId: "system",
+          action: "status_changed",
+          actorId: null,
           data: { from: current.status, to: status },
         })
         .catch((err) =>

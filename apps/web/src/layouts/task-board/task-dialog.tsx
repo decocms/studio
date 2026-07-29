@@ -897,7 +897,7 @@ function ActivitySection({
     ...(activity ?? []).map(
       (a): Ev => ({
         kind: "activity",
-        at: new Date(a.createdAt).getTime(),
+        at: new Date(a.occurredAt).getTime(),
         activity: a,
       }),
     ),
@@ -1076,7 +1076,7 @@ function describeActivity(
   const d = a.data;
   const from = chipSentinel("from");
   const to = chipSentinel("to");
-  switch (a.kind) {
+  switch (a.action) {
     case "created":
       return t("taskBoard.taskDialog.activityCreated");
     case "status_changed":
@@ -1122,17 +1122,16 @@ function describeActivity(
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
     default: {
-      const _exhaustive: never = a.kind;
+      const _exhaustive: never = a.action;
       return String(_exhaustive);
     }
   }
 }
 
-/** True for the machine actor behind an agent-driven change. */
+/** True for the machine actor behind an agent-driven change — the log stores a
+ *  null actor for those. */
 function isMachineActor(actorId: string | null): boolean {
-  return (
-    !actorId || actorId === "system" || actorId === SUPER_AGENT_ASSIGNEE_ID
-  );
+  return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
 }
 
 /** A run of consecutive timeline events, avatars joined by a vertical rail. */
@@ -1194,7 +1193,7 @@ function TimelineBlock({
             {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
-              {formatTimeAgo(new Date(a.createdAt))}
+              {formatTimeAgo(new Date(a.occurredAt))}
             </span>
           </span>
         </div>

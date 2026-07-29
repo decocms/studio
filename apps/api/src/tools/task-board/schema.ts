@@ -69,7 +69,8 @@ export const TaskBoardItemSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-const TaskBoardActivityKindSchema = z.enum([
+/** Mirrors `TaskBoardActivityAction` and migration 150's CHECK constraint. */
+const TaskBoardActivityActionSchema = z.enum([
   "created",
   "status_changed",
   "assignee_changed",
@@ -79,14 +80,14 @@ const TaskBoardActivityKindSchema = z.enum([
   "description_changed",
 ]);
 
-/** One entry in a task's change timeline. */
+/** One entry in a task's change timeline — who did what, when. */
 export const TaskBoardActivitySchema = z.object({
   id: z.string(),
   taskBoardItemId: z.string(),
-  kind: TaskBoardActivityKindSchema,
-  /** User id, or the "system" sentinel for machine actors. */
+  action: TaskBoardActivityActionSchema,
+  /** The member who did it; null when the agent/system did. */
   actorId: z.string().nullable(),
   /** Event payload, e.g. { from, to } for a status/assignee change. */
   data: z.record(z.string(), z.unknown()),
-  createdAt: z.string().datetime(),
+  occurredAt: z.string().datetime(),
 });

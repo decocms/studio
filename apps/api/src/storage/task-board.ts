@@ -9,7 +9,7 @@ import type { Kysely } from "kysely";
 import type {
   Database,
   TaskBoardActivity,
-  TaskBoardActivityKind,
+  TaskBoardActivityAction,
   TaskBoardItem,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
@@ -470,11 +470,11 @@ export class TaskBoardStorage {
   // --------------------------------------------------------------------------
 
   /** Append one activity event. Best-effort at the call site — never let a log
-   *  write fail the change it describes. */
+   *  write fail the change it describes. A null `actorId` means the
+   *  agent/system did it, not a member. */
   async recordActivity(params: {
-    organizationId: string;
     taskBoardItemId: string;
-    kind: TaskBoardActivityKind;
+    action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
   }): Promise<void> {
@@ -482,39 +482,40 @@ export class TaskBoardStorage {
       .insertInto("task_board_activity")
       .values({
         id: generatePrefixedId("act"),
-        organization_id: params.organizationId,
         task_board_item_id: params.taskBoardItemId,
-        kind: params.kind,
+        action: params.action,
         actor_id: params.actorId,
         data: params.data ? JSON.stringify(params.data) : null,
-        created_at: new Date().toISOString(),
+        occurred_at: new Date().toISOString(),
       })
       .execute();
   }
 
-  /** A task's activity, oldest first (timeline order). */
+  /** A task's activity, oldest first (timeline order). Tenant-scoped through
+   *  the task, which is the only thing carrying an org. */
   async listActivity(
     taskBoardItemId: string,
     organizationId: string,
   ): Promise<TaskBoardActivity[]> {
     const rows = await this.db
-      .selectFrom("task_board_activity")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .orderBy("created_at", "asc")
+      .selectFrom("task_board_activity as a")
+      .innerJoin("task_board_items as item", "item.id", "a.task_board_item_id")
+      .selectAll("a")
+      .where("item.organization_id", "=", organizationId)
+      .where("a.task_board_item_id", "=", taskBoardItemId)
+      .orderBy("a.occurred_at", "asc")
       .execute();
     return rows.map((row) => ({
       id: row.id,
       taskBoardItemId: row.task_board_item_id,
-      kind: row.kind as TaskBoardActivityKind,
+      action: row.action,
       actorId: row.actor_id,
       data:
         typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? {}),
-      createdAt:
-        row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : row.created_at,
+      occurredAt:
+        row.occurred_at instanceof Date
+          ? row.occurred_at.toISOString()
+          : row.occurred_at,
     }));
   }
 

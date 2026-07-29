@@ -62,9 +62,8 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     });
 
     await recordTaskActivity(ctx, {
-      organizationId,
       taskBoardItemId: item.id,
-      kind: "created",
+      action: "created",
       actorId: getUserId(ctx)!,
     });
 

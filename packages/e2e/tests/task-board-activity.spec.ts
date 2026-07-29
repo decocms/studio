@@ -9,10 +9,10 @@ interface TaskBoardItem {
 }
 interface Activity {
   id: string;
-  kind: string;
+  action: string;
   actorId: string | null;
   data: Record<string, unknown>;
-  createdAt: string;
+  occurredAt: string;
 }
 
 test.describe("task board activity log", () => {
@@ -55,7 +55,7 @@ test.describe("task board activity log", () => {
       { taskBoardItemId: item.id },
     );
 
-    expect(activity.map((a) => a.kind)).toEqual([
+    expect(activity.map((a) => a.action)).toEqual([
       "created",
       "status_changed",
       "assignee_changed",

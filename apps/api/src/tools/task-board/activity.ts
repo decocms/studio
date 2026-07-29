@@ -9,7 +9,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
-import type { TaskBoardActivityKind } from "@/storage/types";
+import type { TaskBoardActivityAction } from "@/storage/types";
 import { TaskBoardActivitySchema } from "./schema";
 
 /** Append an activity event, swallowing failures — a log write must never fail
@@ -17,9 +17,8 @@ import { TaskBoardActivitySchema } from "./schema";
 export async function recordTaskActivity(
   ctx: StudioContext,
   params: {
-    organizationId: string;
     taskBoardItemId: string;
-    kind: TaskBoardActivityKind;
+    action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
   },

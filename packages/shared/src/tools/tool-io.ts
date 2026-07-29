@@ -418,7 +418,7 @@ export interface StudioToolIO {
       activity: {
         id: string;
         taskBoardItemId: string;
-        kind:
+        action:
           | "created"
           | "status_changed"
           | "assignee_changed"
@@ -428,7 +428,7 @@ export interface StudioToolIO {
           | "description_changed";
         actorId: string | null;
         data: Record<string, unknown>;
-        createdAt: string;
+        occurredAt: string;
       }[];
     };
   };
