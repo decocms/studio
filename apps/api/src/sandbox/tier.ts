@@ -38,11 +38,18 @@ export interface SandboxTierScope {
  * Keys are matched lowercased (GitHub owner/repo are case-insensitive, and org
  * slugs are already lowercase), so a map written with the casing a human reads
  * off the GitHub UI still matches.
+ *
+ * An absent map is "no overrides", not a bug: this is an override-only lookup,
+ * so nothing configured means every sandbox takes the provider's default —
+ * exactly what an empty map means. Typed optional because `getSettings()` is a
+ * partial in unit tests, and a provisioning path must not throw over a setting
+ * whose whole meaning is "may be unset".
  */
 export function resolveSandboxTier(
-  map: Record<string, string>,
+  map: Record<string, string> | undefined,
   scope: SandboxTierScope,
 ): string | undefined {
+  if (!map) return undefined;
   const org = scope.orgSlug?.trim().toLowerCase();
   if (!org) return undefined;
   if (scope.repo) {

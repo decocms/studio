@@ -65,4 +65,19 @@ describe("resolveSandboxTier", () => {
       ),
     ).toBeUndefined();
   });
+
+  it("treats an absent map as no overrides instead of throwing", () => {
+    // This is the whole provisioning path: SANDBOX_START resolves a tier
+    // before calling runner.ensure, so throwing here fails the provision
+    // outright. It did — 16 SANDBOX_START tests died on
+    // "undefined is not an object" because their getSettings() stub has no
+    // sandboxTierMap, and any settings object missing the key would do the
+    // same in production.
+    expect(
+      resolveSandboxTier(undefined, {
+        orgSlug: "acme",
+        repo: { owner: "acme", name: "monorepo" },
+      }),
+    ).toBeUndefined();
+  });
 });
