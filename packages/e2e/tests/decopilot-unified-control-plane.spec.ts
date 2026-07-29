@@ -385,6 +385,12 @@ test.describe("decopilot desktop — executor death mid-run reaches a liveness t
         expect(row.failureKind).toBe("liveness");
         expect(row.failureReason ?? "").toContain("liveness");
       }).toPass({ timeout: 170_000, intervals: [2_000, 5_000, 10_000] });
+
+      // The liveness terminal is the ONLY signal. The projector's own stream
+      // error must never land in the thread as the assistant saying "Error:
+      // producer produced no output before timeout" — that string is a
+      // projector implementation detail, not a reply.
+      expect(await fetchErrorPartTexts(db, threadId)).toEqual([]);
     } finally {
       await daemon?.close();
       await db.end();
