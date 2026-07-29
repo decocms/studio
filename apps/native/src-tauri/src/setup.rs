@@ -268,6 +268,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     };
     let mut embedded =
         local_api::EmbeddedOptions::new(control.expected_host(), browser_origin.clone());
+    embedded.listener_host = Some(control.listener_host());
     embedded.ui_assets = bundled_ui;
     embedded.preview_cookie_selftest = selftest_mode;
     let handle = local_api::start_embedded(

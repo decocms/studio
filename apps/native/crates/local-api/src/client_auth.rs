@@ -7,6 +7,12 @@ use crate::error::ApiError;
 
 pub(crate) const LOCAL_SESSION_COOKIE_NAME: &str = "decocms-local-session";
 
+/// The header carrying the MOUNT-scoped credential — see
+/// [`ClientAuth::mount_token_matches`]. A header, not a cookie: the only
+/// presenter is `rclone`, which has no jar, and keeping it out of the jar means
+/// no browser can ever be tricked into attaching it.
+pub(crate) const MOUNT_TOKEN_HEADER: &str = "x-decocms-mount-token";
+
 #[derive(Clone)]
 pub(crate) enum ClientAuth {
     Bearer { token: Arc<str> },
@@ -40,9 +46,15 @@ pub(crate) fn remove_local_session_cookie(headers: &mut HeaderMap) {
 }
 
 pub(crate) struct EmbeddedSession {
-    expected_host: Arc<str>,
+    /// Every `Host` authority this process answers on. The FIRST is canonical —
+    /// the browser-facing origin, the one `control_origin` must agree with.
+    /// The rest are additional authorities for the SAME server, which exist
+    /// because the browser may reach it through a dev proxy on another port
+    /// while non-browser clients in this machine talk to the listener directly.
+    expected_hosts: Vec<Arc<str>>,
     control_origin: Arc<str>,
     session_token: Arc<str>,
+    mount_token: Arc<str>,
     bootstrap_secrets: Mutex<Vec<Vec<u8>>>,
 }
 
@@ -60,13 +72,30 @@ impl ClientAuth {
     /// backend restart a live page 401'd on every request, forever, with no
     /// path back: the frontend's bootstrap runs once at module init, so
     /// nothing re-established the session until the user manually reloaded.
+    ///
+    /// `expected_hosts`: the browser-facing authority FIRST (it is the one
+    /// checked against `control_origin`), then any additional authority the
+    /// same server answers on — see [`EmbeddedSession::expected_hosts`].
+    ///
+    /// `mount_token`: the narrow credential for the org-filesystem WebDAV
+    /// surface — see [`Self::mount_token_matches`].
     pub(crate) fn embedded(
-        expected_host: String,
+        expected_hosts: Vec<String>,
         control_origin: String,
         bootstrap_secrets: Vec<String>,
         session_token: String,
+        mount_token: String,
     ) -> Result<Self, String> {
-        validate_control_identity(&expected_host, &control_origin)?;
+        let Some(expected_host) = expected_hosts.first() else {
+            return Err("embedded auth requires at least one expected host".into());
+        };
+        validate_control_identity(expected_host, &control_origin)?;
+        if expected_hosts.iter().any(String::is_empty) {
+            return Err("embedded auth expected_host cannot be empty".into());
+        }
+        if mount_token.is_empty() {
+            return Err("embedded auth requires a non-empty mount token".into());
+        }
         let mut unique_secrets = Vec::<String>::new();
         for secret in bootstrap_secrets
             .into_iter()
@@ -86,9 +115,10 @@ impl ClientAuth {
 
         Ok(Self::Embedded {
             session: Arc::new(EmbeddedSession {
-                expected_host: expected_host.into(),
+                expected_hosts: expected_hosts.into_iter().map(Arc::from).collect(),
                 control_origin: control_origin.into(),
                 session_token: session_token.into(),
+                mount_token: mount_token.into(),
                 bootstrap_secrets: Mutex::new(bootstrap_secrets),
             }),
         })
@@ -98,10 +128,12 @@ impl ClientAuth {
         matches!(self, Self::Embedded { .. })
     }
 
-    /// The per-launch control credential, for the ONE caller that is not a
-    /// browser: the `rclone` child that mounts the org filesystem must satisfy
-    /// the same guard as the webview (see [`crate::sandbox::org_mount`]), and
-    /// it has no cookie jar to be handed one through.
+    /// The control credential, for the one non-browser caller that genuinely
+    /// needs the whole API: the agent harness' MCP endpoint, which exists so
+    /// the CLI can call the agent's own tools. It must satisfy the same guard
+    /// as the webview and has no cookie jar to be handed one through.
+    ///
+    /// Anything narrower gets [`Self::mount_token_matches`] instead.
     ///
     /// `None` in bearer mode, where callers authenticate with the bearer
     /// instead.
@@ -112,9 +144,30 @@ impl ClientAuth {
         }
     }
 
+    /// Whether the request presents the mount-scoped credential — the one for
+    /// the caller that is neither a browser nor entitled to the whole API: the
+    /// `rclone` child serving the org filesystem.
+    ///
+    /// Never a substitute for [`Self::require_private`] on its own. The caller
+    /// pairs it with a path check so this is honoured on `/_sandbox/orgfs/*`
+    /// and NOWHERE else (see `router::authorize_private`) — a process that
+    /// reads it out of rclone's config gains the WebDAV view the user could
+    /// already browse, not `/_sandbox/bash`, and not the cluster session.
+    pub(crate) fn mount_token_matches(&self, headers: &HeaderMap) -> bool {
+        let Self::Embedded { session } = self else {
+            return false;
+        };
+        headers
+            .get(MOUNT_TOKEN_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| constant_time_eq(value.as_bytes(), session.mount_token.as_bytes()))
+    }
+
     /// Host is a DNS-rebinding boundary in embedded mode. It deliberately
     /// includes the port: debug requests can arrive through Vite while the
-    /// Rust listener itself is bound to a different loopback port.
+    /// Rust listener itself is bound to a different loopback port — which is
+    /// exactly why this matches a SET rather than one value (see
+    /// [`EmbeddedSession::expected_hosts`]).
     pub(crate) fn require_expected_host(&self, headers: &HeaderMap) -> Result<(), ApiError> {
         let Self::Embedded { session } = self else {
             return Ok(());
@@ -123,7 +176,15 @@ impl ClientAuth {
             .get(header::HOST)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("");
-        if constant_time_eq(host.as_bytes(), session.expected_host.as_bytes()) {
+        // Every candidate is compared, with no early exit, so the number of
+        // comparisons never depends on which one matched.
+        let matched = session
+            .expected_hosts
+            .iter()
+            .fold(false, |matched, expected| {
+                constant_time_eq(host.as_bytes(), expected.as_bytes()) | matched
+            });
+        if matched {
             Ok(())
         } else {
             Err(ApiError::forbidden_origin())
@@ -270,10 +331,11 @@ mod tests {
 
     fn embedded() -> ClientAuth {
         ClientAuth::embedded(
-            "studio.localhost:43120".into(),
+            vec!["studio.localhost:43120".into()],
             "http://studio.localhost:43120".into(),
             vec!["bootstrap-a".into(), "bootstrap-b".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .unwrap()
     }
@@ -294,24 +356,27 @@ mod tests {
     #[test]
     fn embedded_identity_requires_matching_host_and_origin_authority() {
         assert!(ClientAuth::embedded(
-            "studio.localhost:43120".into(),
+            vec!["studio.localhost:43120".into()],
             "http://studio.localhost:43120".into(),
             vec!["secret".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .is_ok());
         assert!(ClientAuth::embedded(
-            "studio.localhost:43121".into(),
+            vec!["studio.localhost:43121".into()],
             "http://studio.localhost:4420".into(),
             vec!["secret".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .is_err());
         assert!(ClientAuth::embedded(
-            "studio.localhost:43120".into(),
+            vec!["studio.localhost:43120".into()],
             "http://studio.localhost:43120/path".into(),
             vec!["secret".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .is_err());
     }
@@ -385,6 +450,71 @@ mod tests {
         headers.remove(header::ORIGIN);
         assert!(auth.require_unsafe_origin(&Method::GET, &headers).is_ok());
         assert!(auth.require_unsafe_origin(&Method::POST, &headers).is_err());
+    }
+
+    /// One server, two authorities: the browser reaches it through the dev
+    /// proxy, loopback subprocesses reach the listener directly. Both are the
+    /// same server, so both are accepted — and nothing else is. Only the FIRST
+    /// has to agree with `control_origin`, which is why the listener authority
+    /// can carry a different port.
+    #[test]
+    fn every_configured_authority_is_accepted_and_no_other() {
+        let auth = ClientAuth::embedded(
+            vec![
+                "studio.localhost:4420".into(),
+                "studio.localhost:43120".into(),
+            ],
+            "http://studio.localhost:4420".into(),
+            vec!["secret".into()],
+            "test-session-token".into(),
+            "test-mount-token".into(),
+        )
+        .unwrap();
+        let host = |value: &'static str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::HOST, HeaderValue::from_static(value));
+            headers
+        };
+        assert!(auth
+            .require_expected_host(&host("studio.localhost:4420"))
+            .is_ok());
+        assert!(auth
+            .require_expected_host(&host("studio.localhost:43120"))
+            .is_ok());
+        assert!(auth
+            .require_expected_host(&host("studio.localhost:43121"))
+            .is_err());
+        assert!(auth
+            .require_expected_host(&host("studio.localhost"))
+            .is_err());
+        assert!(auth.require_expected_host(&HeaderMap::new()).is_err());
+    }
+
+    #[test]
+    fn the_mount_token_is_matched_exactly_and_only_from_its_own_header() {
+        let auth = embedded();
+        let mut headers = HeaderMap::new();
+        assert!(!auth.mount_token_matches(&headers));
+        headers.insert(
+            MOUNT_TOKEN_HEADER,
+            HeaderValue::from_static("test-mount-token"),
+        );
+        assert!(auth.mount_token_matches(&headers));
+        headers.insert(MOUNT_TOKEN_HEADER, HeaderValue::from_static("nope"));
+        assert!(!auth.mount_token_matches(&headers));
+        // The session cookie is NOT a mount credential, and vice versa.
+        let mut cookie_only = HeaderMap::new();
+        cookie_only.insert(
+            header::COOKIE,
+            HeaderValue::from_static("decocms-local-session=test-session-token"),
+        );
+        assert!(!auth.mount_token_matches(&cookie_only));
+        let mut mount_only = HeaderMap::new();
+        mount_only.insert(
+            MOUNT_TOKEN_HEADER,
+            HeaderValue::from_static("test-mount-token"),
+        );
+        assert!(auth.require_private(&mount_only).is_err());
     }
 
     #[test]

@@ -37,20 +37,31 @@ use tokio::process::{Child, Command};
 
 use super::org_view::ORG_VOLUMES;
 
-/// What `rclone` needs to satisfy local-api's own guard.
+/// What a non-browser client in this process needs to satisfy local-api's own
+/// guard.
 ///
 /// A bearer is NOT sufficient: the shipped app runs embedded, where the guard
 /// wants the exact `Host`, the exact `Origin` on unsafe methods (and
-/// `PROPFIND` is unsafe — rclone sends no `Origin` by default), and the
-/// per-launch session cookie. Without all three, listing fails with
+/// `PROPFIND` is unsafe — rclone sends no `Origin` by default), and a
+/// credential. Without all three, listing fails with
 /// `couldn't list files: forbidden origin: 403`.
+///
+/// TWO credentials, deliberately not interchangeable: [`Self::cookie`] is the
+/// control session and unlocks the whole API, so only the agent harness' MCP
+/// — which genuinely calls arbitrary tools — gets it. `rclone` gets
+/// [`Self::mount_token`], which the guard accepts on `/_sandbox/orgfs/*` and
+/// nowhere else.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MountCredentials {
     /// `http://<exact expected host>` — the host string must match what the
     /// guard compares against, byte for byte, or every request is rejected.
     pub base_url: String,
     pub origin: String,
+    /// The control session cookie, as a `name=value` pair. Whole-API scope.
     pub cookie: String,
+    /// The org-filesystem-only credential — see
+    /// [`crate::client_auth::MOUNT_TOKEN_HEADER`].
+    pub mount_token: String,
 }
 
 fn credentials_cell() -> &'static OnceLock<MountCredentials> {
@@ -243,7 +254,15 @@ async fn mount_all(app_root: &Path, org_slug: &str) -> bool {
             all = false;
             continue;
         }
-        match spawn_mount(&bin, &mountpoint, org_slug, volume, creds).await {
+        let config = match write_rclone_config(app_root, org_slug, volume, creds).await {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(%error, org_slug, volume, "could not write rclone config");
+                all = false;
+                continue;
+            }
+        };
+        match spawn_mount(&bin, &config, &mountpoint, volume).await {
             Ok(child) => {
                 children()
                     .lock()
@@ -263,23 +282,68 @@ async fn mount_all(app_root: &Path, org_slug: &str) -> bool {
     all
 }
 
+/// The rclone remote definition for one volume, written to a private file.
+///
+/// NOT the environment and NOT argv. `ps -Eww` prints another process's
+/// environment to any process with the same uid on macOS — and every sandbox
+/// harness this app spawns runs as that uid — so an env var is no more private
+/// than argv here. A `0600` file the caller owns is the narrowest channel
+/// available to a child that can only be configured by file or env.
+///
+/// The remote's URL is not secret and could stay on the command line; keeping
+/// it in the same file just means one shape to reason about.
+async fn write_rclone_config(
+    app_root: &Path,
+    org: &str,
+    volume: &str,
+    creds: &MountCredentials,
+) -> std::io::Result<PathBuf> {
+    let dir = app_root.join(".decocms").join("rclone").join(org);
+    tokio::fs::create_dir_all(&dir).await?;
+    restrict(&dir, 0o700).await?;
+    let path = dir.join(format!("{volume}.conf"));
+    // Truncating first, then restricting, then writing: the file must never
+    // exist as group/world-readable WITH the token already in it.
+    tokio::fs::write(&path, b"").await?;
+    restrict(&path, 0o600).await?;
+    let body = format!(
+        "[wd]\ntype = webdav\nurl = {}/_sandbox/orgfs/{org}/{volume}\nvendor = other\nheaders = Origin,{},{},{}\n",
+        creds.base_url,
+        creds.origin,
+        crate::client_auth::MOUNT_TOKEN_HEADER,
+        creds.mount_token,
+    );
+    tokio::fs::write(&path, body).await?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+async fn restrict(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).await
+}
+
+#[cfg(not(unix))]
+async fn restrict(_path: &Path, _mode: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Spawn a supervised `rclone nfsmount` for one volume.
 ///
 /// Foreground, never `--daemon`: `nfsmount --daemon --rc` is broken in rclone
 /// (it exits 1 rather than attaching), so the child has to be supervised here.
 ///
-/// Everything secret travels by ENVIRONMENT, never argv — argv is readable by
-/// any local process through `ps`, which is exactly why the keychain helper
-/// avoids it too.
+/// Nothing secret is passed here at all — see [`write_rclone_config`].
 async fn spawn_mount(
     bin: &Path,
+    config: &Path,
     mountpoint: &Path,
-    org: &str,
     volume: &str,
-    creds: &MountCredentials,
 ) -> std::io::Result<Child> {
     let mut cmd = Command::new(bin);
-    cmd.arg("nfsmount")
+    cmd.arg("--config")
+        .arg(config)
+        .arg("nfsmount")
         .arg("wd:")
         .arg(mountpoint)
         .args([
@@ -297,16 +361,6 @@ async fn spawn_mount(
         .args(["--timeout", "5s"])
         .args(["--contimeout", "3s"])
         .args(["--low-level-retries", "1"])
-        .env("RCLONE_CONFIG_WD_TYPE", "webdav")
-        .env(
-            "RCLONE_CONFIG_WD_URL",
-            format!("{}/_sandbox/orgfs/{org}/{volume}", creds.base_url),
-        )
-        .env("RCLONE_CONFIG_WD_VENDOR", "other")
-        .env(
-            "RCLONE_CONFIG_WD_HEADERS",
-            format!("Origin,{},Cookie,{}", creds.origin, creds.cookie),
-        )
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

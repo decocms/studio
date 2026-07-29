@@ -304,6 +304,28 @@ impl SandboxManager {
         found
     }
 
+    /// Register a handle with the minimum a preview lookup needs, WITHOUT
+    /// cloning anything. Test-only — production registration always goes
+    /// through `provision`, which needs a real repository on disk; the preview
+    /// Host fence needs only the registry row.
+    #[cfg(test)]
+    pub(crate) fn register_for_test(&self, clone_url: &str, branch: &str) -> String {
+        let config = super::GitSandboxConfig {
+            clone_url: clone_url.to_string(),
+            branch: Some(branch.to_string()),
+            virtual_mcp_id: "test-agent".to_string(),
+            ..Default::default()
+        };
+        let handle = Self::compute_handle(clone_url, branch).expect("scopeable clone url");
+        let sandbox_path = self.app_root.join(super::WORKTREES_DIR).join(&handle);
+        let workdir = sandbox_path.join("repo");
+        self.registry
+            .upsert_config(&handle, &config, &sandbox_path, &workdir)
+            .expect("register test sandbox");
+        self.invalidate_preview_labels();
+        handle
+    }
+
     /// Drop the label map so the next lookup rebuilds it. Called wherever a
     /// registry row is created or replaced.
     fn invalidate_preview_labels(&self) {

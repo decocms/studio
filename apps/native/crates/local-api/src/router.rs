@@ -35,10 +35,13 @@
 //!
 //! `routes::proxy::fallback` (the reverse-HTTP-proxy-to-dev-server catchall —
 //! handle-header/active routing, the sniffed port, and the WS upgrade). No
-//! local-api auth is applied here: sandbox cookies and authorization belong to
-//! the application under preview and are proxied unchanged. An explicitly
-//! enabled selftest route is the sole exception to the otherwise-all-proxy
-//! route table.
+//! local-api AUTHENTICATION is applied here: sandbox cookies and authorization
+//! belong to the application under preview and are proxied unchanged. What IS
+//! applied is [`preview_fence`], which removes local-api's own control cookie
+//! and requires the `Host` to name a known sandbox — see its doc comment. An
+//! explicitly enabled selftest route is the sole exception to the
+//! otherwise-all-proxy route table, and is mounted outside the fence (it
+//! answers on the bare host and proxies nowhere).
 //!
 //! ## OPTIONS preflight
 //!
@@ -279,14 +282,31 @@ pub fn build(
 }
 
 /// The PREVIEW listener's router — see the module doc's "[`build_preview`]
-/// — the PREVIEW listener" section. No cookie or authorization header is
-/// consumed or rewritten before the selected sandbox sees the request.
+/// — the PREVIEW listener" section. Application cookies and authorization
+/// headers reach the selected sandbox unchanged; local-api's OWN control
+/// cookie never does — see [`preview_fence`].
+///
+/// `preview_host_base`: the registrable host previews are served under
+/// (`preview_url`'s base). Passed in rather than read from the process-global
+/// so the fence is a function of its arguments and can be tested.
 pub fn build_preview(
     state: AppState,
     preview_port: u16,
+    preview_host_base: &str,
     cookie_selftest_control_origin: Option<Arc<str>>,
 ) -> Router {
-    let mut app = Router::new().fallback(routes::proxy::fallback);
+    let fence = PreviewFence {
+        state: state.clone(),
+        // Only a registrable base has per-handle preview hosts to fence on;
+        // under a single-label host (`localhost`) every sandbox shares one
+        // origin, so there is no label to check. Mirrors `preview_url`'s gate.
+        base: preview_host_base
+            .contains('.')
+            .then(|| Arc::<str>::from(preview_host_base.to_ascii_lowercase())),
+    };
+    let mut app = Router::new()
+        .fallback(routes::proxy::fallback)
+        .layer(middleware::from_fn_with_state(fence, preview_fence));
     if let Some(control_origin) = cookie_selftest_control_origin {
         app = app
             .route(
@@ -305,6 +325,73 @@ pub fn build_preview(
             }));
     }
     app.with_state(state)
+}
+
+#[derive(Clone)]
+struct PreviewFence {
+    state: AppState,
+    /// `Some` only when previews get per-handle hosts — see [`build_preview`].
+    base: Option<Arc<str>>,
+}
+
+/// The preview listener's ONLY pre-routing step, and the reason the listener
+/// can serve untrusted sandbox output at all.
+///
+/// Cookies ignore the port (RFC 6265 §8.5), so the control cookie set on the
+/// browser origin is attached to any same-site request — including one a
+/// PREVIEWED page makes back at this listener. Two independent things stop
+/// that from becoming a privilege escalation:
+///
+/// 1. The control cookie is removed from every request, unconditionally. This
+///    listener has no route that consumes it, and everything it does serve is
+///    forwarded verbatim into a sandbox's own dev server, which must never see
+///    it. Application cookies are untouched.
+/// 2. The `Host` must name a sandbox this process knows. Without this, a
+///    request arriving on the BARE control host resolved through
+///    `resolve_preview`'s `active()` fallback and was proxied into whichever
+///    sandbox happened to be focused.
+///
+/// Either alone would close the reported path; both are here because they fail
+/// independently — 1 survives a routing change, 2 survives a header-handling
+/// change.
+async fn preview_fence(
+    State(fence): State<PreviewFence>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    crate::client_auth::remove_local_session_cookie(req.headers_mut());
+    if let Some(base) = fence.base.as_deref() {
+        if !names_a_known_sandbox(&fence.state, req.headers(), base) {
+            return ApiError::not_found("Not found").into_response();
+        }
+    }
+    next.run(req).await
+}
+
+/// Whether `Host` is `<label>.<base>` for a `label` the sandbox manager
+/// currently maps to a handle. Deliberately strict: exactly one label, and the
+/// bare `base` itself is NOT accepted.
+fn names_a_known_sandbox(state: &AppState, headers: &axum::http::HeaderMap, base: &str) -> bool {
+    let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let host = host
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let Some(label) = host
+        .strip_suffix(base)
+        .and_then(|rest| rest.strip_suffix('.'))
+    else {
+        return false;
+    };
+    !label.is_empty()
+        && !label.contains('.')
+        && state
+            .sandbox_manager
+            .handle_for_preview_label(label)
+            .is_some()
 }
 
 /// `{"error":"Not found: <full request path>"}` — byte-parity in spirit
@@ -433,7 +520,14 @@ fn authorize_private(
         state
             .auth
             .require_unsafe_origin(req.method(), req.headers())?;
-        state.auth.require_private(req.headers())?;
+        // The org-filesystem WebDAV surface additionally accepts the narrow
+        // mount credential, so `rclone` no longer needs the control cookie
+        // that unlocks the whole API. Scoped by PATH here rather than by a
+        // separate router so there is exactly one place the two credentials
+        // are compared, and so every other route keeps rejecting it.
+        if !(is_org_filesystem_path(req) && state.auth.mount_token_matches(req.headers())) {
+            state.auth.require_private(req.headers())?;
+        }
         Ok(None)
     } else {
         let decision = cors::validate(req.headers(), state.mode);
@@ -443,6 +537,20 @@ fn authorize_private(
         state.auth.require_private(req.headers())?;
         Ok(Some(decision))
     }
+}
+
+/// The org-filesystem WebDAV prefix, judged on the FULL request path.
+///
+/// `guard` runs inside each `nest()`, where `req.uri()` has already had the
+/// prefix stripped — so a `/threads` route could otherwise be reached at the
+/// nest-relative `/orgfs/…`. `OriginalUri` (which `nest` always inserts) is
+/// the pre-strip path; the fallback covers the un-nested `app_api` merge,
+/// where no stripping happened and the two are the same.
+fn is_org_filesystem_path(req: &Request) -> bool {
+    req.extensions()
+        .get::<OriginalUri>()
+        .map_or_else(|| req.uri().path(), |uri| uri.0.path())
+        .starts_with("/_sandbox/orgfs/")
 }
 
 async fn bootstrap_embedded_session(
@@ -630,10 +738,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let state = crate::routes::intercept::test_state(root.path());
         let auth = ClientAuth::embedded(
-            "127.0.0.1:43120".into(),
+            vec!["127.0.0.1:43120".into()],
             "http://127.0.0.1:43120".into(),
             vec!["one-time-bootstrap".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .unwrap();
         (
@@ -714,6 +823,7 @@ mod tests {
         let enabled = build_preview(
             crate::routes::intercept::test_state(enabled_root.path()),
             61234,
+            "localhost",
             Some(Arc::from("http://localhost:43120")),
         );
         let probe = || {
@@ -779,6 +889,7 @@ mod tests {
         let disabled = build_preview(
             crate::routes::intercept::test_state(disabled_root.path()),
             61234,
+            "localhost",
             None,
         );
         let response = disabled.oneshot(probe()).await.unwrap();
@@ -786,6 +897,180 @@ mod tests {
         assert!(response.headers().get(header::SET_COOKIE).is_none());
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         assert!(String::from_utf8_lossy(&body).contains("No dev server running"));
+    }
+
+    /// `rclone` mounts the org filesystem as a plain HTTP client and used to
+    /// carry the control cookie to do it — a whole-API credential handed to a
+    /// child process. It now gets a credential the guard honours on the WebDAV
+    /// surface ONLY, so reading it out of that child buys nothing else.
+    #[tokio::test]
+    async fn the_mount_credential_unlocks_the_org_filesystem_and_nothing_else() {
+        let (app, _root) = embedded_router();
+        let mounted = |uri: &str, method: Method| {
+            let mut req = request(method, uri);
+            req.headers_mut().insert(
+                crate::client_auth::MOUNT_TOKEN_HEADER,
+                axum::http::HeaderValue::from_static("test-mount-token"),
+            );
+            req.headers_mut().insert(
+                header::ORIGIN,
+                axum::http::HeaderValue::from_static("http://127.0.0.1:43120"),
+            );
+            app.clone().oneshot(req)
+        };
+
+        assert_ne!(
+            mounted("/_sandbox/orgfs/acme/public/", Method::GET)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED,
+            "the WebDAV surface accepts it"
+        );
+        for denied in [
+            "/_sandbox/bash",
+            "/_sandbox/read",
+            "/_sandbox/git/publish",
+            "/threads",
+            "/api/acme/tools/ANYTHING",
+            // Not under `orgfs` despite naming it — a prefix, not a substring.
+            "/_sandbox/orgfs-config",
+        ] {
+            assert_eq!(
+                mounted(denied, Method::POST).await.unwrap().status(),
+                StatusCode::UNAUTHORIZED,
+                "{denied} must not accept the mount credential"
+            );
+        }
+
+        let mut wrong = request(Method::GET, "/_sandbox/orgfs/acme/public/");
+        wrong.headers_mut().insert(
+            crate::client_auth::MOUNT_TOKEN_HEADER,
+            axum::http::HeaderValue::from_static("not-the-mount-token"),
+        );
+        assert_eq!(
+            app.oneshot(wrong).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    /// The preview listener carries untrusted sandbox output, and cookies
+    /// ignore the port — so a previewed page can make the webview attach the
+    /// control cookie to a request aimed back here. It must never survive the
+    /// hop into a sandbox's dev server, on ANY host, known or not.
+    #[tokio::test]
+    async fn the_preview_fence_strips_the_control_cookie_before_anything_downstream() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let seen = Arc::new(std::sync::Mutex::new(Option::<String>::None));
+        let recorder = seen.clone();
+        let fenced = Router::new()
+            .fallback(move |req: Request| {
+                let recorder = recorder.clone();
+                async move {
+                    *recorder.lock().unwrap() = req
+                        .headers()
+                        .get(header::COOKIE)
+                        .map(|value| value.to_str().unwrap().to_string());
+                    StatusCode::OK
+                }
+            })
+            .layer(middleware::from_fn_with_state(
+                PreviewFence {
+                    state,
+                    // `None`: the single-label (`localhost`) deployment, where
+                    // there is no per-handle host to fence on — so this proves
+                    // the cookie strip stands on its own, without the Host
+                    // check backing it up.
+                    base: None,
+                },
+                preview_fence,
+            ));
+
+        let mut req = HttpRequest::builder()
+            .method(Method::GET)
+            .uri("/index.html")
+            .header(header::HOST, "localhost:61234")
+            .body(Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_static(
+                "app-session=keep-me; decocms-local-session=steal-me; theme=dark",
+            ),
+        );
+        assert_eq!(fenced.oneshot(req).await.unwrap().status(), StatusCode::OK);
+        assert_eq!(
+            seen.lock().unwrap().as_deref(),
+            Some("app-session=keep-me; theme=dark"),
+            "the control cookie is dropped and every application cookie survives"
+        );
+    }
+
+    /// `resolve_preview` falls back to the ACTIVE sandbox when the Host names
+    /// no label — so without this fence a request on the BARE control host
+    /// (which is what the control cookie is scoped to) was proxied into
+    /// whichever sandbox happened to be focused.
+    #[tokio::test]
+    async fn the_preview_fence_serves_known_labels_only_never_the_bare_control_host() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let handle = state
+            .sandbox_manager
+            .register_for_test("https://github.com/acme/site.git", "work");
+        let label = crate::sandbox::preview_label(&handle);
+        let app = build_preview(state, 61234, "local.studio.decocms.com", None);
+
+        let get = |host: &str| {
+            app.clone().oneshot(
+                HttpRequest::builder()
+                    .method(Method::GET)
+                    .uri("/")
+                    .header(header::HOST, host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+        };
+
+        // A registered label is served: no dev server is running in this
+        // sandbox, so the proxy answers its own placeholder rather than 404.
+        assert_eq!(
+            get(&format!("{label}.local.studio.decocms.com:61234"))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        // A Host is case-insensitive, and `preview_label` only ever emits
+        // lowercase — so folding the whole authority can never hide a label.
+        assert_eq!(
+            get(&format!(
+                "{}.LOCAL.Studio.DecoCMS.com:61234",
+                label.to_uppercase()
+            ))
+            .await
+            .unwrap()
+            .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        for rejected in [
+            // The control host itself — the one the cookie is scoped to.
+            "local.studio.decocms.com:61234",
+            // A label no sandbox on this machine owns.
+            "not-a-sandbox.local.studio.decocms.com:61234",
+            // Deeper than one label: `preview_label` never produces a dot.
+            "a.b.local.studio.decocms.com:61234",
+            // A different site that resolves here.
+            "attacker.example.com:61234",
+            // The loopback address, which no preview URL ever uses.
+            "127.0.0.1:61234",
+        ] {
+            assert_eq!(
+                get(rejected).await.unwrap().status(),
+                StatusCode::NOT_FOUND,
+                "{rejected} must not reach a dev server"
+            );
+        }
     }
 
     #[tokio::test]
@@ -933,10 +1218,11 @@ mod tests {
     #[test]
     fn studio_proxy_boundary_removes_only_control_cookie() {
         let auth = ClientAuth::embedded(
-            "127.0.0.1:43120".into(),
+            vec!["127.0.0.1:43120".into()],
             "http://127.0.0.1:43120".into(),
             vec!["bootstrap".into()],
             "test-session-token".into(),
+            "test-mount-token".into(),
         )
         .unwrap();
         let set_cookie = auth

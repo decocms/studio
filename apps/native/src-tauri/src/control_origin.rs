@@ -86,6 +86,13 @@ impl ControlOrigin {
     pub fn expected_host(self) -> String {
         format!("{}:{}", self.host(), self.browser_port)
     }
+
+    /// The authority the Rust listener itself answers on. Differs from
+    /// [`Self::expected_host`] only in dev, where Vite fronts it — and that
+    /// difference is why loopback subprocesses are given this one instead.
+    pub fn listener_host(self) -> String {
+        format!("{}:{}", self.host(), self.listener_port)
+    }
 }
 
 pub fn current(selftest: bool) -> ControlOrigin {

@@ -117,6 +117,13 @@ pub struct TlsFiles {
 pub struct EmbeddedOptions {
     pub expected_host: String,
     pub control_origin: String,
+    /// The authority the Rust listener itself answers on, when the browser
+    /// reaches this server through a proxy on a DIFFERENT port (dev: Vite on
+    /// `:4420` in front of `:43121`). Accepted as an additional `Host`, and
+    /// preferred for the local subprocesses — `rclone` and the agent harness'
+    /// MCP — which have no reason to route their loopback traffic through the
+    /// browser's dev server. `None` when the two are the same, as in release.
+    pub listener_host: Option<String>,
     /// Extra one-time capabilities for additional windows. `StartOptions.token`
     /// is always included as the first bootstrap secret.
     pub additional_bootstrap_secrets: Vec<String>,
@@ -132,6 +139,7 @@ impl EmbeddedOptions {
         Self {
             expected_host: expected_host.into(),
             control_origin: control_origin.into(),
+            listener_host: None,
             additional_bootstrap_secrets: Vec::new(),
             ui_assets: None,
             preview_cookie_selftest: false,
@@ -266,6 +274,21 @@ pub struct ServerHandle {
 /// already lives there: the same directory holds the OAuth refresh token and
 /// the TLS CA key, and both are readable by any process running as this user.
 /// A rotation is one `rm` away.
+/// The per-launch credential for the org-filesystem WebDAV surface — see
+/// [`client_auth::ClientAuth::mount_token`].
+///
+/// NOT persisted, unlike the session token: nothing holds it across a restart
+/// (mounts are respawned every launch), so the shortest possible lifetime is
+/// free. Two v4 UUIDs — the same source `boot_id` uses, and well past the
+/// entropy a loopback credential needs.
+fn generate_mount_token() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
 fn stable_session_token(app_root: &Path) -> String {
     let path = app_root.join(".decocms").join("session-token");
     if let Ok(existing) = std::fs::read_to_string(&path) {
@@ -552,23 +575,40 @@ pub async fn start_with_client_auth(
                 "http"
             };
             let control_origin = embedded.control_origin.clone();
+            // Loopback subprocesses address the Rust listener DIRECTLY. Routing
+            // them through the browser's dev proxy made an unrelated middleman
+            // part of the agent's request path, where its buffering and restarts
+            // truncate long-lived streams; it also has nothing to add, since
+            // nothing on that path is a browser. Falls back to the browser
+            // authority when the two are the same (release).
+            let local_host = embedded
+                .listener_host
+                .clone()
+                .unwrap_or_else(|| expected_host.clone());
+            let mut expected_hosts = vec![embedded.expected_host];
+            if let Some(listener_host) = embedded.listener_host {
+                if listener_host != expected_hosts[0] {
+                    expected_hosts.push(listener_host);
+                }
+            }
+            let mount_token = generate_mount_token();
             let auth = client_auth::ClientAuth::embedded(
-                embedded.expected_host,
+                expected_hosts,
                 embedded.control_origin,
                 bootstrap_secrets,
                 stable_session_token(&opts.app_root),
+                mount_token.clone(),
             )
             .map_err(|message| StartError::EmbeddedAuth { message })?;
-            // The org-filesystem mounts run `rclone` as a child, and it has to
-            // satisfy this same guard without being a browser: exact Host,
-            // exact Origin, and the per-launch session cookie. Published once
-            // here rather than threaded through `AppState`, which this module
-            // family may not add fields to.
-            if let Some(token) = auth.session_token() {
+            // The two non-browser clients that must satisfy this process's own
+            // guard. Published once here rather than threaded through
+            // `AppState`, which this module family may not add fields to.
+            if let Some(session_token) = auth.session_token() {
                 sandbox::org_mount::set_credentials(sandbox::org_mount::MountCredentials {
-                    base_url: format!("{control_scheme}://{expected_host}"),
+                    base_url: format!("{control_scheme}://{local_host}"),
                     origin: control_origin,
-                    cookie: format!("{}={token}", client_auth::LOCAL_SESSION_COOKIE_NAME),
+                    cookie: format!("{}={session_token}", client_auth::LOCAL_SESSION_COOKIE_NAME),
+                    mount_token,
                 });
             }
             // Previews are served per-sandbox at `<handle>.<control host>`:
@@ -762,8 +802,12 @@ pub async fn start_with_client_auth(
         format!("{preview_scheme}://{preview_base}:{preview_port}")
     };
     let app = router::build(state.clone(), client_auth, ui_assets, preview_csp_origin);
-    let preview_app =
-        router::build_preview(state.clone(), preview_port, preview_cookie_selftest_origin);
+    let preview_app = router::build_preview(
+        state.clone(),
+        preview_port,
+        preview_base,
+        preview_cookie_selftest_origin,
+    );
 
     // Previews follow the listeners' scheme; the webview refuses a plain-http
     // iframe inside an https shell (mixed content) and the URL must match.
