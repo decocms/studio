@@ -35,7 +35,7 @@ const TaskBoardItemThreadSchema = z.object({
 });
 
 /** A tag attached to a task, plus who attached it and when. */
-export const TaskBoardItemTagSchema = z.object({
+const TaskBoardItemTagSchema = z.object({
   id: z.string(),
   name: z.string(),
   color: z.string().nullable().describe('Hex color, e.g. "#3b82f6"'),

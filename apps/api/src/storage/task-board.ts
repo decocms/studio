@@ -83,6 +83,21 @@ function threadHasClonableRepo(metadata: unknown): boolean {
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
+  /**
+   * Run `fn` in a transaction, reusing an enclosing one when this storage was
+   * built over a `Transaction` — the import route does exactly that
+   * (`new TaskBoardStorage(trx)`), and Kysely throws on a nested
+   * `.transaction()`. An enclosing transaction already provides the atomicity
+   * and single snapshot every caller here wants.
+   */
+  private inTransaction<T>(
+    fn: (db: Kysely<Database>) => Promise<T>,
+  ): Promise<T> {
+    return this.db.isTransaction
+      ? fn(this.db)
+      : this.db.transaction().execute(fn);
+  }
+
   async list(organizationId: string): Promise<TaskBoardItem[]> {
     const rows = await this.db
       .selectFrom("task_board_items")
@@ -211,7 +226,7 @@ export class TaskBoardStorage {
   }
 
   async delete(id: string, organizationId: string): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
+    await this.inTransaction(async (trx) => {
       await trx
         .deleteFrom("task_board_item_threads")
         .where("task_board_item_id", "=", id)
@@ -242,7 +257,7 @@ export class TaskBoardStorage {
     tagIds: string[],
     by: string,
   ): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
+    await this.inTransaction(async (trx) => {
       await trx
         .deleteFrom("task_board_item_tags")
         .where("task_board_item_id", "=", taskBoardItemId)
@@ -426,9 +441,9 @@ export class TaskBoardStorage {
     organizationId: string,
   ): Promise<void> {
     if (items.length === 0) return;
-    await this.db.transaction().execute(async (trx) => {
-      await this.attachThreads(trx, items, organizationId);
-      await this.attachTags(trx, items);
+    await this.inTransaction(async (db) => {
+      await this.attachThreads(db, items, organizationId);
+      await this.attachTags(db, items);
     });
   }
 
