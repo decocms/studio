@@ -12,7 +12,7 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import { resolveAgentTier } from "@/ai-providers/agent-tiers";
+import { resolveAgentTier } from "@decocms/harness/claude-code/model/agent-tiers";
 import {
   ChatTierSchema,
   type ChatTier,
