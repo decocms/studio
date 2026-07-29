@@ -361,6 +361,15 @@ export class ThreadManagerStore {
         kind: "error",
         error: err instanceof Error ? err : new Error(String(err)),
       });
+      // A failed page load must not freeze live updates: with the buffer
+      // left armed, every later watch event is queued behind a drain that
+      // never comes, and the sidebar silently renders the last state it
+      // ever knew — a thread stuck on "Done" while its run streams — until
+      // a full reload rebuilds the store. One 500 during a listener boot
+      // (`COLLECTION_THREADS_LIST` while chat-queue recovery runs) is
+      // enough to arm that trap. Draining onto the stale list is strictly
+      // better: patches upsert, so rows converge as events arrive.
+      this.drainEventBuffer();
     }
   }
 
