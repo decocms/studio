@@ -15,6 +15,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     dueDate: null,
     sortOrder,
     threads: [],
+    tags: [],
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",

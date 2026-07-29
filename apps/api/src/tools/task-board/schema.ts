@@ -34,6 +34,13 @@ const TaskBoardItemThreadSchema = z.object({
   createdAt: z.string(),
 });
 
+/** A tag attached to a task. */
+export const TaskBoardItemTagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string().nullable(),
+});
+
 /** A GitHub PR linked to a task. Identity is persisted; title/body/state/draft/
  *  merged are fetched live from GitHub and are null when that fetch failed. */
 export const TaskBoardItemPrSchema = z.object({
@@ -63,6 +70,8 @@ export const TaskBoardItemSchema = z.object({
   sortOrder: z.number(),
   // Agent threads linked to this task (many-to-many), most-recent first.
   threads: z.array(TaskBoardItemThreadSchema),
+  // Org tags attached to this task, name ascending.
+  tags: z.array(TaskBoardItemTagSchema),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
@@ -85,6 +94,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "due_date_changed",
   "title_changed",
   "description_changed",
+  "tags_changed",
 ] as const;
 
 export type TaskBoardActivityAction =

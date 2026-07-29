@@ -14,6 +14,7 @@ import type {
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
+  TaskBoardItemTagRef,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
@@ -92,6 +93,7 @@ export class TaskBoardStorage {
 
     const items = rows.map((row) => this.itemFromDbRow(row));
     await this.attachThreads(items, organizationId);
+    await this.attachTags(items, organizationId);
     return items;
   }
 
@@ -109,6 +111,7 @@ export class TaskBoardStorage {
     if (!row) return null;
     const item = this.itemFromDbRow(row);
     await this.attachThreads([item], organizationId);
+    await this.attachTags([item], organizationId);
     return item;
   }
 
@@ -206,6 +209,7 @@ export class TaskBoardStorage {
 
     const item = this.itemFromDbRow(row);
     await this.attachThreads([item], organizationId);
+    await this.attachTags([item], organizationId);
     return item;
   }
 
@@ -222,10 +226,49 @@ export class TaskBoardStorage {
         .where("organization_id", "=", organizationId)
         .execute();
       await trx
+        .deleteFrom("task_board_item_tags")
+        .where("task_board_item_id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      await trx
         .deleteFrom("task_board_items")
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
+    });
+  }
+
+  /**
+   * Set the tags attached to a task (replaces all existing links). All
+   * `tagIds` must already be verified as belonging to `organizationId` by the
+   * caller — this just applies the diff.
+   */
+  async setItemTags(
+    taskBoardItemId: string,
+    organizationId: string,
+    tagIds: string[],
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .deleteFrom("task_board_item_tags")
+        .where("task_board_item_id", "=", taskBoardItemId)
+        .where("organization_id", "=", organizationId)
+        .execute();
+
+      if (tagIds.length > 0) {
+        const now = new Date().toISOString();
+        await trx
+          .insertInto("task_board_item_tags")
+          .values(
+            tagIds.map((tagId) => ({
+              task_board_item_id: taskBoardItemId,
+              tag_id: tagId,
+              organization_id: organizationId,
+              created_at: now,
+            })),
+          )
+          .execute();
+      }
     });
   }
 
@@ -465,6 +508,43 @@ export class TaskBoardStorage {
     for (const item of items) item.threads = byItem.get(item.id) ?? [];
   }
 
+  /** Populate each item's `tags`, name ascending. One batched query. */
+  private async attachTags(
+    items: TaskBoardItem[],
+    organizationId: string,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const ids = items.map((i) => i.id);
+
+    const rows = await this.db
+      .selectFrom("task_board_item_tags as link")
+      .innerJoin("organization_tags as tag", "tag.id", "link.tag_id")
+      .select([
+        "link.task_board_item_id as taskId",
+        "tag.id as id",
+        "tag.name as name",
+        "tag.color as color",
+      ])
+      .where("link.organization_id", "=", organizationId)
+      .where("link.task_board_item_id", "in", ids)
+      .orderBy("tag.name", "asc")
+      .execute();
+
+    const byItem = new Map<string, TaskBoardItemTagRef[]>();
+    for (const row of rows) {
+      const ref: TaskBoardItemTagRef = {
+        id: row.id,
+        name: row.name,
+        color: row.color ?? null,
+      };
+      const list = byItem.get(row.taskId);
+      if (list) list.push(ref);
+      else byItem.set(row.taskId, [ref]);
+    }
+
+    for (const item of items) item.tags = byItem.get(item.id) ?? [];
+  }
+
   // --------------------------------------------------------------------------
   // Activity log (the card's change timeline)
   // --------------------------------------------------------------------------
@@ -549,8 +629,9 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
-      // Populated by attachThreads for reads; empty for a fresh create.
+      // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],
+      tags: [],
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

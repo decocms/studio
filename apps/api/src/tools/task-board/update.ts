@@ -53,6 +53,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    /** Replaces the task's tags with this exact set (org tag ids). */
+    tagIds: z.array(z.string()).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
   }),
@@ -102,7 +104,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
       input.dueDate !== undefined ||
-      input.sortOrder !== undefined;
+      input.sortOrder !== undefined ||
+      input.tagIds !== undefined;
 
     // The pre-update item, used to enqueue only on the transition INTO Super
     // Agent (not on every later edit) and to diff status/assignee for the
@@ -117,6 +120,24 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // overriding any status the caller passed alongside the reassignment.
     const becameSuperAgent =
       assigneeChanged && input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+
+    // Tags are a separate join table, applied before the item is (re)fetched
+    // below so attachTags() picks up the new set either way. Every id must
+    // belong to this org — otherwise a caller could attach another org's tag.
+    if (input.tagIds !== undefined) {
+      const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
+      const validTagIds = new Set(orgTags.map((t) => t.id));
+      for (const tagId of input.tagIds) {
+        if (!validTagIds.has(tagId)) {
+          throw new Error(`Tag not found: ${tagId}`);
+        }
+      }
+      await ctx.storage.taskBoard.setItemTags(
+        input.id,
+        organizationId,
+        input.tagIds,
+      );
+    }
 
     // A pure link (no field edits) must not bump the task's updated_at — skip
     // the write and re-read the item, now carrying the newly linked thread.
@@ -168,6 +189,19 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           taskBoardItemId: item.id,
           action: "description_changed",
           actorId,
+        });
+      }
+      const previousTagIds = new Set(previous.tags.map((t) => t.id));
+      const tagsChanged =
+        item.tags.length !== previous.tags.length ||
+        item.tags.some((t) => !previousTagIds.has(t.id));
+      if (tagsChanged) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "tags_changed",
+          actorId,
+          data: { from: previous.tags, to: item.tags },
         });
       }
     }

@@ -29,6 +29,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
+    tagIds: z.array(z.string()).optional(),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -48,7 +49,17 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
-    const item = await ctx.storage.taskBoard.create({
+    if (input.tagIds?.length) {
+      const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
+      const validTagIds = new Set(orgTags.map((t) => t.id));
+      for (const tagId of input.tagIds) {
+        if (!validTagIds.has(tagId)) {
+          throw new Error(`Tag not found: ${tagId}`);
+        }
+      }
+    }
+
+    let item = await ctx.storage.taskBoard.create({
       organizationId,
       title: input.title,
       description: input.description ?? null,
@@ -60,6 +71,15 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });
+
+    if (input.tagIds?.length) {
+      await ctx.storage.taskBoard.setItemTags(
+        item.id,
+        organizationId,
+        input.tagIds,
+      );
+      item = (await ctx.storage.taskBoard.getById(item.id, organizationId))!;
+    }
 
     await recordTaskActivity(ctx, {
       taskBoardItemId: item.id,
