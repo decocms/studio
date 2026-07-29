@@ -334,7 +334,7 @@ async function resolveSecretModelSource(
   if (source.providerId === "openrouter" || source.providerId === "deco") {
     const orgName =
       ctx.organization?.name ?? ctx.organization?.slug ?? organizationId;
-    const appName = source.providerId === "deco" ? "Deco" : "Studio";
+    const appName = source.providerId === "deco" ? "deco AI Gateway" : "Studio";
     return {
       ...source,
       extraHeaders: {
