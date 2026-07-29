@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -305,8 +305,8 @@ export function makeWriteHandler(deps: FsDeps) {
     const jsonError = invalidDecofileBlockJson(body.path ?? "", body.content);
     if (jsonError)
       return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, body.content, "utf-8");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, body.content, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
       ok: true,
