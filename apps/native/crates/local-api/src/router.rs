@@ -278,7 +278,44 @@ pub fn build(
         // health, bootstrap, OPTIONS, and private routes share the same
         // DNS-rebinding boundary.
         .layer(middleware::from_fn_with_state(auth, require_expected_host))
+        // …and authority normalization sits outside even that, because it is
+        // what makes `Host` present at all. See [`normalize_authority`].
+        .layer(middleware::from_fn(normalize_authority))
         .with_state(state)
+}
+
+/// Restore `Host` from the HTTP/2 `:authority` pseudo-header.
+///
+/// HTTP/2 REPLACED `Host` with `:authority` (RFC 9113 §8.3.1), which hyper
+/// surfaces on the request URI rather than in the header map. Every host check
+/// in this process reads the `Host` header, so an h2 request arrives looking
+/// like it has no host at all and each of them fails closed: the preview fence
+/// 404s a perfectly valid sandbox, and `require_expected_host` would 403 the
+/// entire API.
+///
+/// That is not hypothetical — both listeners terminate TLS, ALPN offers h2,
+/// and every modern client takes it (WKWebView, which IS the shipped app's
+/// browser, and `curl` without `--http1.1`). It went unnoticed because the
+/// dev webview reaches the API through Vite on its own port, and because the
+/// preview proxy silently fell back to the ACTIVE sandbox whenever it could
+/// not read a host — a fallback the fence has now removed.
+///
+/// Normalizing ONCE, outermost, rather than teaching each check about both
+/// shapes: there is exactly one place to get right, and a check added later
+/// inherits the fix instead of re-introducing the bug. `:authority` wins over
+/// any `Host` an h2 client also sent, as the RFC requires. An HTTP/1.1
+/// origin-form request has no authority on the URI, so its `Host` is left
+/// exactly as received.
+async fn normalize_authority(mut req: Request, next: Next) -> Response {
+    if let Some(authority) = req.uri().authority().map(|value| value.as_str().to_owned()) {
+        match axum::http::HeaderValue::from_str(&authority) {
+            Ok(value) => {
+                req.headers_mut().insert(header::HOST, value);
+            }
+            Err(_) => return ApiError::forbidden_origin().into_response(),
+        }
+    }
+    next.run(req).await
 }
 
 /// The PREVIEW listener's router — see the module doc's "[`build_preview`]
@@ -324,7 +361,10 @@ pub fn build_preview(
                 cookie_value: Arc::from(uuid::Uuid::new_v4().simple().to_string()),
             }));
     }
-    app.with_state(state)
+    // Outermost, so the fence AND the selftest's own Host check both see a
+    // `Host` on an h2 request — see [`normalize_authority`].
+    app.layer(middleware::from_fn(normalize_authority))
+        .with_state(state)
 }
 
 #[derive(Clone)]
@@ -897,6 +937,71 @@ mod tests {
         assert!(response.headers().get(header::SET_COOKIE).is_none());
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         assert!(String::from_utf8_lossy(&body).contains("No dev server running"));
+    }
+
+    /// An h2 request carries its authority on the URI, not in a `Host` header
+    /// — and both listeners terminate TLS, so h2 is what the shipped app's
+    /// WKWebView actually speaks. Every host check in this process reads
+    /// `Host`, so without normalization the preview fence 404s a valid sandbox
+    /// and the whole API 403s.
+    #[tokio::test]
+    async fn an_http2_authority_is_honoured_wherever_a_host_header_would_be() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let handle = state
+            .sandbox_manager
+            .register_for_test("https://github.com/acme/site.git", "work");
+        let label = crate::sandbox::preview_label(&handle);
+        let preview = build_preview(state, 61234, "local.studio.decocms.com", None);
+
+        // No `Host` header anywhere — exactly how hyper presents h2.
+        let h2 = |uri: String| {
+            HttpRequest::builder()
+                .method(Method::GET)
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap()
+        };
+        assert_eq!(
+            preview
+                .clone()
+                .oneshot(h2(format!(
+                    "https://{label}.local.studio.decocms.com:61234/"
+                )))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "the fence resolves the sandbox from :authority"
+        );
+        assert_eq!(
+            preview
+                .oneshot(h2("https://local.studio.decocms.com:61234/".into()))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND,
+            "and still refuses the bare control host over h2"
+        );
+
+        let (app, _root) = embedded_router();
+        assert_eq!(
+            app.clone()
+                .oneshot(h2("http://127.0.0.1:43120/".into()))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK,
+            "the main listener authenticates the h2 authority as its host"
+        );
+        assert_eq!(
+            app.oneshot(h2("http://attacker.example.com:43120/".into()))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN,
+            "and a foreign h2 authority is still a rebinding attempt"
+        );
     }
 
     /// `rclone` mounts the org filesystem as a plain HTTP client and used to
