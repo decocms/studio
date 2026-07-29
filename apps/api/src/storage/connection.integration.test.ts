@@ -367,6 +367,43 @@ describe("ConnectionStorage", () => {
       });
       expect(updated.slug).toBe("new-app-name");
     });
+
+    it("should recompute slug on update when app_name is cleared", async () => {
+      const conn = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Slug Clear Test",
+        app_name: "cleared-app",
+        connection_type: "HTTP",
+        connection_url: "https://cleared.example.com/api/mcp",
+      });
+      expect(conn.slug).toBe("cleared-app");
+
+      const updated = await storage.update(conn.id, { app_name: null });
+      expect(updated.slug).toBe("clearedexamplecom-api-mcp");
+
+      // The slug is what the UI links by, so the connection must stay findable.
+      const { items } = await storage.list("org_123", {
+        slug: "clearedexamplecom-api-mcp",
+      });
+      expect(items.map((c) => c.id)).toContain(conn.id);
+    });
+
+    it("should recompute slug on update when only the token changes", async () => {
+      const conn = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Slug Untouched Test",
+        app_name: "untouched-app",
+        connection_type: "HTTP",
+        connection_url: "https://untouched.example.com",
+      });
+
+      const updated = await storage.update(conn.id, {
+        connection_token: "tok_123",
+      });
+      expect(updated.slug).toBe("untouched-app");
+    });
   });
 
   describe("update", () => {
