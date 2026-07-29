@@ -74,7 +74,7 @@ import { TagPickerContent } from "./tag-picker";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
-function toEndOfDayIso(d: Date): string {
+export function toEndOfDayIso(d: Date): string {
   return new Date(
     d.getFullYear(),
     d.getMonth(),
