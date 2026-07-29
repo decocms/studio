@@ -124,6 +124,11 @@ export interface RunEngineArgs {
   extraTools: ToolSet;
   /** Per-request inline <system> blocks + the currently-enabled-tools tail. */
   additionalSystemMessages: SystemModelMessage[];
+  /** Names `prepareStep` will pass as `activeTools` — the only tools whose
+   *  schemas reach the provider. The engine sizes its output-token budget off
+   *  these, not the full set: with enable_tool gating, `tools` can hold
+   *  hundreds of schemas while a step sends a couple dozen. */
+  activeToolNames?: string[];
   /** Optional step-budget override. The shared core passes
    *  `SUBAGENT_STEP_LIMIT` for delegated `subtask` runs (`kind: "subtask"`);
    *  main runs leave it undefined so the engine derives its default

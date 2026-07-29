@@ -30,7 +30,10 @@ import type { ModelsConfig } from "@decocms/harness/types";
 import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/shared/sdk";
 import { createLanguageModel } from "@decocms/harness/decopilot/studio-provider";
-import { resolveMaxOutputTokens } from "@decocms/harness/decopilot/harness-constants";
+import {
+  resolveMaxOutputTokens,
+  selectActiveTools,
+} from "@decocms/harness/decopilot/harness-constants";
 import { estimateJsonTokens } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import {
   PARENT_STEP_LIMIT,
@@ -75,6 +78,10 @@ export interface RunAgentLoopOptions {
   /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
   userContext?: import("@decocms/harness/types").HarnessUserContext;
   codingWorkspace?: CodingWorkspacePromptInput;
+  /** Tools `prepareStep` will activate. Sizes the output-token budget; without
+   *  it the budget is sized off every assembled tool, including the ones
+   *  enable_tool gating keeps out of the request. */
+  activeToolNames?: string[];
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;
@@ -265,7 +272,7 @@ export async function runAgentLoop(
       opts.models.thinking.limits,
       estimateJsonTokens(systemMessages) +
         estimateJsonTokens(opts.messages) +
-        estimateJsonTokens(tools),
+        estimateJsonTokens(selectActiveTools(tools, opts.activeToolNames)),
     ),
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
