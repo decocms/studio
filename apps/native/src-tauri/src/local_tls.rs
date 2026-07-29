@@ -47,9 +47,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rcgen::{
-    BasicConstraints, CertificateParams, CidrSubnet, DistinguishedName, DnType,
-    ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints,
-    SanType,
+    BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
+    GeneralSubtree, IsCa, KeyPair, KeyUsagePurpose, NameConstraints, SanType,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -62,10 +61,10 @@ const LEAF_DAYS: i64 = 390;
 const ROOT_DAYS: i64 = 3650;
 
 /// Bumped when the ROOT's shape changes in a way that requires re-minting it
-/// (v2 added the name constraints). A mismatch regenerates the CA and asks
-/// for trust again — one explainable prompt, instead of silently keeping an
-/// unconstrained root forever.
-const CA_VERSION: &str = "2";
+/// (v2 added the name constraints, v3 removed the IP subtree from them). A
+/// mismatch regenerates the CA and asks for trust again — one explainable
+/// prompt, instead of silently keeping an unconstrained root forever.
+const CA_VERSION: &str = "3";
 const CA_VERSION_FILE: &str = "ca-version";
 
 #[derive(Debug, thiserror::Error)]
@@ -166,16 +165,19 @@ fn ca_params() -> Result<CertificateParams, rcgen::Error> {
     params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
     // `pathlen:0` stops intermediate minting; the NAME constraints stop the
     // far worse thing — a stolen key minting a trusted leaf for an arbitrary
-    // host. Every name the leaf legitimately carries is permitted here and
-    // nothing else is.
+    // host. DNS subtrees ONLY, deliberately: BoringSSL rejects any chain whose
+    // CA carries an IP-address subtree (`UNSUPPORTED_CONSTRAINT_TYPE`), and
+    // the claude CLI is a Bun/BoringSSL binary — with an IP subtree here it
+    // cannot reach the agent MCP even when handed this CA explicitly. Leaving
+    // the IP FORM unconstrained is how the leaf's `127.0.0.1` SAN stays valid
+    // (RFC 5280 §4.2.1.10: a name form absent from the constraints is
+    // unrestricted), which does concede that a stolen key could mint a
+    // trusted leaf for an arbitrary IP — but browsers connect by the DNS
+    // names, and those stay pinned to this app's own hosts.
     params.name_constraints = Some(NameConstraints {
         permitted_subtrees: vec![
             GeneralSubtree::DnsName(CONTROL_HOST.to_string()),
             GeneralSubtree::DnsName("localhost".to_string()),
-            GeneralSubtree::IpAddress(CidrSubnet::from_addr_prefix(
-                std::net::IpAddr::from([127, 0, 0, 1]),
-                32,
-            )),
         ],
         excluded_subtrees: Vec::new(),
     });
@@ -336,8 +338,13 @@ mod tests {
     /// The name constraints are what make "a leak compromises one laptop's
     /// loopback" TRUE: without them, a stolen `ca-key.pem` mints a trusted
     /// leaf for any host this user's browsers will accept.
+    ///
+    /// DNS subtrees only — an IP subtree is a poison pill for BoringSSL
+    /// verifiers (`UNSUPPORTED_CONSTRAINT_TYPE`), and the claude CLI is one.
+    /// Reintroducing it would cut the agent MCP off from every claude thread
+    /// again, so its absence is pinned as hard as the constraints themselves.
     #[test]
-    fn the_ca_is_name_constrained_to_its_own_names() {
+    fn the_ca_is_name_constrained_to_dns_names_only() {
         let params = ca_params().expect("params");
         let constraints = params
             .name_constraints
@@ -347,11 +354,16 @@ mod tests {
         let rendered = format!("{:?}", constraints.permitted_subtrees);
         assert!(rendered.contains(CONTROL_HOST), "{rendered}");
         assert!(rendered.contains("localhost"), "{rendered}");
-        // rcgen renders the CIDR as octet arrays, not dotted-quad text.
-        assert!(rendered.contains("[127, 0, 0, 1]"), "{rendered}");
-        // Exactly the leaf's names, nothing else: a new SAN on the leaf must
-        // consciously widen the constraint too.
-        assert_eq!(constraints.permitted_subtrees.len(), 3, "{rendered}");
+        assert!(
+            constraints
+                .permitted_subtrees
+                .iter()
+                .all(|subtree| matches!(subtree, GeneralSubtree::DnsName(_))),
+            "non-DNS subtree would make BoringSSL clients reject the whole chain: {rendered}"
+        );
+        // Exactly the leaf's DNS names, nothing else: a new SAN on the leaf
+        // must consciously widen the constraint too.
+        assert_eq!(constraints.permitted_subtrees.len(), 2, "{rendered}");
     }
 
     /// A CA that could mint further CAs would turn one stolen laptop key into

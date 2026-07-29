@@ -62,6 +62,13 @@ pub struct MountCredentials {
     /// The org-filesystem-only credential — see
     /// [`crate::client_auth::MOUNT_TOKEN_HEADER`].
     pub mount_token: String,
+    /// The root [`Self::base_url`]'s certificate chains to, when the listener
+    /// serves TLS. Consumers whose runtime verifies against the macOS
+    /// keychain (rclone via Go, codex via rustls-platform-verifier) never
+    /// need it; the claude CLI is Bun/BoringSSL, reads neither the keychain
+    /// nor anything but its bundled Mozilla roots, and without this file its
+    /// MCP connection to `base_url` fails TLS outright.
+    pub ca_cert: Option<PathBuf>,
 }
 
 fn credentials_cell() -> &'static OnceLock<MountCredentials> {

@@ -279,6 +279,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             tls: tls.as_ref().map(|tls| local_api::TlsFiles {
                 cert: tls.leaf_cert.clone(),
                 key: tls.leaf_key.clone(),
+                ca: tls.ca_cert.clone(),
             }),
             token: generate_launch_token(),
             boot_id: uuid::Uuid::new_v4().to_string(),

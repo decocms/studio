@@ -108,6 +108,10 @@ pub struct StartOptions {
 pub struct TlsFiles {
     pub cert: PathBuf,
     pub key: PathBuf,
+    /// The root `cert` chains to. Not served — handed to spawned CLI children
+    /// (`NODE_EXTRA_CA_CERTS`) whose runtimes read neither the macOS keychain
+    /// nor Mozilla's roots, so they can verify this process's own listener.
+    pub ca: PathBuf,
 }
 
 /// Browser-facing authentication and optional bundled-UI configuration for an
@@ -609,6 +613,7 @@ pub async fn start_with_client_auth(
                     origin: control_origin,
                     cookie: format!("{}={session_token}", client_auth::LOCAL_SESSION_COOKIE_NAME),
                     mount_token,
+                    ca_cert: opts.tls.as_ref().map(|tls| tls.ca.clone()),
                 });
             }
             // Previews are served per-sandbox at `<handle>.<control host>`:

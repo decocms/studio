@@ -2833,6 +2833,7 @@ async fn execute_turn(
             ),
             cookie: creds.cookie.clone(),
             origin: creds.origin.clone(),
+            ca_cert: creds.ca_cert.clone(),
         });
     match mcp.as_ref() {
         Some(endpoint) => tracing::info!(

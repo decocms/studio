@@ -114,12 +114,46 @@ pub struct McpEndpoint {
     pub url: String,
     pub cookie: String,
     pub origin: String,
+    /// Root certificate `url`'s TLS chains to, when it is not a public one.
+    /// claude is a Bun/BoringSSL binary that consults neither the macOS
+    /// keychain (where this CA is trusted) nor anything beyond its bundled
+    /// Mozilla roots — without being handed this file it cannot open `url`
+    /// at all and the agent silently loses every MCP tool.
+    pub ca_cert: Option<std::path::PathBuf>,
 }
 
 /// Env var names codex is pointed at, so no secret appears in its argv.
 const MCP_URL_ENV: &str = "DECOCMS_MCP_URL";
 const MCP_COOKIE_ENV: &str = "DECOCMS_MCP_COOKIE";
 const MCP_ORIGIN_ENV: &str = "DECOCMS_MCP_ORIGIN";
+
+/// How the CA in [`McpEndpoint::ca_cert`] reaches the claude child. Node's
+/// (and Bun's) documented "additional CAs" variable — it EXTENDS the runtime's
+/// bundled roots, so the CLI's own `api.anthropic.com` connection is
+/// untouched. Never `SSL_CERT_FILE`, which REPLACES the root store for
+/// OpenSSL/rustls-native-certs consumers and would cut a child off from the
+/// public internet. codex needs neither: rustls-platform-verifier consults
+/// the keychain, where this CA is already trusted.
+const NODE_EXTRA_CA_CERTS_ENV: &str = "NODE_EXTRA_CA_CERTS";
+
+/// The environment the CLI child runs with. Secrets reach it here (codex) or
+/// via a 0600 file (claude), never argv — `ps` shows argv to every local
+/// process. Merged over the inherited environment by the spawn layer.
+fn mcp_child_env(spec: &RunSpec) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(mcp) = spec.mcp.as_ref() {
+        env.push((MCP_URL_ENV.to_string(), mcp.url.clone()));
+        env.push((MCP_COOKIE_ENV.to_string(), mcp.cookie.clone()));
+        env.push((MCP_ORIGIN_ENV.to_string(), mcp.origin.clone()));
+        if let Some(ca_cert) = mcp.ca_cert.as_ref() {
+            env.push((
+                NODE_EXTRA_CA_CERTS_ENV.to_string(),
+                ca_cert.display().to_string(),
+            ));
+        }
+    }
+    env
+}
 
 /// The one MCP server name both CLIs see. Matches the cluster harness's
 /// `cms` key, so a prompt that refers to it means the same thing either side.
@@ -476,14 +510,7 @@ async fn start_inner(
         }
     };
 
-    // Secrets reach the child by ENVIRONMENT (codex) or a 0600 file (claude),
-    // never argv — `ps` shows argv to every local process.
-    let mut env = Vec::new();
-    if let Some(mcp) = spec.mcp.as_ref() {
-        env.push((MCP_URL_ENV.to_string(), mcp.url.clone()));
-        env.push((MCP_COOKIE_ENV.to_string(), mcp.cookie.clone()));
-        env.push((MCP_ORIGIN_ENV.to_string(), mcp.origin.clone()));
-    }
+    let env = mcp_child_env(spec);
 
     let req = SpawnRequest {
         argv,
@@ -933,7 +960,38 @@ mod tests {
             url: "http://localhost:4420/mcp/virtual-mcp/vir_1".to_string(),
             cookie: "decocms-local-session=SECRET".to_string(),
             origin: "http://localhost:4420".to_string(),
+            ca_cert: Some(std::path::PathBuf::from("/app-root/tls/ca-cert.pem")),
         }
+    }
+
+    /// The listener's private CA must reach the child, and through the one
+    /// variable that EXTENDS the runtime's roots rather than replacing them.
+    /// Without it claude (Bun/BoringSSL — no keychain, no extra files) fails
+    /// TLS against this process's own listener and the agent silently loses
+    /// every MCP tool; with `SSL_CERT_FILE` instead, a child would lose the
+    /// public internet.
+    #[test]
+    fn the_private_ca_reaches_the_child_additively_and_only_when_real() {
+        let mut spec = base_spec(HarnessId::ClaudeCode);
+        spec.mcp = Some(mcp_fixture());
+        let env = mcp_child_env(&spec);
+        assert!(env
+            .iter()
+            .any(|(name, value)| name == "NODE_EXTRA_CA_CERTS"
+                && value == "/app-root/tls/ca-cert.pem"));
+        assert!(!env.iter().any(|(name, _)| name == "SSL_CERT_FILE"));
+
+        // A plain-HTTP listener (selftest, standalone) has no CA to hand
+        // over; pointing the var at nothing would be Node startup noise.
+        let mut plain = mcp_fixture();
+        plain.ca_cert = None;
+        spec.mcp = Some(plain);
+        assert!(!mcp_child_env(&spec)
+            .iter()
+            .any(|(name, _)| name == "NODE_EXTRA_CA_CERTS"));
+
+        spec.mcp = None;
+        assert!(mcp_child_env(&spec).is_empty());
     }
 
     /// The credential must never be visible to `ps`. claude gets a file path,
