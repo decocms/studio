@@ -479,7 +479,7 @@ export function makeEditHandler(deps: FsDeps) {
 
     let content: string;
     try {
-      content = fs.readFileSync(filePath, "utf-8");
+      content = await readFile(filePath, "utf-8");
     } catch {
       return jsonResponse({ error: `File not found: ${body.path}` }, 400);
     }
@@ -500,7 +500,7 @@ export function makeEditHandler(deps: FsDeps) {
     const jsonError = invalidDecofileBlockJson(body.path ?? "", updated);
     if (jsonError)
       return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
-    fs.writeFileSync(filePath, updated, "utf-8");
+    await writeFile(filePath, updated, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
       ok: true,
