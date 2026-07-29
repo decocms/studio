@@ -48,10 +48,6 @@ import {
   parseGithubRepoFromMetadata,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
-import {
-  readBoundedText,
-  UpstreamPayloadTooLargeError,
-} from "../../lib/bounded-text";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -98,20 +94,6 @@ function assertSandboxBranchParam(branch: string): void {
 
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
-/**
- * Every route below that passes `forwardJsonBody: true` has its body read
- * fully into memory via `c.req.text()` in `proxyDaemon` before being
- * forwarded to the daemon — unlike suggest-commit/judge-review/preview-invoke
- * above, they had no size cap at all. 20MB comfortably covers any real source
- * file or git payload while bounding how much an oversized/malicious request
- * can buffer.
- */
-const FORWARDED_BODY_MAX_BYTES = 20 * 1024 * 1024;
-
-const forwardedBodyLimit = bodyLimit({
-  maxSize: FORWARDED_BODY_MAX_BYTES,
-  onError: (c) => c.json({ error: "Payload too large" }, 413),
-});
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -390,7 +372,7 @@ async function proxyDaemon(
       }
     }
 
-    const rawText = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
+    const rawText = await upstream.text();
     const text =
       opts?.redactRepoDirUnlessDesktop && runner.kind !== "user-desktop"
         ? redactRepoDir(rawText)
@@ -429,9 +411,6 @@ async function proxyDaemon(
     }
     return await resolveAndFetch();
   } catch (err) {
-    if (err instanceof UpstreamPayloadTooLargeError) {
-      return c.json({ error: err.message }, 502);
-    }
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
@@ -497,7 +476,7 @@ async function fetchDaemonJson<T>(
     throw new Error("SANDBOX_GONE");
   }
 
-  const text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
+  const text = await upstream.text();
   if (!upstream.ok) {
     try {
       const err = JSON.parse(text) as { error?: string };
@@ -531,43 +510,43 @@ export const createSandboxRoutes = () => {
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
 
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:virtualMcpId/:branch/write", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/write", (c) =>
     proxyDaemon(c, "/_sandbox/write", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/unlink", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/unlink", (c) =>
     proxyDaemon(c, "/_sandbox/unlink", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/mkdir", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/mkdir", (c) =>
     proxyDaemon(c, "/_sandbox/mkdir", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/rename", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/rename", (c) =>
     proxyDaemon(c, "/_sandbox/rename", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/read", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/read", (c) =>
     proxyDaemon(c, "/_sandbox/read", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/glob", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/glob", (c) =>
     proxyDaemon(c, "/_sandbox/glob", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/grep", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/grep", (c) =>
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
@@ -597,7 +576,7 @@ export const createSandboxRoutes = () => {
       redactRepoDirUnlessDesktop: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", forwardedBodyLimit, (c) =>
+  app.put("/:virtualMcpId/:branch/config", (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
@@ -704,57 +683,53 @@ export const createSandboxRoutes = () => {
       ]),
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/diff", forwardedBodyLimit, (c) =>
+  app.post("/:virtualMcpId/:branch/git/diff", (c) =>
     proxyDaemon(c, "/_sandbox/git/diff", {
       forwardJsonBody: true,
       map404to410: true,
     }),
   );
-  app.post(
-    "/:virtualMcpId/:branch/git/publish",
-    forwardedBodyLimit,
-    async (c) => {
-      const runner = requireRunner(c);
-      if (runner instanceof Response) return runner;
+  app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
 
-      const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
-      const ctx = c.var.studioContext;
+    const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
+    const ctx = c.var.studioContext;
 
-      return withClaimGitLock(claimName, async () => {
-        try {
-          await patchSandboxOperator(ctx, runner, claimName);
-          const githubRepo = parseGithubRepoFromMetadata(
-            virtualMcpMetadata,
-            connectionIds,
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+        const githubRepo = parseGithubRepoFromMetadata(
+          virtualMcpMetadata,
+          connectionIds,
+        );
+        if (githubRepo) {
+          await refreshSandboxGitCredentials(
+            ctx,
+            runner,
+            claimName,
+            githubRepo,
           );
-          if (githubRepo) {
-            await refreshSandboxGitCredentials(
-              ctx,
-              runner,
-              claimName,
-              githubRepo,
-            );
-          }
-        } catch (err) {
-          if (err instanceof GitPushAuthError) {
-            return c.json(
-              { error: err.message },
-              403,
-              SANDBOX_PROXY_CACHE_HEADERS,
-            );
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
         }
+      } catch (err) {
+        if (err instanceof GitPushAuthError) {
+          return c.json(
+            { error: err.message },
+            403,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
 
-        return proxyDaemon(c, "/_sandbox/git/publish", {
-          forwardJsonBody: true,
-          map404to410: true,
-        });
+      return proxyDaemon(c, "/_sandbox/git/publish", {
+        forwardJsonBody: true,
+        map404to410: true,
       });
-    },
-  );
-  app.post("/:virtualMcpId/:branch/git/discard", forwardedBodyLimit, (c) => {
+    });
+  });
+  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
     const { claimName } = c.get("vmClaim");
     return withClaimGitLock(claimName, () =>
       proxyDaemon(c, "/_sandbox/git/discard", {
@@ -763,31 +738,27 @@ export const createSandboxRoutes = () => {
       }),
     );
   });
-  app.post(
-    "/:virtualMcpId/:branch/git/rebase",
-    forwardedBodyLimit,
-    async (c) => {
-      const runner = requireRunner(c);
-      if (runner instanceof Response) return runner;
+  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
 
-      const { claimName } = c.get("vmClaim");
-      const ctx = c.var.studioContext;
+    const { claimName } = c.get("vmClaim");
+    const ctx = c.var.studioContext;
 
-      return withClaimGitLock(claimName, async () => {
-        try {
-          await patchSandboxOperator(ctx, runner, claimName);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-        }
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
 
-        return proxyDaemon(c, "/_sandbox/git/rebase", {
-          forwardJsonBody: true,
-          map404to410: true,
-        });
+      return proxyDaemon(c, "/_sandbox/git/rebase", {
+        forwardJsonBody: true,
+        map404to410: true,
       });
-    },
-  );
+    });
+  });
   app.post(
     "/:virtualMcpId/:branch/git/suggest-commit",
     bodyLimit({
@@ -989,7 +960,7 @@ export const createSandboxRoutes = () => {
 
     let text: string;
     try {
-      text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
+      text = await upstream.text();
     } catch {
       return c.json({ error: "Preview unreachable" }, 502);
     }
@@ -1059,7 +1030,7 @@ export const createSandboxRoutes = () => {
 
       let text: string;
       try {
-        text = await readBoundedText(upstream, FORWARDED_BODY_MAX_BYTES);
+        text = await upstream.text();
       } catch {
         return c.json({ error: "Preview unreachable" }, 502);
       }
