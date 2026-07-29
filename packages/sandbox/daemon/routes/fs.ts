@@ -392,7 +392,7 @@ export function makeMkdirHandler(deps: FsDeps) {
     const dirPath = safePath(deps.appRoot, deps.repoDir, body.path);
     if (!dirPath) return jsonResponse({ error: "Path escapes app root" }, 400);
     try {
-      fs.mkdirSync(dirPath, { recursive: true });
+      await mkdir(dirPath, { recursive: true });
     } catch (err) {
       return jsonResponse({ error: (err as Error).message }, 500);
     }
