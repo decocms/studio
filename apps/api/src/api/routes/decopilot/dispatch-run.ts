@@ -327,10 +327,12 @@ async function resolveSecretModelSource(
     modelId,
   });
 
-  // OpenRouter surfaces `X-Title` as the app name in its dashboard/rankings.
-  // Tag it with the org so per-tenant traffic is attributable. `deco` is the
-  // OpenRouter provider behind the deco AI gateway — tag it distinctly so its
-  // traffic is separable from direct-OpenRouter usage.
+  // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a
+  // request out of the "Unknown" bucket in its dashboard/rankings); `X-Title`
+  // only sets the display name. Both are required — a title without a referer
+  // stays Unknown. Referer is a fixed Studio URL so all traffic rolls up under
+  // one app; `X-Title` carries the org (and distinguishes `deco`, the
+  // OpenRouter provider behind the deco AI gateway, from direct-OpenRouter use).
   if (source.providerId === "openrouter" || source.providerId === "deco") {
     const orgName =
       ctx.organization?.name ?? ctx.organization?.slug ?? organizationId;
@@ -339,6 +341,7 @@ async function resolveSecretModelSource(
       ...source,
       extraHeaders: {
         ...source.extraHeaders,
+        "HTTP-Referer": "https://studio.decocms.com",
         "X-Title": `${appName} - ${orgName}`,
       },
     };
