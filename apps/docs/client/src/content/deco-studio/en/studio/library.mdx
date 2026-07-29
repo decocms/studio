@@ -8,22 +8,31 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ## What is the Library?
 
-**Library** is a file browser for your organization's shared filesystem — reachable from the top of the left sidebar. It's the human-facing window onto the same files your agents read and write: anything an agent saves to the org filesystem shows up here, and anything you drop here is available to your agents.
+**Library** is a file browser for your organization's shared filesystem — reachable from the **Library** tab at the top of the main panel. It's the human-facing window onto the same files your agents read and write: anything an agent saves to the org filesystem shows up here, and anything you drop here is available to your agents.
 
 Think of it as your organization's shared drive, with a few well-known areas.
 
-## Volumes
+## Your home folder
 
-The Library is organized into volumes:
+The Library opens on your organization's own folder, named after your org. It's shared and free-form: this is where agents record durable knowledge and where you keep context you want every agent to be able to reach. Everyone in the org can edit it.
 
-- **Home** — the org's shared, free-form home folder. This is where agents record durable knowledge and where you keep context you want every agent to be able to reach. Editable by everyone.
-- **Uploads** — files attached to conversations land here automatically. When you drop a file into a chat, it's available to the agent without a copy step.
-- **Outputs** — the shared output folder for agent runs. Files an agent produces during a run surface here.
-- **Public sets** — curated, read-only skill sets synced from versioned repositories, exposed for agents to reference.
+### System folders
 
-A **Recently added** feed across all volumes sits at the top so you can jump back to whatever you (or your agents) touched last. Navigate with breadcrumbs; the current location is reflected in the page URL, so you can link a teammate straight to a folder.
+Three folders inside it are filled by the product rather than by hand. They carry a distinct grey folder icon so they're easy to tell apart from folders your team made:
 
-You can drag and drop files directly into any editable volume to upload them.
+- **uploads** — files attached to conversations land here automatically. When you drop a file into a chat, it's available to the agent without a copy step. Files uploaded from the Library's landing view also go here.
+- **outputs** — files an agent produces during a run surface here, grouped by run.
+- **skills** — curated, read-only skill sets synced from versioned repositories, exposed for agents to reference. Read-only: they're updated from their GitHub source, not edited here.
+
+They're mounted as separate volumes under the hood (see the mount table below), but you browse them as part of one tree.
+
+### Navigating
+
+Navigate with breadcrumbs — the trail always starts at your org's folder and is the only place the current folder is named. The current location is reflected in the page URL, so you can link a teammate straight to a folder.
+
+The search box follows you: at the landing view it searches every file in the org, and inside a folder it searches only that folder and everything under it (the placeholder tells you which). A **Recently added** feed across all volumes sits at the bottom of the landing view so you can jump back to whatever you (or your agents) touched last.
+
+You can drag and drop files directly into any editable folder to upload them.
 
 ## Brands
 
@@ -75,16 +84,16 @@ A badge on the card reflects the current share mode. For password-protected node
 
 ## How it maps to the sandbox
 
-The Library and the agent sandbox are two views of the same filesystem. Inside a sandbox these volumes are mounted under `org/`:
+The Library and the agent sandbox are two views of the same filesystem. The Library names your home folder after your org and nests the system folders inside it, but the paths agents use never change — they're mounted under `org/`:
 
-| Library volume | Sandbox path |
+| Library folder | Sandbox path |
 |---|---|
-| Home | `org/home/` |
-| Uploads | `org/upload` |
-| Outputs | `org/output` |
-| Public sets | `org/public/<set>` |
+| `<your-org>` (home) | `org/home/` |
+| `<your-org>/uploads` | `org/upload` |
+| `<your-org>/outputs` | `org/output` |
+| `<your-org>/skills/<set>` | `org/public/<set>` |
 
-Files written to the Home folder and to Outputs sync to your organization's cloud storage and are visible to every member and agent. External changes appear inside a running sandbox within about a second.
+Files written to your home folder and to outputs sync to your organization's cloud storage and are visible to every member and agent. External changes appear inside a running sandbox within about a second.
 
 <Callout type="info">
   For how agents use these folders at runtime — recording durable knowledge, reading chat attachments, writing run output — see [Decopilot → Overview](/en/studio/decopilot/overview#built-in-tools).

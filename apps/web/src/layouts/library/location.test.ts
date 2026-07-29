@@ -1,14 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { basename, browsePathFor, parseLibraryPath } from "./location";
+import {
+  basename,
+  browsePathFor,
+  parseLibraryPath,
+  segmentLabel,
+} from "./location";
 
 describe("parseLibraryPath", () => {
-  it("parses the root", () => {
+  it("parses the empty path (not UI-reachable, but still valid)", () => {
     const loc = parseLibraryPath("");
     expect(loc.volume).toBeNull();
     expect(loc.dirPath).toBe("");
     expect(loc.isPublic).toBe(false);
     expect(loc.readOnly).toBe(false);
     expect(loc.segments).toEqual([]);
+    expect(loc.isHomeRoot).toBe(false);
+  });
+
+  it("flags only the home volume root as the landing view", () => {
+    expect(parseLibraryPath("home").isHomeRoot).toBe(true);
+    expect(parseLibraryPath("home/docs").isHomeRoot).toBe(false);
+    expect(parseLibraryPath("uploads").isHomeRoot).toBe(false);
   });
 
   it("parses a volume root", () => {
@@ -52,6 +64,13 @@ describe("browsePathFor", () => {
   it("keeps the public/<set> spelling", () => {
     const loc = parseLibraryPath("public/core");
     expect(browsePathFor(loc, "skills/web")).toBe("public/core/skills/web");
+  });
+});
+
+describe("segmentLabel", () => {
+  it("presents the public volume as skills, everything else as-is", () => {
+    expect(segmentLabel("public")).toBe("skills");
+    expect(segmentLabel("uploads")).toBe("uploads");
   });
 });
 

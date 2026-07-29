@@ -117,9 +117,9 @@ export const library = {
   "library.library.newFolderTitle": "Nova pasta",
   "library.library.readOnly": "Apenas leitura",
   "library.library.refresh": "Atualizar",
+  "library.library.searchInPlaceholder": "Pesquisar arquivos em {folder}…",
   "library.library.searchPlaceholder": "Pesquisar todos os arquivos…",
   "library.library.theLibrary": "a biblioteca",
-  "library.library.title": "Biblioteca",
   "library.library.uploadFailed": "Falha ao enviar",
   "library.library.uploadFile": "Enviar arquivo",
   "library.library.uploadedMultiple": "Enviados {count} arquivos",
@@ -136,11 +136,8 @@ export const library = {
   "library.libraryViews.files": "Arquivos",
   "library.libraryViews.filesCount": "{count} arquivo(s)",
   "library.libraryViews.folders": "Pastas",
-  "library.libraryViews.library": "Biblioteca",
   "library.libraryViews.noFilesMatch":
     'Nenhum arquivo corresponde a "{query}".',
-  "library.libraryViews.noFilesYet":
-    "Nenhum arquivo ainda — envie um ou peça a um agente para produzir algo.",
   "library.libraryViews.noPublicSkillSetsConfigured":
     "Nenhum conjunto de skills público configurado.",
   "library.libraryViews.readOnly": "Somente leitura",
@@ -148,13 +145,12 @@ export const library = {
   "library.libraryViews.searchResults": "{count} resultado(s)",
   "library.libraryViews.skillSetsCount": "{count} conjunto(s)",
   "library.libraryViews.skills": "Skills",
-  "library.libraryViews.volumeHomeDescription":
-    "Pasta inicial da sua organização",
   "library.libraryViews.volumeOutputsDescription":
     "Saídas de execução de agentes",
   "library.libraryViews.volumeUploadsDescription":
     "Arquivos que seu time envia",
   "library.previewContent.close": "Fechar",
+  "library.seeInLibrary.label": "Ver na biblioteca",
   "library.previewContent.download": "Baixar",
   "library.previewContent.fileNotAvailable":
     "Este arquivo não está mais disponível.",

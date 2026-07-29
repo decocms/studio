@@ -167,15 +167,31 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   });
 }
 
+const SEARCH_LIMIT = 50;
+
+/** Narrow a search to one volume and (optionally) one directory subtree. */
+export interface OrgFsSearchScope {
+  volume: string;
+  /** In-volume directory to search under ("" = the whole volume). */
+  prefix: string;
+}
+
 /**
- * Path search (case-insensitive substring) across every volume, newest
- * first — the Library's search box. Only runs for non-empty queries;
- * previous results stay on screen while a new query loads.
+ * Path search (case-insensitive substring), newest first — the Library's search
+ * box. Cross-volume by default; `scope` narrows it to one volume + directory
+ * subtree, which is what the Library does while you're inside a folder. Only
+ * runs for non-empty queries; previous results stay on screen while a new
+ * query loads.
  */
-export function useOrgFsSearch(query: string, limit = 50) {
+export function useOrgFsSearch(query: string, scope?: OrgFsSearchScope) {
   const { org } = useProjectContext();
   return useQuery({
-    queryKey: KEYS.orgFsSearch(org.id, query),
+    queryKey: KEYS.orgFsSearch(
+      org.id,
+      query,
+      scope?.volume ?? "",
+      scope?.prefix ?? "",
+    ),
     enabled: query.length > 0,
     // Keep previous results on screen between keystrokes, but only within
     // the same org — switching orgs doesn't remount this hook, so without
@@ -183,8 +199,16 @@ export function useOrgFsSearch(query: string, limit = 50) {
     placeholderData: (previousData, previousQuery) =>
       previousQuery?.queryKey[1] === org.id ? previousData : undefined,
     queryFn: async () => {
+      const params = new URLSearchParams({
+        q: query,
+        limit: String(SEARCH_LIMIT),
+      });
+      if (scope) {
+        params.set("volume", scope.volume);
+        if (scope.prefix) params.set("prefix", scope.prefix);
+      }
       const res = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+        `/api/${encodeURIComponent(org.slug)}/fs/search?${params}`,
       );
       return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
     },

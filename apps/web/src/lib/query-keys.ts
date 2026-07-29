@@ -487,11 +487,12 @@ export const KEYS = {
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
   orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
-  // Cross-volume path search (Library search box). The root key is the
-  // prefix mutations invalidate; per-query keys nest under it.
+  // Path search (Library search box) — cross-volume, or narrowed to one
+  // volume + directory subtree when browsing inside a folder. The root key is
+  // the prefix mutations invalidate; per-query keys nest under it.
   orgFsSearchRoot: (orgId: string) => ["org-fs-search", orgId] as const,
-  orgFsSearch: (orgId: string, query: string) =>
-    ["org-fs-search", orgId, query] as const,
+  orgFsSearch: (orgId: string, query: string, volume: string, prefix: string) =>
+    ["org-fs-search", orgId, query, volume, prefix] as const,
   // Skill folders (dirs with SKILL.md) across home + public sets — the
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,

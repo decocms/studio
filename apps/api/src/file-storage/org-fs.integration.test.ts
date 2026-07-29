@@ -164,6 +164,35 @@ describe("OrgFs service (integration)", () => {
     expect(await fs.searchWithEffectivePublic("sales", 10, [])).toEqual([]);
   });
 
+  it("searchWithEffectivePublic narrows to a directory subtree", async () => {
+    await fs.write("skills", "reports/Q1-Sales.md", "1", { actor: ACTOR });
+    await fs.write("skills", "reports/deep/Q2-Sales.md", "2", { actor: ACTOR });
+    await fs.write("skills", "reports-archive/Q0-Sales.md", "3", {
+      actor: ACTOR,
+    });
+    await fs.write("skills", "sales-loose.md", "4", { actor: ACTOR });
+
+    // Recursive under the dir; siblings and same-prefix dir names excluded.
+    expect(
+      (await fs.searchWithEffectivePublic("sales", 10, undefined, "reports"))
+        .map((e) => e.path)
+        .toSorted(),
+    ).toEqual(["reports/Q1-Sales.md", "reports/deep/Q2-Sales.md"]);
+
+    // A prefix must be a whole path segment, and LIKE metacharacters are literal.
+    expect(
+      await fs.searchWithEffectivePublic("sales", 10, undefined, "report"),
+    ).toEqual([]);
+    expect(
+      await fs.searchWithEffectivePublic("sales", 10, undefined, "_"),
+    ).toEqual([]);
+
+    // Prefix composes with volume narrowing.
+    expect(
+      await fs.searchWithEffectivePublic("sales", 10, ["outputs"], "reports"),
+    ).toEqual([]);
+  });
+
   it("filesExist batch-probes live files only", async () => {
     await fs.write("skills", "seo/SKILL.md", "skill", { actor: ACTOR });
     await fs.mkdir("skills", "plain", { actor: ACTOR });

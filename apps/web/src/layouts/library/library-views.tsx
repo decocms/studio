@@ -1,19 +1,17 @@
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
-import {
-  ChevronRight,
-  Globe01,
-  Home01,
-  Stars01,
-  Upload01,
-} from "@untitledui/icons";
+import { ChevronRight, Stars01, Upload01, Zap } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { homeDisplayName } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  homeDisplayName,
+} from "@decocms/shared/organization/home-mount";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import {
   type OrgFsEntry,
+  type OrgFsSearchScope,
   type ShareMode,
   useOrgFsFileUrl,
   useOrgFsList,
@@ -37,6 +35,7 @@ import {
   browsePathForEntry,
   type LibraryLocation,
   publicSetOf,
+  segmentLabel,
 } from "./location";
 import type { ShareTarget } from "./file-share-button";
 
@@ -58,23 +57,23 @@ function publicStateOf(e: {
   return undefined;
 }
 
-/** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts).
- *  `glyph` marks the folder body, Finder-special-folder style. Skills are
- *  deliberately absent — they live in versioned repos (public sets), not as
- *  an editable cloud volume. */
-export const VOLUMES = [
+/** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts) —
+ *  what the refresh button revalidates. The Library presents `home` as the top
+ *  of the tree and the rest as system folders inside it. */
+export const LIBRARY_VOLUMES = [HOME_MOUNT_PATH, "uploads", "outputs"] as const;
+
+/** Volumes filled by chat and by agent work rather than by hand, presented as
+ *  system folders inside the home listing: graphite tone + a body glyph, so it
+ *  reads as "the product owns this". Their mounts are unchanged — only the
+ *  presentation moved (and `public` presents as "skills", see `segmentLabel`). */
+const SYSTEM_FOLDERS = [
   {
-    id: "home",
-    descriptionKey: "library.libraryViews.volumeHomeDescription" as const,
-    glyph: Home01,
-  },
-  {
-    id: "uploads",
+    volume: "uploads",
     descriptionKey: "library.libraryViews.volumeUploadsDescription" as const,
     glyph: Upload01,
   },
   {
-    id: "outputs",
+    volume: "outputs",
     descriptionKey: "library.libraryViews.volumeOutputsDescription" as const,
     glyph: Stars01,
   },
@@ -169,14 +168,11 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
 
 function VolumeFolderCard({
   volume,
-  displayName,
   descriptionKey,
   glyph,
   onOpen,
 }: {
   volume: string;
-  /** Card label when it differs from the volume id (home shows the slug). */
-  displayName?: string;
   descriptionKey: TranslationKey;
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   onOpen: () => void;
@@ -185,7 +181,7 @@ function VolumeFolderCard({
   const usage = useOrgFsUsage(volume);
   return (
     <FolderCard
-      name={displayName ?? volume}
+      name={volume}
       meta={
         usage.data
           ? t("library.libraryViews.filesCount", { count: usage.data.files })
@@ -193,11 +189,57 @@ function VolumeFolderCard({
       }
       subtitle={t(descriptionKey)}
       glyph={glyph}
+      tone="system"
       onOpen={onOpen}
     />
   );
 }
 
+/**
+ * The system folders, rendered first inside the home listing. They're separate
+ * volumes under the hood (mounted elsewhere in the sandbox) but a member has no
+ * reason to know that — here they're just the folders chat and agents fill.
+ *
+ * `public` presents as "skills". A hand-made `home/skills/` folder can therefore
+ * sit next to it; the two stay distinguishable by tone, the read-only eye badge,
+ * the subtitle, and this card coming first.
+ */
+function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
+  const t = useT();
+  const publicSets = useOrgFsPublicSets();
+  const setCount = publicSets.data?.length ?? 0;
+  return (
+    <>
+      {SYSTEM_FOLDERS.map((f) => (
+        <VolumeFolderCard
+          key={f.volume}
+          volume={f.volume}
+          descriptionKey={f.descriptionKey}
+          glyph={f.glyph}
+          onOpen={() => onOpenDir(f.volume)}
+        />
+      ))}
+      {setCount > 0 && (
+        <FolderCard
+          name={segmentLabel("public")}
+          meta={t("library.libraryViews.skillSetsCount", { count: setCount })}
+          subtitle={t("library.libraryViews.curatedSkillSetsReadOnly")}
+          glyph={Zap}
+          tone="system"
+          readOnly
+          onOpen={() => onOpenDir("public")}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Location trail — the only place the current folder is named (there's no page
+ * heading duplicating it). The org's home volume IS the top of the tree, so its
+ * segment folds into the root crumb, which is labelled with the org itself; the
+ * sibling volumes (uploads/outputs/public) hang off that crumb.
+ */
 export function Breadcrumbs({
   segments,
   onNavigate,
@@ -205,19 +247,28 @@ export function Breadcrumbs({
   segments: string[];
   onNavigate: (path: string) => void;
 }) {
-  const t = useT();
+  const { org } = useProjectContext();
+  const rest = segments[0] === HOME_MOUNT_PATH ? segments.slice(1) : segments;
+  const offset = segments.length - rest.length;
+  const atRoot = rest.length === 0;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground hover:underline"
-        onClick={() => onNavigate("")}
-      >
-        {t("library.libraryViews.library")}
-      </button>
-      {segments.map((seg, i) => {
-        const prefix = segments.slice(0, i + 1).join("/");
-        const isLast = i === segments.length - 1;
+      {atRoot ? (
+        <span className="truncate font-medium text-foreground">
+          {homeDisplayName(org.slug)}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="truncate text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => onNavigate(HOME_MOUNT_PATH)}
+        >
+          {homeDisplayName(org.slug)}
+        </button>
+      )}
+      {rest.map((seg, i) => {
+        const prefix = segments.slice(0, offset + i + 1).join("/");
+        const isLast = i === rest.length - 1;
         return (
           <span key={prefix} className="flex min-w-0 items-center gap-1">
             <ChevronRight
@@ -226,7 +277,7 @@ export function Breadcrumbs({
             />
             {isLast ? (
               <span className="truncate font-medium text-foreground">
-                {seg}
+                {segmentLabel(seg)}
               </span>
             ) : (
               <button
@@ -234,7 +285,7 @@ export function Breadcrumbs({
                 className="truncate text-muted-foreground hover:text-foreground hover:underline"
                 onClick={() => onNavigate(prefix)}
               >
-                {seg}
+                {segmentLabel(seg)}
               </button>
             )}
           </span>
@@ -245,17 +296,22 @@ export function Breadcrumbs({
 }
 
 /**
- * Global search results — cross-volume, shown in place of whatever listing
- * is active (root or folder) while the search box has a query.
+ * Search results, shown in place of whatever listing is active while the search
+ * box has a query. Cross-volume at the home root, narrowed to the current
+ * folder's subtree everywhere else (`scope`) — so the placeholder's promise
+ * ("Search files in decks") is what actually happens.
  */
 export function SearchResultsView({
   query,
+  scope,
   stale,
   onOpenFile,
   onShare,
   onDelete,
 }: {
   query: string;
+  /** Narrow to one volume + directory subtree; unset = cross-volume. */
+  scope?: OrgFsSearchScope;
   /** The input is ahead of `query` (still inside the debounce window). */
   stale: boolean;
   onOpenFile: (previewPath: string) => void;
@@ -265,7 +321,7 @@ export function SearchResultsView({
   const t = useT();
   const { org } = useProjectContext();
   const fileUrl = useOrgFsFileUrl();
-  const search = useOrgFsSearch(query);
+  const search = useOrgFsSearch(query, scope);
 
   const shareFile = (e: OrgFsEntry & { volume: string }) =>
     onShare({
@@ -323,14 +379,16 @@ export function SearchResultsView({
   );
 }
 
-/** Root view: Recently added + Folders (volumes/public). */
-export function RootView({
-  onOpenDir,
+/**
+ * Cross-volume "Recently added" feed. Sits at the BOTTOM of the home listing
+ * (folders first — that's what people came for) and only there: it spans every
+ * volume, so it would be a lie inside any single folder.
+ */
+function RecentlyAdded({
   onOpenFile,
   onShare,
   onDelete,
 }: {
-  onOpenDir: (path: string) => void;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
@@ -338,7 +396,6 @@ export function RootView({
   const t = useT();
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
-  const publicSets = useOrgFsPublicSets();
   const fileUrl = useOrgFsFileUrl();
 
   const shareFile = (e: OrgFsEntry & { volume: string }) =>
@@ -351,75 +408,39 @@ export function RootView({
       url: publicFileUrl(fileUrl(e.volume, e.path)),
     });
 
+  if (recent.isPending) {
+    return (
+      <div className="flex flex-col gap-3">
+        <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
+        <GridSkeleton />
+      </div>
+    );
+  }
   const recentlyAdded = (recent.data ?? []).slice(0, RECENTLY_ADDED_COUNT);
+  if (recentlyAdded.length === 0) return null;
 
   return (
-    <>
-      {recent.isPending ? (
-        <div className="flex flex-col gap-3">
-          <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
-          <GridSkeleton />
-        </div>
-      ) : recentlyAdded.length > 0 ? (
-        <div className="flex flex-col gap-3">
-          <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
-          <CardsGrid>
-            {recentlyAdded.map((e) => (
-              <RecentFileCard
-                key={`${e.volume}/${e.path}`}
-                filename={basename(e.path)}
-                updatedAt={e.updatedAt}
-                size={e.size}
-                downloadUrl={fileUrl(e.volume, e.path)}
-                subtitle={locationOf(e.volume, e.path, org.slug)}
-                publicState={publicStateOf(e)}
-                onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
-                onShare={() => shareFile(e)}
-                onDelete={() =>
-                  onDelete({ volume: e.volume, path: e.path, kind: "file" })
-                }
-              />
-            ))}
-          </CardsGrid>
-        </div>
-      ) : (
-        <EmptyNote>{t("library.libraryViews.noFilesYet")}</EmptyNote>
-      )}
-
-      <div className="flex flex-col gap-3">
-        <SectionLabel>{t("library.libraryViews.folders")}</SectionLabel>
-        <CardsGrid>
-          {VOLUMES.map((v) => (
-            <VolumeFolderCard
-              key={v.id}
-              volume={v.id}
-              // The home volume presents as the org itself: its display label is
-              // the org slug (with a reserved-slug fallback to "home" so two
-              // cards aren't both named e.g. "public"). The agent-facing mount
-              // path is always `org/home/` regardless of this label.
-              displayName={
-                v.id === "home" ? homeDisplayName(org.slug) : undefined
-              }
-              descriptionKey={v.descriptionKey}
-              glyph={v.glyph}
-              onOpen={() => onOpenDir(v.id)}
-            />
-          ))}
-          {(publicSets.data?.length ?? 0) > 0 && (
-            <FolderCard
-              name="public"
-              meta={t("library.libraryViews.skillSetsCount", {
-                count: publicSets.data?.length ?? 0,
-              })}
-              subtitle={t("library.libraryViews.curatedSkillSetsReadOnly")}
-              glyph={Globe01}
-              readOnly
-              onOpen={() => onOpenDir("public")}
-            />
-          )}
-        </CardsGrid>
-      </div>
-    </>
+    <div className="flex flex-col gap-3">
+      <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
+      <CardsGrid>
+        {recentlyAdded.map((e) => (
+          <RecentFileCard
+            key={`${e.volume}/${e.path}`}
+            filename={basename(e.path)}
+            updatedAt={e.updatedAt}
+            size={e.size}
+            downloadUrl={fileUrl(e.volume, e.path)}
+            subtitle={locationOf(e.volume, e.path, org.slug)}
+            publicState={publicStateOf(e)}
+            onOpen={() => onOpenFile(browsePathForEntry(e.volume, e.path))}
+            onShare={() => shareFile(e)}
+            onDelete={() =>
+              onDelete({ volume: e.volume, path: e.path, kind: "file" })
+            }
+          />
+        ))}
+      </CardsGrid>
+    </div>
   );
 }
 
@@ -455,7 +476,11 @@ export function PublicSetsView({
   );
 }
 
-/** Listing of one directory inside a volume. */
+/**
+ * Listing of one directory inside a volume — and, at the home root, the
+ * Library's landing view: the system folders lead the folder grid and the
+ * cross-volume "Recently added" feed closes the page.
+ */
 export function VolumeView({
   location,
   onOpenDir,
@@ -484,7 +509,25 @@ export function VolumeView({
   const listing = useOrgFsList(volume, location.dirPath);
   const fileUrl = useOrgFsFileUrl();
 
-  if (listing.isPending) return <GridSkeleton rows={2} />;
+  // The system folders don't depend on this listing, so they render straight
+  // away on the landing view instead of flashing a skeleton.
+  const systemFolders = location.isHomeRoot ? (
+    <SystemFolders onOpenDir={onOpenDir} />
+  ) : null;
+
+  if (listing.isPending) {
+    return (
+      <>
+        {systemFolders && (
+          <div className="flex flex-col gap-3">
+            <SectionLabel>{t("library.libraryViews.folders")}</SectionLabel>
+            <CardsGrid>{systemFolders}</CardsGrid>
+          </div>
+        )}
+        <GridSkeleton rows={2} />
+      </>
+    );
+  }
   if (listing.isError) {
     return (
       <p className="text-sm text-destructive">
@@ -506,7 +549,8 @@ export function VolumeView({
   );
   const files = entries.filter((e) => e.kind === "file");
 
-  if (entries.length === 0) {
+  // An empty home root still has the system folders and the recent feed to show.
+  if (entries.length === 0 && !location.isHomeRoot) {
     return (
       <EmptyNote>
         {location.readOnly
@@ -588,10 +632,11 @@ export function VolumeView({
           </CardsGrid>
         </div>
       )}
-      {dirs.length > 0 && (
+      {(dirs.length > 0 || systemFolders) && (
         <div className="flex flex-col gap-3">
           <SectionLabel>{t("library.libraryViews.folders")}</SectionLabel>
           <CardsGrid>
+            {systemFolders}
             {dirs.map((e) => (
               <FolderCard
                 key={e.path}
@@ -636,6 +681,13 @@ export function VolumeView({
             ))}
           </CardsGrid>
         </div>
+      )}
+      {location.isHomeRoot && (
+        <RecentlyAdded
+          onOpenFile={onOpenFile}
+          onShare={onShare}
+          onDelete={onDelete}
+        />
       )}
     </>
   );
