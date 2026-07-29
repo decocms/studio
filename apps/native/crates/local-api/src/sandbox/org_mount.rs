@@ -33,7 +33,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use tokio::process::{Child, Command};
+use tokio::process::Command;
+
+use crate::process_group::ProcessGroupChild;
 
 use super::org_view::ORG_VOLUMES;
 
@@ -91,11 +93,48 @@ pub fn set_credentials(credentials: MountCredentials) {
 
 /// Live `rclone` children, keyed by mountpoint.
 ///
-/// They are RETAINED here on purpose: `Child` is spawned with
-/// `kill_on_drop`, so dropping one would tear down the mount it is serving.
-fn children() -> &'static Mutex<HashMap<PathBuf, Child>> {
-    static CHILDREN: OnceLock<Mutex<HashMap<PathBuf, Child>>> = OnceLock::new();
+/// They are RETAINED here on purpose: dropping one tears down the mount it
+/// is serving. Each is a [`ProcessGroupChild`] anchored to the app-wide
+/// child-lifetime fence, so an app that dies WITHOUT dropping them — SIGKILL,
+/// the dev loop's rebuild — still gets its rclone reaped by the watchdog
+/// instead of leaving an orphan serving a stale-credential mount. Exactly
+/// such an orphan (from a boot whose mount token had long rotated) once made
+/// a later boot's mount table lie, and every "write to the org fs" landed on
+/// the raw directory underneath — see [`mount_all`]'s ownership matrix.
+fn children() -> &'static Mutex<HashMap<PathBuf, ProcessGroupChild>> {
+    static CHILDREN: OnceLock<Mutex<HashMap<PathBuf, ProcessGroupChild>>> = OnceLock::new();
     CHILDREN.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// What [`mount_all`] must do for one volume, given who owns what.
+///
+/// "Owned" is OUR live [`ProcessGroupChild`] for the mountpoint; "attached"
+/// is the kernel mount table. The two agree only in the healthy case, and
+/// every disagreement has a distinct repair:
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MountPlan {
+    /// Ours and attached — leave it alone.
+    Keep,
+    /// Attached but NOT ours: a ghost from another app generation. Its
+    /// backing server (if any) holds credentials from a dead boot, so every
+    /// call it proxies fails; trusting the table here is how a volume ends
+    /// up unmounted-in-practice while marked mounted. Reclaim the path,
+    /// then spawn fresh.
+    ReclaimGhostThenSpawn,
+    /// Ours but NOT attached: the child died or its mount was pulled from
+    /// under it. Reap what is left, then spawn fresh.
+    ReapOwnThenSpawn,
+    /// Neither — plain spawn.
+    Spawn,
+}
+
+fn mount_plan(owned: bool, attached: bool) -> MountPlan {
+    match (owned, attached) {
+        (true, true) => MountPlan::Keep,
+        (false, true) => MountPlan::ReclaimGhostThenSpawn,
+        (true, false) => MountPlan::ReapOwnThenSpawn,
+        (false, false) => MountPlan::Spawn,
+    }
 }
 
 /// Per-org mount state.
@@ -250,11 +289,36 @@ async fn mount_all(app_root: &Path, org_slug: &str) -> bool {
     };
 
     let mounted = mounted_paths().await;
+    let lock_path = crate::shared_child_lifetime_lock_path(app_root);
     let mut all = true;
     for volume in ORG_VOLUMES {
         let mountpoint = root.join(volume);
-        if mounted.contains(&mountpoint) {
-            continue;
+        let owned = children()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains_key(&mountpoint);
+        match mount_plan(owned, mounted.contains(&mountpoint)) {
+            MountPlan::Keep => continue,
+            MountPlan::ReclaimGhostThenSpawn => {
+                tracing::warn!(
+                    ?mountpoint,
+                    "reclaiming an org mount this process does not own"
+                );
+                force_unmount(&mountpoint).await;
+            }
+            MountPlan::ReapOwnThenSpawn => {
+                let child = children()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&mountpoint);
+                if let Some(mut child) = child {
+                    tracing::warn!(?mountpoint, "org mount lost its attachment; replacing it");
+                    child
+                        .kill_and_reap(Duration::from_secs(5), "org-fs mount replace")
+                        .await;
+                }
+            }
+            MountPlan::Spawn => {}
         }
         if let Err(error) = tokio::fs::create_dir_all(&mountpoint).await {
             tracing::warn!(%error, ?mountpoint, "could not create org mountpoint");
@@ -269,7 +333,7 @@ async fn mount_all(app_root: &Path, org_slug: &str) -> bool {
                 continue;
             }
         };
-        match spawn_mount(&bin, &config, &mountpoint, volume).await {
+        match spawn_mount(&bin, &config, &mountpoint, volume, &lock_path).await {
             Ok(child) => {
                 children()
                     .lock()
@@ -346,7 +410,8 @@ async fn spawn_mount(
     config: &Path,
     mountpoint: &Path,
     volume: &str,
-) -> std::io::Result<Child> {
+    lifetime_lock: &Path,
+) -> std::io::Result<ProcessGroupChild> {
     let mut cmd = Command::new(bin);
     cmd.arg("--config")
         .arg(config)
@@ -375,7 +440,13 @@ async fn spawn_mount(
     if is_read_only(volume) {
         cmd.arg("--read-only");
     }
-    cmd.spawn()
+    // Anchored to the app-wide fence like every other spawned child:
+    // `kill_on_drop` never fires for a SIGKILLed parent (or for a static the
+    // process never drops), and an orphaned rclone is worse than most orphans
+    // — it keeps a mount alive that authenticates with a dead boot's rotated
+    // token, so the mount LOOKS attached while every operation through it
+    // fails.
+    ProcessGroupChild::spawn(&mut cmd, lifetime_lock).await
 }
 
 /// `public` is the org's curated, shared skill sets — this app must never
@@ -442,23 +513,29 @@ pub async fn prune_stale_mounts(app_root: &Path) {
 
     let table = String::from_utf8_lossy(&output.stdout);
     for mountpoint in stale_mountpoints(&table, app_root) {
-        let path = mountpoint.to_string_lossy().into_owned();
-        let result = tokio::process::Command::new("umount")
-            .args(["-f", &path])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .status()
-            .await;
-        match result {
-            Ok(status) if status.success() => {
-                tracing::info!(mountpoint = %path, "reclaimed a stale org mount")
-            }
-            // Not mounted after all, or held by something: the next boot tries
-            // again, and a sandbox that needs the path reports it.
-            _ => tracing::debug!(mountpoint = %path, "stale org mount did not unmount"),
+        force_unmount(&mountpoint).await;
+    }
+}
+
+/// `umount -f` one path. Best-effort: a path that is not actually mounted
+/// simply fails to unmount, which costs one process and nothing else.
+async fn force_unmount(mountpoint: &Path) {
+    let path = mountpoint.to_string_lossy().into_owned();
+    let result = tokio::process::Command::new("umount")
+        .args(["-f", &path])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .status()
+        .await;
+    match result {
+        Ok(status) if status.success() => {
+            tracing::info!(mountpoint = %path, "reclaimed a stale org mount")
         }
+        // Not mounted after all, or held by something: the next attempt tries
+        // again, and a sandbox that needs the path reports it.
+        _ => tracing::debug!(mountpoint = %path, "stale org mount did not unmount"),
     }
 }
 
@@ -672,6 +749,18 @@ mod tests {
             "retried after the cooldown"
         );
         lock_states().remove("cooldown-org");
+    }
+
+    /// Every disagreement between "we own a child" and "the kernel shows a
+    /// mount" is a repair, not a skip. Trusting the table alone let a ghost
+    /// mount from a dead app generation suppress the respawn, so the volume
+    /// stayed broken and writes fell through to the raw directory.
+    #[test]
+    fn only_an_owned_and_attached_mount_is_kept() {
+        assert_eq!(mount_plan(true, true), MountPlan::Keep);
+        assert_eq!(mount_plan(false, true), MountPlan::ReclaimGhostThenSpawn);
+        assert_eq!(mount_plan(true, false), MountPlan::ReapOwnThenSpawn);
+        assert_eq!(mount_plan(false, false), MountPlan::Spawn);
     }
 
     #[test]

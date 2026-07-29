@@ -326,6 +326,14 @@ fn stable_session_token(app_root: &Path) -> String {
 
 pub(crate) const STUDIO_DB_FILE_NAME: &str = "studio.db";
 
+/// The app-wide child-lifetime fence every spawned child anchors to — the
+/// shared lock the boot-time recovery fence waits on and the watchdogs that
+/// reap children of a dead parent hold. One path, derived one way, so a
+/// spawn family can never anchor to a fence nobody is watching.
+pub(crate) fn shared_child_lifetime_lock_path(app_root: &std::path::Path) -> std::path::PathBuf {
+    app_root.join(".decocms").join("child-lifetime.lock")
+}
+
 const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 const HARNESS_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 const FS_MUTATION_REAP_TIMEOUT: Duration = Duration::from_secs(3);
@@ -656,7 +664,7 @@ pub async fn start_with_client_auth(
     // old harnesses/tasks. Every watchdog inherited a SHARED lock on this
     // separate file; the successor waits for EXCLUSIVE ownership before any
     // mutation/queue recovery can observe or promote durable work.
-    let child_lifetime_lock_path = decocms_dir.join("child-lifetime.lock");
+    let child_lifetime_lock_path = shared_child_lifetime_lock_path(&opts.app_root);
     let child_recovery_fence =
         acquire_child_recovery_fence(&child_lifetime_lock_path, CHILD_CRASH_REAP_TIMEOUT)
             .await
