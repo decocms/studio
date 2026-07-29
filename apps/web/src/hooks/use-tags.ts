@@ -18,6 +18,7 @@ export interface Tag {
   id: string;
   organizationId: string;
   name: string;
+  color: string | null;
   createdAt: string;
 }
 
@@ -47,8 +48,11 @@ export function useCreateTag() {
   const studio = useStudioTools();
 
   return useMutation({
-    mutationFn: async (name: string) => {
-      const { tag } = await studio.call("TAGS_CREATE", { name });
+    mutationFn: async (input: string | { name: string; color?: string }) => {
+      const { tag } = await studio.call(
+        "TAGS_CREATE",
+        typeof input === "string" ? { name: input } : input,
+      );
       return tag;
     },
     onSuccess: () => {
@@ -57,6 +61,33 @@ export function useCreateTag() {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Failed to create tag",
+      );
+    },
+  });
+}
+
+/**
+ * Hook to delete a tag. Removes it from every member/task it was assigned to
+ * (the server cascades the join rows).
+ */
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+
+  return useMutation({
+    mutationFn: async (tagId: string) => {
+      await studio.call("TAGS_DELETE", { tagId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.tags(locator) });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardItems(locator),
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete tag",
       );
     },
   });

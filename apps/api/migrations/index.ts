@@ -149,6 +149,7 @@ import * as migration147dropagentsandboxtables from "./147-drop-agent-sandbox-ta
 import * as migration148orgflags from "./148-org-flags.ts";
 import * as migration149taskboarditemsortorder from "./149-task-board-item-sort-order.ts";
 import * as migration150taskboardactivity from "./150-task-board-activity.ts";
+import * as migration151taskboardtags from "./151-task-board-tags.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -323,6 +324,7 @@ const migrations: Record<string, Migration> = {
   "148-org-flags": migration148orgflags,
   "149-task-board-item-sort-order": migration149taskboarditemsortorder,
   "150-task-board-activity": migration150taskboardactivity,
+  "151-task-board-tags": migration151taskboardtags,
 };
 
 export default migrations;

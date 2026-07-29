@@ -71,6 +71,7 @@ export class TagStorage {
   async createTag(
     organizationId: string,
     name: string,
+    color?: string | null,
   ): Promise<OrganizationTag> {
     const id = generatePrefixedId("tag");
     const now = new Date().toISOString();
@@ -84,6 +85,7 @@ export class TagStorage {
         id,
         organization_id: organizationId,
         name,
+        color: color ?? null,
         created_at: now,
       })
       .onConflict((oc) => oc.columns(["organization_id", "name"]).doNothing())
@@ -129,6 +131,7 @@ export class TagStorage {
         "organization_tags.id",
         "organization_tags.organization_id",
         "organization_tags.name",
+        "organization_tags.color",
         "organization_tags.created_at",
       ])
       .where("member_tags.member_id", "=", memberId)
@@ -240,6 +243,7 @@ export class TagStorage {
         "organization_tags.id",
         "organization_tags.organization_id",
         "organization_tags.name",
+        "organization_tags.color",
         "organization_tags.created_at",
       ])
       .where("member.userId", "=", userId)
@@ -290,12 +294,14 @@ export class TagStorage {
     id: string;
     organization_id: string;
     name: string;
+    color?: string | null;
     created_at: string | Date;
   }): OrganizationTag {
     return {
       id: row.id,
       organizationId: row.organization_id,
       name: row.name,
+      color: row.color ?? null,
       createdAt: row.created_at,
     };
   }

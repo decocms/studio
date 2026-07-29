@@ -14,8 +14,13 @@ export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemThread = TaskBoardItem["threads"][number];
+export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
   ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
+
+/** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
+ *  snapshot is drawn from). */
+export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input
@@ -150,3 +155,37 @@ export const PRIORITY_CONFIG: Record<
     dotClassName: "bg-destructive",
   },
 };
+
+/** Fixed palette a tag's dot is drawn from. `value` is what's persisted on
+ *  the tag (`organization_tags.color`); a new tag auto-picks the next unused
+ *  one so tags stay visually distinct without asking the user to choose. */
+export const TAG_COLORS: { value: string; dotClassName: string }[] = [
+  { value: "gray", dotClassName: "bg-gray-400" },
+  { value: "red", dotClassName: "bg-red-500" },
+  { value: "orange", dotClassName: "bg-orange-500" },
+  { value: "amber", dotClassName: "bg-amber-500" },
+  { value: "green", dotClassName: "bg-green-500" },
+  { value: "blue", dotClassName: "bg-blue-500" },
+  { value: "purple", dotClassName: "bg-purple-500" },
+  { value: "pink", dotClassName: "bg-pink-500" },
+];
+
+const TAG_DOT_CLASS_BY_COLOR = new Map(
+  TAG_COLORS.map((c) => [c.value, c.dotClassName]),
+);
+
+const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
+
+export function tagDotClassName(color: string | null): string {
+  return (
+    (color ? TAG_DOT_CLASS_BY_COLOR.get(color) : undefined) ??
+    DEFAULT_TAG_COLOR.dotClassName
+  );
+}
+
+/** Next palette color for the `existingCount`-th tag created in an org, so
+ *  consecutive tags cycle through distinct colors. */
+export function nextTagColor(existingCount: number): string {
+  return (TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR)
+    .value;
+}
