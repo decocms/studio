@@ -58,6 +58,12 @@ export interface GitRepository {
 export interface GitConfig {
   readonly repository: GitRepository;
   readonly identity?: GitIdentity;
+  /**
+   * Periodically commit + push the working tree so a SIGKILL (pod eviction,
+   * OOM, node loss) can't take the agent's work with it. Default ON — set
+   * `false` to opt out. Never pushes to a protected branch.
+   */
+  readonly autoCommit?: boolean;
 }
 
 export interface PackageManagerConfig {

@@ -31,6 +31,10 @@ never becomes another user's execution context.
 - Provision or attach to isolated execution environments.
 - Build and run the authenticated Bun daemon inside each environment.
 - Expose asynchronous filesystem, Git, task, terminal, and preview operations.
+- Auto-save work in progress to the remote every 30 s so an ungraceful exit
+  (SIGKILL on eviction / OOM / node loss) can't lose it. On by default; disable
+  per sandbox with `git.autoCommit: false` in the daemon config. Never pushes to
+  a protected branch.
 - Carry agent dispatch streams between Studio, the daemon, and a harness.
 - Proxy HTTP and WebSocket traffic to development servers inside a sandbox.
 - Support organization filesystem mounts and cleanup.

@@ -89,6 +89,9 @@ function validateGit(git: NonNullable<TenantConfig["git"]>): ValidationResult {
       return { kind: "invalid", reason: `git.repository.branch invalid: ${b}` };
     }
   }
+  if (git.autoCommit !== undefined && typeof git.autoCommit !== "boolean") {
+    return { kind: "invalid", reason: "git.autoCommit must be a boolean" };
+  }
   if (git.identity !== undefined) {
     if (
       typeof git.identity.userName !== "string" ||

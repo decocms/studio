@@ -635,17 +635,28 @@ class InvalidDecofileBlockError extends Error {
   }
 }
 
-export function publish(
+/**
+ * Local half of publish(): stage every changed path and commit them. Returns
+ * the checked-out branch, or `null` when there is nothing to publish from (no
+ * repo yet). Split out so the auto-save loop (git/auto-commit.ts) reuses the
+ * exact same staging/commit rules — including the invalid-decofile-block net —
+ * instead of a second blind `git add/commit`.
+ *
+ * Every git call here is local, so it stays synchronous (parity with the
+ * status/diff probes and BranchStatusMonitor's 3 s poll). Only the network push
+ * has an async twin (pushBranchAsync).
+ */
+export function stageAndCommit(
   deps: GitDeps,
   message: string,
-  opts: { onInvalidBlock?: "throw" | "skip"; reconcileRemote?: boolean } = {},
-): { pushed: boolean } {
+  opts: { onInvalidBlock?: "throw" | "skip" } = {},
+): { branch: string; committed: boolean } | null {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
   // directly, so a never-cloned/empty dir would throw 128 ("not a git
   // repository") on the rev-parse below. Nothing to publish — skip cleanly.
   if (!isGitRepo(repoDir)) {
-    return { pushed: false };
+    return null;
   }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
@@ -726,7 +737,15 @@ export function publish(
       { env: SKIP_HOOKS_ENV },
     );
   }
+  return { branch, committed: hasStagedChanges };
+}
 
+/**
+ * Point `origin` at the credentialed clone URL and refuse a push that would
+ * fail auth. Local git config only — no network.
+ */
+export function ensureOriginPushable(deps: GitDeps): void {
+  const repoDir = deps.repoDir;
   const cloneUrl = deps.getCloneUrl?.();
   if (typeof cloneUrl === "string" && cloneUrl.length > 0) {
     syncOriginRemote(repoDir, cloneUrl);
@@ -742,11 +761,37 @@ export function publish(
       "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
     );
   }
+}
 
-  pushBranch(repoDir, branch, {
+export function publish(
+  deps: GitDeps,
+  message: string,
+  opts: { onInvalidBlock?: "throw" | "skip"; reconcileRemote?: boolean } = {},
+): { pushed: boolean } {
+  const prepared = stageAndCommit(deps, message, opts);
+  if (!prepared) return { pushed: false };
+  ensureOriginPushable(deps);
+  pushBranch(deps.repoDir, prepared.branch, {
     reconcileRemote: opts.reconcileRemote ?? false,
   });
   return { pushed: true };
+}
+
+/**
+ * Non-blocking `git push` for the background auto-save loop. Deliberately NOT
+ * the reconciling path: an autosave must never force-push over a diverged
+ * origin/<branch> (same reasoning as the shutdown sync). A rejected push is
+ * left for the interactive publish to reconcile.
+ */
+export async function pushBranchAsync(
+  repoDir: string,
+  branch: string,
+): Promise<void> {
+  await runGitAsync(
+    repoDir,
+    [...GIT_PUSH_CONFIG, "push", "--no-verify", "-u", "origin", branch],
+    { env: PUSH_ENV },
+  );
 }
 
 function discard(deps: GitDeps, filepaths: string[]): void {

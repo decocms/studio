@@ -27,6 +27,7 @@ import { startUpstreamProbe } from "./probe";
 import { makeProxyHandler } from "./proxy";
 import { jsonResponse } from "./routes/body-parser";
 import { makeBashHandler } from "./routes/bash";
+import { AutoCommitter } from "./git/auto-commit";
 import {
   makeGitDiffHandler,
   makeGitDiscardHandler,
@@ -390,6 +391,17 @@ const gitDeps = {
   getCloneUrl: () => store.read()?.git?.repository?.cloneUrl ?? null,
   getOperator: () => store.read()?.operator ?? null,
 };
+// Safety net for the ungraceful exits shutdown() never sees (SIGKILL on pod
+// eviction / OOM / node loss): periodically commit + push the work in progress.
+// Default on; tenants opt out with `git.autoCommit: false`.
+const autoCommitter = new AutoCommitter({
+  gitDeps,
+  getBranchMeta: () => branchStatus.getLast(),
+  isEnabled: () => store.read()?.git?.autoCommit !== false,
+  onSynced: () => branchStatus.refresh(),
+});
+autoCommitter.start();
+
 const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);
 const gitPublishH = makeGitPublishHandler(gitDeps);
@@ -926,6 +938,9 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   taskManager.shutdown();
   branchStatus.stop();
+  // Stop the auto-save loop before the shutdown publish so the two can't race
+  // for index.lock; an in-flight tick is already guarded by its own latch.
+  autoCommitter.stop();
   // Publish BEFORE unmount: syncing the user's work is the only irrecoverable
   // step. A stale mount is backstopped (sync `exit` handler + next-boot
   // reclaim), so a hanging unmount must never eat the push's slice of the grace
