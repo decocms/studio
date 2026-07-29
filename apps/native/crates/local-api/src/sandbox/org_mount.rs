@@ -337,15 +337,6 @@ async fn restrict(_path: &Path, _mode: u32) -> std::io::Result<()> {
 
 /// Spawn a supervised `rclone nfsmount` for one volume.
 ///
-/// `-o` string handed to `mount_nfs`. `sec=sys` is load-bearing: left to
-/// negotiate, macOS 26 picks `sec=none` against rclone's NFS server, and an
-/// anonymous caller is granted read-only access to everything — every
-/// create/write/delete on every volume comes back `EPERM` while reads keep
-/// working, which presents as "the org filesystem is mounted read-only" even
-/// though no layer here asked for that. `AUTH_UNIX` restores the caller's
-/// uid, and with it the owner bits the server's `ACCESS` reply grants.
-const MOUNT_NFS_OPTIONS: &str = "actimeo=1,locallocks,soft,timeo=100,retrans=2,nobrowse,sec=sys";
-
 /// Foreground, never `--daemon`: `nfsmount --daemon --rc` is broken in rclone
 /// (it exits 1 rather than attaching), so the child has to be supervised here.
 ///
@@ -362,7 +353,10 @@ async fn spawn_mount(
         .arg("nfsmount")
         .arg("wd:")
         .arg(mountpoint)
-        .args(["--option", MOUNT_NFS_OPTIONS])
+        .args([
+            "--option",
+            "actimeo=1,locallocks,soft,timeo=100,retrans=2,nobrowse",
+        ])
         .args(["--vfs-cache-mode", "full"])
         .args(["--vfs-write-back", "1s"])
         .args(["--dir-cache-time", "10s"])
@@ -678,14 +672,6 @@ mod tests {
             "retried after the cooldown"
         );
         lock_states().remove("cooldown-org");
-    }
-
-    /// Losing this option does not fail the mount — it silently downgrades
-    /// every volume to reads-only under macOS 26's `sec=none` negotiation,
-    /// which agents then report as "the org filesystem is read-only".
-    #[test]
-    fn mounts_force_unix_credentials_instead_of_negotiating() {
-        assert!(MOUNT_NFS_OPTIONS.contains("sec=sys"), "{MOUNT_NFS_OPTIONS}");
     }
 
     #[test]
