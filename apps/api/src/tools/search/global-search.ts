@@ -51,6 +51,12 @@ const InputSchema = z.object({
     .max(50)
     .optional()
     .describe("Maximum results per resource type (default: 20)."),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Number of results to skip per resource type (default: 0)."),
   types: z
     .array(z.enum(SEARCHABLE_TYPES))
     .optional()
@@ -62,6 +68,7 @@ const InputSchema = z.object({
 const OutputSchema = z.object({
   items: z.array(SearchResultSchema),
   totalCount: z.number(),
+  hasMore: z.boolean(),
 });
 
 function toIso(value: string | Date | null | undefined): string {
@@ -87,20 +94,23 @@ export const GLOBAL_SEARCH = defineTool({
     requireOrganization(ctx);
 
     const limit = input.limit ?? 20;
+    const offset = input.offset ?? 0;
     const requested = input.types?.length ? new Set(input.types) : null;
     const includeThreads = !requested || requested.has("thread");
 
     const items: z.infer<typeof SearchResultSchema>[] = [];
     let totalCount = 0;
+    let hasMore = false;
 
     if (includeThreads) {
       const { threads, total } = await ctx.storage.threads.list(undefined, {
         limit,
-        offset: 0,
+        offset,
         search: input.query,
         includeArchived: false,
       });
       totalCount += total;
+      hasMore = offset + limit < total;
       for (const thread of threads) {
         items.push({
           type: "thread",
@@ -119,6 +129,6 @@ export const GLOBAL_SEARCH = defineTool({
       }
     }
 
-    return { items, totalCount };
+    return { items, totalCount, hasMore };
   },
 });
