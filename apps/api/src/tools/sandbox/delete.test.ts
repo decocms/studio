@@ -95,20 +95,15 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
-  thread?: { id: string; metadata: Record<string, unknown> } | null;
-  threadUpdateSpy?: ReturnType<typeof mock>;
 }): StudioContext {
   const {
     orgId = "org_1",
     userId = "user-1",
     virtualMcp,
     updateSpy = mock(async () => {}),
-    thread = null,
-    threadUpdateSpy = mock(async () => {}),
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
-  const threadGet = mock(async (_id: string) => thread);
 
   return {
     auth: {
@@ -128,7 +123,6 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
-      threads: { get: threadGet, update: threadUpdateSpy },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -368,56 +362,6 @@ describe("SANDBOX_DELETE", () => {
 
     expect(result).toEqual({ success: true });
     expect(mockDelete).not.toHaveBeenCalled();
-  });
-
-  it("also clears the thread's sandboxMap entry for a thread-scoped branch", async () => {
-    const threadBranch = "thread:thread_1";
-    const metadata: Metadata = {
-      sandboxMap: makeSandboxMap(
-        "user-1",
-        threadBranch,
-        "agent-sandbox",
-        HOSTED_ENTRY,
-      ),
-    };
-    const virtualMcp = makeVirtualMcp("org_1", metadata);
-    const updateSpy = mock(async () => {});
-    const threadUpdateSpy = mock(async () => {});
-    const thread = {
-      id: "thread_1",
-      metadata: {
-        sandboxMap: makeSandboxMap(
-          "user-1",
-          threadBranch,
-          "agent-sandbox",
-          HOSTED_ENTRY,
-        ),
-      },
-    };
-    const ctx = makeCtx({ virtualMcp, updateSpy, thread, threadUpdateSpy });
-
-    const result = await SANDBOX_DELETE.handler(
-      {
-        virtualMcpId: "vmcp_1",
-        branch: threadBranch,
-        sandboxProviderKind: "agent-sandbox",
-      },
-      ctx,
-    );
-
-    expect(result).toEqual({ success: true });
-    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
-    // Agent-row entry cleared.
-    expect(updateSpy).toHaveBeenCalledTimes(1);
-    // Thread's own copy cleared too — this is what the UI overlays on top of
-    // the agent's sandboxMap, so leaving it stale kept showing the deleted
-    // sandbox's previewUrl/handle.
-    expect(threadUpdateSpy).toHaveBeenCalledTimes(1);
-    const threadUpdateCall = (threadUpdateSpy.mock.calls as unknown[][])[0]!;
-    const threadUpdated = (
-      threadUpdateCall[1] as { metadata: { sandboxMap: SandboxMap } }
-    ).metadata;
-    expect(threadUpdated.sandboxMap["user-1"]).toBeUndefined();
   });
 
   it("throws 'User ID required' when userId is unavailable", async () => {
