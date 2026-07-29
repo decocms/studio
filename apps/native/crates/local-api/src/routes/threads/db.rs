@@ -2651,18 +2651,23 @@ impl ThreadsDb {
         Ok(message)
     }
 
-    /// Give a still-unnamed thread its auto-title.
+    /// Retitle a thread, but only while it still carries `expected`.
     ///
-    /// Guarded IN THE STATEMENT on the title still being
-    /// [`DEFAULT_THREAD_TITLE`] rather than read-then-write, so a user who
-    /// renames the thread while the first turn is in flight always wins — the
-    /// same intent as the cluster's `shouldGenerateTitle` gate plus its
-    /// interceptor's second check, expressed once and atomically.
+    /// Guarded IN THE STATEMENT rather than read-then-write, so a user who
+    /// renames the thread mid-turn always wins — the same intent as the
+    /// cluster's `shouldGenerateTitle` gate plus its interceptor's second
+    /// check, expressed once and atomically.
+    ///
+    /// Auto-titling calls this twice: [`DEFAULT_THREAD_TITLE`] -> the
+    /// deterministic name, then that name -> the model's. Passing the prior
+    /// name as `expected` is what lets the second write replace only a title
+    /// this process wrote, never the user's.
     ///
     /// Returns whether a row was actually retitled.
-    pub fn rt_set_thread_title_if_unnamed(
+    pub fn rt_retitle_thread_if_unchanged(
         &self,
         fence: &RtThreadFence,
+        expected: &str,
         title: &str,
     ) -> DbResult<bool> {
         let ts = now_rfc3339();
@@ -2677,7 +2682,7 @@ impl ThreadsDb {
                 fence.account_scope,
                 fence.organization_id,
                 fence.thread_id,
-                DEFAULT_THREAD_TITLE,
+                expected,
             ],
         )?;
         Ok(updated > 0)

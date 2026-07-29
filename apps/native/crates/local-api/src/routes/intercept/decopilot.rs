@@ -68,6 +68,7 @@ use tokio::sync::{Mutex as AsyncMutex, Notify};
 use crate::error::ApiError;
 use crate::routes::intercept::run_spool::{RunSpool, RunSubscription, StagedFrame};
 use crate::routes::intercept::watch;
+use crate::routes::threads::db::DEFAULT_THREAD_TITLE;
 use crate::routes::threads::db::{
     is_native_assistant_message_id, legacy_native_assistant_message_id, DbError, RtAccountScope,
     RtOrphanedTurn, RtThreadFence, RtTurnBeginOutcome, RtTurnCancelOutcome, RtTurnClaimOutcome,
@@ -2480,13 +2481,19 @@ async fn execute_turn(
     // forever. This is the SAME deterministic fallback `genTitle` uses when
     // its model errors or times out — no model call, so the title lands the
     // instant the turn is accepted rather than seconds later.
-    if let Some(title) = auto_thread_title(&turn.user_message) {
-        match db.rt_set_thread_title_if_unnamed(&fence, &title) {
+    let auto_title = auto_thread_title(&turn.user_message);
+    // The title this process is allowed to replace when the model's arrives:
+    // the deterministic one if it landed, else the default it never left.
+    // `None` means the user has named the thread and nothing may touch it.
+    let mut replaceable_title = Some(DEFAULT_THREAD_TITLE.to_string());
+    if let Some(title) = auto_title {
+        match db.rt_retitle_thread_if_unchanged(&fence, DEFAULT_THREAD_TITLE, &title) {
             // Only broadcast a title that was actually stored. There is no
             // `thread.title` event on `/events` — this chunk is the sole path
             // by which an open client learns the new name (see the web
             // client's chat-context observer).
             Ok(true) => {
+                replaceable_title = Some(title.clone());
                 if let Err(spool_error) = run
                     .push(frame(&json!({
                         "type": "data-thread-title",
@@ -2504,10 +2511,12 @@ async fn execute_turn(
                     .await;
                 }
             }
-            Ok(false) => {}
+            // The user renamed it first; their name is final.
+            Ok(false) => replaceable_title = None,
             // A thread that keeps its default name is a cosmetic loss; it must
             // never cost the user their turn.
             Err(error) => {
+                replaceable_title = None;
                 tracing::warn!(%error, thread_id = %fence.thread_id, "could not auto-title thread")
             }
         }
@@ -2721,6 +2730,56 @@ async fn execute_turn(
     // One read serves both the org-filesystem prompt (which names the user's
     // memory file) and the agent MCP (which is keyed by the agent, not the
     // thread).
+    // Upgrade the deterministic name to a real one, off the turn's critical
+    // path. The CLI's own cheapest model writes it (see `harness::title`), so
+    // this costs no Studio credits and needs no cluster round trip — and
+    // because a name is already on screen, a slow or failed call simply leaves
+    // the better one unwritten instead of stranding the thread on "New chat"
+    // the way the cluster's blocking-until-timeout shape can.
+    //
+    // FIRST user message only. The unchanged-title guard alone would already
+    // stop a second call once a title exists, but it would still spend one on
+    // every later turn of a thread that never got named (an opening message
+    // with nothing nameable in it, or a title model that was down). A thread
+    // resuming a harness session is by definition not on its first message.
+    if let Some(previous_title) = replaceable_title.filter(|_| resume_session_id.is_none()) {
+        let title_run = run.clone();
+        let title_fence = fence.clone();
+        let title_cwd = cwd.clone();
+        let title_text = queue_text(&turn.user_message);
+        let cancellation = turn.cancellation.clone();
+        tokio::spawn(async move {
+            let Some(title) = harness::title::generate_title(
+                harness_id,
+                &title_cwd,
+                &title_text,
+                harness::title::TITLE_TIMEOUT,
+            )
+            .await
+            else {
+                return;
+            };
+            // Do not name a run the user stopped — the cluster's title path
+            // emits nothing on a parent abort, for the same reason.
+            if cancellation.is_requested() || title == previous_title {
+                return;
+            }
+            match db.rt_retitle_thread_if_unchanged(&title_fence, &previous_title, &title) {
+                Ok(true) => {
+                    let _ = title_run
+                        .push(frame(&json!({
+                            "type": "data-thread-title",
+                            "data": {"title": title},
+                        })))
+                        .await;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(%error, thread_id = %title_fence.thread_id, "could not store the generated thread title")
+                }
+            }
+        });
+    }
     let thread_row = db.rt_get_thread_for_fence(&claimed.fence).ok().flatten();
     // Where the org filesystem sits relative to this run: a git-backed agent
     // has it BESIDE its worktree, while a gitless agent is already standing
@@ -3122,7 +3181,7 @@ mod tests {
                 &scope,
                 None,
                 "org",
-                crate::routes::threads::db::DEFAULT_THREAD_TITLE,
+                DEFAULT_THREAD_TITLE,
                 None,
                 "vmcp",
                 None,
@@ -3135,7 +3194,7 @@ mod tests {
             .unwrap();
 
         assert!(db
-            .rt_set_thread_title_if_unnamed(&fence, "Fix the login bug")
+            .rt_retitle_thread_if_unchanged(&fence, DEFAULT_THREAD_TITLE, "Fix the login bug")
             .unwrap());
         assert_eq!(
             db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
@@ -3143,11 +3202,41 @@ mod tests {
         );
         // Already named — a later turn leaves it alone.
         assert!(!db
-            .rt_set_thread_title_if_unnamed(&fence, "Something else")
+            .rt_retitle_thread_if_unchanged(&fence, DEFAULT_THREAD_TITLE, "Something else")
             .unwrap());
         assert_eq!(
             db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
             "Fix the login bug"
+        );
+
+        // The model's title replaces the deterministic one this process wrote,
+        // because it names that exact string as what it expects to find.
+        assert!(db
+            .rt_retitle_thread_if_unchanged(
+                &fence,
+                "Fix the login bug",
+                "Fix unresponsive mobile login"
+            )
+            .unwrap());
+        assert_eq!(
+            db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
+            "Fix unresponsive mobile login"
+        );
+
+        // …but a user rename in that same window is final: the model's title
+        // arrives expecting the deterministic name and finds the user's.
+        db.rt_retitle_thread_if_unchanged(&fence, "Fix unresponsive mobile login", "My own name")
+            .unwrap();
+        assert!(!db
+            .rt_retitle_thread_if_unchanged(
+                &fence,
+                "Fix unresponsive mobile login",
+                "Generated too late"
+            )
+            .unwrap());
+        assert_eq!(
+            db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
+            "My own name"
         );
     }
 

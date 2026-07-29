@@ -52,6 +52,7 @@ pub mod resolve;
 pub mod run;
 pub mod spawn;
 pub mod tiers;
+pub mod title;
 
 pub use resolve::{resolve_argv, resolve_checked, HarnessId, ResolveError};
 pub use tiers::{ModelTier, CLAUDE_CODE_TIERS, CODEX_TIERS};
