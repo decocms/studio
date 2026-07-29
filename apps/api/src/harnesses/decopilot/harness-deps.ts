@@ -84,6 +84,7 @@ async function runClusterEngine(
     connectionsData: args.connectionsData,
     extraTools: args.extraTools,
     additionalSystemMessages: args.additionalSystemMessages,
+    activeToolNames: args.activeToolNames,
     // Subtask core runs cap the loop at SUBAGENT_STEP_LIMIT (Task 17).
     stepLimit: args.stepLimit,
   });

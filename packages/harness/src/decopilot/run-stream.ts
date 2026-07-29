@@ -497,6 +497,11 @@ export async function* runDecopilotStream(
       ...processedSystemMessages,
       ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
     ],
+    activeToolNames: [
+      ...builtInToolNames,
+      ...("enable_tool" in streamTools ? ["enable_tool"] : []),
+      ...enabledTools,
+    ],
     // Subtask runs cap the engine at SUBAGENT_STEP_LIMIT (Task 17); main runs
     // use the per-automation `maxAgentSteps` override when set, else leave it
     // undefined so the engine derives PARENT_STEP_LIMIT.
