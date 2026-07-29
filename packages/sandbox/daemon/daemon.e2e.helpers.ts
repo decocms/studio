@@ -193,14 +193,21 @@ export async function stopDaemon(d: Daemon | null): Promise<void> {
   }
   if (appDir) {
     // Windows releases executable/cwd handles asynchronously even after the
-    // process exit event. fs.rm's built-in EBUSY retry keeps teardown from
-    // replacing the real assertion failure with a transient cleanup error.
-    await rm(appDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    // process exit event — the exit above is already awaited, so a handle
+    // that lingers past the retry budget is kernel timing, not a live
+    // process. Cleanup of a per-test temp dir must never replace the real
+    // assertion result with an EBUSY, so exhausting the retries downgrades
+    // to a warning and leaves the dir to the runner's temp reaper.
+    try {
+      await rm(appDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 250,
+      });
+    } catch (err) {
+      console.warn(`[daemon:e2e] leaking temp dir ${appDir}: ${err}`);
+    }
   }
 }
 
