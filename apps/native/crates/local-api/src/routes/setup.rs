@@ -491,7 +491,7 @@ mod tests {
         std::fs::create_dir_all(&bare_dir).unwrap();
         std::fs::create_dir_all(&work_dir).unwrap();
         git(&bare_dir, &["init", "--bare", "-q"]);
-        git(&work_dir, &["init", "-q", "-b", "main"]);
+        git(&work_dir, &["init", "-q", "-b", "work"]);
         git(&work_dir, &["config", "user.name", "Test User"]);
         git(&work_dir, &["config", "user.email", "test@example.com"]);
         std::fs::write(work_dir.join("f.txt"), "x").unwrap();
@@ -499,15 +499,15 @@ mod tests {
         git(&work_dir, &["commit", "-q", "-m", "initial"]);
         let bare_str = bare_dir.to_str().unwrap();
         git(&work_dir, &["remote", "add", "origin", bare_str]);
-        git(&work_dir, &["push", "-q", "-u", "origin", "main"]);
-        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&work_dir, &["push", "-q", "-u", "origin", "work"]);
+        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/work"]);
 
         state
             .sandbox_manager
             .ensure(&crate::sandbox::GitSandboxConfig {
                 virtual_mcp_id: vmcp.to_string(),
                 clone_url: bare_str.to_string(),
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -524,7 +524,7 @@ mod tests {
         std::fs::create_dir_all(&bare_dir).unwrap();
         std::fs::create_dir_all(&author_dir).unwrap();
         git(&bare_dir, &["init", "--bare", "-q"]);
-        git(&author_dir, &["init", "-q", "-b", "main"]);
+        git(&author_dir, &["init", "-q", "-b", "work"]);
         git(&author_dir, &["config", "user.name", "Test User"]);
         git(&author_dir, &["config", "user.email", "test@example.com"]);
         std::fs::write(author_dir.join("README.md"), "fixture").unwrap();
@@ -534,8 +534,8 @@ mod tests {
             &author_dir,
             &["remote", "add", "origin", bare_dir.to_str().unwrap()],
         );
-        git(&author_dir, &["push", "-q", "-u", "origin", "main"]);
-        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&author_dir, &["push", "-q", "-u", "origin", "work"]);
+        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/work"]);
 
         let response = ensure(
             State(state.clone()),
@@ -543,7 +543,7 @@ mod tests {
                 virtual_mcp_id: "vmcp-ensure-route".to_string(),
                 repo: EnsureRepository {
                     clone_url: bare_dir.to_string_lossy().into_owned(),
-                    branch: Some("main".to_string()),
+                    branch: Some("work".to_string()),
                 },
                 workload: Some(EnsureWorkload {
                     runtime: Some("bun".to_string()),
@@ -560,7 +560,7 @@ mod tests {
             handle,
             // From the clone URL the request actually used — the handle is
             // the repository scope, so any other URL names another worktree.
-            crate::sandbox::SandboxManager::compute_handle(&bare_dir.to_string_lossy(), "main")
+            crate::sandbox::SandboxManager::compute_handle(&bare_dir.to_string_lossy(), "work")
                 .expect("scopeable clone url")
         );
         assert!(state.sandbox_manager.get(handle).is_some());
@@ -595,7 +595,7 @@ mod tests {
                         .join("missing.git")
                         .to_string_lossy()
                         .into_owned(),
-                    branch: Some("main".to_string()),
+                    branch: Some("work".to_string()),
                 },
                 workload: None,
             }),
@@ -607,7 +607,7 @@ mod tests {
         // Same clone URL the request used — the handle is the repository scope.
         let handle = crate::sandbox::SandboxManager::compute_handle(
             &app_root.path().join("missing.git").to_string_lossy(),
-            "main",
+            "work",
         )
         .expect("scopeable clone url");
         let record = tokio::time::timeout(std::time::Duration::from_secs(5), async {

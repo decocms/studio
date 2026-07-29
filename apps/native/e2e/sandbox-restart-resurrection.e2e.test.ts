@@ -32,7 +32,12 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterEach, expect, it } from "bun:test";
-import { computeHandle, repoDirFor, sandboxDirFor } from "./sandbox-handle";
+import {
+  computeHandle,
+  normalizeBranch,
+  repoDirFor,
+  sandboxDirFor,
+} from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -328,7 +333,7 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
   const fixture = setupFixtureRepo();
   const upstream = startAuthenticatedUpstream();
   const virtualMcpId = `sandbox-restart-e2e-${vmcpSuffix}`;
-  const handle = computeHandle(fixture.bareDir, "main");
+  const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
   const a = await startLocalApi(
     stubClaudeBinEnv({
       DECOCMS_UPSTREAM_URL: upstream.url,
@@ -710,7 +715,7 @@ describeLocalApi(
       const upstream = startAuthenticatedUpstream();
       liveUpstream = upstream;
       const virtualMcpId = "sandbox-restart-e2e-stop";
-      const handle = computeHandle(fixture.bareDir, "main");
+      const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
       const a = await startLocalApi(
         stubClaudeBinEnv({
           DECOCMS_UPSTREAM_URL: upstream.url,

@@ -845,11 +845,7 @@ fn set_private_permissions(path: &Path) -> Result<(), String> {
 }
 
 fn normalized_branch(config: &GitSandboxConfig) -> &str {
-    config
-        .branch
-        .as_deref()
-        .filter(|branch| !branch.is_empty())
-        .unwrap_or("main")
+    super::normalize_branch(config.branch.as_deref())
 }
 
 /// Validates the on-disk shape Git itself uses for a checkout without running

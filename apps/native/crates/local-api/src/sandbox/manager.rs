@@ -235,7 +235,11 @@ impl SandboxManager {
         virtual_mcp_id: &str,
         branch: &str,
     ) -> Result<Option<String>, String> {
-        self.registry.handle_for_agent(virtual_mcp_id, branch)
+        // Normalized here, at the ONE lookup funnel every shell route uses,
+        // so a thread that persisted `main` before the never-on-main rule
+        // resolves to the staging sandbox instead of resurrecting the old one.
+        self.registry
+            .handle_for_agent(virtual_mcp_id, super::normalize_branch(Some(branch)))
     }
 
     pub fn is_registered(&self, handle: &str) -> Result<bool, String> {
@@ -1450,11 +1454,7 @@ fn workload_differs(left: &GitSandboxConfig, right: &GitSandboxConfig) -> bool {
 }
 
 fn normalized_branch(config: &GitSandboxConfig) -> &str {
-    config
-        .branch
-        .as_deref()
-        .filter(|branch| !branch.is_empty())
-        .unwrap_or("main")
+    super::normalize_branch(config.branch.as_deref())
 }
 
 /// Lowercases, collapses any run of non-alphanumeric characters to a single
@@ -1531,7 +1531,7 @@ mod tests {
         std::fs::create_dir_all(&bare_dir).unwrap();
         std::fs::create_dir_all(&work_dir).unwrap();
         git(&bare_dir, &["init", "--bare", "-q"]);
-        git(&work_dir, &["init", "-q", "-b", "main"]);
+        git(&work_dir, &["init", "-q", "-b", "work"]);
         git(&work_dir, &["config", "user.name", "Test User"]);
         git(&work_dir, &["config", "user.email", "test@example.com"]);
         std::fs::write(work_dir.join("BRANCH.txt"), "main\n").unwrap();
@@ -1539,8 +1539,8 @@ mod tests {
         git(&work_dir, &["commit", "-q", "-m", "initial"]);
         let bare_str = bare_dir.to_str().unwrap().to_string();
         git(&work_dir, &["remote", "add", "origin", &bare_str]);
-        git(&work_dir, &["push", "-q", "-u", "origin", "main"]);
-        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&work_dir, &["push", "-q", "-u", "origin", "work"]);
+        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/work"]);
 
         git(&work_dir, &["checkout", "-q", "-b", "feature"]);
         std::fs::write(work_dir.join("BRANCH.txt"), "feature\n").unwrap();
@@ -1687,9 +1687,9 @@ mod tests {
 
     #[test]
     fn compute_handle_is_the_repository_scope_and_branch() {
-        let a1 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "main")
+        let a1 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "work")
             .expect("scopeable clone url");
-        let a2 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "main")
+        let a2 = SandboxManager::compute_handle("https://github.com/acme/repo-1", "work")
             .expect("scopeable clone url");
         assert_eq!(a1, a2, "same inputs must hash identically");
 
@@ -1697,7 +1697,7 @@ mod tests {
             .expect("scopeable clone url");
         assert_ne!(a1, b, "different branches must produce different handles");
 
-        let c = SandboxManager::compute_handle("https://github.com/acme/repo-2", "main")
+        let c = SandboxManager::compute_handle("https://github.com/acme/repo-2", "work")
             .expect("scopeable clone url");
         assert_ne!(
             a1, c,
@@ -1708,13 +1708,13 @@ mod tests {
         // the directory, the git branch and the UI carry one name. No host
         // segment: GitHub is the only provider, so `github.com` in the middle
         // of every path carried no information.
-        assert_eq!(a1, "acme/repo-1/main");
+        assert_eq!(a1, "acme/repo-1/work");
         assert_eq!(b, "acme/repo-1/feature");
         // A different host with the same owner/repo is the same repository
         // under a single provider — and scp-style spells it the same way.
         assert_eq!(
-            SandboxManager::compute_handle("git@github.com:acme/repo-1.git", "main").as_deref(),
-            Some("acme/repo-1/main")
+            SandboxManager::compute_handle("git@github.com:acme/repo-1.git", "work").as_deref(),
+            Some("acme/repo-1/work")
         );
         // A branch with a slash stays ONE segment, so the tree never nests
         // deeper than the scheme promises.
@@ -1723,7 +1723,7 @@ mod tests {
                 .expect("scopeable clone url");
         assert_eq!(nested, "acme/repo-1/feature-foo");
         // A remote this cannot scope is not a git-backed sandbox.
-        assert!(SandboxManager::compute_handle("", "main").is_none());
+        assert!(SandboxManager::compute_handle("", "work").is_none());
     }
 
     /// A git-backed run must resolve under its OWN handle even when `ensure`
@@ -1740,7 +1740,7 @@ mod tests {
             ..Default::default()
         };
 
-        let main = manager.workdir_for(&config(Some("main")));
+        let main = manager.workdir_for(&config(Some("work")));
         assert!(
             main.starts_with(root.path().join(crate::sandbox::WORKTREES_DIR))
                 && main.ends_with("repo"),
@@ -1750,13 +1750,18 @@ mod tests {
         assert_ne!(main, root.path().join("repo"));
 
         // Same handle inputs agree with `ensure`'s own derivation, including
-        // the `None`/empty -> "main" default, so the fallback lands exactly
-        // where a later successful ensure will put the checkout.
-        assert_eq!(main, manager.workdir_for(&config(None)));
-        assert_eq!(main, manager.workdir_for(&config(Some(""))));
+        // the `None`/empty -> staging default (never-on-main), so the
+        // fallback lands exactly where a later successful ensure will put
+        // the checkout.
+        let staging = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join("acme/site/staging/repo");
+        assert_eq!(staging, manager.workdir_for(&config(None)));
+        assert_eq!(staging, manager.workdir_for(&config(Some(""))));
         // The handle is now a multi-segment path (`<host>/<owner>/<repo>/<branch>`),
         // so the worktree lives at `<app_root>/worktrees/<handle>/repo`.
-        let handle = SandboxManager::compute_handle("https://github.com/acme/site.git", "main")
+        let handle = SandboxManager::compute_handle("https://github.com/acme/site.git", "work")
             .expect("scopeable clone url");
         assert!(
             main.ends_with(std::path::Path::new(&handle).join("repo")),
@@ -1769,6 +1774,8 @@ mod tests {
     #[test]
     fn slugify_branch_collapses_unsafe_characters() {
         assert_eq!(slugify_branch("feature/foo_bar"), "feature-foo-bar");
+        // slugify is CASE-folding only — the never-on-main normalization
+        // lives in `normalize_branch`, upstream of it.
         assert_eq!(slugify_branch("MAIN"), "main");
         assert_eq!(slugify_branch("---"), "branch");
         assert_eq!(slugify_branch(""), "branch");
@@ -1835,7 +1842,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-1".to_string(),
                 clone_url: clone_url.clone(),
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -1881,7 +1888,7 @@ mod tests {
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
         let first = manager.ensure(&cfg).await.expect("first ensure succeeds");
@@ -1915,7 +1922,7 @@ mod tests {
         })
         .await
         .expect("a no-op/current-checkout ensure refreshes branch observers");
-        assert_eq!(branch.data["meta"]["branch"], "main");
+        assert_eq!(branch.data["meta"]["branch"], "work");
         let git_tasks_after_second = second
             .tasks
             .list(None)
@@ -1937,7 +1944,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-live-branch".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -1969,7 +1976,7 @@ mod tests {
         })
         .await
         .expect("working-tree edit reaches the live branch stream");
-        assert_eq!(changed.data["meta"]["branch"], "main");
+        assert_eq!(changed.data["meta"]["branch"], "work");
     }
 
     #[tokio::test]
@@ -1980,7 +1987,7 @@ mod tests {
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-drift".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
 
@@ -1997,7 +2004,7 @@ mod tests {
             .expect("repeat ensure restores configured branch");
         assert_eq!(
             git_stdout(&sandbox.workdir, &["rev-parse", "--abbrev-ref", "HEAD"]),
-            "main",
+            "work",
             "the no-op fast path must fall back to checkout when the workdir drifted"
         );
     }
@@ -2010,7 +2017,7 @@ mod tests {
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-dirty-drift".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
 
@@ -2053,7 +2060,7 @@ mod tests {
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
 
@@ -2132,7 +2139,7 @@ mod tests {
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-concurrent-provision".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
 
@@ -2171,13 +2178,13 @@ mod tests {
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-partial-git".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
         // Derived from the config's OWN clone URL — the handle is the
         // repository scope, so a hardcoded URL would name a different worktree.
         let handle =
-            SandboxManager::compute_handle(&config.clone_url, "main").expect("scopeable clone url");
+            SandboxManager::compute_handle(&config.clone_url, "work").expect("scopeable clone url");
         let sandbox_path = app_root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
@@ -2216,7 +2223,7 @@ mod tests {
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stale-monitor".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
         let old = manager.ensure(&config).await.unwrap();
@@ -2271,13 +2278,13 @@ mod tests {
     /// two repositories simply get two worktrees.
     #[test]
     fn two_repositories_can_never_share_a_handle() {
-        let a = SandboxManager::compute_handle("https://github.com/acme/one.git", "main")
+        let a = SandboxManager::compute_handle("https://github.com/acme/one.git", "work")
             .expect("scopeable clone url");
-        let b = SandboxManager::compute_handle("https://github.com/acme/two.git", "main")
+        let b = SandboxManager::compute_handle("https://github.com/acme/two.git", "work")
             .expect("scopeable clone url");
         assert_ne!(a, b);
         // ...and the same repository reached by a different URL spelling does.
-        let ssh = SandboxManager::compute_handle("git@github.com:acme/one.git", "main")
+        let ssh = SandboxManager::compute_handle("git@github.com:acme/one.git", "work")
             .expect("scopeable clone url");
         assert_eq!(
             a, ssh,
@@ -2307,7 +2314,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-known".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -2339,7 +2346,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-forgotten".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -2382,7 +2389,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-adopt-only".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -2411,7 +2418,7 @@ mod tests {
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stop-install-fence".to_string(),
             clone_url,
-            branch: Some("main".to_string()),
+            branch: Some("work".to_string()),
             ..Default::default()
         };
         let original = manager.ensure(&config).await.unwrap();
@@ -2530,7 +2537,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-active".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await
@@ -2562,7 +2569,7 @@ mod tests {
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-prefers-memory".to_string(),
                 clone_url,
-                branch: Some("main".to_string()),
+                branch: Some("work".to_string()),
                 ..Default::default()
             })
             .await

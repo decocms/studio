@@ -240,11 +240,7 @@ fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
 }
 
 fn config_handle(cfg: &GitSandboxConfig) -> Option<String> {
-    let branch = cfg
-        .branch
-        .as_deref()
-        .filter(|branch| !branch.is_empty())
-        .unwrap_or("main");
+    let branch = crate::sandbox::normalize_branch(cfg.branch.as_deref());
     SandboxManager::compute_handle(&cfg.clone_url, branch)
 }
 

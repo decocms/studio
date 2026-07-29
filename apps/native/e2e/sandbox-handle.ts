@@ -99,6 +99,19 @@ function slugifyBranch(branch: string): string {
   return clipped === "" ? "branch" : clipped;
 }
 
+/** Mirrors `normalize_branch` in `sandbox/mod.rs` — the never-on-main rule.
+ * Missing, empty, `main` and `master` all resolve to the staging default, so
+ * a sandbox on a protected branch is impossible by construction. Specs that
+ * REQUEST `main` (as old thread rows still do) must compute their expected
+ * handle through this. */
+export function normalizeBranch(branch?: string | null): string {
+  const trimmed = branch?.trim() ?? "";
+  if (trimmed === "" || trimmed === "main" || trimmed === "master") {
+    return "staging";
+  }
+  return trimmed;
+}
+
 /** Mirrors `compute_handle` in `sandbox/manager.rs`. */
 export function computeHandle(cloneUrl: string, branch: string): string {
   const scope = repoScope(cloneUrl);

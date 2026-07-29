@@ -113,9 +113,11 @@ fn preview_url(handle: &str) -> Option<String> {
     }
 }
 
-/// Mirrors `resolveDesktopSandboxBranch` in the retired dispatch block, and
-/// `SandboxManager::ensure`'s own missing/empty-branch normalization.
-const DEFAULT_BRANCH: &str = "main";
+/// The shared never-on-main normalization — see `sandbox::normalize_branch`.
+/// (This deliberately DIVERGES from the retired `resolveDesktopSandboxBranch`,
+/// which defaulted to `main`: a `main` worktree cannot publish, so landing on
+/// it was a trap, and the one the branch chip kept exposing.)
+const DEFAULT_BRANCH: &str = crate::sandbox::DEFAULT_BRANCH;
 
 /// The branch reported for a thread with no git-backed sandbox of its own.
 ///
@@ -209,12 +211,7 @@ pub(crate) fn config_from_virtual_mcp(
         org_slug: org_slug.map(str::to_string),
         virtual_mcp_id: virtual_mcp_id.to_string(),
         clone_url: clone_url.to_string(),
-        branch: Some(
-            branch
-                .filter(|b| !b.is_empty())
-                .unwrap_or(DEFAULT_BRANCH)
-                .to_string(),
-        ),
+        branch: Some(crate::sandbox::normalize_branch(branch).to_string()),
         runtime: package_manager
             .and_then(runtime_for_package_manager)
             .map(str::to_string),
@@ -389,12 +386,14 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
         .unwrap_or_default()
     {
         let handle = record.handle.clone();
-        let branch = record
-            .config
-            .branch
-            .as_deref()
-            .filter(|branch| !branch.is_empty())
-            .unwrap_or(DEFAULT_BRANCH);
+        let stored = record.config.branch.as_deref();
+        let branch = crate::sandbox::normalize_branch(stored);
+        // A pre-rule row on `main`/`master` normalizes AWAY from its stored
+        // branch: no lookup can reach it anymore, so listing it would offer a
+        // dead entry. Hide it rather than render an unreachable sandbox.
+        if stored.is_some_and(|stored| stored != branch) {
+            continue;
+        }
         // A preview origin is only meaningful while something is serving it,
         // and it is per-handle: each sandbox has its own host.
         let preview = preview_url(&handle);
@@ -431,6 +430,14 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
     {
         let handle = record.handle;
         let config = record.config;
+        {
+            let stored = config.branch.as_deref();
+            // Same unreachable-legacy-row rule as `local_sandbox_sessions`.
+            if stored.is_some_and(|stored| stored != crate::sandbox::normalize_branch(Some(stored)))
+            {
+                continue;
+            }
+        }
         // Publish ONLY a sandbox that is live in this process — not merely one
         // the registry still has a row for.
         //
@@ -587,10 +594,7 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         )
         .into_response();
     };
-    let resolved_branch = config
-        .branch
-        .clone()
-        .unwrap_or_else(|| DEFAULT_BRANCH.to_string());
+    let resolved_branch = crate::sandbox::normalize_branch(config.branch.as_deref()).to_string();
     let Some(handle) =
         crate::sandbox::SandboxManager::compute_handle(&config.clone_url, &resolved_branch)
     else {
@@ -651,12 +655,19 @@ mod tests {
     }
 
     #[test]
-    fn defaults_a_missing_or_empty_branch_to_main() {
+    fn defaults_missing_empty_and_protected_branches_to_staging() {
         let metadata = json!({ "githubRepo": { "url": "https://github.com/acme/site.git" } });
-        for branch in [None, Some("")] {
+        // The never-on-main rule: a protected branch is normalized away at
+        // resolution, so a sandbox on `main` is impossible by construction —
+        // including for a thread that PERSISTED `main` before the rule.
+        for branch in [None, Some(""), Some("main"), Some("master")] {
             let cfg = config_from_virtual_mcp("vm-1", branch, &metadata, Some("acme")).unwrap();
-            assert_eq!(cfg.branch.as_deref(), Some("main"));
+            assert_eq!(cfg.branch.as_deref(), Some("staging"), "{branch:?}");
         }
+        // An ordinary branch passes through untouched.
+        let cfg =
+            config_from_virtual_mcp("vm-1", Some("feature-x"), &metadata, Some("acme")).unwrap();
+        assert_eq!(cfg.branch.as_deref(), Some("feature-x"));
     }
 
     #[test]

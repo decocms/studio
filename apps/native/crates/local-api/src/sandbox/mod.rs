@@ -66,6 +66,33 @@ pub fn handle_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+/// The branch a sandbox lands on when the caller names none.
+///
+/// `staging`, deliberately NOT the repository's default branch: a worktree on
+/// `main`/`master` is a dead end by this app's own rules — `git.rs` refuses
+/// every push to a protected branch, so a sandbox there can accumulate work
+/// it can never publish, and the UI renders a branch chip ("main") that looks
+/// like an ordinary workspace but isn't one.
+pub const DEFAULT_BRANCH: &str = "staging";
+
+/// The ONE branch-normalization rule, applied wherever a branch enters
+/// sandbox resolution: missing and empty collapse to [`DEFAULT_BRANCH`], and
+/// so do `main`/`master` — being on a protected branch is IMPOSSIBLE by
+/// construction, not merely refused at push time. A thread that persisted
+/// `main` before this rule existed resolves to the staging sandbox from now
+/// on; its old worktree simply stops being addressed.
+///
+/// Static by design: the protected set in `git.rs` also contains the REMOTE
+/// default branch, resolved per repository, but at normalization time there
+/// is no repository yet. A repo whose default IS `staging` therefore still
+/// lands on it — the push guard remains the backstop for that case.
+pub fn normalize_branch(branch: Option<&str>) -> &str {
+    match branch.map(str::trim) {
+        None | Some("") | Some("main") | Some("master") => DEFAULT_BRANCH,
+        Some(other) => other,
+    }
+}
+
 /// Longest DNS label the preview host may use. 63 is the protocol limit.
 const MAX_PREVIEW_LABEL: usize = 63;
 

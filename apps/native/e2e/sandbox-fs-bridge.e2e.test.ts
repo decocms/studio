@@ -26,7 +26,7 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { computeHandle, repoDirFor } from "./sandbox-handle";
+import { computeHandle, normalizeBranch, repoDirFor } from "./sandbox-handle";
 
 import {
   describeLocalApi,
@@ -116,7 +116,7 @@ async function ensureSandbox(
   });
   expect(response.status).toBe(200);
   const body = (await response.json()) as { handle?: string };
-  expect(body.handle).toBe(computeHandle(cloneUrl, branch));
+  expect(body.handle).toBe(computeHandle(cloneUrl, normalizeBranch(branch)));
   return body.handle!;
 }
 
