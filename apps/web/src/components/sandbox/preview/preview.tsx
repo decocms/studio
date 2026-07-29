@@ -501,7 +501,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // which only deco's own runtime honoured and could only render one component
   // statically.
   //
-  // Needs the sandbox handle and a draft version — NOT the dev server, and
+  // Needs the daemon origin and a draft version — NOT the dev server, and
   // notably not `currentPageKey` any more: the site does its own routing, so
   // the preview no longer waits on the decofile query that used to stall the
   // whole surface behind a cold-start 502.
@@ -512,13 +512,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
   const draftPreviewUrl =
-    fastPreviewEnabled &&
-    productionUrl &&
-    vmEntry?.sandboxHandle &&
-    decofileVersion
+    fastPreviewEnabled && productionUrl && previewUrl && decofileVersion
       ? buildDraftPreviewUrl({
           productionUrl,
-          sandboxHandle: vmEntry.sandboxHandle,
+          previewUrl,
           version: decofileVersion,
           path: resolvedPath,
         })

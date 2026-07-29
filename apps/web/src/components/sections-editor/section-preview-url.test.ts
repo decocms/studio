@@ -10,7 +10,7 @@ describe("buildDraftPreviewUrl", () => {
     const url = new URL(
       buildDraftPreviewUrl({
         productionUrl: PROD,
-        sandboxHandle: "gimenes-abc-1234",
+        previewUrl: "https://gimenes-abc-1234.preview-studio.decocms.com",
         version: "ff00",
         path: "/blog/hello",
       }),
@@ -19,25 +19,42 @@ describe("buildDraftPreviewUrl", () => {
     expect(url.pathname).toBe("/blog/hello");
   });
 
-  it("carries the pointer as <handle>@<version>, never a URL", () => {
-    // A URL here would make the site fetch caller-supplied origins — the SSRF
-    // surface the suffix-based design exists to avoid.
+  it("carries the token as <host[:port]>@<version> — an authority, never a URL", () => {
+    // The site validates the authority against its configured preview-API
+    // domains and derives the scheme itself; a full URL here would be the
+    // SSRF surface the design exists to avoid.
     const url = new URL(
       buildDraftPreviewUrl({
         productionUrl: PROD,
-        sandboxHandle: "gimenes-abc-1234",
+        previewUrl: "https://gimenes-abc-1234.preview-studio.decocms.com",
         version: "ff00",
         path: "/",
       }),
     );
-    expect(url.searchParams.get("__draft")).toBe("gimenes-abc-1234@ff00");
+    expect(url.searchParams.get("__draft")).toBe(
+      "gimenes-abc-1234.preview-studio.decocms.com@ff00",
+    );
+  });
+
+  it("keeps the desktop link's per-run port in the token", () => {
+    const url = new URL(
+      buildDraftPreviewUrl({
+        productionUrl: PROD,
+        previewUrl: "http://gimenes-abc-1234.localhost:60534",
+        version: "v1",
+        path: "/",
+      }),
+    );
+    expect(url.searchParams.get("__draft")).toBe(
+      "gimenes-abc-1234.localhost:60534@v1",
+    );
   });
 
   it("changes with the version, so a save re-navigates the frame", () => {
     const at = (version: string) =>
       buildDraftPreviewUrl({
         productionUrl: PROD,
-        sandboxHandle: "h",
+        previewUrl: "https://h.preview-studio.decocms.com",
         version,
         path: "/",
       });
@@ -48,7 +65,7 @@ describe("buildDraftPreviewUrl", () => {
     const url = new URL(
       buildDraftPreviewUrl({
         productionUrl: "https://fila.vtex.app/",
-        sandboxHandle: "h",
+        previewUrl: "https://h.preview-studio.decocms.com",
         version: "v1",
         path: "/institucional/historia",
       }),
@@ -61,7 +78,7 @@ describe("buildDraftPreviewUrl", () => {
     const url = new URL(
       buildDraftPreviewUrl({
         productionUrl: PROD,
-        sandboxHandle: "h",
+        previewUrl: "https://h.preview-studio.decocms.com",
         version: "v1",
         path: "/produto/tenis-123/p",
       }),
