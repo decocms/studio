@@ -13,18 +13,30 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Calendar,
   Columns03,
+  DotsHorizontal,
   HelpCircle,
   Lightning01,
   List,
   Loading01,
   Plus,
   UserPlus01,
+  X,
 } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
@@ -40,7 +52,11 @@ import {
   useConnections,
   useProjectContext,
 } from "@/sdk";
-import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
+import {
+  getRepoScope,
+  isOrgSharedConnection,
+} from "@decocms/shared/github-repo-scope";
+import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
 import {
@@ -52,7 +68,9 @@ import {
   insertSortOrder,
   isTaskBlocked,
   primaryThread,
+  PRIORITIES,
   PRIORITY_CONFIG,
+  runSortOrders,
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -63,8 +81,10 @@ import {
   type TaskBoardItemTag,
   type Member,
 } from "./config";
-import { TaskBoardItemDialog } from "./task-dialog";
+import { useTags } from "@/hooks/use-tags";
+import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
@@ -110,6 +130,43 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   const d = new Date(iso);
   const overdue = d.getTime() < Date.now();
   return { label: DATE_FMT.format(d), overdue };
+}
+
+/**
+ * Dragging a card that's part of a multi-selection should show the whole
+ * stack moving together, not just the one card under the cursor — clone the
+ * dragged card, stamp a count badge on it, and swap it in as the native drag
+ * image (removed on the next frame, once the browser has snapshotted it).
+ */
+function setSelectionDragImage(e: DragEvent<HTMLButtonElement>, count: number) {
+  const source = e.currentTarget;
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.style.position = "fixed";
+  clone.style.top = "-9999px";
+  clone.style.left = "-9999px";
+  clone.style.width = `${source.offsetWidth}px`;
+
+  const badge = document.createElement("div");
+  badge.textContent = String(count);
+  badge.style.cssText =
+    "position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:9999px;background:var(--color-foreground);color:var(--color-background);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;";
+  clone.appendChild(badge);
+
+  document.body.appendChild(clone);
+  e.dataTransfer.setDragImage(clone, 20, 20);
+  requestAnimationFrame(() => clone.remove());
+}
+
+/** `onDragStart` always writes a JSON array of ids (see `TaskCard`) — parse
+ *  it back, tolerating a bare id string from any other drag source. */
+function parseDragIds(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [raw];
+  } catch {
+    return [raw];
+  }
 }
 
 /**
@@ -264,19 +321,30 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
-  // Handing a task to the Super Agent makes it open a PR — so it needs an
-  // org-level GitHub connection. Every path that assigns to the Super Agent
-  // (Auto-fix, the lane assignee picker, the task dialog) prompts to connect
-  // instead of enqueueing a run that can't push.
-  const hasGithub =
-    getOrgGithubConnections(useConnections({ slug: "mcp-github" })).length > 0;
+  // Handing a task to the Super Agent makes it open a PR — so it needs at
+  // least one repo imported (a repo-scoped mcp-github connection; `load_repo`
+  // only offers those, never the bare org-level connection). Every path that
+  // assigns to the Super Agent (Auto-fix, the lane assignee picker, the task
+  // dialog) prompts to connect + pick a repo instead of enqueueing a run that
+  // has nothing to load.
+  // Org-shared specifically: the virtual-MCP loader only injects `mcp-github`
+  // connections into an agent's toolset when `isOrgSharedConnection` holds, so a
+  // teammate's per-agent import child would satisfy a repoScope-only check
+  // while leaving the Super Agent with no repo at all.
+  const hasRepo = useConnections({ slug: "mcp-github" }).some(
+    (c) => getRepoScope(c) !== null && isOrgSharedConnection(c),
+  );
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
+  // Connecting only grants a broad org-level GitHub connection — Auto-fix
+  // still needs a repo imported (see `hasRepo`), so once connected we chain
+  // straight into the repo picker.
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   // Returns true if the assignment was blocked (connect prompt opened) so the
   // caller stops before dispatching.
   const blockSuperAgentWithoutGithub = (
     assigneeId: string | null | undefined,
   ) => {
-    if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasGithub) {
+    if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasRepo) {
       setConnectGithubOpen(true);
       return true;
     }
@@ -288,6 +356,22 @@ export function TaskBoardPage() {
 
   const [layout, setLayout] = useState<Layout>("board");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectAllInLane = (status: TaskBoardItemStatus) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of visibleItems)
+        if (item.status === status) next.add(item.id);
+      return next;
+    });
+  const clearSelection = () => setSelectedIds(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
   // Status a newly-created task should start in (set by a lane's "+"); null for
@@ -420,7 +504,7 @@ export function TaskBoardPage() {
     // Full-width so each region's scroll container spans the whole panel — the
     // max-width lives on the *content* inside (header + lanes), so the mouse can
     // sit in the empty margins on wide monitors and still scroll the board.
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Header — capped + centered to the same width as the board content so
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
@@ -502,11 +586,23 @@ export function TaskBoardPage() {
           items={visibleItems}
           members={members}
           memberByUserId={memberByUserId}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onSelectAllInLane={selectAllInLane}
           onOpen={openTask}
           onCreate={openCreateInLane}
-          onMove={(id, status, sortOrder) =>
-            actions.update.mutate({ id, status, sortOrder })
-          }
+          onMove={(ids, status, sortOrder) => {
+            // Cards dragged together land as a consecutive run ending at the
+            // drop point, keeping `ids` order.
+            const orders = runSortOrders(sortOrder, ids.length);
+            ids.forEach((id, i) =>
+              actions.update.mutate({
+                id,
+                status,
+                sortOrder: orders[i]!,
+              }),
+            );
+          }}
           onAssign={(id, userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
             // `userId` is `null` for "Unassigned" — `?? undefined` used to
@@ -599,7 +695,78 @@ export function TaskBoardPage() {
       <ConnectGitHubDialog
         open={connectGithubOpen}
         onOpenChange={setConnectGithubOpen}
+        onConnected={() => setRepoPickerOpen(true)}
       />
+      <GitHubRepoPicker
+        mode="connection"
+        open={repoPickerOpen}
+        onOpenChange={setRepoPickerOpen}
+      />
+
+      {selectedIds.size > 0 && (
+        <SelectionBar
+          count={selectedIds.size}
+          members={members}
+          onMoveTo={(status) => {
+            for (const id of selectedIds) actions.update.mutate({ id, status });
+            clearSelection();
+          }}
+          onSetPriority={(priority) => {
+            for (const id of selectedIds)
+              actions.update.mutate({ id, priority });
+            clearSelection();
+          }}
+          onAddTag={(tagId) => {
+            for (const id of selectedIds) {
+              const item = items.find((i) => i.id === id);
+              if (!item) continue;
+              const tagIds = item.tags.map((tag) => tag.id);
+              if (tagIds.includes(tagId)) continue;
+              actions.update.mutate({ id, tagIds: [...tagIds, tagId] });
+            }
+            clearSelection();
+          }}
+          onAssign={(userId) => {
+            if (blockSuperAgentWithoutGithub(userId)) return;
+            for (const id of selectedIds)
+              actions.update.mutate({ id, assigneeId: userId });
+            clearSelection();
+          }}
+          onSetDueDate={(date) => {
+            const dueDate = toEndOfDayIso(date);
+            for (const id of selectedIds)
+              actions.update.mutate({ id, dueDate });
+            clearSelection();
+          }}
+          onAutoFix={
+            selectedIds.size > 0 &&
+            Array.from(selectedIds).every((id) => {
+              const item = items.find((i) => i.id === id);
+              return (
+                item &&
+                (item.status === "triage" || item.status === "todo") &&
+                item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+              );
+            })
+              ? () => {
+                  if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
+                    return;
+                  for (const id of selectedIds)
+                    actions.update.mutate({
+                      id,
+                      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+                    });
+                  clearSelection();
+                }
+              : undefined
+          }
+          onDelete={() => {
+            for (const id of selectedIds) actions.remove.mutate(id);
+            clearSelection();
+          }}
+          onClear={clearSelection}
+        />
+      )}
     </div>
   );
 }
@@ -612,42 +779,212 @@ export function TaskBoardPage() {
 function ConnectGitHubDialog({
   open,
   onOpenChange,
+  onConnected,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after the connect attempt settles, success or failure — the
+   *  caller (the repo picker) has its own auto-install fallback either way. */
+  onConnected: () => void;
 }) {
   const t = useT();
   const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {t("taskBoard.taskBoard.connectGithubTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("taskBoard.taskBoard.connectGithubDescription")}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            onClick={async () => {
-              await connect();
-              onOpenChange(false);
-            }}
-            disabled={isConnecting}
-            className="gap-2"
-          >
-            {isConnecting ? (
-              <Loading01 size={16} className="animate-spin" />
-            ) : (
-              <GitHubIcon className="size-4" />
-            )}
-            {t("taskBoard.taskBoard.connectGithubButton")}
-          </Button>
-        </DialogFooter>
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+        <div className="flex h-28 items-center justify-center bg-gradient-to-br from-muted via-muted to-accent">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-foreground text-background shadow-sm">
+            <GitHubIcon className="size-7" />
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 p-6">
+          <DialogHeader>
+            <DialogTitle>
+              {t("taskBoard.taskBoard.connectGithubTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("taskBoard.taskBoard.connectGithubDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                await connect();
+                onOpenChange(false);
+                onConnected();
+              }}
+              disabled={isConnecting}
+              className="gap-2"
+            >
+              {isConnecting ? (
+                <Loading01 size={16} className="animate-spin" />
+              ) : (
+                <GitHubIcon className="size-4" />
+              )}
+              {t("taskBoard.taskBoard.connectGithubButton")}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Floating pill toolbar that appears once at least one card is selected —
+ * count, a bulk "Actions" menu (move / tag / priority / delete), a quick
+ * "move to" shortcut, and a close button that clears the selection.
+ */
+function SelectionBar({
+  count,
+  members,
+  onMoveTo,
+  onSetPriority,
+  onAddTag,
+  onAssign,
+  onSetDueDate,
+  onAutoFix,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  members: Member[];
+  onMoveTo: (status: TaskBoardItemStatus) => void;
+  onSetPriority: (priority: TaskBoardItemPriority) => void;
+  onAddTag: (tagId: string) => void;
+  onAssign: (userId: string | null) => void;
+  onSetDueDate: (date: Date) => void;
+  /** Bulk-assign to the Super Agent — only offered when every selected card
+   *  is still in Backlog/To Do (see `TaskBoardPage`). */
+  onAutoFix?: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  const t = useT();
+  const { data: orgTags = [] } = useTags();
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
+        <span className="pl-1 text-sm font-medium text-foreground">
+          {t("taskBoard.taskBoard.selectedCount", { count })}
+        </span>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              {t("taskBoard.taskBoard.actionsButton")}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" side="top">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {t("taskBoard.taskBoard.moveToButton")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {STATUSES.map((status) => (
+                  <DropdownMenuItem
+                    key={status}
+                    onClick={() => onMoveTo(status)}
+                  >
+                    {t(STATUS_CONFIG[status].labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {t("taskBoard.taskBoard.changePriorityButton")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {PRIORITIES.map((priority) => (
+                  <DropdownMenuItem
+                    key={priority}
+                    onClick={() => onSetPriority(priority)}
+                  >
+                    <span
+                      className={cn(
+                        "size-2 rounded-full",
+                        PRIORITY_CONFIG[priority].dotClassName,
+                      )}
+                    />
+                    {t(PRIORITY_CONFIG[priority].labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {t("taskBoard.taskBoard.assignButton")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-56 p-0">
+                <AssigneePickerContent members={members} onSelect={onAssign} />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {t("taskBoard.taskBoard.dueDateButton")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-auto p-0">
+                <DayPickerCalendar
+                  mode="single"
+                  onSelect={(date) => date && onSetDueDate(date)}
+                  initialFocus
+                />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            {orgTags.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.taskBoard.addTagButton")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {orgTags.map((tag) => (
+                    <DropdownMenuItem
+                      key={tag.id}
+                      onClick={() => onAddTag(tag.id)}
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: tagDotColor(tag.color) }}
+                      />
+                      {tag.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              {t("taskBoard.taskBoard.deleteSelectedButton")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {onAutoFix && (
+          <button
+            type="button"
+            onClick={onAutoFix}
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <Lightning01 size={14} />
+            {t("taskBoard.taskBoard.autoFix")}
+          </button>
+        )}
+
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskBoard.clearSelectionButton")}
+          title={t("taskBoard.taskBoard.clearSelectionButton")}
+          onClick={onClear}
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -686,6 +1023,9 @@ function Lanes({
   items,
   members,
   memberByUserId,
+  selectedIds,
+  onToggleSelect,
+  onSelectAllInLane,
   onOpen,
   onCreate,
   onMove,
@@ -695,9 +1035,16 @@ function Lanes({
   items: TaskBoardItem[];
   members: Member[];
   memberByUserId: Map<string, Member>;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
-  onMove: (id: string, status: TaskBoardItemStatus, sortOrder: number) => void;
+  onMove: (
+    ids: string[],
+    status: TaskBoardItemStatus,
+    sortOrder: number,
+  ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
@@ -707,6 +1054,10 @@ function Lanes({
   // means "at the end of the lane". Drives both the drop math and the
   // insertion-line indicator.
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
+  // Ids moving together in the in-flight drag, primary (grabbed) card first —
+  // while set, its lane renders only that one card (as a placeholder) instead
+  // of every selected card, so the group doesn't look duplicated mid-drag.
+  const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Re-run FLIP whenever a card's lane or ordering changes.
@@ -747,12 +1098,12 @@ function Lanes({
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                const id = e.dataTransfer.getData("text/plain");
-                if (id) {
+                const ids = parseDragIds(e.dataTransfer.getData("text/plain"));
+                if (ids.length > 0) {
                   onMove(
-                    id,
+                    ids,
                     status,
-                    insertSortOrder(laneItems, dropBeforeId, id),
+                    insertSortOrder(laneItems, dropBeforeId, ids[0]!),
                   );
                 }
                 setOverLane(null);
@@ -776,6 +1127,24 @@ function Lanes({
                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                   {laneItems.length}
                 </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                        lane: t(config.labelKey),
+                      })}
+                      className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <DotsHorizontal size={15} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
+                      {t("taskBoard.taskBoard.selectAllInLane")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <button
                   type="button"
                   aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
@@ -785,53 +1154,83 @@ function Lanes({
                     lane: t(config.labelKey),
                   })}
                   onClick={() => onCreate(status)}
-                  className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <Plus size={15} />
                 </button>
               </div>
               <div className="flex min-h-12 flex-col pt-1">
-                {laneItems.map((item) => (
-                  <Fragment key={item.id}>
-                    <DropDivider
-                      show={overLane === status && dropBeforeId === item.id}
-                    />
-                    <TaskCard
-                      item={item}
-                      assignee={
-                        item.assigneeId
-                          ? memberByUserId.get(item.assigneeId)
-                          : undefined
-                      }
-                      assignedBy={
-                        item.assignedBy
-                          ? memberByUserId.get(item.assignedBy)
-                          : undefined
-                      }
-                      members={members}
-                      onOpen={() => onOpen(item)}
-                      onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
-                      onAssign={
-                        onAssign
-                          ? (userId) => onAssign(item.id, userId)
-                          : undefined
-                      }
-                      onDragOverCard={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setOverLane(status);
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const before = e.clientY - rect.top < rect.height / 2;
-                        if (before) {
-                          setDropBeforeId(item.id);
-                        } else {
-                          const index = laneItems.indexOf(item);
-                          setDropBeforeId(laneItems[index + 1]?.id ?? null);
+                {laneItems.map((item) => {
+                  // Every other card in the in-flight group hides from its
+                  // lane — only the grabbed card (draggingIds[0]) stays, as a
+                  // stand-in for the whole selection.
+                  if (
+                    draggingIds &&
+                    draggingIds.length > 1 &&
+                    draggingIds.includes(item.id) &&
+                    item.id !== draggingIds[0]
+                  ) {
+                    return null;
+                  }
+                  const dragIds =
+                    selectedIds.has(item.id) && selectedIds.size > 1
+                      ? [
+                          item.id,
+                          ...Array.from(selectedIds).filter(
+                            (id) => id !== item.id,
+                          ),
+                        ]
+                      : [item.id];
+                  return (
+                    <Fragment key={item.id}>
+                      <DropDivider
+                        show={overLane === status && dropBeforeId === item.id}
+                      />
+                      <TaskCard
+                        item={item}
+                        assignee={
+                          item.assigneeId
+                            ? memberByUserId.get(item.assigneeId)
+                            : undefined
                         }
-                      }}
-                    />
-                  </Fragment>
-                ))}
+                        assignedBy={
+                          item.assignedBy
+                            ? memberByUserId.get(item.assignedBy)
+                            : undefined
+                        }
+                        members={members}
+                        selected={selectedIds.has(item.id)}
+                        dragIds={dragIds}
+                        isPlaceholder={draggingIds?.[0] === item.id}
+                        onDragStartCard={setDraggingIds}
+                        onDragEndCard={() => setDraggingIds(null)}
+                        onToggleSelect={() => onToggleSelect(item.id)}
+                        onOpen={() => onOpen(item)}
+                        onAutoFix={
+                          onAutoFix ? () => onAutoFix(item) : undefined
+                        }
+                        onAssign={
+                          onAssign
+                            ? (userId) => onAssign(item.id, userId)
+                            : undefined
+                        }
+                        onDragOverCard={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setOverLane(status);
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const before = e.clientY - rect.top < rect.height / 2;
+                          if (before) {
+                            setDropBeforeId(item.id);
+                          } else {
+                            const index = laneItems.indexOf(item);
+                            setDropBeforeId(laneItems[index + 1]?.id ?? null);
+                          }
+                        }}
+                      />
+                    </Fragment>
+                  );
+                })}
                 <DropDivider
                   show={overLane === status && dropBeforeId === null}
                 />
@@ -863,6 +1262,12 @@ function TaskCard({
   assignee,
   assignedBy,
   members,
+  selected,
+  dragIds,
+  isPlaceholder,
+  onToggleSelect,
+  onDragStartCard,
+  onDragEndCard,
   onOpen,
   onAutoFix,
   onAssign,
@@ -872,6 +1277,17 @@ function TaskCard({
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
+  selected?: boolean;
+  /** Ids that should move together when this card is dragged — the whole
+   *  selection (this card first) when it's part of a multi-card selection,
+   *  otherwise just this card's own id. */
+  dragIds?: string[];
+  /** True while this card is standing in for its whole dragged group (see
+   *  `Lanes`) — rendered as a faded placeholder instead of the normal card. */
+  isPlaceholder?: boolean;
+  onToggleSelect?: () => void;
+  onDragStartCard?: (ids: string[]) => void;
+  onDragEndCard?: () => void;
   onOpen: () => void;
   onAutoFix?: () => void;
   onAssign?: (userId: string | null) => void;
@@ -894,12 +1310,23 @@ function TaskCard({
       data-flip-id={item.id}
       data-flip-lane={item.status}
       onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", item.id);
+        const ids = dragIds ?? [item.id];
+        e.dataTransfer.setData("text/plain", JSON.stringify(ids));
         e.dataTransfer.effectAllowed = "move";
+        if (ids.length > 1) setSelectionDragImage(e, ids.length);
+        onDragStartCard?.(ids);
       }}
+      onDragEnd={onDragEndCard}
       onDragOver={onDragOverCard}
-      onClick={onOpen}
-      className="group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing"
+      onClick={(e) => {
+        if (e.shiftKey && onToggleSelect) onToggleSelect();
+        else onOpen();
+      }}
+      className={cn(
+        "group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing",
+        selected && "bg-accent",
+        isPlaceholder && "opacity-50",
+      )}
       title={item.title}
     >
       <div className="flex items-start gap-2">

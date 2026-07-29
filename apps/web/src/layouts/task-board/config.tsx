@@ -68,6 +68,17 @@ export function insertSortOrder(
   return 0;
 }
 
+/**
+ * `sortOrder` for each card in a run dropped together at `slot`, preserving the
+ * input order. Lanes sort ASCENDING, so the run walks backwards from the slot —
+ * the last card gets `slot` and earlier ones sit just before it. Getting the
+ * direction wrong silently reverses the group, which is why this is a function
+ * with a test rather than an expression at the call site.
+ */
+export function runSortOrders(slot: number, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => slot - (count - 1 - i) * 1e-4);
+}
+
 /** Shape of an org member as returned by `useMembers()`, trimmed to the fields used here. */
 export type Member = {
   userId: string;
