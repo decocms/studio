@@ -792,6 +792,10 @@ pub struct RtThreadFence {
     pub generation: String,
 }
 
+/// The title every thread starts with, and the one an auto-title is allowed
+/// to replace. Byte-parity with `packages/harness/src/thread-title.ts`.
+pub const DEFAULT_THREAD_TITLE: &str = "New chat";
+
 pub fn is_native_assistant_message_id(id: &str) -> bool {
     id.starts_with(NATIVE_ASSISTANT_MESSAGE_ID_PREFIX)
 }
@@ -2645,6 +2649,38 @@ impl ThreadsDb {
         }
         tx.commit()?;
         Ok(message)
+    }
+
+    /// Give a still-unnamed thread its auto-title.
+    ///
+    /// Guarded IN THE STATEMENT on the title still being
+    /// [`DEFAULT_THREAD_TITLE`] rather than read-then-write, so a user who
+    /// renames the thread while the first turn is in flight always wins — the
+    /// same intent as the cluster's `shouldGenerateTitle` gate plus its
+    /// interceptor's second check, expressed once and atomically.
+    ///
+    /// Returns whether a row was actually retitled.
+    pub fn rt_set_thread_title_if_unnamed(
+        &self,
+        fence: &RtThreadFence,
+        title: &str,
+    ) -> DbResult<bool> {
+        let ts = now_rfc3339();
+        let conn = self.lock();
+        let updated = conn.execute(
+            "UPDATE native_scoped_threads SET title = ?1, updated_at = ?2 \
+                 WHERE account_scope = ?3 AND organization_id = ?4 AND id = ?5 \
+                   AND title = ?6",
+            params![
+                title,
+                ts,
+                fence.account_scope,
+                fence.organization_id,
+                fence.thread_id,
+                DEFAULT_THREAD_TITLE,
+            ],
+        )?;
+        Ok(updated > 0)
     }
 
     #[cfg(test)]

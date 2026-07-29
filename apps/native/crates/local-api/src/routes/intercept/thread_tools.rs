@@ -600,7 +600,7 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Err(error) => return error.into_response(),
     };
     let title = match optional_string(data, "title", "data") {
-        Ok(value) => value.unwrap_or("New chat"),
+        Ok(value) => value.unwrap_or(crate::routes::threads::db::DEFAULT_THREAD_TITLE),
         Err(error) => return error.into_response(),
     };
     let description = match optional_nullable_string(data, "description", "data") {

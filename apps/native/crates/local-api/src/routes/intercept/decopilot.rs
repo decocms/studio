@@ -987,6 +987,32 @@ fn queue_text(user_message: &Value) -> String {
         .to_string()
 }
 
+/// How much of the first message becomes the title. Byte-parity with
+/// `FALLBACK_TITLE_MAX_CHARS` in `packages/harness/src/title-generator.ts`.
+const AUTO_TITLE_MAX_CHARS: usize = 32;
+
+/// The thread title derived from its first user message, or `None` when the
+/// message has nothing nameable in it (attachments only, whitespace, emoji).
+///
+/// Port of `genTitle`'s `fallbackTitle`: the literal first 32 CHARACTERS —
+/// not bytes, so a multi-byte first message is neither truncated mid-scalar
+/// nor cut shorter than the cluster would cut it — trimmed, and kept only if
+/// it contains a letter or a digit (`hasUsableText`'s `/[\p{L}\p{N}]/u`).
+/// `None` leaves the thread at its default name, exactly as the cluster does.
+fn auto_thread_title(user_message: &Value) -> Option<String> {
+    let text = queue_text(user_message);
+    let candidate = text
+        .chars()
+        .take(AUTO_TITLE_MAX_CHARS)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    candidate
+        .chars()
+        .any(|c| c.is_alphanumeric())
+        .then_some(candidate)
+}
+
 fn has_attachments(user_message: &Value) -> bool {
     user_message
         .get("parts")
@@ -2446,6 +2472,46 @@ async fn execute_turn(
         return terminate_for_spool_failure(&run, db, &claimed, &turn.cancellation, &spool_error)
             .await;
     }
+    // Name the thread from its first message, before the model runs.
+    //
+    // On the cluster the harness generates this with a fast model and the
+    // cluster's title interceptor persists it; the desktop runs the CLIs
+    // directly, so neither exists here and every thread stayed "New chat"
+    // forever. This is the SAME deterministic fallback `genTitle` uses when
+    // its model errors or times out — no model call, so the title lands the
+    // instant the turn is accepted rather than seconds later.
+    if let Some(title) = auto_thread_title(&turn.user_message) {
+        match db.rt_set_thread_title_if_unnamed(&fence, &title) {
+            // Only broadcast a title that was actually stored. There is no
+            // `thread.title` event on `/events` — this chunk is the sole path
+            // by which an open client learns the new name (see the web
+            // client's chat-context observer).
+            Ok(true) => {
+                if let Err(spool_error) = run
+                    .push(frame(&json!({
+                        "type": "data-thread-title",
+                        "data": {"title": title},
+                    })))
+                    .await
+                {
+                    return terminate_for_spool_failure(
+                        &run,
+                        db,
+                        &claimed,
+                        &turn.cancellation,
+                        &spool_error,
+                    )
+                    .await;
+                }
+            }
+            Ok(false) => {}
+            // A thread that keeps its default name is a cosmetic loss; it must
+            // never cost the user their turn.
+            Err(error) => {
+                tracing::warn!(%error, thread_id = %fence.thread_id, "could not auto-title thread")
+            }
+        }
+    }
     if let Err(spool_error) = run.push(frame(&assistant_start_chunk(&claimed))).await {
         return terminate_for_spool_failure(&run, db, &claimed, &turn.cancellation, &spool_error)
             .await;
@@ -3003,6 +3069,86 @@ mod tests {
 
     fn test_scope() -> RtAccountScope {
         RtAccountScope::new("test.invalid", "local-desktop-user").unwrap()
+    }
+
+    fn text_message(text: &str) -> Value {
+        json!({"role": "user", "parts": [{"type": "text", "text": text}]})
+    }
+
+    /// Ports `genTitle`'s `fallbackTitle`, which is what the cluster shows
+    /// whenever its title model errors or times out — so a desktop title reads
+    /// the same as a degraded cluster one rather than as a third behaviour.
+    #[test]
+    fn the_auto_title_is_the_first_32_characters_of_the_first_message() {
+        assert_eq!(
+            auto_thread_title(&text_message("  Fix the login bug  ")).as_deref(),
+            Some("Fix the login bug")
+        );
+        // Exactly 32 characters survive; the 33rd does not.
+        let long = "abcdefghijklmnopqrstuvwxyz012345XXXX";
+        assert_eq!(
+            auto_thread_title(&text_message(long)).as_deref(),
+            Some("abcdefghijklmnopqrstuvwxyz012345")
+        );
+        // Truncation is by CHARACTER, so a multi-byte message is neither cut
+        // mid-scalar (which would not compile as a String) nor cut shorter
+        // than the cluster cuts it.
+        let accented = "áéíóúáéíóúáéíóúáéíóúáéíóúáéíóúàà";
+        assert_eq!(
+            auto_thread_title(&text_message(accented)).as_deref(),
+            Some(accented)
+        );
+        // Nothing nameable — the thread keeps its default name.
+        for empty in ["", "   ", "🙂🙂", "...!!!"] {
+            assert_eq!(auto_thread_title(&text_message(empty)), None, "{empty:?}");
+        }
+        // A file-only message has no text parts to name it after.
+        assert_eq!(
+            auto_thread_title(&json!({"role": "user", "parts": [{"type": "file"}]})),
+            None
+        );
+    }
+
+    /// The user's own name always wins: renaming mid-turn must not be undone
+    /// when the auto-title lands, and a second turn must not re-title.
+    #[tokio::test]
+    async fn auto_titling_only_ever_replaces_the_default_name() {
+        let root = tempfile::tempdir().unwrap();
+        let state = test_state(root.path());
+        let db = shared_db(&state).unwrap();
+        let scope = test_scope();
+        let thread = db
+            .rt_create_thread_scoped(
+                &scope,
+                None,
+                "org",
+                crate::routes::threads::db::DEFAULT_THREAD_TITLE,
+                None,
+                "vmcp",
+                None,
+                "user",
+            )
+            .unwrap();
+        let fence = db
+            .rt_thread_fence_in_scope(&scope, "org", &thread.id)
+            .unwrap()
+            .unwrap();
+
+        assert!(db
+            .rt_set_thread_title_if_unnamed(&fence, "Fix the login bug")
+            .unwrap());
+        assert_eq!(
+            db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
+            "Fix the login bug"
+        );
+        // Already named — a later turn leaves it alone.
+        assert!(!db
+            .rt_set_thread_title_if_unnamed(&fence, "Something else")
+            .unwrap());
+        assert_eq!(
+            db.rt_get_thread_for_fence(&fence).unwrap().unwrap().title,
+            "Fix the login bug"
+        );
     }
 
     fn queued_turn(org: &str, thread_id: &str, message_id: &str, at: u64) -> QueuedTurn {
