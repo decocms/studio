@@ -13,6 +13,7 @@
 
 import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
+import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type {
@@ -1713,6 +1714,36 @@ export interface TaskBoardItem {
   updatedAt: string;
 }
 
+/** What happened, for one entry in a task's change timeline. Derived from
+ *  `TASK_BOARD_ACTIVITY_ACTIONS`, which the DB's CHECK constraint mirrors. */
+export type { TaskBoardActivityAction };
+
+/** Append-only: who did what to a task, and when. */
+export interface TaskBoardActivityTable {
+  id: string;
+  task_board_item_id: string;
+  action: TaskBoardActivityAction;
+  /** The user who did it; null when the agent/system did, or when that user's
+   *  account was deleted (FK `on delete set null`). */
+  actor_id: string | null;
+  data: ColumnType<
+    Record<string, unknown> | null,
+    string | null | undefined,
+    string | null
+  >;
+  occurred_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface TaskBoardActivity {
+  id: string;
+  taskBoardItemId: string;
+  action: TaskBoardActivityAction;
+  actorId: string | null;
+  /** Event payload — e.g. { from, to } for a status/assignee change. */
+  data: Record<string, unknown>;
+  occurredAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -1865,6 +1896,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_sites: OrgSiteTable;
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
+  task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
   task_board_import_runs: TaskBoardImportRunTable;
 

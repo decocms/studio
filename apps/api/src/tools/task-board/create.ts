@@ -9,6 +9,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -58,6 +59,12 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
+    });
+
+    await recordTaskActivity(ctx, {
+      taskBoardItemId: item.id,
+      action: "created",
+      actorId: getUserId(ctx)!,
     });
 
     // Broadcast the new card so every open board adds it live, no polling.

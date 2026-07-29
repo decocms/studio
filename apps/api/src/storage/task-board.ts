@@ -8,6 +8,8 @@
 import type { Kysely } from "kysely";
 import type {
   Database,
+  TaskBoardActivity,
+  TaskBoardActivityAction,
   TaskBoardItem,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
@@ -461,6 +463,60 @@ export class TaskBoardStorage {
     }
 
     for (const item of items) item.threads = byItem.get(item.id) ?? [];
+  }
+
+  // --------------------------------------------------------------------------
+  // Activity log (the card's change timeline)
+  // --------------------------------------------------------------------------
+
+  /** Append one activity event. Best-effort at the call site — never let a log
+   *  write fail the change it describes. A null `actorId` means the
+   *  agent/system did it, not a member. */
+  async recordActivity(params: {
+    taskBoardItemId: string;
+    action: TaskBoardActivityAction;
+    actorId: string | null;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.db
+      .insertInto("task_board_activity")
+      .values({
+        id: generatePrefixedId("act"),
+        task_board_item_id: params.taskBoardItemId,
+        action: params.action,
+        actor_id: params.actorId,
+        data: params.data ? JSON.stringify(params.data) : null,
+        occurred_at: new Date().toISOString(),
+      })
+      .execute();
+  }
+
+  /** A task's activity, oldest first (timeline order). Tenant-scoped through
+   *  the task, which is the only thing carrying an org. */
+  async listActivity(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardActivity[]> {
+    const rows = await this.db
+      .selectFrom("task_board_activity as a")
+      .innerJoin("task_board_items as item", "item.id", "a.task_board_item_id")
+      .selectAll("a")
+      .where("item.organization_id", "=", organizationId)
+      .where("a.task_board_item_id", "=", taskBoardItemId)
+      .orderBy("a.occurred_at", "asc")
+      .execute();
+    return rows.map((row) => ({
+      id: row.id,
+      taskBoardItemId: row.task_board_item_id,
+      action: row.action,
+      actorId: row.actor_id,
+      data:
+        typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? {}),
+      occurredAt:
+        row.occurred_at instanceof Date
+          ? row.occurred_at.toISOString()
+          : row.occurred_at,
+    }));
   }
 
   private itemFromDbRow(row: {

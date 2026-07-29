@@ -45,6 +45,10 @@ export const KEYS = {
   taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-item-prs", itemId] as const,
 
+  // A task's change timeline (created, status/assignee changes)
+  taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-activity", itemId] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 

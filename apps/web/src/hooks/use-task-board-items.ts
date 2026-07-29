@@ -106,7 +106,14 @@ export function useTaskBoardItemActions() {
       if (context?.previous)
         queryClient.setQueryData(queryKey, context.previous);
     },
-    onSettled: invalidate,
+    // A status/assignee change appends to the task's timeline — drop the
+    // activity cache too so a reopened dialog shows the new entries.
+    onSettled: (_data, _err, input) => {
+      invalidate();
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardActivity(locator, input.id),
+      });
+    },
   });
 
   const remove = useMutation({

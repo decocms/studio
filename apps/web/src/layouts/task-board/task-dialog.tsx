@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +59,11 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
+import {
+  useTaskBoardActivity,
+  type TaskBoardActivity,
+} from "@/hooks/use-task-board-activity";
+import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 
@@ -184,7 +189,7 @@ export function TaskBoardItemDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[85vh] sm:max-h-[640px] sm:max-w-[850px]"
+        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
@@ -205,71 +210,89 @@ export function TaskBoardItemDialog({
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
           {/* Editor pane — content-height on mobile so it doesn't leave a big
               gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
-            <textarea
-              ref={(el) => {
-                if (!el) return;
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
-              }}
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.preventDefault();
-              }}
-              placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
-              autoFocus
-              rows={1}
-              className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
-            />
-
-            <div className="group relative flex flex-1 flex-col">
+          <div className="flex min-w-0 flex-col sm:flex-1 sm:overflow-y-auto">
+            {/* Sticky so a long description never scrolls the title out of
+                view — the title is the one thing that should stay put. */}
+            <div className="sticky top-0 z-10 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
-                className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
+                ref={(el) => {
+                  if (!el) return;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
+                placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
+                autoFocus
+                rows={1}
+                className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
               />
-              {description && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t(
-                    "taskBoard.taskDialog.copyDescriptionAriaLabel",
-                  )}
-                  className="absolute right-0 top-0 size-7 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-                  onClick={() => handleCopy(description)}
-                >
-                  {copied ? <Check size={14} /> : <Copy01 size={14} />}
-                </Button>
-              )}
             </div>
 
-            {item?.id && (
-              <LinksSection
-                item={item}
-                description={description}
-                onOpenThread={onOpenThread}
-              />
-            )}
-
-            {item && item.threads.length > 0 && (
-              <div className="flex flex-col gap-3">
-                {item.threads.map((th) => (
-                  <ThreadActivityItem
-                    key={th.threadId}
-                    thread={th}
-                    startedBy={assignedBy ?? assignee}
-                    onOpen={onOpenThread}
-                  />
-                ))}
+            <div className="flex flex-col gap-6 p-6 pt-6 sm:p-8 sm:pt-6">
+              <div className="group relative flex flex-col">
+                {/* Hugs its content (same auto-grow as the title) so a long
+                    description is never clipped behind an inner scrollbar — the
+                    pane scrolls instead. */}
+                <textarea
+                  ref={(el) => {
+                    if (!el) return;
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }}
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
+                  className="min-h-[200px] w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[320px]"
+                />
+                {description && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t(
+                      "taskBoard.taskDialog.copyDescriptionAriaLabel",
+                    )}
+                    className="absolute right-0 top-0 size-7 rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+                    onClick={() => handleCopy(description)}
+                  >
+                    {copied ? <Check size={14} /> : <Copy01 size={14} />}
+                  </Button>
+                )}
               </div>
-            )}
+
+              {/* Separates the task itself from the record of it (links,
+                  activity). Edit mode only — a new task has neither. */}
+              {item && <hr className="border-border" />}
+
+              {item?.id && (
+                <LinksSection
+                  item={item}
+                  description={description}
+                  onOpenThread={onOpenThread}
+                />
+              )}
+
+              {item && (
+                <ActivitySection
+                  item={item}
+                  members={members}
+                  startedBy={assignedBy ?? assignee}
+                  onOpenThread={onOpenThread}
+                />
+              )}
+            </div>
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
@@ -548,7 +571,9 @@ export function TaskBoardItemDialog({
               disabled={!title.trim() || isSaving}
               onClick={submit}
             >
-              <Plus size={16} />
+              {/* The + belongs to creating a task; saving an existing one
+                  isn't adding anything. */}
+              {item ? null : <Plus size={16} />}
               {item
                 ? t("taskBoard.taskDialog.saveButton")
                 : t("taskBoard.taskDialog.createTaskButton")}
@@ -840,6 +865,338 @@ function LinksSection({
             className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
           />
         </a>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Activity feed: the task's change timeline (created, moved, (re)assigned) and
+ * its linked agent sessions, interleaved oldest-first. Consecutive timeline
+ * events render as one run joined by a rail; a thread renders as a card.
+ */
+function ActivitySection({
+  item,
+  members,
+  startedBy,
+  onOpenThread,
+}: {
+  item: TaskBoardItem;
+  members: Member[];
+  startedBy?: Member;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
+  const t = useT();
+  const { data: activity } = useTaskBoardActivity(item.id);
+  const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  type Ev =
+    | { kind: "activity"; at: number; activity: TaskBoardActivity }
+    | { kind: "thread"; at: number; thread: TaskBoardItemThread };
+  const events: Ev[] = [
+    ...(activity ?? []).map(
+      (a): Ev => ({
+        kind: "activity",
+        at: new Date(a.occurredAt).getTime(),
+        activity: a,
+      }),
+    ),
+    ...item.threads.map(
+      (thread): Ev => ({
+        kind: "thread",
+        at: new Date(thread.createdAt).getTime(),
+        thread,
+      }),
+    ),
+  ].sort((a, b) => a.at - b.at);
+
+  if (events.length === 0) return null;
+
+  // Group consecutive timeline events so their avatars connect with a rail.
+  const blocks: (
+    | { type: "timeline"; items: TaskBoardActivity[] }
+    | { type: "thread"; thread: TaskBoardItemThread }
+  )[] = [];
+  for (const ev of events) {
+    if (ev.kind === "thread") {
+      blocks.push({ type: "thread", thread: ev.thread });
+      continue;
+    }
+    const last = blocks[blocks.length - 1];
+    if (last?.type === "timeline") last.items.push(ev.activity);
+    else blocks.push({ type: "timeline", items: [ev.activity] });
+  }
+
+  return (
+    <div className="flex flex-col gap-5 pb-2">
+      <span className="text-sm font-medium text-muted-foreground">
+        {t("taskBoard.taskDialog.activityLabel")}
+      </span>
+      {blocks.map((block, i) =>
+        block.type === "timeline" ? (
+          <TimelineBlock
+            // Blocks are positional runs of the same feed, so the index IS the
+            // identity here — there's no stabler key for a group.
+            key={`timeline-${i}`}
+            items={block.items}
+            memberByUserId={memberByUserId}
+          />
+        ) : (
+          <ThreadActivityItem
+            key={`thread-${block.thread.threadId}`}
+            thread={block.thread}
+            startedBy={startedBy}
+            onOpen={onOpenThread}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+/**
+ * A value named by a timeline line, carrying the same glyph the board uses for
+ * it (status icon, priority dot, assignee avatar, calendar) so the line reads at
+ * a glance.
+ *
+ * The label is plain inline text, so it shares the sentence's baseline instead
+ * of inheriting one synthesized from a wrapper box. Only the glyph is an atomic
+ * inline box, sized to exactly one line-height and top-aligned: it spans the
+ * line box precisely, so it can never make the row taller, and centering within
+ * it puts the glyph on the middle of the cap-height band — Inter's ascent minus
+ * descent equals its cap height, so the line box's midpoint IS the cap band's.
+ * Give glyphs an even pixel size to keep them on whole pixels.
+ */
+function ValueChip({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <>
+      <span className="ml-1 mr-1 inline-flex h-[1lh] items-center align-top">
+        {icon}
+      </span>
+      <span className="mr-1">{label}</span>
+    </>
+  );
+}
+
+/**
+ * Slot a chip into the sentence where `t()` interpolated its placeholder.
+ *
+ * Sentences stay single translatable strings (`"moved from {from} to {to}"`);
+ * we interpolate a sentinel for each value, then split on it and drop the chip
+ * in. Keyed by name, not position, so a translation that reorders the
+ * placeholders still pairs each chip with its own value.
+ */
+const SENTINEL = "\u0000";
+
+function chipSentinel(name: string): string {
+  return `${SENTINEL}${name}${SENTINEL}`;
+}
+
+function interleaveChips(
+  text: string,
+  chips: Record<string, ReactNode>,
+): ReactNode {
+  // Capturing split → even indices are literal text, odd ones are chip names.
+  return text
+    .split(new RegExp(`${SENTINEL}(\\w+)${SENTINEL}`))
+    .map((part, i) => (
+      <Fragment key={i}>{i % 2 === 0 ? part : chips[part]}</Fragment>
+    ));
+}
+
+/** One timeline line: prose from `t()`, values rendered as chips. */
+function describeActivity(
+  a: TaskBoardActivity,
+  t: ReturnType<typeof useT>,
+  memberByUserId: Map<string, Member>,
+): ReactNode {
+  const statusChip = (s: unknown) => {
+    const cfg =
+      typeof s === "string"
+        ? STATUS_CONFIG[s as keyof typeof STATUS_CONFIG]
+        : undefined;
+    if (!cfg) return String(s ?? "");
+    const Icon = cfg.icon;
+    return (
+      <ValueChip
+        icon={<Icon size={14} className={cfg.iconClassName} />}
+        label={t(cfg.labelKey)}
+      />
+    );
+  };
+  const priorityChip = (p: unknown) => {
+    const cfg =
+      typeof p === "string"
+        ? PRIORITY_CONFIG[p as keyof typeof PRIORITY_CONFIG]
+        : undefined;
+    if (!cfg) return String(p ?? "");
+    return (
+      <ValueChip
+        icon={<span className={cn("size-2 rounded-full", cfg.dotClassName)} />}
+        label={t(cfg.labelKey)}
+      />
+    );
+  };
+  const dateChip = (iso: unknown) => {
+    const date = parseIsoDate(typeof iso === "string" ? iso : null);
+    if (!date) return "";
+    return (
+      <ValueChip
+        icon={<Calendar size={14} className="text-muted-foreground" />}
+        label={DUE_DATE_FMT.format(date)}
+      />
+    );
+  };
+  const assigneeChip = (userId: unknown) => {
+    if (userId === SUPER_AGENT_ASSIGNEE_ID) {
+      return (
+        <ValueChip
+          icon={<SuperAgentIcon size={14} />}
+          label={t("taskBoard.taskDialog.superAgentLabel")}
+        />
+      );
+    }
+    const member =
+      typeof userId === "string" ? memberByUserId.get(userId) : undefined;
+    return (
+      <ValueChip
+        icon={
+          <Avatar
+            url={member?.user?.image ?? undefined}
+            fallback={getInitials(member?.user?.name)}
+            shape="circle"
+            size="2xs"
+          />
+        }
+        label={member?.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
+      />
+    );
+  };
+
+  const d = a.data;
+  const from = chipSentinel("from");
+  const to = chipSentinel("to");
+  switch (a.action) {
+    case "created":
+      return t("taskBoard.taskDialog.activityCreated");
+    case "status_changed":
+      return interleaveChips(
+        d.from
+          ? t("taskBoard.taskDialog.activityMovedFromTo", { from, to })
+          : t("taskBoard.taskDialog.activityMovedTo", { to }),
+        { from: statusChip(d.from), to: statusChip(d.to) },
+      );
+    case "assignee_changed":
+      if (d.to == null) return t("taskBoard.taskDialog.activityUnassigned");
+      return interleaveChips(
+        t(
+          d.to === SUPER_AGENT_ASSIGNEE_ID
+            ? "taskBoard.taskDialog.activityDelegated"
+            : "taskBoard.taskDialog.activityAssigned",
+          { name: chipSentinel("name") },
+        ),
+        { name: assigneeChip(d.to) },
+      );
+    // "none" is priority's unset value, so it reads as a set/clear, not a move.
+    case "priority_changed":
+      if (d.to === "none")
+        return t("taskBoard.taskDialog.activityPriorityCleared");
+      return interleaveChips(
+        !d.from || d.from === "none"
+          ? t("taskBoard.taskDialog.activityPrioritySet", { to })
+          : t("taskBoard.taskDialog.activityPriorityFromTo", { from, to }),
+        { from: priorityChip(d.from), to: priorityChip(d.to) },
+      );
+    case "due_date_changed":
+      if (d.to == null) return t("taskBoard.taskDialog.activityDueDateCleared");
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.taskDialog.activityDueDateSet", { to })
+          : t("taskBoard.taskDialog.activityDueDateFromTo", { from, to }),
+        { from: dateChip(d.from), to: dateChip(d.to) },
+      );
+    case "title_changed":
+      return t("taskBoard.taskDialog.activityRenamed", {
+        to: String(d.to ?? ""),
+      });
+    case "description_changed":
+      return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    default: {
+      const _exhaustive: never = a.action;
+      return String(_exhaustive);
+    }
+  }
+}
+
+/** True for the machine actor behind an agent-driven change — the log stores a
+ *  null actor for those. */
+function isMachineActor(actorId: string | null): boolean {
+  return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
+}
+
+/** A run of consecutive timeline events, avatars joined by a vertical rail. */
+function TimelineBlock({
+  items,
+  memberByUserId,
+}: {
+  items: TaskBoardActivity[];
+  memberByUserId: Map<string, Member>;
+}) {
+  const t = useT();
+
+  const actorName = (actorId: string | null) => {
+    if (isMachineActor(actorId)) {
+      return t("taskBoard.taskDialog.superAgentLabel");
+    }
+    return (
+      memberByUserId.get(actorId!)?.user?.name ??
+      t("taskBoard.taskDialog.someoneLabel")
+    );
+  };
+
+  const actorAvatar = (actorId: string | null): ReactNode => {
+    if (isMachineActor(actorId)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <SuperAgentIcon size={16} />
+        </span>
+      );
+    }
+    const member = memberByUserId.get(actorId!);
+    return (
+      <span className="z-10 shrink-0 rounded-full bg-background">
+        <Avatar
+          url={member?.user?.image ?? undefined}
+          fallback={getInitials(member?.user?.name)}
+          shape="circle"
+          size="2xs"
+        />
+      </span>
+    );
+  };
+
+  return (
+    <div className="relative flex flex-col gap-4">
+      {items.length > 1 && (
+        <span
+          aria-hidden
+          className="absolute bottom-3 left-2 top-3 w-px bg-border"
+        />
+      )}
+      {items.map((a) => (
+        <div key={a.id} className="relative flex items-center gap-2.5">
+          {actorAvatar(a.actorId)}
+          <span className="min-w-0 truncate text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {actorName(a.actorId)}
+            </span>{" "}
+            {describeActivity(a, t, memberByUserId)}
+            <span className="text-muted-foreground/60">
+              {" · "}
+              {formatTimeAgo(new Date(a.occurredAt))}
+            </span>
+          </span>
+        </div>
       ))}
     </div>
   );

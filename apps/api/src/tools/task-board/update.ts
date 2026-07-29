@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import type { TaskBoardItem } from "@/storage/types";
+import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
@@ -10,7 +10,27 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
+
+/**
+ * Fields whose change earns a from/to timeline entry, and the action it logs as.
+ * Diffed against the pre-update item, so an edit that doesn't move a field logs
+ * nothing. `description` is logged separately, without its values — the
+ * timeline records THAT it changed rather than copying a whole body into the
+ * log. Deliberately absent: `sortOrder` (drag-to-reorder is noise) and thread
+ * links.
+ */
+const LOGGED_FIELDS: {
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title";
+  action: TaskBoardActivityAction;
+}[] = [
+  { field: "status", action: "status_changed" },
+  { field: "assigneeId", action: "assignee_changed" },
+  { field: "priority", action: "priority_changed" },
+  { field: "dueDate", action: "due_date_changed" },
+  { field: "title", action: "title_changed" },
+];
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
@@ -84,11 +104,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.dueDate !== undefined ||
       input.sortOrder !== undefined;
 
-    // Only enqueue on the transition INTO Super Agent, not on every later edit.
-    const previous =
-      input.assigneeId !== undefined
-        ? await ctx.storage.taskBoard.getById(input.id, organizationId)
-        : null;
+    // The pre-update item, used to enqueue only on the transition INTO Super
+    // Agent (not on every later edit) and to diff status/assignee for the
+    // activity timeline — so fetch it whenever any field changes.
+    const previous = hasFieldUpdate
+      ? await ctx.storage.taskBoard.getById(input.id, organizationId)
+      : null;
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
@@ -128,6 +149,27 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
       if (!fetched) throw new Error(`Task board item not found: ${input.id}`);
       item = fetched;
+    }
+
+    // Log every changed field to the activity timeline. Best-effort.
+    if (previous) {
+      const actorId = getUserId(ctx)!;
+      for (const { field, action } of LOGGED_FIELDS) {
+        if (item[field] === previous[field]) continue;
+        await recordTaskActivity(ctx, {
+          taskBoardItemId: item.id,
+          action,
+          actorId,
+          data: { from: previous[field], to: item[field] },
+        });
+      }
+      if (item.description !== previous.description) {
+        await recordTaskActivity(ctx, {
+          taskBoardItemId: item.id,
+          action: "description_changed",
+          actorId,
+        });
+      }
     }
 
     // Broadcast the delegation flip (assignee + forced To Do), or a new linked
