@@ -99,6 +99,16 @@ pub enum Signal {
     Kill,
 }
 
+impl Signal {
+    /// The `kill(1)` flag spelling — the one place this mapping lives.
+    pub(crate) fn flag(self) -> &'static str {
+        match self {
+            Signal::Term => "-TERM",
+            Signal::Kill => "-KILL",
+        }
+    }
+}
+
 /// Shell-convention exit info: `code` is the raw exit code for a normal
 /// exit, or `128 + signal` for a signal-terminated process (POSIX shell
 /// convention — byte-parity in SPIRIT with `pty-spawn.ts::shellExitCode`,
@@ -232,7 +242,14 @@ impl ProcessLease {
         let _signal_guard = self.inner.signal_gate.lock().await;
         if self.is_alive() {
             if let Some(anchor_id) = self.inner.anchor_id {
-                signal_anchored_group_members(self.inner.group_id, anchor_id, signal).await;
+                // Shared enumerate-then-signal helper (blocking `pgrep` +
+                // `kill`) — see `crate::watchdog` for why `-<pgid>` is
+                // forbidden while the anchor owns the lifetime fence.
+                let group_id = self.inner.group_id;
+                let _ = tokio::task::spawn_blocking(move || {
+                    crate::watchdog::signal_non_anchor_members(group_id, anchor_id, signal)
+                })
+                .await;
             } else {
                 kill_pid(self.inner.group_id, signal).await;
             }
@@ -347,13 +364,9 @@ impl Drop for ProcessOwner {
 /// cannot turn a stale cancel into a signal for an unrelated process.
 #[cfg(unix)]
 pub async fn kill_pid(pid: u32, signal: Signal) {
-    let flag = match signal {
-        Signal::Term => "-TERM",
-        Signal::Kill => "-KILL",
-    };
     let pgid = format!("-{pid}");
     let _ = tokio::process::Command::new("kill")
-        .arg(flag)
+        .arg(signal.flag())
         .arg(pgid)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -362,83 +375,12 @@ pub async fn kill_pid(pid: u32, signal: Signal) {
         .await;
 }
 
-/// Signals each current member of an anchored process group except the
-/// watchdog itself. `kill -KILL -<pgid>` is deliberately forbidden here: it
-/// would kill the watchdog (the group leader), close its inherited shared
-/// lifetime-lock descriptor, and let a replacement server recover SQLite while
-/// a resistant descendant was still exiting.
-///
-/// `pgrep -g <pgid> .` is portable across the macOS/BSD and Linux variants in
-/// scope. The explicit `.` pattern matters on macOS, where `pgrep` requires a
-/// pattern; unlike a `pgrep` launched by the watchdog itself, this caller is
-/// not an ancestor of the group and therefore sees the anchor too, which is why
-/// it is filtered explicitly. An enumeration error fails closed by sending
-/// nothing: the watchdog's independent EOF path remains responsible for the
-/// repeated, proven teardown.
-#[cfg(unix)]
-async fn signal_anchored_group_members(group_id: u32, anchor_id: u32, signal: Signal) {
-    let output = match tokio::process::Command::new("pgrep")
-        .arg("-g")
-        .arg(group_id.to_string())
-        .arg(".")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .await
-    {
-        Ok(output) => output,
-        Err(error) => {
-            tracing::error!(%error, group_id, "could not enumerate anchored harness group");
-            return;
-        }
-    };
-    if !output.status.success() {
-        // pgrep exit 1 means no match. The anchor should remain present while
-        // this lease is alive, but either way there is nothing safe to signal.
-        if output.status.code() != Some(1) {
-            tracing::error!(
-                status = ?output.status.code(),
-                group_id,
-                "indeterminate anchored harness group enumeration"
-            );
-        }
-        return;
-    }
-
-    let flag = match signal {
-        Signal::Term => "-TERM",
-        Signal::Kill => "-KILL",
-    };
-    for pid in String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .filter_map(|raw| raw.parse::<u32>().ok())
-        .filter(|pid| *pid != anchor_id)
-    {
-        // These pids are intentionally ephemeral (enumerate then signal),
-        // never persisted. The still-live anchor keeps the group id owned, so
-        // a stale RunHandle cannot later target a recycled process group.
-        let _ = tokio::process::Command::new("kill")
-            .arg(flag)
-            .arg(pid.to_string())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await;
-    }
-}
-
 #[cfg(not(unix))]
 pub async fn kill_pid(_pid: u32, _signal: Signal) {
     // Process-group signaling is a POSIX concept; Windows job objects are
     // a different mechanism entirely. Studio ships as a macOS desktop app
     // (the desktop migration contract) — out of scope for v1, not silently pretended to work.
     tracing::warn!("process-group kill is not implemented on this platform");
-}
-
-#[cfg(not(unix))]
-async fn signal_anchored_group_members(_group_id: u32, _anchor_id: u32, _signal: Signal) {
-    // The anchored watchdog exists only on Unix. Kept as a compile-time
-    // counterpart because `ProcessLease::signal` is platform-neutral.
 }
 
 /// Spawn per `req`. Tries PTY first (with retry+backoff) when
@@ -472,89 +414,7 @@ pub async fn spawn(req: SpawnRequest) -> Result<SpawnedProcess, SpawnError> {
 
 mod plain {
     use super::*;
-    use std::fs::{File, OpenOptions};
     use std::process::Stdio;
-
-    /// Unix-only process-group anchor. Its stdin is a liveness pipe whose
-    /// writer exists only inside Studio. If Studio is uncatchably terminated
-    /// (`SIGKILL`, crash), EOF wakes this independent process and it gives the
-    /// CLI group one second to honor TERM before KILLing every survivor.
-    ///
-    /// The watchdog ignores TERM itself so it remains alive to perform the
-    /// escalation. Crucially, it never group-KILLs itself: on macOS `pgrep`
-    /// excludes its own ancestors, so `pgrep -g $$ .` enumerates only the
-    /// sibling CLI and its descendants. The watchdog exits (releasing the
-    /// inherited shared lifetime fence) only after that enumeration proves no
-    /// non-anchor process remains. An enumeration error sleeps forever and
-    /// therefore fails closed instead of allowing unsafe queue recovery.
-    #[cfg(unix)]
-    const PARENT_LIVENESS_WATCHDOG: &str = r#"
-trap '' TERM
-while IFS= read -r _; do :; done
-
-term_round=0
-while [ "$term_round" -lt 20 ]; do
-  members="$(pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    kill -TERM "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
-  term_round=$((term_round + 1))
-  sleep 0.05
-done
-
-while :; do
-  members="$(pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    kill -KILL "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
-  sleep 0.05
-done
-"#;
-
-    #[cfg(unix)]
-    fn open_shared_lifetime_lock(
-        path: Option<&std::path::Path>,
-    ) -> Result<Option<File>, SpawnError> {
-        let Some(path) = path else {
-            return Ok(None);
-        };
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true).mode(0o600);
-        let file = options.open(path).map_err(SpawnError::Io)?;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .map_err(SpawnError::Io)?;
-        file.try_lock_shared().map_err(|error| {
-            SpawnError::Io(match error {
-                std::fs::TryLockError::Error(error) => error,
-                std::fs::TryLockError::WouldBlock => std::io::ErrorKind::WouldBlock.into(),
-            })
-        })?;
-        Ok(Some(file))
-    }
 
     pub async fn spawn_plain(req: SpawnRequest) -> Result<SpawnedProcess, SpawnError> {
         let SpawnRequest {
@@ -566,39 +426,27 @@ done
         } = req;
         let (program, args) = argv.split_first().ok_or(SpawnError::NoPid)?;
 
+        // Unix-only process-group anchor (`crate::watchdog` — the one shared
+        // copy of the parent-liveness script). Its stdin is a liveness pipe
+        // whose writer exists only inside Studio: if Studio is uncatchably
+        // terminated (`SIGKILL`, crash), EOF wakes the independent watchdog
+        // and it TERM→KILLs every surviving group member, releasing the
+        // inherited shared lifetime fence only after `pgrep` proves the group
+        // empty. Normal completion explicitly KILLs and reaps it below.
         #[cfg(unix)]
         let (mut watchdog, parent_liveness, process_group_id) = {
-            use std::os::unix::process::CommandExt;
-
             // Acquire before the watchdog exists and before the CLI spawn can
             // happen. Moving this locked File into stdout makes it an
             // exec-inherited descriptor owned by the watchdog; Studio keeps
             // no duplicate whose close could accidentally release the fence.
-            let lifetime_lock = open_shared_lifetime_lock(lifetime_lock_path.as_deref())?;
-
-            let mut watchdog_cmd = std::process::Command::new("/bin/sh");
-            watchdog_cmd
-                .arg("-c")
-                .arg(PARENT_LIVENESS_WATCHDOG)
-                .arg("decocms-harness-watchdog")
-                .stdin(Stdio::piped())
-                .stdout(lifetime_lock.map(Stdio::from).unwrap_or_else(Stdio::null))
-                .stderr(Stdio::null())
-                .process_group(0);
-            let mut watchdog_cmd = tokio::process::Command::from(watchdog_cmd);
-            // Intentionally FALSE: if the Tokio task/runtime disappears, the
-            // liveness writer drops and this process must survive long enough
-            // to TERM→KILL the CLI group. Normal completion explicitly
-            // KILLs and reaps it below.
-            watchdog_cmd.kill_on_drop(false);
-            let mut watchdog = watchdog_cmd.spawn().map_err(SpawnError::Io)?;
-            let process_group_id = watchdog.id().ok_or(SpawnError::NoPid)?;
-            let parent_liveness = watchdog.stdin.take().ok_or_else(|| {
-                SpawnError::Io(std::io::Error::other(
-                    "parent-liveness watchdog stdin was not piped",
-                ))
-            })?;
-            (watchdog, parent_liveness, process_group_id)
+            let lifetime_lock = lifetime_lock_path
+                .as_deref()
+                .map(crate::watchdog::open_shared_lifetime_lock)
+                .transpose()
+                .map_err(SpawnError::Io)?;
+            let anchor = crate::watchdog::spawn_anchor("decocms-harness-watchdog", lifetime_lock)
+                .map_err(SpawnError::Io)?;
+            (anchor.child, anchor.parent_liveness, anchor.group_id)
         };
 
         let mut std_cmd = std::process::Command::new(program);

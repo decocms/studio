@@ -53,10 +53,10 @@ use tokio::io::AsyncReadExt;
 use super::SetupOrchestrator;
 use crate::log_store::app_key;
 use crate::process_group::ProcessGroupChild;
+use crate::process_util::{classify_status, exit_status_to_code};
 use crate::routes::git::{
     current_branch, emit_branch_event, is_git_repo, is_valid_remote_branch_name, upstream_branch,
 };
-use crate::routes::scripts::{classify_status, exit_status_to_code};
 use crate::tasks::{
     now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary,
 };

@@ -76,6 +76,7 @@ use tokio::sync::oneshot;
 
 use crate::error::{ApiError, ApiResult};
 use crate::process_group::ProcessGroupChild;
+use crate::process_util::CancelOnDrop;
 use crate::state::AppState;
 use crate::tasks::{
     registry::now_ms, KillHandle, KillSignal, ProcessController, TaskEntry, TaskStatus, TaskSummary,
@@ -233,32 +234,6 @@ async fn rebase_inner(state: AppState, body: Bytes) -> ApiResult<Json<Value>> {
     }
 }
 
-/// Request-side cancellation bridge. The operation itself lives in a detached,
-/// registry-visible owner; dropping only the HTTP waiter requests TERM and
-/// leaves that owner responsible for escalation, complete process-group reap,
-/// and the terminal registry transition.
-struct GitCancelOnDrop {
-    kill: Option<KillHandle>,
-}
-
-impl GitCancelOnDrop {
-    fn new(kill: KillHandle) -> Self {
-        Self { kill: Some(kill) }
-    }
-
-    fn disarm(&mut self) {
-        self.kill = None;
-    }
-}
-
-impl Drop for GitCancelOnDrop {
-    fn drop(&mut self) {
-        if let Some(kill) = self.kill.take() {
-            let _ = kill(KillSignal::Term);
-        }
-    }
-}
-
 /// Registers and spawns one hidden owner for a complete high-level Git
 /// operation. Registration is synchronous and happens before `tokio::spawn`,
 /// so callers can hold shutdown admission through this function and release it
@@ -342,7 +317,7 @@ where
     let (kill_handle, result_rx) = spawn_git_operation_owner(state, command, operation);
     drop(admission);
 
-    let mut cancel_on_drop = GitCancelOnDrop::new(kill_handle);
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
     let result = result_rx
         .await
         .map_err(|_| ApiError::internal("git operation owner stopped unexpectedly"))?

@@ -13,17 +13,16 @@
 //! bash/tasks family owns (`TaskRegistry::next_id`/`insert`/
 //! `append_output`/`finalize`) — see
 //! the native module-ownership contract's "Uses: the SAME `state.tasks`
-//! registry" note. The drain/kill/escalation loop below (`run_exec`)
-//! deliberately mirrors `routes/bash.rs`'s detached process owner structurally
-//! (external `kill -SIG -<pgid>` process-group signaling, the same
-//! `classify_status`/`exit_status_to_code` mapping, the same `"tasks"`
-//! broadcaster payload shape) so a task spawned by either family looks
-//! identical to `GET /_sandbox/tasks` / `/_sandbox/tasks/:id/stream`
-//! consumers. Duplicated rather than shared because `routes/bash.rs` and
-//! `tasks/registry.rs` are the bash/tasks family's owned files (see
-//! the native module-ownership contract's hard rule) — an interface request is flagged in
-//! the bootstrap report to hoist this into a shared `process` helper
-//! module if a third family ever needs the same shape.
+//! registry" note. The drain/kill/escalation loop, the
+//! `classify_status`/`exit_status_to_code` mapping, the `"tasks"`
+//! broadcaster payload, and the request-cancellation guard all live in the
+//! shared `crate::process_util` module (the hoist the bootstrap report's
+//! interface request called for, taken once the `setup` pipeline became the
+//! third family needing the same shape), so a task spawned by any family
+//! looks identical to `GET /_sandbox/tasks` / `/_sandbox/tasks/:id/stream`
+//! consumers by construction. This file keeps only what the exec/scripts
+//! family owns: script discovery, the exec env/command layering, and its
+//! per-chunk log sink.
 //!
 //! ## Deliberate deviations from the TS daemon (documented, not hidden)
 //!
@@ -70,18 +69,21 @@ use axum::Json;
 use futures_util::FutureExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, ChildStdout, Command as TokioCommand};
 use tokio::sync::oneshot;
 
 use crate::error::ApiError;
 use crate::events::Broadcaster;
 use crate::process_group::ProcessGroupChild;
+use crate::process_util::{
+    classify_status, drive_group_to_exit, emit_tasks_event, exit_status_to_code, CancelOnDrop,
+    OutputSink,
+};
 use crate::sandbox::SandboxTarget;
 use crate::state::AppState;
 use crate::tasks::{
-    now_ms, KillHandle, KillSignal, OutputStream, ProcessController, TaskEntry, TaskRegistry,
-    TaskStatus, TaskSummary,
+    now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskRegistry, TaskStatus,
+    TaskSummary,
 };
 
 /// Resolve the per-handle [`SandboxTarget`] from the request's
@@ -91,10 +93,6 @@ use crate::tasks::{
 fn resolve(state: &AppState, headers: &HeaderMap) -> SandboxTarget {
     state.resolve_sandbox_target(crate::sandbox::handle_from_headers(headers))
 }
-
-/// Byte-parity with `killWithEscalation`'s 3s TERM->KILL escalation window
-/// in `process/task-manager.ts` (and `routes/bash.rs`'s identical constant).
-const ESCALATE_AFTER: Duration = Duration::from_secs(3);
 
 // --- GET /_sandbox/scripts ---------------------------------------------------
 
@@ -258,7 +256,7 @@ pub async fn exec(
         return Ok(Json(json!({ "taskId": id, "status": "running" })).into_response());
     }
 
-    let mut cancel_on_drop = CancelOnDrop::new(kill_handle);
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
     completion_rx
         .await
         .map_err(|_| ApiError::internal("script process owner stopped unexpectedly"))?;
@@ -301,28 +299,6 @@ pub async fn exec_kill(
         .count();
 
     Json(json!({ "killed": killed }))
-}
-
-struct CancelOnDrop {
-    kill: Option<KillHandle>,
-}
-
-impl CancelOnDrop {
-    fn new(kill: KillHandle) -> Self {
-        Self { kill: Some(kill) }
-    }
-
-    fn disarm(&mut self) {
-        self.kill = None;
-    }
-}
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        if let Some(kill) = self.kill.take() {
-            let _ = kill(KillSignal::Term);
-        }
-    }
 }
 
 // --- process spawn / drain / kill ---------------------------------------------
@@ -401,76 +377,38 @@ fn spawn_exec_owner(
     });
 }
 
-#[cfg(unix)]
-pub(crate) async fn kill_group(pid: u32, signal: &str) {
-    let _ = TokioCommand::new("kill")
-        .arg(signal)
-        .arg(format!("-{pid}"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .status()
-        .await;
+/// This family's [`OutputSink`]: appends each chunk to `tasks` (file-backed
+/// retention — both this task's own file and the source's combined
+/// transcript — AND the `/stream` broadcast channel, via `append_log`) AND
+/// emits a `"log"` SSE frame per chunk on `broadcaster` (`{source:
+/// <log_name>, data: <raw text>}`, source = the script name — the terminal's
+/// tab identity; raw text, the frontend normalizes `\r\n`). Decodes each
+/// chunk independently (`from_utf8_lossy`) — see the module doc's deviation
+/// note #3 on the UTF-8 chunk-boundary gap this deliberately accepts.
+struct ScriptLogSink {
+    tasks: Arc<TaskRegistry>,
+    broadcaster: Arc<Broadcaster>,
+    log_name: String,
+    id: String,
 }
 
-#[cfg(not(unix))]
-pub(crate) async fn kill_group(pid: u32, _signal: &str) {
-    let _ = TokioCommand::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .status()
-        .await;
-}
-
-#[cfg(unix)]
-pub(crate) fn exit_status_to_code(status: std::process::ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-    match status.signal() {
-        Some(sig) => 128 + sig,
-        None => status.code().unwrap_or(1),
+#[async_trait::async_trait]
+impl OutputSink for ScriptLogSink {
+    async fn write(&mut self, stream: OutputStream, bytes: &[u8]) {
+        let text = String::from_utf8_lossy(bytes);
+        self.tasks
+            .append_log(&self.id, &self.log_name, stream, &text, &self.broadcaster)
+            .await;
     }
 }
 
-#[cfg(not(unix))]
-pub(crate) fn exit_status_to_code(status: std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
-}
-
-/// Byte-parity in spirit with `routes/bash.rs`'s `classify_status` (kept as
-/// its own copy — see the module doc on why this isn't shared). Reused by
-/// the `setup` module's dev-server spawn (`setup/dev.rs`) — same process
-/// lifecycle, same registry.
-pub(crate) fn classify_status(timed_out: bool, exit_code: i32) -> TaskStatus {
-    if timed_out {
-        TaskStatus::Timeout
-    } else if exit_code == 0 {
-        TaskStatus::Exited
-    } else if exit_code == -1 {
-        TaskStatus::Failed
-    } else if exit_code > 128 {
-        TaskStatus::Killed
-    } else {
-        TaskStatus::Exited
-    }
-}
-
-/// Drains stdout/stderr into `tasks` (file-backed retention — both this
-/// task's own file and the source's combined transcript — AND the
-/// `/stream` broadcast channel, via `append_log`) AND emits a `"log"` SSE
-/// frame per chunk on `broadcaster` (`{source: <log_name>, data: <raw
-/// text>}`, source = the script name — the terminal's tab identity; raw
-/// text, the frontend normalizes `\r\n`), honors an optional timeout and
-/// durable [`ProcessController`] signals
-/// (escalating `SIGTERM` to `SIGKILL` after `ESCALATE_AFTER`, byte-parity with
-/// `killWithEscalation`), then finalizes the task and emits a `"tasks"`
-/// broadcaster event. Self-contained (void return) — both `background` and
-/// `await` exec modes call this the same way; `await` mode reads the result
-/// back via `tasks.get`/`output` after it returns. Takes the resolved
-/// sandbox's `tasks`/`broadcaster` Arcs (not `AppState`) so a per-handle exec
+/// Drains through the shared drain/kill/escalation loop
+/// ([`drive_group_to_exit`]) with this family's [`ScriptLogSink`], then
+/// finalizes the task and emits a `"tasks"` broadcaster event.
+/// Self-contained (void return) — both `background` and `await` exec modes
+/// call this the same way; `await` mode reads the result back via
+/// `tasks.get`/`output` after it returns. Takes the resolved sandbox's
+/// `tasks`/`broadcaster` Arcs (not `AppState`) so a per-handle exec
 /// registers/streams on the RIGHT sandbox.
 #[allow(clippy::too_many_arguments)]
 async fn run_exec(
@@ -479,123 +417,32 @@ async fn run_exec(
     log_name: String,
     id: String,
     child: &mut ProcessGroupChild,
-    mut stdout_pipe: ChildStdout,
-    mut stderr_pipe: ChildStderr,
+    stdout_pipe: ChildStdout,
+    stderr_pipe: ChildStderr,
     timeout_ms: Option<u64>,
     controller: ProcessController,
 ) {
-    let has_timeout = timeout_ms.is_some_and(|ms| ms > 0);
-    // No real timeout configured: use a far-future deadline instead of
-    // `Option<Pin<Box<dyn Future>>>` bookkeeping. Guarded out of the
-    // `select!` below via `timer_active` so it's never actually polled in
-    // that case. 100 years comfortably avoids `Instant` overflow while
-    // being "never" for any real exec call.
-    let sleep_duration = match timeout_ms {
-        Some(ms) if ms > 0 => Duration::from_millis(ms),
-        _ => Duration::from_secs(60 * 60 * 24 * 365 * 100),
+    let timeout = timeout_ms.and_then(|ms| (ms > 0).then(|| Duration::from_millis(ms)));
+    let mut sink = ScriptLogSink {
+        tasks: tasks.clone(),
+        broadcaster: broadcaster.clone(),
+        log_name,
+        id: id.clone(),
     };
-    let sleep = tokio::time::sleep(sleep_duration);
-    tokio::pin!(sleep);
-    let escalation = tokio::time::sleep(ESCALATE_AFTER);
-    tokio::pin!(escalation);
+    let outcome = drive_group_to_exit(
+        child,
+        stdout_pipe,
+        stderr_pipe,
+        timeout,
+        &controller,
+        &mut sink,
+    )
+    .await;
 
-    let mut stdout_open = true;
-    let mut stderr_open = true;
-    let mut exited = false;
-    let mut exit_status: Option<std::process::ExitStatus> = None;
-    let mut timed_out = false;
-    let mut timer_active = has_timeout;
-    let mut observed_signal = None;
-    let mut escalation_active = false;
-
-    let mut so_chunk = [0u8; 8192];
-    let mut se_chunk = [0u8; 8192];
-
-    loop {
-        if exited && !stdout_open && !stderr_open {
-            break;
-        }
-        tokio::select! {
-            res = stdout_pipe.read(&mut so_chunk), if stdout_open => {
-                match res {
-                    Ok(0) | Err(_) => stdout_open = false,
-                    Ok(n) => {
-                        let text = String::from_utf8_lossy(&so_chunk[..n]).into_owned();
-                        tasks
-                            .append_log(&id, &log_name, OutputStream::Stdout, &text, &broadcaster)
-                            .await;
-                    }
-                }
-            }
-            res = stderr_pipe.read(&mut se_chunk), if stderr_open => {
-                match res {
-                    Ok(0) | Err(_) => stderr_open = false,
-                    Ok(n) => {
-                        let text = String::from_utf8_lossy(&se_chunk[..n]).into_owned();
-                        tasks
-                            .append_log(&id, &log_name, OutputStream::Stderr, &text, &broadcaster)
-                            .await;
-                    }
-                }
-            }
-            // Keep the leader unreaped until every inherited output writer has
-            // closed. Its unreaped PID pins the process-group identity, so
-            // timeout/controller signals cannot ever target a recycled PGID.
-            status = child.wait(), if !exited && !stdout_open && !stderr_open => {
-                exited = true;
-                timer_active = false;
-                escalation_active = false;
-                exit_status = status.ok();
-            }
-            _ = &mut sleep, if timer_active && !exited => {
-                timer_active = false;
-                escalation_active = false;
-                timed_out = true;
-                child.signal(KillSignal::Kill).await;
-            }
-            sig = controller.wait_for_change(observed_signal), if !exited => {
-                observed_signal = Some(sig);
-                if child.signal(sig).await {
-                    if matches!(sig, KillSignal::Term) {
-                        escalation.as_mut().reset(tokio::time::Instant::now() + ESCALATE_AFTER);
-                        escalation_active = true;
-                    } else {
-                        escalation_active = false;
-                    }
-                }
-            }
-            _ = &mut escalation, if escalation_active && !exited => {
-                escalation_active = false;
-                child.signal(KillSignal::Kill).await;
-            }
-        }
-    }
-
-    let raw_exit_code = exit_status.map(exit_status_to_code).unwrap_or(-1);
-    let status = classify_status(timed_out, raw_exit_code);
-    tasks.finalize(&id, status, raw_exit_code, timed_out);
+    let raw_exit_code = outcome.exit_status.map(exit_status_to_code).unwrap_or(-1);
+    let status = classify_status(outcome.timed_out, raw_exit_code);
+    tasks.finalize(&id, status, raw_exit_code, outcome.timed_out);
     emit_tasks_event(&tasks, &broadcaster);
-}
-
-/// `{"active": [{id, command, logName?}]}` — byte-parity with
-/// `getActiveTasks()` in `entry.ts`; identical payload shape to
-/// `routes/bash.rs`'s own copy (see the module doc on why this isn't
-/// shared), broadcast under the `"tasks"` name on every registration and
-/// every exit. Takes the resolved sandbox's registry + broadcaster so a
-/// per-handle exec's task list is fanned out on the RIGHT stream.
-fn emit_tasks_event(tasks: &TaskRegistry, broadcaster: &Broadcaster) {
-    let active: Vec<Value> = tasks
-        .list(Some(&[TaskStatus::Running]))
-        .into_iter()
-        .map(|t| {
-            let mut obj = json!({"id": t.id, "command": t.command});
-            if let Some(name) = t.log_name {
-                obj["logName"] = json!(name);
-            }
-            obj
-        })
-        .collect();
-    broadcaster.emit("tasks", json!({"active": active}));
 }
 
 // --- config-store reads (opaque `Value` — see `config/store.rs`) -------------
@@ -846,15 +693,6 @@ mod tests {
     }
 
     #[test]
-    fn classify_status_matches_bash_family_semantics() {
-        assert_eq!(classify_status(true, 0), TaskStatus::Timeout);
-        assert_eq!(classify_status(false, 0), TaskStatus::Exited);
-        assert_eq!(classify_status(false, -1), TaskStatus::Failed);
-        assert_eq!(classify_status(false, 137), TaskStatus::Killed);
-        assert_eq!(classify_status(false, 1), TaskStatus::Exited);
-    }
-
-    #[test]
     fn emit_if_changed_only_broadcasts_on_actual_change() {
         // Use a cwd key unique to this test so the process-lifetime static
         // (now keyed by cwd) makes this order-independent without a global
@@ -988,8 +826,8 @@ mod tests {
     #[tokio::test]
     async fn run_exec_captures_nonzero_exit_code() {
         // `classify_status`'s `TaskStatus` tracks process lifecycle, not
-        // success — a clean nonzero exit is still `Exited` (byte-parity
-        // with `routes/bash.rs`'s `classify_status_matches_task_manager_finalize`
+        // success — a clean nonzero exit is still `Exited` (pinned by
+        // `process_util`'s `classify_status_matches_task_manager_finalize`
         // test: only the `-1` spawn-failure sentinel or a >128 signal-death
         // code map away from `Exited`). `exit_code` itself still carries 3.
         let state = test_state(Arc::new(crate::events::Broadcaster::new()));
@@ -1083,7 +921,7 @@ mod tests {
             completion_tx,
         );
 
-        let guard = CancelOnDrop::new(controller.kill_handle());
+        let guard = CancelOnDrop::new(controller.kill_handle(), KillSignal::Term);
         drop(guard);
         tokio::time::timeout(Duration::from_secs(5), completion_rx)
             .await

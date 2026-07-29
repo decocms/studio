@@ -48,10 +48,9 @@ use tokio::sync::{oneshot, Mutex};
 use crate::error::ApiError;
 use crate::mutation::{MutationCancellation, MutationOwnerError};
 use crate::process_group::ProcessGroupChild;
+use crate::process_util::{exit_status_to_code, CancelOnDrop};
 use crate::state::AppState;
-use crate::tasks::{
-    now_ms, KillHandle, KillSignal, ProcessController, TaskEntry, TaskStatus, TaskSummary,
-};
+use crate::tasks::{now_ms, KillSignal, ProcessController, TaskEntry, TaskStatus, TaskSummary};
 
 use glob_logic::{
     collect_empty_directories, repo_relative_prefix, resolve_glob_result_limit, scan_glob,
@@ -722,46 +721,6 @@ pub async fn edit(State(state): State<AppState>, body: Bytes) -> Response {
 
 // --- grep --------------------------------------------------------------------
 
-struct GrepCancelOnDrop {
-    kill: Option<KillHandle>,
-}
-
-impl GrepCancelOnDrop {
-    fn new(kill: KillHandle) -> Self {
-        Self { kill: Some(kill) }
-    }
-
-    fn disarm(&mut self) {
-        self.kill = None;
-    }
-}
-
-impl Drop for GrepCancelOnDrop {
-    fn drop(&mut self) {
-        if let Some(kill) = self.kill.take() {
-            // `rg` has no graceful-shutdown protocol. Use KILL on request
-            // cancellation so an aborted HTTP future cannot leave an internal
-            // search alive; app shutdown still uses the registry's bounded
-            // TERM -> KILL policy.
-            let _ = kill(KillSignal::Kill);
-        }
-    }
-}
-
-#[cfg(unix)]
-fn rg_exit_code(status: std::process::ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-    status
-        .signal()
-        .map(|signal| 128 + signal)
-        .unwrap_or_else(|| status.code().unwrap_or(1))
-}
-
-#[cfg(not(unix))]
-fn rg_exit_code(status: std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
-}
-
 async fn drive_owned_rg(
     child: &mut ProcessGroupChild,
     controller: ProcessController,
@@ -883,7 +842,7 @@ async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process:
         }
         let (status, exit_code) = match &output {
             Ok(output) => {
-                let exit_code = rg_exit_code(output.status);
+                let exit_code = exit_status_to_code(output.status);
                 let status = if exit_code > 128 {
                     TaskStatus::Killed
                 } else {
@@ -899,7 +858,11 @@ async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process:
     });
     drop(admission);
 
-    let mut cancel_on_drop = GrepCancelOnDrop::new(kill_handle);
+    // `rg` has no graceful-shutdown protocol. Use KILL on request
+    // cancellation so an aborted HTTP future cannot leave an internal
+    // search alive; app shutdown still uses the registry's bounded
+    // TERM -> KILL policy.
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Kill);
     let output = result_rx
         .await
         .map_err(|_| ApiError::internal("grep process owner stopped unexpectedly"))?
@@ -1619,7 +1582,7 @@ mod tests {
             .expect("owned grep process exited")
             .expect("owner task did not panic")
             .expect("owner returned exit status");
-        assert_eq!(rg_exit_code(output.status), 137);
+        assert_eq!(exit_status_to_code(output.status), 137);
         let alive = std::process::Command::new("kill")
             .args(["-0", &pid.to_string()])
             .stdout(Stdio::null())

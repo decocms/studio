@@ -31,6 +31,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Bytes;
@@ -40,15 +41,18 @@ use axum::Json;
 use futures_util::FutureExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, ChildStdout, Command};
 use tokio::sync::oneshot;
 
 use crate::error::{ApiError, ApiResult};
 use crate::process_group::ProcessGroupChild;
+use crate::process_util::{
+    classify_status, drive_group_to_exit, emit_tasks_event, exit_status_to_code, CancelOnDrop,
+    OutputSink,
+};
 use crate::state::AppState;
 use crate::tasks::{
-    now_ms, KillHandle, KillSignal, OutputStream, ProcessController, RingBuffer, TaskEntry,
+    now_ms, KillSignal, OutputStream, ProcessController, RingBuffer, TaskEntry, TaskRegistry,
     TaskStatus, TaskSummary,
 };
 
@@ -70,9 +74,6 @@ const OUTPUT_CAP_BYTES: usize = 256 * 1024;
 /// pinned contract — just a bound so a truly wedged process (rare: a kernel
 /// waiting on uninterruptible I/O) can't hang the request/task forever.
 const REAP_GRACE: Duration = Duration::from_secs(2);
-/// Byte-parity with `killWithEscalation`'s 3s TERM->KILL escalation window
-/// in `process/task-manager.ts`.
-const ESCALATE_AFTER: Duration = Duration::from_secs(3);
 
 #[derive(Deserialize, Default)]
 struct BashBody {
@@ -147,37 +148,6 @@ fn build_command(command: &str, cwd: &Path, env: Option<&HashMap<String, String>
     cmd
 }
 
-#[cfg(unix)]
-fn exit_status_to_code(status: std::process::ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-    match status.signal() {
-        // Shell convention (128 + signal number) — byte-parity with the
-        // `signal ? 128 + SIGNAL_NUMBERS[signal] : (code ?? 1)` mapping in
-        // `task-manager.ts`'s `child.on("close", ...)`.
-        Some(sig) => 128 + sig,
-        None => status.code().unwrap_or(1),
-    }
-}
-
-#[cfg(not(unix))]
-fn exit_status_to_code(status: std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
-}
-
-fn classify_status(timed_out: bool, exit_code: i32) -> TaskStatus {
-    if timed_out {
-        TaskStatus::Timeout
-    } else if exit_code == 0 {
-        TaskStatus::Exited
-    } else if exit_code == -1 {
-        TaskStatus::Failed
-    } else if exit_code > 128 {
-        TaskStatus::Killed
-    } else {
-        TaskStatus::Exited
-    }
-}
-
 /// Carries dangling bytes of a multi-byte UTF-8 sequence across chunk
 /// boundaries so a character split across two pipe reads isn't mangled into
 /// replacement characters — byte-parity in spirit with `task-manager.ts`'s
@@ -240,32 +210,6 @@ struct RunResult {
     exit_code: i32,
     timed_out: bool,
     truncated: bool,
-}
-
-/// Synchronous cancellation bridge for an await-mode HTTP request. Axum may
-/// drop a handler future when the client disconnects; the child lives in a
-/// detached owner, so dropping this guard requests process-group TERM instead
-/// of either leaking the child or tying ownership to the socket future.
-struct CancelOnDrop {
-    kill: Option<KillHandle>,
-}
-
-impl CancelOnDrop {
-    fn new(kill: KillHandle) -> Self {
-        Self { kill: Some(kill) }
-    }
-
-    fn disarm(&mut self) {
-        self.kill = None;
-    }
-}
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        if let Some(kill) = self.kill.take() {
-            let _ = kill(KillSignal::Term);
-        }
-    }
 }
 
 async fn run_await(
@@ -347,7 +291,7 @@ async fn run_await(
     );
     drop(admission);
 
-    let mut cancel_on_drop = CancelOnDrop::new(kill_handle);
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
     let result = result_rx
         .await
         .map_err(|_| ApiError::internal("bash process owner stopped unexpectedly"))?;
@@ -391,7 +335,7 @@ async fn spawn_background(
                     intentional: None,
                 };
                 state.tasks.insert(TaskEntry::new(summary, None));
-                emit_tasks_event(state);
+                emit_tasks_event(&state.tasks, &state.broadcaster);
                 return Ok(Json(json!({"taskId": id, "status": "failed"})));
             }
         };
@@ -411,7 +355,7 @@ async fn spawn_background(
     state
         .tasks
         .insert(TaskEntry::new(summary, Some(kill_handle)));
-    emit_tasks_event(state);
+    emit_tasks_event(&state.tasks, &state.broadcaster);
 
     let (Some(stdout_pipe), Some(stderr_pipe)) = (child.take_stdout(), child.take_stderr()) else {
         spawn_missing_stdio_cleanup(state.clone(), id.clone(), child, true);
@@ -447,7 +391,7 @@ fn spawn_missing_stdio_cleanup(
             .await;
         state.tasks.finalize(&id, TaskStatus::Failed, -1, false);
         if visible {
-            emit_tasks_event(&state);
+            emit_tasks_event(&state.tasks, &state.broadcaster);
         } else {
             let _ = state.tasks.remove(&id).await;
         }
@@ -501,7 +445,7 @@ fn spawn_process_owner(
             .tasks
             .finalize(&id, status, result.exit_code, result.timed_out);
         if visible {
-            emit_tasks_event(&state);
+            emit_tasks_event(&state.tasks, &state.broadcaster);
         } else {
             let _ = state.tasks.remove(&id).await;
         }
@@ -511,109 +455,70 @@ fn spawn_process_owner(
     });
 }
 
+/// This family's [`OutputSink`]: decodes UTF-8 across chunk boundaries
+/// (unlike the scripts family — see `routes/scripts.rs`'s deviation note),
+/// retains into the file-backed registry, and keeps an await-mode
+/// request-result copy in RAM. Background output needs no RAM copy; the
+/// registry already retains it.
+struct BashChunkSink {
+    tasks: Arc<TaskRegistry>,
+    id: String,
+    stdout_decoder: Utf8ChunkDecoder,
+    stderr_decoder: Utf8ChunkDecoder,
+    stdout_buf: Option<RingBuffer>,
+    stderr_buf: Option<RingBuffer>,
+}
+
+#[async_trait::async_trait]
+impl OutputSink for BashChunkSink {
+    async fn write(&mut self, stream: OutputStream, bytes: &[u8]) {
+        let (decoder, buf) = match stream {
+            OutputStream::Stdout => (&mut self.stdout_decoder, &mut self.stdout_buf),
+            OutputStream::Stderr => (&mut self.stderr_decoder, &mut self.stderr_buf),
+        };
+        let text = decoder.push(bytes);
+        if !text.is_empty() {
+            if let Some(buf) = buf {
+                buf.append(&text);
+            }
+            self.tasks.append_output(&self.id, stream, &text).await;
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn drive_process(
     state: AppState,
     id: String,
     child: &mut ProcessGroupChild,
-    mut stdout_pipe: ChildStdout,
-    mut stderr_pipe: ChildStderr,
+    stdout_pipe: ChildStdout,
+    stderr_pipe: ChildStderr,
     timeout_ms: u64,
     controller: ProcessController,
     capture_output: bool,
 ) -> RunResult {
-    let mut stdout_decoder = Utf8ChunkDecoder::new();
-    let mut stderr_decoder = Utf8ChunkDecoder::new();
-    let mut stdout_open = true;
-    let mut stderr_open = true;
-    let mut exited = false;
-    let mut exit_status: Option<std::process::ExitStatus> = None;
-    let mut timed_out = false;
-    let mut timer_active = true;
-    let mut observed_signal = None;
-    // Background output is already retained by the file-backed TaskRegistry;
-    // only await mode needs a request-result copy in RAM.
-    let mut stdout_buf = capture_output.then(|| RingBuffer::new(OUTPUT_CAP_BYTES));
-    let mut stderr_buf = capture_output.then(|| RingBuffer::new(OUTPUT_CAP_BYTES));
-
-    let mut so_chunk = [0u8; 8192];
-    let mut se_chunk = [0u8; 8192];
-    let sleep = tokio::time::sleep(Duration::from_millis(timeout_ms));
-    tokio::pin!(sleep);
-    let escalation = tokio::time::sleep(ESCALATE_AFTER);
-    tokio::pin!(escalation);
-    let mut escalation_active = false;
-
-    loop {
-        if exited && !stdout_open && !stderr_open {
-            break;
-        }
-        tokio::select! {
-            res = stdout_pipe.read(&mut so_chunk), if stdout_open => {
-                match res {
-                    Ok(0) | Err(_) => stdout_open = false,
-                    Ok(n) => {
-                        let text = stdout_decoder.push(&so_chunk[..n]);
-                        if !text.is_empty() {
-                            if let Some(buf) = &mut stdout_buf {
-                                buf.append(&text);
-                            }
-                            state.tasks.append_output(&id, OutputStream::Stdout, &text).await;
-                        }
-                    }
-                }
-            }
-            res = stderr_pipe.read(&mut se_chunk), if stderr_open => {
-                match res {
-                    Ok(0) | Err(_) => stderr_open = false,
-                    Ok(n) => {
-                        let text = stderr_decoder.push(&se_chunk[..n]);
-                        if !text.is_empty() {
-                            if let Some(buf) = &mut stderr_buf {
-                                buf.append(&text);
-                            }
-                            state.tasks.append_output(&id, OutputStream::Stderr, &text).await;
-                        }
-                    }
-                }
-            }
-            // Do not reap the group leader while descendants may still own an
-            // inherited pipe. Keeping the leader unreaped pins its PID/PGID,
-            // so every timeout/controller signal remains ownership-safe.
-            status = child.wait(), if !exited && !stdout_open && !stderr_open => {
-                exited = true;
-                timer_active = false;
-                escalation_active = false;
-                exit_status = status.ok();
-            }
-            _ = &mut sleep, if timer_active && !exited => {
-                timer_active = false;
-                escalation_active = false;
-                timed_out = true;
-                child.signal(KillSignal::Kill).await;
-            }
-            sig = controller.wait_for_change(observed_signal), if !exited => {
-                observed_signal = Some(sig);
-                if child.signal(sig).await {
-                    if matches!(sig, KillSignal::Term) {
-                        escalation.as_mut().reset(tokio::time::Instant::now() + ESCALATE_AFTER);
-                        escalation_active = true;
-                    } else {
-                        escalation_active = false;
-                    }
-                }
-            }
-            _ = &mut escalation, if escalation_active && !exited => {
-                escalation_active = false;
-                child.signal(KillSignal::Kill).await;
-            }
-        }
-    }
+    let mut sink = BashChunkSink {
+        tasks: state.tasks.clone(),
+        id: id.clone(),
+        stdout_decoder: Utf8ChunkDecoder::new(),
+        stderr_decoder: Utf8ChunkDecoder::new(),
+        stdout_buf: capture_output.then(|| RingBuffer::new(OUTPUT_CAP_BYTES)),
+        stderr_buf: capture_output.then(|| RingBuffer::new(OUTPUT_CAP_BYTES)),
+    };
+    let outcome = drive_group_to_exit(
+        child,
+        stdout_pipe,
+        stderr_pipe,
+        Some(Duration::from_millis(timeout_ms)),
+        &controller,
+        &mut sink,
+    )
+    .await;
 
     // Flush any dangling partial-UTF8 tail left in the decoders.
-    let so_tail = stdout_decoder.finish();
+    let so_tail = sink.stdout_decoder.finish();
     if !so_tail.is_empty() {
-        if let Some(buf) = &mut stdout_buf {
+        if let Some(buf) = &mut sink.stdout_buf {
             buf.append(&so_tail);
         }
         state
@@ -621,9 +526,9 @@ async fn drive_process(
             .append_output(&id, OutputStream::Stdout, &so_tail)
             .await;
     }
-    let se_tail = stderr_decoder.finish();
+    let se_tail = sink.stderr_decoder.finish();
     if !se_tail.is_empty() {
-        if let Some(buf) = &mut stderr_buf {
+        if let Some(buf) = &mut sink.stderr_buf {
             buf.append(&se_tail);
         }
         state
@@ -632,13 +537,15 @@ async fn drive_process(
             .await;
     }
 
-    let raw_exit_code = exit_status.map(exit_status_to_code).unwrap_or(-1);
-    let exit_code = if timed_out { -1 } else { raw_exit_code };
-    let (stdout, so_truncated) = stdout_buf
+    let raw_exit_code = outcome.exit_status.map(exit_status_to_code).unwrap_or(-1);
+    let exit_code = if outcome.timed_out { -1 } else { raw_exit_code };
+    let (stdout, so_truncated) = sink
+        .stdout_buf
         .as_ref()
         .map(RingBuffer::read)
         .unwrap_or_default();
-    let (stderr, se_truncated) = stderr_buf
+    let (stderr, se_truncated) = sink
+        .stderr_buf
         .as_ref()
         .map(RingBuffer::read)
         .unwrap_or_default();
@@ -646,28 +553,9 @@ async fn drive_process(
         stdout,
         stderr,
         exit_code,
-        timed_out,
+        timed_out: outcome.timed_out,
         truncated: so_truncated || se_truncated,
     }
-}
-
-/// `{"active": [{id, command, logName?}]}` — byte-parity with
-/// `getActiveTasks()` in `entry.ts`, broadcast under the `"tasks"` name on
-/// every registration and every exit (see this module's doc comment).
-fn emit_tasks_event(state: &AppState) {
-    let active: Vec<Value> = state
-        .tasks
-        .list(Some(&[TaskStatus::Running]))
-        .into_iter()
-        .map(|t| {
-            let mut obj = json!({"id": t.id, "command": t.command});
-            if let Some(name) = t.log_name {
-                obj["logName"] = json!(name);
-            }
-            obj
-        })
-        .collect();
-    state.broadcaster.emit("tasks", json!({"active": active}));
 }
 
 #[cfg(test)]
@@ -715,15 +603,6 @@ mod tests {
             BACKGROUND_CEILING_MS
         );
         assert_eq!(clamp_timeout(Some(1_000), true), 1_000);
-    }
-
-    #[test]
-    fn classify_status_matches_task_manager_finalize() {
-        assert_eq!(classify_status(true, 0), TaskStatus::Timeout);
-        assert_eq!(classify_status(false, 0), TaskStatus::Exited);
-        assert_eq!(classify_status(false, -1), TaskStatus::Failed);
-        assert_eq!(classify_status(false, 137), TaskStatus::Killed);
-        assert_eq!(classify_status(false, 1), TaskStatus::Exited);
     }
 
     #[test]

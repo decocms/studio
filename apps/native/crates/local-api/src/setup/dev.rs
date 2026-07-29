@@ -12,9 +12,11 @@
 //! bash/tasks/scripts families use (`TaskRegistry::next_id`/`insert`/
 //! `append_output`/`finalize`), so it shows up in `GET /_sandbox/tasks` and
 //! streams via `/_sandbox/tasks/:id/stream` like any other task — reuses
-//! `routes/scripts.rs`'s `build_command`/`kill_group`/`exit_status_to_code`/
-//! `classify_status`/`run_prefix_for` rather than re-deriving the same
-//! process-spawn plumbing a third time in this crate.
+//! `routes/scripts.rs`'s `build_command`/`run_prefix_for`/`discover_scripts`
+//! and the shared `crate::process_util` lifecycle helpers
+//! (`kill_group`/`exit_status_to_code`/`classify_status`/`emit_tasks_event`)
+//! rather than re-deriving the same process-spawn plumbing a third time in
+//! this crate.
 
 use std::future::Future;
 use std::path::Path;
@@ -29,12 +31,12 @@ use tokio::io::AsyncReadExt;
 use super::install::{manifest_present, pm_root};
 use super::SetupOrchestrator;
 use crate::process_group::ProcessGroupChild;
-use crate::routes::scripts::{
-    build_command, classify_status, discover_scripts, exit_status_to_code, kill_group,
-    run_prefix_for,
-};
+use crate::process_util::{classify_status, emit_tasks_event, exit_status_to_code, kill_group};
+use crate::routes::scripts::{build_command, discover_scripts, run_prefix_for};
 use crate::sandbox::persist::{DevProcessIdentity, DevProcessRecord};
-use crate::tasks::{now_ms, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary};
+use crate::tasks::{
+    now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary,
+};
 
 const WELL_KNOWN_STARTERS: [&str; 2] = ["dev", "start"];
 /// 40 attempts * 250ms = 10s — generous enough for a freshly `npm install`-ed
@@ -215,7 +217,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
     if let Some(signal) = controller.requested() {
         orch.tasks
             .finalize(&id, TaskStatus::Killed, signal.exit_code(), false);
-        emit_tasks_event(orch);
+        emit_tasks_event(&orch.tasks, &orch.broadcaster);
         orch.finish_dev_task(&id);
         return;
     }
@@ -227,7 +229,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
             Ok(child) => child,
             Err(e) => {
                 orch.tasks.finalize(&id, TaskStatus::Failed, -1, false);
-                emit_tasks_event(orch);
+                emit_tasks_event(&orch.tasks, &orch.broadcaster);
                 if orch.finish_dev_task(&id) {
                     orch.transition_lifecycle(super::start_failed(format!("spawn error: {e}")));
                 }
@@ -239,19 +241,19 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
         child.signal(crate::tasks::KillSignal::Kill).await;
         let _ = child.wait().await;
         orch.tasks.finalize(&id, TaskStatus::Failed, -1, false);
-        emit_tasks_event(orch);
+        emit_tasks_event(&orch.tasks, &orch.broadcaster);
         if orch.finish_dev_task(&id) {
             orch.transition_lifecycle(super::start_failed("spawn error: missing stdio pipe"));
         }
         return;
     };
-    emit_tasks_event(orch);
+    emit_tasks_event(&orch.tasks, &orch.broadcaster);
     let Some(pid) = pid else {
         child
             .kill_and_reap(STALE_KILL_GRACE, "dev process missing pid cleanup")
             .await;
         orch.tasks.finalize(&id, TaskStatus::Failed, -1, false);
-        emit_tasks_event(orch);
+        emit_tasks_event(&orch.tasks, &orch.broadcaster);
         if orch.finish_dev_task(&id) {
             orch.transition_lifecycle(super::start_failed(
                 "cannot safely capture dev process identity: spawned process has no pid",
@@ -274,7 +276,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
                 .kill_and_reap(STALE_KILL_GRACE, "unidentifiable dev process cleanup")
                 .await;
             orch.tasks.finalize(&id, TaskStatus::Failed, -1, false);
-            emit_tasks_event(orch);
+            emit_tasks_event(&orch.tasks, &orch.broadcaster);
             if orch.finish_dev_task(&id) {
                 orch.transition_lifecycle(super::start_failed(format!(
                     "cannot safely capture dev process identity: {error}"
@@ -335,7 +337,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
             panic_orch
                 .tasks
                 .finalize(&panic_id, TaskStatus::Failed, -1, false);
-            emit_tasks_event(&panic_orch);
+            emit_tasks_event(&panic_orch.tasks, &panic_orch.broadcaster);
             if panic_orch.finish_dev_task(&panic_id) && !panic_orch.is_closed() {
                 panic_orch.transition_lifecycle(super::start_failed("dev process owner panicked"));
             }
@@ -502,7 +504,7 @@ async fn drain_and_watch(
         .unwrap_or(false);
     let was_current = orch.finish_dev_task(&id);
     orch.tasks.finalize(&id, status, raw_exit, false);
-    emit_tasks_event(&orch);
+    emit_tasks_event(&orch.tasks, &orch.broadcaster);
 
     // Byte-parity with `SetupOrchestrator`'s `taskManager.onTaskExit` hook:
     // an unexpected (non-intentional, non-zero) exit of the dev script
@@ -576,25 +578,6 @@ async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u1
     }
 }
 
-/// `{"active": [{id, command, logName?}]}` — same shape
-/// `routes/scripts.rs`'s own copy broadcasts (see that file's module doc on
-/// why this is duplicated per family rather than shared).
-fn emit_tasks_event(orch: &SetupOrchestrator) {
-    let active: Vec<Value> = orch
-        .tasks
-        .list(Some(&[TaskStatus::Running]))
-        .into_iter()
-        .map(|t| {
-            let mut obj = json!({"id": t.id, "command": t.command});
-            if let Some(name) = t.log_name {
-                obj["logName"] = json!(name);
-            }
-            obj
-        })
-        .collect();
-    orch.broadcaster.emit("tasks", json!({"active": active}));
-}
-
 async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), String> {
     let current = observe_process_group(record.pgid).await?;
     let authorized = match match_group_identity(&record.identities, current) {
@@ -610,7 +593,7 @@ async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), Strin
         pgid = record.pgid,
         "stopping previous dev server before start"
     );
-    kill_group(record.pgid, "-TERM").await;
+    kill_group(record.pgid, KillSignal::Term).await;
     tokio::time::sleep(STALE_TERM_GRACE).await;
 
     let after_term = observe_process_group(record.pgid).await?;
@@ -620,7 +603,7 @@ async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), Strin
             Err("process group identity changed after TERM; refusing KILL".to_string())
         }
         GroupIdentityMatch::Verified(survivors) => {
-            kill_group(record.pgid, "-KILL").await;
+            kill_group(record.pgid, KillSignal::Kill).await;
             let deadline = tokio::time::Instant::now() + STALE_KILL_GRACE;
             loop {
                 tokio::time::sleep(Duration::from_millis(50)).await;
@@ -933,7 +916,7 @@ mod tests {
             IDENTITY_CAPTURE_INTERVAL,
         )
         .await;
-        kill_group(pid, "-KILL").await;
+        kill_group(pid, KillSignal::Kill).await;
         let _ = child.wait().await;
 
         let identities = observed.unwrap();
@@ -975,7 +958,7 @@ mod tests {
         if reaped.is_err() {
             // Exact group created by this test; cleanup must not leak it even
             // if the assertion below reports an observation regression.
-            kill_group(pgid, "-KILL").await;
+            kill_group(pgid, KillSignal::Kill).await;
         }
 
         reaped.unwrap();

@@ -16,7 +16,8 @@ use tokio::io::AsyncReadExt;
 
 use super::SetupOrchestrator;
 use crate::process_group::ProcessGroupChild;
-use crate::routes::scripts::{classify_status, discover_scripts, exit_status_to_code};
+use crate::process_util::{classify_status, exit_status_to_code};
+use crate::routes::scripts::discover_scripts;
 use crate::tasks::{now_ms, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary};
 
 /// Resolves the package-manager cwd inside `repo_dir`. Config validation

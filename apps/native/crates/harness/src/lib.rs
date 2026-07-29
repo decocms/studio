@@ -21,6 +21,10 @@
 //!   OR plain pipes), 128+signal exit-code convention, process-group kill.
 //!   See that module's doc comment for why harness dispatch defaults to
 //!   plain pipes (investigated + documented, not just asserted).
+//! - [`watchdog`] — the parent-liveness watchdog script and anchored
+//!   process-group helpers, shared with `crates/local-api`'s
+//!   `ProcessGroupChild` so crash-recovery semantics cannot drift between
+//!   the two spawn families (see that module's doc comment).
 //! - [`events`] — incremental ndjson→`UIMessageChunk`-shaped-JSON mapping
 //!   for each CLI's wire format (`events::claude`, `events::codex`).
 //! - [`run`] — ties the above together: resolve → spawn → parse → yield,
@@ -53,6 +57,7 @@ pub mod run;
 pub mod spawn;
 pub mod tiers;
 pub mod title;
+pub mod watchdog;
 
 pub use resolve::{resolve_argv, resolve_checked, HarnessId, ResolveError};
 pub use tiers::{ModelTier, CLAUDE_CODE_TIERS, CODEX_TIERS};

@@ -8,7 +8,10 @@
 //!
 //! On Unix, [`ProcessGroupChild::spawn`] therefore starts an independent
 //! watchdog as the process-group leader and joins the requested command to its
-//! already-live group. The watchdog:
+//! already-live group. The watchdog script and its anchored-group signaling
+//! helpers live in `harness::watchdog` — the ONE shared copy for this crate
+//! and the harness dispatch family, so crash-recovery semantics cannot drift
+//! between the two. The watchdog:
 //!
 //! - pins the PGID until Studio has proved that no other group member exists;
 //! - stays alive across an immediate command-leader exit or closed stdio;
@@ -22,7 +25,6 @@
 //! same ownership fence used by signaling. Only that result authorizes a task's
 //! terminal transition.
 
-use std::fs::OpenOptions;
 use std::path::Path;
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -38,62 +40,6 @@ use crate::tasks::KillSignal;
 type SignalGroup = fn(u32, KillSignal) -> bool;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
-
-/// Parent-death fallback. The writer is held only by local-api. If that writer
-/// disappears without an orderly owner cleanup, EOF wakes the watchdog and it
-/// reaps the whole group. TERM is ignored by the anchor itself so the normal
-/// TERM -> KILL lifecycle can keep a stable PGID throughout its grace period.
-///
-/// macOS `pgrep` excludes its own ancestors, so from inside this watchdog
-/// `pgrep -g $$ .` enumerates only the sibling workload and its descendants,
-/// not the anchor. The explicit pattern is required by BSD pgrep. Enumeration
-/// errors retain the anchor (and its shared child-lifetime lock) forever: an
-/// indeterminate cleanup must fail closed, never unblock durable recovery.
-#[cfg(unix)]
-const PARENT_LIVENESS_WATCHDOG: &str = r#"
-trap '' TERM
-while IFS= read -r _; do :; done
-
-term_round=0
-while [ "$term_round" -lt 20 ]; do
-  members="$(pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    kill -TERM "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
-  term_round=$((term_round + 1))
-  sleep 0.05
-done
-
-while :; do
-  members="$(pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    kill -KILL "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
-  sleep 0.05
-done
-"#;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OwnershipState {
@@ -489,42 +435,18 @@ impl Drop for ProcessGroupChild {
     }
 }
 
+/// Opens+locks the shared child-lifetime fence and spawns the shared
+/// parent-liveness watchdog (`harness::watchdog` — the ONE copy of the
+/// script, so its crash-recovery semantics cannot drift from the harness
+/// dispatch family's) under this crate's own `ps`-visible argv0 label.
 #[cfg(unix)]
 fn spawn_group_anchor(
     child_lifetime_lock_path: &Path,
 ) -> std::io::Result<(Child, ChildStdin, u32)> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).mode(0o600);
-    let lifetime_lock = options.open(child_lifetime_lock_path)?;
-    lifetime_lock.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    lifetime_lock.try_lock_shared()?;
-
-    let mut command = Command::new("/bin/sh");
-    command
-        .arg("-c")
-        .arg(PARENT_LIVENESS_WATCHDOG)
-        .arg("decocms-local-api-watchdog")
-        .stdin(Stdio::piped())
-        // The locked File moves into an exec-open descriptor. The anchor is
-        // now the sole owner of this shared fence, including after local-api
-        // is SIGKILLed.
-        .stdout(Stdio::from(lifetime_lock))
-        .stderr(Stdio::null())
-        .process_group(0)
-        // False is intentional: on abrupt runtime death the liveness pipe,
-        // not Tokio's child drop path, lets this process reap the whole group.
-        .kill_on_drop(false);
-    let mut child = command.spawn()?;
-    let group_id = child
-        .id()
-        .ok_or_else(|| std::io::Error::other("process-group watchdog reported no pid"))?;
-    let parent_liveness = child
-        .stdin
-        .take()
-        .ok_or_else(|| std::io::Error::other("process-group watchdog stdin was not piped"))?;
-    Ok((child, parent_liveness, group_id))
+    let lifetime_lock = harness::watchdog::open_shared_lifetime_lock(child_lifetime_lock_path)?;
+    let anchor =
+        harness::watchdog::spawn_anchor("decocms-local-api-watchdog", Some(lifetime_lock))?;
+    Ok((anchor.child, anchor.parent_liveness, anchor.group_id))
 }
 
 #[cfg(unix)]
@@ -556,54 +478,18 @@ async fn group_has_non_anchor_members(group_id: u32) -> std::io::Result<bool> {
         .any(|pid| !pid.is_empty() && pid != anchor_pid))
 }
 
-/// Signal every current member except the anchor. The anchor owns both the
-/// PGID identity and an inherited shared child-lifetime lock; group-KILLing it
-/// would release the restart fence before resistant descendants were proven
-/// gone. Enumeration is immediate and never persisted. Any indeterminate
-/// result sends nothing and leaves the EOF watchdog to fail closed.
+/// Signal every current member except the anchor — the shared
+/// enumerate-then-signal helper in `harness::watchdog` (see its doc for why
+/// group-wide `kill -SIG -<pgid>` is forbidden while the anchor owns the
+/// restart fence). The anchor is this group's leader, so its pid IS the
+/// group id. Kept as a named `fn` so it fits the [`SignalGroup`] pointer.
 #[cfg(unix)]
 fn signal_anchored_process_group(group_id: u32, signal: KillSignal) -> bool {
-    let output = match std::process::Command::new("pgrep")
-        .args(["-g", &group_id.to_string(), "."])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-    {
-        Ok(output) => output,
-        Err(error) => {
-            tracing::error!(%error, group_id, "cannot enumerate anchored process group");
-            return false;
-        }
+    let signal = match signal {
+        KillSignal::Term => harness::spawn::Signal::Term,
+        KillSignal::Kill => harness::spawn::Signal::Kill,
     };
-    if !output.status.success() {
-        if output.status.code() != Some(1) {
-            tracing::error!(
-                status = ?output.status.code(),
-                group_id,
-                "indeterminate anchored process-group enumeration"
-            );
-        }
-        return output.status.code() == Some(1);
-    }
-
-    let mut all_signaled = true;
-    for pid in String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .filter_map(|raw| raw.parse::<u32>().ok())
-        .filter(|pid| *pid != group_id)
-    {
-        let signaled = std::process::Command::new("kill")
-            .arg(signal.flag())
-            .arg(pid.to_string())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success());
-        all_signaled &= signaled;
-    }
-    all_signaled
+    harness::watchdog::signal_non_anchor_members(group_id, group_id, signal)
 }
 
 #[cfg(not(unix))]
@@ -619,6 +505,7 @@ fn signal_process_group(pid: u32, _signal: KillSignal) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::OpenOptions;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;

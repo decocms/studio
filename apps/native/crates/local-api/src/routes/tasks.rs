@@ -2,8 +2,8 @@
 //! `TaskSummary` shape lives in `tasks/registry.rs`, ported from
 //! `process/task-manager.ts`), oracle `daemon.e2e.test.ts` (`tasks`
 //! describe block) + `daemon.sse-shapes.e2e.test.ts` (the `"tasks"` SSE
-//! event shape, pinned indirectly here since it's `emit_tasks_event` in
-//! `routes/bash.rs` that produces it — this file only serves the
+//! event shape, pinned by `crate::process_util`'s shared `emit_tasks_event`
+//! and its payload-shape test — this file only serves the
 //! query/kill/delete/stream surface below).
 //!
 //! All six handlers below operate purely against the resolved target's
