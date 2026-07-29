@@ -10,11 +10,21 @@ import type { TriggerState, TriggerStorage } from "./triggers.ts";
 /** Guards against malformed/partial state crossing the Studio KV HTTP boundary. */
 function isTriggerState(value: unknown): value is TriggerState {
   if (!value || typeof value !== "object") return false;
-  const { credentials, activeTriggerTypes } = value as Record<string, unknown>;
+  const { credentials, activeTriggerTypes, lastActivityAt } = value as Record<
+    string,
+    unknown
+  >;
   if (!Array.isArray(activeTriggerTypes)) return false;
   if (!credentials || typeof credentials !== "object") return false;
   const { callbackUrl, callbackToken } = credentials as Record<string, unknown>;
-  return typeof callbackUrl === "string" && typeof callbackToken === "string";
+  if (typeof callbackUrl !== "string" || typeof callbackToken !== "string") {
+    return false;
+  }
+  // lastActivityAt is optional; if present, must be a valid timestamp string
+  if (lastActivityAt !== undefined && typeof lastActivityAt !== "string") {
+    return false;
+  }
+  return true;
 }
 
 // ============================================================================
@@ -243,5 +253,43 @@ export class JsonFileStorage implements TriggerStorage {
     const map = await this.load();
     map.delete(connectionId);
     await this.save();
+  }
+
+  /**
+   * Remove trigger states inactive for more than the given duration.
+   * Useful for periodic cleanup to prevent unbounded storage growth.
+   *
+   * @param maxInactiveMs - Maximum inactivity duration in milliseconds
+   * @example
+   * ```typescript
+   * // Prune states inactive for more than 30 days
+   * await storage.prune(30 * 24 * 60 * 60 * 1000);
+   * ```
+   */
+  async prune(maxInactiveMs: number): Promise<number> {
+    const map = await this.load();
+    const now = Date.now();
+    let removed = 0;
+
+    for (const [connectionId, state] of map) {
+      if (!state.lastActivityAt) {
+        // States without a timestamp are treated as stale
+        map.delete(connectionId);
+        removed++;
+        continue;
+      }
+
+      const lastActive = new Date(state.lastActivityAt).getTime();
+      if (isNaN(lastActive) || now - lastActive > maxInactiveMs) {
+        map.delete(connectionId);
+        removed++;
+      }
+    }
+
+    if (removed > 0) {
+      await this.save();
+    }
+
+    return removed;
   }
 }

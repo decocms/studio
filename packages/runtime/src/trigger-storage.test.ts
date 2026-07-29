@@ -109,4 +109,127 @@ describe("JsonFileStorage", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  describe("prune", () => {
+    it("removes entries with no lastActivityAt timestamp", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+      const path = join(dir, "state.json");
+      const storage = new JsonFileStorage({ path });
+
+      const fs = await import("node:fs/promises");
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          "conn-old": {
+            credentials: { callbackUrl: "https://x", callbackToken: "tok" },
+            activeTriggerTypes: ["github.push"],
+            // No lastActivityAt
+          },
+          "conn-new": {
+            credentials: { callbackUrl: "https://x", callbackToken: "new" },
+            activeTriggerTypes: ["github.push"],
+            lastActivityAt: new Date().toISOString(),
+          },
+        }),
+      );
+
+      try {
+        const removed = await storage.prune(0); // Max age = 0, remove all old
+        expect(removed).toBe(1); // Only the entry without timestamp
+        expect(await storage.get("conn-old")).toBeNull();
+        expect(await storage.get("conn-new")).not.toBeNull();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("removes entries inactive longer than the threshold", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+      const path = join(dir, "state.json");
+      const storage = new JsonFileStorage({ path });
+
+      const fs = await import("node:fs/promises");
+      // Write entries with explicit timestamps
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const nowTs = new Date().toISOString();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          "conn-1": {
+            credentials: { callbackUrl: "https://x", callbackToken: "1" },
+            activeTriggerTypes: ["github.push"],
+            lastActivityAt: oneHourAgo,
+          },
+          "conn-2": {
+            credentials: { callbackUrl: "https://x", callbackToken: "2" },
+            activeTriggerTypes: ["github.push"],
+            lastActivityAt: nowTs,
+          },
+        }),
+      );
+
+      try {
+        // Prune with a 30-minute threshold
+        const removed = await storage.prune(30 * 60 * 1000);
+        expect(removed).toBe(1); // conn-1 is older than 30 minutes
+        expect(await storage.get("conn-1")).toBeNull();
+        expect(await storage.get("conn-2")).not.toBeNull();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("returns 0 if no entries need pruning", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+      const path = join(dir, "state.json");
+      const storage = new JsonFileStorage({ path });
+
+      const fs = await import("node:fs/promises");
+      const nowTs = new Date().toISOString();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          "conn-fresh": {
+            credentials: { callbackUrl: "https://x", callbackToken: "fresh" },
+            activeTriggerTypes: ["github.push"],
+            lastActivityAt: nowTs,
+          },
+        }),
+      );
+
+      try {
+        const removed = await storage.prune(24 * 60 * 60 * 1000); // 24 hours
+        expect(removed).toBe(0);
+        expect(await storage.get("conn-fresh")).not.toBeNull();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("handles invalid timestamps gracefully", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "trigger-storage-"));
+      const path = join(dir, "state.json");
+      const storage = new JsonFileStorage({ path });
+
+      const fs = await import("node:fs/promises");
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          "conn-bad-ts": {
+            credentials: { callbackUrl: "https://x", callbackToken: "tok" },
+            activeTriggerTypes: ["github.push"],
+            lastActivityAt: "not-a-valid-iso-date",
+          },
+        }),
+      );
+
+      try {
+        const removed = await storage.prune(0);
+        expect(removed).toBe(1); // Treated as stale
+        expect(await storage.get("conn-bad-ts")).toBeNull();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
 });

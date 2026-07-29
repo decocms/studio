@@ -16,6 +16,7 @@ export interface CallbackCredentials {
 export interface TriggerState {
   credentials: CallbackCredentials;
   activeTriggerTypes: string[];
+  lastActivityAt?: string;
 }
 
 /**
@@ -132,6 +133,7 @@ class TriggerStateManager {
     await this.storage.set(connectionId, {
       credentials: creds,
       activeTriggerTypes: [...types],
+      lastActivityAt: new Date().toISOString(),
     });
   }
 }
