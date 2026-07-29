@@ -39,11 +39,22 @@ use crate::tasks::{now_ms, OutputStream, ProcessController, TaskEntry, TaskStatu
 
 const WELL_KNOWN_STARTERS: [&str; 2] = ["dev", "start"];
 /// 40 attempts * 250ms = 10s — generous enough for a freshly `npm install`-ed
-/// dev server to finish booting after it's already announced its bind port
+/// dev server to finish booting AFTER it has already announced its bind port
 /// (the announcement itself means the listener is up, so this is mostly
 /// slack for a loaded CI box), bounded so a script that lies about being
 /// ready can't hang the pipeline forever.
 const PROBE_ATTEMPTS: u32 = 40;
+/// The budget for the probe that starts at SPAWN, before anything has been
+/// announced — see [`run`]'s eager `confirm_running`.
+///
+/// [`PROBE_ATTEMPTS`] is sized for the window after a listener exists and is
+/// far too short here: this one has to outlast the whole build, and a starter
+/// like `bun run generate && next dev` spends minutes there before it binds
+/// anything. It is not really a timeout at all — [`confirm_running`] rechecks
+/// `is_current_dev_task` every iteration, so it stops the moment the dev task
+/// exits or is replaced. The count only bounds a process that stays alive
+/// forever without ever listening.
+const BOOT_PROBE_ATTEMPTS: u32 = 4 * 60 * 20;
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
 const IDENTITY_CAPTURE_ATTEMPTS: u32 = 20;
 const IDENTITY_CAPTURE_INTERVAL: Duration = Duration::from_millis(25);
@@ -296,10 +307,11 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
     // — so a sandbox becomes previewable as soon as its server answers,
     // whether or not it ever prints a recognizable line.
     if let Some(port) = allocated_port {
+        let attempts = BOOT_PROBE_ATTEMPTS;
         let confirm_orch = orch.clone();
         let confirm_task_id = id.clone();
         tokio::spawn(async move {
-            confirm_running(confirm_orch, confirm_task_id, port).await;
+            confirm_running(confirm_orch, confirm_task_id, port, attempts).await;
         });
     }
 
@@ -423,10 +435,15 @@ async fn drain_and_watch(
                         orch.tasks
                             .append_log(&id, &starter, OutputStream::Stdout, &text, &orch.broadcaster)
                             .await;
-                        // The announced port is only interesting when it
-                        // CONTRADICTS the one we imposed — a dev server that
-                        // ignored `PORT`, or one that found ours taken and
-                        // drifted. Then it, not our allocation, is the truth.
+                        // The announcement is the one moment a listener is
+                        // KNOWN to exist, so it always confirms — even when it
+                        // names the port we imposed, which is the normal case.
+                        // (Skipping the matching case left a server that took
+                        // longer to build than the eager probe's budget stuck
+                        // on "starting" forever, with nothing left to retry.)
+                        // A port that CONTRADICTS ours means the dev server
+                        // ignored `PORT` or drifted; then it, not our
+                        // allocation, is the truth.
                         if !sniffed {
                             if let Some(port) = sniff_port(&text) {
                                 sniffed = true;
@@ -436,12 +453,13 @@ async fn drain_and_watch(
                                         allocated = ?allocated_port,
                                         "dev server did not bind the port it was given"
                                     );
-                                    let probe_orch = orch.clone();
-                                    let probe_task_id = id.clone();
-                                    tokio::spawn(async move {
-                                        confirm_running(probe_orch, probe_task_id, port).await;
-                                    });
                                 }
+                                let probe_orch = orch.clone();
+                                let probe_task_id = id.clone();
+                                tokio::spawn(async move {
+                                    confirm_running(probe_orch, probe_task_id, port, PROBE_ATTEMPTS)
+                                        .await;
+                                });
                             }
                         }
                     }
@@ -595,7 +613,7 @@ fn sniff_port(text: &str) -> Option<u16> {
 /// if the pipeline wasn't already there — byte-parity in spirit with
 /// `probe.ts`'s booting -> online transition + `entry.ts`'s
 /// `if (wasDown) broadcaster.emit("reload", {})`.
-async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u16) {
+async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u16, attempts: u32) {
     if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
         return;
     }
@@ -605,7 +623,7 @@ async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u1
     else {
         return;
     };
-    for _ in 0..PROBE_ATTEMPTS {
+    for _ in 0..attempts {
         if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
             return;
         }
@@ -1108,7 +1126,7 @@ mod tests {
         orch.claim_dev_task("dev-task");
         orch.close();
 
-        confirm_running(orch.clone(), "dev-task".to_string(), 1).await;
+        confirm_running(orch.clone(), "dev-task".to_string(), 1, PROBE_ATTEMPTS).await;
 
         assert_eq!(orch.lifecycle_snapshot(), json!({ "phase": "idle" }));
     }
@@ -1128,7 +1146,7 @@ mod tests {
         orch.transition_lifecycle(json!({ "phase": "starting" }));
         orch.claim_dev_task("replacement-dev-task");
 
-        confirm_running(orch.clone(), "old-dev-task".to_string(), 1).await;
+        confirm_running(orch.clone(), "old-dev-task".to_string(), 1, PROBE_ATTEMPTS).await;
 
         assert_eq!(
             orch.lifecycle_snapshot(),
