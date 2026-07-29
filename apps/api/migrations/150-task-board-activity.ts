@@ -2,10 +2,12 @@ import { type Kysely, sql } from "kysely";
 
 /**
  * The actions the log accepts, enforced by a CHECK constraint so the DB — not
- * just `TaskBoardActivityAction` — rejects a typo'd action. Widening the set is
- * deliberately a new migration; keep this list in sync with that type.
+ * just `TaskBoardActivityAction` — rejects a typo'd action. A frozen snapshot:
+ * widening the set is a NEW migration that replaces the constraint, never an
+ * edit here (this list may already be live). Exported so
+ * `activity-actions.test.ts` can prove SQL and TypeScript still agree.
  */
-const ACTIONS = [
+export const ACTIONS = [
   "created",
   "status_changed",
   "assignee_changed",

@@ -69,8 +69,15 @@ export const TaskBoardItemSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-/** Mirrors `TaskBoardActivityAction` and migration 150's CHECK constraint. */
-const TaskBoardActivityActionSchema = z.enum([
+/**
+ * Every action the activity log accepts — the single source of truth. The
+ * `TaskBoardActivityAction` union and the zod enum below both derive from it,
+ * and `activity-actions.test.ts` asserts the newest migration's CHECK
+ * constraint allows exactly this set. Adding an action: extend this list, add
+ * a migration replacing the constraint, handle it in the dialog's switch (the
+ * compiler will insist).
+ */
+export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "created",
   "status_changed",
   "assignee_changed",
@@ -78,7 +85,12 @@ const TaskBoardActivityActionSchema = z.enum([
   "due_date_changed",
   "title_changed",
   "description_changed",
-]);
+] as const;
+
+export type TaskBoardActivityAction =
+  (typeof TASK_BOARD_ACTIVITY_ACTIONS)[number];
+
+const TaskBoardActivityActionSchema = z.enum(TASK_BOARD_ACTIVITY_ACTIONS);
 
 /** One entry in a task's change timeline — who did what, when. */
 export const TaskBoardActivitySchema = z.object({

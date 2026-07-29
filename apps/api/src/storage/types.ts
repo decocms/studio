@@ -13,6 +13,7 @@
 
 import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
+import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type {
@@ -1713,16 +1714,9 @@ export interface TaskBoardItem {
   updatedAt: string;
 }
 
-/** What happened, for one entry in a task's change timeline. Mirrored by a
- *  CHECK constraint in migration 150 — widen both together. */
-export type TaskBoardActivityAction =
-  | "created"
-  | "status_changed"
-  | "assignee_changed"
-  | "priority_changed"
-  | "due_date_changed"
-  | "title_changed"
-  | "description_changed";
+/** What happened, for one entry in a task's change timeline. Derived from
+ *  `TASK_BOARD_ACTIVITY_ACTIONS`, which the DB's CHECK constraint mirrors. */
+export type { TaskBoardActivityAction };
 
 /** Append-only: who did what to a task, and when. */
 export interface TaskBoardActivityTable {
