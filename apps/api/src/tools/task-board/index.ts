@@ -3,3 +3,26 @@ export { TASK_BOARD_ITEM_LIST } from "./list";
 export { TASK_BOARD_ITEM_UPDATE } from "./update";
 export { TASK_BOARD_ITEM_DELETE } from "./delete";
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
+export {
+  TASK_BOARD_COMMENT_CREATE,
+  TASK_BOARD_COMMENT_LIST,
+  TASK_BOARD_COMMENT_UPDATE,
+  TASK_BOARD_COMMENT_DELETE,
+} from "./comments";
+export {
+  TASK_BOARD_ATTACHMENT_ADD,
+  TASK_BOARD_ATTACHMENT_LIST,
+  TASK_BOARD_ATTACHMENT_DELETE,
+} from "./attachments";
+export {
+  TASK_BOARD_SPRINT_CREATE,
+  TASK_BOARD_SPRINT_UPDATE,
+  TASK_BOARD_SPRINT_DELETE,
+  TASK_BOARD_SPRINT_LIST,
+} from "./sprints";
+export {
+  TASK_BOARD_RELEASE_CREATE,
+  TASK_BOARD_RELEASE_LIST,
+  TASK_BOARD_RELEASE_DELETE,
+} from "./releases";
+export { TASK_BOARD_ACTIVITY_LIST } from "./activity";

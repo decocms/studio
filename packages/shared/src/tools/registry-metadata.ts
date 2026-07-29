@@ -233,6 +233,21 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
+  "TASK_BOARD_COMMENT_CREATE",
+  "TASK_BOARD_COMMENT_LIST",
+  "TASK_BOARD_COMMENT_UPDATE",
+  "TASK_BOARD_COMMENT_DELETE",
+  "TASK_BOARD_ATTACHMENT_ADD",
+  "TASK_BOARD_ATTACHMENT_LIST",
+  "TASK_BOARD_ATTACHMENT_DELETE",
+  "TASK_BOARD_SPRINT_CREATE",
+  "TASK_BOARD_SPRINT_UPDATE",
+  "TASK_BOARD_SPRINT_DELETE",
+  "TASK_BOARD_SPRINT_LIST",
+  "TASK_BOARD_RELEASE_CREATE",
+  "TASK_BOARD_RELEASE_LIST",
+  "TASK_BOARD_RELEASE_DELETE",
+  "TASK_BOARD_ACTIVITY_LIST",
 ] as const;
 
 /**
@@ -1097,6 +1112,85 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_ITEM_PRS_GET",
     description: "Get a task board item's linked pull requests with live state",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_CREATE",
+    description: "Comment on a task board item (replies and attachments)",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_LIST",
+    description: "List a task board item's comments",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_UPDATE",
+    description: "Edit an authored task comment",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_DELETE",
+    description: "Delete an authored task comment",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_ATTACHMENT_ADD",
+    description: "Attach a file or image to a task board item",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ATTACHMENT_LIST",
+    description: "List a task board item's attachments",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ATTACHMENT_DELETE",
+    description: "Delete a task attachment",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_SPRINT_CREATE",
+    description: "Create a task board sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_UPDATE",
+    description: "Update a task board sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_DELETE",
+    description: "Delete a task board sprint",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_SPRINT_LIST",
+    description: "List task board sprints",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_RELEASE_CREATE",
+    description: "Create a release from task board items",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_RELEASE_LIST",
+    description: "List task board releases",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_RELEASE_DELETE",
+    description: "Delete a task board release",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_ACTIVITY_LIST",
+    description: "List a task board item's change timeline",
     category: "Task Board",
   },
 ];

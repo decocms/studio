@@ -10,6 +10,8 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToColumnEntry } from "./column-automation";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -33,10 +35,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    /** Custom-column placement (pass together with the column's `status`
+     *  stage). Explicit null clears it (derive from status). */
+    columnId: z.string().nullable().optional(),
+    tags: z.array(z.string().min(1).max(60)).max(20).optional(),
+    sprintId: z.string().nullable().optional(),
+    releaseId: z.string().nullable().optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
   }),
-  outputSchema: z.object({ item: TaskBoardItemSchema }),
+  outputSchema: z.object({
+    item: TaskBoardItemSchema,
+    /** Present when the task was delegated to the Super Agent but its run
+     *  couldn't start (e.g. no AI model configured) — surfaced to the user. */
+    superAgentError: z.string().optional(),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -82,13 +95,22 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
       input.dueDate !== undefined ||
-      input.sortOrder !== undefined;
+      input.sortOrder !== undefined ||
+      input.columnId !== undefined ||
+      input.tags !== undefined ||
+      input.sprintId !== undefined ||
+      input.releaseId !== undefined;
 
-    // Only enqueue on the transition INTO Super Agent, not on every later edit.
-    const previous =
-      input.assigneeId !== undefined
-        ? await ctx.storage.taskBoard.getById(input.id, organizationId)
-        : null;
+    // A column/status move needs the previous placement (automation fires on
+    // ENTERING a column); an assignee change needs the previous assignee
+    // (enqueue only on the transition INTO Super Agent). The full previous item
+    // is also diffed to log status/assignee/sprint changes to the activity
+    // timeline — so fetch it whenever any field changes.
+    const movesColumn =
+      input.status !== undefined || input.columnId !== undefined;
+    const previous = hasFieldUpdate
+      ? await ctx.storage.taskBoard.getById(input.id, organizationId)
+      : null;
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
@@ -118,6 +140,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
             : undefined,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
+          columnId: becameSuperAgent ? null : input.columnId,
+          tags: input.tags,
+          sprintId: input.sprintId,
+          releaseId: input.releaseId,
+          // A human move re-arms column automation for wherever the card
+          // lands (the stamp only survives run-driven bounces).
+          automationColumnId: movesColumn ? null : undefined,
         },
         getUserId(ctx)!,
       );
@@ -130,16 +159,58 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       item = fetched;
     }
 
+    // Log the meaningful changes to the activity timeline (status, assignee,
+    // sprint) by diffing against the pre-update item. Best-effort.
+    if (previous) {
+      const actorId = getUserId(ctx)!;
+      if (item.status !== previous.status) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "status_changed",
+          actorId,
+          data: { from: previous.status, to: item.status },
+        });
+      }
+      if (item.assigneeId !== previous.assigneeId) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "assignee_changed",
+          actorId,
+          data: { from: previous.assigneeId, to: item.assigneeId },
+        });
+      }
+      if (item.sprintId !== previous.sprintId) {
+        await recordTaskActivity(ctx, {
+          organizationId,
+          taskBoardItemId: item.id,
+          kind: "sprint_changed",
+          actorId,
+          data: { from: previous.sprintId, to: item.sprintId },
+        });
+      }
+    }
+
     // Broadcast the delegation flip (assignee + forced To Do), or a new linked
     // thread, so every open board reflects it live. Plain edits already
     // round-trip through the mutation's optimistic patch + invalidate.
+    let superAgentError: string | null = null;
     if (becameSuperAgent) {
       emitTaskBoardUpdated(organizationId, item);
-      await reactToSuperAgentDelegation(ctx, item);
+      superAgentError = await reactToSuperAgentDelegation(ctx, item);
     } else if (input.linkThreadId) {
       emitTaskBoardUpdated(organizationId, item);
     }
 
-    return { item };
+    // A human column/status move may land the task in an automated column.
+    if (!becameSuperAgent && movesColumn && previous) {
+      await reactToColumnEntry(ctx, item, {
+        status: previous.status,
+        columnId: previous.columnId,
+      });
+    }
+
+    return { item, superAgentError: superAgentError ?? undefined };
   },
 });

@@ -8,13 +8,35 @@
 import type { Kysely } from "kysely";
 import type {
   Database,
+  TaskBoardActivity,
+  TaskBoardActivityKind,
+  TaskBoardAttachmentMeta,
+  TaskBoardComment,
   TaskBoardItem,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemThreadRef,
+  TaskBoardRelease,
+  TaskBoardSprint,
+  TaskBoardSprintState,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+
+function toIso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function toIsoOrNull(value: Date | string | null): string | null {
+  return value === null ? null : toIso(value);
+}
+
+/** Jsonb string array — pg may hand back a parsed array or a JSON string. */
+function parseTags(value: unknown): string[] {
+  const raw = typeof value === "string" ? JSON.parse(value) : value;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((t): t is string => typeof t === "string");
+}
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 function extractPartText(payload: unknown): string | null {
@@ -121,6 +143,9 @@ export class TaskBoardStorage {
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
+    columnId?: string | null;
+    tags?: string[];
+    sprintId?: string | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -136,6 +161,16 @@ export class TaskBoardStorage {
       .where("status", "=", status)
       .executeTakeFirstOrThrow();
 
+    // Per-org short key: max(seq)+1. Race window is negligible at this scale;
+    // the org+seq index would surface a collision as an error rather than a
+    // silent dup if it ever bit.
+    const maxSeq = await this.db
+      .selectFrom("task_board_items")
+      .select((eb) => eb.fn.max("seq").as("maxSeq"))
+      .where("organization_id", "=", params.organizationId)
+      .executeTakeFirst();
+    const seq = (maxSeq?.maxSeq ?? 0) + 1;
+
     const row = await this.db
       .insertInto("task_board_items")
       .values({
@@ -150,6 +185,10 @@ export class TaskBoardStorage {
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: (minOrder ?? 0) - 1,
+        seq,
+        column_id: params.columnId ?? null,
+        tags: JSON.stringify(params.tags ?? []),
+        sprint_id: params.sprintId ?? null,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,
@@ -174,9 +213,23 @@ export class TaskBoardStorage {
       assignedBy?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
+      columnId?: string | null;
+      tags?: string[];
+      sprintId?: string | null;
+      releaseId?: string | null;
+      automationColumnId?: string | null;
     },
     by: string,
   ): Promise<TaskBoardItem> {
+    // A status change without an explicit column placement (a run-driven
+    // advance, or a default-board move) clears column_id so the card lands in
+    // that stage's first configured column instead of a stale custom one.
+    const columnId =
+      data.columnId !== undefined
+        ? data.columnId
+        : data.status !== undefined
+          ? null
+          : undefined;
     const row = await this.db
       .updateTable("task_board_items")
       .set({
@@ -194,6 +247,13 @@ export class TaskBoardStorage {
           : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        ...(columnId !== undefined ? { column_id: columnId } : {}),
+        ...(data.tags !== undefined ? { tags: JSON.stringify(data.tags) } : {}),
+        ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
+        ...(data.releaseId !== undefined ? { release_id: data.releaseId } : {}),
+        ...(data.automationColumnId !== undefined
+          ? { automation_column_id: data.automationColumnId }
+          : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -474,6 +534,13 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     due_date: string | Date | null;
     sort_order: number;
+    external_key: string | null;
+    seq: number | null;
+    column_id: string | null;
+    tags: unknown;
+    sprint_id: string | null;
+    release_id: string | null;
+    automation_column_id: string | null;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -488,23 +555,490 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
-      dueDate:
-        row.due_date instanceof Date
-          ? row.due_date.toISOString()
-          : row.due_date,
+      dueDate: toIsoOrNull(row.due_date),
       sortOrder: row.sort_order,
+      externalKey: row.external_key,
+      seq: row.seq,
+      columnId: row.column_id,
+      tags: parseTags(row.tags),
+      sprintId: row.sprint_id,
+      releaseId: row.release_id,
+      automationColumnId: row.automation_column_id,
       // Populated by attachThreads for reads; empty for a fresh create.
       threads: [],
       createdBy: row.created_by,
-      createdAt:
-        row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : row.created_at,
+      createdAt: toIso(row.created_at),
       updatedBy: row.updated_by,
-      updatedAt:
-        row.updated_at instanceof Date
-          ? row.updated_at.toISOString()
-          : row.updated_at,
+      updatedAt: toIso(row.updated_at),
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Comments
+  // --------------------------------------------------------------------------
+
+  async createComment(params: {
+    organizationId: string;
+    taskBoardItemId: string;
+    parentId?: string | null;
+    body: string;
+    by: string;
+  }): Promise<TaskBoardComment> {
+    const now = new Date().toISOString();
+    const row = await this.db
+      .insertInto("task_board_comments")
+      .values({
+        id: generatePrefixedId("cmt"),
+        organization_id: params.organizationId,
+        task_board_item_id: params.taskBoardItemId,
+        parent_id: params.parentId ?? null,
+        body: params.body,
+        created_by: params.by,
+        created_at: now,
+        updated_at: now,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return this.commentFromDbRow(row);
+  }
+
+  /** Comments for a task, oldest first, each with its attachment metadata. */
+  async listComments(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment[]> {
+    const rows = await this.db
+      .selectFrom("task_board_comments")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .orderBy("created_at", "asc")
+      .execute();
+    const comments = rows.map((row) => this.commentFromDbRow(row));
+    if (comments.length > 0) {
+      const attachments = await this.listAttachments(
+        taskBoardItemId,
+        organizationId,
+      );
+      const byComment = new Map<string, TaskBoardAttachmentMeta[]>();
+      for (const a of attachments) {
+        if (!a.commentId) continue;
+        const list = byComment.get(a.commentId);
+        if (list) list.push(a);
+        else byComment.set(a.commentId, [a]);
+      }
+      for (const c of comments) c.attachments = byComment.get(c.id) ?? [];
+    }
+    return comments;
+  }
+
+  async getCommentById(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments")
+      .selectAll()
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row ? this.commentFromDbRow(row) : null;
+  }
+
+  async updateComment(
+    id: string,
+    organizationId: string,
+    body: string,
+  ): Promise<TaskBoardComment> {
+    const row = await this.db
+      .updateTable("task_board_comments")
+      .set({ body, updated_at: new Date().toISOString() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return this.commentFromDbRow(row);
+  }
+
+  /** Delete a comment. Replies and comment attachments cascade in the DB. */
+  async deleteComment(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .deleteFrom("task_board_comments")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  // --------------------------------------------------------------------------
+  // Attachments
+  // --------------------------------------------------------------------------
+
+  async addAttachment(params: {
+    organizationId: string;
+    taskBoardItemId: string;
+    commentId?: string | null;
+    filename: string;
+    mimeType: string;
+    data: Uint8Array;
+    by: string;
+  }): Promise<TaskBoardAttachmentMeta> {
+    const row = await this.db
+      .insertInto("task_board_attachments")
+      .values({
+        id: generatePrefixedId("att"),
+        organization_id: params.organizationId,
+        task_board_item_id: params.taskBoardItemId,
+        comment_id: params.commentId ?? null,
+        filename: params.filename,
+        mime_type: params.mimeType,
+        size: params.data.byteLength,
+        data: params.data,
+        created_by: params.by,
+        created_at: new Date().toISOString(),
+      })
+      .returning([
+        "id",
+        "task_board_item_id",
+        "comment_id",
+        "filename",
+        "mime_type",
+        "size",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirstOrThrow();
+    return this.attachmentMetaFromDbRow(row);
+  }
+
+  /** All attachment metadata for a task (task-level and comment-level). */
+  async listAttachments(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardAttachmentMeta[]> {
+    const rows = await this.db
+      .selectFrom("task_board_attachments")
+      .select([
+        "id",
+        "task_board_item_id",
+        "comment_id",
+        "filename",
+        "mime_type",
+        "size",
+        "created_by",
+        "created_at",
+      ])
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .orderBy("created_at", "asc")
+      .execute();
+    return rows.map((row) => this.attachmentMetaFromDbRow(row));
+  }
+
+  /** Full attachment (metadata + bytes) — for the serving route only. */
+  async getAttachment(
+    id: string,
+    organizationId: string,
+  ): Promise<{ meta: TaskBoardAttachmentMeta; data: Uint8Array } | null> {
+    const row = await this.db
+      .selectFrom("task_board_attachments")
+      .selectAll()
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return null;
+    return { meta: this.attachmentMetaFromDbRow(row), data: row.data };
+  }
+
+  async deleteAttachment(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .deleteFrom("task_board_attachments")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  // --------------------------------------------------------------------------
+  // Sprints
+  // --------------------------------------------------------------------------
+
+  async createSprint(params: {
+    organizationId: string;
+    name: string;
+    state?: TaskBoardSprintState;
+    startDate?: string | null;
+    endDate?: string | null;
+    by: string;
+  }): Promise<TaskBoardSprint> {
+    const now = new Date().toISOString();
+    const row = await this.db
+      .insertInto("task_board_sprints")
+      .values({
+        id: generatePrefixedId("sprint"),
+        organization_id: params.organizationId,
+        name: params.name,
+        state: params.state ?? "planned",
+        start_date: params.startDate ?? null,
+        end_date: params.endDate ?? null,
+        created_by: params.by,
+        created_at: now,
+        updated_at: now,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return this.sprintFromDbRow(row);
+  }
+
+  async updateSprint(
+    id: string,
+    organizationId: string,
+    data: {
+      name?: string;
+      state?: TaskBoardSprintState;
+      startDate?: string | null;
+      endDate?: string | null;
+    },
+  ): Promise<TaskBoardSprint> {
+    const row = await this.db
+      .updateTable("task_board_sprints")
+      .set({
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.state !== undefined ? { state: data.state } : {}),
+        ...(data.startDate !== undefined ? { start_date: data.startDate } : {}),
+        ...(data.endDate !== undefined ? { end_date: data.endDate } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return this.sprintFromDbRow(row);
+  }
+
+  /** Delete a sprint and unstamp its tasks (they fall back to the backlog). */
+  async deleteSprint(id: string, organizationId: string): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .updateTable("task_board_items")
+        .set({ sprint_id: null })
+        .where("sprint_id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      await trx
+        .deleteFrom("task_board_sprints")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+    });
+  }
+
+  /** Sprints for the org — active first, then planned, then closed. */
+  async listSprints(organizationId: string): Promise<TaskBoardSprint[]> {
+    const rows = await this.db
+      .selectFrom("task_board_sprints")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .orderBy("created_at", "desc")
+      .execute();
+    const order: Record<TaskBoardSprintState, number> = {
+      active: 0,
+      planned: 1,
+      closed: 2,
+    };
+    return rows
+      .map((row) => this.sprintFromDbRow(row))
+      .sort((a, b) => order[a.state] - order[b.state]);
+  }
+
+  // --------------------------------------------------------------------------
+  // Releases
+  // --------------------------------------------------------------------------
+
+  /** Create a release and stamp the given tasks with it, atomically. */
+  async createRelease(params: {
+    organizationId: string;
+    title: string;
+    notes?: string | null;
+    taskIds: string[];
+    by: string;
+  }): Promise<TaskBoardRelease> {
+    return await this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .insertInto("task_board_releases")
+        .values({
+          id: generatePrefixedId("rel"),
+          organization_id: params.organizationId,
+          title: params.title,
+          notes: params.notes ?? null,
+          created_by: params.by,
+          created_at: new Date().toISOString(),
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      if (params.taskIds.length > 0) {
+        await trx
+          .updateTable("task_board_items")
+          .set({ release_id: row.id })
+          .where("id", "in", params.taskIds)
+          .where("organization_id", "=", params.organizationId)
+          .execute();
+      }
+      return this.releaseFromDbRow(row);
+    });
+  }
+
+  async listReleases(organizationId: string): Promise<TaskBoardRelease[]> {
+    const rows = await this.db
+      .selectFrom("task_board_releases")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .orderBy("created_at", "desc")
+      .execute();
+    return rows.map((row) => this.releaseFromDbRow(row));
+  }
+
+  /** Delete a release and unstamp its tasks. */
+  async deleteRelease(id: string, organizationId: string): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .updateTable("task_board_items")
+        .set({ release_id: null })
+        .where("release_id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      await trx
+        .deleteFrom("task_board_releases")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Activity log (the card's change timeline)
+  // --------------------------------------------------------------------------
+
+  /** Append one activity event. Best-effort at the call site — never let a log
+   *  write fail the change it describes. */
+  async recordActivity(params: {
+    organizationId: string;
+    taskBoardItemId: string;
+    kind: TaskBoardActivityKind;
+    actorId: string | null;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.db
+      .insertInto("task_board_activity")
+      .values({
+        id: generatePrefixedId("act"),
+        organization_id: params.organizationId,
+        task_board_item_id: params.taskBoardItemId,
+        kind: params.kind,
+        actor_id: params.actorId,
+        data: params.data ? JSON.stringify(params.data) : null,
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+  }
+
+  /** A task's activity, oldest first (timeline order). */
+  async listActivity(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardActivity[]> {
+    const rows = await this.db
+      .selectFrom("task_board_activity")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .orderBy("created_at", "asc")
+      .execute();
+    return rows.map((row) => ({
+      id: row.id,
+      taskBoardItemId: row.task_board_item_id,
+      kind: row.kind as TaskBoardActivityKind,
+      actorId: row.actor_id,
+      data:
+        typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? {}),
+      createdAt: toIso(row.created_at),
+    }));
+  }
+
+  private commentFromDbRow(row: {
+    id: string;
+    task_board_item_id: string;
+    parent_id: string | null;
+    body: string;
+    created_by: string;
+    created_at: string | Date;
+    updated_at: string | Date;
+  }): TaskBoardComment {
+    return {
+      id: row.id,
+      taskBoardItemId: row.task_board_item_id,
+      parentId: row.parent_id,
+      body: row.body,
+      attachments: [],
+      createdBy: row.created_by,
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    };
+  }
+
+  private attachmentMetaFromDbRow(row: {
+    id: string;
+    task_board_item_id: string;
+    comment_id: string | null;
+    filename: string;
+    mime_type: string;
+    size: number;
+    created_by: string;
+    created_at: string | Date;
+  }): TaskBoardAttachmentMeta {
+    return {
+      id: row.id,
+      taskBoardItemId: row.task_board_item_id,
+      commentId: row.comment_id,
+      filename: row.filename,
+      mimeType: row.mime_type,
+      size: row.size,
+      createdBy: row.created_by,
+      createdAt: toIso(row.created_at),
+    };
+  }
+
+  private sprintFromDbRow(row: {
+    id: string;
+    name: string;
+    state: string;
+    start_date: string | Date | null;
+    end_date: string | Date | null;
+    created_by: string;
+    created_at: string | Date;
+  }): TaskBoardSprint {
+    return {
+      id: row.id,
+      name: row.name,
+      state: row.state as TaskBoardSprintState,
+      startDate: toIsoOrNull(row.start_date),
+      endDate: toIsoOrNull(row.end_date),
+      createdBy: row.created_by,
+      createdAt: toIso(row.created_at),
+    };
+  }
+
+  private releaseFromDbRow(row: {
+    id: string;
+    title: string;
+    notes: string | null;
+    created_by: string;
+    created_at: string | Date;
+  }): TaskBoardRelease {
+    return {
+      id: row.id,
+      title: row.title,
+      notes: row.notes,
+      createdBy: row.created_by,
+      createdAt: toIso(row.created_at),
     };
   }
 }

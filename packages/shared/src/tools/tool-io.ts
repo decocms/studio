@@ -125,6 +125,31 @@ export interface StudioToolIO {
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
+      task_board?:
+        | {
+            columns:
+              | {
+                  id: string;
+                  name: string | null;
+                  stage:
+                    | "done"
+                    | "triage"
+                    | "todo"
+                    | "in_progress"
+                    | "in_review"
+                    | "qa"
+                    | "ready_for_release"
+                    | "deploy";
+                  automation?:
+                    | { enabled: boolean; agentId: string | null }
+                    | undefined;
+                }[]
+              | null;
+            sprintsEnabled?: boolean | undefined;
+            releasesEnabled?: boolean | undefined;
+          }
+        | null
+        | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -186,6 +211,30 @@ export interface StudioToolIO {
           }
         | undefined;
       main_agent_id?: string | null | undefined;
+      task_board?:
+        | {
+            columns:
+              | {
+                  id: string;
+                  name: string | null;
+                  stage:
+                    | "done"
+                    | "triage"
+                    | "todo"
+                    | "in_progress"
+                    | "in_review"
+                    | "qa"
+                    | "ready_for_release"
+                    | "deploy";
+                  automation?:
+                    | { enabled: boolean; agentId: string | null }
+                    | undefined;
+                }[]
+              | null;
+            sprintsEnabled?: boolean | undefined;
+            releasesEnabled?: boolean | undefined;
+          }
+        | undefined;
     };
     output: {
       organizationId: string;
@@ -249,6 +298,31 @@ export interface StudioToolIO {
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
+      task_board?:
+        | {
+            columns:
+              | {
+                  id: string;
+                  name: string | null;
+                  stage:
+                    | "done"
+                    | "triage"
+                    | "todo"
+                    | "in_progress"
+                    | "in_review"
+                    | "qa"
+                    | "ready_for_release"
+                    | "deploy";
+                  automation?:
+                    | { enabled: boolean; agentId: string | null }
+                    | undefined;
+                }[]
+              | null;
+            sprintsEnabled?: boolean | undefined;
+            releasesEnabled?: boolean | undefined;
+          }
+        | null
+        | undefined;
     };
   };
   TASK_BOARD_ITEM_CREATE: {
@@ -261,10 +335,16 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "ready_for_release"
+        | "deploy"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
       dueDate?: string | null | undefined;
+      columnId?: string | null | undefined;
+      tags?: string[] | undefined;
+      sprintId?: string | null | undefined;
     };
     output: {
       item: {
@@ -272,12 +352,26 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "qa"
+          | "ready_for_release"
+          | "deploy";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
         sortOrder: number;
+        seq: number | null;
+        columnId: string | null;
+        tags: string[];
+        sprintId: string | null;
+        releaseId: string | null;
+        externalKey: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -299,6 +393,7 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       };
+      superAgentError?: string | undefined;
     };
   };
   TASK_BOARD_ITEM_LIST: {
@@ -309,12 +404,26 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "qa"
+          | "ready_for_release"
+          | "deploy";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
         sortOrder: number;
+        seq: number | null;
+        columnId: string | null;
+        tags: string[];
+        sprintId: string | null;
+        releaseId: string | null;
+        externalKey: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -349,11 +458,18 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "ready_for_release"
+        | "deploy"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      columnId?: string | null | undefined;
+      tags?: string[] | undefined;
+      sprintId?: string | null | undefined;
+      releaseId?: string | null | undefined;
       linkThreadId?: string | undefined;
     };
     output: {
@@ -362,12 +478,26 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "qa"
+          | "ready_for_release"
+          | "deploy";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
         dueDate: string | null;
         sortOrder: number;
+        seq: number | null;
+        columnId: string | null;
+        tags: string[];
+        sprintId: string | null;
+        releaseId: string | null;
+        externalKey: string | null;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -389,6 +519,7 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       };
+      superAgentError?: string | undefined;
     };
   };
   TASK_BOARD_ITEM_DELETE: {
@@ -409,6 +540,234 @@ export interface StudioToolIO {
         state: "open" | "closed" | null;
         draft: boolean | null;
         merged: boolean | null;
+      }[];
+    };
+  };
+  TASK_BOARD_COMMENT_CREATE: {
+    input: {
+      taskBoardItemId: string;
+      body: string;
+      parentId?: string | null | undefined;
+      attachments?:
+        | { filename: string; mimeType: string; dataBase64: string }[]
+        | undefined;
+    };
+    output: {
+      comment: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        body: string;
+        attachments: {
+          id: string;
+          taskBoardItemId: string;
+          commentId: string | null;
+          filename: string;
+          mimeType: string;
+          size: number;
+          createdBy: string;
+          createdAt: string;
+        }[];
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  TASK_BOARD_COMMENT_LIST: {
+    input: { taskBoardItemId: string };
+    output: {
+      comments: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        body: string;
+        attachments: {
+          id: string;
+          taskBoardItemId: string;
+          commentId: string | null;
+          filename: string;
+          mimeType: string;
+          size: number;
+          createdBy: string;
+          createdAt: string;
+        }[];
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_COMMENT_UPDATE: {
+    input: { id: string; body: string };
+    output: {
+      comment: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        body: string;
+        attachments: {
+          id: string;
+          taskBoardItemId: string;
+          commentId: string | null;
+          filename: string;
+          mimeType: string;
+          size: number;
+          createdBy: string;
+          createdAt: string;
+        }[];
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  TASK_BOARD_COMMENT_DELETE: {
+    input: { id: string };
+    output: { success: boolean };
+  };
+  TASK_BOARD_ATTACHMENT_ADD: {
+    input: {
+      filename: string;
+      mimeType: string;
+      dataBase64: string;
+      taskBoardItemId: string;
+    };
+    output: {
+      attachment: {
+        id: string;
+        taskBoardItemId: string;
+        commentId: string | null;
+        filename: string;
+        mimeType: string;
+        size: number;
+        createdBy: string;
+        createdAt: string;
+      };
+    };
+  };
+  TASK_BOARD_ATTACHMENT_LIST: {
+    input: { taskBoardItemId: string };
+    output: {
+      attachments: {
+        id: string;
+        taskBoardItemId: string;
+        commentId: string | null;
+        filename: string;
+        mimeType: string;
+        size: number;
+        createdBy: string;
+        createdAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_ATTACHMENT_DELETE: {
+    input: { id: string };
+    output: { success: boolean };
+  };
+  TASK_BOARD_SPRINT_CREATE: {
+    input: {
+      name: string;
+      state?: "closed" | "planned" | "active" | undefined;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "closed" | "planned" | "active";
+        startDate: string | null;
+        endDate: string | null;
+        createdBy: string;
+        createdAt: string;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_UPDATE: {
+    input: {
+      id: string;
+      name?: string | undefined;
+      state?: "closed" | "planned" | "active" | undefined;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "closed" | "planned" | "active";
+        startDate: string | null;
+        endDate: string | null;
+        createdBy: string;
+        createdAt: string;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_DELETE: {
+    input: { id: string };
+    output: { success: boolean };
+  };
+  TASK_BOARD_SPRINT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      sprints: {
+        id: string;
+        name: string;
+        state: "closed" | "planned" | "active";
+        startDate: string | null;
+        endDate: string | null;
+        createdBy: string;
+        createdAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_RELEASE_CREATE: {
+    input: {
+      title: string;
+      taskIds: string[];
+      notes?: string | null | undefined;
+    };
+    output: {
+      release: {
+        id: string;
+        title: string;
+        notes: string | null;
+        createdBy: string;
+        createdAt: string;
+      };
+    };
+  };
+  TASK_BOARD_RELEASE_LIST: {
+    input: { [x: string]: never };
+    output: {
+      releases: {
+        id: string;
+        title: string;
+        notes: string | null;
+        createdBy: string;
+        createdAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_RELEASE_DELETE: {
+    input: { id: string };
+    output: { success: boolean };
+  };
+  TASK_BOARD_ACTIVITY_LIST: {
+    input: { taskBoardItemId: string };
+    output: {
+      activity: {
+        id: string;
+        taskBoardItemId: string;
+        kind:
+          | "created"
+          | "status_changed"
+          | "assignee_changed"
+          | "sprint_changed";
+        actorId: string | null;
+        data: Record<string, unknown>;
+        createdAt: string;
       }[];
     };
   };

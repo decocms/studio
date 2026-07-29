@@ -35,6 +35,7 @@ import {
   BarChart10,
   BookOpen01,
   Building02,
+  Columns03,
   ZapSquare,
   CpuChip01,
   Loading01,
@@ -114,6 +115,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: t("settings.nav.brandContext"),
           icon: <BookOpen01 size={14} />,
           to: "/$org/settings/brand-context",
+          requires: "org:manage",
+        },
+        {
+          key: "board",
+          label: t("settings.nav.board"),
+          icon: <Columns03 size={14} />,
+          to: "/$org/settings/board",
           requires: "org:manage",
         },
         {

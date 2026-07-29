@@ -42,6 +42,7 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
+  Tag01,
   User01,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
@@ -65,23 +66,31 @@ export type TaskFilters = {
   assignee: string | null;
   priority: TaskBoardItemPriority | null;
   due: DueFilter | null;
+  tag: string | null;
 };
 
 export const EMPTY_FILTERS: TaskFilters = {
   assignee: null,
   priority: null,
   due: null,
+  tag: null,
 };
 
 function hasActiveFilters(f: TaskFilters): boolean {
-  return f.assignee !== null || f.priority !== null || f.due !== null;
+  return (
+    f.assignee !== null ||
+    f.priority !== null ||
+    f.due !== null ||
+    f.tag !== null
+  );
 }
 
 function activeFilterCount(f: TaskFilters): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
-    (f.due !== null ? 1 : 0)
+    (f.due !== null ? 1 : 0) +
+    (f.tag !== null ? 1 : 0)
   );
 }
 
@@ -109,6 +118,7 @@ export function taskMatchesFilters(
     }
   }
   if (f.priority !== null && item.priority !== f.priority) return false;
+  if (f.tag !== null && !item.tags.includes(f.tag)) return false;
   if (f.due !== null) {
     if (f.due === "none") {
       if (item.dueDate) return false;
@@ -365,15 +375,58 @@ function DueDateFilter({
   );
 }
 
-/** The three filter controls, shared by the inline bar and the mobile drawer. */
+function TagFilter({
+  value,
+  tags,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  tags: string[];
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  if (tags.length === 0 && value === null) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <Tag01 size={14} className="shrink-0" />
+          {value ?? t("taskBoard.taskFilters.tagLabel")}
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-72 w-44 overflow-y-auto"
+      >
+        <DropdownMenuItem onSelect={() => onChange(null)}>
+          {t("taskBoard.taskFilters.tagAnyTag")}
+        </DropdownMenuItem>
+        {tags.map((tag) => (
+          <DropdownMenuItem key={tag} onSelect={() => onChange(tag)}>
+            {tag}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
+  tags,
   onChange,
   block,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: string[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -395,6 +448,12 @@ function FilterControls({
         value={filters.due}
         onChange={(due) => onChange({ ...filters, due })}
       />
+      <TagFilter
+        block={block}
+        value={filters.tag}
+        tags={tags}
+        onChange={(tag) => onChange({ ...filters, tag })}
+      />
     </>
   );
 }
@@ -403,10 +462,12 @@ function FilterControls({
 export function TaskFiltersBar({
   filters,
   members,
+  tags,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: string[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -416,7 +477,12 @@ export function TaskFiltersBar({
         size={16}
         className="mr-0.5 shrink-0 text-muted-foreground"
       />
-      <FilterControls filters={filters} members={members} onChange={onChange} />
+      <FilterControls
+        filters={filters}
+        members={members}
+        tags={tags}
+        onChange={onChange}
+      />
       {hasActiveFilters(filters) && (
         <button
           type="button"
@@ -438,10 +504,12 @@ export function TaskFiltersBar({
 export function TaskFiltersDrawer({
   filters,
   members,
+  tags,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: string[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -470,6 +538,7 @@ export function TaskFiltersDrawer({
             block
             filters={filters}
             members={members}
+            tags={tags}
             onChange={onChange}
           />
         </div>

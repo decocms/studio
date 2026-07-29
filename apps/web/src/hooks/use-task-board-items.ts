@@ -1,5 +1,6 @@
 import { useProjectContext } from "@/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import type {
@@ -83,10 +84,20 @@ export function useTaskBoardItemActions() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
+  // The task was delegated to the Super Agent but its run couldn't start (most
+  // commonly no AI model configured) — tell the user why instead of leaving the
+  // card assigned-but-idle.
+  const toastSuperAgentError = (result: { superAgentError?: string }) => {
+    if (result.superAgentError) toast.error(result.superAgentError);
+  };
+
   const create = useMutation({
     mutationFn: (input: ToolInput<"TASK_BOARD_ITEM_CREATE">) =>
       studio.call("TASK_BOARD_ITEM_CREATE", input),
-    onSuccess: invalidate,
+    onSuccess: (result) => {
+      toastSuperAgentError(result);
+      invalidate();
+    },
   });
 
   const update = useMutation({
@@ -106,6 +117,7 @@ export function useTaskBoardItemActions() {
       if (context?.previous)
         queryClient.setQueryData(queryKey, context.previous);
     },
+    onSuccess: toastSuperAgentError,
     onSettled: invalidate,
   });
 

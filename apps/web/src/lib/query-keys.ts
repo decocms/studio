@@ -45,6 +45,26 @@ export const KEYS = {
   taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-item-prs", itemId] as const,
 
+  // A task's comments (with their attachment metadata)
+  taskBoardComments: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-comments", itemId] as const,
+
+  // A task's change timeline (created, status/assignee/sprint changes)
+  taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-activity", itemId] as const,
+
+  // A task's attachments (task-level and comment-level metadata)
+  taskBoardAttachments: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-attachments", itemId] as const,
+
+  // Org task board sprints
+  taskBoardSprints: (locator: ProjectLocator) =>
+    [locator, "task-board-sprints"] as const,
+
+  // Org task board releases
+  taskBoardReleases: (locator: ProjectLocator) =>
+    [locator, "task-board-releases"] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 

@@ -17,6 +17,11 @@ import type {
   OrgFlags,
   SimpleModeTier,
 } from "@decocms/shared/organization/schema";
+export type {
+  TaskBoardSettingsConfig,
+  TaskBoardColumnConfig,
+} from "@decocms/shared/organization/schema";
+import type { TaskBoardSettingsConfig } from "@decocms/shared/organization/schema";
 
 export interface ModelSlot {
   keyId: string;
@@ -46,6 +51,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
+  task_board: TaskBoardSettingsConfig | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -59,6 +65,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   default_home_agents: null,
   flags: null,
   main_agent_id: null,
+  task_board: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -143,6 +150,7 @@ type OrgSettingsUpdateInput = Partial<
     | "default_home_agents"
     | "flags"
     | "main_agent_id"
+    | "task_board"
   >
 >;
 
@@ -248,6 +256,27 @@ export function useReportsOnly(): boolean {
 export function useOrgFlag(flag: keyof OrgFlags): boolean {
   const { data } = useOrganizationSettings((s) => s.flags?.[flag] ?? false);
   return data ?? false;
+}
+
+/** The org's task board settings (null = the default simple board). */
+export function useTaskBoardSettings(): TaskBoardSettingsConfig | null {
+  const { data } = useOrganizationSettings((s) => s.task_board);
+  return data ?? null;
+}
+
+export function useUpdateTaskBoardSettings() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (
+      config: TaskBoardSettingsConfig,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutate({ task_board: config }, options),
+    mutateAsync: (
+      config: TaskBoardSettingsConfig,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ task_board: config }, options),
+  };
 }
 
 export function useRegistryConfig(): RegistryConfig | null {

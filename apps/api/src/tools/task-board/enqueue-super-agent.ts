@@ -11,42 +11,57 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
  * enqueue the run. No-op for any other assignee, so callers that already know
  * the write delegated (create) and callers that gate on the transition
  * (update) share one body. The SSE broadcast is emitted by each write site
- * itself (every create/update broadcasts, not just delegations). Enqueue is
- * best-effort — the task is already persisted, so a dispatch failure (e.g. no
- * model configured) must never fail the write that delegated it.
+ * itself (every create/update broadcasts, not just delegations).
+ *
+ * Enqueue never fails the write (the task is already persisted), but the
+ * failure is NOT swallowed silently: the reason (e.g. "no model configured for
+ * tier smart") is returned so the tool can hand it back and the UI can tell the
+ * user why the run didn't start, instead of leaving a task assigned-but-idle.
+ * Returns null when there's nothing to report (not delegated, or started fine).
  */
 export async function reactToSuperAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
-): Promise<void> {
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item).catch((err) => {
+): Promise<string | null> {
+  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return null;
+  try {
+    await enqueueAgentForTask(ctx, item);
+    return null;
+  } catch (err) {
     console.error("[task-board] Super Agent enqueue failed", err);
-  });
+    return err instanceof Error
+      ? err.message
+      : "Failed to start the Super Agent";
+  }
 }
 
 /**
- * Enqueue a Super Agent run for a task delegated to it. Creates a fresh thread
- * seeded with the task in context, then dispatches the org's Super Agent (the
- * well-known Decopilot agent) on it via the durable thread-gate queue.
+ * Enqueue an agent run for a task. Creates a fresh thread seeded with the task
+ * in context, then dispatches the agent on it via the durable thread-gate
+ * queue. `agentVirtualMcpId` selects the agent (a column automation's
+ * configured agent); omitted/null = the org's Super Agent (the well-known
+ * Decopilot agent) — the assignee-delegation path.
  *
  * ponytail: deliberately the simplest thing that runs the agent on the task —
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
-async function enqueueSuperAgentForTask(
+export async function enqueueAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
+  agentVirtualMcpId?: string | null,
 ): Promise<void> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
 
   const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
+  const agentId = agentVirtualMcpId ?? getDecopilotId(organizationId);
 
   const thread = await ctx.storage.threads.create({
     organization_id: organizationId,
-    title: `Super Agent: ${task.title}`,
+    title: agentVirtualMcpId
+      ? `Agent: ${task.title}`
+      : `Super Agent: ${task.title}`,
     status: "in_progress",
     virtual_mcp_id: agentId,
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
