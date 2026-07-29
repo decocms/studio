@@ -13,7 +13,7 @@
  * keep their boot-env path.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseOrgFsConfig } from "../org-fs/config";
 import { jsonResponse } from "./body-parser";
@@ -32,10 +32,10 @@ export function makeOrgFsConfigHandler(opts: {
     if (!opts.configPath) return jsonResponse({ written: false });
     try {
       // Atomic write: the sidecar must never read a torn file.
-      mkdirSync(dirname(opts.configPath), { recursive: true });
+      await mkdir(dirname(opts.configPath), { recursive: true });
       const tmp = join(dirname(opts.configPath), `.config-${process.pid}.tmp`);
-      writeFileSync(tmp, raw);
-      renameSync(tmp, opts.configPath);
+      await writeFile(tmp, raw);
+      await rename(tmp, opts.configPath);
       return jsonResponse({ written: true });
     } catch (err) {
       log("sidecar config relay failed", err);
