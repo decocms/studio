@@ -33,6 +33,8 @@ dist-ssr
 mapping.json
 **/.env
 
+.env*
+
 # Editor directories and files
 !.vscode/extensions.json
 .idea
