@@ -321,11 +321,28 @@ async function resolveSecretModelSource(
     credentialId,
     organizationId,
   );
-  return createSecretModelSource({
+  const source = createSecretModelSource({
     providerId: keyInfo.providerId,
     apiKey,
     modelId,
   });
+
+  // OpenRouter surfaces `X-Title` as the app name in its dashboard/rankings.
+  // Tag it with the org so per-tenant traffic is attributable. `deco` is the
+  // OpenRouter provider behind the deco AI gateway, so it gets the same tag.
+  if (source.providerId === "openrouter" || source.providerId === "deco") {
+    const orgName =
+      ctx.organization?.name ?? ctx.organization?.slug ?? organizationId;
+    return {
+      ...source,
+      extraHeaders: {
+        ...source.extraHeaders,
+        "X-Title": `Studio - ${orgName}`,
+      },
+    };
+  }
+
+  return source;
 }
 
 // ============================================================================
