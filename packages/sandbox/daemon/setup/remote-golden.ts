@@ -8,15 +8,20 @@
  * lockfile)` archive on a shared volume, restorable on ANY node in ANY zone.
  *
  * ONE HARD RULE: a compressed ARCHIVE on the shared store, never the
- * node_modules TREE. The shared store is EFS/NFS, which charges per-operation
- * metadata latency — fatal across ~100k small files, a non-issue for a single
- * large sequential blob. The per-file cost is paid by the local extract, on
- * local disk. Mounting a tree here would be slower than no cache at all.
+ * node_modules TREE. A shared store charges per-operation latency — fatal
+ * across ~100k small files, a non-issue for a single large sequential blob.
+ * The per-file cost is paid by the local extract, on local disk. Mounting a
+ * tree here would be slower than no cache at all.
  *
- * Filesystem-agnostic by design: unlike L1 this needs no reflink, so it works
- * wherever the archive can be read. Nothing below is EFS-specific — the store
- * is just a path, so swapping the backend (S3, a different mount) touches no
- * code here.
+ * The store is S3, mounted via the mountpoint CSI driver, and the code assumes
+ * only two things of it: a path can be read sequentially, and a path can be
+ * written sequentially. Notably it does NOT assume rename or utimes, because
+ * mountpoint has neither — see `publishRemoteGolden` for what that costs and
+ * `pruneRemoteGoldens` for the GC that survives it.
+ *
+ * Unlike L1 this needs no reflink, so it works on whatever filesystem the pod
+ * gets. A POSIX-backed store would also work, and would additionally allow the
+ * temp-plus-rename publish this deliberately does without.
  *
  * Dormant without GOLDEN_CACHE_REMOTE: absent → every entry point returns
  * immediately and the boot path is exactly L1-then-install as today.
@@ -243,10 +248,12 @@ export async function tryRestoreRemoteGolden(
  * same rule as L1, and it matters more here: a broken install published to the
  * shared store would poison every node in the fleet, not just this one.
  *
- * Best-effort and idempotent: no-op if the archive already exists; write to a
- * temp path then atomically rename, so a concurrent publisher on another node
- * or a crash mid-write never leaves a truncated archive that a later restore
- * would treat as valid.
+ * Best-effort and idempotent: no-op if the archive already exists, and the
+ * archive is read back before the function reports success, so a truncated
+ * write never survives as a permanently-broken key.
+ *
+ * The write goes straight to the final key — see the note inline. A blob store
+ * has no rename, and does not need one.
  */
 export async function publishRemoteGolden(
   opts: RemoteGoldenOpts,
@@ -259,10 +266,18 @@ export async function publishRemoteGolden(
     if (!(await exists(source))) return;
     if (await exists(archive)) return; // already published for this lockfile
 
-    await mkdir(dirname(archive), { recursive: true });
-    // PID keeps concurrent publishers from different nodes off each other's
-    // temp file; the rename below is what makes the result atomic.
-    const tmp = `${archive}.tmp.${process.pid}`;
+    // Best-effort: a blob store has no real directories, so creating the
+    // prefix is a no-op there and may not be supported at all. Writing the
+    // key below is what creates it.
+    await mkdir(dirname(archive), { recursive: true }).catch(() => {});
+    // Written straight to its final key, NOT to a temp name plus rename.
+    // The shared store is a blob store (S3 via mountpoint) and rename does not
+    // exist there. Nothing is lost by dropping it: an object becomes visible
+    // only once its upload completes, so a publisher killed mid-write leaves
+    // no readable object — the same guarantee the rename was providing.
+    //
+    // Porting this to a POSIX store would need the temp+rename back, because
+    // there a partial file IS visible to a concurrent reader.
     const r = await runPiped(
       [
         "tar",
@@ -276,35 +291,36 @@ export async function publishRemoteGolden(
           "node_modules",
         ],
       ],
-      ["zstd", [...ZSTD_ARGS, "-q", "-o", tmp]],
+      ["zstd", [...ZSTD_ARGS, "-q", "-o", archive]],
     );
     if (r.code !== 0) {
       log(`[golden-l2] publish failed (exit ${r.code}: ${r.stderr})`);
-      await rm(tmp, { force: true }).catch(() => {});
+      await rm(archive, { force: true }).catch(() => {});
       return;
     }
     // A bad archive here is PERMANENT: publish no-ops once the key exists, so
     // every node in the fleet would keep failing its restore and paying a full
-    // install, with nothing to repair it. Read it back before making it
-    // visible — publish already runs after the boot is healthy, off the
+    // install, with nothing to repair it. Read it back and drop it if it does
+    // not parse — publish already runs after the boot is healthy, off the
     // critical path, and this is one sequential pass.
-    const check = await runPiped(["zstd", ["-dc", tmp]], ["tar", ["-tf", "-"]]);
+    //
+    // Now that the write goes to the live key, this reads back over the
+    // network rather than off local disk. That is the cost of losing rename;
+    // it buys the same protection, and the alternative — staging the archive
+    // in the pod first — would spend the tenant's /app quota on a file that
+    // can be several hundred MB.
+    const check = await runPiped(
+      ["zstd", ["-dc", archive]],
+      ["tar", ["-tf", "-"]],
+    );
     if (check.code !== 0) {
       log(
         `[golden-l2] publish discarded — archive failed read-back (${check.stderr})`,
       );
-      await rm(tmp, { force: true }).catch(() => {});
+      await rm(archive, { force: true }).catch(() => {});
       return;
     }
-    try {
-      await rename(tmp, archive);
-      log("[golden-l2] published node_modules to shared cache");
-    } catch {
-      // Lost the race to another node — its archive is equally valid for this
-      // key, so drop ours.
-      await rm(tmp, { force: true }).catch(() => {});
-      return;
-    }
+    log("[golden-l2] published node_modules to shared cache");
     await pruneRemoteGoldens(opts.remoteRoot, { log });
   } catch (e) {
     log(`[golden-l2] publish skipped: ${(e as Error).message}`);
