@@ -129,10 +129,7 @@ pub fn remove(org: &str, volume: &str, path: &str) {
 }
 
 fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or_default()
+    crate::time_util::now_unix_secs()
 }
 
 #[cfg(test)]

@@ -449,10 +449,7 @@ impl SandboxManager {
         let Some(handle) = Self::compute_handle(&cfg.clone_url, normalized_branch(cfg)) else {
             return self.app_root.join("repo");
         };
-        self.app_root
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(handle)
-            .join("repo")
+        crate::sandbox::worktree_repo_dir(&self.app_root, &handle)
     }
 
     /// Looks up an already-created sandbox by handle — used by
@@ -1129,10 +1126,7 @@ impl SandboxManager {
             return Ok(sandbox.clone());
         }
 
-        let sandbox_root = self
-            .app_root
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(handle);
+        let sandbox_root = crate::sandbox::worktree_root(&self.app_root, handle);
         let workdir = sandbox_root.join("repo");
         std::fs::create_dir_all(&workdir)
             .map_err(|e| format!("failed to create sandbox workdir {workdir:?}: {e}"))?;

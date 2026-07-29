@@ -68,12 +68,7 @@ pub fn org_mount_root(app_root: &Path, org_slug: &str) -> Option<PathBuf> {
 
 /// `<app_root>/worktrees/<handle>/org` — the sandbox's view directory.
 pub fn sandbox_org_dir(app_root: &Path, handle: &str) -> Option<PathBuf> {
-    Some(
-        app_root
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(safe_handle(handle)?)
-            .join("org"),
-    )
+    Some(crate::sandbox::worktree_root(app_root, safe_handle(handle)?).join("org"))
 }
 
 /// Create (or repair) the sandbox's `org/` view for `org_slug`.
@@ -192,13 +187,7 @@ fn safe_segment(segment: &str) -> Option<&str> {
 /// slugs and rejects the `/` outright. Each segment is still validated on its
 /// own, so `..` can never climb out of the worktrees root.
 fn safe_handle(handle: &str) -> Option<&str> {
-    if handle.is_empty() || handle.contains('\\') {
-        return None;
-    }
-    handle
-        .split('/')
-        .all(|part| !part.is_empty() && part != "." && part != "..")
-        .then_some(handle)
+    crate::sandbox::handle_is_path_safe(handle).then_some(handle)
 }
 
 #[cfg(test)]

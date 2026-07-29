@@ -36,6 +36,32 @@
 /// exactly the kind of thing that drifts.
 pub(crate) const WORKTREES_DIR: &str = "worktrees";
 
+/// The one derivation of a sandbox's directory and its repo workdir. The
+/// registry persists these paths and `git worktree` registers them, so every
+/// site must produce byte-identical joins — a second spelling is a sandbox
+/// that can never be found again.
+pub(crate) fn worktree_root(app_root: &std::path::Path, handle: &str) -> std::path::PathBuf {
+    app_root.join(WORKTREES_DIR).join(handle)
+}
+
+/// The traversal-safety core every handle validator shares: a handle is a
+/// multi-segment RELATIVE path under the worktrees root, so no segment may be
+/// empty, `.` or `..`, and no `\` may appear anywhere. Layers with stricter
+/// needs (persist's sidecar round-trip adds a charset allowlist and a length
+/// cap) apply their extras ON TOP — the extras differ per layer, this
+/// property must not.
+pub(crate) fn handle_is_path_safe(handle: &str) -> bool {
+    !handle.is_empty()
+        && !handle.contains('\\')
+        && handle
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+pub(crate) fn worktree_repo_dir(app_root: &std::path::Path, handle: &str) -> std::path::PathBuf {
+    worktree_root(app_root, handle).join("repo")
+}
+
 pub(crate) mod dev_port;
 pub mod manager;
 pub mod org_mount;
@@ -110,6 +136,17 @@ pub fn normalize_branch(branch: Option<&str>) -> &str {
 /// drift apart. `routes::git` additionally protects the REMOTE default branch,
 /// which is only knowable per repository.
 pub const PROTECTED_BRANCHES: [&str; 2] = ["main", "master"];
+
+/// Synthetic branches (`"ephemeral"`, `"thread:<id>"`) are sandbox routing
+/// keys, not real git refs — they must never be checked out or shown to a
+/// user as a branch. Byte-parity with
+/// `packages/shared/src/is-synthetic-branch.ts` (itself mirroring
+/// `packages/sandbox/daemon/constants.ts`): this predicate is a
+/// cross-language wire contract, and a second Rust copy is how one side ends
+/// up checking out a routing key the other side still treats as synthetic.
+pub(crate) fn is_synthetic_branch(branch: &str) -> bool {
+    branch == "ephemeral" || branch.starts_with("thread:")
+}
 
 /// Longest DNS label the preview host may use. 63 is the protocol limit.
 const MAX_PREVIEW_LABEL: usize = 63;
@@ -237,5 +274,25 @@ mod tests {
     #[test]
     fn the_label_is_stable_for_one_handle() {
         assert_eq!(preview_label(HANDLE), preview_label(HANDLE));
+    }
+
+    /// Mirrors `packages/shared/src/is-synthetic-branch.test.ts` case for
+    /// case — the two languages must agree on what a routing key is, or one
+    /// side checks out a ref the other refuses to show.
+    #[test]
+    fn is_synthetic_branch_matches_the_shared_ts_contract() {
+        // The literal `ephemeral` branch.
+        assert!(is_synthetic_branch("ephemeral"));
+        // Any `thread:`-prefixed branch, including the bare prefix.
+        assert!(is_synthetic_branch("thread:abc-123"));
+        assert!(is_synthetic_branch("thread:"));
+        // Real branch names.
+        assert!(!is_synthetic_branch("main"));
+        assert!(!is_synthetic_branch("deco/swift-glade"));
+        assert!(!is_synthetic_branch("feature/x"));
+        // No substrings or case variants.
+        assert!(!is_synthetic_branch("ephemeral-foo"));
+        assert!(!is_synthetic_branch("Ephemeral"));
+        assert!(!is_synthetic_branch("my-thread:1"));
     }
 }

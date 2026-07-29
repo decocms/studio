@@ -53,7 +53,7 @@ use std::convert::Infallible;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
 use axum::http::{Method, StatusCode};
@@ -967,12 +967,9 @@ fn remove_queue_if_idle(key: &ThreadKey, expected: &Arc<ThreadQueue>) -> bool {
 }
 
 fn epoch_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .try_into()
-        .unwrap_or(u64::MAX)
+    // The registry's canonical clock; clamped because this caller's wire
+    // shape is unsigned.
+    crate::tasks::now_ms().max(0) as u64
 }
 
 fn queue_text(user_message: &Value) -> String {

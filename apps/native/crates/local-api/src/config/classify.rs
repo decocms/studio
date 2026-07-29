@@ -209,9 +209,7 @@ fn get_path<'a>(v: &'a Value, path: &[&str]) -> Option<&'a Value> {
 }
 
 fn get_str_path(v: &Value, path: &[&str]) -> Option<String> {
-    get_path(v, path)
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    super::get_str(v, path).map(str::to_string)
 }
 
 /// A field the TS side reads as `after.foo?.bar !== undefined` — present

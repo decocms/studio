@@ -213,7 +213,10 @@ const KEYCHAIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// release the operation fence before the outer async deadline expires.
 const HELPER_LOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(29);
 const HELPER_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-const MAX_HELPER_RESPONSE_BYTES: u64 = 1024 * 1024;
+/// The one protocol-wide message cap — shared with the helper end so the two
+/// sides of the stdio protocol cannot drift (see its doc in
+/// `keychain_helper.rs`).
+use crate::keychain_helper::MAX_PROTOCOL_BYTES as MAX_HELPER_RESPONSE_BYTES;
 
 #[derive(Debug, Clone, Copy)]
 struct KeychainTimeouts {

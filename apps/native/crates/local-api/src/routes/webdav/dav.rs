@@ -13,8 +13,6 @@
 //! the front of `href` (`backend/webdav/webdav.go`'s `listAll`). So hrefs
 //! MUST carry that prefix or every listing resolves to the wrong name.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 /// Advertised in `Allow` and `OPTIONS` — exactly what rclone's webdav
 /// backend (`--webdav-vendor other`, no locking) exercises.
 pub const DAV_METHODS: &str = "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, MOVE, PROPPATCH";
@@ -220,7 +218,7 @@ pub fn parse_range(header: Option<&str>, size: u64) -> Option<(u64, u64)> {
 pub fn http_date(epoch_secs: i64) -> String {
     let days = epoch_secs.div_euclid(86_400);
     let secs = epoch_secs.rem_euclid(86_400);
-    let (year, month, day) = civil_from_days(days);
+    let (year, month, day) = crate::time_util::civil_from_days(days);
     // 1970-01-01 was a Thursday (index 4 in WEEKDAYS).
     let weekday = (days + 4).rem_euclid(7) as usize;
     format!(
@@ -234,10 +232,7 @@ pub fn http_date(epoch_secs: i64) -> String {
 }
 
 pub fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    crate::time_util::now_unix_secs()
 }
 
 /// `YYYY-MM-DDTHH:MM:SS[.fff][Z|±HH:MM]` → epoch seconds. Anything else is
@@ -254,7 +249,10 @@ pub fn iso_to_epoch_secs(iso: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    let mut secs = civil_to_days(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
+    let mut secs = crate::time_util::days_from_civil(year, month, day) * 86_400
+        + hour * 3600
+        + minute * 60
+        + second;
 
     let tail = &iso[19..];
     let offset_at = tail.rfind(['+', '-']);
@@ -269,32 +267,6 @@ pub fn iso_to_epoch_secs(iso: &str) -> Option<i64> {
         }
     }
     Some(secs)
-}
-
-/// Howard Hinnant's `civil_from_days` — days since the Unix epoch to
-/// `(year, month, day)`, proleptic Gregorian, no leap seconds.
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-/// The inverse of [`civil_from_days`].
-fn civil_to_days(year: i64, month: i64, day: i64) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = if month > 2 { month - 3 } else { month + 9 };
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
 }
 
 /// Resolve a `Destination` header to an in-volume path within the SAME

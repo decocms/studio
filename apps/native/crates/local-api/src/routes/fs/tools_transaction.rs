@@ -21,13 +21,17 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
+// The catalog's endpoint filename is owned by `tools_catalog` (the module
+// that writes it); a second literal here is how the transaction could one day
+// stage a file the catalog no longer names.
+use super::tools_catalog::ENDPOINT_FILENAME as ENDPOINT_FILE;
+
 const TRANSACTION_FILE: &str = "tools-catalog-transaction.json";
 const PREPARED_MARKER: &str = "tools-catalog.prepared";
 const SWAPPING_MARKER: &str = "tools-catalog.swapping";
 const INSTALLED_MARKER: &str = "tools-catalog.installed";
 const STAGED_CATALOG: &str = "catalog";
 const PREVIOUS_CATALOG: &str = "previous-catalog";
-const ENDPOINT_FILE: &str = ".endpoint.json";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

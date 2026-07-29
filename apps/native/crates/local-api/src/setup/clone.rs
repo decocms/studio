@@ -241,19 +241,8 @@ async fn wait_for_signal(
     }
 }
 
-/// Sandbox isolation keys, not real git refs — byte-parity with
-/// `constants.ts::isSyntheticBranch`.
-fn is_synthetic_branch(branch: &str) -> bool {
-    branch == "ephemeral" || branch.starts_with("thread:")
-}
-
-fn get_str<'a>(config: &'a Value, path: &[&str]) -> Option<&'a str> {
-    let mut cur = config;
-    for key in path {
-        cur = cur.get(key)?;
-    }
-    cur.as_str()
-}
+use crate::config::get_str;
+use crate::sandbox::is_synthetic_branch;
 
 /// `git ls-remote --exit-code --heads` return codes git itself defines: `2`
 /// means "remote reachable, no matching ref" (a real failure is anything

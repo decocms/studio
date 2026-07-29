@@ -98,13 +98,7 @@ fn port_pattern() -> &'static Regex {
     })
 }
 
-fn get_str<'a>(config: &'a Value, path: &[&str]) -> Option<&'a str> {
-    let mut cur = config;
-    for key in path {
-        cur = cur.get(key)?;
-    }
-    cur.as_str()
-}
+use crate::config::get_str;
 
 /// Discovers a starter script and spawns it; on failure to find one,
 /// transitions `lifecycle` to `start-failed` with a diagnostic message

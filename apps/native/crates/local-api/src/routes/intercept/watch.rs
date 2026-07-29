@@ -24,7 +24,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::error::ApiError;
-use crate::routes::threads::db::{RtAccountScope, RtThread, RtThreadFence};
+use crate::routes::threads::db::{
+    RtAccountScope, RtThread, RtThreadFence, RT_THREAD_STATUS_COMPLETED, RT_THREAD_STATUS_FAILED,
+    RT_THREAD_STATUS_IN_PROGRESS, RT_THREAD_STATUS_REQUIRES_ACTION,
+};
 
 const THREAD_STATUS_EVENT: &str = "decopilot.thread.status";
 const LISTENER_CAPACITY: usize = 64;
@@ -56,12 +59,15 @@ pub(crate) enum ThreadStatus {
 }
 
 impl ThreadStatus {
+    /// The wire strings come from `threads/db.rs`'s canonical vocabulary —
+    /// re-encoding them here as literals is how the watch stream and the
+    /// stored rows would drift apart.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-            Self::RequiresAction => "requires_action",
-            Self::Failed => "failed",
+            Self::InProgress => RT_THREAD_STATUS_IN_PROGRESS,
+            Self::Completed => RT_THREAD_STATUS_COMPLETED,
+            Self::RequiresAction => RT_THREAD_STATUS_REQUIRES_ACTION,
+            Self::Failed => RT_THREAD_STATUS_FAILED,
         }
     }
 }

@@ -60,17 +60,19 @@ fn active_handle_write_lock() -> MutexGuard<'static, ()> {
 /// unchanged: no empty, `.` or `..` segment, and nothing outside the
 /// alphanumeric/`-_.` set, so the result can never escape the root.
 fn is_safe_handle_component(handle: &str) -> bool {
-    if handle.is_empty() || handle.len() > 255 || handle.starts_with('/') {
-        return false;
-    }
-    handle.split('/').all(|segment| {
-        !segment.is_empty()
-            && segment != "."
-            && segment != ".."
-            && segment
+    // The shared traversal core plus this layer's OWN extras: a length cap
+    // and an ASCII charset allowlist, because sidecar paths round-trip
+    // through the filesystem and the persisted registry. Deliberately
+    // stricter than `handle_is_path_safe` alone — and deliberately not
+    // imposed there, where tightening would orphan a legitimately-minted
+    // unicode handle.
+    handle.len() <= 255
+        && crate::sandbox::handle_is_path_safe(handle)
+        && handle.split('/').all(|segment| {
+            segment
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    })
+        })
 }
 
 /// Whether `dir` is a sandbox directory — i.e. carries a sidecar.
@@ -119,10 +121,7 @@ pub(crate) fn handles_with_sidecars(app_root: &Path) -> Vec<String> {
 }
 
 fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
-    app_root
-        .join(crate::sandbox::WORKTREES_DIR)
-        .join(handle)
-        .join(SIDECAR_FILE_NAME)
+    crate::sandbox::worktree_root(app_root, handle).join(SIDECAR_FILE_NAME)
 }
 
 fn config_handle(cfg: &GitSandboxConfig) -> Option<String> {

@@ -591,7 +591,7 @@ fn open_configured_connection(path: Option<&Path>) -> Result<Connection, Registr
     .map_err(|error| RegistryOpenError::sqlite("failed to open database", error))?;
 
     connection
-        .busy_timeout(std::time::Duration::from_secs(5))
+        .busy_timeout(crate::SQLITE_BUSY_TIMEOUT)
         .map_err(|error| RegistryOpenError::sqlite("failed to configure busy timeout", error))?;
 
     // `PRAGMA user_version` is deliberately never read or written here: the
@@ -875,10 +875,7 @@ fn validate_identity(handle: &str, config: &GitSandboxConfig) -> Result<(), Stri
 }
 
 fn now_unix_seconds() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
+    crate::time_util::now_unix_secs()
 }
 
 #[cfg(test)]

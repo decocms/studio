@@ -26,11 +26,7 @@ use crate::tasks::{now_ms, OutputStream, ProcessController, TaskEntry, TaskStatu
 /// `pub(super)`: shared with `setup/dev.rs` so both operations enforce the
 /// same boundary.
 pub(super) async fn pm_root(config: &Value, repo_dir: &Path) -> Result<PathBuf, String> {
-    let Some(path) = config
-        .get("application")
-        .and_then(|a| a.get("packageManager"))
-        .and_then(|p| p.get("path"))
-        .and_then(Value::as_str)
+    let Some(path) = crate::config::get_str(config, &["application", "packageManager", "path"])
         .filter(|s| !s.is_empty())
     else {
         return Ok(repo_dir.to_path_buf());
@@ -93,11 +89,7 @@ fn install_argv(pm: &str) -> Option<&'static [&'static str]> {
 /// itself exits non-zero, after transitioning `lifecycle` to
 /// `install-failed`.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
-    let Some(pm) = config
-        .get("application")
-        .and_then(|a| a.get("packageManager"))
-        .and_then(|p| p.get("name"))
-        .and_then(Value::as_str)
+    let Some(pm) = crate::config::get_str(config, &["application", "packageManager", "name"])
         .filter(|s| !s.is_empty())
     else {
         // No package manager configured — proceed to start, which will

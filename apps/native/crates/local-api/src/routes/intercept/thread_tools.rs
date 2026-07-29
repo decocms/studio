@@ -699,12 +699,10 @@ fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> 
         Err(error) => return error.into_response(),
     };
     let status = match optional_string(data, "status", "data") {
-        Ok(Some(value))
-            if !matches!(
-                value,
-                "requires_action" | "failed" | "in_progress" | "completed"
-            ) =>
-        {
+        // Validated against the canonical vocabulary in `threads/db.rs`, not
+        // a local literal list — an allowlist typed here would 400 a status
+        // the storage layer later learns to persist.
+        Ok(Some(value)) if !crate::routes::threads::db::is_thread_status(value) => {
             return ApiError::bad_request("data.status is invalid").into_response()
         }
         Ok(value) => value.map(String::from),

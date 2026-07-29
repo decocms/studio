@@ -26,7 +26,6 @@ use uuid::Uuid;
 /// Native owns this schema independently from Studio's Postgres migrations.
 /// The two stores intentionally share wire entities, not physical tables.
 const CURRENT_SCHEMA_VERSION: u32 = 10;
-const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// IDs in this namespace are owned exclusively by the native durable-turn
 /// protocol. User-supplied message IDs are rejected before acceptance so an
@@ -800,6 +799,30 @@ pub const DEFAULT_THREAD_TITLE: &str = "New chat";
 /// run, whether that is the turn executing now or the next one waiting.
 pub const RT_THREAD_STATUS_IN_PROGRESS: &str = "in_progress";
 
+/// Terminal thread statuses — see [`RtTurnTerminalStatus`] for which of them
+/// a claimed turn may commit.
+pub const RT_THREAD_STATUS_COMPLETED: &str = "completed";
+pub const RT_THREAD_STATUS_REQUIRES_ACTION: &str = "requires_action";
+pub const RT_THREAD_STATUS_FAILED: &str = "failed";
+
+/// The COMPLETE thread-status wire vocabulary, homed here because this module
+/// owns the schema rows and wire entities that carry it. Every other encoding
+/// (`watch.rs`'s SSE enum, `thread_tools.rs`'s update allowlist) derives from
+/// these constants: an independent copy is a silent-drift channel — a future
+/// valid status added here but not there would be 400'd by the untyped
+/// allowlist, or never emitted on the watch stream.
+pub const RT_THREAD_STATUSES: [&str; 4] = [
+    RT_THREAD_STATUS_IN_PROGRESS,
+    RT_THREAD_STATUS_COMPLETED,
+    RT_THREAD_STATUS_REQUIRES_ACTION,
+    RT_THREAD_STATUS_FAILED,
+];
+
+/// Whether `value` is a member of the thread-status wire vocabulary.
+pub fn is_thread_status(value: &str) -> bool {
+    RT_THREAD_STATUSES.contains(&value)
+}
+
 pub fn is_native_assistant_message_id(id: &str) -> bool {
     id.starts_with(NATIVE_ASSISTANT_MESSAGE_ID_PREFIX)
 }
@@ -928,9 +951,9 @@ pub enum RtTurnTerminalStatus {
 impl RtTurnTerminalStatus {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::Completed => "completed",
-            Self::RequiresAction => "requires_action",
-            Self::Failed => "failed",
+            Self::Completed => RT_THREAD_STATUS_COMPLETED,
+            Self::RequiresAction => RT_THREAD_STATUS_REQUIRES_ACTION,
+            Self::Failed => RT_THREAD_STATUS_FAILED,
         }
     }
 }
@@ -1044,28 +1067,11 @@ pub(crate) fn format_rfc3339(d: Duration) -> String {
     let millis = d.subsec_millis();
     let days = secs.div_euclid(86_400);
     let secs_of_day = secs.rem_euclid(86_400);
-    let (y, m, day) = civil_from_days(days);
+    let (y, m, day) = crate::time_util::civil_from_days(days);
     let hh = secs_of_day / 3600;
     let mm = (secs_of_day % 3600) / 60;
     let ss = secs_of_day % 60;
     format!("{y:04}-{m:02}-{day:02}T{hh:02}:{mm:02}:{ss:02}.{millis:03}Z")
-}
-
-/// Howard Hinnant's `civil_from_days`: days-since-epoch (1970-01-01) ->
-/// (year, month, day). Proleptic Gregorian, valid for the entire range a
-/// `SystemTime` can represent.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 fn migrate(conn: &mut Connection) -> DbResult<()> {
@@ -1181,7 +1187,7 @@ impl ThreadsDb {
         // still race during tests or startup tooling. Let SQLite wait for the
         // winning IMMEDIATE migration transaction instead of surfacing a
         // transient SQLITE_BUSY before it can observe the committed version.
-        conn.busy_timeout(SQLITE_BUSY_TIMEOUT)?;
+        conn.busy_timeout(crate::SQLITE_BUSY_TIMEOUT)?;
         conn.pragma_update(None, "foreign_keys", 1)?;
         migrate(&mut conn)?;
         // SQLite silently keeps `:memory:` databases on "memory" mode even
@@ -4797,6 +4803,35 @@ mod tests {
 
     fn local_db_path(app_root: &Path) -> PathBuf {
         app_root.join(crate::STUDIO_DB_FILE_NAME)
+    }
+
+    /// Pins the thread-status wire vocabulary byte-for-byte. These strings
+    /// live in persisted SQLite rows, the watch SSE stream, and the
+    /// COLLECTION_THREADS_* wire contract — a change here is a migration and
+    /// a cross-language contract change, never a rename.
+    #[test]
+    fn thread_status_vocabulary_is_pinned() {
+        assert_eq!(
+            RT_THREAD_STATUSES,
+            ["in_progress", "completed", "requires_action", "failed"]
+        );
+        for status in RT_THREAD_STATUSES {
+            assert!(is_thread_status(status));
+        }
+        assert!(!is_thread_status(""));
+        assert!(!is_thread_status("cancelled"));
+        assert!(!is_thread_status("In_Progress"));
+
+        // Every terminal status a claimed turn may commit is in the
+        // vocabulary, and the one non-terminal member is `in_progress`.
+        for terminal in [
+            RtTurnTerminalStatus::Completed,
+            RtTurnTerminalStatus::RequiresAction,
+            RtTurnTerminalStatus::Failed,
+        ] {
+            assert!(is_thread_status(terminal.as_str()));
+            assert_ne!(terminal.as_str(), RT_THREAD_STATUS_IN_PROGRESS);
+        }
     }
 
     fn schema_version(path: &Path) -> u32 {

@@ -89,7 +89,7 @@ fn validate_git(git: &Value) -> Result<(), String> {
     if let Some(branch) = repository.and_then(|r| present(r, "branch")) {
         let is_synthetic = branch
             .as_str()
-            .is_some_and(|b| b == "ephemeral" || b.starts_with("thread:"));
+            .is_some_and(crate::sandbox::is_synthetic_branch);
         if !is_synthetic {
             let valid = branch
                 .as_str()

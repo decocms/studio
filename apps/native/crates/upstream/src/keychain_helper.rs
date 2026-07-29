@@ -22,7 +22,14 @@ pub const KEYCHAIN_HELPER_PROTOCOL_VERSION: u16 = 2;
 pub const KEYCHAIN_HELPER_FILENAME: &str = "decocms-keychain-helper";
 pub const KEYCHAIN_HELPER_APP_DIRECTORY: &str = "com.decocms.studio/dev";
 
-const MAX_PROTOCOL_BYTES: u64 = 1024 * 1024;
+/// Size cap for ONE protocol message, enforced at BOTH stdio ends: the helper
+/// bounds the request it reads from stdin (below) and the app bounds the
+/// response it reads back (`tokens.rs`). One constant on purpose — a cap
+/// raised on only one end would let the other silently truncate or reject a
+/// message its peer considers legal. Because the installed helper is a fixed,
+/// never-rebuilt binary, changing this value is a protocol change: bump
+/// [`KEYCHAIN_HELPER_PROTOCOL_VERSION`] with it.
+pub(crate) const MAX_PROTOCOL_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct KeychainHelperRequest {
@@ -259,6 +266,16 @@ mod tests {
     use crate::tokens::UserInfo;
     use std::collections::HashMap;
     use std::sync::Mutex;
+
+    /// The installed helper is a fixed, never-rebuilt binary with this exact
+    /// cap baked in. Raising the shared constant without bumping
+    /// [`KEYCHAIN_HELPER_PROTOCOL_VERSION`] (and the setup script) would make
+    /// the app accept messages the deployed helper still rejects.
+    #[test]
+    fn the_protocol_byte_cap_is_pinned_to_the_installed_helper() {
+        assert_eq!(MAX_PROTOCOL_BYTES, 1024 * 1024);
+        assert_eq!(KEYCHAIN_HELPER_PROTOCOL_VERSION, 2);
+    }
 
     #[derive(Default)]
     struct MemoryCredentialBackend {

@@ -60,6 +60,7 @@ mod setup;
 mod shutdown;
 mod state;
 mod tasks;
+mod time_util;
 mod ui;
 
 // Re-exported so `AppState`'s public fields name types reachable from
@@ -328,6 +329,16 @@ fn stable_session_token(app_root: &Path) -> String {
 }
 
 pub(crate) const STUDIO_DB_FILE_NAME: &str = "studio.db";
+
+/// Busy timeout for every connection to the ONE shared `studio.db` file.
+///
+/// Two independent connections open it — the threads store
+/// (`routes/threads/db.rs`) and the sandbox registry (`sandbox/registry.rs`).
+/// They contend for the same write lock, so a timeout typed once per opener
+/// is a drift channel: whichever side ends up with the shorter value surfaces
+/// spurious "database is locked" errors under exactly the load the longer
+/// side was tuned to ride out.
+pub(crate) const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The app-wide child-lifetime fence every spawned child anchors to — the
 /// shared lock the boot-time recovery fence waits on and the watchdogs that
