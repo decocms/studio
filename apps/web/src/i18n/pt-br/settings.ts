@@ -658,4 +658,42 @@ export const settings = {
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
   "settings.aiProviders.moreProviders": "{count} provedor{plural} adicional",
+  "settings.orgConnect.pageTitle": "Conectar clientes",
+  "settings.orgConnect.copyLabel": "Copiar",
+  "settings.orgConnect.unifiedMcpTitle": "O MCP unificado da sua organização",
+  "settings.orgConnect.unifiedMcpDescription":
+    "Cole esta URL em qualquer cliente MCP para dar a esse runtime acesso a todas as conexões habilitadas nesta organização, governadas pelas regras do seu Decopilot.",
+  "settings.orgConnect.wiringCustomClient":
+    "Configurando um cliente personalizado?",
+  "settings.orgConnect.oauthMetadataAdvertised":
+    "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
+  "settings.orgConnect.clientClaudeCode": "Claude Code",
+  "settings.orgConnect.clientCursor": "Cursor",
+  "settings.orgConnect.clientCodex": "Codex",
+  "settings.orgConnect.clientClaudeDesktop": "Claude Desktop",
+  "settings.orgConnect.clientRawUrl": "URL bruta",
+  "settings.orgConnect.oauthTab": "OAuth",
+  "settings.orgConnect.apiKeyTab": "Chave de API",
+  "settings.orgConnect.oauthTabDescription":
+    "Recomendado para o seu laptop. O navegador abrirá no primeiro uso para você entrar — nenhum token para gerenciar.",
+  "settings.orgConnect.apiKeyTabDescription":
+    "Para CI, Conductor ou agentes headless que não conseguem abrir um navegador.",
+  "settings.orgConnect.newKeyWarning":
+    "Copie este trecho agora — a chave não será exibida novamente. Você pode revogá-la depois na lista abaixo.",
+  "settings.orgConnect.doneHideKey": "Concluído, ocultar chave",
+  "settings.orgConnect.generating": "Gerando…",
+  "settings.orgConnect.generateKeyFor": "Gerar chave para {client}",
+  "settings.orgConnect.loadingActiveKeys": "Carregando chaves ativas…",
+  "settings.orgConnect.failedToLoadKeys": "Falha ao carregar chaves: {error}",
+  "settings.orgConnect.noConnectKeys":
+    "Nenhuma chave de conexão gerada ainda. Gere uma na aba de um cliente acima para configurações headless.",
+  "settings.orgConnect.createdOn": "Criada em {date}",
+  "settings.orgConnect.confirmRevoke":
+    'Revogar "{name}"? Qualquer cliente que ainda use esta chave perderá o acesso.',
+  "settings.orgConnect.keyRevoked": "Chave revogada",
+  "settings.orgConnect.revoke": "Revogar",
+  "settings.orgConnect.keyCreated": "Chave criada",
+  "settings.orgConnect.activeKeysTitle": "Chaves ativas",
+  "settings.orgConnect.activeKeysDescription":
+    "Chaves que você gerou para clientes headless. Revogue a qualquer momento.",
 } satisfies Record<keyof typeof settingsEn, string>;

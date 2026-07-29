@@ -31,19 +31,21 @@ import {
   useCreateApiKey,
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
+import { useT, type TFunction, type TranslationKey } from "@/i18n/use-t";
 
 const KEY_NAME_PREFIX = "Connect: ";
 
-const CLIENTS: { id: ConnectClient; label: string }[] = [
-  { id: "claude-code", label: "Claude Code" },
-  { id: "cursor", label: "Cursor" },
-  { id: "codex", label: "Codex" },
-  { id: "claude-desktop", label: "Claude Desktop" },
-  { id: "raw", label: "Raw URL" },
+const CLIENTS: { id: ConnectClient; labelKey: TranslationKey }[] = [
+  { id: "claude-code", labelKey: "settings.orgConnect.clientClaudeCode" },
+  { id: "cursor", labelKey: "settings.orgConnect.clientCursor" },
+  { id: "codex", labelKey: "settings.orgConnect.clientCodex" },
+  { id: "claude-desktop", labelKey: "settings.orgConnect.clientClaudeDesktop" },
+  { id: "raw", labelKey: "settings.orgConnect.clientRawUrl" },
 ];
 
-function clientLabel(id: ConnectClient): string {
-  return CLIENTS.find((c) => c.id === id)?.label ?? id;
+function clientLabel(t: TFunction, id: ConnectClient): string {
+  const key = CLIENTS.find((c) => c.id === id)?.labelKey;
+  return key ? t(key) : id;
 }
 
 function hostnameLabel(): string {
@@ -52,6 +54,7 @@ function hostnameLabel(): string {
 }
 
 function CopyInline({ text }: { text: string }) {
+  const t = useT();
   const { handleCopy, copied } = useCopy();
   return (
     <Button
@@ -59,7 +62,7 @@ function CopyInline({ text }: { text: string }) {
       size="icon"
       className="size-7 shrink-0"
       onClick={() => handleCopy(text)}
-      aria-label="Copy"
+      aria-label={t("settings.orgConnect.copyLabel")}
     >
       {copied ? <Check size={14} /> : <Copy01 size={14} />}
     </Button>
@@ -81,32 +84,35 @@ function ClientPanel({
   isGenerating: boolean;
   onClearNewKey: () => void;
 }) {
+  const t = useT();
   return (
     <Tabs defaultValue="oauth" className="mt-4">
       <TabsList>
-        <TabsTrigger value="oauth">OAuth</TabsTrigger>
-        <TabsTrigger value="api-key">API key</TabsTrigger>
+        <TabsTrigger value="oauth">
+          {t("settings.orgConnect.oauthTab")}
+        </TabsTrigger>
+        <TabsTrigger value="api-key">
+          {t("settings.orgConnect.apiKeyTab")}
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="oauth" className="mt-3 space-y-3">
         <p className="text-xs text-muted-foreground">
-          Recommended for your laptop. Browser will open on first use to sign in
-          — no token to manage.
+          {t("settings.orgConnect.oauthTabDescription")}
         </p>
         <InstallSnippet client={client} mode="oauth" url={url} />
       </TabsContent>
 
       <TabsContent value="api-key" className="mt-3 space-y-3">
         <p className="text-xs text-muted-foreground">
-          For CI, Conductor, or headless agents that can't open a browser.
+          {t("settings.orgConnect.apiKeyTabDescription")}
         </p>
         {newKey ? (
           <>
             <Alert variant="warning" className="text-xs">
               <AlertTriangle />
               <AlertDescription>
-                Copy this snippet now — the key won't be shown again. You can
-                revoke it later from the list below.
+                {t("settings.orgConnect.newKeyWarning")}
               </AlertDescription>
             </Alert>
             <InstallSnippet
@@ -121,7 +127,7 @@ function ClientPanel({
               onClick={onClearNewKey}
               className="text-xs"
             >
-              Done, hide key
+              {t("settings.orgConnect.doneHideKey")}
             </Button>
           </>
         ) : (
@@ -135,8 +141,10 @@ function ClientPanel({
             >
               <Key01 size={14} />
               {isGenerating
-                ? "Generating…"
-                : `Generate key for ${clientLabel(client)}`}
+                ? t("settings.orgConnect.generating")
+                : t("settings.orgConnect.generateKeyFor", {
+                    client: clientLabel(t, client),
+                  })}
             </Button>
           </>
         )}
@@ -146,6 +154,7 @@ function ClientPanel({
 }
 
 function ConnectKeysList() {
+  const t = useT();
   const { data, isLoading, error } = useApiKeysList();
   const deleteKey = useDeleteApiKey();
 
@@ -154,14 +163,16 @@ function ConnectKeysList() {
 
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground">Loading active keys…</p>
+      <p className="text-xs text-muted-foreground">
+        {t("settings.orgConnect.loadingActiveKeys")}
+      </p>
     );
   }
 
   if (error) {
     return (
       <p className="text-xs text-destructive">
-        Failed to load keys: {error.message}
+        {t("settings.orgConnect.failedToLoadKeys", { error: error.message })}
       </p>
     );
   }
@@ -169,8 +180,7 @@ function ConnectKeysList() {
   if (connectKeys.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No connect keys minted yet. Generate one from a client tab above for
-        headless setups.
+        {t("settings.orgConnect.noConnectKeys")}
       </p>
     );
   }
@@ -187,7 +197,9 @@ function ConnectKeysList() {
               {key.name.replace(KEY_NAME_PREFIX, "")}
             </div>
             <div className="text-muted-foreground">
-              Created {new Date(key.createdAt).toLocaleDateString()}
+              {t("settings.orgConnect.createdOn", {
+                date: new Date(key.createdAt).toLocaleDateString(),
+              })}
             </div>
           </div>
           <Button
@@ -196,11 +208,12 @@ function ConnectKeysList() {
             onClick={() => {
               if (
                 confirm(
-                  `Revoke "${key.name}"? Any client still using this key will lose access.`,
+                  t("settings.orgConnect.confirmRevoke", { name: key.name }),
                 )
               ) {
                 deleteKey.mutate(key.id, {
-                  onSuccess: () => toast.success("Key revoked"),
+                  onSuccess: () =>
+                    toast.success(t("settings.orgConnect.keyRevoked")),
                   onError: (e) => toast.error(e.message),
                 });
               }
@@ -209,7 +222,7 @@ function ConnectKeysList() {
             className="gap-1 text-destructive hover:text-destructive"
           >
             <Trash01 size={14} />
-            Revoke
+            {t("settings.orgConnect.revoke")}
           </Button>
         </li>
       ))}
@@ -218,6 +231,7 @@ function ConnectKeysList() {
 }
 
 export function OrgConnectPage() {
+  const t = useT();
   const { org } = useProjectContext();
   const url = mcpUrl(org.slug);
   const createKey = useCreateApiKey();
@@ -226,13 +240,13 @@ export function OrgConnectPage() {
   >({});
 
   const handleGenerate = (client: ConnectClient) => {
-    const name = `${KEY_NAME_PREFIX}${clientLabel(client)} on ${hostnameLabel()}`;
+    const name = `${KEY_NAME_PREFIX}${clientLabel(t, client)} on ${hostnameLabel()}`;
     createKey.mutate(
       { name, permissions: { "*": ["*"] } },
       {
         onSuccess: (key) => {
           setNewKeys((prev) => ({ ...prev, [client]: key.key }));
-          toast.success("Key created");
+          toast.success(t("settings.orgConnect.keyCreated"));
         },
         onError: (err) => toast.error(err.message),
       },
@@ -249,7 +263,7 @@ export function OrgConnectPage() {
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Connect to clients</Page.Title>
+            <Page.Title>{t("settings.orgConnect.pageTitle")}</Page.Title>
 
             <Card className="p-5 gap-3">
               <div className="flex items-start gap-3">
@@ -258,12 +272,10 @@ export function OrgConnectPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-[15px] font-medium leading-tight">
-                    Your org's unified MCP
+                    {t("settings.orgConnect.unifiedMcpTitle")}
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1 leading-snug">
-                    Plug this URL into any MCP client to give that runtime every
-                    connection enabled in this org, governed by your Decopilot
-                    rules.
+                    {t("settings.orgConnect.unifiedMcpDescription")}
                   </p>
                 </div>
               </div>
@@ -273,12 +285,10 @@ export function OrgConnectPage() {
               </div>
               <details className="text-xs text-muted-foreground">
                 <summary className="cursor-pointer hover:text-foreground">
-                  Wiring a custom client?
+                  {t("settings.orgConnect.wiringCustomClient")}
                 </summary>
                 <div className="mt-2 space-y-1">
-                  <p>
-                    OAuth 2.1 Protected Resource Metadata is advertised on 401:
-                  </p>
+                  <p>{t("settings.orgConnect.oauthMetadataAdvertised")}</p>
                   <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1">
                     <code className="text-[11px] flex-1 truncate">
                       {oauthMetadataUrl}
@@ -293,7 +303,7 @@ export function OrgConnectPage() {
               <TabsList variant="underline">
                 {CLIENTS.map((c) => (
                   <TabsTrigger key={c.id} value={c.id} variant="underline">
-                    {c.label}
+                    {t(c.labelKey)}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -308,7 +318,7 @@ export function OrgConnectPage() {
                     isGenerating={
                       createKey.isPending &&
                       createKey.variables?.name?.startsWith(
-                        `${KEY_NAME_PREFIX}${c.label}`,
+                        `${KEY_NAME_PREFIX}${t(c.labelKey)}`,
                       ) === true
                     }
                     onClearNewKey={() =>
@@ -326,10 +336,10 @@ export function OrgConnectPage() {
             <section className="flex flex-col gap-3">
               <div className="px-4">
                 <h2 className="text-[15px] font-medium leading-tight">
-                  Active keys
+                  {t("settings.orgConnect.activeKeysTitle")}
                 </h2>
                 <p className="text-sm text-muted-foreground leading-snug mt-1">
-                  Keys you've generated for headless clients. Revoke any time.
+                  {t("settings.orgConnect.activeKeysDescription")}
                 </p>
               </div>
               <ConnectKeysList />

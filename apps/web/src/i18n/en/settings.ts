@@ -619,4 +619,41 @@ export const settings = {
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
   "settings.aiProviders.moreProviders": "{count} more provider{plural}",
+  "settings.orgConnect.pageTitle": "Connect to clients",
+  "settings.orgConnect.copyLabel": "Copy",
+  "settings.orgConnect.unifiedMcpTitle": "Your org's unified MCP",
+  "settings.orgConnect.unifiedMcpDescription":
+    "Plug this URL into any MCP client to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.orgConnect.wiringCustomClient": "Wiring a custom client?",
+  "settings.orgConnect.oauthMetadataAdvertised":
+    "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
+  "settings.orgConnect.clientClaudeCode": "Claude Code",
+  "settings.orgConnect.clientCursor": "Cursor",
+  "settings.orgConnect.clientCodex": "Codex",
+  "settings.orgConnect.clientClaudeDesktop": "Claude Desktop",
+  "settings.orgConnect.clientRawUrl": "Raw URL",
+  "settings.orgConnect.oauthTab": "OAuth",
+  "settings.orgConnect.apiKeyTab": "API key",
+  "settings.orgConnect.oauthTabDescription":
+    "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
+  "settings.orgConnect.apiKeyTabDescription":
+    "For CI, Conductor, or headless agents that can't open a browser.",
+  "settings.orgConnect.newKeyWarning":
+    "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
+  "settings.orgConnect.doneHideKey": "Done, hide key",
+  "settings.orgConnect.generating": "Generating…",
+  "settings.orgConnect.generateKeyFor": "Generate key for {client}",
+  "settings.orgConnect.loadingActiveKeys": "Loading active keys…",
+  "settings.orgConnect.failedToLoadKeys": "Failed to load keys: {error}",
+  "settings.orgConnect.noConnectKeys":
+    "No connect keys minted yet. Generate one from a client tab above for headless setups.",
+  "settings.orgConnect.createdOn": "Created {date}",
+  "settings.orgConnect.confirmRevoke":
+    'Revoke "{name}"? Any client still using this key will lose access.',
+  "settings.orgConnect.keyRevoked": "Key revoked",
+  "settings.orgConnect.revoke": "Revoke",
+  "settings.orgConnect.keyCreated": "Key created",
+  "settings.orgConnect.activeKeysTitle": "Active keys",
+  "settings.orgConnect.activeKeysDescription":
+    "Keys you've generated for headless clients. Revoke any time.",
 } as const;
