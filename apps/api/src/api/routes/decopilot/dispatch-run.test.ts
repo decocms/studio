@@ -2,25 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   assertSinglePersistedRequestMessage,
   buildDurableDispatchInput,
-  sanitizeHeaderValue,
 } from "./dispatch-run";
 import type { ChatMessage } from "./types";
-
-describe("sanitizeHeaderValue", () => {
-  test("strips CR/LF so an org display name can't break header construction", () => {
-    expect(sanitizeHeaderValue("Acme\r\nX-Injected: evil")).toBe(
-      "Acme  X-Injected: evil",
-    );
-  });
-
-  test("strips other control characters and trims the result", () => {
-    expect(sanitizeHeaderValue("  Acme\tInc\x00  ")).toBe("Acme Inc");
-  });
-
-  test("leaves an ordinary org name untouched", () => {
-    expect(sanitizeHeaderValue("Acme Inc")).toBe("Acme Inc");
-  });
-});
 
 describe("assertSinglePersistedRequestMessage", () => {
   test("returns the persisted user message matching the durable message id", () => {

@@ -311,14 +311,6 @@ export function buildHarnessWorkspaceInput(input: {
   };
 }
 
-// Org display names are free-text (ORGANIZATION_UPDATE allows any
-// character up to 255 long) but get spliced into the `X-Title` header sent
-// to OpenRouter. A `\r`/`\n` there breaks header construction outright and
-// other control chars are meaningless in an HTTP header value, so strip them.
-export function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\0-\x1f\x7f]/g, " ").trim();
-}
-
 async function resolveSecretModelSource(
   ctx: StudioContext,
   organizationId: string,
@@ -338,20 +330,16 @@ async function resolveSecretModelSource(
   // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a
   // request out of the "Unknown" bucket in its dashboard/rankings); `X-Title`
   // only sets the display name. Both are required — a title without a referer
-  // stays Unknown. Referer is a fixed Studio URL so all traffic rolls up under
-  // one app; `X-Title` carries the org (and distinguishes `deco`, the
-  // OpenRouter provider behind the deco AI gateway, from direct-OpenRouter use).
+  // stays Unknown. Both are surfaced publicly on OpenRouter's app rankings, so
+  // they carry fixed brand values only — never anything tenant-derived (org
+  // name/slug/id) that would leak onto a public leaderboard.
   if (source.providerId === "openrouter" || source.providerId === "deco") {
-    const orgName = sanitizeHeaderValue(
-      ctx.organization?.name ?? ctx.organization?.slug ?? organizationId,
-    );
-    const appName = source.providerId === "deco" ? "deco AI Gateway" : "Studio";
     return {
       ...source,
       extraHeaders: {
         ...source.extraHeaders,
         "HTTP-Referer": "https://studio.decocms.com",
-        "X-Title": `${appName} - ${orgName}`,
+        "X-Title": "deco",
       },
     };
   }
