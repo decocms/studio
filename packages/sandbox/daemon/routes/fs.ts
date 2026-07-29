@@ -1,5 +1,13 @@
 import fs from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -343,17 +351,17 @@ export function makeUnlinkHandler(deps: FsDeps) {
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     let existed = true;
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.isDirectory()) {
+      const fileStat = await stat(filePath);
+      if (fileStat.isDirectory()) {
         if (!body.recursive) {
           return jsonResponse(
             { error: "Refusing to unlink directory without recursive: true" },
             400,
           );
         }
-        fs.rmSync(filePath, { recursive: true, force: true });
+        await rm(filePath, { recursive: true, force: true });
       } else {
-        fs.unlinkSync(filePath);
+        await unlink(filePath);
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
