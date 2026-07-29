@@ -122,7 +122,7 @@ export function isCompanionConfigured(args: {
 /** The human-identifiable connected item for a satisfied binding — repo full
  *  name, GA4 property id, GSC site, VTEX account — shown instead of the config
  *  gear once connected. Mirrors {@link isCompanionConfigured}'s field lookups. */
-export function getConnectedDetail(args: {
+function getConnectedDetail(args: {
   bindingType: string;
   companionConfig: Record<string, unknown> | null | undefined;
   cdConfig: Record<string, unknown> | null | undefined;
