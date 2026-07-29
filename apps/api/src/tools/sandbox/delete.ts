@@ -9,7 +9,6 @@ import { normalizeSandboxProviderKind } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { removeSandboxMapEntry } from "./sandbox-map";
-import { removeThreadSandboxMapEntry, threadIdFromBranch } from "./thread-repo";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 
 const sandboxProviderKindInputSchema = z.enum([
@@ -87,23 +86,6 @@ export const SANDBOX_DELETE = defineTool({
       input.branch,
       kind,
     );
-    // Thread-scoped branches (`thread:<id>[/<conn>]`) ALSO get the record
-    // persisted on the THREAD by every provisioning path — the agent-row write
-    // above is a no-op for the synthetic Decopilot agent, and the frontend
-    // overlays the thread's sandboxMap on top of the agent's (see
-    // `setThreadSandboxMapEntry`). Without this, deleting a thread-scoped
-    // sandbox left the thread's copy stale, so the UI kept showing the
-    // torn-down handle/previewUrl for that thread.
-    const threadId = threadIdFromBranch(input.branch);
-    if (threadId) {
-      await removeThreadSandboxMapEntry(
-        ctx,
-        threadId,
-        sandboxUserId,
-        input.branch,
-        kind,
-      );
-    }
 
     await runner
       .delete(entry.sandboxHandle)
