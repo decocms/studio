@@ -642,6 +642,13 @@ pub(crate) struct DevProcessRecord {
     pub pgid: u32,
     pub command: String,
     pub started_at: u64,
+    /// The port this dev server was TOLD to bind, via `PORT` — see
+    /// `setup::dev::allocate_dev_port`. Persisted so the same sandbox keeps
+    /// the same port across restarts, which keeps its preview URL and any
+    /// absolute URL the application generated stable. Older records
+    /// deserialize as `None` and simply get a fresh allocation.
+    #[serde(default)]
+    pub port: Option<u16>,
     /// Exact members observed in this process group while local-api owned it.
     /// Older records deserialize empty and therefore cannot authorize a
     /// signal; callers fail closed instead of trusting a naked recycled PGID.
@@ -739,6 +746,7 @@ mod dev_process_tests {
             pgid: 42,
             command: "bun dev".to_string(),
             started_at: 1,
+            port: None,
             identities: vec![DevProcessIdentity {
                 pid: 43,
                 birth: "Wed Jul 22 11:00:00 2026".to_string(),
@@ -769,6 +777,7 @@ mod dev_process_tests {
             pgid: 42,
             command: "bun dev".to_string(),
             started_at: 1,
+            port: None,
             identities: vec![DevProcessIdentity {
                 pid: 42,
                 birth: "Wed Jul 22 11:00:00 2026".to_string(),
@@ -800,6 +809,7 @@ mod dev_process_tests {
             pgid: 42,
             command: "bun dev".to_string(),
             started_at: 1,
+            port: None,
             identities: Vec::new(),
         };
         write_dev_process(dir.path(), &record);

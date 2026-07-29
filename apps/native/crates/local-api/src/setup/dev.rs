@@ -16,8 +16,9 @@
 //! `classify_status`/`run_prefix_for` rather than re-deriving the same
 //! process-spawn plumbing a third time in this crate.
 
+use std::collections::HashMap;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -146,7 +147,9 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(|| orch.repo_dir.clone());
-    if let Some(record) = crate::sandbox::persist::read_dev_process(&sandbox_root) {
+    let previous = crate::sandbox::persist::read_dev_process(&sandbox_root);
+    let previous_port = previous.as_ref().and_then(|record| record.port);
+    if let Some(record) = previous {
         if let Err(error) = reap_persisted_dev_group(&record).await {
             tracing::warn!(
                 pid = record.pid,
@@ -165,17 +168,26 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
 
     let command = format!("{run_prefix} {starter}");
     let mut env = std::collections::HashMap::new();
-    // Byte-parity with `constants.ts::buildDevEnv`: HOST/HOSTNAME always;
-    // PORT only when `application.port` is configured (most dev servers
-    // that DO honor PORT will bind there; the ones that don't are exactly
-    // why the port-sniffer below exists).
     env.insert("HOST".to_string(), "0.0.0.0".to_string());
     env.insert("HOSTNAME".to_string(), "0.0.0.0".to_string());
-    if let Some(port) = config
+    // Every sandbox gets its OWN port, chosen here and imposed through `PORT`.
+    //
+    // This used to set `PORT` only when `application.port` was configured, and
+    // otherwise let the dev server pick — which meant the port was whatever it
+    // happened to land on, learned only by scraping a URL out of its stdout.
+    // With several sandboxes of one repository running at once that is exactly
+    // the worst case: they all default to the same port, collide, and drift
+    // (3000, 3001, 3002…), so which sandbox owns which port depends on start
+    // order. Deciding the port here makes the mapping ours instead of a race's,
+    // and the reverse proxy knows the answer the instant the process starts
+    // rather than whenever a matching line happens to be printed.
+    let configured_port = config
         .get("application")
         .and_then(|a| a.get("port"))
         .and_then(Value::as_u64)
-    {
+        .and_then(|port| u16::try_from(port).ok());
+    let allocated_port = allocate_dev_port(&sandbox_root, previous_port.or(configured_port));
+    if let Some(port) = allocated_port {
         env.insert("PORT".to_string(), port.to_string());
     }
 
@@ -274,9 +286,22 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
             pgid: pid,
             command: command.clone(),
             started_at: record_started_at,
+            port: allocated_port,
             identities,
         },
     );
+
+    // Probe the port we IMPOSED, straight away. The reverse proxy learns the
+    // dev server's address from the lifecycle, and this is what puts it there
+    // — so a sandbox becomes previewable as soon as its server answers,
+    // whether or not it ever prints a recognizable line.
+    if let Some(port) = allocated_port {
+        let confirm_orch = orch.clone();
+        let confirm_task_id = id.clone();
+        tokio::spawn(async move {
+            confirm_running(confirm_orch, confirm_task_id, port).await;
+        });
+    }
 
     let watch_orch = orch.clone();
     let panic_orch = orch.clone();
@@ -294,6 +319,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
             controller,
             sandbox_root,
             Some(record_started_at),
+            allocated_port,
         ))
         .catch_unwind()
         .await;
@@ -361,6 +387,7 @@ async fn drain_and_watch(
     controller: ProcessController,
     sandbox_root: std::path::PathBuf,
     record_started_at: Option<u64>,
+    allocated_port: Option<u16>,
 ) {
     let mut stdout_open = true;
     let mut stderr_open = true;
@@ -396,14 +423,25 @@ async fn drain_and_watch(
                         orch.tasks
                             .append_log(&id, &starter, OutputStream::Stdout, &text, &orch.broadcaster)
                             .await;
+                        // The announced port is only interesting when it
+                        // CONTRADICTS the one we imposed — a dev server that
+                        // ignored `PORT`, or one that found ours taken and
+                        // drifted. Then it, not our allocation, is the truth.
                         if !sniffed {
                             if let Some(port) = sniff_port(&text) {
                                 sniffed = true;
-                                let probe_orch = orch.clone();
-                                let probe_task_id = id.clone();
-                                tokio::spawn(async move {
-                                    confirm_running(probe_orch, probe_task_id, port).await;
-                                });
+                                if Some(port) != allocated_port {
+                                    tracing::warn!(
+                                        announced = port,
+                                        allocated = ?allocated_port,
+                                        "dev server did not bind the port it was given"
+                                    );
+                                    let probe_orch = orch.clone();
+                                    let probe_task_id = id.clone();
+                                    tokio::spawn(async move {
+                                        confirm_running(probe_orch, probe_task_id, port).await;
+                                    });
+                                }
                             }
                         }
                     }
@@ -464,6 +502,87 @@ async fn drain_and_watch(
             "{starter} script exited with code {raw_exit}"
         )));
     }
+}
+
+/// Which port each sandbox's dev server was given, for the lifetime of this
+/// process.
+///
+/// Keyed by sandbox so a restart of ONE sandbox reuses its own port instead of
+/// drifting to a new one, and so a port already promised to another sandbox is
+/// never handed out twice. Bounded by the number of sandboxes, not by how many
+/// times they are started.
+fn assigned_dev_ports() -> &'static std::sync::Mutex<HashMap<PathBuf, u16>> {
+    static ASSIGNED: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, u16>>> =
+        std::sync::OnceLock::new();
+    ASSIGNED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// How many ephemeral candidates to try before giving up and letting the dev
+/// server choose (which is the old behaviour, not a failure).
+const PORT_ALLOCATION_ATTEMPTS: usize = 16;
+
+/// Whether nothing is listening on `port`.
+///
+/// Bound on `0.0.0.0` because that is what the child binds (`HOST`/`HOSTNAME`
+/// above), so a probe of loopback alone would miss a conflicting listener on
+/// another interface.
+fn dev_port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
+}
+
+/// A dev-server port for one sandbox: `preferred` when it is genuinely free,
+/// else a fresh ephemeral one.
+///
+/// `preferred` is the port this sandbox used last (persisted in
+/// [`DevProcessRecord::port`]) or the one its config asks for — honoured when
+/// possible so a sandbox's URL is stable and an explicit `application.port` is
+/// still respected, but never at the cost of handing out a port something else
+/// already holds.
+///
+/// The probe closes its socket before the child binds, so two sandboxes
+/// starting concurrently could still race for the same number; the assignment
+/// map is what actually prevents that, and the probe only rules out ports held
+/// by processes outside this app. `None` means every candidate failed, in
+/// which case `PORT` is left unset and the dev server picks for itself.
+fn allocate_dev_port(sandbox_root: &Path, preferred: Option<u16>) -> Option<u16> {
+    let mut assigned = assigned_dev_ports()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let promised_elsewhere = |assigned: &HashMap<PathBuf, u16>, port: u16| {
+        assigned
+            .iter()
+            .any(|(root, taken)| *taken == port && root != sandbox_root)
+    };
+
+    if let Some(port) = preferred {
+        // A port this sandbox already holds reads as "in use" to the probe —
+        // by its OWN dev server, which is about to be replaced — so keep it
+        // rather than drift away from a URL that is still correct.
+        let ours = assigned.get(sandbox_root) == Some(&port);
+        if !promised_elsewhere(&assigned, port) && (ours || dev_port_is_free(port)) {
+            assigned.insert(sandbox_root.to_path_buf(), port);
+            return Some(port);
+        }
+    }
+
+    for _ in 0..PORT_ALLOCATION_ATTEMPTS {
+        let Ok(probe) = std::net::TcpListener::bind(("0.0.0.0", 0)) else {
+            continue;
+        };
+        let Ok(port) = probe.local_addr().map(|address| address.port()) else {
+            continue;
+        };
+        drop(probe);
+        if !promised_elsewhere(&assigned, port) {
+            assigned.insert(sandbox_root.to_path_buf(), port);
+            return Some(port);
+        }
+    }
+    tracing::warn!(
+        ?sandbox_root,
+        "could not allocate a dev server port; letting the dev server choose"
+    );
+    None
 }
 
 fn sniff_port(text: &str) -> Option<u16> {
@@ -759,6 +878,48 @@ mod tests {
         }
     }
 
+    /// Two sandboxes of one repository must never be told to bind the same
+    /// port — that collision is what made them drift across 3000..3003 and
+    /// left the proxy guessing which server belonged to which worktree.
+    #[test]
+    fn each_sandbox_gets_its_own_port_and_keeps_it_across_restarts() {
+        let root = tempfile::tempdir().unwrap();
+        let one = root.path().join("sandbox-one");
+        let two = root.path().join("sandbox-two");
+
+        // Both ask for the same configured port; only the first can have it.
+        let first = allocate_dev_port(&one, Some(45771)).unwrap();
+        let second = allocate_dev_port(&two, Some(45771)).unwrap();
+        assert_ne!(first, second);
+
+        // Restarting a sandbox reuses ITS port, even though its own dev server
+        // is still holding the socket at that moment.
+        let held = std::net::TcpListener::bind(("0.0.0.0", first)).ok();
+        assert_eq!(allocate_dev_port(&one, Some(first)), Some(first));
+        drop(held);
+
+        // …but never a port already promised to a different sandbox.
+        assert_ne!(allocate_dev_port(&two, Some(first)), Some(first));
+
+        // With nothing to prefer, allocation still succeeds and stays distinct.
+        let three = root.path().join("sandbox-three");
+        let fresh = allocate_dev_port(&three, None).unwrap();
+        assert!(fresh != first && fresh != second);
+    }
+
+    #[test]
+    fn a_port_something_else_is_listening_on_is_never_handed_out() {
+        let root = tempfile::tempdir().unwrap();
+        let occupied = std::net::TcpListener::bind(("0.0.0.0", 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        assert!(!dev_port_is_free(port));
+        assert_ne!(
+            allocate_dev_port(&root.path().join("sandbox"), Some(port)),
+            Some(port)
+        );
+        drop(occupied);
+    }
+
     #[test]
     fn sniff_port_matches_local_announcement() {
         let text = "Local:   http://localhost:5174/\n";
@@ -919,6 +1080,7 @@ mod tests {
             pgid,
             command: "sleep 30 &".to_string(),
             started_at: 1,
+            port: None,
             identities,
         };
         let reaped = reap_persisted_dev_group(&record).await;
