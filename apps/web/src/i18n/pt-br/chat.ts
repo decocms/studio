@@ -466,4 +466,14 @@ export const chat = {
   "chat.modelPreferences.autoPicked": "escolhido automaticamente",
   "chat.modelPreferences.loadFailed":
     "Não foi possível carregar suas escolhas de modelo. O que aparece abaixo pode não corresponder ao que seus chats usam.",
+  "chat.roomToggle.personalChat": "Chat pessoal",
+  "chat.roomToggle.sharedRoom": "Sala compartilhada",
+  "chat.roomToggle.tooltipPersonal":
+    "Só você pode escrever aqui — compartilhe a sala",
+  "chat.roomToggle.tooltipShared":
+    "Qualquer pessoa da sua organização pode escrever aqui",
+  "chat.roomToggle.nowShared":
+    "Sala compartilhada — qualquer pessoa da sua organização pode escrever",
+  "chat.roomToggle.nowPersonal": "Chat pessoal — só você pode escrever",
+  "chat.roomToggle.failed": "Não foi possível alterar quem pode escrever aqui",
 } satisfies Record<keyof typeof chatEn, string>;

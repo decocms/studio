@@ -31,5 +31,6 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeAuto": "Auto",
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "List",
+  "sidebar.taskGroupsList.viewRooms": "Rooms",
   "sidebar.taskGroupsList.viewStatus": "Status",
 } as const;

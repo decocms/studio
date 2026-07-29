@@ -19,6 +19,14 @@ export type ChatMode =
 
 export interface ChatAgentConfig {
   id: string | null;
+  /**
+   * Display name of the agent this turn is addressed to. Set when an "@"
+   * mention handed the turn to an agent, so later readers (the attribution UI,
+   * the server's room-transcript relabelling) can name who spoke without a
+   * lookup. Absent on single-agent threads, where the thread's agent is the
+   * only speaker.
+   */
+  title?: string;
 }
 
 export interface ChatUserConfig {

@@ -6,6 +6,8 @@ import { useRef, useState } from "react";
 import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
 import type { Metadata } from "../types.ts";
+import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { useOptionalChatTask } from "../context.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import { MessageTimestamp } from "./timestamp.tsx";
 import {
@@ -65,6 +67,9 @@ export function MessageUser<T extends Metadata>({
   onScrollToPair,
 }: MessageProps<T>) {
   const { id, parts, metadata } = message;
+  // In a shared room several people speak, so each message says who sent it.
+  const isSharedRoom =
+    useOptionalChatTask()?.activeTask?.metadata?.shared === true;
   const [isFocused, setIsFocused] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const overflowChecked = useRef(false);
@@ -98,6 +103,21 @@ export function MessageUser<T extends Metadata>({
         )}
       >
         <div className="w-full min-w-0 flex flex-col">
+          {/* Who sent it. Shown only in a shared room — in a personal chat
+              every message is yours and the name would just be noise. */}
+          {isSharedRoom && metadata?.user?.name && (
+            <div className="flex items-center gap-2 self-end pb-2 text-xs">
+              <Avatar
+                shape="circle"
+                size="2xs"
+                url={metadata.user.avatar}
+                fallback={metadata.user.name}
+              />
+              <span className="font-medium text-foreground">
+                {metadata.user.name}
+              </span>
+            </div>
+          )}
           <div
             tabIndex={0}
             onClick={handleClick}

@@ -69,6 +69,10 @@ import {
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
 import { type QueuePartRow, foldQueueHydration } from "./queue-text";
+import {
+  canWriteToThread,
+  type ThreadMetadata,
+} from "@decocms/shared/entities";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -439,6 +443,29 @@ async function validate(
   const lockedThread = taskIdInput
     ? await ctx.storage.threads.get(taskIdInput)
     : null;
+
+  // Write guard, at the boundary: a personal chat takes messages from its
+  // owner alone; a shared room takes them from any member of the org —
+  // membership is already proven (resolveOrgFromPath rejected non-members and
+  // the thread was fetched org-scoped), so the only question left is
+  // owner-vs-room. Enforced here so an unauthorized post fails as a 403 on the
+  // POST rather than a 202 followed by a run that dies inside the workflow.
+  // `dispatch-run` re-checks the same predicate for callers that reach it by
+  // another path.
+  if (
+    lockedThread &&
+    !canWriteToThread({
+      created_by: lockedThread.created_by,
+      metadata: lockedThread.metadata as ThreadMetadata | null,
+      userId,
+    })
+  ) {
+    throw new HTTPException(403, {
+      message:
+        "You are not allowed to write to this thread because you are not the owner",
+    });
+  }
+
   const {
     harnessId: effectiveHarnessId,
     sandboxProviderKind: effectiveSandboxProviderKind,

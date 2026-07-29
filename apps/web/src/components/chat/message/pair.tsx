@@ -3,6 +3,7 @@ import { useRef } from "react";
 import type { ChatMessage, ChatStatus } from "../types.ts";
 import { MessageAssistant } from "./assistant.tsx";
 import { MessageUser } from "./user.tsx";
+import { AgentAvatar } from "@/components/agent-icon";
 
 export interface MessagePair {
   user: ChatMessage | null;
@@ -120,6 +121,21 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
             <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
           </div>
         </>
+      )}
+      {/* Who is answering. Only rendered once a turn was handed to a named
+          agent by an "@" mention — i.e. only in a room with more than one
+          agent in it. A single-agent thread has one voice and needs no label. */}
+      {pair.user?.metadata?.agent?.title && (
+        <div className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+          <AgentAvatar
+            icon={null}
+            name={pair.user.metadata.agent.title}
+            size="xs"
+          />
+          <span className="font-medium text-foreground">
+            {pair.user.metadata.agent.title}
+          </span>
+        </div>
       )}
       <MessageAssistant
         message={pair.assistant}

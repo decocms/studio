@@ -38,6 +38,7 @@ import { headerLayout } from "./header-layout";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
+import { RoomToggle } from "@/components/chat/room-toggle";
 import {
   AgentSwitcherCrumb,
   NewChatCrumb,
@@ -185,6 +186,7 @@ export function WorkspacePanelGroup({
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {mainControlsInChat && branchSelector}
         {mainControlsInChat && publishActions}
+        <RoomToggle />
         {newChatCrumb}
       </div>
     </PanelHeader>

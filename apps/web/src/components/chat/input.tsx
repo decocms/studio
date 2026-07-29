@@ -11,6 +11,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+import { canWriteToThread } from "@decocms/shared/entities";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -559,7 +560,18 @@ export function ChatInput({
     }
   };
 
-  if (userId && task?.created_by && task.created_by !== userId) {
+  // A teammate's personal chat stays read-only; a shared room is open to every
+  // member. Same predicate the API enforces, so the composer never offers a
+  // write the server will reject.
+  if (
+    userId &&
+    task &&
+    !canWriteToThread({
+      created_by: task.created_by,
+      metadata: task.metadata,
+      userId,
+    })
+  ) {
     return (
       <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
     );

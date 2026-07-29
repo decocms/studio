@@ -56,6 +56,10 @@ import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "@/links/link-work-item";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
+import {
+  canWriteToThread,
+  type ThreadMetadata,
+} from "@decocms/shared/entities";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
@@ -1025,7 +1029,16 @@ async function prepareRun(
     ctx.metadata.threadId = mem.thread.id;
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
 
-    if (mem.thread.created_by !== input.userId) {
+    // Personal chat: owner only. Shared room (`metadata.shared`): any member of
+    // the org — membership is already proven by the org-scoped route and the
+    // org-scoped thread fetch, so reaching this thread means belonging here.
+    if (
+      !canWriteToThread({
+        created_by: mem.thread.created_by,
+        metadata: mem.thread.metadata as ThreadMetadata | null,
+        userId: input.userId,
+      })
+    ) {
       throw new Error(
         "You are not allowed to write to this thread because you are not the owner",
       );
@@ -1322,6 +1335,7 @@ async function prepareRun(
             windowSize,
             isSubagent: input.isSubagent === true,
             systemMessages,
+            agentId: input.agent.id,
           })
         : undefined;
 

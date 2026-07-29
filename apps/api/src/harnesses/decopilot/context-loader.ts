@@ -4,6 +4,7 @@ import { createMemory } from "@/api/routes/decopilot/memory";
 import type { ChatMessage } from "@/api/routes/decopilot/types";
 import type { StudioContext } from "@/core/studio-context";
 import type { ThreadMessage } from "@/storage/types";
+import { buildRoomTranscript } from "./room-transcript";
 
 function mergeHistoryWithUserMessage(
   history: ThreadMessage[] | ChatMessage[],
@@ -36,6 +37,10 @@ export async function loadDecopilotContext(input: {
   windowSize: number | undefined;
   isSubagent: boolean;
   systemMessages: ChatMessage[];
+  /** The agent answering this turn. A thread is a room — other agents may have
+   *  spoken in it, and their turns must not read as this agent's own words.
+   *  See `buildRoomTranscript`. */
+  agentId: string;
 }): Promise<ChatMessage[]> {
   const history = input.isSubagent
     ? []
@@ -49,7 +54,7 @@ export async function loadDecopilotContext(input: {
       ).loadHistory(input.windowSize ?? DEFAULT_WINDOW_SIZE);
 
   const assembled = await assembleDecopilotContextForTest({
-    history: history as ChatMessage[],
+    history: buildRoomTranscript(history as ChatMessage[], input.agentId),
     userMessage: input.userMessage,
     systemMessages: input.systemMessages,
   });
