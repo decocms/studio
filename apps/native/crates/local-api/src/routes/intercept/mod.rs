@@ -164,25 +164,24 @@ pub async fn try_intercept(
 
     match rest.first().copied() {
         Some("watch") if rest.len() == 1 && *method == Method::GET => {
+            // None of the refusals below may be a status code — see
+            // [`watch::retryable_refusal`]. A restarted listener answering an
+            // `EventSource` reconnect with 401/500/503 closes that stream for
+            // the life of the page, and a native rebuild restarts the listener
+            // under a webview that keeps running.
             let scope = match thread_tools::current_account_scope_result().await {
                 Ok(Some(scope)) => scope,
-                Ok(None) => return Some(ApiError::unauthorized().into_response()),
+                Ok(None) => return Some(watch::retryable_refusal("no signed-in account yet")),
                 Err(error) => {
                     tracing::warn!(%error, "native watch account scope storage unavailable");
-                    return Some(
-                        ApiError::new(
-                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                            "native session storage is temporarily unavailable",
-                        )
-                        .into_response(),
-                    );
+                    return Some(watch::retryable_refusal(
+                        "session storage temporarily unavailable",
+                    ));
                 }
             };
             if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
-                return Some(
-                    ApiError::internal(format!("native chat queue recovery failed: {error}"))
-                        .into_response(),
-                );
+                tracing::warn!(%error, "native watch queue recovery failed");
+                return Some(watch::retryable_refusal("chat queue recovery in progress"));
             }
             Some(watch::get(&scope, org, query))
         }

@@ -31,7 +31,22 @@ const THREAD_STATUS_EVENT: &str = "decopilot.thread.status";
 const LISTENER_CAPACITY: usize = 64;
 const MAX_CONNECTIONS_PER_SCOPE: usize = 50;
 const MAX_TOTAL_CONNECTIONS: usize = 500;
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// How long a silent stream waits before writing a heartbeat.
+///
+/// The heartbeat is not for the client — nothing listens for it — but for the
+/// socket. A stream with no traffic cannot tell a quiet organization from a
+/// peer that went away, and native restarts the listener often enough that
+/// half-open sockets are routine rather than exotic. Writing on an interval
+/// turns that into an error the client can see and reconnect from.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+
+/// Reconnection delay handed to `EventSource` through the SSE `retry:` field.
+///
+/// Every stream opens with it, healthy or refused, because a browser can only
+/// honour a `retry:` it has actually received — the default otherwise is the
+/// implementation's own, which WebKit does not document.
+const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ThreadStatus {
@@ -248,7 +263,55 @@ fn connected_frame(
         "typePatterns": type_patterns,
         "connectedAt": connected_at,
     });
-    Bytes::from(format!("event: connected\ndata: {data}\n\n"))
+    Bytes::from(format!(
+        "{}event: connected\ndata: {data}\n\n",
+        retry_directive()
+    ))
+}
+
+/// The `retry:` field, as the first thing in every stream this route writes.
+fn retry_directive() -> String {
+    format!("retry: {}\n\n", RECONNECT_DELAY.as_millis())
+}
+
+fn sse_response(body: Body) -> Response {
+    match Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::CONNECTION, "keep-alive")
+        .header("X-Accel-Buffering", "no")
+        .header(header::CONTENT_ENCODING, "identity")
+        .body(body)
+    {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::error!(%error, "failed to build native watch response");
+            ApiError::internal("failed to build native watch response").into_response()
+        }
+    }
+}
+
+/// A refusal the client is expected to come back from.
+///
+/// `EventSource` treats any status other than 200 — and any content type that
+/// is not `text/event-stream` — as *fatal*: it fires `error`, moves to
+/// `CLOSED`, and never reconnects for the life of the page. Every reason this
+/// route can refuse is temporary. The Keychain session is not loaded yet
+/// milliseconds after the listener restarts; queue recovery is still running;
+/// a connection cap will be freed by the tab that is closing. Answering any of
+/// those with a status code strands a live page with no events at all until
+/// someone reloads it by hand — which is precisely the failure this exists to
+/// prevent, since a native rebuild restarts the listener under a webview that
+/// keeps running.
+///
+/// So a refusal is itself a well-formed stream that ends immediately. The
+/// browser sees an ordinary disconnect, waits [`RECONNECT_DELAY`], and tries
+/// again; the reason rides along as a comment, visible in the network panel
+/// and ignored by the parser.
+pub(crate) fn retryable_refusal(reason: &str) -> Response {
+    tracing::debug!(reason, "native watch refused; client will reconnect");
+    sse_response(Body::from(format!("{}: {reason}\n\n", retry_directive())))
 }
 
 fn event_frame(event: &LocalWatchEvent) -> Result<Bytes, serde_json::Error> {
@@ -273,18 +336,12 @@ pub(crate) fn get(scope: &RtAccountScope, organization_id: &str, query: Option<&
     ) {
         Ok(subscription) => subscription,
         Err(SubscribeError::ScopeLimit) => {
-            return ApiError::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "native watch connection limit reached for this account and organization",
-            )
-            .into_response();
+            return retryable_refusal(
+                "watch connection limit reached for this account and organization",
+            );
         }
         Err(SubscribeError::TotalLimit) => {
-            return ApiError::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "native watch total connection limit reached",
-            )
-            .into_response();
+            return retryable_refusal("watch total connection limit reached");
         }
     };
     let initial = connected_frame(subscription.id, organization_id, type_patterns.as_deref());
@@ -306,21 +363,7 @@ pub(crate) fn get(scope: &RtAccountScope, organization_id: &str, query: Option<&
         }
     });
 
-    match Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::CONNECTION, "keep-alive")
-        .header("X-Accel-Buffering", "no")
-        .header(header::CONTENT_ENCODING, "identity")
-        .body(Body::from_stream(body_stream))
-    {
-        Ok(response) => response,
-        Err(error) => {
-            tracing::error!(%error, "failed to build native watch response");
-            ApiError::internal("failed to build native watch response").into_response()
-        }
-    }
+    sse_response(Body::from_stream(body_stream))
 }
 
 /// Publishes the exact production-shaped status event after its SQLite
@@ -429,6 +472,10 @@ mod tests {
         let mut stream = response.into_body().into_data_stream();
 
         let connected = next_frame(&mut stream).await;
+        assert!(
+            connected.starts_with("retry: 3000\n\n"),
+            "a stream must state its reconnect delay before anything else: {connected:?}"
+        );
         assert!(connected.contains("event: connected"));
         assert!(connected.contains(&org));
         assert!(!connected.contains("event: snapshot"));
@@ -543,12 +590,54 @@ mod tests {
             responses.push(response);
         }
 
+        // A refused connection is still a 200 `text/event-stream` that ends
+        // right away: anything else is fatal to `EventSource` and would cost
+        // the page every later event, not just this one.
         let rejected = get(&account, &org, None);
-        assert_eq!(rejected.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(rejected.status(), StatusCode::OK);
+        assert_eq!(
+            rejected.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/event-stream"
+        );
+        let mut refused = rejected.into_body().into_data_stream();
+        let body = next_frame(&mut refused).await;
+        assert!(body.starts_with("retry: 3000\n\n"), "{body:?}");
+        assert!(
+            body.contains(": watch connection limit reached"),
+            "{body:?}"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), refused.next())
+                .await
+                .expect("a refusal must end rather than hang")
+                .is_none(),
+            "a refusal must end the stream so the browser reconnects"
+        );
         drop(responses);
 
         let reopened = get(&account, &org, None);
         assert_eq!(reopened.status(), StatusCode::OK);
+        let mut reopened = reopened.into_body().into_data_stream();
+        assert!(next_frame(&mut reopened).await.contains("event: connected"));
+    }
+
+    /// Every refusal path shares one shape, because `EventSource` gives a page
+    /// exactly one chance: a status code here means no events until a reload.
+    #[tokio::test]
+    async fn a_refusal_is_a_reconnectable_stream_not_a_status_code() {
+        let response = retryable_refusal("no signed-in account yet");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/event-stream"
+        );
+        let mut stream = response.into_body().into_data_stream();
+        let body = next_frame(&mut stream).await;
+        assert_eq!(body, "retry: 3000\n\n: no signed-in account yet\n\n");
+        assert!(tokio::time::timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("a refusal must end rather than hang")
+            .is_none());
     }
 
     #[test]
