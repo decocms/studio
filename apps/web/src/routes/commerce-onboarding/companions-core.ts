@@ -68,6 +68,10 @@ export interface CompanionCardModel {
   /** The SA-bound resource (GA4 property id / GSC site) when boundVia === "sa",
    *  so the card can prefill it for viewing/editing. Null otherwise. */
   boundResource: string | null;
+  /** Human-identifiable connected item (repo full name, GA4 property id, GSC
+   *  site, VTEX account) shown in place of the config gear once satisfied. Null
+   *  when not yet configured or the binding has nothing to display. */
+  connectedDetail: string | null;
 }
 
 /** Providers connected through the shared-SA lane, keyed by binding type
@@ -112,6 +116,37 @@ export function isCompanionConfigured(args: {
     default:
       // Bindings with no post-link config step are usable as soon as linked.
       return true;
+  }
+}
+
+/** The human-identifiable connected item for a satisfied binding — repo full
+ *  name, GA4 property id, GSC site, VTEX account — shown instead of the config
+ *  gear once connected. Mirrors {@link isCompanionConfigured}'s field lookups. */
+function getConnectedDetail(args: {
+  bindingType: string;
+  companionConfig: Record<string, unknown> | null | undefined;
+  cdConfig: Record<string, unknown> | null | undefined;
+}): string | null {
+  const { companionConfig, cdConfig } = args;
+  switch (args.bindingType) {
+    case "vtex":
+      return typeof companionConfig?.accountName === "string"
+        ? companionConfig.accountName
+        : null;
+    case "google-analytics":
+      return typeof companionConfig?.propertyId === "string"
+        ? companionConfig.propertyId
+        : null;
+    case "google-search-console":
+      return typeof companionConfig?.siteUrl === "string"
+        ? companionConfig.siteUrl
+        : null;
+    case "github":
+      return typeof cdConfig?.github_repo === "string"
+        ? cdConfig.github_repo
+        : null;
+    default:
+      return null;
   }
 }
 
@@ -400,6 +435,13 @@ export function buildCompanionCards(args: {
       configurationState: linkedConnection?.configuration_state ?? null,
       boundVia,
       boundResource: saBinding?.resource ?? null,
+      connectedDetail: satisfied
+        ? getConnectedDetail({
+            bindingType: req.bindingType,
+            companionConfig: linkedConnection?.configuration_state ?? null,
+            cdConfig: args.configurationState ?? null,
+          })
+        : null,
     });
   }
   return cards;

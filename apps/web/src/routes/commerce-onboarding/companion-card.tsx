@@ -17,7 +17,7 @@ import {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@/sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { LinkBroken01, Loading01, Settings01 } from "@untitledui/icons";
+import { Loading01, SlashCircle01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
@@ -30,6 +30,7 @@ import {
   ConfigureAction,
   ConnectAction,
   ConnectedAction,
+  ConnectedConfigButton,
 } from "./companion-card-view.tsx";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
 import { SaBindingForm } from "./companion-forms/sa-binding-form.tsx";
@@ -90,7 +91,7 @@ function UnlinkButton({
           {disconnecting ? (
             <Loading01 size={16} className="animate-spin" />
           ) : (
-            <LinkBroken01 size={16} />
+            <SlashCircle01 size={16} />
           )}
         </Button>
       </TooltipTrigger>
@@ -152,36 +153,66 @@ export function CompanionCard({
         primary={card.required}
       />
     ) : card.satisfied && linkedConnectionId ? (
-      <div className="flex items-center justify-end gap-1 sm:justify-start">
-        {/* Own Suspense boundary: CompanionConfiguration opens the companion's
-            own MCP client (useMCPClient → useSuspenseQuery). Isolating it keeps
-            a connecting companion from reverting the whole grid to skeletons. */}
-        <Suspense fallback={<ConfigGearFallback />}>
-          <CompanionConfiguration
-            card={card}
-            org={org}
-            selfClient={selfClient}
-            connectionId={linkedConnectionId}
-            contextSiteUrl={siteUrl}
-            variant={needsConfig ? "configure" : "gear"}
-            disabled={disabled}
-            autoOpen={
-              needsConfig ||
-              shouldAutoOpenCompanionConfig({
+      needsConfig ? (
+        <div className="flex items-center justify-end gap-1 sm:justify-start">
+          <Suspense fallback={<ConfigGearFallback />}>
+            <CompanionConfiguration
+              card={card}
+              org={org}
+              selfClient={selfClient}
+              connectionId={linkedConnectionId}
+              contextSiteUrl={siteUrl}
+              variant="configure"
+              disabled={disabled}
+              autoOpen={shouldAutoOpenCompanionConfig({
                 autoOpenFieldKey: autoOpenConfigFieldKey,
                 card,
-              })
-            }
-            onAutoOpenHandled={onAutoOpenConfigHandled}
+              })}
+              onAutoOpenHandled={onAutoOpenConfigHandled}
+            />
+          </Suspense>
+          <UnlinkButton
+            title={card.title}
+            disconnecting={disconnecting}
+            disabled={disabled}
+            onDisconnect={onDisconnect}
           />
-        </Suspense>
-        <UnlinkButton
-          title={card.title}
-          disconnecting={disconnecting}
-          disabled={disabled}
-          onDisconnect={onDisconnect}
+        </div>
+      ) : (
+        <ConnectedAction
+          detail={card.connectedDetail}
+          controls={
+            <>
+              {/* Own Suspense boundary: CompanionConfiguration opens the
+                  companion's own MCP client (useMCPClient →
+                  useSuspenseQuery). Isolating it keeps a connecting companion
+                  from reverting the whole grid to skeletons. */}
+              <Suspense fallback={<ConfigGearFallback />}>
+                <CompanionConfiguration
+                  card={card}
+                  org={org}
+                  selfClient={selfClient}
+                  connectionId={linkedConnectionId}
+                  contextSiteUrl={siteUrl}
+                  variant="gear"
+                  disabled={disabled}
+                  autoOpen={shouldAutoOpenCompanionConfig({
+                    autoOpenFieldKey: autoOpenConfigFieldKey,
+                    card,
+                  })}
+                  onAutoOpenHandled={onAutoOpenConfigHandled}
+                />
+              </Suspense>
+              <UnlinkButton
+                title={card.title}
+                disconnecting={disconnecting}
+                disabled={disabled}
+                onDisconnect={onDisconnect}
+              />
+            </>
+          }
         />
-      </div>
+      )
     ) : (
       <ConnectAction
         connecting={connecting}
@@ -243,22 +274,17 @@ function SaConnectAction({
     <>
       {card.satisfied ? (
         <ConnectedAction
+          detail={card.connectedDetail}
           controls={
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0"
-                  onClick={() => setOpen(true)}
-                  aria-label={t(
+                <ConnectedConfigButton
+                  ariaLabel={t(
                     "commerceOnboarding.companionCard.configureAriaLabel",
                     { title: card.title },
                   )}
-                >
-                  <Settings01 size={16} />
-                </Button>
+                  onClick={() => setOpen(true)}
+                />
               </TooltipTrigger>
               <TooltipContent>
                 {t("commerceOnboarding.companionCard.editConfiguration")}
@@ -422,19 +448,13 @@ function CompanionConfiguration({
     ) : (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0"
-            onClick={() => setDialogOpen(true)}
-            aria-label={t(
+          <ConnectedConfigButton
+            ariaLabel={t(
               "commerceOnboarding.companionCard.configureAriaLabel",
               { title: card.title },
             )}
-          >
-            <Settings01 size={16} />
-          </Button>
+            onClick={() => setDialogOpen(true)}
+          />
         </TooltipTrigger>
         <TooltipContent>
           {savedConfigEntries.length > 0
