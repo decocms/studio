@@ -1186,7 +1186,7 @@ fn finalize_orphaned_turn(db: &ThreadsDb, turn: &RtTurnQueueItem) -> Result<(), 
         )
         .map_err(|error| error.to_string())?
     {
-        RtTurnTerminalOutcome::Completed(_)
+        RtTurnTerminalOutcome::Completed { .. }
         | RtTurnTerminalOutcome::Quarantined
         | RtTurnTerminalOutcome::Stale => Ok(()),
     }
@@ -1208,7 +1208,7 @@ fn finalize_malformed_orphan(
         .rt_finalize_malformed_orphan(orphan, &parts, metadata.as_ref())
         .map_err(|error| error.to_string())?
     {
-        RtTurnTerminalOutcome::Completed(_)
+        RtTurnTerminalOutcome::Completed { .. }
         | RtTurnTerminalOutcome::Quarantined
         | RtTurnTerminalOutcome::Stale => Ok(()),
     }
@@ -2220,13 +2220,21 @@ fn finalize_claimed_result(
     status: RtTurnTerminalStatus,
 ) -> bool {
     match db.rt_finalize_claimed_turn(claimed, assistant_parts, assistant_metadata, status) {
-        Ok(RtTurnTerminalOutcome::Completed(_)) => {
-            let watch_status = match status {
-                RtTurnTerminalStatus::Completed => watch::ThreadStatus::Completed,
-                RtTurnTerminalStatus::RequiresAction => watch::ThreadStatus::RequiresAction,
-                RtTurnTerminalStatus::Failed => watch::ThreadStatus::Failed,
-            };
-            emit_committed_thread_status(db, claimed, watch_status, None);
+        Ok(RtTurnTerminalOutcome::Completed {
+            terminal_written, ..
+        }) => {
+            // Nothing to announce when the queue held another turn: the thread
+            // is still `in_progress`, and the claim loop's next iteration
+            // emits that for the turn it begins. Publishing a terminal here
+            // would be announcing a status the row does not have.
+            if terminal_written {
+                let watch_status = match status {
+                    RtTurnTerminalStatus::Completed => watch::ThreadStatus::Completed,
+                    RtTurnTerminalStatus::RequiresAction => watch::ThreadStatus::RequiresAction,
+                    RtTurnTerminalStatus::Failed => watch::ThreadStatus::Failed,
+                };
+                emit_committed_thread_status(db, claimed, watch_status, None);
+            }
             true
         }
         Ok(RtTurnTerminalOutcome::Quarantined) => {

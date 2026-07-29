@@ -796,6 +796,10 @@ pub struct RtThreadFence {
 /// to replace. Byte-parity with `packages/harness/src/thread-title.ts`.
 pub const DEFAULT_THREAD_TITLE: &str = "New chat";
 
+/// The status a thread holds for as long as its queue has anything left to
+/// run, whether that is the turn executing now or the next one waiting.
+pub const RT_THREAD_STATUS_IN_PROGRESS: &str = "in_progress";
+
 pub fn is_native_assistant_message_id(id: &str) -> bool {
     id.starts_with(NATIVE_ASSISTANT_MESSAGE_ID_PREFIX)
 }
@@ -936,7 +940,14 @@ impl RtTurnTerminalStatus {
 /// assistant/status/queue mutation was committed in that case.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RtTurnTerminalOutcome {
-    Completed(RtMessage),
+    Completed {
+        assistant: RtMessage,
+        /// Whether this turn's terminal status actually reached the thread
+        /// row. False when another turn was still queued behind it: the thread
+        /// deliberately stayed `in_progress`, so there is no terminal to
+        /// publish either.
+        terminal_written: bool,
+    },
     /// A corrupt/legacy-colliding accepted row was closed without inserting a
     /// misleading assistant message under an identity owned by another turn.
     Quarantined,
@@ -3672,7 +3683,10 @@ impl ThreadsDb {
         }
         tx.commit()?;
         Ok(match assistant {
-            Some(assistant) => RtTurnTerminalOutcome::Completed(assistant),
+            Some(assistant) => RtTurnTerminalOutcome::Completed {
+                assistant,
+                terminal_written: true,
+            },
             None => RtTurnTerminalOutcome::Quarantined,
         })
     }
@@ -3769,23 +3783,6 @@ impl ThreadsDb {
             )));
         }
 
-        let status_changed = tx.execute(
-            "UPDATE native_scoped_threads SET status = ?1, updated_at = ?2 \
-             WHERE id = ?3 AND organization_id = ?4 AND generation = ?5 \
-               AND account_scope = ?6",
-            params![
-                terminal_status.as_str(),
-                ts,
-                fence.thread_id,
-                fence.organization_id,
-                fence.generation,
-                fence.account_scope,
-            ],
-        )?;
-        if status_changed != 1 {
-            return Ok(RtTurnTerminalOutcome::Stale);
-        }
-
         let deleted = tx.execute(
             "DELETE FROM native_scoped_turn_queue \
              WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
@@ -3804,8 +3801,56 @@ impl ThreadsDb {
             return Ok(RtTurnTerminalOutcome::Stale);
         }
 
+        // Counted AFTER the delete above, so this is the work that outlives
+        // this turn. A thread whose queue still holds a message is not done:
+        // the worker loop claims it on its very next iteration, microseconds
+        // from here. Writing the terminal status anyway would publish a
+        // `completed` that the following `rt_begin_claimed_turn` contradicts
+        // immediately — and a `COLLECTION_THREADS_LIST` issued in that sliver
+        // resolves afterwards and pins the stale `completed` into the client's
+        // cache, which is how a thread with a queued message ends up reading
+        // "done" in the sidebar while its turn is visibly running. Holding
+        // `in_progress` across the whole queue is both what the user means by
+        // the word and what makes the arrival order stop mattering.
+        let terminal_written = tx.query_row(
+            "SELECT COUNT(*) FROM native_scoped_turn_queue \
+             WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
+               AND thread_generation = ?4",
+            params![
+                fence.account_scope,
+                fence.organization_id,
+                fence.thread_id,
+                fence.generation,
+            ],
+            |row| row.get::<_, i64>(0),
+        )? == 0;
+
+        let status_changed = tx.execute(
+            "UPDATE native_scoped_threads SET status = ?1, updated_at = ?2 \
+             WHERE id = ?3 AND organization_id = ?4 AND generation = ?5 \
+               AND account_scope = ?6",
+            params![
+                if terminal_written {
+                    terminal_status.as_str()
+                } else {
+                    RT_THREAD_STATUS_IN_PROGRESS
+                },
+                ts,
+                fence.thread_id,
+                fence.organization_id,
+                fence.generation,
+                fence.account_scope,
+            ],
+        )?;
+        if status_changed != 1 {
+            return Ok(RtTurnTerminalOutcome::Stale);
+        }
+
         tx.commit()?;
-        Ok(RtTurnTerminalOutcome::Completed(assistant))
+        Ok(RtTurnTerminalOutcome::Completed {
+            assistant,
+            terminal_written,
+        })
     }
 
     pub fn rt_cancel_turn_scoped(
@@ -7112,7 +7157,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Failed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert!(db
             .rt_list_turn_queue_in_org("org", "thread")
@@ -7284,7 +7329,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 Some(&serde_json::json!({"interrupted": true})),
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         let messages = db
             .rt_list_messages_in_org("org", "thread", 100, 0, false)
@@ -7529,7 +7574,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Failed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert_eq!(
             db.rt_list_messages_in_org("org", "winner", 100, 0, false)
@@ -7587,7 +7632,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Completed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert_eq!(
             db.rt_finalize_claimed_turn(
@@ -7618,7 +7663,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Completed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert!(db
             .rt_list_turn_queue_in_org("org", "thread")
@@ -7653,7 +7698,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             )
             .unwrap()
         {
-            RtTurnTerminalOutcome::Completed(message) => message,
+            RtTurnTerminalOutcome::Completed { assistant, .. } => assistant,
             RtTurnTerminalOutcome::Quarantined => panic!("healthy claim must not quarantine"),
             RtTurnTerminalOutcome::Stale => panic!("current claim must complete"),
         };
@@ -7680,6 +7725,61 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             .unwrap(),
             RtTurnTerminalOutcome::Stale,
             "once the claim row is gone an old worker cannot mutate status again"
+        );
+    }
+
+    /// A queued message means the thread is not done, and must never briefly
+    /// say it is: the sidebar reads that status, and a `COLLECTION_THREADS_LIST`
+    /// resolving inside the gap pins the stale value there until a reload.
+    #[test]
+    fn a_turn_finishing_with_more_queued_leaves_the_thread_in_progress() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        create_rt_thread(&db, "org", "thread");
+        db.rt_enqueue_turn_in_org("org", "thread", &turn_input("m1", "first", 1))
+            .unwrap();
+        db.rt_enqueue_turn_in_org("org", "thread", &turn_input("m2", "second", 2))
+            .unwrap();
+        let first = db
+            .rt_claim_turn_queue_head_in_org("org", "thread")
+            .unwrap()
+            .unwrap();
+        db.rt_begin_claimed_turn(&first).unwrap();
+        let parts = serde_json::json!([{"type": "text", "text": "done"}]);
+
+        assert!(
+            matches!(
+                db.rt_finalize_claimed_turn(&first, &parts, None, RtTurnTerminalStatus::Completed)
+                    .unwrap(),
+                RtTurnTerminalOutcome::Completed {
+                    terminal_written: false,
+                    ..
+                }
+            ),
+            "a terminal status behind a queued turn must not be written"
+        );
+        assert_eq!(
+            db.rt_get_thread("thread").unwrap().unwrap().status,
+            "in_progress",
+            "the queued turn still has to run"
+        );
+
+        // Draining the last turn writes the terminal status as usual.
+        let second = db
+            .rt_claim_turn_queue_head_in_org("org", "thread")
+            .unwrap()
+            .unwrap();
+        db.rt_begin_claimed_turn(&second).unwrap();
+        assert!(matches!(
+            db.rt_finalize_claimed_turn(&second, &parts, None, RtTurnTerminalStatus::Completed)
+                .unwrap(),
+            RtTurnTerminalOutcome::Completed {
+                terminal_written: true,
+                ..
+            }
+        ));
+        assert_eq!(
+            db.rt_get_thread("thread").unwrap().unwrap().status,
+            "completed"
         );
     }
 
@@ -7826,7 +7926,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Failed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert_eq!(
             db.rt_get_thread("thread").unwrap().unwrap().status,
@@ -7899,7 +7999,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             )
             .unwrap()
         {
-            RtTurnTerminalOutcome::Completed(message) => message,
+            RtTurnTerminalOutcome::Completed { assistant, .. } => assistant,
             RtTurnTerminalOutcome::Quarantined => panic!("healthy claim must not quarantine"),
             RtTurnTerminalOutcome::Stale => panic!("orphan claim is still owned"),
         };
@@ -8131,7 +8231,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Failed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert!(matches!(
             db.rt_cancel_turn_in_org("org", "thread", "missing")
@@ -8305,7 +8405,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnTerminalStatus::Failed,
             )
             .unwrap(),
-            RtTurnTerminalOutcome::Completed(_)
+            RtTurnTerminalOutcome::Completed { .. }
         ));
         assert_eq!(
             db.rt_claim_turn_queue_head_in_org("org", "thread-a")
