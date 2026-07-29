@@ -155,7 +155,8 @@ function SubtaskAgentInfo({
   isError: boolean;
 }) {
   const agent = useVirtualMCP(agentId);
-  const agentTitle = agent?.title ?? "Subtask";
+  const t = useT();
+  const agentTitle = agent?.title ?? t("chat.subtask.subtaskNoun");
   const agentIcon = agent?.icon ?? null;
   return (
     <>
