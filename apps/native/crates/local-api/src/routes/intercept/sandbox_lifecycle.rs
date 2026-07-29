@@ -267,11 +267,9 @@ pub(crate) async fn try_dispatch(
 /// GET: the collection hooks seed the per-item cache from it, so an un-enriched
 /// list entry is what the shell would read for the active agent.
 async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &Bytes) -> Response {
-    let input: Value = match serde_json::from_slice(body) {
+    let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
-        Err(error) => {
-            return ApiError::bad_request(format!("invalid JSON body: {error}")).into_response()
-        }
+        Err(error) => return error.into_response(),
     };
 
     let mut answer = match upstream::call_org_tool(org, tool_name, &input).await {
@@ -521,11 +519,9 @@ fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Va
 /// an unknown handle is a success, matching the tool's idempotent `{ success }`
 /// contract — the caller asked for it to be gone, and it is.
 async fn delete(state: &AppState, body: &Bytes) -> Response {
-    let input: Value = match serde_json::from_slice(body) {
+    let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
-        Err(error) => {
-            return ApiError::bad_request(format!("invalid JSON body: {error}")).into_response()
-        }
+        Err(error) => return error.into_response(),
     };
     let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
         return ApiError::bad_request("virtualMcpId is required").into_response();
@@ -555,11 +551,9 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
 }
 
 async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
-    let input: Value = match serde_json::from_slice(body) {
+    let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
-        Err(error) => {
-            return ApiError::bad_request(format!("invalid JSON body: {error}")).into_response()
-        }
+        Err(error) => return error.into_response(),
     };
     let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
         return ApiError::bad_request("virtualMcpId is required").into_response();

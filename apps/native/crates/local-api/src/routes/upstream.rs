@@ -103,13 +103,14 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
 
 use crate::error::ApiError;
+use crate::http_util::strip_hop_by_hop_headers;
 use crate::routes::intercept;
 use crate::state::AppState;
 
@@ -479,7 +480,7 @@ async fn proxy_auth_path(
         && upstream_resp.status().is_success()
     {
         session.logout().await;
-        return build_auth_response(upstream_resp).await;
+        return build_response(upstream_resp).await;
     }
 
     let set_cookie_values: Vec<String> = upstream_resp
@@ -526,7 +527,7 @@ async fn proxy_auth_path(
     if carries_org_assets(path_and_query) {
         return localized_auth_response(upstream_resp, session.target()).await;
     }
-    build_auth_response(upstream_resp).await
+    build_response(upstream_resp).await
 }
 
 /// Auth endpoints whose payloads can carry an organization `logo`.
@@ -538,12 +539,12 @@ fn carries_org_assets(path_and_query: &str) -> bool {
     path.starts_with("/api/auth/organization") || path == "/api/auth/get-session"
 }
 
-/// [`build_auth_response`], but buffering the body so protected-asset URLs can
+/// [`build_response`], but buffering the body so protected-asset URLs can
 /// be localized. Only used for the small JSON payloads above — everything else
 /// keeps streaming.
 async fn localized_auth_response(upstream: reqwest::Response, target: &str) -> Response {
     if !upstream.status().is_success() {
-        return build_auth_response(upstream).await;
+        return build_response(upstream).await;
     }
     let status = upstream.status();
     let mut headers = upstream.headers().clone();
@@ -798,7 +799,7 @@ const STUDIO_WEB_VERSION: &str = env!("STUDIO_WEB_VERSION");
 /// `STUDIO_WEB_VERSION`.
 async fn rewrite_config_version(upstream: reqwest::Response) -> Response {
     if STUDIO_WEB_VERSION.is_empty() || !upstream.status().is_success() {
-        return build_auth_response(upstream).await;
+        return build_response(upstream).await;
     }
 
     let status = upstream.status();
@@ -885,36 +886,6 @@ fn build_forward_headers(incoming: &HeaderMap) -> HeaderMap {
         out.remove(name);
     }
     out
-}
-
-/// Removes headers that describe one HTTP connection rather than the proxied
-/// message. RFC 7230 §6.1 also allows `Connection` to name arbitrary additional
-/// hop-by-hop fields, so collect those tokens before removing `Connection`.
-fn strip_hop_by_hop_headers(headers: &mut HeaderMap) {
-    let connection_tokens: Vec<HeaderName> = headers
-        .get_all(header::CONNECTION)
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .flat_map(|value| value.split(','))
-        .filter_map(|name| HeaderName::from_bytes(name.trim().as_bytes()).ok())
-        .collect();
-
-    for name in connection_tokens {
-        headers.remove(name);
-    }
-    for name in [
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "proxy-connection",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-    ] {
-        headers.remove(name);
-    }
 }
 
 #[derive(Debug)]
@@ -1164,34 +1135,23 @@ async fn send_once_no_bearer(
 }
 
 /// Streams the upstream response back verbatim — status, headers (minus
-/// hop-by-hop, PLUS `Set-Cookie` — see below), and body via `bytes_stream()`
+/// hop-by-hop and `Set-Cookie` — see below), and body via `bytes_stream()`
 /// rather than buffering, so SSE/chunked responses pass through
 /// incrementally instead of waiting for the whole thing.
+///
+/// Used by every branch of this proxy — the bearer branch and
+/// [`proxy_auth_path`] alike (they used to have separate copies whose only
+/// difference, whether `Set-Cookie` was stripped, disappeared once the
+/// bearer branch started attaching the durable session cookie itself).
+/// `Set-Cookie` is ALWAYS stripped: on the auth path it has already been
+/// captured into the jar by the caller before this runs, and the webview
+/// must never see the real upstream session cookie; on the org-data path
+/// it is defense-in-depth for a route that unexpectedly echoed one.
+/// `HeaderMap::remove` removes every entry for a given name, so a response
+/// carrying multiple `Set-Cookie` headers (Better Auth sometimes sets more
+/// than one, e.g. a session token plus a companion flag cookie) is fully
+/// stripped, not just the first.
 async fn build_response(upstream: reqwest::Response) -> Response {
-    let status = upstream.status();
-    let mut headers = upstream.headers().clone();
-    strip_hop_by_hop_headers(&mut headers);
-    // Defense-in-depth, uniform with `build_auth_response`: this branch now
-    // also attaches the durable session cookie (`attach_persisted_cookie`), so
-    // an org-scoped route that unexpectedly echoed a `Set-Cookie` must never
-    // let it reach the webview.
-    headers.remove(header::SET_COOKIE);
-    let body = Body::from_stream(upstream.bytes_stream());
-    let mut res = Response::new(body);
-    *res.status_mut() = status;
-    *res.headers_mut() = headers;
-    res
-}
-
-/// [`build_response`]'s sibling for [`proxy_auth_path`]: same hop-by-hop
-/// stripping and streaming behavior, PLUS `Set-Cookie` is ALWAYS stripped
-/// (already captured into the jar by the caller before this runs — see
-/// `proxy_auth_path`) — the webview must never see the real upstream
-/// session cookie. `HeaderMap::remove` removes every entry for a given
-/// name, so a response carrying multiple `Set-Cookie` headers (Better Auth
-/// sometimes sets more than one, e.g. a session token plus a companion
-/// flag cookie) is fully stripped, not just the first.
-async fn build_auth_response(upstream: reqwest::Response) -> Response {
     let status = upstream.status();
     let mut headers = upstream.headers().clone();
     strip_hop_by_hop_headers(&mut headers);
@@ -1292,7 +1252,7 @@ pub async fn logout() -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderValue;
+    use axum::http::{HeaderName, HeaderValue};
     use axum::routing::{get, post};
     use axum::Router;
     use futures::StreamExt;
@@ -2346,8 +2306,13 @@ mod tests {
         assert!(res.headers().get(header::SET_COOKIE).is_none());
     }
 
+    /// The auth branch's response contract, now served by the SAME
+    /// `build_response` as the bearer branch: dynamic Connection-nominated
+    /// tokens and every `Set-Cookie` are stripped together — a session
+    /// cookie leaking to the webview through the merged builder would be a
+    /// real regression, so this stays pinned as one combined response.
     #[tokio::test]
-    async fn build_auth_response_strips_dynamic_hop_by_hop_headers_and_set_cookie() {
+    async fn auth_branch_response_strips_dynamic_hop_by_hop_headers_and_set_cookie() {
         let app = Router::new().route(
             "/x",
             get(|| async {
@@ -2377,7 +2342,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        let res = build_auth_response(upstream).await;
+        let res = build_response(upstream).await;
 
         assert!(res.headers().get(header::CONNECTION).is_none());
         assert!(res.headers().get("x-private").is_none());

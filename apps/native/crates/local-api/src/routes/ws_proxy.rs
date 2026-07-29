@@ -40,6 +40,8 @@ use tokio_tungstenite::tungstenite::{
     protocol::CloseFrame as TsCloseFrame,
 };
 
+use crate::http_util::is_hop_by_hop;
+
 /// TCP-connect probe budget per candidate loopback address — matches
 /// `proxy/loopback.ts`'s `PROBE_TIMEOUT_MS` in spirit (bounded so a
 /// firewalled/filtered address doesn't hang the handshake).
@@ -293,20 +295,6 @@ fn is_handshake_owned_response_header(name: &HeaderName) -> bool {
         || name
             .as_str()
             .eq_ignore_ascii_case("sec-websocket-extensions")
-}
-
-fn is_hop_by_hop(name: &HeaderName) -> bool {
-    matches!(
-        name.as_str().to_ascii_lowercase().as_str(),
-        "connection"
-            | "keep-alive"
-            | "proxy-authenticate"
-            | "proxy-authorization"
-            | "te"
-            | "trailer"
-            | "transfer-encoding"
-            | "upgrade"
-    )
 }
 
 #[cfg(test)]

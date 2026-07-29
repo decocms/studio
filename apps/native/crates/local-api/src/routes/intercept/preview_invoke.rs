@@ -17,7 +17,7 @@
 //! there is no reason to route it back out through a listener whose whole job
 //! is attaching preview cookies and rewriting a browser's view of the origin.
 
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Map, Value};
@@ -106,30 +106,12 @@ async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Byt
         }
     };
 
-    let response = reqwest::Client::new()
+    let request = reqwest::Client::new()
         .post(&url)
         .header(header::CONTENT_TYPE, "application/json")
-        .body(payload)
-        .send()
-        .await;
-    let Ok(response) = response else {
-        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
-    };
-
-    let status = response.status();
-    let content_type = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .cloned()
-        .unwrap_or_else(|| HeaderValue::from_static("application/json"));
-    let Ok(text) = response.bytes().await else {
-        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
-    };
-
-    let mut res = Response::new(Body::from(text));
-    *res.status_mut() = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    res.headers_mut().insert(header::CONTENT_TYPE, content_type);
-    res
+        .body(payload);
+    super::dev_server::send_and_mirror(request, Some(HeaderValue::from_static("application/json")))
+        .await
 }
 
 struct Invoke {

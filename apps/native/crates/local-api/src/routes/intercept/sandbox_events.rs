@@ -32,7 +32,7 @@
 
 use axum::body::Body;
 use axum::extract::{Query, State};
-use axum::http::{header, Method, StatusCode};
+use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::ApiError;
@@ -43,21 +43,10 @@ use super::sandbox_fs::decode_identity_segment;
 
 /// One `event: gone` frame on a well-formed SSE response.
 fn gone_stream() -> Response {
-    match Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::CONNECTION, "keep-alive")
-        .header("X-Accel-Buffering", "no")
-        .header(header::CONTENT_ENCODING, "identity")
-        .body(Body::from("event: gone\ndata: {}\n\n"))
-    {
-        Ok(response) => response,
-        Err(error) => {
-            tracing::error!(%error, "failed to build sandbox gone stream");
-            ApiError::internal("failed to build sandbox event stream").into_response()
-        }
-    }
+    crate::http_util::event_stream_response(
+        Body::from("event: gone\ndata: {}\n\n"),
+        "sandbox event stream",
+    )
 }
 
 pub(super) async fn try_dispatch(
@@ -117,6 +106,7 @@ pub(super) async fn try_dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::header;
 
     fn get() -> Method {
         Method::GET

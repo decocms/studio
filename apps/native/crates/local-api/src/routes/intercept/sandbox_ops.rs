@@ -202,7 +202,7 @@ async fn route(
 /// involved, so it needs none of the cookie/origin handling the preview
 /// listener exists for.
 async fn preview_fetch(target: &AppState, query: Option<&str>) -> Response {
-    let Some(path) = query.and_then(query_path) else {
+    let Some(path) = query.and_then(|query| crate::http_util::query_param(query, "path")) else {
         return ApiError::bad_request("missing `path` query parameter").into_response();
     };
     let Some(port) = crate::routes::proxy::target_dev_port(target) else {
@@ -210,37 +210,7 @@ async fn preview_fetch(target: &AppState, query: Option<&str>) -> Response {
     };
 
     let url = format!("http://127.0.0.1:{port}/{}", path.trim_start_matches('/'));
-    let Ok(response) = reqwest::Client::new().get(&url).send().await else {
-        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
-    };
-    let status =
-        StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    let headers = response.headers().clone();
-    let Ok(bytes) = response.bytes().await else {
-        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
-    };
-
-    let mut res = Response::new(axum::body::Body::from(bytes));
-    *res.status_mut() = status;
-    if let Some(content_type) = headers.get(axum::http::header::CONTENT_TYPE) {
-        res.headers_mut()
-            .insert(axum::http::header::CONTENT_TYPE, content_type.clone());
-    }
-    res
-}
-
-/// The `path` value from a raw query string, percent-decoded.
-fn query_path(query: &str) -> Option<String> {
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == "path").then(|| percent_decode(value))
-    })
-}
-
-fn percent_decode(value: &str) -> String {
-    urlencoding::decode(value)
-        .map(|decoded| decoded.into_owned())
-        .unwrap_or_else(|_| value.to_string())
+    super::dev_server::send_and_mirror(reqwest::Client::new().get(&url), None).await
 }
 
 #[cfg(test)]
@@ -273,20 +243,5 @@ mod tests {
         ] {
             assert!(!is_handled(&foreign), "should NOT own {foreign:?}");
         }
-    }
-
-    #[test]
-    fn reads_the_path_parameter_out_of_a_raw_query() {
-        assert_eq!(
-            query_path("path=/index.html").as_deref(),
-            Some("/index.html")
-        );
-        // Percent-encoded, and not the first parameter.
-        assert_eq!(
-            query_path("x=1&path=%2Fa%2Fb.json&y=2").as_deref(),
-            Some("/a/b.json")
-        );
-        assert_eq!(query_path("nope=1"), None);
-        assert_eq!(query_path(""), None);
     }
 }

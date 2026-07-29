@@ -73,13 +73,14 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::{ws::WebSocketUpgrade, Extension, FromRequestParts, State},
-    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::{json, Value};
 
 use super::ws_proxy;
+use crate::http_util::strip_hop_by_hop_headers;
 use crate::state::AppState;
 
 type Request = axum::extract::Request;
@@ -720,36 +721,6 @@ fn relax_set_cookie(value: &str) -> String {
     parts.join("; ")
 }
 
-/// Removes headers that describe one HTTP connection rather than the proxied
-/// message. `Connection` may name additional hop-by-hop fields, so capture its
-/// tokens before removing the standard set.
-fn strip_hop_by_hop_headers(headers: &mut HeaderMap) {
-    let connection_tokens: Vec<HeaderName> = headers
-        .get_all(header::CONNECTION)
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .flat_map(|value| value.split(','))
-        .filter_map(|name| HeaderName::from_bytes(name.trim().as_bytes()).ok())
-        .collect();
-
-    for name in connection_tokens {
-        headers.remove(name);
-    }
-    for name in [
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "proxy-connection",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-    ] {
-        headers.remove(name);
-    }
-}
-
 fn inject_bootstrap_script(html: &str) -> String {
     match html.rfind("</body>") {
         Some(idx) => {
@@ -972,33 +943,6 @@ mod tests {
         let body = res.text().await.unwrap();
         assert!(body.contains("chunked page"));
         assert!(body.contains(BOOTSTRAP_SCRIPT));
-    }
-
-    #[test]
-    fn strips_standard_and_connection_nominated_hop_by_hop_headers() {
-        let mut headers = HeaderMap::new();
-        headers.append(
-            header::CONNECTION,
-            HeaderValue::from_static("keep-alive, x-remove-me"),
-        );
-        headers.append(header::CONNECTION, HeaderValue::from_static("x-remove-too"));
-        headers.insert("keep-alive", HeaderValue::from_static("timeout=5"));
-        headers.insert(
-            header::TRANSFER_ENCODING,
-            HeaderValue::from_static("chunked"),
-        );
-        headers.insert("x-remove-me", HeaderValue::from_static("one"));
-        headers.insert("x-remove-too", HeaderValue::from_static("two"));
-        headers.insert("x-end-to-end", HeaderValue::from_static("keep"));
-
-        strip_hop_by_hop_headers(&mut headers);
-
-        assert!(headers.get(header::CONNECTION).is_none());
-        assert!(headers.get("keep-alive").is_none());
-        assert!(headers.get(header::TRANSFER_ENCODING).is_none());
-        assert!(headers.get("x-remove-me").is_none());
-        assert!(headers.get("x-remove-too").is_none());
-        assert_eq!(headers.get("x-end-to-end").unwrap(), "keep");
     }
 
     /// A cookie the upstream scoped to ITS OWN domain cannot be stored by a

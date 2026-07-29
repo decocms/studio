@@ -40,7 +40,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures::stream;
@@ -286,21 +286,7 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
             .map(|frame| (Ok::<_, Infallible>(frame), rx))
     });
 
-    match Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::CONNECTION, "keep-alive")
-        .header("X-Accel-Buffering", "no")
-        .header(header::CONTENT_ENCODING, "identity")
-        .body(Body::from_stream(body_stream))
-    {
-        Ok(res) => res,
-        Err(err) => {
-            tracing::error!(%err, "failed to build SSE response");
-            crate::error::ApiError::internal("failed to build SSE response").into_response()
-        }
-    }
+    crate::http_util::event_stream_response(Body::from_stream(body_stream), "SSE response")
 }
 
 #[cfg(test)]

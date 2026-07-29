@@ -114,7 +114,7 @@ use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes as BodyBytes;
 use futures::{future::join_all, stream};
@@ -359,18 +359,6 @@ async fn stop_active_dispatches(runs: Vec<Arc<ActiveDispatch>>, budget: Duration
         );
     }
     processes_stopped && durably_finalized
-}
-
-/// SSE headers pinned by the contract's Dispatch Lifecycle section —
-/// DIFFERENT from `routes/events.rs`'s `/_sandbox/events` headers
-/// (`no-store` here, not `no-cache`; no `X-Accel-Buffering`/
-/// `Content-Encoding`, since those aren't pinned for this route).
-fn sse_headers() -> [(header::HeaderName, &'static str); 3] {
-    [
-        (header::CONTENT_TYPE, "text/event-stream"),
-        (header::CACHE_CONTROL, "no-store"),
-        (header::CONNECTION, "keep-alive"),
-    ]
 }
 
 /// `data: <json>\n\n` — dispatch's framing is DATA-ONLY (no `event:`
@@ -656,7 +644,7 @@ pub async fn dispatch(State(state): State<AppState>, body: Bytes) -> Response {
 
     let mut response = Response::new(Body::from_stream(body_stream));
     *response.status_mut() = StatusCode::OK;
-    for (name, value) in sse_headers() {
+    for (name, value) in crate::http_util::dispatch_sse_headers() {
         response.headers_mut().insert(name, value.parse().unwrap());
     }
     response

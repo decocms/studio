@@ -33,7 +33,7 @@ pub(super) async fn try_dispatch(
         .map(|decoded| decoded.into_owned())
         .unwrap_or_else(|_| (*encoded_virtual_mcp_id).to_string());
 
-    let branch_filter = query.and_then(branch_param);
+    let branch_filter = query.and_then(|query| crate::http_util::query_param(query, "branch"));
     Some(local_sessions(
         state,
         &virtual_mcp_id,
@@ -50,17 +50,6 @@ fn local_sessions(state: &AppState, virtual_mcp_id: &str, branch_filter: Option<
         })
         .collect();
     Json(json!({ "items": items })).into_response()
-}
-
-fn branch_param(query: &str) -> Option<String> {
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == "branch").then(|| {
-            urlencoding::decode(value)
-                .map(|decoded| decoded.into_owned())
-                .unwrap_or_else(|_| value.to_string())
-        })
-    })
 }
 
 /// One local sandbox, as the session wire shape needs it.
@@ -166,15 +155,5 @@ mod tests {
         assert_eq!(value["status"], "ready");
         // The preview origin doubles as the sandbox API origin on desktop.
         assert_eq!(value["sandboxApiUrl"], value["previewUrl"]);
-    }
-
-    #[test]
-    fn reads_the_branch_filter_out_of_a_raw_query() {
-        assert_eq!(branch_param("branch=main").as_deref(), Some("main"));
-        assert_eq!(
-            branch_param("x=1&branch=feature%2Ffoo").as_deref(),
-            Some("feature/foo")
-        );
-        assert_eq!(branch_param("other=1"), None);
     }
 }

@@ -88,11 +88,7 @@ pub(crate) fn db_err(e: db::DbError) -> ApiError {
 }
 
 fn parse_body<T: serde::de::DeserializeOwned + Default>(bytes: &[u8]) -> ApiResult<T> {
-    if bytes.is_empty() {
-        return Ok(T::default());
-    }
-    serde_json::from_slice(bytes)
-        .map_err(|e| ApiError::bad_request(format!("invalid JSON body: {e}")))
+    crate::http_util::json_body_or_default(bytes, "invalid JSON body")
 }
 
 fn thread_not_found() -> ApiError {

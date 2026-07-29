@@ -62,11 +62,13 @@ pub async fn dispatch_scoped(
 // idiomatic type this crate's other handlers already use and small enough
 // to pass the lint. Call sites convert via `.map_err(ApiError::into_response)`.
 fn parse_json(body: &Bytes) -> Result<Value, ApiError> {
+    // An empty body means "no arguments" — an empty OBJECT, not
+    // `Value::default()` (null), which is why this can't be
+    // `json_body_or_default::<Value>`.
     if body.is_empty() {
         return Ok(json!({}));
     }
-    serde_json::from_slice(body)
-        .map_err(|e| ApiError::bad_request(format!("invalid JSON body: {e}")))
+    crate::http_util::json_body(body)
 }
 
 fn expect_object<'a>(value: &'a Value, path: &str) -> Result<&'a Map<String, Value>, ApiError> {

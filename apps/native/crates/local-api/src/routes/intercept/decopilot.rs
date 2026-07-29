@@ -56,7 +56,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, Method, StatusCode};
+use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use futures::future::join_all;
@@ -1467,14 +1467,6 @@ fn frame(chunk: &Value) -> Bytes {
     ))
 }
 
-fn sse_headers() -> [(header::HeaderName, &'static str); 3] {
-    [
-        (header::CONTENT_TYPE, "text/event-stream"),
-        (header::CACHE_CONTROL, "no-store"),
-        (header::CONNECTION, "keep-alive"),
-    ]
-}
-
 pub async fn dispatch(
     state: &AppState,
     scope: &RtAccountScope,
@@ -1688,7 +1680,7 @@ async fn stream(state: &AppState, scope: &RtAccountScope, org: &str, thread_id: 
     );
 
     let mut response = Response::new(Body::from_stream(body_stream));
-    for (name, value) in sse_headers() {
+    for (name, value) in crate::http_util::dispatch_sse_headers() {
         response.headers_mut().insert(name, value.parse().unwrap());
     }
     response
@@ -1741,9 +1733,9 @@ async fn send_message(
     body: &Bytes,
 ) -> Response {
     let request_started = Instant::now();
-    let input: Value = match serde_json::from_slice(body) {
+    let input: Value = match crate::http_util::json_body(body) {
         Ok(v) => v,
-        Err(e) => return ApiError::bad_request(format!("invalid JSON body: {e}")).into_response(),
+        Err(e) => return e.into_response(),
     };
     let Some(messages) = input.get("messages").and_then(Value::as_array) else {
         return ApiError::bad_request("messages must include exactly one user message")
@@ -3132,6 +3124,7 @@ async fn run_harness_and_stream(
 mod tests {
     use super::*;
     use crate::routes::intercept::test_state;
+    use axum::http::header;
     use futures::StreamExt;
     use tokio::sync::{mpsc, Semaphore};
 

@@ -178,12 +178,10 @@ async fn commit_staged_file_owned(
     .await
 }
 
+// "Failed to parse body" (NOT this crate's usual "invalid JSON body") is the
+// fs family's daemon-parity wording — see `daemon/routes/body-parser.ts`.
 fn parse_body<T: DeserializeOwned + Default>(bytes: &[u8]) -> Result<T, ApiError> {
-    if bytes.is_empty() {
-        return Ok(T::default());
-    }
-    serde_json::from_slice(bytes)
-        .map_err(|e| ApiError::bad_request(format!("Failed to parse body: {e}")))
+    crate::http_util::json_body_or_default(bytes, "Failed to parse body")
 }
 
 // --- read --------------------------------------------------------------------

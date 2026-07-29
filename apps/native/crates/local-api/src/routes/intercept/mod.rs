@@ -68,6 +68,7 @@
 
 mod agent_sessions;
 pub mod decopilot;
+mod dev_server;
 mod git_assist;
 pub mod link_current;
 mod preview_invoke;

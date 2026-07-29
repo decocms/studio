@@ -48,6 +48,7 @@ mod cors;
 mod error;
 mod events;
 mod fs_util;
+mod http_util;
 mod log_store;
 mod mutation;
 mod process_group;

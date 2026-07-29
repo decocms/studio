@@ -85,8 +85,7 @@ struct BashBody {
 }
 
 pub async fn bash(State(state): State<AppState>, body: Bytes) -> ApiResult<Json<Value>> {
-    let body: BashBody = serde_json::from_slice(&body)
-        .map_err(|e| ApiError::bad_request(format!("invalid JSON body: {e}")))?;
+    let body: BashBody = crate::http_util::json_body(&body)?;
     let command = match body.command {
         Some(c) if !c.is_empty() => c,
         _ => return Err(ApiError::bad_request("command is required")),

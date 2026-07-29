@@ -16,7 +16,6 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use futures::stream;
 use serde::Serialize;
@@ -275,21 +274,7 @@ fn retry_directive() -> String {
 }
 
 fn sse_response(body: Body) -> Response {
-    match Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::CONNECTION, "keep-alive")
-        .header("X-Accel-Buffering", "no")
-        .header(header::CONTENT_ENCODING, "identity")
-        .body(body)
-    {
-        Ok(response) => response,
-        Err(error) => {
-            tracing::error!(%error, "failed to build native watch response");
-            ApiError::internal("failed to build native watch response").into_response()
-        }
-    }
+    crate::http_util::event_stream_response(body, "native watch response")
 }
 
 /// A refusal the client is expected to come back from.
@@ -409,6 +394,7 @@ pub(crate) fn emit_thread_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::{header, StatusCode};
     use futures::StreamExt;
 
     fn scope(user: &str) -> RtAccountScope {
