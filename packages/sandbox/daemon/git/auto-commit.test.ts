@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
+import { retry } from "@decocms/shared/std";
 import { AutoCommitter, shouldAutoCommit } from "./auto-commit";
 import type { BranchMeta } from "../events/types";
 import { gitSync } from "./git-sync";
@@ -90,13 +91,14 @@ function remoteFileList(bare: string, branch: string): string {
 describe("AutoCommitter.tick", () => {
   function makeCommitter(
     repoDir: string,
-    over: { enabled?: boolean; dirty?: boolean } = {},
+    over: { enabled?: boolean; dirty?: boolean; debounceMs?: number } = {},
   ) {
     return new AutoCommitter({
       gitDeps: { appRoot: join(repoDir, ".."), repoDir },
       getBranchMeta: () =>
         ready({ branch: "sandbox-work", workingTreeDirty: over.dirty ?? true }),
       isEnabled: () => over.enabled ?? true,
+      debounceMs: over.debounceMs,
     });
   }
 
@@ -107,6 +109,34 @@ describe("AutoCommitter.tick", () => {
     await makeCommitter(repoDir).tick();
 
     expect(remoteFileList(bare, "sandbox-work")).toContain("agent-work.ts");
+  });
+
+  // The primary trigger: a file write nudges, and the save lands once the
+  // writes settle — not on the 30 s interval.
+  it("saves after a nudge's debounce elapses, coalescing a burst", async () => {
+    const { repoDir, bare } = initRepoWithRemote();
+    const committer = makeCommitter(repoDir, { debounceMs: 20 });
+
+    for (const name of ["a.ts", "b.ts", "c.ts"]) {
+      writeFileSync(join(repoDir, name), "export const x = 1;\n");
+      committer.nudge();
+    }
+    // The debounced tick pushes on its own schedule — poll for the result
+    // rather than guessing how long a local git push takes.
+    const remote = await retry(() => remoteFileList(bare, "sandbox-work"), {
+      minTimeout: 20,
+      maxTimeout: 100,
+      maxAttempts: 20,
+    });
+    expect(remote).toContain("a.ts");
+    expect(remote).toContain("c.ts");
+    // One commit for the whole burst, not one per write.
+    expect(
+      gitSync(["rev-list", "--count", "main..sandbox-work"], {
+        cwd: bare,
+        asUser: false,
+      }),
+    ).toBe("1");
   });
 
   it("does nothing when disabled by config", async () => {

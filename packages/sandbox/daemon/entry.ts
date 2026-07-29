@@ -335,6 +335,11 @@ let pendingPaths = new Set<string>();
 const FILE_CHANGED_DEBOUNCE_MS = 300;
 
 function emitFileChanged(filePath: string) {
+  // Single funnel for every repo write (fs routes + BranchStatusMonitor's
+  // fs.watch), so it's also where the auto-save loop learns there's work to
+  // push. Cheap when the change is noise: nudge() only schedules, and the tick
+  // it schedules reads already-computed git state.
+  autoCommitter.nudge();
   pendingPaths.add(filePath);
   if (fileChangedDebounce) clearTimeout(fileChangedDebounce);
   fileChangedDebounce = setTimeout(() => {
