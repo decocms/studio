@@ -177,8 +177,15 @@ pub async fn wait_ready(app_root: &Path, org_slug: &str) -> bool {
     loop {
         match lock_states().get(org_slug).copied() {
             Some(MountState::Ready) => return true,
-            Some(MountState::Failed { .. }) | None => return false,
-            Some(MountState::InFlight) => {}
+            Some(MountState::Failed { .. }) => return false,
+            // `None` is NOT failure — it is "no outcome recorded yet". `warm`
+            // above spawns the mount, so between that spawn and its first
+            // state write there is a window where the entry is absent;
+            // treating it as failure made a caller that landed in that window
+            // report "NOT mounted" for a filesystem that was mounting fine,
+            // directly contradicting the `ready` line a sibling call had just
+            // printed. Keep waiting; the deadline below is the only failure.
+            None | Some(MountState::InFlight) => {}
         }
         if Instant::now() >= deadline {
             return false;

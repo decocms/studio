@@ -85,6 +85,9 @@ pub struct Sandbox {
     pub setup: Arc<SetupOrchestrator>,
     registry_monitor_started: AtomicBool,
     branch_monitor_started: AtomicBool,
+    /// Last `[org-fs]` outcome announced for this sandbox, so `ensure` — which
+    /// runs on every dispatch — reports only transitions.
+    org_fs_announced: Mutex<Option<bool>>,
 }
 
 /// `HashMap<Handle, Arc<Sandbox>>` plus a per-handle async lock so two
@@ -371,6 +374,21 @@ impl SandboxManager {
         }
 
         let mounted = super::org_mount::wait_ready(&self.app_root, org_slug).await;
+        // Announce only when the answer CHANGES for this sandbox. `ensure`
+        // runs on every dispatch, and each run re-announced — so a chat with
+        // ten turns printed ten identical `ready` lines into the setup
+        // transcript. The line exists to disambiguate "empty org" from "no
+        // org filesystem"; repeating it says nothing new.
+        {
+            let mut last = sandbox
+                .org_fs_announced
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if *last == Some(mounted) {
+                return;
+            }
+            *last = Some(mounted);
+        }
         let line = if mounted {
             format!("[org-fs] organization filesystem ready for '{org_slug}'\r\n")
         } else {
@@ -1124,6 +1142,7 @@ impl SandboxManager {
             setup,
             registry_monitor_started: AtomicBool::new(false),
             branch_monitor_started: AtomicBool::new(false),
+            org_fs_announced: Mutex::new(None),
         });
         sandboxes.insert(handle.to_string(), sandbox.clone());
         Ok(sandbox)
