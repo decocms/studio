@@ -47,6 +47,7 @@ mod config;
 mod cors;
 mod error;
 mod events;
+mod fs_util;
 mod log_store;
 mod mutation;
 mod process_group;
@@ -74,7 +75,7 @@ pub use state::{ApiMode, AppState};
 pub use tasks::{KillSignal, TaskRegistry};
 pub use ui::{UiAsset, UiAssetProvider};
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -875,44 +876,16 @@ pub async fn start_with_client_auth(
 }
 
 fn acquire_instance_lock(path: &Path) -> std::io::Result<File> {
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-
-        options.mode(0o600);
-        let file = options.open(path)?;
-        // `mode` applies only on create; clamp a pre-existing permissive file
-        // before locking so the ownership fence never leaks app metadata.
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-        file.try_lock()?;
-        Ok(file)
-    }
-    #[cfg(not(unix))]
-    {
-        let file = options.open(path)?;
-        file.try_lock()?;
-        Ok(file)
-    }
+    // Owner-only from creation (and clamped when pre-existing) so the
+    // ownership fence never leaks app metadata — see `fs_util`.
+    let file = fs_util::open_owner_only(path)?;
+    file.try_lock()?;
+    Ok(file)
 }
 
 async fn acquire_child_recovery_fence(path: &Path, budget: Duration) -> std::io::Result<File> {
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        options.mode(0o600);
-        let file = options.open(path)?;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-        acquire_exclusive_with_budget(file, path, budget).await
-    }
-    #[cfg(not(unix))]
-    {
-        let file = options.open(path)?;
-        acquire_exclusive_with_budget(file, path, budget).await
-    }
+    let file = fs_util::open_owner_only(path)?;
+    acquire_exclusive_with_budget(file, path, budget).await
 }
 
 async fn acquire_exclusive_with_budget(
@@ -1187,6 +1160,8 @@ async fn serve_maybe_tls(
 
 #[cfg(test)]
 mod tests {
+    use std::fs::OpenOptions;
+
     use super::*;
 
     #[test]

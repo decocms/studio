@@ -12,8 +12,8 @@
 //! (e.g. a CLI inspecting the db file while local-api is running) doesn't block
 //! on it.
 
-use std::fs::{self, OpenOptions};
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -1126,48 +1126,13 @@ fn validate_foreign_keys(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
-fn create_private_file(path: &Path) -> std::io::Result<()> {
-    let mut options = OpenOptions::new();
-    options.create(true).read(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-
-        options.mode(0o600);
-    }
-    drop(options.open(path)?);
-    set_owner_only_file(path)
-}
-
-#[cfg(unix)]
-fn set_owner_only_file(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-}
-
-#[cfg(not(unix))]
-fn set_owner_only_file(_path: &Path) -> std::io::Result<()> {
-    Ok(())
-}
-
-fn sqlite_sidecar_path(db_path: &Path, suffix: &str) -> PathBuf {
-    let mut path = db_path.as_os_str().to_os_string();
-    path.push(suffix);
-    PathBuf::from(path)
-}
-
 /// Tightens a pre-existing database and any WAL files SQLite has materialized.
 /// SQLite creates future `-wal`/`-shm` files with the database's mode; setting
 /// the main file before enabling WAL therefore also protects later sidecars.
 fn secure_sqlite_files(db_path: &Path) -> std::io::Result<()> {
-    for path in [
-        db_path.to_path_buf(),
-        sqlite_sidecar_path(db_path, "-wal"),
-        sqlite_sidecar_path(db_path, "-shm"),
-    ] {
+    for path in crate::fs_util::sqlite_file_family(db_path) {
         match fs::metadata(&path) {
-            Ok(_) => set_owner_only_file(&path)?,
+            Ok(_) => crate::fs_util::set_owner_only(&path)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
@@ -1197,7 +1162,7 @@ impl ThreadsDb {
     /// owned by the user.
     pub fn open(app_root: &Path) -> DbResult<Self> {
         let db_path = app_root.join(crate::STUDIO_DB_FILE_NAME);
-        create_private_file(&db_path)?;
+        crate::fs_util::create_owner_only(&db_path)?;
         secure_sqlite_files(&db_path)?;
         let conn = Connection::open(&db_path)?;
         let db = Self::init(conn)?;
@@ -4823,6 +4788,8 @@ fn like_escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     type TableShapeRow = (i64, String, String, i64, Option<String>, i64);
@@ -6430,11 +6397,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             fs::metadata(&app_root).unwrap().permissions().mode() & 0o777,
             0o755
         );
-        for path in [
-            path,
-            sqlite_sidecar_path(&local_db_path(&app_root), "-wal"),
-            sqlite_sidecar_path(&local_db_path(&app_root), "-shm"),
-        ] {
+        for path in crate::fs_util::sqlite_file_family(&local_db_path(&app_root)) {
             assert!(
                 path.exists(),
                 "SQLite should have materialized {}",

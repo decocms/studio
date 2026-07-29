@@ -28,141 +28,27 @@
 //! Every write here is BEST-EFFORT at the request boundary: a failure (disk
 //! full, permissions) is logged and swallowed rather than turning a successful
 //! setup into an HTTP error. The files themselves are committed atomically via
-//! private, same-directory temp files; a failed update preserves the previous
-//! valid record. If the FIRST write fails, a future restart falls back to the
-//! pre-existing "unknown handle" / "no active sandbox" behavior.
+//! [`crate::fs_util::atomic_replace`] (private, same-directory temp files); a
+//! failed update preserves the previous valid record. If the FIRST write
+//! fails, a future restart falls back to the pre-existing "unknown handle" /
+//! "no active sandbox" behavior.
 
-use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
+
+use crate::fs_util::{atomic_replace, atomic_replace_with_hook, sync_parent_dir};
 
 use super::manager::{GitSandboxConfig, SandboxManager};
 
 const ACTIVE_HANDLE_RELATIVE_PATH: &str = "worktrees/.active-handle";
 const SIDECAR_FILE_NAME: &str = "sandbox-config.json";
-const MAX_TEMP_CREATE_ATTEMPTS: usize = 128;
-
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 fn active_handle_write_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-fn create_private_parent_dir(path: &Path) -> io::Result<()> {
-    let Some(parent) = path.parent() else {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "persistent file has no parent directory",
-        ));
-    };
-
-    let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(parent)
-}
-
-fn create_private_temp(path: &Path) -> io::Result<(PathBuf, File)> {
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "persistent file has no parent directory",
-        )
-    })?;
-    let target_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid file name"))?;
-
-    for _ in 0..MAX_TEMP_CREATE_ATTEMPTS {
-        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let temp_path = parent.join(format!(
-            ".{target_name}.{}.{}.tmp",
-            std::process::id(),
-            sequence
-        ));
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            // The sidecar can contain a credential-bearing clone URL and the
-            // dev record authorizes signals. It must never exist briefly with
-            // umask-dependent group/world permissions.
-            options.mode(0o600);
-        }
-        match options.open(&temp_path) {
-            Ok(file) => return Ok((temp_path, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "could not reserve a unique atomic-write temp file",
-    ))
-}
-
-#[cfg(unix)]
-fn sync_parent_dir(path: &Path) -> io::Result<()> {
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "persistent file has no parent directory",
-        )
-    })?;
-    File::open(parent)?.sync_all()
-}
-
-#[cfg(not(unix))]
-fn sync_parent_dir(_path: &Path) -> io::Result<()> {
-    Ok(())
-}
-
-fn atomic_replace(path: &Path, contents: &[u8]) -> io::Result<()> {
-    atomic_replace_with_hook(path, contents, |_| Ok(()))
-}
-
-/// Writes and fsyncs a private same-directory temp file, then atomically
-/// replaces `path` and fsyncs its parent directory. The hook is a test seam
-/// for the only meaningful crash boundary: after durable temp contents but
-/// before rename. Any pre-rename failure removes the temp and leaves the old
-/// valid destination byte-for-byte intact.
-fn atomic_replace_with_hook<F>(path: &Path, contents: &[u8], before_rename: F) -> io::Result<()>
-where
-    F: FnOnce(&Path) -> io::Result<()>,
-{
-    create_private_parent_dir(path)?;
-    let (temp_path, mut temp_file) = create_private_temp(path)?;
-
-    let result = (|| {
-        temp_file.write_all(contents)?;
-        temp_file.flush()?;
-        temp_file.sync_all()?;
-        drop(temp_file);
-
-        before_rename(&temp_path)?;
-        std::fs::rename(&temp_path, path)?;
-        sync_parent_dir(path)
-    })();
-
-    if result.is_err() {
-        // Best effort: if rename already succeeded the temp path no longer
-        // exists. If anything failed before rename this prevents stale private
-        // temp files from accumulating beside the source of truth.
-        let _ = std::fs::remove_file(&temp_path);
-    }
-    result
 }
 
 /// Whether `handle` is safe to use as a RELATIVE path under the worktree root.

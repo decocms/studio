@@ -176,14 +176,9 @@ impl RunSpool {
             .open(&path)
             .await
             .map_err(|source| Self::io("open", &path, source))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .await
-                .map_err(|source| Self::io("set private permissions", &path, source))?;
-        }
+        crate::fs_util::set_owner_only_async(&path)
+            .await
+            .map_err(|source| Self::io("set private permissions", &path, source))?;
         let written = file
             .metadata()
             .await

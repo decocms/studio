@@ -549,9 +549,10 @@ impl SandboxRegistry {
         let Some(path) = &self.database_path else {
             return Ok(());
         };
-        set_private_permissions(path)?;
-        set_private_permissions(&PathBuf::from(format!("{}-wal", path.display())))?;
-        set_private_permissions(&PathBuf::from(format!("{}-shm", path.display())))
+        for file in crate::fs_util::sqlite_file_family(path) {
+            set_private_permissions(&file)?;
+        }
+        Ok(())
     }
 }
 
@@ -724,22 +725,12 @@ fn validate_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
     Ok(())
 }
 
-fn sqlite_companion_path(path: &Path, suffix: &str) -> PathBuf {
-    let mut value = path.as_os_str().to_os_string();
-    value.push(suffix);
-    PathBuf::from(value)
-}
-
 /// Moves a corrupt SQLite database and its live journal companions aside
 /// without deleting anything. Each rename is atomic; if a later companion
 /// fails to move, earlier moves are rolled back before startup returns an
 /// error, so callers never intentionally proceed with a split set.
 fn quarantine_database_files(path: &Path) -> Result<Vec<PathBuf>, String> {
-    let sources = [
-        path.to_path_buf(),
-        sqlite_companion_path(path, "-wal"),
-        sqlite_companion_path(path, "-shm"),
-    ];
+    let sources = crate::fs_util::sqlite_file_family(path);
     let tag = format!(
         "corrupt-{}-{}",
         SystemTime::now()
@@ -794,54 +785,28 @@ fn quarantine_database_files(path: &Path) -> Result<Vec<PathBuf>, String> {
         moved.push((source.clone(), destination.clone()));
     }
 
-    sync_database_directory(path)?;
+    crate::fs_util::sync_parent_dir(path)
+        .map_err(|error| format!("failed to sync sandbox registry directory {path:?}: {error}"))?;
     Ok(moved
         .into_iter()
         .map(|(_, destination)| destination)
         .collect())
 }
 
-#[cfg(unix)]
-fn sync_database_directory(path: &Path) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("sandbox registry path has no parent: {path:?}"))?;
-    std::fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("failed to sync sandbox registry directory {parent:?}: {error}"))
-}
-
-#[cfg(not(unix))]
-fn sync_database_directory(_path: &Path) -> Result<(), String> {
-    Ok(())
-}
-
 fn prepare_private_database_file(path: &Path) -> Result<(), String> {
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options
-        .open(path)
-        .map_err(|error| format!("failed to create private sandbox registry {path:?}: {error}"))?;
-    set_private_permissions(path)
+    crate::fs_util::create_owner_only(path)
+        .map_err(|error| format!("failed to create private sandbox registry {path:?}: {error}"))
 }
 
+/// Registry policy over [`crate::fs_util::set_owner_only`]: a companion file
+/// that vanished between inspection and clamp is fine (quarantine only moves
+/// what exists), so absence is success rather than an error.
 fn set_private_permissions(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Ok(());
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
-            |error| format!("failed to make sandbox registry file private {path:?}: {error}"),
-        )?;
-    }
-    Ok(())
+    crate::fs_util::set_owner_only(path)
+        .map_err(|error| format!("failed to make sandbox registry file private {path:?}: {error}"))
 }
 
 fn normalized_branch(config: &GitSandboxConfig) -> &str {

@@ -437,7 +437,10 @@ async fn spawn_mount(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
-    if is_read_only(volume) {
+    // One more layer under the WebDAV surface's own write refusal — the
+    // shared predicate lives beside `ORG_VOLUMES` so the two layers cannot
+    // disagree about which volumes those are.
+    if super::org_view::is_read_only_volume(volume) {
         cmd.arg("--read-only");
     }
     // Anchored to the app-wide fence like every other spawned child:
@@ -447,13 +450,6 @@ async fn spawn_mount(
     // token, so the mount LOOKS attached while every operation through it
     // fails.
     ProcessGroupChild::spawn(&mut cmd, lifetime_lock).await
-}
-
-/// `public` is the org's curated, shared skill sets — this app must never
-/// write to it, and saying so at mount time is one more layer under the
-/// WebDAV surface's own refusal.
-fn is_read_only(volume: &str) -> bool {
-    volume.starts_with("public")
 }
 
 /// Wait for the kernel to actually attach the mount.
@@ -761,15 +757,6 @@ mod tests {
         assert_eq!(mount_plan(false, true), MountPlan::ReclaimGhostThenSpawn);
         assert_eq!(mount_plan(true, false), MountPlan::ReapOwnThenSpawn);
         assert_eq!(mount_plan(false, false), MountPlan::Spawn);
-    }
-
-    #[test]
-    fn public_volumes_mount_read_only() {
-        assert!(is_read_only("public"));
-        assert!(is_read_only("public-core"));
-        for writable in ["home", "uploads", "outputs"] {
-            assert!(!is_read_only(writable), "{writable} must stay writable");
-        }
     }
 
     #[test]

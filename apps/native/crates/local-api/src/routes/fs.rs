@@ -1254,6 +1254,11 @@ fn endpoint_content(endpoint: &tools_catalog::McpEndpoint) -> Result<String, Api
         .map_err(|error| ApiError::internal(error.to_string()))
 }
 
+/// Atomically commits the credential-bearing endpoint descriptor, private
+/// from creation — the temp/fsync/rename/cleanup mechanics live in
+/// [`crate::fs_util::atomic_replace`]. The parent is created HERE with
+/// default directory permissions: the catalog dir lives inside the user's
+/// working tree and must stay readable by their own tooling.
 async fn write_private_endpoint(path: &Path, content: &str) -> Result<(), ApiError> {
     let parent = path
         .parent()
@@ -1261,36 +1266,12 @@ async fn write_private_endpoint(path: &Path, content: &str) -> Result<(), ApiErr
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(|error| ApiError::internal(error.to_string()))?;
-    let temp = parent.join(format!(
-        ".{}.tmp-{}",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("endpoint"),
-        uuid::Uuid::new_v4()
-    ));
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options
-        .open(&temp)
+    let path = path.to_path_buf();
+    let content = content.as_bytes().to_vec();
+    tokio::task::spawn_blocking(move || crate::fs_util::atomic_replace(&path, &content))
         .await
-        .map_err(|error| ApiError::internal(error.to_string()))?;
-    let result = async {
-        file.write_all(content.as_bytes()).await?;
-        file.sync_all().await?;
-        drop(file);
-        tokio::fs::rename(&temp, path).await?;
-        #[cfg(unix)]
-        tokio::fs::File::open(parent).await?.sync_all().await?;
-        Ok::<(), std::io::Error>(())
-    }
-    .await;
-    if let Err(error) = result {
-        let _ = tokio::fs::remove_file(&temp).await;
-        return Err(ApiError::internal(error.to_string()));
-    }
-    Ok(())
+        .map_err(|error| ApiError::internal(error.to_string()))?
+        .map_err(|error| ApiError::internal(error.to_string()))
 }
 
 /// Publishes the endpoint descriptor before attempting MCP discovery. This is

@@ -212,7 +212,9 @@ impl LogStore {
     /// a replay frame with nothing to show is just skipped by the caller).
     pub async fn tail_read(&self, key: &str, max_bytes: usize) -> String {
         let path = self.path_for(key);
-        if !Self::make_owner_only(&path).await {
+        // Also the missing-file gate: clamping a file that does not exist
+        // fails, which is exactly the "" case documented above.
+        if crate::fs_util::set_owner_only_async(&path).await.is_err() {
             return String::new();
         }
         let Ok(mut file) = File::open(&path).await else {
@@ -343,7 +345,7 @@ impl LogStore {
         let Ok(file) = options.open(&path).await else {
             return false;
         };
-        if !Self::make_owner_only(&path).await {
+        if crate::fs_util::set_owner_only_async(&path).await.is_err() {
             return false;
         }
         let written = fs::metadata(&path).await.map(|m| m.len()).unwrap_or(0);
@@ -356,22 +358,6 @@ impl LogStore {
             },
         );
         true
-    }
-
-    async fn make_owner_only(path: &std::path::Path) -> bool {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-                .await
-                .is_ok()
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = path;
-            true
-        }
     }
 
     async fn rotate(&self, guard: &mut HashMap<String, Writer>, key: &str) {

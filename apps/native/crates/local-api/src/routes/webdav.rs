@@ -116,8 +116,10 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
     // Read-only volumes are rejected HERE rather than trusting rclone's
     // `--read-only` mount flag, and BEFORE the mac-junk shortcut below: a
     // volume this app must never write to should not have a verb that writes
-    // succeed, not even vacuously.
-    if is_write && dav::is_read_only_volume(&target.volume) {
+    // succeed, not even vacuously. The predicate is shared with the mount
+    // manager (see `sandbox::org_view`) so the two layers agree on which
+    // volumes those are.
+    if is_write && crate::sandbox::org_view::is_read_only_volume(&target.volume) {
         return text(StatusCode::FORBIDDEN, "Read-only volume");
     }
 
