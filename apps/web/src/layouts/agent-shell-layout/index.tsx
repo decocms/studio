@@ -96,7 +96,10 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
   return (
     <ErrorBoundary
       fallback={
-        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        <div
+          role="alert"
+          className="flex-1 flex items-center justify-center text-sm text-muted-foreground"
+        >
           {t("agentShellLayout.agentShellLayout.chatLoadingError")}
         </div>
       }
@@ -293,7 +296,10 @@ function MobileTaskWorkspace({
           {mobileSurface === "main" ? (
             <ErrorBoundary
               fallback={
-                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                <div
+                  role="alert"
+                  className="flex-1 flex items-center justify-center text-sm text-muted-foreground"
+                >
                   {t("agentShellLayout.agentShellLayout.somethingWentWrong")}
                 </div>
               }
@@ -408,7 +414,11 @@ function AgentInsetProvider() {
     return (
       <InsetContext value={insetContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+          >
             <Loading01 className="size-4 animate-spin mr-2" />
             {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
@@ -421,7 +431,10 @@ function AgentInsetProvider() {
     return (
       <InsetContext value={insetContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm">
+          <div
+            role="alert"
+            className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm"
+          >
             <div className="font-medium">
               {t("agentShellLayout.agentShellLayout.taskUnavailable")}
             </div>
