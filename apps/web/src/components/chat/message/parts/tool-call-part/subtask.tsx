@@ -24,7 +24,7 @@ import { MessageUsageStats } from "../../../usage-stats.tsx";
 import type { UsageStats as UsageStatsType } from "@/lib/usage-utils.ts";
 import { MessageTextPart } from "../text-part.tsx";
 import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
-import { ToolCallShell } from "./common.tsx";
+import { LatencyLabel, ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 
 /**
@@ -211,6 +211,7 @@ function SubtaskCard({
   summary,
   state,
   usage,
+  latency,
   onOpenChange,
   onFlip,
   children,
@@ -220,6 +221,8 @@ function SubtaskCard({
   summary?: ReactNode;
   state: "loading" | "error" | "idle";
   usage?: UsageStatsType | null;
+  /** Latency of the tool call, in seconds. */
+  latency?: number;
   /** Notified when the panel opens/closes — lets a caller gate a live tail. */
   onOpenChange?: (open: boolean) => void;
   /** When set and the subtask is still running, show a "run in background"
@@ -275,6 +278,7 @@ function SubtaskCard({
             <div className="flex-1" />
           )}
           <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity [@media(hover:hover)]:group-hover/tool:opacity-100" />
+          <LatencyLabel latency={latency} />
           <MessageUsageStats usage={usage} />
         </button>
         {onFlip && isLoading ? (
@@ -523,6 +527,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
       summary={summary}
       state={state}
       usage={usage}
+      latency={props.latency}
       onFlip={isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
@@ -562,6 +567,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
       summary={summary}
       state={state}
       usage={usage}
+      latency={props.latency}
       onFlip={isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
