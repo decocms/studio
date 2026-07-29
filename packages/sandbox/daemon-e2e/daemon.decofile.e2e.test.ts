@@ -136,10 +136,22 @@ describe("GET /_sandbox/decofile", () => {
     // payload just to read its hash.
     await writeBlock(d!, "pages-home", { path: "/", sections: [] });
 
+    // The connect handshake also carries a decofile event now (the pre-write
+    // version), so "an event arrived" is not enough — wait for one whose
+    // version DIFFERS from the pre-write state to prove the live announce.
+    const before = await fetch(url(d!, "/_sandbox/decofile"));
+    await before.text();
+    const preVersion = (before.headers.get("etag") ?? "").replace(
+      /^W\/"|"$/g,
+      "",
+    );
+    const versionsIn = (acc: string): string[] =>
+      [...acc.matchAll(/"version":"([0-9a-f]+)"/g)].map((m) => m[1] ?? "");
+
     // Land the write while the stream is open, so the event is observed live
     // rather than replayed from connect.
     const pending = readSseUntil(url(d!, "/_sandbox/events"), {
-      predicate: (acc) => acc.includes("event: decofile"),
+      predicate: (acc) => versionsIn(acc).some((v) => v !== preVersion),
       deadlineMs: 15_000,
     });
     await new Promise((r) => setTimeout(r, 500));
@@ -159,6 +171,41 @@ describe("GET /_sandbox/decofile", () => {
     expect(saved.status).toBe(200);
 
     const { text } = await pending;
+    const version = versionsIn(text).find((v) => v !== preVersion);
+    expect(version).toBeDefined();
+
+    // Must be the SAME value the route serves as its ETag — one definition, or
+    // Studio's pointer and the framework's cache key drift apart.
+    const res = await fetch(url(d!, "/_sandbox/decofile"));
+    await res.text();
+    expect(res.headers.get("etag")).toBe(`W/"${version}"`);
+  }, 30_000);
+
+  test("replays the version to a client that connects AFTER the announce", async () => {
+    // A thread switch or page reload opens a fresh events stream long after
+    // tree-land already announced the version. Without a handshake replay that
+    // client waits on `decofile` forever and Fast Preview never starts.
+    await writeBlock(d!, "pages-home", { path: "/", sections: [] });
+
+    // Trigger an announce via the daemon's own write route, then let the
+    // debounce + merge land before connecting.
+    const saved = await fetch(url(d!, "/_sandbox/write"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({
+        path: ".deco/blocks/pages-home.json",
+        content: JSON.stringify({ path: "/", sections: [{ n: 2 }] }),
+      }),
+    });
+    expect(saved.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 1_500));
+
+    // Fresh connection, no writes after this point: the version must come
+    // from the handshake snapshot alone.
+    const { text } = await readSseUntil(url(d!, "/_sandbox/events"), {
+      predicate: (acc) => acc.includes("event: decofile"),
+      deadlineMs: 10_000,
+    });
     const line = text
       .split("\n")
       .find((l) => l.startsWith("data:") && l.includes("version"));
@@ -167,11 +214,22 @@ describe("GET /_sandbox/decofile", () => {
       version: string;
     };
 
-    // Must be the SAME value the route serves as its ETag — one definition, or
-    // Studio's pointer and the framework's cache key drift apart.
     const res = await fetch(url(d!, "/_sandbox/decofile"));
     await res.text();
     expect(res.headers.get("etag")).toBe(`W/"${version}"`);
+  }, 30_000);
+
+  test("computes and broadcasts a version for a connecting client even when no announce ever ran", async () => {
+    // A daemon restarted over an already-cloned tree: blocks are on disk but
+    // the daemon never saw a write, so nothing is cached. The connect path
+    // must compute one rather than leave the client waiting.
+    await writeBlock(d!, "pages-home", { path: "/", sections: [] });
+
+    const { text } = await readSseUntil(url(d!, "/_sandbox/events"), {
+      predicate: (acc) => acc.includes("event: decofile"),
+      deadlineMs: 10_000,
+    });
+    expect(text).toContain("event: decofile");
   }, 30_000);
 });
 
