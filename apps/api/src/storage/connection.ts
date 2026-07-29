@@ -368,22 +368,23 @@ export class ConnectionStorage implements ConnectionStoragePort {
       return connection;
     }
 
-    // Recompute slug if any slug-relevant field changed
+    // The slug column is a denormalization of app_name/connection_url/title, and
+    // the UI links to a connection by the slug it derives from those same fields
+    // (getConnectionSlug). Any drift makes the connection unreachable — its detail
+    // page 404s while the list still shows it. So recompute from the merged row on
+    // every update, using presence (not `??`) so an explicit null clears the field
+    // it was derived from instead of silently keeping the old slug.
     const slugData: Record<string, unknown> = { ...data };
-    if (
-      data.app_name !== undefined ||
-      data.connection_url !== undefined ||
-      data.title !== undefined
-    ) {
-      const existing = await this.findById(id);
-      if (existing) {
-        slugData.slug = getConnectionSlug({
-          app_name: data.app_name ?? existing.app_name,
-          connection_url: data.connection_url ?? existing.connection_url,
-          title: data.title ?? existing.title,
-          id,
-        });
-      }
+    const existing = await this.findById(id);
+    if (existing) {
+      const merged = <K extends keyof ConnectionEntity>(key: K) =>
+        data[key] === undefined ? existing[key] : data[key];
+      slugData.slug = getConnectionSlug({
+        app_name: merged("app_name"),
+        connection_url: merged("connection_url"),
+        title: merged("title"),
+        id,
+      });
     }
 
     const serialized = await this.serializeConnection({
