@@ -311,6 +311,14 @@ export function buildHarnessWorkspaceInput(input: {
   };
 }
 
+// Org display names are free-text (ORGANIZATION_UPDATE allows any
+// character up to 255 long) but get spliced into the `X-Title` header sent
+// to OpenRouter. A `\r`/`\n` there breaks header construction outright and
+// other control chars are meaningless in an HTTP header value, so strip them.
+export function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\0-\x1f\x7f]/g, " ").trim();
+}
+
 async function resolveSecretModelSource(
   ctx: StudioContext,
   organizationId: string,
@@ -334,8 +342,9 @@ async function resolveSecretModelSource(
   // one app; `X-Title` carries the org (and distinguishes `deco`, the
   // OpenRouter provider behind the deco AI gateway, from direct-OpenRouter use).
   if (source.providerId === "openrouter" || source.providerId === "deco") {
-    const orgName =
-      ctx.organization?.name ?? ctx.organization?.slug ?? organizationId;
+    const orgName = sanitizeHeaderValue(
+      ctx.organization?.name ?? ctx.organization?.slug ?? organizationId,
+    );
     const appName = source.providerId === "deco" ? "deco AI Gateway" : "Studio";
     return {
       ...source,
