@@ -23,10 +23,10 @@ export const TAGS_CREATE = defineTool({
     name: z.string().min(1).max(50).describe("Tag name"),
     color: z
       .string()
-      .max(20)
+      .regex(/^#[0-9a-fA-F]{6}$/)
       .nullable()
       .optional()
-      .describe('Palette key the tag renders its dot with, e.g. "blue"'),
+      .describe('Hex color the tag renders its dot with, e.g. "#3b82f6"'),
   }),
 
   outputSchema: z.object({

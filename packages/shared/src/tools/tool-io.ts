@@ -295,7 +295,13 @@ export interface StudioToolIO {
           hasMessages: boolean;
           createdAt: string;
         }[];
-        tags: { id: string; name: string; color: string | null }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
+          createdAt: string;
+        }[];
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -333,7 +339,13 @@ export interface StudioToolIO {
           hasMessages: boolean;
           createdAt: string;
         }[];
-        tags: { id: string; name: string; color: string | null }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
+          createdAt: string;
+        }[];
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -388,7 +400,13 @@ export interface StudioToolIO {
           hasMessages: boolean;
           createdAt: string;
         }[];
-        tags: { id: string; name: string; color: string | null }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
+          createdAt: string;
+        }[];
         createdBy: string;
         createdAt: string;
         updatedBy: string;

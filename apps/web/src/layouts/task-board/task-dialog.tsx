@@ -54,7 +54,7 @@ import {
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
-  tagDotClassName,
+  tagDotColor,
   type Member,
   type TaskBoardItem,
   type TaskBoardItemPr,
@@ -180,11 +180,8 @@ export function TaskBoardItemDialog({
     reset();
   };
 
-  const createAndSelectTag = async (name: string) => {
-    const tag = await createTag.mutateAsync({
-      name,
-      color: nextTagColor(orgTags.length),
-    });
+  const createAndSelectTag = async (name: string, color: string) => {
+    const tag = await createTag.mutateAsync({ name, color });
     setTagIds((prev) => [...prev, tag.id]);
   };
 
@@ -593,10 +590,8 @@ export function TaskBoardItemDialog({
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
                           <span
-                            className={cn(
-                              "size-2 shrink-0 rounded-full",
-                              tagDotClassName(tag.color),
-                            )}
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: tagDotColor(tag.color) }}
                           />
                           <span className="truncate">{tag.name}</span>
                           <span
@@ -643,6 +638,7 @@ export function TaskBoardItemDialog({
                   <TagPickerContent
                     tags={orgTags}
                     selectedIds={tagIds}
+                    defaultColor={nextTagColor(orgTags.length)}
                     onToggle={(tagId) =>
                       setTagIds((prev) =>
                         prev.includes(tagId)
@@ -1171,10 +1167,8 @@ function describeActivity(
           key={ref.id ?? i}
           icon={
             <span
-              className={cn(
-                "size-2 rounded-full",
-                tagDotClassName(ref.color ?? null),
-              )}
+              className="size-2 rounded-full"
+              style={{ backgroundColor: tagDotColor(ref.color) }}
             />
           }
           label={ref.name ?? ""}

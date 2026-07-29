@@ -75,8 +75,8 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (input.tagIds?.length) {
       await ctx.storage.taskBoard.setItemTags(
         item.id,
-        organizationId,
         input.tagIds,
+        getUserId(ctx)!,
       );
       item = (await ctx.storage.taskBoard.getById(item.id, organizationId))!;
     }

@@ -156,36 +156,29 @@ export const PRIORITY_CONFIG: Record<
   },
 };
 
-/** Fixed palette a tag's dot is drawn from. `value` is what's persisted on
- *  the tag (`organization_tags.color`); a new tag auto-picks the next unused
- *  one so tags stay visually distinct without asking the user to choose. */
-export const TAG_COLORS: { value: string; dotClassName: string }[] = [
-  { value: "gray", dotClassName: "bg-gray-400" },
-  { value: "red", dotClassName: "bg-red-500" },
-  { value: "orange", dotClassName: "bg-orange-500" },
-  { value: "amber", dotClassName: "bg-amber-500" },
-  { value: "green", dotClassName: "bg-green-500" },
-  { value: "blue", dotClassName: "bg-blue-500" },
-  { value: "purple", dotClassName: "bg-purple-500" },
-  { value: "pink", dotClassName: "bg-pink-500" },
+/** Suggested colors a new tag cycles through, so consecutive tags are visually
+ *  distinct without the user having to choose. Any hex is valid — the picker's
+ *  `<input type="color">` isn't limited to these. */
+const TAG_COLORS = [
+  "#9ca3af",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
 ];
-
-const TAG_DOT_CLASS_BY_COLOR = new Map(
-  TAG_COLORS.map((c) => [c.value, c.dotClassName]),
-);
 
 const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
 
-export function tagDotClassName(color: string | null): string {
-  return (
-    (color ? TAG_DOT_CLASS_BY_COLOR.get(color) : undefined) ??
-    DEFAULT_TAG_COLOR.dotClassName
-  );
+/** A tag's dot color — arbitrary hex off `organization_tags.color`, hence an
+ *  inline style rather than a Tailwind token. */
+export function tagDotColor(color: string | null | undefined): string {
+  return color ?? DEFAULT_TAG_COLOR;
 }
 
-/** Next palette color for the `existingCount`-th tag created in an org, so
- *  consecutive tags cycle through distinct colors. */
+/** Suggested color for the `existingCount`-th tag created in an org. */
 export function nextTagColor(existingCount: number): string {
-  return (TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR)
-    .value;
+  return TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR;
 }

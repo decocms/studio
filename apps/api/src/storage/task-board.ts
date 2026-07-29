@@ -92,8 +92,7 @@ export class TaskBoardStorage {
       .execute();
 
     const items = rows.map((row) => this.itemFromDbRow(row));
-    await this.attachThreads(items, organizationId);
-    await this.attachTags(items, organizationId);
+    await this.attachRefs(items, organizationId);
     return items;
   }
 
@@ -110,8 +109,7 @@ export class TaskBoardStorage {
 
     if (!row) return null;
     const item = this.itemFromDbRow(row);
-    await this.attachThreads([item], organizationId);
-    await this.attachTags([item], organizationId);
+    await this.attachRefs([item], organizationId);
     return item;
   }
 
@@ -208,8 +206,7 @@ export class TaskBoardStorage {
       .executeTakeFirstOrThrow();
 
     const item = this.itemFromDbRow(row);
-    await this.attachThreads([item], organizationId);
-    await this.attachTags([item], organizationId);
+    await this.attachRefs([item], organizationId);
     return item;
   }
 
@@ -225,11 +222,7 @@ export class TaskBoardStorage {
         .where("task_board_item_id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
-      await trx
-        .deleteFrom("task_board_item_tags")
-        .where("task_board_item_id", "=", id)
-        .where("organization_id", "=", organizationId)
-        .execute();
+      // task_board_item_tags cascades from task_board_items.
       await trx
         .deleteFrom("task_board_items")
         .where("id", "=", id)
@@ -239,34 +232,35 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Set the tags attached to a task (replaces all existing links). All
-   * `tagIds` must already be verified as belonging to `organizationId` by the
-   * caller — this just applies the diff.
+   * Set the tags attached to a task. Applies a diff rather than
+   * replace-everything so an already-attached tag keeps its original
+   * `created_by`/`created_at` — that's who tagged it and when. The task and all
+   * `tagIds` must already be verified as belonging to the caller's org.
    */
   async setItemTags(
     taskBoardItemId: string,
-    organizationId: string,
     tagIds: string[],
+    by: string,
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
       await trx
         .deleteFrom("task_board_item_tags")
         .where("task_board_item_id", "=", taskBoardItemId)
-        .where("organization_id", "=", organizationId)
+        .$if(tagIds.length > 0, (qb) => qb.where("id", "not in", tagIds))
         .execute();
 
       if (tagIds.length > 0) {
-        const now = new Date().toISOString();
         await trx
           .insertInto("task_board_item_tags")
           .values(
-            tagIds.map((tagId) => ({
+            tagIds.map((id) => ({
               task_board_item_id: taskBoardItemId,
-              tag_id: tagId,
-              organization_id: organizationId,
-              created_at: now,
+              id,
+              created_by: by,
+              created_at: new Date().toISOString(),
             })),
           )
+          .onConflict((oc) => oc.doNothing())
           .execute();
       }
     });
@@ -423,17 +417,33 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Populate each item's `threads` (most-recent first) with the linked thread's
-   * live run status/title. One batched query for the whole set.
+   * Populate each item's `threads` and `tags` — one transaction, so a card
+   * can't read its threads from before a concurrent edit and its tags from
+   * after.
    */
-  private async attachThreads(
+  private async attachRefs(
     items: TaskBoardItem[],
     organizationId: string,
   ): Promise<void> {
     if (items.length === 0) return;
+    await this.db.transaction().execute(async (trx) => {
+      await this.attachThreads(trx, items, organizationId);
+      await this.attachTags(trx, items);
+    });
+  }
+
+  /**
+   * Populate each item's `threads` (most-recent first) with the linked thread's
+   * live run status/title. One batched query for the whole set.
+   */
+  private async attachThreads(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+    organizationId: string,
+  ): Promise<void> {
     const ids = items.map((i) => i.id);
 
-    const rows = await this.db
+    const rows = await db
       .selectFrom("task_board_item_threads as link")
       .innerJoin("threads as t", "t.id", "link.thread_id")
       // Latest assistant text part (v2 stream-of-record) for the card preview.
@@ -508,24 +518,25 @@ export class TaskBoardStorage {
     for (const item of items) item.threads = byItem.get(item.id) ?? [];
   }
 
-  /** Populate each item's `tags`, name ascending. One batched query. */
+  /** Populate each item's `tags`, name ascending. One batched query. Items are
+   *  already org-scoped by the caller, so the join needs no org filter. */
   private async attachTags(
+    db: Kysely<Database>,
     items: TaskBoardItem[],
-    organizationId: string,
   ): Promise<void> {
-    if (items.length === 0) return;
     const ids = items.map((i) => i.id);
 
-    const rows = await this.db
+    const rows = await db
       .selectFrom("task_board_item_tags as link")
-      .innerJoin("organization_tags as tag", "tag.id", "link.tag_id")
+      .innerJoin("organization_tags as tag", "tag.id", "link.id")
       .select([
         "link.task_board_item_id as taskId",
+        "link.created_by as createdBy",
+        "link.created_at as createdAt",
         "tag.id as id",
         "tag.name as name",
         "tag.color as color",
       ])
-      .where("link.organization_id", "=", organizationId)
       .where("link.task_board_item_id", "in", ids)
       .orderBy("tag.name", "asc")
       .execute();
@@ -536,6 +547,11 @@ export class TaskBoardStorage {
         id: row.id,
         name: row.name,
         color: row.color ?? null,
+        createdBy: row.createdBy,
+        createdAt:
+          row.createdAt instanceof Date
+            ? row.createdAt.toISOString()
+            : (row.createdAt as unknown as string),
       };
       const list = byItem.get(row.taskId);
       if (list) list.push(ref);

@@ -113,6 +113,11 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const previous = hasFieldUpdate
       ? await ctx.storage.taskBoard.getById(input.id, organizationId)
       : null;
+    // Proves the task is this org's before the tag write below, which is no
+    // longer org-scoped itself (the join table has no organization_id).
+    if (hasFieldUpdate && !previous) {
+      throw new Error(`Task board item not found: ${input.id}`);
+    }
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
@@ -134,8 +139,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       }
       await ctx.storage.taskBoard.setItemTags(
         input.id,
-        organizationId,
         input.tagIds,
+        getUserId(ctx)!,
       );
     }
 
@@ -197,9 +202,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         item.tags.some((t) => !previousTagIds.has(t.id));
       if (tagsChanged) {
         await recordTaskActivity(ctx, {
-          organizationId,
           taskBoardItemId: item.id,
-          kind: "tags_changed",
+          action: "tags_changed",
           actorId,
           data: { from: previous.tags, to: item.tags },
         });

@@ -34,11 +34,13 @@ const TaskBoardItemThreadSchema = z.object({
   createdAt: z.string(),
 });
 
-/** A tag attached to a task. */
+/** A tag attached to a task, plus who attached it and when. */
 export const TaskBoardItemTagSchema = z.object({
   id: z.string(),
   name: z.string(),
-  color: z.string().nullable(),
+  color: z.string().nullable().describe('Hex color, e.g. "#3b82f6"'),
+  createdBy: z.string(),
+  createdAt: z.string().datetime(),
 });
 
 /** A GitHub PR linked to a task. Identity is persisted; title/body/state/draft/

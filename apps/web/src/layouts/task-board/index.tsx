@@ -56,7 +56,7 @@ import {
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
-  tagDotClassName,
+  tagDotColor,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
@@ -159,7 +159,10 @@ function DueDatePill({ iso }: { iso: string }) {
 function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
     <span className={PILL}>
-      <span className={cn("size-2 rounded-full", tagDotClassName(tag.color))} />
+      <span
+        className="size-2 rounded-full"
+        style={{ backgroundColor: tagDotColor(tag.color) }}
+      />
       {tag.name}
     </span>
   );

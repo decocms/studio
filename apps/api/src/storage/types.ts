@@ -1316,7 +1316,7 @@ export interface OrganizationTagTable {
   id: string;
   organization_id: string;
   name: string;
-  /** Palette key (e.g. "blue") the tag renders its dot with. Null pre-dates
+  /** Hex color (e.g. "#3b82f6") the tag renders its dot with. Null pre-dates
    *  task-board tags, which is the only place color is set today. */
   color: string | null;
   created_at: ColumnType<Date, Date | string, never>;
@@ -1667,20 +1667,23 @@ export interface TaskBoardItemPrTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Join row: a task board item ↔ an org tag (many-to-many). */
+/** Join row: a task board item ↔ an org tag (many-to-many). `id` is the tag's
+ *  id; both sides are org-scoped already, so the join carries no org column. */
 export interface TaskBoardItemTagTable {
   task_board_item_id: string;
-  tag_id: string;
-  organization_id: string;
+  id: string;
+  created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /** A tag attached to a task, snapshotted for rendering (name/color can change
- *  independently of the task). */
+ *  independently of the task), plus who attached it and when. */
 export interface TaskBoardItemTagRef {
   id: string;
   name: string;
   color: string | null;
+  createdBy: string;
+  createdAt: string;
 }
 
 /** A PR linked to a task — identity only. Title/state are fetched live. */

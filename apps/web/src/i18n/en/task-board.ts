@@ -64,6 +64,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.removeTagAriaLabel": "Remove tag {name}",
   "taskBoard.taskDialog.addTagButton": "Add tag",
   "taskBoard.taskDialog.deleteTagAriaLabel": "Delete tag {name}",
+  "taskBoard.taskDialog.pickTagColorAriaLabel": "Pick tag color",
   "taskBoard.taskDialog.tagFilterPlaceholder": "Search tags…",
   "taskBoard.taskDialog.createTagOption": 'Create tag "{name}"',
   "taskBoard.taskDialog.noTagsFound": "No tags yet. Type a name to create one.",
