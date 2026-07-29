@@ -417,6 +417,16 @@ export async function runProjectorWorkflowBody(
         kind,
       });
     }
+    // On a liveness breach the fold's error part came from OUR OWN stream
+    // error, so the thread rendered the assistant saying "Error: producer
+    // produced no output before timeout" — a projector implementation detail,
+    // not a reply. The `failed` terminal (+ the liveness `failure_reason`) is
+    // the user-visible signal, so drop the bubble. Scoped to the synthesized
+    // message id: whatever step parts the producer did publish before going
+    // silent live under the harness message id and are untouched.
+    if (isLivenessBreach) {
+      await rt.clearSynthesizedError(input.runId, input.fenceToken);
+    }
     // Re-throw so DBOS records the workflow failure (poison run — projection
     // itself threw after exhausting retries; NOT a harness-error run). This
     // holds for the liveness case too: the consume step genuinely failed to

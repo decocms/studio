@@ -343,6 +343,10 @@ describe("runProjectorWorkflowBody", () => {
     expect(recordFailCall?.runId).toBe("run_1");
     expect(recordFailCall?.orgId).toBe("org_1");
     expect(recordFailCall?.distinctId).toBe("user_1");
+    // The fold's synthesized "Error: producer produced no output before
+    // timeout" bubble is a projector internal, not an assistant reply — the
+    // failed terminal is the signal, so the bubble must be deleted.
+    expect(calls.filter((c) => c.kind === "clear-error")).toHaveLength(1);
   });
 
   test("tool-calls + approval-requested → requires_action, no recordCompleted", async () => {
