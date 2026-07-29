@@ -29,6 +29,16 @@ const LIST_METHODS = [
 ];
 
 /**
+ * listTools/listResources/listPrompts all share this shape; the params/result
+ * types differ per-method, so this decorator (which patches all three the same
+ * way) treats them uniformly rather than via `any`.
+ */
+type ListMethodFn = (
+  params?: unknown,
+  options?: unknown,
+) => Promise<Record<string, unknown[]>>;
+
+/**
  * Decorator that adds caching for listTools, listResources, and listPrompts.
  *
  * Delegates to fetchWithCache. VIRTUAL connections bypass cache.
@@ -43,25 +53,22 @@ export function withMcpCaching(
     params !== undefined || options !== undefined;
 
   for (const { method, type, key } of LIST_METHODS) {
-    const original = client[method]?.bind(client);
+    const original = client[method]?.bind(client) as ListMethodFn | undefined;
     if (!original) continue;
 
-    (client as any)[method] = async (
+    (client as unknown as Record<string, ListMethodFn>)[method] = async (
       params?: unknown,
       options?: unknown,
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, unknown[]>> => {
       // Bypass cache for VIRTUAL connections or paginated requests
       if (isVirtual || !cache || shouldBypassCache(params, options)) {
-        return (original as any)(params, options);
+        return original(params, options);
       }
 
       const data = await fetchWithCache(
         type,
         connection.id,
-        async () => {
-          const result = await (original as any)();
-          return (result as any)[key];
-        },
+        async () => (await original())[key] ?? [],
         cache,
       );
 
