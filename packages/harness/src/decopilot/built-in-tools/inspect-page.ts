@@ -19,6 +19,7 @@ import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
+import { wafBypassHeaders } from "./waf-bypass";
 
 const InspectPageInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to inspect."),
@@ -66,6 +67,12 @@ function buildFunctionCode(
       page.on("pageerror", (err) => {
         errors.push(err.message || String(err));
       });
+
+      // Deco-zone targets get the WAF bypass header (see waf-bypass.ts).
+      const bypassHeaders = ${JSON.stringify(wafBypassHeaders(url))};
+      if (Object.keys(bypassHeaders).length) {
+        await page.setExtraHTTPHeaders(bypassHeaders);
+      }
 
       await page.goto(${JSON.stringify(url)}, {
         waitUntil: ${JSON.stringify(waitUntil)},

@@ -7,6 +7,7 @@ import {
 } from "../studio-storage-uri";
 import type { PendingImage } from "./vm-tools/types";
 import { BROWSERLESS_BASE_URL } from "./constants";
+import { wafBypassHeaders } from "./waf-bypass";
 
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -345,6 +346,11 @@ export function createPortableTakeScreenshotTool(
                 quality: JPEG_QUALITY,
               },
               viewport: DEFAULT_VIEWPORT,
+              // Deco-zone targets get the WAF bypass header (see waf-bypass.ts)
+              // so bot management doesn't block the render.
+              ...(Object.keys(wafBypassHeaders(input.url)).length
+                ? { setExtraHTTPHeaders: wafBypassHeaders(input.url) }
+                : {}),
             }),
           },
         );
