@@ -17,6 +17,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireOrganization } from "../../core/studio-context";
+import { normalizeThreadForResponse } from "../thread/helpers";
 
 const SEARCHABLE_TYPES = ["thread"] as const;
 
@@ -110,7 +111,10 @@ export const GLOBAL_SEARCH = defineTool({
           virtual_mcp_id: thread.virtual_mcp_id ?? null,
           run_config:
             (thread.run_config as Record<string, unknown> | null) ?? null,
-          status: thread.status ?? null,
+          // Same expiry derivation as THREAD_LIST/GET/etc. — otherwise a
+          // stale in_progress run shows "in_progress" here but "expired"
+          // everywhere else in the app.
+          status: normalizeThreadForResponse(thread).status,
         });
       }
     }
