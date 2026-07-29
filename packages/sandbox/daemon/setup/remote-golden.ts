@@ -101,7 +101,7 @@ function resolveRemote(opts: RemoteGoldenOpts): string | null {
 type Cmd = [string, string[]];
 
 /**
- * Exit code plus the failing side's first stderr line. The message is the
+ * Exit code plus the first stderr line from either side. The message is the
  * whole point: "tar exit 2" alone is unactionable — it took a hand-run of the
  * pipe to learn it meant "Unexpected EOF in archive", i.e. a truncated
  * archive rather than a permissions or disk problem.
@@ -111,9 +111,16 @@ interface PipeResult {
   stderr: string;
 }
 
+/** Single-quote an argument for a POSIX shell. */
+function shQuote(arg: string): string {
+  return `'${arg.replaceAll("'", `'\\''`)}'`;
+}
+
 /**
- * Stream `producer | consumer` to completion, resolving to the first non-zero
- * exit (0 only when both succeed).
+ * Stream `producer | consumer` to completion, resolving non-zero if EITHER
+ * side fails (that's what `pipefail` buys — without it the pipeline reports
+ * only the consumer, so a failed `tar -c` feeding a happy `zstd` would look
+ * like a successful publish).
  *
  * An explicit pipe rather than tar's own compressor flags, because those are
  * not portable and fail in DIFFERENT ways per flavor: the daemon's image ships
@@ -123,44 +130,46 @@ interface PipeResult {
  * format". Both verified. `zstd -dc | tar -xf -` behaves identically
  * everywhere.
  *
- * The consumer's stdin IS the producer's stdout fd — the kernel moves the
- * bytes, nothing traverses this process. Relaying them in JS
- * (`p.stdout.pipe(c.stdin)`) loses the tail of the stream once the consumer
- * applies backpressure: a `tar -x` writing ~100k small files is slower than
- * `zstd -dc` produces, and the truncated stream surfaces as tar's "Unexpected
- * EOF in archive". Measured on a 2 MB archive in the sandbox image: 5 of 12
- * restores failed that way, 12 of 12 pass wired fd-to-fd. It also keeps a
- * multi-GB tree off the daemon's single event loop, which is what lets the
- * health probe keep answering during a restore.
+ * THE SHELL OWNS THE PIPE, deliberately — one `bash -c`, not two `Bun.spawn`s
+ * wired together. Handing the producer's stdout to the consumer as `stdin`
+ * looks fd-to-fd but Bun relays it through this process once the stream is
+ * large enough, and then the relay's write races the consumer: on Linux it
+ * throws EPIPE from inside Bun's pump, asynchronously, where no try/catch here
+ * can see it — it killed the whole test file and left publish with no archive.
+ * A 1 KB fixture never reached the pipe buffer's edge and passed, so only the
+ * ~9 MB case caught it. Earlier this same handoff truncated the stream's tail
+ * with BOTH children exiting 0. A shell pipeline has neither failure mode: the
+ * kernel moves the bytes, nothing traverses this process, and a multi-GB tree
+ * stays off the daemon's single event loop so the health probe keeps answering.
+ *
+ * Arguments are shell-quoted rather than interpolated: they carry a mount root
+ * and an install root from operator config, and a path with a space would
+ * otherwise split into two arguments.
  */
 async function runPiped(producer: Cmd, consumer: Cmd): Promise<PipeResult> {
+  const render = ([bin, args]: Cmd) => [bin, ...args].map(shQuote).join(" ");
+  const script = `set -o pipefail; ${render(producer)} | ${render(consumer)}`;
   try {
-    const p = Bun.spawn([producer[0], ...producer[1]], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const c = Bun.spawn([consumer[0], ...consumer[1]], {
-      stdin: p.stdout,
+    const p = Bun.spawn(["bash", "-c", script], {
+      stdin: "ignore",
       stdout: "ignore",
       stderr: "pipe",
     });
-    // Both stderrs are drained concurrently with the transfer — a tool that
-    // writes more than a pipe buffer of diagnostics would otherwise block
-    // forever waiting for someone to read it.
-    const [pCode, cCode, pErr, cErr] = await Promise.all([
+    // stderr is drained concurrently with the transfer — a tool that writes
+    // more than a pipe buffer of diagnostics would otherwise block forever
+    // waiting for someone to read it.
+    const [code, err] = await Promise.all([
       p.exited,
-      c.exited,
       new Response(p.stderr).text(),
-      new Response(c.stderr).text(),
     ]);
-    const failed = pCode !== 0 ? pCode : cCode;
-    // Whichever side failed owns the message; keep it short enough for a log
-    // line, since a tar failure can repeat per member.
-    const why = (pCode !== 0 ? pErr : cErr).trim().split("\n")[0] ?? "";
-    return { code: failed, stderr: why.slice(0, 200) };
+    // Keep it short enough for a log line, since a tar failure can repeat
+    // per member.
+    const why = err.trim().split("\n")[0] ?? "";
+    return { code, stderr: why.slice(0, 200) };
   } catch (e) {
-    // A missing binary (no `zstd` in the image) lands here; treat it as a miss
-    // so the caller falls back to a normal install.
+    // Only a missing `bash` lands here now — a missing `zstd` or `tar` is
+    // bash's own 127 above. Either way it's a miss, so the caller falls back
+    // to a normal install.
     return { code: 1, stderr: (e as Error).message };
   }
 }

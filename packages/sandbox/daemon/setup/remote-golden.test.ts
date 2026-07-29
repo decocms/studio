@@ -74,14 +74,30 @@ async function seedBigNodeModules(root: string): Promise<void> {
   );
 }
 
-/** The one archive under the store: <root>/golden/<repoHash>/<pm>-<lock>.tar.zst */
+/**
+ * The one archive under the store: <root>/golden/<repoHash>/<pm>-<lock>.tar.zst
+ *
+ * Asserts rather than destructures blindly: when publish silently produced
+ * nothing, the bare `join(dir, undefined)` threw ERR_INVALID_ARG_TYPE from in
+ * here, which reads as a broken helper rather than "publish failed". Combined
+ * with `publishRemoteGolden` swallowing its own diagnostics when no `log` is
+ * passed, a real EPIPE in the transport surfaced as a confusing TypeError.
+ */
 async function soleArchive(
   root: string,
 ): Promise<{ dir: string; path: string }> {
-  const [repo] = await readdir(join(root, "golden"));
-  const dir = join(root, "golden", repo);
-  const [name] = await readdir(dir);
-  return { dir, path: join(dir, name) };
+  const repos = await readdir(join(root, "golden"));
+  expect(repos, "publish created no repo dir under the store").toHaveLength(1);
+  const dir = join(root, "golden", repos[0] as string);
+  const names = (await readdir(dir)).filter((n) => n.endsWith(".tar.zst"));
+  expect(names, `publish left no archive in ${dir}`).toHaveLength(1);
+  return { dir, path: join(dir, names[0] as string) };
+}
+
+/** Collects the transport's own failure messages so a test can report them. */
+function logger(): { log: (m: string) => void; lines: string[] } {
+  const lines: string[] = [];
+  return { log: (m) => lines.push(m), lines };
 }
 
 const exists = (p: string) =>
@@ -164,11 +180,16 @@ describe("remote golden (L2)", () => {
     // green.
     const nodeA = await makeInstallRoot(base, "big-a");
     await seedBigNodeModules(nodeA);
+    const pub = logger();
     await publishRemoteGolden({
       config: config(),
       installRoot: nodeA,
       pm: "bun",
+      log: pub.log,
     });
+    // Surface the transport's own message. Without this a broken pipe or a
+    // failed read-back shows up only as "no archive", one layer too late.
+    expect(pub.lines.filter((l) => !l.includes("published"))).toEqual([]);
 
     // Publish must not declare success on a truncated archive.
     const { path } = await soleArchive(remoteRoot);
