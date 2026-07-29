@@ -1316,6 +1316,9 @@ export interface OrganizationTagTable {
   id: string;
   organization_id: string;
   name: string;
+  /** Hex color (e.g. "#3b82f6") the tag renders its dot with. Null pre-dates
+   *  task-board tags, which is the only place color is set today. */
+  color: string | null;
   created_at: ColumnType<Date, Date | string, never>;
 }
 
@@ -1326,6 +1329,7 @@ export interface OrganizationTag {
   id: string;
   organizationId: string;
   name: string;
+  color: string | null;
   createdAt: Date | string;
 }
 
@@ -1663,6 +1667,25 @@ export interface TaskBoardItemPrTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** Join row: a task board item ↔ an org tag (many-to-many). `id` is the tag's
+ *  id; both sides are org-scoped already, so the join carries no org column. */
+export interface TaskBoardItemTagTable {
+  task_board_item_id: string;
+  id: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** A tag attached to a task, snapshotted for rendering (name/color can change
+ *  independently of the task), plus who attached it and when. */
+export interface TaskBoardItemTagRef {
+  id: string;
+  name: string;
+  color: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
 /** A PR linked to a task — identity only. Title/state are fetched live. */
 export interface TaskBoardItemPrRef {
   url: string;
@@ -1708,6 +1731,8 @@ export interface TaskBoardItem {
   sortOrder: number;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
+  /** Org tags attached to this task, name ascending. */
+  tags: TaskBoardItemTagRef[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1898,6 +1923,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
+  task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
   sandbox_runner_state: SandboxProviderStateTable;

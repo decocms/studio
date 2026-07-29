@@ -14,8 +14,13 @@ export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemThread = TaskBoardItem["threads"][number];
+export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
   ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
+
+/** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
+ *  snapshot is drawn from). */
+export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input
@@ -150,3 +155,30 @@ export const PRIORITY_CONFIG: Record<
     dotClassName: "bg-destructive",
   },
 };
+
+/** Suggested colors a new tag cycles through, so consecutive tags are visually
+ *  distinct without the user having to choose. Any hex is valid — the picker's
+ *  `<input type="color">` isn't limited to these. */
+const TAG_COLORS = [
+  "#9ca3af",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+];
+
+const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
+
+/** A tag's dot color — arbitrary hex off `organization_tags.color`, hence an
+ *  inline style rather than a Tailwind token. */
+export function tagDotColor(color: string | null | undefined): string {
+  return color ?? DEFAULT_TAG_COLOR;
+}
+
+/** Suggested color for the `existingCount`-th tag created in an org. */
+export function nextTagColor(existingCount: number): string {
+  return TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR;
+}

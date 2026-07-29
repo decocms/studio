@@ -36,21 +36,25 @@ import {
   LinkExternal01,
   Loading02,
   Plus,
+  Tag01,
   Trash03,
   UserPlus01,
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { useMembers } from "@/hooks/use-members";
+import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
+  tagDotColor,
   type Member,
   type TaskBoardItem,
   type TaskBoardItemPr,
@@ -66,6 +70,7 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
+import { TagPickerContent } from "./tag-picker";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -123,6 +128,7 @@ export function TaskBoardItemDialog({
     priority: TaskBoardItemPriority;
     assigneeId: string | null;
     dueDate: string | null;
+    tagIds: string[];
   }) => void;
   onDelete?: () => void;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
@@ -134,6 +140,9 @@ export function TaskBoardItemDialog({
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const { handleCopy, copied } = useCopy();
+  const { data: orgTags = [] } = useTags();
+  const createTag = useCreateTag();
+  const deleteTag = useDeleteTag();
 
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
@@ -149,8 +158,12 @@ export function TaskBoardItemDialog({
   const [dueDate, setDueDate] = useState<Date | null>(
     parseIsoDate(item?.dueDate),
   );
+  const [tagIds, setTagIds] = useState<string[]>(
+    item?.tags.map((tag) => tag.id) ?? [],
+  );
   const [dueOpen, setDueOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
 
   const reset = () => {
     setTitle(item?.title ?? "");
@@ -159,11 +172,22 @@ export function TaskBoardItemDialog({
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
+    setTagIds(item?.tags.map((tag) => tag.id) ?? []);
   };
 
   const close = () => {
     onClose();
     reset();
+  };
+
+  const createAndSelectTag = async (name: string, color: string) => {
+    const tag = await createTag.mutateAsync({ name, color });
+    setTagIds((prev) => [...prev, tag.id]);
+  };
+
+  const deleteOrgTag = (tagId: string) => {
+    deleteTag.mutate(tagId);
+    setTagIds((prev) => prev.filter((id) => id !== tagId));
   };
 
   const submit = () => {
@@ -176,6 +200,7 @@ export function TaskBoardItemDialog({
       priority,
       assigneeId,
       dueDate: dueDate ? toEndOfDayIso(dueDate) : null,
+      tagIds,
     });
   };
 
@@ -537,6 +562,92 @@ export function TaskBoardItemDialog({
                       if (next) setDueOpen(false);
                     }}
                     initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover open={tagsOpen} onOpenChange={setTagsOpen} modal>
+                {tagIds.length === 0 ? (
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(PROPERTY_BUTTON, "text-muted-foreground")}
+                    >
+                      <Tag01 size={16} />
+                      {t("taskBoard.taskDialog.tagsButton")}
+                    </button>
+                  </PopoverTrigger>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1.5 sm:px-3">
+                    {tagIds.map((tagId) => {
+                      const tag = orgTags.find((ot) => ot.id === tagId);
+                      if (!tag) return null;
+                      return (
+                        <button
+                          key={tagId}
+                          type="button"
+                          onClick={() => setTagsOpen(true)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: tagDotColor(tag.color) }}
+                          />
+                          <span className="truncate">{tag.name}</span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            aria-label={t(
+                              "taskBoard.taskDialog.removeTagAriaLabel",
+                              { name: tag.name },
+                            )}
+                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTagIds((prev) =>
+                                prev.filter((id) => id !== tagId),
+                              );
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setTagIds((prev) =>
+                                  prev.filter((id) => id !== tagId),
+                                );
+                              }
+                            }}
+                          >
+                            <X size={10} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t("taskBoard.taskDialog.addTagButton")}
+                        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </PopoverTrigger>
+                  </div>
+                )}
+                <PopoverContent align="start" className="w-56 p-0">
+                  <TagPickerContent
+                    tags={orgTags}
+                    selectedIds={tagIds}
+                    defaultColor={nextTagColor(orgTags.length)}
+                    onToggle={(tagId) =>
+                      setTagIds((prev) =>
+                        prev.includes(tagId)
+                          ? prev.filter((id) => id !== tagId)
+                          : [...prev, tagId],
+                      )
+                    }
+                    onCreate={createAndSelectTag}
+                    onDelete={deleteOrgTag}
                   />
                 </PopoverContent>
               </Popover>
@@ -1047,6 +1158,24 @@ function describeActivity(
       />
     );
   };
+  const tagsChip = (tags: unknown): ReactNode => {
+    if (!Array.isArray(tags) || tags.length === 0) return null;
+    return tags.map((tag, i) => {
+      const ref = tag as { id?: string; name?: string; color?: string | null };
+      return (
+        <ValueChip
+          key={ref.id ?? i}
+          icon={
+            <span
+              className="size-2 rounded-full"
+              style={{ backgroundColor: tagDotColor(ref.color) }}
+            />
+          }
+          label={ref.name ?? ""}
+        />
+      );
+    });
+  };
   const assigneeChip = (userId: unknown) => {
     if (userId === SUPER_AGENT_ASSIGNEE_ID) {
       return (
@@ -1121,6 +1250,15 @@ function describeActivity(
       });
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    case "tags_changed":
+      if (!Array.isArray(d.to) || d.to.length === 0)
+        return t("taskBoard.taskDialog.activityTagsCleared");
+      return interleaveChips(
+        t("taskBoard.taskDialog.activityTagsSet", { to }),
+        {
+          to: tagsChip(d.to),
+        },
+      );
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

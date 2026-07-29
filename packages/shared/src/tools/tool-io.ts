@@ -265,6 +265,7 @@ export interface StudioToolIO {
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
       dueDate?: string | null | undefined;
+      tagIds?: string[] | undefined;
     };
     output: {
       item: {
@@ -292,6 +293,13 @@ export interface StudioToolIO {
           lastMessage: string | null;
           hasPreview: boolean;
           hasMessages: boolean;
+          createdAt: string;
+        }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
           createdAt: string;
         }[];
         createdBy: string;
@@ -331,6 +339,13 @@ export interface StudioToolIO {
           hasMessages: boolean;
           createdAt: string;
         }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
+          createdAt: string;
+        }[];
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -354,6 +369,7 @@ export interface StudioToolIO {
       assigneeId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
+      tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
     };
     output: {
@@ -382,6 +398,13 @@ export interface StudioToolIO {
           lastMessage: string | null;
           hasPreview: boolean;
           hasMessages: boolean;
+          createdAt: string;
+        }[];
+        tags: {
+          id: string;
+          name: string;
+          color: string | null;
+          createdBy: string;
           createdAt: string;
         }[];
         createdBy: string;
@@ -425,7 +448,8 @@ export interface StudioToolIO {
           | "priority_changed"
           | "due_date_changed"
           | "title_changed"
-          | "description_changed";
+          | "description_changed"
+          | "tags_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -3692,17 +3716,19 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         name: string;
+        color: string | null;
         createdAt: string;
       }[];
     };
   };
   TAGS_CREATE: {
-    input: { name: string };
+    input: { name: string; color?: string | null | undefined };
     output: {
       tag: {
         id: string;
         organizationId: string;
         name: string;
+        color: string | null;
         createdAt: string;
       };
     };
@@ -3715,6 +3741,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         name: string;
+        color: string | null;
         createdAt: string;
       }[];
     };

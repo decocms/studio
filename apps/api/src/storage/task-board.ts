@@ -14,6 +14,7 @@ import type {
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
+  TaskBoardItemTagRef,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
@@ -82,6 +83,21 @@ function threadHasClonableRepo(metadata: unknown): boolean {
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
+  /**
+   * Run `fn` in a transaction, reusing an enclosing one when this storage was
+   * built over a `Transaction` — the import route does exactly that
+   * (`new TaskBoardStorage(trx)`), and Kysely throws on a nested
+   * `.transaction()`. An enclosing transaction already provides the atomicity
+   * and single snapshot every caller here wants.
+   */
+  private inTransaction<T>(
+    fn: (db: Kysely<Database>) => Promise<T>,
+  ): Promise<T> {
+    return this.db.isTransaction
+      ? fn(this.db)
+      : this.db.transaction().execute(fn);
+  }
+
   async list(organizationId: string): Promise<TaskBoardItem[]> {
     const rows = await this.db
       .selectFrom("task_board_items")
@@ -91,7 +107,7 @@ export class TaskBoardStorage {
       .execute();
 
     const items = rows.map((row) => this.itemFromDbRow(row));
-    await this.attachThreads(items, organizationId);
+    await this.attachRefs(items, organizationId);
     return items;
   }
 
@@ -108,7 +124,7 @@ export class TaskBoardStorage {
 
     if (!row) return null;
     const item = this.itemFromDbRow(row);
-    await this.attachThreads([item], organizationId);
+    await this.attachRefs([item], organizationId);
     return item;
   }
 
@@ -205,12 +221,12 @@ export class TaskBoardStorage {
       .executeTakeFirstOrThrow();
 
     const item = this.itemFromDbRow(row);
-    await this.attachThreads([item], organizationId);
+    await this.attachRefs([item], organizationId);
     return item;
   }
 
   async delete(id: string, organizationId: string): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
+    await this.inTransaction(async (trx) => {
       await trx
         .deleteFrom("task_board_item_threads")
         .where("task_board_item_id", "=", id)
@@ -221,11 +237,47 @@ export class TaskBoardStorage {
         .where("task_board_item_id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
+      // task_board_item_tags cascades from task_board_items.
       await trx
         .deleteFrom("task_board_items")
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
+    });
+  }
+
+  /**
+   * Set the tags attached to a task. Applies a diff rather than
+   * replace-everything so an already-attached tag keeps its original
+   * `created_by`/`created_at` — that's who tagged it and when. The task and all
+   * `tagIds` must already be verified as belonging to the caller's org.
+   */
+  async setItemTags(
+    taskBoardItemId: string,
+    tagIds: string[],
+    by: string,
+  ): Promise<void> {
+    await this.inTransaction(async (trx) => {
+      await trx
+        .deleteFrom("task_board_item_tags")
+        .where("task_board_item_id", "=", taskBoardItemId)
+        .$if(tagIds.length > 0, (qb) => qb.where("id", "not in", tagIds))
+        .execute();
+
+      if (tagIds.length > 0) {
+        await trx
+          .insertInto("task_board_item_tags")
+          .values(
+            tagIds.map((id) => ({
+              task_board_item_id: taskBoardItemId,
+              id,
+              created_by: by,
+              created_at: new Date().toISOString(),
+            })),
+          )
+          .onConflict((oc) => oc.doNothing())
+          .execute();
+      }
     });
   }
 
@@ -380,17 +432,33 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Populate each item's `threads` (most-recent first) with the linked thread's
-   * live run status/title. One batched query for the whole set.
+   * Populate each item's `threads` and `tags` — one transaction, so a card
+   * can't read its threads from before a concurrent edit and its tags from
+   * after.
    */
-  private async attachThreads(
+  private async attachRefs(
     items: TaskBoardItem[],
     organizationId: string,
   ): Promise<void> {
     if (items.length === 0) return;
+    await this.inTransaction(async (db) => {
+      await this.attachThreads(db, items, organizationId);
+      await this.attachTags(db, items);
+    });
+  }
+
+  /**
+   * Populate each item's `threads` (most-recent first) with the linked thread's
+   * live run status/title. One batched query for the whole set.
+   */
+  private async attachThreads(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+    organizationId: string,
+  ): Promise<void> {
     const ids = items.map((i) => i.id);
 
-    const rows = await this.db
+    const rows = await db
       .selectFrom("task_board_item_threads as link")
       .innerJoin("threads as t", "t.id", "link.thread_id")
       // Latest assistant text part (v2 stream-of-record) for the card preview.
@@ -463,6 +531,49 @@ export class TaskBoardStorage {
     }
 
     for (const item of items) item.threads = byItem.get(item.id) ?? [];
+  }
+
+  /** Populate each item's `tags`, name ascending. One batched query. Items are
+   *  already org-scoped by the caller, so the join needs no org filter. */
+  private async attachTags(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const ids = items.map((i) => i.id);
+
+    const rows = await db
+      .selectFrom("task_board_item_tags as link")
+      .innerJoin("organization_tags as tag", "tag.id", "link.id")
+      .select([
+        "link.task_board_item_id as taskId",
+        "link.created_by as createdBy",
+        "link.created_at as createdAt",
+        "tag.id as id",
+        "tag.name as name",
+        "tag.color as color",
+      ])
+      .where("link.task_board_item_id", "in", ids)
+      .orderBy("tag.name", "asc")
+      .execute();
+
+    const byItem = new Map<string, TaskBoardItemTagRef[]>();
+    for (const row of rows) {
+      const ref: TaskBoardItemTagRef = {
+        id: row.id,
+        name: row.name,
+        color: row.color ?? null,
+        createdBy: row.createdBy,
+        createdAt:
+          row.createdAt instanceof Date
+            ? row.createdAt.toISOString()
+            : (row.createdAt as unknown as string),
+      };
+      const list = byItem.get(row.taskId);
+      if (list) list.push(ref);
+      else byItem.set(row.taskId, [ref]);
+    }
+
+    for (const item of items) item.tags = byItem.get(item.id) ?? [];
   }
 
   // --------------------------------------------------------------------------
@@ -549,8 +660,9 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
-      // Populated by attachThreads for reads; empty for a fresh create.
+      // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],
+      tags: [],
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

@@ -28,6 +28,7 @@ export const MEMBER_TAGS_GET = defineTool({
         id: z.string(),
         organizationId: z.string(),
         name: z.string(),
+        color: z.string().nullable(),
         createdAt: z.string().describe("ISO 8601 timestamp"),
       }),
     ),

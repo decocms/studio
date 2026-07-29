@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from "bun:test";
-import { ACTIONS as MIGRATION_ACTIONS } from "../../../migrations/150-task-board-activity";
+import { ACTIONS as MIGRATION_ACTIONS } from "../../../migrations/151-task-board-tags";
 import { TASK_BOARD_ACTIVITY_ACTIONS } from "./schema";
 
 test("the DB CHECK constraint allows exactly the actions TypeScript declares", () => {

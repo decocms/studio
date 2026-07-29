@@ -56,9 +56,11 @@ import {
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
+  tagDotColor,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
+  type TaskBoardItemTag,
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
@@ -150,6 +152,18 @@ function DueDatePill({ iso }: { iso: string }) {
     >
       <Calendar size={14} />
       {label}
+    </span>
+  );
+}
+
+function TagPill({ tag }: { tag: TaskBoardItemTag }) {
+  return (
+    <span className={PILL}>
+      <span
+        className="size-2 rounded-full"
+        style={{ backgroundColor: tagDotColor(tag.color) }}
+      />
+      {tag.name}
     </span>
   );
 }
@@ -913,13 +927,17 @@ function TaskCard({
 
       {(isTaskBlocked(item) ||
         item.priority !== "none" ||
-        Boolean(item.dueDate)) && (
+        Boolean(item.dueDate) ||
+        item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
           {item.priority !== "none" && (
             <PriorityPill priority={item.priority} />
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
+          {item.tags.map((tag) => (
+            <TagPill key={tag.id} tag={tag} />
+          ))}
         </div>
       )}
 
@@ -972,6 +990,16 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      {item.tags.length > 0 && (
+        <span className="hidden items-center gap-1.5 sm:inline-flex">
+          {item.tags.slice(0, 2).map((tag) => (
+            <TagPill key={tag.id} tag={tag} />
+          ))}
+          {item.tags.length > 2 && (
+            <span className={PILL}>+{item.tags.length - 2}</span>
+          )}
         </span>
       )}
       <AssigneeDisplay
