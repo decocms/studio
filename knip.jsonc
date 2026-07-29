@@ -34,6 +34,8 @@
         // Browser asset served verbatim from the Vite public dir; deck HTML
         // files reference it via <script src="/deck-runtime/v1/...">.
         "public/deck-runtime/**/*.js",
+        // Referenced by index.native.html rather than the module graph.
+        "public/native-boot.js",
         // Playwright Component Testing harness. The mount template is loaded
         // via ct/playwright/index.html + ctTemplateDir (index.css is imported
         // from it), and the I/O stubs are wired only through resolve.alias in
@@ -62,6 +64,10 @@
       // `bun run fixtures/...` command string — knip can't trace a process
       // launch, so without this entry it flags the file as unused.
       "entry": ["fixtures/commerce-upgrade-mock.ts"]
+    },
+    "apps/native": {
+      // Included from Rust and evaluated inside the self-test webview.
+      "entry": ["src-tauri/selftest/bundle.js"]
     }
   },
   "ignoreDependencies": ["@types/*"],

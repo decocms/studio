@@ -405,6 +405,8 @@ export const sandbox = {
   "sandbox.preview.noSearchResults": "No results match your search.",
   "sandbox.preview.noServerRunning": "No server running",
   "sandbox.preview.openInCursor": "Open in Cursor",
+  "sandbox.preview.openInBrowser": "Open in browser",
+  "sandbox.preview.failedToOpenInBrowser": "Couldn't open your browser",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.openInVscode": "Open in VSCode",
   "sandbox.preview.pageAlreadyExists":

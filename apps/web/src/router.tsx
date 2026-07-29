@@ -1,13 +1,10 @@
-import { createRoot } from "react-dom/client";
-import { StrictMode, Suspense } from "react";
-import { Providers } from "@/providers/providers";
+import { Suspense } from "react";
 import {
   createRootRoute,
   createRoute,
   createRouter,
   lazyRouteComponent,
   Outlet,
-  RouterProvider,
   redirect,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/components/splash-screen";
@@ -16,25 +13,20 @@ import { ChunkErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t";
 import * as z from "zod";
 
-import "../index.css";
-import { migrateLegacyStorageKeys } from "@/lib/legacy-storage";
-
 import { listOrganizationsCached } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
-import { initPwaInstallCapture } from "@/lib/pwa-install";
-
-migrateLegacyStorageKeys(window.localStorage);
 
 const rootRoute = createRootRoute({
+  // No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
+  // wraps `<RouterProvider>` in it instead, so router-level code can reach the
+  // providers too. Wrapping in both places would mount them twice.
   component: () => (
-    <Providers>
-      <ChunkErrorBoundary>
-        <Suspense fallback={<SplashScreen />}>
-          <Outlet />
-        </Suspense>
-      </ChunkErrorBoundary>
-    </Providers>
+    <ChunkErrorBoundary>
+      <Suspense fallback={<SplashScreen />}>
+        <Outlet />
+      </Suspense>
+    </ChunkErrorBoundary>
   ),
 });
 
@@ -678,7 +670,7 @@ function DefaultNotFoundComponent() {
   );
 }
 
-const router = createRouter({
+export const router = createRouter({
   routeTree,
   // Show the splash (not a blank screen) while a route loader/beforeLoad is
   // awaiting — e.g. the new-user org-list fetch. 200ms delay avoids a flash on
@@ -693,15 +685,3 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
-
-// Capture the Chromium install prompt as early as possible so the /install
-// page can offer a one-click install. Fires once shortly after load.
-initPwaInstallCapture();
-
-const rootElement = document.getElementById("root")!;
-
-createRoot(rootElement).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
-);

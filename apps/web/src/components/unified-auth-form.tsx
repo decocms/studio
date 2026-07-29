@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthConfig } from "@/providers/auth-config-provider";
-import { authClient } from "@/lib/auth-client";
 import { track } from "@/lib/posthog-client";
+import {
+  defaultAuthFormActions,
+  type AuthFormActions,
+} from "@/components/auth-form-actions";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -74,6 +77,13 @@ interface UnifiedAuthFormProps {
   allowPassword?: boolean;
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
+  /**
+   * Overrides for the underlying network/post-auth actions. Omitted (the web
+   * `/login` route never passes this) -> `defaultAuthFormActions`, i.e. the
+   * exact `authClient` calls + `window.location.href` navigate this form
+   * always used. See `apps/web/src/components/auth-form-actions.ts`.
+   */
+  actions?: Partial<AuthFormActions>;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
@@ -191,9 +201,14 @@ export function UnifiedAuthForm({
   allowedSocialProviders,
   allowPassword = true,
   onAuthEvent,
+  actions,
 }: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
+  const resolvedActions: AuthFormActions = {
+    ...defaultAuthFormActions,
+    ...actions,
+  };
   const emitAuthEvent = (event: AuthFlowEvent) => {
     try {
       onAuthEvent?.(event);
@@ -258,23 +273,19 @@ export function UnifiedAuthForm({
       name?: string;
     }) => {
       try {
-        if (isSignUp) {
-          const result = await authClient.signUp.email({
-            email,
-            password,
-            name: name || "",
-          });
-          if (result.error) {
-            throw new Error(result.error.message || copy.signUpFailed);
-          }
-          return result;
-        } else {
-          const result = await authClient.signIn.email({ email, password });
-          if (result.error) {
-            throw new Error(result.error.message || copy.signInFailed);
-          }
-          return result;
+        const result = await resolvedActions.submitEmailPassword({
+          mode: isSignUp ? "sign_up" : "sign_in",
+          email,
+          password,
+          name,
+        });
+        if (result.error) {
+          throw new Error(
+            result.error.message ||
+              (isSignUp ? copy.signUpFailed : copy.signInFailed),
+          );
         }
+        return result;
       } catch (err) {
         throw err instanceof Error ? err : new Error(copy.authenticationFailed);
       }
@@ -293,7 +304,7 @@ export function UnifiedAuthForm({
         mode: isSignUp ? "sign_up" : "sign_in",
       });
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      window.location.href = redirectUrl ?? callbackUrl;
+      void resolvedActions.onAuthenticated(redirectUrl ?? callbackUrl);
     },
     onError: (error) => {
       emitAuthEvent({
@@ -311,7 +322,7 @@ export function UnifiedAuthForm({
 
   const forgotPasswordMutation = useMutation({
     mutationFn: async ({ email }: { email: string }) => {
-      const result = await authClient.requestPasswordReset({
+      const result = await resolvedActions.requestPasswordReset({
         email,
         redirectTo: "/reset-password",
       });
@@ -333,10 +344,7 @@ export function UnifiedAuthForm({
 
   const sendOtpMutation = useMutation({
     mutationFn: async ({ email }: { email: string }) => {
-      const result = await authClient.emailOtp.sendVerificationOtp({
-        email,
-        type: "sign-in",
-      });
+      const result = await resolvedActions.sendOtp({ email });
       if (result.error) {
         throw new Error(result.error.message || copy.otpSendFailed);
       }
@@ -365,10 +373,7 @@ export function UnifiedAuthForm({
 
   const verifyOtpMutation = useMutation({
     mutationFn: async ({ email, otp }: { email: string; otp: string }) => {
-      const result = await authClient.signIn.emailOtp({
-        email,
-        otp,
-      });
+      const result = await resolvedActions.submitOtp({ email, otp });
       if (result.error) {
         throw new Error(result.error.message || copy.invalidCode);
       }
@@ -380,7 +385,7 @@ export function UnifiedAuthForm({
     onSuccess: () => {
       emitAuthEvent({ type: "succeeded", method: "email_otp" });
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      window.location.href = redirectUrl ?? callbackUrl;
+      void resolvedActions.onAuthenticated(redirectUrl ?? callbackUrl);
     },
     onError: (error) => {
       emitAuthEvent({
@@ -544,7 +549,7 @@ export function UnifiedAuthForm({
   const handleSocialSignIn = async (provider: string) => {
     emitAuthEvent({ type: "started", method: "social", provider });
     try {
-      const result = await authClient.signIn.social({
+      const result = await resolvedActions.socialSignIn({
         provider,
         callbackURL: redirectUrl ?? callbackUrl,
       });

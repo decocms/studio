@@ -1,0 +1,11 @@
+[
+  "daemon e2e: swappable spawn target > defaults to running the bundled daemon under bun when DAEMON_E2E_CMD is unset",
+  "daemon e2e: smoke, CORS, dual-prefix > serves no-auth GETs and sets CORS on the native branch",
+  "daemon e2e: smoke, CORS, dual-prefix > OPTIONS preflight returns 204 + CORS headers (no auth)",
+  "daemon e2e: smoke, CORS, dual-prefix > sets Access-Control-Allow-Origin=* on every response branch",
+  "daemon e2e: smoke, CORS, dual-prefix > GET /_sandbox/idle and legacy /_decopilot_vm/idle both work without auth",
+  "daemon e2e: smoke, CORS, dual-prefix > no-auth GETs tolerate an arbitrary Authorization header",
+  "daemon e2e: smoke, CORS, dual-prefix > POST /_decopilot_vm/bash (legacy prefix) with bearer is not 401/404",
+  "daemon e2e: SSE wire shapes — lifecycle, branch, scripts > cloning a repo with no start script drives all three to a terminal, coherent state",
+  "daemon e2e: git (cloned repo) > POST /git/publish pushes past a failing pre-push hook"
+]

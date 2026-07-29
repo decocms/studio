@@ -49,6 +49,7 @@ import {
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import {
   type AgentOption,
@@ -472,6 +473,7 @@ export function TierTrigger() {
   const availability = useAgentOptionAvailability();
   const taskCtx = useOptionalChatTask();
   const locked = taskCtx?.isThreadLocked ?? false;
+  const isDesktopApp = useIsDesktopApp();
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
   // Cloud rows only: org config + this user's overrides, wired into each
@@ -618,7 +620,12 @@ export function TierTrigger() {
           : tierLabels[tier]
       }
       groups={groups}
-      header={hasLocal && !locked ? <RuntimeToggle /> : undefined}
+      // Hidden on desktop for the same reason as `locked`: the runtime is not
+      // a choice there. Everything runs in a sandbox on this machine, so a
+      // two-way cloud/device control offers a state the app cannot enter.
+      header={
+        hasLocal && !locked && !isDesktopApp ? <RuntimeToggle /> : undefined
+      }
     />
   );
 }

@@ -183,6 +183,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 | --- | --- |
 | [`apps/api`](./apps/api/README.md) | Hono API, authentication, tools, storage, migrations, and the `deco` CLI |
 | [`apps/docs`](./apps/docs/README.md) | Astro documentation site |
+| [`apps/native`](./apps/native/README.md) | Tauri desktop app and local Rust runtime |
 | [`apps/web`](./apps/web/README.md) | Vite and React 19 administration interface |
 
 ### Packages

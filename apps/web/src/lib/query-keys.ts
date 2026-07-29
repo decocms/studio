@@ -604,6 +604,12 @@ export const KEYS = {
     ] as const,
   vmEnv: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["vm-env", orgSlug, virtualMcpId, branch] as const,
+
+  // Desktop app (Tauri) only — the Keychain auth-status gate read by
+  // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
+  // `plugins/enforce-query-key-constants.ts` requires every query key to be a
+  // constant in this registry; it never appears in the web build's cache.
+  desktopAuthStatus: () => ["desktop", "auth-status"] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(

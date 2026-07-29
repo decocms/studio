@@ -1,10 +1,94 @@
-import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "../api/package.json" with { type: "json" };
+import { fileURLToPath } from "node:url";
+import { existsSync, renameSync } from "node:fs";
+import { join } from "node:path";
+import { shouldServeNativeEntryInDev } from "./src/lib/vite-native-entry-rules";
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
+
+// Desktop (Tauri) build mode — VITE_TAURI_APP=1 bun --bun vite build. Points
+// the build at index.native.html (-> src/index.native.tsx) instead
+// of the standard index.html, into a SEPARATE output dir, so a standard
+// `bun run build:web` run (VITE_TAURI_APP=0) is entirely unaffected — every
+// branch below falls through to today's exact values when this is false.
+// `apps/web`'s `build:native` script (`VITE_TAURI_APP=1 vite build`) sets this;
+// tauri.conf's `frontendDist` points straight at `dist/native`, whose
+// entry is emitted as `index.html` (see the rename plugin below). See
+// apps/web/src/index.native.tsx for the entry itself and
+// apps/web/src/lib/desktop/transport.ts for what it wires up.
+const isNativeBuild = process.env.VITE_TAURI_APP === "1";
+// Leaf minted by the desktop app into its app-data dir. Read at config time
+// so `vite dev` serves the same certificate the Rust listeners do.
+const nativeTlsFiles = (() => {
+  if (process.env.VITE_TAURI_APP !== "1") return null;
+  const dir = `${process.env.HOME}/Library/Application Support/com.decocms.studio/tls`;
+  try {
+    return {
+      cert: readFileSync(`${dir}/leaf-cert.pem`),
+      key: readFileSync(`${dir}/leaf-key.pem`),
+    };
+  } catch {
+    return null;
+  }
+})();
+
+const nativeLocalApiTarget =
+  process.env.NATIVE_LOCAL_API_TARGET ?? "https://127.0.0.1:43121";
+const appServerTarget = isNativeBuild ? nativeLocalApiTarget : bunServerTarget;
+
+// Native (Tauri) build ONLY: emit the entry as `index.html`, not
+// `index.native.html`. Tauri adds a page's inline-script hashes to the CSP
+// ONLY for the conventional `index.html` entry, so any other filename makes
+// `script-src 'self'` block the entry's own inline bootstrap, which the
+// packaged app then can't run. The SOURCE keeps its `.native` suffix so it
+// coexists with the web `index.html`; only the emitted file is normalized.
+const emitNativeEntryAsIndexHtml: Plugin = {
+  name: "native-index-html",
+  // `writeBundle` (post-write, on disk) rather than `generateBundle`: vite's
+  // own HTML plugin emits the entry LATER in `generateBundle`, so the asset
+  // isn't in the bundle map when a user plugin's `generateBundle` runs.
+  writeBundle(options) {
+    if (!options.dir) return;
+    const from = join(options.dir, "index.native.html");
+    const to = join(options.dir, "index.html");
+    if (existsSync(from)) renameSync(from, to);
+  },
+};
+
+// Native (Tauri) DEV SERVER only — the HMR loop behind `bun run dev:native`
+// (tauri.conf's `devUrl` points the shell's webview at this server). Serve
+// `index.native.html` for every SPA html navigation: the shell's window opens
+// `index.html` (same literal path as the packaged app), and a mid-session
+// full reload can land on `/` or a deep link like `/my-org` — without this
+// rewrite Vite's SPA fallback would serve the WEB entry (`index.html` →
+// `index.web.tsx`, no desktop transport) inside the native window. Mirrors what
+// `emitNativeEntryAsIndexHtml` does for the built output, at request time.
+// User middlewares run BEFORE Vite's internal html/SPA-fallback middleware,
+// so rewriting `req.url` here is all it takes. Unsafe methods, reserved API
+// paths, and non-navigation requests pass through untouched.
+const serveNativeEntryInDev: Plugin = {
+  name: "native-index-html-dev",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      if (
+        shouldServeNativeEntryInDev({
+          method: req.method,
+          url: req.url,
+          accept: req.headers.accept,
+        })
+      ) {
+        req.url = "/index.native.html";
+      }
+      next();
+    });
+  },
+};
 
 // IMPORTANT: the dev server must run under Node, NOT Bun (`vite dev`, never
 // `bun --bun vite dev`). The proxy below relies on the ServerResponse "close"
@@ -22,38 +106,79 @@ const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 // preview uses the same http-proxy and needs the same "close" propagation).
 const sharedProxy = {
   "/api": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/mcp": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/oauth-proxy": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/.well-known": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/org": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
     ws: true,
   },
   "/health": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
   },
   "/metrics": {
-    target: bunServerTarget,
+    target: appServerTarget,
     changeOrigin: false,
+    secure: false,
   },
+  // Native-only routes, served by the in-process Rust local-api rather than
+  // the Bun API server. Part of the SHARED proxy so `vite preview` reaches
+  // them too, not just `vite dev`.
+  ...(isNativeBuild
+    ? {
+        "/_auth": {
+          target: nativeLocalApiTarget,
+          changeOrigin: false,
+          secure: false,
+          ws: true,
+        },
+        "/_local": {
+          target: nativeLocalApiTarget,
+          changeOrigin: false,
+          secure: false,
+        },
+        "/_sandbox": {
+          target: nativeLocalApiTarget,
+          changeOrigin: false,
+          secure: false,
+          ws: true,
+        },
+        "/threads": {
+          target: nativeLocalApiTarget,
+          changeOrigin: false,
+          secure: false,
+        },
+        "/models": {
+          target: nativeLocalApiTarget,
+          changeOrigin: false,
+          secure: false,
+        },
+      }
+    : {}),
 };
 
 export default defineConfig({
@@ -64,7 +189,16 @@ export default defineConfig({
     __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),
   },
   build: {
-    outDir: "dist",
+    outDir: isNativeBuild ? "dist/native" : "dist",
+    ...(isNativeBuild
+      ? {
+          rollupOptions: {
+            input: fileURLToPath(
+              new URL("./index.native.html", import.meta.url),
+            ),
+          },
+        }
+      : {}),
   },
   server: {
     port: parseInt(process.env.VITE_PORT || "4000", 10),
@@ -72,7 +206,26 @@ export default defineConfig({
     // In a sandbox the daemon proxies the preview to Vite over IPv4
     // (127.0.0.1); Vite otherwise binds IPv6-only (localhost → [::1]) and the
     // proxy can't reach it. HOST=0.0.0.0 is the daemon's dev-env tell.
-    ...(process.env.HOST === "0.0.0.0" ? { host: true } : {}),
+    ...(isNativeBuild
+      ? { host: "127.0.0.1" }
+      : process.env.HOST === "0.0.0.0"
+        ? { host: true }
+        : {}),
+    // The desktop shell is served from a real hostname, not `localhost`:
+    // sandbox previews live at `<handle>.local.studio.decocms.com` so each gets
+    // its own cookie jar, and that only keeps the preview iframe first-party if
+    // the shell shares its registrable domain. See
+    // `apps/native/src-tauri/src/control_origin.rs`.
+    ...(isNativeBuild
+      ? { allowedHosts: ["localhost", ".local.studio.decocms.com"] }
+      : {}),
+    // The desktop dev shell is served by Vite, so it — not just local-api —
+    // has to speak HTTPS: the webview's origin must be a secure context (Web
+    // Crypto) while also being a real domain (per-sandbox cookie jars). The
+    // app mints this leaf on first run from a CA it trusted with macOS; see
+    // `apps/native/src-tauri/src/local_tls.rs`. Absent (first ever run, before
+    // the app has booted once) we stay on HTTP rather than failing to start.
+    ...(isNativeBuild && nativeTlsFiles ? { https: nativeTlsFiles } : {}),
     hmr: {
       overlay: true,
       host: "localhost",
@@ -91,5 +244,8 @@ export default defineConfig({
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
+    ...(isNativeBuild
+      ? [emitNativeEntryAsIndexHtml, serveNativeEntryInDev]
+      : []),
   ],
 });

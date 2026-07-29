@@ -100,6 +100,8 @@ packages/e2e/playwright-report/
 # so we can un-ignore specific subdirs below — git won't traverse into an
 # ignored directory.
 /docs/*
+# Committed engineering plans (desktop migration etc.)
+!/docs/plans/
 # Superpowers workspace artifacts (brainstorming + writing-plans output)
 # are kept local to the working tree, not committed.
 

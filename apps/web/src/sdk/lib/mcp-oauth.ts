@@ -74,6 +74,56 @@ const OAUTH_CALLBACK_STORAGE_KEY = "mcp:oauth:callback:";
  */
 export type OAuthWindowMode = "popup" | "tab";
 
+/** One OAuth callback, however it reached us. */
+export interface McpOAuthCallbackData {
+  success: boolean;
+  code?: string;
+  state?: string;
+  error?: string;
+}
+
+/**
+ * Completes the consent step in the user's real browser instead of a popup.
+ *
+ * Installed by hosts where `window.open` cannot work. In a Tauri webview it
+ * returns `null` unconditionally — WKWebView has no popup or tab concept and
+ * Tauri spawns no webview for it — so both attempts in
+ * `redirectToAuthorization` fail and the flow dies with "Popup was blocked"
+ * before the user sees a consent screen.
+ *
+ * Once consent happens in a different browser process, neither of this
+ * module's return channels can carry the result home: `window.opener` is not
+ * reachable across processes, and the `storage` event needs a shared
+ * `localStorage`. So an adapter supplies its own redirect target and its own
+ * way to collect what landed there.
+ *
+ * This is injected rather than imported so the SDK stays host-agnostic — a
+ * direct import would pull the host's platform bindings into every build,
+ * including plain web.
+ */
+export interface McpOAuthBrowserAdapter {
+  /** Absolute URL the provider is told to redirect back to. */
+  redirectUrl: string;
+  /** Hand the authorize URL to the real browser. */
+  openAuthorizationUrl(url: string): Promise<void>;
+  /** Drop a callback left over from a flow nobody is waiting for. */
+  discardPendingCallback(): Promise<void>;
+  /** One poll: the callback, or `null` while none has landed yet. */
+  pollCallback(): Promise<McpOAuthCallbackData | null>;
+}
+
+let browserAdapter: McpOAuthBrowserAdapter | null = null;
+
+/** Install (or clear, with `null`) the browser-completed OAuth adapter. */
+export function setMcpOAuthBrowserAdapter(
+  adapter: McpOAuthBrowserAdapter | null,
+): void {
+  browserAdapter = adapter;
+}
+
+/** How often to ask the adapter whether the callback has landed. */
+const ADAPTER_POLL_INTERVAL_MS = 600;
+
 /**
  * Options for the MCP OAuth provider
  */
@@ -110,8 +160,13 @@ class McpOAuthProvider implements OAuthClientProvider {
 
   constructor(options: McpOAuthProviderOptions) {
     this.serverUrl = options.serverUrl;
+    // An explicit callbackUrl still wins; otherwise an installed adapter picks
+    // the target, because the page that receives the redirect has to be one
+    // the adapter can actually read the result back out of.
     this._redirectUrl =
-      options.callbackUrl ?? `${getOAuthRedirectOrigin()}/oauth/callback`;
+      options.callbackUrl ??
+      browserAdapter?.redirectUrl ??
+      `${getOAuthRedirectOrigin()}/oauth/callback`;
     this._windowMode = options.windowMode ?? "popup";
 
     // Build scope string if provided
@@ -171,6 +226,13 @@ class McpOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void {
+    // Hosts without a working `window.open` hand consent to the real browser.
+    // Fire-and-forget by contract: this method is synchronous, and the result
+    // arrives through the adapter's own channel, not through a window handle.
+    if (browserAdapter) {
+      void browserAdapter.openAuthorizationUrl(authorizationUrl.toString());
+      return;
+    }
     if (this._windowMode === "tab") {
       // Open in new tab - uses localStorage for cross-tab communication
       const tab = window.open(authorizationUrl.toString(), "_blank");
@@ -319,6 +381,7 @@ export async function authenticateMcp(params: {
       (resolve, reject) => {
         const timeout = params.timeout || 120000;
         let timeoutId: ReturnType<typeof setTimeout>;
+        let pollId: ReturnType<typeof setInterval> | undefined;
         let resolved = false;
         // Use the OAuth state as the storage key - it's already unique per flow
         // and will be available to the callback page via URL params
@@ -331,6 +394,7 @@ export async function authenticateMcp(params: {
           window.removeEventListener("message", handleMessage);
           window.removeEventListener("storage", handleStorageEvent);
           clearTimeout(timeoutId);
+          clearInterval(pollId);
           // Clean up storage key
           try {
             localStorage.removeItem(storageKey);
@@ -453,6 +517,23 @@ export async function authenticateMcp(params: {
         window.addEventListener("message", handleMessage);
         window.addEventListener("storage", handleStorageEvent);
 
+        // Third channel: when consent completes in a separate browser process
+        // neither listener above can ever fire, so ask the adapter instead.
+        // A failed poll is not fatal — the app may simply be mid-restart —
+        // so it retries until the shared timeout below gives up.
+        if (browserAdapter) {
+          const adapter = browserAdapter;
+          pollId = setInterval(() => {
+            if (resolved) return;
+            adapter
+              .pollCallback()
+              .then(async (data) => {
+                if (data && !resolved) await processCallback(data);
+              })
+              .catch(() => {});
+          }, ADAPTER_POLL_INTERVAL_MS);
+        }
+
         timeoutId = setTimeout(() => {
           if (resolved) return;
           resolved = true;
@@ -465,6 +546,15 @@ export async function authenticateMcp(params: {
     // Attach a no-op catch to prevent unhandled rejection if auth() throws
     // (we'll abort the promise properly in the catch block, but this is a safety net)
     oauthCompletePromise.catch(() => {});
+
+    // Drop anything parked by a flow nobody is waiting for (consent granted,
+    // then the app quit before collecting it). The state check would reject a
+    // stale entry anyway, but the user would see "state mismatch — possible
+    // CSRF attack" instead of a working connection. Must happen before `auth`
+    // opens the browser, and never blocks the flow if it fails.
+    if (browserAdapter) {
+      await browserAdapter.discardPendingCallback().catch(() => {});
+    }
 
     // Start the auth flow
     const result: AuthResult = await auth(provider, { serverUrl });

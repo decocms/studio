@@ -40,17 +40,3 @@ export function mcpUrl(orgSlug: string): string {
       : window.location.origin;
   return `${origin}/api/${orgSlug}/mcp/self`;
 }
-
-/**
- * One-liner that adds this org to Claude Code with a pre-minted bearer token
- * baked in as an `Authorization` header. Unlike the OAuth variant this needs
- * NO `/mcp` step and NO browser login — Claude Code sends the token on the
- * first request and every tool is live immediately. The token is a real
- * credential, so this command should be treated like a password.
- */
-export function claudeCodeCommandWithKey(
-  orgSlug: string,
-  apiKey: string,
-): string {
-  return `claude mcp add --transport http --scope user ${connectServerName()} ${mcpUrl(orgSlug)} --header "Authorization: Bearer ${apiKey}"`;
-}

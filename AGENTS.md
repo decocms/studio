@@ -25,7 +25,23 @@ bun run --cwd=apps/api dev:server
 
 # Run documentation site locally
 bun run docs:dev
+
+# Native desktop app (Tauri) dev loop — HMR via Vite on port 4420
+bun run --cwd=apps/native dev
 ```
+
+**One-time macOS setup for `apps/native` devs**: run
+`bun run --cwd=apps/native dev:signing:setup` once. It creates or reuses the
+local self-signed `decocms-dev` code-signing identity; no Apple Developer
+account is required. It also builds, signs, and installs one fixed
+`decocms-keychain-helper` under the user's Application Support directory.
+Debug app rebuilds talk to that unchanged helper over JSON stdin/stdout, so
+Keychain sees one stable executable; tokens never use argv, logs, or a
+filesystem fallback. The native dev runner still signs the app itself and
+fails closed if signing drifts, but the fixed helper—not the app's self-signed
+designated requirement—is what makes debug Keychain access stable. Debug
+sessions stay in the Keychain-only `com.decocms.studio.dev` namespace; release
+sessions stay in `com.decocms.studio`.
 
 ### Testing & Quality
 ```bash

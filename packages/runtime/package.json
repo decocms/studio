@@ -12,7 +12,7 @@
     "@decocms/mcp-utils": "^1.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
     "jose": "^6.0.11",
-    "zod": "^4.0.0"
+    "zod": "4.3.6"
   },
   "exports": {
     ".": "./src/index.ts",

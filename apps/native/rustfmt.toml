@@ -1,0 +1,6 @@
+# Defaults only — rustfmt's stable defaults already match Biome's two-space
+# spirit closely enough (4-space Rust indent is the ecosystem norm; we don't
+# fight it). Kept as an explicit empty-ish file so `cargo fmt` has a stable
+# anchor and CI's `cargo fmt --check` is unambiguous about which edition of
+# defaults it's checking against.
+edition = "2021"

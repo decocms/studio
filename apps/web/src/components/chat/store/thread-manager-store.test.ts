@@ -97,6 +97,74 @@ describe("ThreadManagerStore /watch snapshot", () => {
   });
 });
 
+describe("ThreadManagerStore boot-buffer disarm on load failure", () => {
+  /** The freeze this pins: one failed COLLECTION_THREADS_LIST (routine while
+   *  the native listener boots) left the boot buffer armed forever, so every
+   *  later watch event queued behind a drain that never came — a thread stuck
+   *  rendering "Done" while its run streamed, until a full reload. */
+  it("a failed initial load still lets later status events through", async () => {
+    const sse = makeFakePool();
+    const client = {
+      callTool: mock(async () => {
+        throw new Error("native chat queue recovery failed");
+      }),
+    } as unknown as MCPClient;
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threadsStatus.get().kind).toBe("error");
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-live", { status: "in_progress", title: "Live" }),
+    );
+    expect(store.threads.get()[0]?.id).toBe("t-live");
+    expect(store.threads.get()[0]?.status).toBe("in_progress");
+    store.dispose();
+  });
+
+  it("a failed post-reconnect resync still lets later status events through", async () => {
+    const sse = makeFakePool();
+    let listCalls = 0;
+    const client = {
+      callTool: mock(async (args: { name: string }) => {
+        if (args.name !== "COLLECTION_THREADS_LIST") return {};
+        listCalls++;
+        if (listCalls > 1) throw new Error("listener restarting");
+        return {
+          structuredContent: {
+            items: [
+              {
+                id: "t-1",
+                title: "A",
+                status: "completed",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+              } as Task,
+            ],
+            hasMore: false,
+          },
+        };
+      }),
+    } as unknown as MCPClient;
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threads.get()[0]?.status).toBe("completed");
+
+    // Reconnect re-arms the buffer and kicks a resync that fails.
+    sse.triggerReconnect("acme");
+    await new Promise((r) => setTimeout(r, 10));
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-1", { status: "in_progress" }),
+    );
+    expect(store.threads.get()[0]?.status).toBe("in_progress");
+    store.dispose();
+  });
+});
+
 describe("ThreadManagerStore thread.* event patching", () => {
   it("updates an existing row via thread.status event", async () => {
     const sse = makeFakePool();

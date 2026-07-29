@@ -1,0 +1,25 @@
+{
+  "name": "@decocms/native",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Native Studio desktop app: Tauri shell, Rust local API, and black-box contract suites.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev:signing:setup": "./scripts/create-dev-signing-cert.sh",
+    "e2e": "bun test e2e",
+    "test": "bun test e2e scripts",
+    "dev": "bunx @tauri-apps/cli@^2 dev",
+    "smoke:boot": "bun run scripts/boot-smoke.ts",
+    "check:junit-allowlist": "node scripts/ci/check-junit-allowlist.mjs",
+    "selftest:bundle:check": "node --check src-tauri/selftest/bundle.js",
+    "e2e-stub:run": "node ../../packages/sandbox/daemon/e2e-stub/stub-daemon.mjs"
+  },
+  "dependencies": {
+    "@decocms/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.1",
+    "typescript": "^5.9.3"
+  }
+}

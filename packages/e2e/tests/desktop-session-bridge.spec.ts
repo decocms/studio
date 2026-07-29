@@ -8,8 +8,8 @@
  * the signed cookie VALUE, so a native caller (the desktop app) can forward
  * it itself as `Cookie: better-auth.session_token=<value>`.
  *
- * See `apps/desktop/docs/real-ui-auth-recon.md` for the full empirical
- * trail and `apps/desktop/crates/upstream/src/login.rs`'s
+ * See the native authentication contract for the full empirical
+ * trail and `apps/native/crates/upstream/src/login.rs`'s
  * `mint_session_from_access_token` for the Rust-side caller.
  */
 import { expect, newApiContext, test } from "../fixtures/test";

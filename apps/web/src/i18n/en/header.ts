@@ -1,11 +1,4 @@
 export const header = {
-  "header.linkedDesktopIndicator.availableCapabilities":
-    "Available: {capabilities}",
-  "header.linkedDesktopIndicator.connectDesktop": "Connect desktop",
-  "header.linkedDesktopIndicator.connectYourDesktop": "Connect your desktop",
-  "header.linkedDesktopIndicator.desktopDisconnected": "Desktop disconnected",
-  "header.linkedDesktopIndicator.desktopLinked": "Desktop linked",
-  "header.linkedDesktopIndicator.noCliAgents": "No CLI agents detected",
   "header.orgSwitcher.accept": "Accept",
   "header.orgSwitcher.declineInvitationTo": "Decline invitation to {name}",
   "header.orgSwitcher.failedToAcceptInvitation": "Failed to accept invitation",

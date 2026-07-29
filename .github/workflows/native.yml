@@ -1,0 +1,441 @@
+name: Native
+
+# Phase 5 of the desktop migration contract (see the desktop migration contract §5.1).
+# Gates the Rust/Tauri desktop app (apps/native/) — a separate cargo
+# workspace, independent of the Bun workspaces the other workflows cover.
+#
+# Path-filtered (not the `changes`-job PR-diff pattern test.yml/e2e.yml/
+# sandbox-daemon.yml use) because this workflow is NOT yet a required
+# branch-protection check — apps/native is still behind the migration flag
+# (the desktop migration contract's `desktopAppAvailable`, default off) and this branch hasn't
+# merged to main. A never-scheduled REQUIRED check blocks merges forever if
+# skipped via workflow-level `paths:` (see test.yml's comment on its
+# `changes` job) — but an opt-in, non-required check like this one is exactly
+# what daemon-e2e-windows.yml already does with plain `paths:`, so this
+# mirrors that convention. If/when this becomes a required check, switch to
+# the `changes`-job pattern first.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/native/**"
+      - "apps/web/**"
+      - "packages/sandbox/daemon/**"
+      - "packages/shared/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/native/**"
+      - "apps/web/**"
+      - "packages/sandbox/daemon/**"
+      - "packages/shared/**"
+      - ".github/workflows/native.yml"
+  # stub-seam-nightly keeps the DAEMON_E2E_CMD swap seam (packages/sandbox/
+  # daemon/e2e-stub/) from rotting even on weeks with no apps/native PRs —
+  # see the desktop migration contract §5.1's "nightly job running the daemon-e2e stub-seam
+  # check". `schedule` + `workflow_dispatch` fire regardless of `paths:`
+  # (path filters only apply to push/pull_request), which is intentional
+  # here — every job below is gated by `if:` on `github.event_name` instead
+  # (see each job).
+  schedule:
+    - cron: "17 3 * * *" # nightly, arbitrary off-hour offset to dodge the top-of-hour stampede
+  workflow_dispatch: {}
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.3.14"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
+  #    workspace (crates/local-api, crates/harness, crates/upstream,
+  #    src-tauri). macOS-only (matches the other jobs and the app's actual
+  #    v1 target — the desktop migration contract's "v1 is macOS-only"); no ubuntu leg because
+  #    src-tauri's deps (tao/wry/muda/objc2/...) are macOS-framework-linked
+  #    and won't compile on Linux without a large extra apt-get surface
+  #    this phase doesn't need to carry.
+  # ---------------------------------------------------------------------
+  rust-checks:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/native
+
+      - name: cargo fmt --check
+        working-directory: apps/native
+        run: cargo fmt --all -- --check
+
+      - name: Placeholder frontendDist for generate_context!
+        # `tauri::generate_context!` (compiled by clippy + test below) panics if
+        # the configured `frontendDist` (../../web/dist/native) is absent. This
+        # job intentionally does NOT build the frontend, so drop a minimal
+        # placeholder — the real bundle is produced in the `tauri-build` job.
+        run: |
+          mkdir -p apps/web/dist/native
+          printf '<!doctype html><html><body></body></html>' > apps/web/dist/native/index.html
+
+      # `tauri-build` resolves `externalBin` in `src-tauri/build.rs`, so ANY
+      # cargo command touching the workspace needs the sidecar on disk — not
+      # just `tauri build`. It is git-ignored and fetched at build time, so
+      # without this every cargo job fails with "resource path
+      # binaries/rclone-<triple> doesn't exist".
+      - name: Cache bundled rclone
+        uses: actions/cache@v4
+        with:
+          path: apps/native/src-tauri/binaries
+          key: rclone-${{ runner.os }}-${{ hashFiles('apps/native/scripts/fetch-rclone.sh') }}
+
+      - name: Fetch bundled rclone
+        working-directory: apps/native
+        run: ./scripts/fetch-rclone.sh
+
+      - name: cargo clippy -D warnings
+        working-directory: apps/native
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test --workspace
+        working-directory: apps/native
+        run: cargo test --workspace
+
+  # ---------------------------------------------------------------------
+  # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
+  #    binary, point packages/sandbox's curated 5-file daemon e2e suite at
+  #    it via DAEMON_E2E_CMD, and assert the EXACT documented 133 pass / 7
+  #    fail outcome — not just the counts. apps/native/docs/
+  #    the native parity contract pins the 7 failing test names as intentional
+  #    auth/CORS tightening (+ one harness self-check artifact); a NEW
+  #    failure (regression) or a VANISHED one (doc gone stale) both fail
+  #    this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
+  #
+  #    `daemon.proxy.e2e.test.ts` + `daemon.ws-proxy.e2e.test.ts` (12 tests,
+  #    formerly "all pass") are DELIBERATELY excluded from this curated set
+  #    as of the port-router split (`local_api::ServerHandle`'s dedicated
+  #    PREVIEW listener) — this harness (`daemon.e2e.helpers.ts`, owned by
+  #    `packages/sandbox`, out of bounds to edit here) hard-codes a SINGLE
+  #    port for the whole daemon and has no way to discover/target a SECOND
+  #    one, so it structurally cannot drive local-api's now-separate preview
+  #    listener. See `the native parity contract`'s "Reverse proxy +
+  #    WS proxy" exclusion section for the full rationale and this crate's
+  #    own substitute oracle coverage (`apps/native/e2e/git-sandbox.e2e.test.ts`,
+  #    `real-ui-passthrough.e2e.test.ts`).
+  # ---------------------------------------------------------------------
+  daemon-e2e-vs-rust:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/native
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      # The fs `grep` route (in the curated suite's daemon.e2e.test.ts)
+      # shells out to ripgrep; install it so the test asserts results
+      # strictly instead of tolerating "grep unavailable" — same reasoning
+      # as sandbox-daemon.yml / daemon-e2e-windows.yml's ripgrep installs.
+      - name: Install ripgrep
+        run: brew install ripgrep
+
+      - name: Build release local-api binary
+        working-directory: apps/native
+        run: cargo build --release --bin local-api
+
+      - name: Run curated daemon e2e subset against local-api
+        id: daemon-parity
+        # 7 documented failures are EXPECTED here (see the native parity contract) —
+        # `|| true` keeps this step green so the next step (the actual
+        # gate) can inspect the junit output and fail precisely on a SET
+        # mismatch, not merely on bun test's own non-zero exit.
+        #
+        # `daemon.proxy.e2e.test.ts` / `daemon.ws-proxy.e2e.test.ts` are NOT
+        # in this list — see the job header comment above and
+        # the native parity contract for why (the port-router split moved that
+        # traffic to a second listener this single-port harness can't
+        # reach).
+        run: |
+          LOCAL_API_BIN="$GITHUB_WORKSPACE/apps/native/target/release/local-api"
+          export DAEMON_E2E_CMD="[\"$LOCAL_API_BIN\"]"
+          cd packages/sandbox
+          bun test daemon/daemon.e2e.test.ts daemon/daemon.sse-shapes.e2e.test.ts \
+                   daemon/daemon.git.e2e.test.ts daemon/daemon.tools.e2e.test.ts \
+                   daemon/daemon.dispatch.e2e.test.ts \
+                   --reporter=junit --reporter-outfile="$RUNNER_TEMP/daemon-parity.xml" || true
+
+      - name: Assert exact fail-set match against the pinned allowlist
+        run: |
+          bun run --cwd apps/native check:junit-allowlist -- \
+            "$RUNNER_TEMP/daemon-parity.xml" \
+            "$GITHUB_WORKSPACE/apps/native/scripts/ci/daemon-parity-allowlist.json"
+
+      - name: Upload junit report (debugging aid)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-parity-junit
+          path: ${{ runner.temp }}/daemon-parity.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
+  # 3. contract-suite — apps/native/e2e's own black-box contract suite
+  #    (LOCAL_API_E2E_CMD) against the release local-api binary. Unlike the
+  #    parity oracle above, this suite is OWNED by this implementation
+  #    (the native local-API contract is the spec it pins), so
+  #    the bar is simply "all green" — no allowlist needed.
+  # ---------------------------------------------------------------------
+  contract-suite:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/native
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build release local-api binary
+        working-directory: apps/native
+        run: cargo build --release --bin local-api
+
+      - name: Run local-api contract suite
+        working-directory: apps/native
+        run: |
+          export LOCAL_API_E2E_CMD="[\"$GITHUB_WORKSPACE/apps/native/target/release/local-api\"]"
+          bun test e2e
+
+  # ---------------------------------------------------------------------
+  # 4. tauri-build — bundles the debug .app, uploads it as an artifact, and
+  #    boot-smokes it. macOS code-signing / notarization / updater-artifact
+  #    signing are handled ENTIRELY by the Tauri CLI itself once the
+  #    matching env vars are non-empty (https://v2.tauri.app/distribute/
+  #    sign/macos/) — this job does not hand-roll `security`/`notarytool`
+  #    calls, it just wires the documented secret names through as env and
+  #    lets `tauri build` no-op into an unsigned/ad-hoc build when they're
+  #    absent (the fork-safe default: every secret below is empty on a
+  #    fork PR, so signing/notarization are skipped, never failed).
+  # ---------------------------------------------------------------------
+  tauri-build:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      # --- macOS code signing + notarization (Apple Developer ID) ---------
+      # All optional. Human-required setup (cert enrollment, notarization
+      # credentials) — see the native release contract (§5.3,
+      # dormant scaffolding). Required secret names, each consumed only by
+      # the `tauri build` step below via env:
+      #   APPLE_CERTIFICATE              - base64-encoded .p12 Developer ID cert
+      #   APPLE_CERTIFICATE_PASSWORD     - password for the .p12 above
+      #   APPLE_SIGNING_IDENTITY         - cert Common Name, e.g. "Developer ID
+      #                                     Application: <org> (<team id>)" —
+      #                                     not in the brief's original list but
+      #                                     REQUIRED by Tauri's signing flow
+      #                                     alongside the cert itself; documented
+      #                                     here so it isn't missed when the
+      #                                     other 5 Apple secrets are configured
+      #   APPLE_ID                       - Apple ID used for notarization
+      #   APPLE_PASSWORD                 - app-specific password for APPLE_ID
+      #   APPLE_TEAM_ID                  - Developer Team ID
+      # DELIBERATELY NOT WIRED HERE. This job only ever produces a DEBUG
+      # bundle for boot-smoke, which runs the binary directly and gains
+      # nothing from a Developer ID. Exporting the secrets made the Tauri CLI
+      # attempt `security import` on every build in this job — including the
+      # one boot-smoke launches itself — and it failed with "failed codesign
+      # application: failed to import keychain certificate", from a cert that
+      # is present but not importable. Wiring them cost a green CI and bought
+      # nothing. Signing belongs to the separate, secret-gated release job.
+      # --- Tauri updater artifact signing (separate keypair; unrelated to
+      #     Apple code signing above) — only takes effect once
+      #     tauri.conf.json5 configures the `updater` bundle target, which
+      #     is still dormant (the native release contract
+      #     §"Updater"). Wired here now so no further workflow edit is
+      #     needed once that config lands.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/native
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      # rclone is bundled as an `externalBin` (the org filesystem's NFS
+      # mount) and deliberately NOT committed — 78 MB per architecture.
+      # Keyed on the fetch script's hash, so bumping the pinned version in
+      # that script busts the cache automatically.
+      - name: Cache bundled rclone
+        uses: actions/cache@v4
+        with:
+          path: apps/native/src-tauri/binaries
+          key: rclone-${{ runner.os }}-${{ hashFiles('apps/native/scripts/fetch-rclone.sh') }}
+
+      # Explicit for the same reason as the frontend bundle below:
+      # `beforeBuildCommand` also runs it, but a dedicated step attributes a
+      # download or checksum failure to itself instead of to `tauri build`.
+      - name: Fetch bundled rclone
+        working-directory: apps/native
+        run: ./scripts/fetch-rclone.sh
+
+      # Explicit step (not relying solely on tauri.conf.json5's own
+      # `beforeBuildCommand: bun run build:native`) for a clearer CI step
+      # boundary/log — slightly redundant with that hook, harmless (the
+      # second invocation is a fast no-op rebuild of already-fresh output).
+      - name: Build desktop frontend bundle
+        run: bun run --cwd apps/web build:native
+
+      - name: tauri build --debug
+        working-directory: apps/native
+        # This build is NEVER signed, whether or not the secrets exist.
+        # boot-smoke runs the binary directly and a Developer ID buys it
+        # nothing, while attempting the import couples this job to the health
+        # of six repo secrets — which is exactly how it has been failing:
+        # "failed codesign application: failed to import keychain certificate",
+        # from a cert that is present but not importable. Signing belongs to
+        # the separate, secret-gated release job (see the native release
+        # contract).
+        run: bunx @tauri-apps/cli@latest build --debug
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: decocms-desktop-debug-app
+          path: apps/native/target/debug/bundle/macos/decocms-desktop.app
+          if-no-files-found: error
+          retention-days: 14
+
+      # Boot-smoke consideration (the desktop migration contract §5.1): CI macOS runners
+      # are full logged-in GUI VMs (not headless like Linux — no Xvfb
+      # needed), and DESKTOP_SELFTEST=1 builds the "main" window
+      # `.visible(false)` specifically so this never pops a real window
+      # (see the native Tauri integration's "Self-test mode" section) — confirmed
+      # locally: `bun run --cwd apps/native smoke:boot` passes end-to-end
+      # (all 7 self-test checks + the orphan-process check) without ever
+      # showing a window. Included here rather than documented as
+      # local-only. Residual risk not fully provable from a dev machine:
+      # `authStatusInvoke`'s status check touches macOS Keychain via the
+      # `keyring` crate (crates/upstream) — GH's macos-latest runners
+      # provide an unlocked default login keychain so a read-only
+      # "no stored session" status check is expected to work the same way
+      # it does locally, but if this step ever starts failing ONLY in CI
+      # with a Keychain-access error, add a
+      # `security unlock-keychain -p runner ~/Library/Keychains/login.keychain-db`
+      # step immediately before this one rather than reverting it to
+      # local-only.
+      - name: Boot smoke (DESKTOP_SELFTEST=1, hidden window)
+        run: bun run --cwd apps/native smoke:boot
+
+  # ---------------------------------------------------------------------
+  # 5. stub-seam-nightly — keeps the DAEMON_E2E_CMD swap-seam mechanics
+  #    (spawn / env contract / health-poll / SIGKILL-teardown) exercised
+  #    even on weeks with no apps/native PRs, per the desktop migration contract §5.1.
+  #    Runs the plain Node stub (packages/sandbox/daemon/e2e-stub/
+  #    stub-daemon.mjs), not the Rust binary — ubuntu-latest is fine since
+  #    nothing here is macOS-specific (no cargo build at all). Asserts the
+  #    documented 76 pass / 27 fail table from the daemon parity contract via the
+  #    same exact-set allowlist checker as job 2 — this table already
+  #    documents (and this job tolerates, by pinning it into the allowlist
+  #    like every other entry) the one env-leakage self-check failure
+  #    (`swappable spawn target > defaults to ... when DAEMON_E2E_CMD is
+  #    unset`) the README's "Friction found in the seam" section explains.
+  # ---------------------------------------------------------------------
+  stub-seam-nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run daemon.e2e.test.ts against the e2e-stub seam probe
+        # 27 documented failures are EXPECTED (this stub implements only a
+        # slice of the daemon's route surface — see the daemon parity contract's
+        # "What stub-daemon.mjs implements"). `|| true` for the same reason
+        # as job 2's parity step — the next step is the real gate.
+        run: |
+          STUB="$GITHUB_WORKSPACE/packages/sandbox/daemon/e2e-stub/stub-daemon.mjs"
+          export DAEMON_E2E_CMD="[\"node\", \"$STUB\"]"
+          cd packages/sandbox
+          bun test daemon/daemon.e2e.test.ts \
+                   --reporter=junit --reporter-outfile="$RUNNER_TEMP/stub-seam.xml" || true
+
+      - name: Assert exact fail-set match against the pinned allowlist
+        run: |
+          bun run --cwd apps/native check:junit-allowlist -- \
+            "$RUNNER_TEMP/stub-seam.xml" \
+            "$GITHUB_WORKSPACE/apps/native/scripts/ci/stub-seam-allowlist.json"
+
+      - name: Upload junit report (debugging aid)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stub-seam-junit
+          path: ${{ runner.temp }}/stub-seam.xml
+          if-no-files-found: warn
+          retention-days: 7

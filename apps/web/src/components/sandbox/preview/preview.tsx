@@ -85,6 +85,8 @@ import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/secti
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { openExternalUrlInSystemBrowser } from "@/lib/desktop/tauri-bridge";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -216,6 +218,7 @@ function reloadIframeOrFallback(
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
+  const isDesktopApp = useIsDesktopApp();
   const isMobile = useIsMobile();
   // Desktop: the main panel header hosts the preview controls (single top bar).
   // Mobile / standalone (no header slot): render the toolbar inline below.
@@ -507,6 +510,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             previewDeviceSize,
           )
         : null;
+
+  // "Open outside the preview pane". In a browser that's a new tab; inside the
+  // Tauri webview there is no tab strip to open into, so `window.open` cannot
+  // serve it — hand the URL to the OS default browser instead, and say so.
+  const openPreviewLabelKey = isDesktopApp
+    ? ("sandbox.preview.openInBrowser" as const)
+    : ("sandbox.preview.openInNewTab" as const);
+
+  const handleOpenPreview = async () => {
+    const url = iframeSrc ?? display.iframeBase;
+    if (!url) return;
+    if (!isDesktopApp) {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+    try {
+      await openExternalUrlInSystemBrowser(url);
+    } catch {
+      toast.error(t("sandbox.preview.failedToOpenInBrowser"));
+    }
+  };
 
   // Last visited page (incl. `:param` values), persisted per project+branch.
   const previewStorageKey =
@@ -1258,18 +1282,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
-            aria-label={t("sandbox.preview.openInNewTab")}
-            onClick={() => {
-              const url = iframeSrc ?? display.iframeBase;
-              if (url) window.open(url, "_blank", "noopener");
-            }}
+            aria-label={t(openPreviewLabelKey)}
+            onClick={() => void handleOpenPreview()}
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
         </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t("sandbox.preview.openInNewTab")}
-        </TooltipContent>
+        <TooltipContent side="bottom">{t(openPreviewLabelKey)}</TooltipContent>
       </Tooltip>
     </>
   ) : null;

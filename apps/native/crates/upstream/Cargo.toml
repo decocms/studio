@@ -1,0 +1,75 @@
+[package]
+name = "upstream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes `tokens::test_support::MemoryTokenStore` to a DOWNSTREAM crate's
+# own tests (this crate's own tests reach it via `#[cfg(test)]` directly
+# and never need this feature). `local-api` enables it from ITS
+# `[dev-dependencies]` entry for `upstream` so `routes/upstream.rs`'s test
+# module can exercise the proxy handler against a fake token store instead
+# of the real macOS Keychain — see `tokens.rs`'s `test_support` module doc.
+test-support = []
+
+[dependencies]
+# Shared workspace-pinned deps (see apps/native/Cargo.toml's
+# `[workspace.dependencies]` table) — consumed via `.workspace = true`,
+# never edited here.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+urlencoding = { workspace = true }
+
+# Crate-local dependencies, NOT in the shared workspace table (see that
+# table's trailing comment and `crates/harness/Cargo.toml`'s `portable-pty`
+# for the established precedent) — declared directly here since this crate
+# is their only consumer.
+#
+# `keyring` — see the native implementation contract section 3 for the full
+# "keyring vs security-framework vs shelling to /usr/bin/security"
+# writeup and decision. Default features (`v1`) pull in
+# `apple-native-keyring-store/keychain` ONLY on macOS (the other backends
+# are declared behind `[target.'cfg(...)'.dependencies]` in keyring's own
+# manifest, so they're never part of this workspace's build graph on
+# Darwin) — no extra feature flags needed.
+keyring = "4"
+# SHA-256 for PKCE's `code_challenge = BASE64URL(SHA256(code_verifier))`
+# (RFC 7636). A typed, audited hash crate rather than hand-rolling SHA-2.
+sha2 = "0.10"
+# base64url (no padding) encoding for the PKCE verifier/challenge and for
+# decoding an id_token's JWT payload segment.
+base64 = "0.22"
+# Resolves the OS-conventional per-app data directory
+# (`~/Library/Application Support/<bundle-id>` on macOS) for the
+# non-secret OAuth dynamic-client-registration cache — see `register.rs`.
+# Framework-agnostic on purpose: this crate also links into the standalone
+# `local-api` binary the e2e/daemon-parity suites spawn directly, with no
+# Tauri context to ask for an app-data path.
+dirs = "6"
+# Bounded waiting for the fixed macOS debug-Keychain helper process. Unlike an
+# outer async timeout around `spawn_blocking`, this can kill and reap the exact
+# child if Keychain leaves it waiting on an interactive dialog.
+wait-timeout = "0.2"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Adds `test-util` on top of the workspace-pinned `tokio` (Cargo unions
+# features across `[dependencies]`/`[dev-dependencies]` for the same
+# dependency) — needed for `tokio::time::{pause,advance}` /
+# `#[tokio::test(start_paused = true)]` in `revalidate.rs`'s test. Not part
+# of the shared `[workspace.dependencies]` entry since no OTHER crate in
+# this workspace pauses virtual time in a test.
+tokio = { workspace = true, features = ["test-util"] }

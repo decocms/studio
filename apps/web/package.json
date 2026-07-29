@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite dev",
     "preview": "vite preview",
+    "dev:native": "VITE_TAURI_APP=1 VITE_PORT=4420 vite dev",
     "build": "bun --bun vite build",
+    "build:web": "VITE_TAURI_APP=0 bun --bun vite build",
+    "build:native": "VITE_TAURI_APP=1 bun --bun vite build",
+    "build:client": "bun run build:web",
     "check": "tsc --noEmit",
     "test": "bun test src test",
     "test:ct": "playwright test -c playwright-ct.config.ts",
@@ -37,6 +41,8 @@
     "@tanstack/react-query": "5.100.10",
     "@tanstack/react-router": "1.169.2",
     "@tanstack/react-virtual": "3.13.24",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2",
     "@tiptap/core": "3.20.2",
     "@tiptap/extension-placeholder": "3.20.2",
     "@tiptap/extension-text-align": "3.20.2",
@@ -71,7 +77,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "use-stick-to-bottom": "^1.1.6",
-    "zod": "^4.0.0"
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
