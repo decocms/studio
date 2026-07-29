@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Sheet,
@@ -35,8 +35,10 @@ import { getEffectiveState } from "./utils.tsx";
  * parent model received. Falls back to the legacy UIMessage shape for
  * historical tool calls predating the structured output.
  */
-export function extractSubtaskResponse(output: unknown): string | null {
-  // ponytail: i18n keys not available at module scope; wrapped in component
+export function extractSubtaskResponse(
+  output: unknown,
+  t: TFunction,
+): string | null {
   if (output && typeof output === "object" && !Array.isArray(output)) {
     const o = output as {
       text?: unknown;
@@ -49,21 +51,20 @@ export function extractSubtaskResponse(output: unknown): string | null {
       typeof o.finishReason === "string";
     if (hasNewShape) {
       if (typeof o.error === "string" && o.error.length > 0) {
-        // t("chat.subtask.failedWithError", { error: o.error })
-        return `Subtask failed: ${o.error}`;
+        return t("chat.subtask.failedWithError", { error: o.error });
       }
       const text = typeof o.text === "string" ? o.text.trim() : "";
       const stepLimitHit = o.finishReason === "length";
       if (text) {
         const prefix = stepLimitHit
-          ? "[Subtask hit step limit — partial result below; consider narrowing the task.]\n\n"
+          ? `${t("chat.subtask.stepLimitPartial")}\n\n`
           : "";
         return prefix + text;
       }
       if (stepLimitHit) {
-        return "[Subtask hit step limit before producing a final report. The subagent did work but ran out of steps. Narrow the task or increase the budget.]";
+        return t("chat.subtask.stepLimitNoOutput");
       }
-      return "Subtask completed (no output).";
+      return t("chat.subtask.completedNoOutput");
     }
   }
   return extractTextFromOutput(output);
@@ -91,8 +92,10 @@ interface SubtaskPartProps {
 
 /** Derives the row's display config from a SubtaskToolPart (no agent data).
  *  Pure — NOT a hook (named without the `use` prefix on purpose). */
-function buildSubtaskRowConfig({ part, subtaskMeta }: SubtaskPartProps) {
-  // ponytail: i18n keys not available at module scope; wrapped in component
+function buildSubtaskRowConfig(
+  { part, subtaskMeta }: SubtaskPartProps,
+  t: TFunction,
+) {
   const isInputStreaming =
     part.state === "input-streaming" || part.state === "input-available";
   const isOutputStreaming =
@@ -107,19 +110,19 @@ function buildSubtaskRowConfig({ part, subtaskMeta }: SubtaskPartProps) {
   const effectiveState = rawState === "approval" ? "idle" : rawState;
 
   const fallbackTitle: string = isInputStreaming
-    ? "Starting subtask..."
+    ? t("chat.subtask.startingEllipsis")
     : isOutputStreaming
-      ? "Subtask running..."
+      ? t("chat.subtask.runningEllipsis")
       : isComplete
-        ? "Subtask completed"
+        ? t("chat.subtask.completedTitle")
         : isError
-          ? "Subtask failed"
-          : "Subtask";
+          ? t("chat.subtask.failedTitle")
+          : t("chat.subtask.subtaskNoun");
 
   const prompt = part.input?.prompt ?? "";
   const summary =
     part.state === "approval-requested"
-      ? "Awaiting approval..."
+      ? t("chat.subtask.awaitingApproval")
       : prompt.length > 120
         ? prompt.slice(0, 120) + "…"
         : prompt;
@@ -305,10 +308,10 @@ function SubtaskCard({
 function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
   const t = useT();
   const isError = part.state === "output-error";
-  const prompt = part.input?.prompt ?? "No prompt provided";
+  const prompt = part.input?.prompt ?? t("chat.subtask.noPromptProvided");
   const response = isError
     ? getToolPartErrorText(part)
-    : (extractSubtaskResponse(part.output) ?? "");
+    : (extractSubtaskResponse(part.output, t) ?? "");
 
   return (
     <div className="flex flex-col gap-4">
@@ -464,7 +467,7 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   const persistedItems = persisted.flatMap((m) => m.parts ?? []);
   const items = liveItems.length > 0 ? liveItems : persistedItems;
 
-  const prompt = part.input?.prompt ?? "No prompt provided";
+  const prompt = part.input?.prompt ?? t("chat.subtask.noPromptProvided");
   const summary = prompt.length > 120 ? `${prompt.slice(0, 120)}…` : prompt;
   // "Running" until the completed run's rows are persisted (the reaction-turn
   // refetch). The live tail's own streaming flag drives the panel body.
@@ -501,7 +504,10 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
   const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
-  const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(props);
+  const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(
+    props,
+    t,
+  );
   return (
     <SubtaskCard
       icon={
@@ -536,7 +542,10 @@ export function SubtaskPart(props: SubtaskPartProps) {
   const onFlip = useFlipToBackground(props.part.toolCallId);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
-  const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(props);
+  const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(
+    props,
+    t,
+  );
 
   return (
     <SubtaskCard
