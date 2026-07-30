@@ -7,6 +7,7 @@ mod auth;
 mod commands;
 mod control_origin;
 mod csp;
+mod env_path;
 mod local_tls;
 mod selftest;
 mod setup;
@@ -22,6 +23,12 @@ pub fn run() {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    // Must run before `setup::run` boots local-api: every child spawn (agent
+    // detection, `bun install`, the script runner, ripgrep) inherits this
+    // process's environment, and a Finder/Dock launch starts with launchd's
+    // minimal PATH. See `env_path` for the repair strategy and its bounds.
+    env_path::repair();
 
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
 

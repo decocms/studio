@@ -196,7 +196,14 @@ async fn run_install_cmd(
             Ok(child) => child,
             Err(error) => {
                 orch.tasks.finalize(&task_id, TaskStatus::Failed, -1, false);
-                return Err(format!("{cmd}: {error}"));
+                // Same actionable-hint precedent as routes/fs.rs's ripgrep
+                // message: name the culprit and point at a fix.
+                let message = if error.kind() == std::io::ErrorKind::NotFound {
+                    format!("{cmd} not found on PATH: {error}. Install {cmd}, then retry setup.")
+                } else {
+                    format!("{cmd}: {error}")
+                };
+                return Err(message);
             }
         };
     let (Some(mut stdout_pipe), Some(mut stderr_pipe)) = (child.take_stdout(), child.take_stderr())

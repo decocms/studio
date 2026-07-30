@@ -274,7 +274,15 @@ async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) ->
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().ok()?;
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            // ENOENT here is how a broken PATH (e.g. a GUI launch before the
+            // shell's repair) manifests — never swallow it invisibly.
+            tracing::debug!(%program, %error, "agent probe spawn failed");
+            return None;
+        }
+    };
     let mut stdout = child.stdout.take()?;
     let mut stderr = child.stderr.take()?;
 

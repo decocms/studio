@@ -143,6 +143,16 @@ fn build_command(command: &str, cwd: &Path, env: Option<&HashMap<String, String>
     if let Some(env) = env {
         cmd.env_clear();
         cmd.envs(env);
+        // Bounded divergence from the parity rule above: without this, a
+        // caller env that omits PATH leaves the shell with no lookup path at
+        // all — and in a GUI-launched app the process PATH (repaired at boot
+        // by the Tauri shell's `env_path`) is the only usable one anywhere.
+        // A caller-supplied PATH still wins untouched.
+        if !env.contains_key("PATH") {
+            if let Some(path) = std::env::var_os("PATH") {
+                cmd.env("PATH", path);
+            }
+        }
     }
     cmd
 }
