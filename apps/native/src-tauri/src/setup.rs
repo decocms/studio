@@ -374,7 +374,15 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             }
         });
     }
-    builder.build().map_err(SetupError::Window)?;
+    let window = builder.build().map_err(SetupError::Window)?;
+    // The `devtools` cargo feature (workspace Cargo.toml) makes the webview
+    // inspectable even in release builds. Auto-opening rides the same switch
+    // as native-side logging: a packaged run under `RUST_LOG=…` is a
+    // debugging session, so one env var yields both Rust logs and the web
+    // inspector. A normal Finder launch (no RUST_LOG) never pops it.
+    if std::env::var("RUST_LOG").is_ok_and(|level| !level.is_empty()) {
+        window.open_devtools();
+    }
 
     Ok(())
 }

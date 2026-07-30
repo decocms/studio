@@ -33,18 +33,15 @@
 //! faithfully — see the two env profiles ([`route_env`]/[`ceiling_env`])
 //! and the per-function doc comments below.
 //!
-//! ## Shutdown-hook wiring
+//! ## No publish on shutdown
 //!
-//! [`register`] builds the SIGTERM publish-on-shutdown hook (byte-parity
-//! with `entry.ts::shutdown()`) and registers it via
-//! `state.shutdown.register(..)`. `main.rs` (shared) calls
-//! `routes::git::register(&state);` once, right after `AppState` is
-//! constructed and before `axum::serve` starts — the only point in this
-//! crate a `git`-owned file can reach at boot time without editing
-//! `main.rs` itself. See `register_publishes_on_shutdown_run` below for a
-//! direct test of the hook body (it drives `state.shutdown.run()` rather
-//! than an OS signal, since the daemon e2e harness always `SIGKILL`s and
-//! never exercises this path — see `daemon.e2e.helpers.ts::stopDaemon`).
+//! Unlike the cluster daemon (`entry.ts::shutdown()` publishes because its
+//! sandbox filesystem dies with the pod), this crate runs on the user's own
+//! machine: worktrees are durable and `SandboxManager::ensure` reuses a
+//! valid checkout as-is on the next launch. Publishing here is therefore
+//! only ever user-triggered (the [`publish`] route) — app close leaves
+//! local work local, committed or not, instead of blocking exit on a
+//! network push.
 //!
 //! ## `"branch"` broadcaster event
 //!
@@ -324,128 +321,6 @@ where
         .map_err(ApiError::internal)?;
     cancel_on_drop.disarm();
     result
-}
-
-/// Registers the publish-on-SIGTERM shutdown hook. See the module doc's
-/// "Shutdown-hook wiring" section — called once from `main.rs` right after
-/// `AppState` is constructed.
-pub fn register(state: &AppState) {
-    let hook_state = state.clone();
-    let shutdown = state.shutdown.clone();
-    shutdown.register(Box::new(move || {
-        let hook_state = hook_state.clone();
-        Box::pin(async move { run_owned_shutdown_publish(hook_state).await })
-    }));
-}
-
-/// The shutdown coordinator may drop this waiter when its 20-second hook
-/// budget expires. The actual publish owner is detached and remains hidden in
-/// `TaskRegistry`, so the post-hook registry sweep can still TERM -> KILL it
-/// and wait for its process-group join before the app-root lock is released.
-async fn run_owned_shutdown_publish(state: AppState) {
-    let operation_state = state.clone();
-    run_owned_shutdown_operation(state, async move {
-        publish_all_on_shutdown(&operation_state).await
-    })
-    .await;
-}
-
-async fn run_owned_shutdown_operation<F>(state: AppState, operation: F)
-where
-    F: Future<Output = ()> + Send + 'static,
-{
-    let (_kill_handle, result_rx) =
-        spawn_git_operation_owner(state, "git shutdown publish", operation);
-    match result_rx.await {
-        Ok(Ok(())) => {}
-        Ok(Err(message)) => tracing::error!(message, "shutdown git owner failed"),
-        Err(error) => tracing::error!(%error, "shutdown git owner stopped unexpectedly"),
-    }
-}
-
-/// Publishes every materialized per-handle sandbox worktree and then the
-/// process-global repository after their process owners have quiesced. Child
-/// worktrees go first: when an app-root repo contains `sandboxes/*`, publishing
-/// the parent first records the old embedded-repo gitlink and spends the hook's
-/// finite budget before the user's actual sandbox changes. Workdirs are
-/// deduplicated and processed serially: two sandboxes can share one remote,
-/// and concurrent fetch/add/commit/push sequences would race that remote's
-/// branch and credential helpers.
-async fn publish_all_on_shutdown(state: &AppState) {
-    let mut seen = HashSet::new();
-    let mut repo_dirs = Vec::new();
-    let materialized = state
-        .sandbox_manager
-        .snapshot()
-        .into_iter()
-        .map(|sandbox| sandbox.workdir.clone());
-    let durable = durable_sandbox_repo_dirs(state).await;
-    for repo_dir in materialized
-        .chain(durable)
-        .chain(std::iter::once(state.repo_dir.clone()))
-    {
-        if seen.insert(repo_dir.clone()) {
-            repo_dirs.push(repo_dir);
-        }
-    }
-
-    for repo_dir in repo_dirs {
-        match publish_internal(&repo_dir, "").await {
-            Ok(true) => {
-                tracing::info!(repo = %repo_dir.display(), "shutdown: git publish succeeded")
-            }
-            Ok(false) => tracing::debug!(
-                repo = %repo_dir.display(),
-                "shutdown: directory is not a git repository, nothing to publish"
-            ),
-            Err(error) => tracing::warn!(
-                repo = %repo_dir.display(),
-                %error,
-                "shutdown: git publish failed"
-            ),
-        }
-    }
-}
-
-/// Enumerates persisted sandbox worktrees without resurrecting their runtime.
-///
-/// A fresh process starts with an empty `SandboxManager` map, but worktrees
-/// with unsynced user changes may remain from a prior crash. Shutdown must
-/// publish those too — even when the user never focused that chat during this
-/// launch. Re-running `ensure()` here would start install/dev work after
-/// admission is closed, so this reads the durable record only.
-///
-/// Reads the REGISTRY, not the sidecars. The registry is the declared
-/// authority (see `sandbox::registry`'s module doc); sidecars are a legacy
-/// mirror whose writes are explicitly best-effort and swallowed. Enumerating
-/// by sidecar meant a sandbox that registered fine but whose sidecar write
-/// failed was invisible here — and its unsynced work silently never pushed.
-/// The old identity re-derivation is gone with it: the registry row IS the
-/// identity, already validated by `validate_identity` on the way in, so there
-/// is no second `compute_handle` call to drift out of step with
-/// `normalize_branch` (it did: it defaulted a missing branch to `main`, so
-/// every `staging` worktree failed its own check and was skipped).
-async fn durable_sandbox_repo_dirs(state: &AppState) -> Vec<PathBuf> {
-    let handles = match state.sandbox_manager.registered_handles() {
-        Ok(handles) => handles,
-        Err(error) => {
-            tracing::warn!(%error, "shutdown: could not list registered sandboxes to publish");
-            return Vec::new();
-        }
-    };
-    let mut dirs = Vec::new();
-    for handle in handles {
-        match state.sandbox_manager.registry_record(&handle) {
-            Ok(Some(record)) => dirs.push(record.workdir_path),
-            Ok(None) => {}
-            Err(error) => tracing::warn!(
-                handle,
-                %error,
-                "shutdown: could not read a sandbox record; skipping its publish"
-            ),
-        }
-    }
-    dirs
 }
 
 async fn require_git_repo(repo_dir: &Path) -> ApiResult<()> {
@@ -2209,38 +2084,6 @@ mod tests {
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
-    #[tokio::test]
-    async fn dropped_shutdown_hook_waiter_leaves_an_enumerable_owner() {
-        let root = TempDir::new().unwrap();
-        let state = test_app_state(root.path());
-        let (started_tx, started_rx) = oneshot::channel();
-        let hook_state = state.clone();
-        let hook_waiter = tokio::spawn(async move {
-            run_owned_shutdown_operation(hook_state, async move {
-                let controller = GIT_PROCESS_CONTROLLER.with(Clone::clone);
-                let _ = started_tx.send(());
-                controller.wait_for_change(None).await;
-            })
-            .await;
-        });
-
-        started_rx.await.expect("shutdown publish owner started");
-        // Equivalent to ShutdownCoordinator's hook timeout dropping the hook
-        // future: only the waiter dies; the detached operation remains in the
-        // registry for the top-level post-hook sweep.
-        hook_waiter.abort();
-        let _ = hook_waiter.await;
-
-        let sweep = state
-            .tasks
-            .kill_all_and_wait(Duration::from_secs(1), Duration::from_secs(1))
-            .await;
-        assert_eq!(sweep.initially_running, 1);
-        assert_eq!(sweep.term_signaled, 1);
-        assert_eq!(sweep.kill_signaled, 0);
-        assert!(sweep.remaining.is_empty());
-    }
-
     #[cfg(unix)]
     #[tokio::test]
     async fn slow_git_group_is_term_kill_reaped_before_owner_finalizes() {
@@ -2419,15 +2262,7 @@ mod tests {
     /// point at the same directory) for tests that do not materialize a
     /// per-handle sandbox.
     fn test_app_state(dir: &Path) -> AppState {
-        test_app_state_at(dir, dir)
-    }
-
-    /// Production keeps the app root and process-global repository separate:
-    /// `<app_root>/repo` and `<app_root>/sandboxes/<handle>/repo`. Tests that
-    /// exercise both repositories must preserve that boundary, otherwise an
-    /// empty sandbox directory is falsely discovered as part of its parent Git
-    /// worktree before the clone step can initialize it.
-    fn test_app_state_at(app_root: &Path, repo_dir: &Path) -> AppState {
+        let (app_root, repo_dir) = (dir, dir);
         let config = std::sync::Arc::new(crate::config::ConfigStore::new());
         let logs = std::sync::Arc::new(crate::log_store::LogStore::new(app_root.join("logs")));
         let tasks = std::sync::Arc::new(crate::tasks::TaskRegistry::new(logs));
@@ -2646,126 +2481,6 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, RouteError::InvalidBranchName(_)));
-    }
-
-    /// Mirrors `daemon.git.e2e.test.ts`'s "SIGTERM triggers a graceful
-    /// publish to origin before exit" — but drives the hook directly via
-    /// `ShutdownCoordinator::run()` instead of an OS signal, since the real
-    /// signal path requires the (currently unwired, see module doc)
-    /// `register(&state)` call in `main.rs`.
-    #[tokio::test]
-    async fn register_publishes_on_shutdown_run() {
-        let repo = setup_repo();
-        std::fs::write(repo.work_dir.join("graceful.txt"), "saved on shutdown\n").unwrap();
-        assert!(!remote_has_branch(&repo.bare_dir, "sandbox-work"));
-
-        let state = test_app_state(&repo.work_dir);
-        register(&state);
-        state.shutdown.run().await;
-
-        assert!(remote_has_branch(&repo.bare_dir, "sandbox-work"));
-    }
-
-    #[tokio::test]
-    async fn shutdown_hook_publishes_materialized_sandbox_worktrees_too() {
-        let global = setup_repo();
-        let sandbox_origin = setup_repo();
-        git(
-            &sandbox_origin.work_dir,
-            &["push", "-q", "-u", "origin", "sandbox-work"],
-        );
-
-        let state = test_app_state_at(global.root.path(), &global.work_dir);
-        let sandbox = state
-            .sandbox_manager
-            .ensure(&crate::sandbox::GitSandboxConfig {
-                virtual_mcp_id: "shutdown-publish-sandbox".to_string(),
-                clone_url: sandbox_origin.bare_dir.to_string_lossy().into_owned(),
-                branch: Some("sandbox-work".to_string()),
-                ..Default::default()
-            })
-            .await
-            .expect("materialize sandbox worktree");
-        std::fs::write(
-            sandbox.workdir.join("sandbox-shutdown.txt"),
-            "saved from sandbox\n",
-        )
-        .unwrap();
-
-        register(&state);
-        state.shutdown.run().await;
-
-        let shown = Command::new("git")
-            .args([
-                "--git-dir",
-                sandbox_origin.bare_dir.to_str().unwrap(),
-                "show",
-                "refs/heads/sandbox-work:sandbox-shutdown.txt",
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            shown.status.success(),
-            "sandbox worktree was not published: {}",
-            String::from_utf8_lossy(&shown.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&shown.stdout),
-            "saved from sandbox\n"
-        );
-    }
-
-    #[tokio::test]
-    async fn shutdown_hook_publishes_persisted_worktree_absent_from_fresh_manager() {
-        let global = setup_repo();
-        let sandbox_origin = setup_repo();
-        git(
-            &sandbox_origin.work_dir,
-            &["push", "-q", "-u", "origin", "sandbox-work"],
-        );
-
-        let materializer = test_app_state_at(global.root.path(), &global.work_dir);
-        let sandbox = materializer
-            .sandbox_manager
-            .ensure(&crate::sandbox::GitSandboxConfig {
-                virtual_mcp_id: "persisted-shutdown-publish".to_string(),
-                clone_url: sandbox_origin.bare_dir.to_string_lossy().into_owned(),
-                branch: Some("sandbox-work".to_string()),
-                ..Default::default()
-            })
-            .await
-            .expect("materialize durable sandbox worktree");
-        std::fs::write(
-            sandbox.workdir.join("persisted-shutdown.txt"),
-            "saved after a later boot\n",
-        )
-        .unwrap();
-
-        // Model a new process: its in-memory map starts empty, while the
-        // worktree and validated sidecar created above remain on disk.
-        let fresh = test_app_state_at(global.root.path(), &global.work_dir);
-        assert!(fresh.sandbox_manager.snapshot().is_empty());
-        register(&fresh);
-        fresh.shutdown.run().await;
-
-        let shown = Command::new("git")
-            .args([
-                "--git-dir",
-                sandbox_origin.bare_dir.to_str().unwrap(),
-                "show",
-                "refs/heads/sandbox-work:persisted-shutdown.txt",
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            shown.status.success(),
-            "persisted sandbox worktree was not published: {}",
-            String::from_utf8_lossy(&shown.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&shown.stdout),
-            "saved after a later boot\n"
-        );
     }
 
     #[tokio::test]

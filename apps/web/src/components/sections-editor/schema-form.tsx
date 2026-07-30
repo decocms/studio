@@ -387,6 +387,8 @@ function renderMultivariateInnerField(
           decofile={props.decofile}
           onSaveReferencedBlock={props.onSaveReferencedBlock}
           sandbox={props.sandbox}
+          previewBaseUrl={props.previewBaseUrl}
+          onRequestAddSection={props.onRequestAddSection}
         />
       );
     }
