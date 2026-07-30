@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
@@ -431,6 +432,7 @@ export function SchemaForm({
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
 }) {
+  const t = useT();
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -502,7 +504,7 @@ export function SchemaForm({
   if (keys.length === 0) {
     return (
       <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-        No editable fields on this section.
+        {t("sectionsEditor.sectionsEditor.noEditableFields")}
       </div>
     );
   }

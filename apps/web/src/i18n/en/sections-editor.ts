@@ -194,6 +194,8 @@ export const sectionsEditor = {
     "This is a global section. Changes apply everywhere this section is used across your site.",
   "sectionsEditor.sectionsEditor.globalSectionTooltip":
     "A global section is a reusable block shared across your site. Editing it here updates it everywhere it's used.",
+  "sectionsEditor.sectionsEditor.noEditableFields":
+    "No editable fields on this section.",
   "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock":
     "No editable fields for this global block.",
   "sectionsEditor.sectionsEditor.noEditableFieldsForVariant":
