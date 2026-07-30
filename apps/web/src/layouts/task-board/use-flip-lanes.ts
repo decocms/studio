@@ -132,6 +132,18 @@ export function useFlipLanes(
     return () => {
       cancelAnimationFrame(raf);
       for (const t of cleanups) clearTimeout(t);
+      // A new signature can land mid-flight (that's the point of staggering —
+      // see the module doc), which tears this effect down before the timeouts
+      // above ever get to reset what they set. Without this, a lane-changer's
+      // home lane is left permanently `overflow: visible`, unclipped. Reclip is
+      // idempotent (a second call for an already-settled lane is a no-op), so
+      // running it unconditionally here is safe.
+      for (const m of moved) {
+        m.el.style.transition = "";
+        m.el.style.transform = "";
+        m.el.style.zIndex = "";
+        if (m.lane) reclip(m.el.closest("[data-lane-scroll]"));
+      }
     };
   }, [signature, containerRef, enabled]);
 }
