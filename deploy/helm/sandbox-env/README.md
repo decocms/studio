@@ -13,6 +13,7 @@ Renders:
 - `Secret` `studio-sandbox-sentinel-<envName>` (initial daemon token)
 - `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
+- `Deployment` `studio-sandbox-placeholder-<envName>` — node "balloon" (optional)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
   per-claim HTTPRoutes are minted by the Studio runner, not by this chart)
 - `CronJob` + scoped RBAC for idle-claim cleanup (optional)
@@ -146,6 +147,41 @@ pod is bound, then rotates the daemon to a per-claim token. If
 but Studio cannot consume warm-pool pods until it receives that same value.
 Keep it in a Secret, never `configMap.meshConfig`.
 
+### Node placeholder ("balloon") — warm-pool warms pods, this warms nodes
+
+`warmPool` pre-warms sandbox **pods** (image pull + kubelet start + daemon
+boot), but every warm-pool pod still needs a **node**. When the pool refills
+after a burst, its HPA/KEDA scaler grows it, or a cold claim lands beyond the
+pool, the new pods go `Pending` and wait on Karpenter to provision a node —
+tens of seconds of user-visible latency that `warmPool` alone can't remove.
+
+`nodePlaceholder` (off by default) runs low-priority "balloon" pods that hold
+`replicas` sandbox-slots of capacity on already-running nodes. A real sandbox /
+warm-pool pod preempts one instantly (priority-based), takes the freed slot on
+the warm node, and Karpenter re-provisions a node for the evicted balloon in
+the background. Net effect: the **user-facing** claim never waits on node
+provisioning.
+
+Requirements and behavior:
+
+- **Placement defaults to the sandbox pod's own `nodeSelector` / `tolerations`**
+  so the warm capacity lands on the same taint-isolated sandbox NodePool. A
+  balloon on the general pool would do nothing for the sandbox pool. Override
+  `nodePlaceholder.nodeSelector` / `.tolerations` only to pin elsewhere.
+- **`priorityClassName` must be a low / negative-priority class** so real
+  sandbox pods (priority 0) preempt it. Defaults to `placeholder-priority`
+  (the class the existing sites balloon uses on eks-serverless); self-hosters
+  must create an equivalent (`value: -10`, `globalDefault: false`).
+- **Size `replicas` once per NodePool.** Prod and staging share the sandbox
+  NodePool, so the balloon in one env warms nodes the other also uses — don't
+  double-count.
+- **Costs a real sandbox slot's worth of idle capacity per replica.** Unlike
+  the general-pool placeholder, this idle node is not amortized by other
+  workloads (the pool is taint-isolated). Enable only after confirming the
+  claim-latency tail is node provisioning (Pod-created → Node-assigned), not
+  daemon boot / install / mount — otherwise a bigger `warmPool` or `depsCache`
+  is the right lever instead.
+
 ### ArgoCD Application (one per env)
 
 ```yaml
@@ -211,6 +247,7 @@ sandbox-env/
     ├── sandbox-template.yaml            # SandboxTemplate (per-env)
     ├── sandbox-warm-pool.yaml           # SandboxWarmPool (optional)
     ├── sandbox-warmpool-hpa.yaml         # Warm-pool HPA (optional)
+    ├── sandbox-node-placeholder.yaml    # Node "balloon" Deployment (optional)
     ├── sandbox-sentinel-secret.yaml      # Initial daemon token
     ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to Studio SA
     ├── sandbox-preview-cert.yaml        # cert-manager Certificate (optional)
@@ -241,6 +278,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `depsCache.remote.enabled` / `depsCache.remote.pvcName` | `false` / `""` | opt-in L2 cross-node golden archive on an RWX PVC, mounted read-only |
 | `warmPool.enabled` / `warmPool.size` | `false` / `0` | only after measuring cold-start pain |
 | `warmPool.autoscaling.enabled` | `false` | HPA; requires at least one explicit metric |
+| `nodePlaceholder.enabled` / `nodePlaceholder.replicas` | `false` / `2` | node "balloon": warm NODE capacity so warm-pool refill / cold claims skip the Karpenter wait; placement defaults to the sandbox `nodeSelector`/`tolerations` |
 | `previewGateway.enabled` | `false` | wildcard `*.preview.<domain>` Gateway + cert |
 | `housekeeper.enabled` | `false` | idle-claim and orphan cleanup CronJob |
 | `mesh.namespace` | `deco-studio` | studio release namespace (this env's) |
