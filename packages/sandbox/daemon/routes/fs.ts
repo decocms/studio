@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import {
   mkdir,
+  open,
   readdir,
   readFile,
   rm,
@@ -228,9 +229,9 @@ export function makeReadHandler(deps: FsDeps) {
     if (!filePath)
       return jsonResponse({ error: "Path escapes project root" }, 400);
 
-    let stat: fs.Stats;
+    let fileStat: fs.Stats;
     try {
-      stat = fs.statSync(filePath);
+      fileStat = await stat(filePath);
     } catch {
       // Decofile fallback: when `.deco/blocks.gen.json` is absent (commonly
       // gitignored), regenerate it on the fly from the sibling `.deco/blocks/`
@@ -248,29 +249,32 @@ export function makeReadHandler(deps: FsDeps) {
       }
       return jsonResponse({ error: `File not found: ${body.path}` }, 400);
     }
-    if (stat.isDirectory()) {
+    if (fileStat.isDirectory()) {
       return jsonResponse({ error: "Path is a directory" }, 400);
     }
-    const fd = fs.openSync(filePath, "r");
-    const probe = Buffer.alloc(Math.min(8192, stat.size));
-    fs.readSync(fd, probe, 0, probe.length, 0);
-    fs.closeSync(fd);
+    const probe = Buffer.alloc(Math.min(8192, fileStat.size));
+    const fd = await open(filePath, "r");
+    try {
+      await fd.read(probe, 0, probe.length, 0);
+    } finally {
+      await fd.close();
+    }
 
     const imageMediaType = sniffImageMediaType(probe);
     if (imageMediaType) {
-      if (stat.size > MAX_IMAGE_BYTES) {
+      if (fileStat.size > MAX_IMAGE_BYTES) {
         return jsonResponse(
           {
-            error: `Image too large (${stat.size} bytes; cap is ${MAX_IMAGE_BYTES})`,
+            error: `Image too large (${fileStat.size} bytes; cap is ${MAX_IMAGE_BYTES})`,
           },
           400,
         );
       }
-      const bytes = fs.readFileSync(filePath);
+      const bytes = await readFile(filePath);
       return jsonResponse({
         kind: "image",
         mediaType: imageMediaType,
-        size: stat.size,
+        size: fileStat.size,
         base64: bytes.toString("base64"),
       });
     }
@@ -284,7 +288,7 @@ export function makeReadHandler(deps: FsDeps) {
         400,
       );
 
-    const raw = fs.readFileSync(filePath, "utf-8");
+    const raw = await readFile(filePath, "utf-8");
     const lines = raw.split("\n");
     const offset = body.full ? 1 : Math.max(1, body.offset ?? 1);
     const limit = body.full ? lines.length : (body.limit ?? 2000);
