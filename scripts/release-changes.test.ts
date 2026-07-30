@@ -27,9 +27,12 @@ describe("release change classification", () => {
       scope: "both",
     },
     {
+      // Native-only: bumps the shared line (both manifests) but rolls no
+      // pod, so the deploy scope is "none" — the fix that stops a desktop
+      // change from triggering a full server+web rollout.
       files: ["apps/native/crates/local-api/src/lib.rs"],
       manifests: [API_MANIFEST, NATIVE_MANIFEST],
-      scope: "both",
+      scope: "none",
     },
     {
       files: ["packages/runtime/src/index.ts"],
