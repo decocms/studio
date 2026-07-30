@@ -325,8 +325,9 @@ jobs:
       github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 45
-    env:
-      # --- macOS code signing + notarization (Apple Developer ID) ---------
+    # (No job-level env: both signing families below are deliberately unwired
+    # in this non-shipping job.)
+    # --- macOS code signing + notarization (Apple Developer ID) ---------
       # All optional. Human-required setup (cert enrollment, notarization
       # credentials) — see the native release contract (§5.3,
       # dormant scaffolding). Required secret names, each consumed only by
@@ -351,14 +352,12 @@ jobs:
       # application: failed to import keychain certificate", from a cert that
       # is present but not importable. Wiring them cost a green CI and bought
       # nothing. Signing belongs to the separate, secret-gated release job.
-      # --- Tauri updater artifact signing (separate keypair; unrelated to
-      #     Apple code signing above) — only takes effect once
-      #     tauri.conf.json5 configures the `updater` bundle target, which
-      #     is still dormant (the native release contract
-      #     §"Updater"). Wired here now so no further workflow edit is
-      #     needed once that config lands.
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # --- Tauri updater artifact signing: NOT wired here, by design.
+      #     createUpdaterArtifacts is enabled only by release-native.yaml's
+      #     --config overlay (never the committed tauri.conf.json5), so this
+      #     job can never produce updater artifacts and has no use for the
+      #     minisign key. The key is step-scoped onto the release build —
+      #     see release-native.yaml's "tauri build" step.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -441,6 +440,14 @@ jobs:
       # step immediately before this one rather than reverting it to
       # local-only.
       - name: Boot smoke (DESKTOP_SELFTEST=1, hidden window)
+        # DECOCMS_DISABLE_AUTO_UPDATE: this job builds the RELEASE profile at
+        # the committed version 0.1.0 — without the kill-switch, a
+        # plugin-registered updater would see the prod channel as "newer" and
+        # download ~80 MB over the CI bundle mid-smoke. Belt-and-braces: the
+        # updater task also refuses to spawn under DESKTOP_SELFTEST=1 and at
+        # the 0.1.0 placeholder version.
+        env:
+          DECOCMS_DISABLE_AUTO_UPDATE: "1"
         run: bun run --cwd apps/native smoke:boot
 
   # ---------------------------------------------------------------------

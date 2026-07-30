@@ -272,6 +272,11 @@ async function main(): Promise<void> {
         // Set DESKTOP_SELFTEST_VISIBLE=0 to force the old hidden behavior.
         DESKTOP_SELFTEST_VISIBLE: process.env.DESKTOP_SELFTEST_VISIBLE ?? "1",
         DESKTOP_SELFTEST_OUT: outFile,
+        // This is a RELEASE-profile build at the committed 0.1.0 placeholder
+        // version — never let it "update" itself from the production channel
+        // mid-smoke. (The updater task also refuses to spawn under selftest
+        // and at 0.1.0; this is belt-and-braces for local runs.)
+        DECOCMS_DISABLE_AUTO_UPDATE: "1",
         // Boot smoke validates the shell/IPC contract, not the operator's real
         // login. Never let its auth-status probe open a macOS ACL dialog for the
         // production Keychain item; persistence itself is covered by the
