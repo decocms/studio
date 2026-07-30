@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@decocms/shared/config";
 import { AnnouncementCard } from "@/components/announcement-card";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 
@@ -50,9 +51,32 @@ export function shouldShowVersionAnnouncement(
  * publicConfig query used for boot) and prompts a refresh once the deployed
  * server version drifts — consistently, across repeated polls — from this
  * bundle's build-time __STUDIO_VERSION__.
+ *
+ * Dual-purpose by design. In the browser, the server IS the truth and
+ * "Refresh now" reloads the newly deployed bundle. In the desktop app the
+ * Rust proxy pins config.version to the embedded bundle's version, so drift
+ * only ever appears when the shell's background updater has INSTALLED a new
+ * version on disk — a webview reload can't pick that up (the running binary
+ * serves its own embedded assets), so the button instead POSTs the local
+ * restart route, which applies the staged update through the graceful
+ * shutdown pipeline. A 409 means the staged state moved since the last poll
+ * (e.g. a newer update superseded it mid-download): re-enable the button and
+ * let the next poll re-converge — fetch resolves on 409, so the reset lives
+ * in the !res.ok throw, not in catch alone.
  */
 export function VersionCheckDialog() {
   const t = useT();
+  const isDesktopApp = useIsDesktopApp();
+  const restartMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/_local/update/restart", { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`restart failed: ${res.status}`);
+      }
+      // 202 accepted: the app window is about to close and relaunch on the
+      // new version — leave the button disabled for the page's short rest.
+    },
+  });
   const { data: serverVersion, dataUpdatedAt } = useQuery({
     queryKey: KEYS.appVersionCheck(),
     queryFn: async () => {
@@ -89,7 +113,11 @@ export function VersionCheckDialog() {
       dismissLabel={t("announcements.version.dismiss")}
       eyebrow={t("announcements.version.eyebrow")}
       title={t("announcements.version.title")}
-      description={t("announcements.version.description")}
+      description={t(
+        isDesktopApp
+          ? "announcements.version.descriptionNative"
+          : "announcements.version.description",
+      )}
       icon={<RefreshCw01 size={16} />}
       tone="system"
       onDismiss={() => setDismissedVersion(drift.version)}
@@ -97,8 +125,18 @@ export function VersionCheckDialog() {
         version: __STUDIO_VERSION__,
       })}
       actions={
-        <Button size="sm" onClick={() => window.location.reload()}>
-          {t("announcements.version.refresh")}
+        <Button
+          size="sm"
+          disabled={restartMutation.isPending}
+          onClick={() =>
+            isDesktopApp ? restartMutation.mutate() : window.location.reload()
+          }
+        >
+          {t(
+            isDesktopApp
+              ? "announcements.version.restart"
+              : "announcements.version.refresh",
+          )}
           <RefreshCw01 size={14} />
         </Button>
       }

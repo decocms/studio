@@ -15,6 +15,9 @@ export const announcements = {
   "announcements.version.title": "Uma nova versão está pronta",
   "announcements.version.description":
     "Atualize a página para carregar as novidades do Studio.",
+  "announcements.version.descriptionNative":
+    "Uma atualização foi instalada e está pronta. Reinicie o aplicativo para começar a usá-la.",
   "announcements.version.currentSession": "Sessão atual · {version}",
   "announcements.version.refresh": "Atualizar agora",
+  "announcements.version.restart": "Reiniciar para atualizar",
 } satisfies Record<keyof typeof announcementsEn, string>;

@@ -13,6 +13,9 @@ export const announcements = {
   "announcements.version.title": "A new version is ready",
   "announcements.version.description":
     "Refresh to load the latest Studio updates.",
+  "announcements.version.descriptionNative":
+    "An update is installed and ready. Restart the app to start using it.",
   "announcements.version.currentSession": "Current session · {version}",
   "announcements.version.refresh": "Refresh now",
+  "announcements.version.restart": "Restart to update",
 } as const;
