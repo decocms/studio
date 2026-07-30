@@ -12,7 +12,7 @@ const API_MANIFEST = "apps/api/package.json";
 // Homebrew cask off.
 const NATIVE_MANIFEST = "apps/native/package.json";
 
-export type DeployScope = "both" | "server" | "web";
+export type DeployScope = "both" | "server" | "web" | "none";
 
 export interface ReleaseChanges {
   deployScope: DeployScope;
@@ -31,9 +31,19 @@ export function parseChangedFiles(contents: string): string[] {
 export function releaseManifestCandidates(files: readonly string[]): string[] {
   const manifests = new Set<string>();
 
+  const addReleaseLine = () => {
+    // ONE release line — apps/api and apps/native move together, always.
+    // Adding one without the other is how the deployed server and the
+    // installed desktop app end up answering "what version?" differently,
+    // permanently (each manifest bumps from its own current value, so a
+    // single-sided bump is an offset forever).
+    manifests.add(API_MANIFEST);
+    manifests.add(NATIVE_MANIFEST);
+  };
+
   for (const file of files) {
     if (file === "package.json" || file === "scripts/build-studio.ts") {
-      manifests.add(API_MANIFEST);
+      addReleaseLine();
       continue;
     }
 
@@ -42,17 +52,13 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
       file.startsWith("apps/web/") ||
       file.startsWith("apps/native/")
     ) {
-      // One release line — see NATIVE_MANIFEST's comment. Both manifests
-      // move for a change to any of the three, or their versions drift and
-      // the single number stops meaning anything.
-      manifests.add(API_MANIFEST);
-      manifests.add(NATIVE_MANIFEST);
+      addReleaseLine();
       continue;
     }
 
     // The nginx config is baked into the web image tagged with the API version.
     if (file.startsWith("deploy/helm/studio/files/")) {
-      manifests.add(API_MANIFEST);
+      addReleaseLine();
       continue;
     }
 
@@ -81,8 +87,16 @@ export function classifyReleaseChanges(
 ): ReleaseChanges {
   const hasApiChanges = files.some((file) => file.startsWith("apps/api/"));
   const hasWebChanges = files.some((file) => file.startsWith("apps/web/"));
-  const deployScope =
-    hasApiChanges && !hasWebChanges
+  // A merge that touches ONLY the desktop app bumps the shared release line
+  // (the version must stay single) but changes nothing any pod runs — "none"
+  // tells the CD dispatch to skip the fleet. A consumer that predates the
+  // value treats it like the old fallthrough ("both"), so this can only
+  // reduce churn, never lose a rollout.
+  const nativeOnly =
+    files.length > 0 && files.every((file) => file.startsWith("apps/native/"));
+  const deployScope = nativeOnly
+    ? "none"
+    : hasApiChanges && !hasWebChanges
       ? "server"
       : hasWebChanges && !hasApiChanges
         ? "web"

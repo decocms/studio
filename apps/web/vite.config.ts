@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "../api/package.json" with { type: "json" };
+import nativePkg from "../native/package.json" with { type: "json" };
 import { fileURLToPath } from "node:url";
 import { existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
@@ -184,11 +185,17 @@ const sharedProxy = {
 export default defineConfig({
   define: {
     // What `v{__STUDIO_VERSION__}` renders (account popover, settings
-    // footer) and what busts the persisted query cache. One value for both
-    // surfaces: apps/api and apps/native share a single release line —
-    // scripts/release-changes.ts bumps the two manifests together, always —
-    // so the `decocms` version here IS the desktop binary's version too.
-    __STUDIO_VERSION__: JSON.stringify(pkg.version),
+    // footer) and what busts the persisted query cache. Read from the
+    // manifest of the thing this bundle actually runs inside: apps/api for
+    // the browser (the deploy behind the page), apps/native for the desktop
+    // (the installed binary). The two share one release line
+    // (scripts/release-changes.ts bumps them together), so today they are
+    // equal — but sourcing the native value from its OWN manifest keeps the
+    // popover honest even if that coupling is ever broken upstream, rather
+    // than showing the server's number on a desktop build.
+    __STUDIO_VERSION__: JSON.stringify(
+      isNativeBuild ? nativePkg.version : pkg.version,
+    ),
     // Build-time constant so e2e-only hooks (window.__forceTabError) survive
     // the e2e production build but stay dead-stripped from real prod builds.
     __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),

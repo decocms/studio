@@ -213,10 +213,19 @@ function livingChildPids(pid: number): number[] {
  *  child), which `pgrep -P` alone would miss. */
 /** All PIDs matching the desktop binaries, for the pre/post orphan diff. */
 function sweepForBinaries(): number[] {
+  // Each pattern ends the binary name at a word boundary (whitespace before
+  // args, or end of the command line). Without it, the bare `deco` prefix
+  // also matches sibling target binaries — `decocms-keychain-helper`, a
+  // dev-run `deco`-prefixed build — and a process spawning during the smoke
+  // window gets misreported as a leaked orphan.
   return [
-    ...livingProcessesMatching("target/(debug|release)/deco"),
-    ...livingProcessesMatching("target/(debug|release)/bundle/macos/deco"),
-    ...livingProcessesMatching("target/(debug|release)/local-api"),
+    ...livingProcessesMatching("target/(debug|release)/deco([[:space:]]|$)"),
+    ...livingProcessesMatching(
+      "target/(debug|release)/bundle/macos/deco\\.app/Contents/MacOS/deco([[:space:]]|$)",
+    ),
+    ...livingProcessesMatching(
+      "target/(debug|release)/local-api([[:space:]]|$)",
+    ),
   ];
 }
 

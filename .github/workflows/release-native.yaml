@@ -57,10 +57,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=native-v$VERSION" >> "$GITHUB_OUTPUT"
 
-      # A version that is still 0.0.0 has never been released-bumped;
-      # a tag that already exists was already shipped. Both exit green so
-      # the push trigger stays safe on every main commit that touches the
-      # manifest for other reasons.
+      # A version still at 0.0.0 has never been released-bumped, so there is
+      # nothing to ship. A PUSH whose tag already exists was already shipped,
+      # so it skips (staying safe on every main commit that touches the
+      # manifest for other reasons). A manual workflow_dispatch does NOT skip
+      # on an existing tag — that is the documented repair path for a run
+      # that died after the release was created, and the create/upload and
+      # cask steps below are idempotent so re-running only heals.
       - name: Skip if already released
         id: guard
         env:
@@ -70,9 +73,10 @@ jobs:
           if [ "${{ steps.version.outputs.version }}" = "0.0.0" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
             echo "version 0.0.0 — never bumped; skipping"
-          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          elif [ "${{ github.event_name }}" != "workflow_dispatch" ] && \
+               gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "$TAG already released; skipping"
+            echo "$TAG already released and this is a push; skipping (dispatch to repair)"
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
@@ -145,6 +149,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Signs the updater artifact the day tauri.conf enables the
+          # `updater` bundle target. Wired in the SHIPPING job (not just
+          # native.yml's non-shipping CI build) so no edit is needed here on
+          # release day; a no-op while that target stays dormant.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         # The binary's version comes from apps/native/package.json — the one
         # release-tagging bumps — overriding Cargo.toml's static workspace
         # version, so the DMG, the About panel, and the cask all agree.
@@ -170,23 +180,37 @@ jobs:
           shasum -a 256 "$ZIP" | cut -d' ' -f1 > zip.sha256
           echo "sha256=$(cat zip.sha256)" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub release
+      # Create-or-update: on a repair dispatch the tag already exists, so
+      # re-uploading the assets (--clobber) heals a run that died here or
+      # later, rather than erroring on the existing release.
+      - name: Create or update GitHub release
         if: steps.guard.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.assets.outputs.zip }}
+          DMG: ${{ steps.assets.outputs.dmg }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "deco ${{ steps.version.outputs.version }}" \
-            --notes "macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco\` — or download the DMG below." \
-            "${{ steps.assets.outputs.zip }}" \
-            "${{ steps.assets.outputs.dmg }}"
+          set -euo pipefail
+          NOTES="macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco\` — or download the DMG below."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "deco $VERSION" --notes "$NOTES"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$ZIP" "$DMG"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "deco $VERSION" --notes "$NOTES" \
+              "$ZIP" "$DMG"
+          fi
 
-      # The bot's push (App token, same as release-tagging) touches only
-      # Casks/**, which no workflow's paths match — no retrigger loop.
+      # Gated on the App credentials EXISTING: a fork without them still
+      # builds and publishes the (unsigned) release above — this only skips
+      # the cask bump, which needs a push token, rather than failing the run
+      # after the release was created. The bot's push touches only Casks/**,
+      # which no workflow's paths match — no retrigger loop.
       - name: Generate app token
-        if: steps.guard.outputs.release == 'true'
+        if: steps.guard.outputs.release == 'true' && vars.RELEASE_BOT_APP_ID != ''
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
@@ -194,33 +218,62 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
       - name: Bump Homebrew cask
-        if: steps.guard.outputs.release == 'true'
+        if: steps.app-token.outputs.token != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.assets.outputs.sha256 }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          SHA="${{ steps.assets.outputs.sha256 }}"
-          python3 - "$VERSION" "$SHA" <<'PY'
+          git config user.name "decocms-release[bot]"
+          git config user.email "decocms-release[bot]@users.noreply.github.com"
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          render_cask() {
+            python3 - "$VERSION" "$SHA" <<'PY'
           import re, sys
+
           version, sha = sys.argv[1], sys.argv[2]
           path = "Casks/deco.rb"
           s = open(path).read()
-          s = re.sub(r'version "[^"]*"', f'version "{version}"', s, count=1)
-          s = re.sub(r'sha256 (?::no_check|"[^"]*")', f'sha256 "{sha}"', s, count=1)
+          # Anchor to the INDENTED stanza lines. The header comment mentions
+          # `sha256 :no_check` too, but comment lines start with `#`, so
+          # `^\s+` (multiline) can only ever hit the real ruby stanza — the
+          # unanchored version rewrote the comment and left the stanza at
+          # :no_check, disabling checksum verification forever.
+          s = re.sub(r'(?m)^(\s+)version "[^"]*"', rf'\g<1>version "{version}"', s, count=1)
+          s = re.sub(
+              r'(?m)^(\s+)sha256 (?::no_check|"[^"]*")',
+              rf'\g<1>sha256 "{sha}"',
+              s,
+              count=1,
+          )
           open(path, "w").write(s)
           PY
-          git config user.name "decocms-release[bot]"
-          git config user.email "decocms-release[bot]@users.noreply.github.com"
-          git add Casks/deco.rb
-          git commit -m "[chore]: bump homebrew cask to $VERSION"
-          # Authenticate the push with the App token (the checkout's default
-          # credential cannot push through branch protection), with the same
-          # rebase-and-retry backstop release-tagging uses: main may have
-          # advanced while this workflow built.
-          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          for attempt in 1 2 3; do
-            if git push "$REMOTE" HEAD:main; then exit 0; fi
-            git pull --rebase origin main
+          }
+
+          # Regenerate from a CLEAN origin/main each attempt instead of
+          # rebasing: two release runs bump the same cask lines, so
+          # `git pull --rebase` would content-conflict by construction (and
+          # then loop inside the unfinished rebase). Reset + re-render is
+          # deterministic, so it always fast-forwards, and is idempotent — a
+          # repair dispatch whose cask is already current commits nothing.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            render_cask
+            if git diff --quiet -- Casks/deco.rb; then
+              echo "cask already at $VERSION; nothing to push"
+              exit 0
+            fi
+            git add Casks/deco.rb
+            git commit -m "[chore]: bump homebrew cask to $VERSION"
+            if git push "$REMOTE" HEAD:main; then
+              echo "cask pushed (attempt $attempt)"
+              exit 0
+            fi
+            echo "push rejected; resyncing to origin/main and retrying"
           done
+          echo "::error::cask bump push failed after retries"
+          exit 1
           git push "$REMOTE" HEAD:main
