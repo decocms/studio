@@ -19,6 +19,7 @@ import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
 import { devAgent } from "./dev-agent.ts";
+import { downloadApp } from "./download-app.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { connections } from "./connections.ts";
@@ -57,6 +58,7 @@ export const ptBR = {
   ...header,
   ...filePicker,
   ...devAgent,
+  ...downloadApp,
   ...details,
   ...deck,
   ...connections,
