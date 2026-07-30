@@ -2,7 +2,7 @@
 # tap:
 #
 #   brew tap decocms/studio https://github.com/decocms/studio
-#   brew install --cask deco
+#   brew install --cask deco-studio
 #
 # `version` and `sha256` are maintained by .github/workflows/release-native.yaml,
 # which rewrites them after each desktop release's assets are published —
@@ -13,12 +13,12 @@
 # `brew install` will 404. The first desktop release (which cuts automatically
 # once a version bump lands on main) rewrites both to real values and the tap
 # becomes installable. Until then this file only reserves the cask name.
-cask "deco" do
+cask "deco-studio" do
   version "4.147.0"
   sha256 "7ef9c2346f7ac0e201a77d57e6039a3c270521641dd99a767b2d708635342ba6"
 
   url "https://github.com/decocms/studio/releases/download/native-v#{version}/deco-#{version}-aarch64.zip"
-  name "deco"
+  name "deco studio"
   desc "Open-source control plane for MCP traffic — desktop app"
   homepage "https://github.com/decocms/studio"
 
