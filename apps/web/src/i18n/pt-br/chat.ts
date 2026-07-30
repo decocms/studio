@@ -478,4 +478,7 @@ export const chat = {
   "chat.modelPreferences.autoPicked": "escolhido automaticamente",
   "chat.modelPreferences.loadFailed":
     "Não foi possível carregar suas escolhas de modelo. O que aparece abaixo pode não corresponder ao que seus chats usam.",
+  "chat.todoStatus.completed": "concluído",
+  "chat.todoStatus.inProgress": "em progresso",
+  "chat.todoStatus.pending": "pendente",
 } satisfies Record<keyof typeof chatEn, string>;

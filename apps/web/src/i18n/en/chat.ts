@@ -464,4 +464,7 @@ export const chat = {
   "chat.modelPreferences.autoPicked": "auto-picked",
   "chat.modelPreferences.loadFailed":
     "Couldn't load your model choices. What you see below may not match what your chats use.",
+  "chat.todoStatus.completed": "completed",
+  "chat.todoStatus.inProgress": "in progress",
+  "chat.todoStatus.pending": "pending",
 } as const;
