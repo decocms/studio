@@ -92,6 +92,44 @@ test("the composer offers no attach control until attachments exist", async ({
   await expect(component.getByLabel("Attach")).toHaveCount(0);
 });
 
+test("the send button still submits, despite the card-wide focus click", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  await component.getByPlaceholder("Leave a comment...").fill("via the button");
+  await component.getByLabel("Send").last().click();
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify(["via the button"]),
+  );
+});
+
+test("clicking anywhere in the comment card focuses the input", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByPlaceholder("Leave a comment...");
+  const card = component.getByTestId("new-comment-composer");
+
+  // Bottom-left of the card: empty space well below the one-line input.
+  const box = (await card.boundingBox())!;
+  await card.click({ position: { x: 12, y: box.height - 6 } });
+  await expect(composer).toBeFocused();
+});
+
+test("clicking the empty part of a reply row focuses its input", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const reply = component.getByPlaceholder("Leave a reply...");
+  const row = component.getByTestId("reply-composer");
+
+  // Right of the placeholder, left of the send button: dead space in between.
+  const box = (await row.boundingBox())!;
+  await row.click({ position: { x: box.width - 80, y: box.height / 2 } });
+  await expect(reply).toBeFocused();
+});
+
 test("deleting a reply leaves the rest of the thread", async ({
   mount,
   page,
