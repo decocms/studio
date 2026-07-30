@@ -71,6 +71,7 @@ import {
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
+  statusIconClassName,
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -1302,8 +1303,7 @@ function TaskCard({
   onDragOverCard?: (e: DragEvent<HTMLButtonElement>) => void;
 }) {
   const t = useT();
-  const statusConfig = STATUS_CONFIG[item.status];
-  const StatusIcon = statusConfig.icon;
+  const StatusIcon = STATUS_CONFIG[item.status].icon;
   const lastMessage = primaryThread(item)?.lastMessage;
 
   const showAutoFix =
@@ -1340,7 +1340,7 @@ function TaskCard({
       <div className="flex items-start gap-2">
         <StatusIcon
           size={16}
-          className={cn("mt-px shrink-0", statusConfig.iconClassName)}
+          className={cn("mt-px shrink-0", statusIconClassName(item))}
         />
         <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
           {item.title}
@@ -1404,15 +1404,17 @@ function ListRow({
   assignedBy?: Member;
   onOpen: () => void;
 }) {
-  const config = STATUS_CONFIG[item.status];
-  const StatusIcon = config.icon;
+  const StatusIcon = STATUS_CONFIG[item.status].icon;
   return (
     <button
       type="button"
       onClick={onOpen}
       className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
     >
-      <StatusIcon size={16} className={cn("shrink-0", config.iconClassName)} />
+      <StatusIcon
+        size={16}
+        className={cn("shrink-0", statusIconClassName(item))}
+      />
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {item.title}
       </span>
