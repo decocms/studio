@@ -7,6 +7,7 @@ import {
 } from "./release-changes";
 
 const API_MANIFEST = "apps/api/package.json";
+const NATIVE_MANIFEST = "apps/native/package.json";
 
 describe("release change classification", () => {
   test.each([
@@ -17,12 +18,17 @@ describe("release change classification", () => {
     },
     {
       files: ["apps/web/src/main.tsx"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "web",
     },
     {
       files: ["apps/api/src/index.ts", "apps/web/src/main.tsx"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
+      scope: "both",
+    },
+    {
+      files: ["apps/native/crates/local-api/src/lib.rs"],
+      manifests: [NATIVE_MANIFEST],
       scope: "both",
     },
     {
@@ -40,6 +46,22 @@ describe("release change classification", () => {
     },
   );
 
+  /** The desktop app EMBEDS apps/web, so a web release must roll the binary
+   *  too — while an api-only change must not: nothing of apps/api ships
+   *  inside the bundle. */
+  test("web changes roll the native app; api-only changes do not", () => {
+    expect(releaseManifestCandidates(["apps/web/src/x.tsx"])).toEqual([
+      API_MANIFEST,
+      NATIVE_MANIFEST,
+    ]);
+    expect(releaseManifestCandidates(["apps/api/src/x.ts"])).toEqual([
+      API_MANIFEST,
+    ]);
+    expect(
+      releaseManifestCandidates(["apps/native/src-tauri/tauri.conf.json5"]),
+    ).toEqual([NATIVE_MANIFEST]);
+  });
+
   test("maps release inputs to sorted, deduplicated manifests", () => {
     const files = [
       "packages/ui/src/button.tsx",
@@ -54,6 +76,7 @@ describe("release change classification", () => {
 
     expect(releaseManifestCandidates(files)).toEqual([
       API_MANIFEST,
+      NATIVE_MANIFEST,
       "packages/runtime/package.json",
       "packages/ui/package.json",
     ]);
