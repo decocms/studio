@@ -49,27 +49,29 @@ export function DownloadAppDialog({
           <DialogDescription>{t("downloadApp.description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 font-mono text-sm">
-          <span className="flex-1 truncate">{command}</span>
+        <div className="flex flex-col gap-3">
+          <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
+            {command}
+          </code>
           <Button
             type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("downloadApp.copyLabel")}
+            className="w-full gap-2"
             onClick={() => {
               navigator.clipboard.writeText(command).then(() => {
                 setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
+                setTimeout(() => setCopied(false), 2000);
               });
             }}
           >
-            {copied ? <Check size={14} /> : <Copy01 size={14} />}
+            {copied ? <Check size={16} /> : <Copy01 size={16} />}
+            {copied ? t("downloadApp.copiedLabel") : t("downloadApp.copyLabel")}
           </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          {t("downloadApp.appleSiliconNote")}
-        </p>
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <p>{t("downloadApp.terminalHint")}</p>
+          <p>{t("downloadApp.appleSiliconNote")}</p>
+        </div>
       </DialogContent>
     </Dialog>
   );

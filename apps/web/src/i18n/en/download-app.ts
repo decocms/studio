@@ -1,9 +1,12 @@
 export const downloadApp = {
-  "downloadApp.title": "Download the desktop app",
+  "downloadApp.title": "Download the deco studio app",
   "downloadApp.description":
-    "Run this command in your terminal to install the app with Homebrew.",
+    "The app installs from your Mac's Terminal — copy the command below, paste it there, and press Return.",
   "downloadApp.copyLabel": "Copy install command",
+  "downloadApp.copiedLabel": "Copied — now paste it in Terminal",
+  "downloadApp.terminalHint":
+    "Tip: press ⌘ Space and type “Terminal” to open it.",
   "downloadApp.appleSiliconNote":
-    "macOS on Apple Silicon only for now. Requires Homebrew.",
-  "downloadApp.openLabel": "Download the desktop app",
+    "For Apple Silicon Macs (M1 and newer) — Windows coming soon. Requires Homebrew.",
+  "downloadApp.openLabel": "Download the deco studio app",
 } as const;

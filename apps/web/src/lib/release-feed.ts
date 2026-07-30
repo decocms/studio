@@ -1,5 +1,6 @@
 import {
   CheckCircle,
+  CpuChip01,
   FilterLines,
   Inbox01,
   Monitor01,
@@ -35,23 +36,33 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
-    id: "desktop-app-macos",
+    id: "native-app-macos",
     date: "2026-07-30",
     eyebrow: "Now Available",
-    title: "The deco studio desktop app is here",
+    title: "The deco studio app is here",
     bullets: [
       {
-        icon: Monitor01,
-        title: "A native Mac app",
-        body: "Run deco studio as a desktop app, with your org's filesystem mounted natively. macOS on Apple Silicon only for now — more platforms coming.",
+        icon: Zap,
+        title: "Faster CMS previews",
+        body: "Every draft gets its own git worktree on your machine, so previews render instantly as you edit.",
       },
       {
-        icon: Zap,
-        title: "One-line install",
-        body: "Install and update through Homebrew with a single terminal command — click Download for Mac to copy it.",
+        icon: Monitor01,
+        title: "Apple Silicon only — Windows coming soon",
+        body: "Today's builds target macOS on Apple Silicon; Windows is next.",
+      },
+      {
+        icon: CpuChip01,
+        title: "Works on more modest machines",
+        body: "The app is entirely rewritten in Rust, with a smaller memory footprint than the Bun-based runtime.",
+      },
+      {
+        icon: Stars02,
+        title: "Native Claude Code & Codex support",
+        body: "State-of-the-art coding agents, running natively against your local files.",
       },
     ],
-    cta: { label: "Download for Mac", action: "download-app" },
+    cta: { label: "Install on Mac", action: "download-app" },
     learnMoreHref: "https://github.com/decocms/studio/releases",
   },
   {
