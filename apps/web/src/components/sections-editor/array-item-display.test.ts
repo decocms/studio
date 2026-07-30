@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   getArrayItemImageSrc,
   getArrayItemLabel,
+  getArrayItemLabels,
   renderMustacheTemplate,
 } from "./array-item-display";
 import type { SchemaProperty } from "./resolve-schema";
@@ -92,6 +93,108 @@ describe("getArrayItemLabel", () => {
     expect(getArrayItemLabel(item, 0, undefined)).toBe(
       "BannerCarrouselDepartment",
     );
+  });
+
+  describe("collision disambiguation (siblings)", () => {
+    // An object array with no distinguishing field: every item's label falls
+    // back to the item schema title, so all rows collapse to one string. The
+    // breadcrumb addresses an item by its label and the transient open-index is
+    // wiped whenever the form subtree remounts (formResetKey), so a non-unique
+    // label makes every item resolve back to the first one — the "all items
+    // show the same content" bug. Positional suffixes keep them addressable.
+    const itemSchema: SchemaProperty = {
+      type: "object",
+      title: "ProductSpecifications",
+      properties: { body: { type: "string" } },
+    };
+    const specs = [{ body: "a" }, { body: "b" }, { body: "c" }];
+
+    test("suffixes the position when the base label collides", () => {
+      expect(getArrayItemLabel(specs[0], 0, itemSchema, specs)).toBe(
+        "ProductSpecifications 1",
+      );
+      expect(getArrayItemLabel(specs[2], 2, itemSchema, specs)).toBe(
+        "ProductSpecifications 3",
+      );
+    });
+
+    test("leaves a unique label untouched", () => {
+      const mixed = [{ title: "Alpha" }, { title: "Beta" }];
+      const schema: SchemaProperty = {
+        type: "object",
+        properties: { title: { type: "string" } },
+      };
+      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Alpha");
+      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Beta");
+    });
+
+    test("only the colliding items get a suffix", () => {
+      const mixed = [{ title: "Dup" }, { title: "Unique" }, { title: "Dup" }];
+      const schema: SchemaProperty = {
+        type: "object",
+        properties: { title: { type: "string" } },
+      };
+      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Dup 1");
+      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Unique");
+      expect(getArrayItemLabel(mixed[2], 2, schema, mixed)).toBe("Dup 3");
+    });
+
+    test("no siblings argument keeps the legacy bare label", () => {
+      expect(getArrayItemLabel(specs[1], 1, itemSchema)).toBe(
+        "ProductSpecifications",
+      );
+    });
+  });
+});
+
+describe("getArrayItemLabels (batch disambiguation)", () => {
+  const titleSchema = (title: string): SchemaProperty => ({
+    type: "object",
+    title,
+    properties: { body: { type: "string" } },
+  });
+
+  test("suffixes every item when they all share the fallback title", () => {
+    const items = [{ body: "a" }, { body: "b" }, { body: "c" }];
+    expect(getArrayItemLabels(items, titleSchema("Spec"))).toEqual([
+      "Spec 1",
+      "Spec 2",
+      "Spec 3",
+    ]);
+  });
+
+  test("disambiguates NFC/NFD near-duplicates the resolver would treat as equal", () => {
+    // "café" composed (U+00E9) vs decomposed (e + U+0301). labelsMatch
+    // NFC-normalizes both, so a bare label would collapse them to index 0.
+    const schema: SchemaProperty = {
+      type: "object",
+      properties: { name: { type: "string" } },
+    };
+    const items = [{ name: "café" }, { name: "café" }];
+    const labels = getArrayItemLabels(items, schema);
+    expect(labels[0]).not.toBe(labels[1]);
+    expect(labels[0]!.normalize("NFC")).not.toBe(labels[1]!.normalize("NFC"));
+  });
+
+  test("keeps the final set unique when a suffix collides with a literal label", () => {
+    // ["X","X","X 2"]: naive per-item suffixing yields "X 1","X 2","X 2".
+    const schema: SchemaProperty = {
+      type: "object",
+      properties: { title: { type: "string" } },
+    };
+    const items = [{ title: "X" }, { title: "X" }, { title: "X 2" }];
+    const labels = getArrayItemLabels(items, schema);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels[0]).toBe("X 1");
+  });
+
+  test("leaves unique labels untouched", () => {
+    const schema: SchemaProperty = {
+      type: "object",
+      properties: { title: { type: "string" } },
+    };
+    const items = [{ title: "Alpha" }, { title: "Beta" }];
+    expect(getArrayItemLabels(items, schema)).toEqual(["Alpha", "Beta"]);
   });
 });
 
