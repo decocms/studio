@@ -13,7 +13,7 @@ describe("release change classification", () => {
   test.each([
     {
       files: ["apps/api/src/index.ts"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "server",
     },
     {
@@ -28,7 +28,7 @@ describe("release change classification", () => {
     },
     {
       files: ["apps/native/crates/local-api/src/lib.rs"],
-      manifests: [NATIVE_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "both",
     },
     {
@@ -46,20 +46,21 @@ describe("release change classification", () => {
     },
   );
 
-  /** The desktop app EMBEDS apps/web, so a web release must roll the binary
-   *  too — while an api-only change must not: nothing of apps/api ships
-   *  inside the bundle. */
-  test("web changes roll the native app; api-only changes do not", () => {
-    expect(releaseManifestCandidates(["apps/web/src/x.tsx"])).toEqual([
-      API_MANIFEST,
-      NATIVE_MANIFEST,
-    ]);
-    expect(releaseManifestCandidates(["apps/api/src/x.ts"])).toEqual([
-      API_MANIFEST,
-    ]);
-    expect(
-      releaseManifestCandidates(["apps/native/src-tauri/tauri.conf.json5"]),
-    ).toEqual([NATIVE_MANIFEST]);
+  /** ONE release line: api, web and native changes all bump BOTH manifests,
+   *  so the deployed server and the installed desktop app always answer
+   *  "what version?" with the same number. A single-sided bump here is how
+   *  the two lines would silently fork. */
+  test("api, web and native changes each bump both manifests", () => {
+    for (const file of [
+      "apps/api/src/x.ts",
+      "apps/web/src/x.tsx",
+      "apps/native/src-tauri/tauri.conf.json5",
+    ]) {
+      expect(releaseManifestCandidates([file])).toEqual([
+        API_MANIFEST,
+        NATIVE_MANIFEST,
+      ]);
+    }
   });
 
   test("maps release inputs to sorted, deduplicated manifests", () => {

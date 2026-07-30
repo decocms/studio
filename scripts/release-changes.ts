@@ -2,11 +2,14 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const API_MANIFEST = "apps/api/package.json";
-// The desktop app embeds apps/web (tauri.conf's beforeBuildCommand builds it
-// into the bundle), so a web release IS a native release: any change that
-// rolls the web frontend must also roll the binary that ships it. The bumped
-// version is what .github/workflows/release-desktop.yaml keys the DMG/zip
-// release and the Homebrew cask off.
+// The desktop app and the server share ONE release line: apps/api and
+// apps/native carry the same version, always bumped together, so "what
+// version are you on?" has a single answer whether the surface is the
+// deployed web app or the installed binary. apps/web is embedded in both
+// (served by the api image, baked into the desktop bundle), which is why a
+// web change rolls the pair too. The native manifest's bump is what
+// .github/workflows/release-desktop.yaml keys the DMG/zip release and the
+// Homebrew cask off.
 const NATIVE_MANIFEST = "apps/native/package.json";
 
 export type DeployScope = "both" | "server" | "web";
@@ -34,18 +37,15 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
       continue;
     }
 
-    if (file.startsWith("apps/api/") || file.startsWith("apps/web/")) {
+    if (
+      file.startsWith("apps/api/") ||
+      file.startsWith("apps/web/") ||
+      file.startsWith("apps/native/")
+    ) {
+      // One release line — see NATIVE_MANIFEST's comment. Both manifests
+      // move for a change to any of the three, or their versions drift and
+      // the single number stops meaning anything.
       manifests.add(API_MANIFEST);
-      // apps/web is embedded in the desktop bundle — a web change rolls the
-      // binary too. Deliberately no `continue`-style exclusivity: one file
-      // can roll both the server image and the desktop app.
-      if (file.startsWith("apps/web/")) {
-        manifests.add(NATIVE_MANIFEST);
-      }
-      continue;
-    }
-
-    if (file.startsWith("apps/native/")) {
       manifests.add(NATIVE_MANIFEST);
       continue;
     }

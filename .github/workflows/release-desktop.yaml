@@ -1,9 +1,10 @@
 # Ships the desktop app whenever its version moves.
 #
-# The version moves via release-tagging.yaml: a merge touching apps/web/** or
-# apps/native/** bumps apps/native/package.json (scripts/release-changes.ts,
-# NATIVE_MANIFEST — the desktop app EMBEDS apps/web, so a web release is a
-# native release), and the bot's `[release]:` commit lands on main touching
+# The version moves via release-tagging.yaml: a merge touching apps/api/**,
+# apps/web/** or apps/native/** bumps apps/native/package.json in lockstep
+# with apps/api's (scripts/release-changes.ts — ONE release line, so the
+# deployed server and the installed app always answer "what version?" with
+# the same number), and the bot's `[release]:` commit lands on main touching
 # exactly that file — which is this workflow's trigger. Keying the trigger on
 # the manifest rather than the bump-commit message keeps it idempotent: the
 # tag-exists guard below makes re-runs and manual dispatches safe.
