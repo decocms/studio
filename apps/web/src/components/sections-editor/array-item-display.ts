@@ -104,7 +104,7 @@ function readTitleByValue(
   return undefined;
 }
 
-export function getArrayItemLabel(
+function baseArrayItemLabel(
   item: unknown,
   index: number,
   itemSchema?: SchemaProperty,
@@ -172,6 +172,34 @@ export function getArrayItemLabel(
     }
   }
   return `Item ${index + 1}`;
+}
+
+/**
+ * Display label for an array item.
+ *
+ * When `siblings` is provided and this item's base label is shared by another
+ * item in the array (e.g. an object array with no name/title field, so every
+ * row falls back to the item schema's static `title`), the label is suffixed
+ * with the item's position so it stays unique. Uniqueness is not cosmetic: the
+ * breadcrumb addresses an array item by its label, and the only other handle —
+ * the transiently-opened index in `ArrayField` — is reset whenever the form
+ * subtree remounts (a `formResetKey` bump on back/breadcrumb navigation). A
+ * non-unique label would then collapse every item back to the first one on the
+ * next remount, so the editor appears to show the same content for every item.
+ */
+export function getArrayItemLabel(
+  item: unknown,
+  index: number,
+  itemSchema?: SchemaProperty,
+  siblings?: unknown[],
+): string {
+  const base = baseArrayItemLabel(item, index, itemSchema);
+  if (!siblings || siblings.length < 2) return base;
+  const collides = siblings.some(
+    (other, i) =>
+      i !== index && baseArrayItemLabel(other, i, itemSchema) === base,
+  );
+  return collides ? `${base} ${index + 1}` : base;
 }
 
 function getArrayItemImageTemplate(

@@ -300,7 +300,7 @@ function resolveActiveFieldKeyInScope(
     if (!Array.isArray(val)) continue;
     const itemSchema = schema.items;
     for (let i = 0; i < val.length; i++) {
-      const itemLabel = getArrayItemLabel(val[i], i, itemSchema);
+      const itemLabel = getArrayItemLabel(val[i], i, itemSchema, val);
       if (labelsMatch(itemLabel, head)) return key;
     }
   }
@@ -509,14 +509,14 @@ function findItemIndexForCrumb(
     preferredIndex >= 0 &&
     preferredIndex < items.length &&
     labelsMatch(
-      getArrayItemLabel(items[preferredIndex], preferredIndex, itemSchema),
+      getArrayItemLabel(items[preferredIndex], preferredIndex, itemSchema, items),
       crumb,
     )
   ) {
     return preferredIndex;
   }
   return items.findIndex((item, i) =>
-    labelsMatch(getArrayItemLabel(item, i, itemSchema), crumb),
+    labelsMatch(getArrayItemLabel(item, i, itemSchema, items), crumb),
   );
 }
 

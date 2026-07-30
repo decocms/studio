@@ -184,7 +184,7 @@ export function ArrayField({
   }
 
   const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
+    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema, items);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -205,7 +205,7 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
+    const labelText = getArrayItemLabel(item, nextIndex, itemSchema, next);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,
@@ -242,7 +242,7 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
+    const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema, next);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,
@@ -309,7 +309,12 @@ export function ArrayField({
     // Update the breadcrumb so resolveArrayItemSelection keeps matching.
     if (index === selectedIndex && selectedIndex !== null) {
       const oldLabel = itemLabel(items[index], index);
-      const newLabel = getArrayItemLabel(val, index, itemSchema);
+      const newLabel = getArrayItemLabel(
+        arrayItemDisplayValue(next[index]),
+        index,
+        itemSchema,
+        next,
+      );
       if (oldLabel !== newLabel) {
         const crumbIndex = findBreadcrumbLabelIndex(breadcrumbPath, oldLabel);
         if (crumbIndex >= 0) {

@@ -785,22 +785,40 @@ describe("resolveArrayItemSelection", () => {
     ).toEqual({ index: 0, innerPath: [] });
   });
 
-  describe("duplicate labels (preferredIndex)", () => {
-    // Two items resolve to the same crumb — e.g. after Duplicate, or while
-    // editing a label field (alt/name/title) to a value a sibling already uses.
+  describe("duplicate labels", () => {
+    // Two items share a base label ("Hello") — e.g. after Duplicate, or when an
+    // object array has no distinguishing field so every row falls back to the
+    // item schema title. getArrayItemLabel disambiguates them positionally
+    // ("Hello 1" / "Hello 2"), so each item stays uniquely addressable by its
+    // crumb even after a form remount clears the transiently-opened index.
     const dupItems = [{ title: "Hello" }, { title: "Hello" }];
 
-    test("without preferredIndex, first matching item wins", () => {
+    test("addresses each duplicate by its positional crumb (no preferredIndex)", () => {
       expect(
-        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema),
+        resolveArrayItemSelection("Cards", ["Hello 1"], dupItems, itemSchema),
       ).toEqual({ index: 0, innerPath: [] });
+      expect(
+        resolveArrayItemSelection("Cards", ["Hello 2"], dupItems, itemSchema),
+      ).toEqual({ index: 1, innerPath: [] });
     });
 
-    test("keeps the opened item when its label collides with an earlier sibling", () => {
-      // Editing item 1 whose label just became equal to item 0's — selection
-      // must stay on 1, not snap back to 0 (the focus-loss bug).
+    test("a bare (non-disambiguated) crumb no longer matches a duplicate", () => {
+      // The old behaviour silently resolved a shared label to the first item;
+      // now the crumb must carry the position, so a bare label finds nothing.
       expect(
-        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema, 1),
+        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema),
+      ).toBeNull();
+    });
+
+    test("keeps the opened item when a preferredIndex is supplied", () => {
+      expect(
+        resolveArrayItemSelection(
+          "Cards",
+          ["Hello 2"],
+          dupItems,
+          itemSchema,
+          1,
+        ),
       ).toEqual({ index: 1, innerPath: [] });
     });
 
@@ -816,10 +834,16 @@ describe("resolveArrayItemSelection", () => {
       ).toEqual({ index: 1, innerPath: [] });
     });
 
-    test("ignores an out-of-range preferredIndex", () => {
+    test("falls back to crumb search when preferredIndex is out of range", () => {
       expect(
-        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema, 5),
-      ).toEqual({ index: 0, innerPath: [] });
+        resolveArrayItemSelection(
+          "Cards",
+          ["Hello 2"],
+          dupItems,
+          itemSchema,
+          5,
+        ),
+      ).toEqual({ index: 1, innerPath: [] });
     });
   });
 });

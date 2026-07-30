@@ -93,6 +93,57 @@ describe("getArrayItemLabel", () => {
       "BannerCarrouselDepartment",
     );
   });
+
+  describe("collision disambiguation (siblings)", () => {
+    // An object array with no distinguishing field: every item's label falls
+    // back to the item schema title, so all rows collapse to one string. The
+    // breadcrumb addresses an item by its label and the transient open-index is
+    // wiped whenever the form subtree remounts (formResetKey), so a non-unique
+    // label makes every item resolve back to the first one — the "all items
+    // show the same content" bug. Positional suffixes keep them addressable.
+    const itemSchema: SchemaProperty = {
+      type: "object",
+      title: "ProductSpecifications",
+      properties: { body: { type: "string" } },
+    };
+    const specs = [{ body: "a" }, { body: "b" }, { body: "c" }];
+
+    test("suffixes the position when the base label collides", () => {
+      expect(getArrayItemLabel(specs[0], 0, itemSchema, specs)).toBe(
+        "ProductSpecifications 1",
+      );
+      expect(getArrayItemLabel(specs[2], 2, itemSchema, specs)).toBe(
+        "ProductSpecifications 3",
+      );
+    });
+
+    test("leaves a unique label untouched", () => {
+      const mixed = [{ title: "Alpha" }, { title: "Beta" }];
+      const schema: SchemaProperty = {
+        type: "object",
+        properties: { title: { type: "string" } },
+      };
+      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Alpha");
+      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Beta");
+    });
+
+    test("only the colliding items get a suffix", () => {
+      const mixed = [{ title: "Dup" }, { title: "Unique" }, { title: "Dup" }];
+      const schema: SchemaProperty = {
+        type: "object",
+        properties: { title: { type: "string" } },
+      };
+      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Dup 1");
+      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Unique");
+      expect(getArrayItemLabel(mixed[2], 2, schema, mixed)).toBe("Dup 3");
+    });
+
+    test("no siblings argument keeps the legacy bare label", () => {
+      expect(getArrayItemLabel(specs[1], 1, itemSchema)).toBe(
+        "ProductSpecifications",
+      );
+    });
+  });
 });
 
 describe("getArrayItemImageSrc", () => {
