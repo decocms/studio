@@ -2,6 +2,7 @@ import { AuthEntry } from "@/components/auth-entry";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { SplashScreen } from "@/components/splash-screen";
 import { authClient } from "@/lib/auth-client";
+import { captureSignupAttribution } from "@/lib/signup-attribution";
 import { Navigate, useSearch } from "@tanstack/react-router";
 
 /**
@@ -50,7 +51,14 @@ export default function LoginRoute() {
     scope,
     code_challenge,
     code_challenge_method,
+    src,
+    ref,
   } = searchParams;
+
+  // Persist WhatsApp Concierge attribution into cookies so it survives OAuth
+  // round-trips and email verification. Idempotent (first touch wins), so
+  // safe to call on every render — no effect needed.
+  captureSignupAttribution({ src, ref });
 
   // Prevent open redirect — only allow relative paths
   const next =

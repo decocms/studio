@@ -550,7 +550,7 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        after: async (user) => {
+        after: async (user, context) => {
           // Tag the PostHog person record with email/name BEFORE the
           // user_signed_up capture so that event lands on a person record
           // that already has $set: { email } applied.
@@ -560,6 +560,12 @@ export const auth = betterAuth({
             name: user.name ?? null,
             emailVerified: !!user.emailVerified,
           });
+
+          // WhatsApp Concierge (or any other channel) attribution, set as a
+          // first-party cookie by the web client on landing. Absent for the
+          // vast majority of signups.
+          const signupRef = context?.getCookie("studio_signup_ref") ?? null;
+          const signupSrc = context?.getCookie("studio_signup_src") ?? null;
 
           // Top-of-funnel signup event. Fires once per new user account,
           // before any org is created. Use this (not organization_created)
@@ -572,6 +578,8 @@ export const auth = betterAuth({
               email_domain: user.email?.split("@")[1]?.toLowerCase() ?? null,
               email_verified: !!user.emailVerified,
               has_name: !!user.name,
+              ...(signupRef ? { signup_ref: signupRef } : {}),
+              ...(signupSrc ? { signup_src: signupSrc } : {}),
             },
           });
 
