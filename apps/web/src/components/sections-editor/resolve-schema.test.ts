@@ -1594,12 +1594,13 @@ describe("inferSchemaFromValue – form from saved props", () => {
 });
 
 describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
-  // The real deco shape: a matcher whose `Props` is a discriminated union.
-  // @deco/deco wraps the block config as
+  // The real deco shape (verified against a live /live/_meta): @deco/deco wraps
+  // the block config as
   //   { type:object, allOf:[{$ref:Props}], properties:{__resolveType}, required:[__resolveType] }
-  // and `Props` is `anyOf` of $refs to the branch interfaces. The discriminant
-  // `segment` is a string `const` marked `@hide true` (emitted as the string
-  // "true"). Only the last branch adds a visible `months` field.
+  // where `Props` is a `$ref` ALIAS ("…@Props" → "…@A|B|C") to the actual
+  // `{ anyOf: [<branch $refs>] }` def. The discriminant `segment` is a string
+  // `const` marked `@hide true` (emitted as the string "true"). Only the last
+  // branch adds a visible `months` field.
   const rt = "vtex/matchers/userSegment.ts";
   const meta: LiveMeta = {
     manifest: {
@@ -1615,7 +1616,10 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
             __resolveType: { type: "string", enum: [rt], default: rt },
           },
         },
-        Props: {
+        // `@Props` is a bare `$ref` alias to the union def — the layer that
+        // broke the first attempt (resolving one `$ref` level stopped here).
+        Props: { $ref: "#/definitions/Union", title: "…@Props" },
+        Union: {
           anyOf: [
             { $ref: "#/definitions/AnonymousWithoutCart" },
             { $ref: "#/definitions/LoggedIn" },

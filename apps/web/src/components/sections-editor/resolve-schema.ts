@@ -1092,7 +1092,10 @@ export function resolveSchema(
             ? rtProp.default
             : undefined;
     for (const part of schemaRoot.allOf as RawSchema[]) {
-      const def = typeof part.$ref === "string" ? resolveRef(part.$ref) : part;
+      // deco emits the union `Props` as a `$ref` alias to the real
+      // `{ anyOf: [...] }` def (`…@Props` → `…@A|B|C`), so follow the alias
+      // chain — resolving a single `$ref` level would stop at the bare alias.
+      const def = unwrapRefAliases(part);
       const isChoiceUnion =
         Array.isArray(def.anyOf) || Array.isArray(def.oneOf);
       // A choice union with no own object properties — a plain "A | B | C".
