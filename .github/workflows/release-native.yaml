@@ -16,7 +16,7 @@
 # six APPLE_* secrets land, the same workflow signs, notarizes and staples
 # with no further edits.
 #
-# The Homebrew cask (Casks/deco.rb — this repo doubles as the
+# The Homebrew cask (Casks/deco-studio.rb — this repo doubles as the
 # tap) is bumped by this workflow after the release assets exist, committed
 # straight to main with the same App token release-tagging uses. That commit
 # touches only Casks/**, which no other workflow's paths match, so it
@@ -226,7 +226,7 @@ jobs:
           DMG: ${{ steps.assets.outputs.dmg }}
         run: |
           set -euo pipefail
-          NOTES="macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco\` — or download the DMG below."
+          NOTES="macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco-studio\` — or download the DMG below."
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
               --title "deco $VERSION" --notes "$NOTES"
@@ -267,7 +267,7 @@ jobs:
           import re, sys
 
           version, sha = sys.argv[1], sys.argv[2]
-          path = "Casks/deco.rb"
+          path = "Casks/deco-studio.rb"
           s = open(path).read()
           # Anchor to the INDENTED stanza lines. The header comment mentions
           # `sha256 :no_check` too, but comment lines start with `#`, so
@@ -295,11 +295,11 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             render_cask
-            if git diff --quiet -- Casks/deco.rb; then
+            if git diff --quiet -- Casks/deco-studio.rb; then
               echo "cask already at $VERSION; nothing to push"
               exit 0
             fi
-            git add Casks/deco.rb
+            git add Casks/deco-studio.rb
             git commit -m "[chore]: bump homebrew cask to $VERSION"
             if git push "$REMOTE" HEAD:main; then
               echo "cask pushed (attempt $attempt)"
