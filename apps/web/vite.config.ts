@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "../api/package.json" with { type: "json" };
+import nativePkg from "../native/package.json" with { type: "json" };
 import { fileURLToPath } from "node:url";
 import { existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
@@ -183,7 +184,17 @@ const sharedProxy = {
 
 export default defineConfig({
   define: {
-    __STUDIO_VERSION__: JSON.stringify(pkg.version),
+    // What `v{__STUDIO_VERSION__}` renders (account popover, settings
+    // footer) and what busts the persisted query cache. In the browser that
+    // is the `decocms` (apps/api) deploy version — the thing actually
+    // running behind the page. In the DESKTOP bundle it is the app's own
+    // version (apps/native, the one release-desktop.yaml ships), so the
+    // popover always matches the installed binary/DMG/cask instead of
+    // showing whichever server version happened to be current at build
+    // time.
+    __STUDIO_VERSION__: JSON.stringify(
+      isNativeBuild ? nativePkg.version : pkg.version,
+    ),
     // Build-time constant so e2e-only hooks (window.__forceTabError) survive
     // the e2e production build but stay dead-stripped from real prod builds.
     __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),
