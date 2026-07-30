@@ -47,19 +47,19 @@ export const RELEASES: Release[] = [
         body: "Every draft gets its own git worktree on your machine, so previews render instantly as you edit.",
       },
       {
-        icon: Monitor01,
-        title: "Apple Silicon only — Windows coming soon",
-        body: "Today's builds target macOS on Apple Silicon; Windows is next.",
-      },
-      {
-        icon: CpuChip01,
-        title: "Works on more modest machines",
-        body: "The app is entirely rewritten in Rust, with a smaller memory footprint than the Bun-based runtime.",
-      },
-      {
         icon: Stars02,
         title: "Native Claude Code & Codex support",
         body: "State-of-the-art coding agents, running natively against your local files.",
+      },
+      {
+        icon: CpuChip01,
+        title: "Boosted performance",
+        body: "Entirely rewritten in Rust with a smaller memory footprint than the Bun-based runtime — fast even on modest machines.",
+      },
+      {
+        icon: Monitor01,
+        title: "Apple Silicon only — Windows coming soon",
+        body: "Today's builds target macOS on Apple Silicon; Windows is next.",
       },
     ],
     cta: { label: "Install on Mac", action: "download-app" },
