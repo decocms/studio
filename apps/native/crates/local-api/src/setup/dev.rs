@@ -839,6 +839,52 @@ mod tests {
         assert!(msg.contains("test"));
     }
 
+    #[tokio::test]
+    async fn start_only_resume_detects_installs_then_diagnoses_the_missing_starter() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        // Detectable (package-lock -> npm) but with NO dev/start script: the
+        // Start-only path must detect, run the Install it skipped, and then
+        // fail with the missing-STARTER diagnostic — never the
+        // missing-package-manager one this change retires for detectable
+        // repos. No dev server spawns, so the test stays deterministic.
+        std::fs::write(repo.join("package.json"), r#"{"name":"x"}"#).unwrap();
+        std::fs::write(repo.join("package-lock.json"), "{}").unwrap();
+        let logs = Arc::new(crate::log_store::LogStore::new(dir.path().join("logs")));
+        let orch = SetupOrchestrator::new(
+            repo.clone(),
+            repo.clone(),
+            Arc::new(crate::config::ConfigStore::new()),
+            Arc::new(crate::tasks::TaskRegistry::new(logs)),
+            Arc::new(crate::events::Broadcaster::new()),
+        );
+        orch.config
+            .patch(serde_json::json!({
+                "git": { "repository": { "cloneUrl": "https://example.com/r.git" } }
+            }))
+            .unwrap();
+        let config = orch.current_config().unwrap();
+
+        run(&orch, &config).await;
+
+        let lifecycle = orch.lifecycle_snapshot();
+        assert_eq!(lifecycle["phase"], "start-failed", "{lifecycle:?}");
+        let error = lifecycle["error"].as_str().unwrap();
+        assert!(
+            !error.contains("no package manager configured"),
+            "a detectable repo must get past the package-manager gate: {error:?}"
+        );
+        assert_eq!(
+            get_str(
+                &orch.current_config().unwrap(),
+                &["application", "packageManager", "name"]
+            ),
+            Some("npm"),
+            "detection ran on the Start-only path"
+        );
+    }
+
     #[test]
     fn start_only_discovery_restores_the_scripts_snapshot() {
         let dir = tempfile::tempdir().unwrap();

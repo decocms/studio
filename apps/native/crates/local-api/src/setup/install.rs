@@ -295,6 +295,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_detectable_repo_installs_without_a_configured_package_manager() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        // npm deliberately: it is the one detected manager whose binary the
+        // CI image (and any Node toolchain) reliably ships. An empty
+        // manifest keeps the real `npm install` offline and instant.
+        std::fs::write(repo.join("package.json"), "{}").unwrap();
+        std::fs::write(repo.join("package-lock.json"), "{}").unwrap();
+        let orch = test_orchestrator(repo.clone(), root.path());
+        orch.config
+            .patch(json!({ "git": { "repository": { "cloneUrl": "https://example.com/r.git" } } }))
+            .unwrap();
+        let config = orch.current_config().unwrap();
+
+        // The regression this whole module exists for: a fresh import ships
+        // no packageManager, and Install used to skip silently on it.
+        assert!(run(&orch, &config).await);
+
+        assert_eq!(
+            crate::config::get_str(
+                &orch.current_config().unwrap(),
+                &["application", "packageManager", "name"]
+            ),
+            Some("npm"),
+            "detection must land in the store the next step re-reads"
+        );
+    }
+
+    #[tokio::test]
     async fn package_manager_root_resolves_repo_relative_directory() {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().join("repo");
