@@ -1,5 +1,6 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import { useT } from "@/i18n/use-t";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { type ChipIcon, deriveChipLabel } from "./derive-chip-label";
 
@@ -78,10 +79,11 @@ function TodoCheckbox({ status }: { status: Todo["status"] }) {
 }
 
 function ChipStatusIcon({ status }: { status: ChipIcon }) {
+  const t = useT();
   if (status === "completed") {
     return (
       <span
-        aria-label="completed"
+        aria-label={t("chat.todoStatus.completed")}
         className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm bg-primary"
       >
         <svg
@@ -101,14 +103,14 @@ function ChipStatusIcon({ status }: { status: ChipIcon }) {
   if (status === "in_progress") {
     return (
       <span
-        aria-label="in progress"
+        aria-label={t("chat.todoStatus.inProgress")}
         className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse shrink-0"
       />
     );
   }
   return (
     <span
-      aria-label="pending"
+      aria-label={t("chat.todoStatus.pending")}
       className="inline-block w-3.5 h-3.5 rounded-sm border-[1.5px] border-muted-foreground/50 shrink-0"
     />
   );
