@@ -21,7 +21,7 @@
 # straight to main with the same App token release-tagging uses. That commit
 # touches only Casks/**, which no other workflow's paths match, so it
 # triggers nothing.
-name: Release Desktop
+name: Release Native
 
 on:
   push:
@@ -34,7 +34,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: release-desktop-main
+  group: release-native-main
   cancel-in-progress: false
 
 permissions:
@@ -55,7 +55,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./apps/native/package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=native-v$VERSION" >> "$GITHUB_OUTPUT"
 
       # A version that is still 0.0.0 has never been released-bumped;
       # a tag that already exists was already shipped. Both exit green so

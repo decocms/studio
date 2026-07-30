@@ -8,7 +8,7 @@ const API_MANIFEST = "apps/api/package.json";
 // deployed web app or the installed binary. apps/web is embedded in both
 // (served by the api image, baked into the desktop bundle), which is why a
 // web change rolls the pair too. The native manifest's bump is what
-// .github/workflows/release-desktop.yaml keys the DMG/zip release and the
+// .github/workflows/release-native.yaml keys the DMG/zip release and the
 // Homebrew cask off.
 const NATIVE_MANIFEST = "apps/native/package.json";
 

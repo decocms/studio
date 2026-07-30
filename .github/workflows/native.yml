@@ -251,11 +251,11 @@ jobs:
 
   # ---------------------------------------------------------------------
   # 4. tauri-build — bundles the RELEASE .app (the same profile
-  #    release-desktop.yaml ships; a debug bundle used to be built here but
+  #    release-native.yaml ships; a debug bundle used to be built here but
   #    gated nothing the release profile doesn't, while leaving the shipped
   #    profile untested until release day), uploads it as an artifact, and
   #    boot-smokes it. Unsigned always — signing/notarization live in
-  #    release-desktop.yaml, the secret-gated release job.
+  #    release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
     if: github.event_name != 'schedule'
@@ -347,7 +347,7 @@ jobs:
         # of six repo secrets — which is exactly how it has been failing:
         # "failed codesign application: failed to import keychain certificate",
         # from a cert that is present but not importable. Signing belongs to
-        # release-desktop.yaml, the secret-gated release job.
+        # release-native.yaml, the secret-gated release job.
         run: bunx @tauri-apps/cli@latest build
 
       - name: Upload .app artifact
