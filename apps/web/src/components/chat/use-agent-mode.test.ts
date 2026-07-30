@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   agentModeFromOption,
   resolveTierSubtitle,
+  shouldUseLocalModels,
   type AgentMode,
 } from "./use-agent-mode";
 import type { AgentOption } from "./pills/agent-options";
@@ -30,6 +31,18 @@ describe("agentModeFromOption", () => {
 
   it("agentModeFromOption(null) defaults to cloud-decopilot", () => {
     expect(agentModeFromOption(null)).toBe("cloud-decopilot");
+  });
+});
+
+describe("shouldUseLocalModels", () => {
+  it("keeps native on local models while runtime detection is pending", () => {
+    expect(shouldUseLocalModels("cloud-decopilot", true)).toBe(true);
+  });
+
+  it("keeps cloud models on web and local models for explicit local modes", () => {
+    expect(shouldUseLocalModels("cloud-decopilot", false)).toBe(false);
+    expect(shouldUseLocalModels("local-claude-code", false)).toBe(true);
+    expect(shouldUseLocalModels("local-codex", false)).toBe(true);
   });
 });
 

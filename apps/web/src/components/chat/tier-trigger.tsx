@@ -32,6 +32,7 @@ import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { ChatTier } from "@decocms/shared/organization/schema";
 import {
   resolveTierSubtitle,
+  shouldUseLocalModels,
   useAgentMode,
   useChatTier,
   useSetChatTier,
@@ -475,7 +476,7 @@ export function TierTrigger() {
   const locked = taskCtx?.isThreadLocked ?? false;
   const isDesktopApp = useIsDesktopApp();
   const hasLocal = availability.claudeCode || availability.codex;
-  const isLocal = mode !== "cloud-decopilot";
+  const isLocal = shouldUseLocalModels(mode, isDesktopApp);
   // Cloud rows only: org config + this user's overrides, wired into each
   // row's cog popover below.
   const org = useSimpleMode();

@@ -34,6 +34,18 @@ export function useAgentMode(): AgentMode {
   return agentModeFromOption(pendingAgentOption);
 }
 
+/**
+ * Whether the chat-input selector must use the fixed local CLI catalogs.
+ * Native never exposes cloud/provider models, including while local CLI
+ * detection is still pending and the effective option is temporarily null.
+ */
+export function shouldUseLocalModels(
+  mode: AgentMode,
+  isDesktopApp: boolean,
+): boolean {
+  return isDesktopApp || mode !== "cloud-decopilot";
+}
+
 /** Current chat tier from prefs. Defaults to "smart" via prefs. */
 export function useChatTier(): ChatTier {
   return useChatPrefs().simpleModeTier;

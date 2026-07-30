@@ -6,6 +6,7 @@ import {
 } from "@/sdk";
 
 export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
+type LocalAgentOption = Exclude<AgentOption, "decopilot">;
 
 export interface AgentPins {
   harness: HarnessId;
@@ -78,10 +79,39 @@ export interface AgentOptionAvailability {
  */
 export function preferredLocalAgentOption(
   availability: AgentOptionAvailability,
-): AgentOption | null {
+): LocalAgentOption | null {
   if (availability.claudeCode) return "claude-code-desktop";
   if (availability.codex) return "codex-desktop";
   return null;
+}
+
+/**
+ * Resolve the only agent options a native build may expose.
+ *
+ * Native has no cloud runtime, so a stale persisted Decopilot pick must never
+ * win. A locked local harness also wins by harness alone: early native builds
+ * could pin a Claude Code/Codex thread before `sandbox_provider_kind` was
+ * available, and requiring the full tuple would misclassify that local thread
+ * as cloud.
+ *
+ * Returns null while CLI detection is still unresolved and there is no prior
+ * local choice. The native model selector treats that as local-pending rather
+ * than falling back to provider models.
+ */
+export function resolveNativeAgentOption({
+  pendingOption,
+  lockedHarness,
+  availability,
+}: {
+  pendingOption: AgentOption | null;
+  lockedHarness: HarnessId | null;
+  availability: AgentOptionAvailability;
+}): LocalAgentOption | null {
+  if (lockedHarness === "claude-code") return "claude-code-desktop";
+  if (lockedHarness === "codex") return "codex-desktop";
+  if (pendingOption === "claude-code-desktop") return pendingOption;
+  if (pendingOption === "codex-desktop") return pendingOption;
+  return preferredLocalAgentOption(availability);
 }
 
 /**
