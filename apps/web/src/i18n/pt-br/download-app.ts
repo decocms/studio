@@ -9,6 +9,6 @@ export const downloadApp = {
   "downloadApp.terminalHint":
     "Dica: pressione ⌘ Espaço e digite “Terminal” para abri-lo.",
   "downloadApp.appleSiliconNote":
-    "Para Macs com Apple Silicon (M1 ou mais novo) — Windows em breve. Requer o Homebrew.",
+    "Para Macs com Apple Silicon (M1 ou mais novo) — Windows em breve.",
   "downloadApp.openLabel": "Baixar o app do Studio",
 } satisfies Record<keyof typeof downloadAppEn, string>;

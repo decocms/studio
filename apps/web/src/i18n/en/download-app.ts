@@ -7,6 +7,6 @@ export const downloadApp = {
   "downloadApp.terminalHint":
     "Tip: press ⌘ Space and type “Terminal” to open it.",
   "downloadApp.appleSiliconNote":
-    "For Apple Silicon Macs (M1 and newer) — Windows coming soon. Requires Homebrew.",
+    "For Apple Silicon Macs (M1 and newer) — Windows coming soon.",
   "downloadApp.openLabel": "Download the Studio app",
 } as const;
