@@ -745,6 +745,7 @@ export function UnifiedAuthForm({
                   onBlur={handleEmailBlur}
                   required
                   disabled={isLoading}
+                  autoComplete="email"
                   aria-invalid={!!emailError}
                   aria-describedby={emailError ? emailErrorId : undefined}
                   className="h-11 rounded-lg"
@@ -855,6 +856,7 @@ export function UnifiedAuthForm({
               onBlur={handleEmailBlur}
               required
               disabled={isLoading}
+              autoComplete="email"
               aria-invalid={!!emailError}
               aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
@@ -900,6 +902,7 @@ export function UnifiedAuthForm({
                 onChange={handleInputChange(setName)}
                 required
                 disabled={isLoading}
+                autoComplete="name"
                 className="h-11 rounded-lg"
               />
             </div>
@@ -920,6 +923,7 @@ export function UnifiedAuthForm({
               onBlur={handleEmailBlur}
               required
               disabled={isLoading}
+              autoComplete="email"
               aria-invalid={!!emailError}
               aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
@@ -960,6 +964,7 @@ export function UnifiedAuthForm({
               onChange={handleInputChange(setPassword)}
               required
               disabled={isLoading}
+              autoComplete={isSignUp ? "new-password" : "current-password"}
               className="h-11 rounded-lg"
             />
           </div>
