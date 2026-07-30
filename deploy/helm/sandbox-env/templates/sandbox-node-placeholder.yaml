@@ -1,0 +1,99 @@
+{{- if .Values.nodePlaceholder.enabled }}
+# Node-placeholder ("balloon") Deployment. Reserves warm NODE capacity on the
+# sandbox NodePool via low-priority pods that do nothing but hold resource
+# requests, and are preempted the instant a real sandbox / warm-pool pod needs
+# the space.
+#
+# Why this exists on top of warmPool: the SandboxWarmPool pre-warms *pods*
+# (image pull + kubelet start + daemon boot), but every warm-pool pod still
+# needs a *node*. When the pool refills after a burst, or its HPA/KEDA scaler
+# grows it, or a cold claim lands beyond the pool, the new pods go Pending and
+# wait on Karpenter to provision a node (tens of seconds). These balloon pods
+# keep ~replicas worth of sandbox slots already scheduled on running nodes; a
+# real pod preempts one (priority-based, instant), takes the freed slot on the
+# warm node, and Karpenter re-provisions a node for the evicted balloon in the
+# background — so the *user-facing* claim never waits on node provisioning.
+#
+# Off by default — every replica costs a real sandbox slot's worth of idle
+# capacity on the (unshared, taint-isolated) sandbox NodePool. Enable only
+# after confirming the claim-latency tail is dominated by node provisioning
+# (Pod-created -> Node-assigned), not by daemon boot / install / mount.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sandbox-env.nodePlaceholderName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.nodePlaceholderLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.nodePlaceholder.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sandbox-env.nodePlaceholderSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sandbox-env.nodePlaceholderLabels" . | nindent 8 }}
+    spec:
+      # Must be a LOW / negative-priority class so real sandbox and warm-pool
+      # pods (priority 0, no priorityClassName) preempt these on contention.
+      # Defaults to the cluster-wide `placeholder-priority` class the existing
+      # sites balloon uses; self-hosters must provide an equivalent (or set
+      # nodePlaceholder.priorityClassName to their own).
+      priorityClassName: {{ .Values.nodePlaceholder.priorityClassName }}
+      # Balloons hold nothing durable — evict instantly on preemption. (Real
+      # sandbox pods use 90s for the SIGTERM git-sync; that must NOT apply
+      # here or preemption would stall behind a grace window.)
+      terminationGracePeriodSeconds: 0
+      # Inherit the sandbox pod's placement by default so warm capacity lands
+      # on the SAME dedicated NodePool as real sandboxes. See the helpers.
+      {{- with (fromYaml (include "sandbox-env.nodePlaceholderNodeSelector" .)) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (fromYamlArray (include "sandbox-env.nodePlaceholderTolerations" .)) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodePlaceholder.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodePlaceholder.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.nodePlaceholder.topologySpreadConstraints | nindent 8 }}
+      {{- else }}
+      # Default: spread balloon capacity across AZs so a warm node exists in
+      # each zone where sandbox pods spread (values.topologySpreadConstraints).
+      # ScheduleAnyway (soft) — never block the balloon from scheduling.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "sandbox-env.nodePlaceholderSelectorLabels" . | nindent 14 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: placeholder
+          image: "{{ .Values.nodePlaceholder.image.repository }}:{{ .Values.nodePlaceholder.image.tag }}"
+          imagePullPolicy: {{ .Values.nodePlaceholder.image.pullPolicy }}
+          # The `pause` image already blocks forever; no command needed. It
+          # does nothing — only its resource *requests* matter, which is what
+          # holds the node capacity.
+          resources:
+            requests:
+              {{- toYaml .Values.nodePlaceholder.resources.requests | nindent 14 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}
