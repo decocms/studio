@@ -3,6 +3,7 @@ import {
   mkdir,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   unlink,
@@ -429,12 +430,12 @@ export function makeRenameHandler(deps: FsDeps) {
       return jsonResponse({ error: "Path escapes app root" }, 400);
     }
     try {
-      fs.statSync(fromPath);
+      await stat(fromPath);
     } catch {
       return jsonResponse({ error: `Path not found: ${body.from}` }, 400);
     }
     try {
-      fs.statSync(toPath);
+      await stat(toPath);
       return jsonResponse({ error: `Path already exists: ${body.to}` }, 400);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -442,8 +443,8 @@ export function makeRenameHandler(deps: FsDeps) {
       }
     }
     try {
-      fs.mkdirSync(path.dirname(toPath), { recursive: true });
-      fs.renameSync(fromPath, toPath);
+      await mkdir(path.dirname(toPath), { recursive: true });
+      await rename(fromPath, toPath);
     } catch (err) {
       return jsonResponse({ error: (err as Error).message }, 500);
     }
