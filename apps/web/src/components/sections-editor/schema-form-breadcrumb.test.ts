@@ -14,6 +14,7 @@ import {
   resolveArrayItemSelection,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
+import { getArrayItemLabels } from "./array-item-display";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 describe("normalizeBreadcrumbLabel", () => {
@@ -844,6 +845,42 @@ describe("resolveArrayItemSelection", () => {
           5,
         ),
       ).toEqual({ index: 1, innerPath: [] });
+    });
+  });
+});
+
+describe("array item label build↔resolve round-trip", () => {
+  // The fix's core promise: a crumb built from getArrayItemLabels must resolve
+  // back to the same item with no transient state — this is what survives a
+  // form remount. Exercises both seams together, not hand-copied literals.
+  const roundTrips = (items: unknown[], schema: SchemaProperty) => {
+    const labels = getArrayItemLabels(items, schema);
+    labels.forEach((label, i) => {
+      expect(
+        resolveArrayItemSelection("Items", [label], items, schema),
+      ).toEqual({ index: i, innerPath: [] });
+    });
+  };
+
+  test("colliding fallback-title items each resolve to their own index", () => {
+    roundTrips([{ body: "a" }, { body: "b" }, { body: "c" }], {
+      type: "object",
+      title: "Spec",
+      properties: { body: { type: "string" } },
+    });
+  });
+
+  test("NFC/NFD near-duplicates round-trip to distinct indices", () => {
+    roundTrips([{ name: "café" }, { name: "café" }], {
+      type: "object",
+      properties: { name: { type: "string" } },
+    });
+  });
+
+  test("suffix-vs-literal collision still round-trips uniquely", () => {
+    roundTrips([{ title: "X" }, { title: "X" }, { title: "X 2" }], {
+      type: "object",
+      properties: { title: { type: "string" } },
     });
   });
 });

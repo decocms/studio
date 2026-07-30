@@ -1,4 +1,4 @@
-import { getArrayItemLabel } from "./array-item-display";
+import { getArrayItemLabels } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
 import { unwrapBlockReference } from "./unwrap-section";
@@ -251,11 +251,22 @@ function valueOwnsItemCrumb(
   ) {
     return false;
   }
+  // A colliding item's crumb carries a positional suffix ("Dup 1"), but the
+  // ownership labels scanned here are bare (no item schema is available at this
+  // nesting level), so also try the crumb with a trailing " N" stripped. This
+  // only widens matching, and the actual item is still pinned downstream by the
+  // suffix-aware resolveArrayItemSelection.
+  const crumbBase = crumb.replace(/\s+\d+$/, "");
   if (Array.isArray(value)) {
     for (const item of value) {
       if (--budget.n <= 0) return false;
       const label = itemOwnershipLabel(item);
-      if (label && labelsMatch(label, crumb)) return true;
+      if (
+        label &&
+        (labelsMatch(label, crumb) || labelsMatch(label, crumbBase))
+      ) {
+        return true;
+      }
       if (valueOwnsItemCrumb(item, crumb, budget, depth + 1)) return true;
     }
     return false;
@@ -298,11 +309,8 @@ function resolveActiveFieldKeyInScope(
     if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
     const val = objValue[key];
     if (!Array.isArray(val)) continue;
-    const itemSchema = schema.items;
-    for (let i = 0; i < val.length; i++) {
-      const itemLabel = getArrayItemLabel(val[i], i, itemSchema, val);
-      if (labelsMatch(itemLabel, head)) return key;
-    }
+    const labels = getArrayItemLabels(val, schema.items);
+    if (labels.some((label) => labelsMatch(label, head))) return key;
   }
 
   for (const key of keys) {
@@ -504,20 +512,12 @@ function findItemIndexForCrumb(
   crumb: string,
   preferredIndex?: number | null,
 ): number {
-  if (
-    preferredIndex != null &&
-    preferredIndex >= 0 &&
-    preferredIndex < items.length &&
-    labelsMatch(
-      getArrayItemLabel(items[preferredIndex], preferredIndex, itemSchema, items),
-      crumb,
-    )
-  ) {
-    return preferredIndex;
+  const labels = getArrayItemLabels(items, itemSchema);
+  const preferred = preferredIndex != null ? labels[preferredIndex] : undefined;
+  if (preferred !== undefined && labelsMatch(preferred, crumb)) {
+    return preferredIndex!;
   }
-  return items.findIndex((item, i) =>
-    labelsMatch(getArrayItemLabel(item, i, itemSchema, items), crumb),
-  );
+  return labels.findIndex((label) => labelsMatch(label, crumb));
 }
 
 export function resolveArrayItemSelection(

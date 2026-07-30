@@ -22,7 +22,11 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
+import {
+  getArrayItemImageSrc,
+  getArrayItemLabel,
+  getArrayItemLabels,
+} from "../array-item-display";
 import {
   arrayItemDisplayValue,
   hideArrayItem,
@@ -133,9 +137,11 @@ export function ArrayField({
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
   // Index of the item the user has explicitly opened. Array items are addressed
-  // in the breadcrumb by their mutable, non-unique display label, so this lets
-  // selection stay on the opened row even when its label collides with another
-  // item's (e.g. after Duplicate, or while typing a name/alt another item uses).
+  // in the breadcrumb by their (mutable) display label; `getArrayItemLabels`
+  // keeps those labels unique, but this preferred index still pins selection to
+  // the opened row through the brief window where an edit makes labels churn
+  // (e.g. typing a name/alt that momentarily matches a sibling before the
+  // positional suffix settles).
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const selection = resolveArrayItemSelection(
@@ -183,8 +189,12 @@ export function ArrayField({
     setEntries((current) => resizeArrayEntries(current, items.length));
   }
 
-  const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema, items);
+  const itemLabel = (
+    item: unknown,
+    index: number,
+    siblings: unknown[] = items,
+  ) =>
+    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema, siblings);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -242,7 +252,12 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema, next);
+    const labelText = getArrayItemLabel(
+      defaultVal,
+      nextIndex,
+      itemSchema,
+      next,
+    );
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,
@@ -309,12 +324,7 @@ export function ArrayField({
     // Update the breadcrumb so resolveArrayItemSelection keeps matching.
     if (index === selectedIndex && selectedIndex !== null) {
       const oldLabel = itemLabel(items[index], index);
-      const newLabel = getArrayItemLabel(
-        arrayItemDisplayValue(next[index]),
-        index,
-        itemSchema,
-        next,
-      );
+      const newLabel = itemLabel(next[index], index, next);
       if (oldLabel !== newLabel) {
         const crumbIndex = findBreadcrumbLabelIndex(breadcrumbPath, oldLabel);
         if (crumbIndex >= 0) {
@@ -481,32 +491,38 @@ export function ArrayField({
               strategy={verticalListSortingStrategy}
             >
               <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
-                {entries.map((entry) => {
-                  const item = items[entry.index];
-                  if (item === undefined) return null;
-                  const labelText = itemLabel(item, entry.index);
-                  const imageSrc = getArrayItemImageSrc(
-                    arrayItemDisplayValue(item),
-                    itemSchema,
-                  );
-                  return (
-                    <SortableArrayRow
-                      key={entry.id}
-                      sortableId={entry.id}
-                      labelText={labelText}
-                      imageSrc={imageSrc}
-                      hidden={isArrayItemHidden(item)}
-                      onToggleHidden={
-                        canHideItems
-                          ? () => toggleItemHidden(entry.index)
-                          : undefined
-                      }
-                      onOpen={() => openItem(entry.index)}
-                      onDuplicate={() => duplicateItem(entry.index)}
-                      onRemove={() => removeItem(entry.index)}
-                    />
-                  );
-                })}
+                {(() => {
+                  // Compute disambiguated labels once for the whole list rather
+                  // than per row (each derivation scans all siblings).
+                  const itemLabels = getArrayItemLabels(items, itemSchema);
+                  return entries.map((entry) => {
+                    const item = items[entry.index];
+                    if (item === undefined) return null;
+                    const labelText =
+                      itemLabels[entry.index] ?? itemLabel(item, entry.index);
+                    const imageSrc = getArrayItemImageSrc(
+                      arrayItemDisplayValue(item),
+                      itemSchema,
+                    );
+                    return (
+                      <SortableArrayRow
+                        key={entry.id}
+                        sortableId={entry.id}
+                        labelText={labelText}
+                        imageSrc={imageSrc}
+                        hidden={isArrayItemHidden(item)}
+                        onToggleHidden={
+                          canHideItems
+                            ? () => toggleItemHidden(entry.index)
+                            : undefined
+                        }
+                        onOpen={() => openItem(entry.index)}
+                        onDuplicate={() => duplicateItem(entry.index)}
+                        onRemove={() => removeItem(entry.index)}
+                      />
+                    );
+                  });
+                })()}
               </div>
             </SortableContext>
 
