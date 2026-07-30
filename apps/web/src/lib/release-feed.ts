@@ -39,7 +39,7 @@ export const RELEASES: Release[] = [
     id: "native-app-macos",
     date: "2026-07-30",
     eyebrow: "Now Available",
-    title: "The Studio app is here",
+    title: "New beta studio app",
     bullets: [
       {
         icon: Zap,
