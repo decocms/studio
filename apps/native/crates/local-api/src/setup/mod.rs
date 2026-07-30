@@ -63,6 +63,7 @@
 //! own module doc for the fix in detail.
 
 pub mod clone;
+pub(crate) mod detect_runtime;
 pub mod dev;
 pub mod install;
 

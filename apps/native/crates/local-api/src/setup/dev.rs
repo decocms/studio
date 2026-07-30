@@ -105,11 +105,29 @@ use crate::config::get_str;
 /// (byte-parity with `diagnoseNoStartCommand`) and returns without spawning
 /// anything.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
+    // A Start-only resume (no-op config transition) skips Install, so a
+    // repository whose package manager was never configured arrives here
+    // undetected. Fill the absence from the checkout, and when that is what
+    // named the manager, run the skipped install before starting — the
+    // detected manager's dependencies were never fetched.
+    let had_pm = get_str(config, &["application", "packageManager", "name"])
+        .filter(|s| !s.is_empty())
+        .is_some();
+    let enriched = super::detect_runtime::ensure_package_manager(orch, config).await;
+    if !had_pm
+        && get_str(&enriched, &["application", "packageManager", "name"])
+            .filter(|s| !s.is_empty())
+            .is_some()
+        && !super::install::run(orch, &enriched).await
+    {
+        return;
+    }
+    let config = &enriched;
     let Some(pm) =
         get_str(config, &["application", "packageManager", "name"]).filter(|s| !s.is_empty())
     else {
         orch.transition_lifecycle(super::start_failed(
-            "no package manager configured — update the VM config to enable a dev server",
+            "no package manager configured and none detected in the repository — update the VM config to enable a dev server",
         ));
         return;
     };

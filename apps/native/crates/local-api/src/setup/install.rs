@@ -89,6 +89,10 @@ fn install_argv(pm: &str) -> Option<&'static [&'static str]> {
 /// itself exits non-zero, after transitioning `lifecycle` to
 /// `install-failed`.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
+    // A config that names no package manager may still be a detectable
+    // repository — the clone step just put its files on disk. Fill the
+    // absence before deciding to skip; see `setup/detect_runtime.rs`.
+    let config = &super::detect_runtime::ensure_package_manager(orch, config).await;
     let Some(pm) = crate::config::get_str(config, &["application", "packageManager", "name"])
         .filter(|s| !s.is_empty())
     else {
