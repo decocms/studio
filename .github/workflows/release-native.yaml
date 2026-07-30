@@ -16,7 +16,7 @@
 # six APPLE_* secrets land, the same workflow signs, notarizes and staples
 # with no further edits.
 #
-# The Homebrew cask (Casks/decocms-desktop.rb — this repo doubles as the
+# The Homebrew cask (Casks/deco.rb — this repo doubles as the
 # tap) is bumped by this workflow after the release assets exist, committed
 # straight to main with the same App token release-tagging uses. That commit
 # touches only Casks/**, which no other workflow's paths match, so it
@@ -158,11 +158,11 @@ jobs:
         working-directory: apps/native/target/release/bundle
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ZIP="decocms-desktop-$VERSION-aarch64.zip"
-          DMG_OUT="decocms-desktop-$VERSION-aarch64.dmg"
+          ZIP="deco-$VERSION-aarch64.zip"
+          DMG_OUT="deco-$VERSION-aarch64.dmg"
           # ditto preserves signatures, resource forks and the executable bit
           # — a plain `zip` bundle strips what codesign later needs intact.
-          ditto -c -k --keepParent "macos/decocms-desktop.app" "$ZIP"
+          ditto -c -k --keepParent "macos/deco.app" "$ZIP"
           DMG_SRC=$(ls dmg/*.dmg | head -1)
           cp "$DMG_SRC" "$DMG_OUT"
           echo "zip=apps/native/target/release/bundle/$ZIP" >> "$GITHUB_OUTPUT"
@@ -178,8 +178,8 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "deco Studio desktop ${{ steps.version.outputs.version }}" \
-            --notes "macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask decocms-desktop\` — or download the DMG below." \
+            --title "deco ${{ steps.version.outputs.version }}" \
+            --notes "macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco\` — or download the DMG below." \
             "${{ steps.assets.outputs.zip }}" \
             "${{ steps.assets.outputs.dmg }}"
 
@@ -204,7 +204,7 @@ jobs:
           python3 - "$VERSION" "$SHA" <<'PY'
           import re, sys
           version, sha = sys.argv[1], sys.argv[2]
-          path = "Casks/decocms-desktop.rb"
+          path = "Casks/deco.rb"
           s = open(path).read()
           s = re.sub(r'version "[^"]*"', f'version "{version}"', s, count=1)
           s = re.sub(r'sha256 (?::no_check|"[^"]*")', f'sha256 "{sha}"', s, count=1)
@@ -212,7 +212,7 @@ jobs:
           PY
           git config user.name "decocms-release[bot]"
           git config user.email "decocms-release[bot]@users.noreply.github.com"
-          git add Casks/decocms-desktop.rb
+          git add Casks/deco.rb
           git commit -m "[chore]: bump homebrew cask to $VERSION"
           # Authenticate the push with the App token (the checkout's default
           # credential cannot push through branch protection), with the same

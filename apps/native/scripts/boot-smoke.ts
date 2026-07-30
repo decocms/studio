@@ -52,7 +52,9 @@ import {
 } from "./boot-smoke-paths";
 
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
-const APP_BINARY_NAME = "decocms-desktop";
+// The BUNDLE's name (tauri.conf productName) — the raw cargo binary in
+// target/(debug|release)/ keeps the crate name `decocms-desktop`.
+const APP_BINARY_NAME = "deco";
 const APP_BUNDLE = join(
   DESKTOP_DIR,
   `target/release/bundle/macos/${APP_BINARY_NAME}.app`,
@@ -150,7 +152,9 @@ async function ensureBuilt(forceRebuild: boolean): Promise<void> {
     const bundleBin = statSync(binaryPath()).mtimeMs;
     const webDir = join(DESKTOP_DIR, "..", "web");
     const inputs = [
-      join(DESKTOP_DIR, "target", "release", "decocms-desktop"),
+      // `mainBinaryName` renames the build output; dev builds keep the
+      // crate name, but this staleness probe always follows a `tauri build`.
+      join(DESKTOP_DIR, "target", "release", "deco"),
       join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
       join(webDir, "index.native.html"),
       join(webDir, "vite.config.ts"),
@@ -214,10 +218,8 @@ function livingChildPids(pid: number): number[] {
 /** All PIDs matching the desktop binaries, for the pre/post orphan diff. */
 function sweepForBinaries(): number[] {
   return [
-    ...livingProcessesMatching("target/(debug|release)/decocms-desktop"),
-    ...livingProcessesMatching(
-      "target/(debug|release)/bundle/macos/decocms-desktop",
-    ),
+    ...livingProcessesMatching("target/(debug|release)/deco"),
+    ...livingProcessesMatching("target/(debug|release)/bundle/macos/deco"),
     ...livingProcessesMatching("target/(debug|release)/local-api"),
   ];
 }

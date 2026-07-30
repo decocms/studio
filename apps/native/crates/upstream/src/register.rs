@@ -18,7 +18,7 @@
 /// `client_name` sent on every registration — distinguishes this app's
 /// registrations from the CLI's (`"decocms-cli"`, `login.ts`) in any
 /// server-side client list a user or admin might inspect.
-const CLIENT_NAME: &str = "decocms-desktop";
+const CLIENT_NAME: &str = "deco";
 
 #[derive(Debug, thiserror::Error)]
 pub enum RegisterError {
@@ -82,7 +82,7 @@ mod tests {
             "/api/auth/mcp/register",
             post(|body: axum::body::Bytes| async move {
                 let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                assert_eq!(v["client_name"], "decocms-desktop");
+                assert_eq!(v["client_name"], "deco");
                 assert_eq!(v["token_endpoint_auth_method"], "none");
                 assert_eq!(v["application_type"], "native");
                 assert_eq!(v["redirect_uris"][0], "http://127.0.0.1:9/");

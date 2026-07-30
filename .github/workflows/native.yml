@@ -353,8 +353,8 @@ jobs:
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: decocms-desktop-app
-          path: apps/native/target/release/bundle/macos/decocms-desktop.app
+          name: deco-app
+          path: apps/native/target/release/bundle/macos/deco.app
           if-no-files-found: error
           retention-days: 14
 
