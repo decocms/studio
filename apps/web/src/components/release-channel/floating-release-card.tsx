@@ -2,6 +2,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { useState } from "react";
 import { AnnouncementCard } from "@/components/announcement-card";
 import { DownloadAppDialog } from "@/components/download-app-dialog";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
@@ -48,10 +49,14 @@ export function FloatingReleaseCard() {
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const isDesktopApp = useIsDesktopApp();
   const now = Date.now();
   const candidate = pickFloatingCandidate(now);
 
   if (!candidate) return null;
+  // An install prompt inside the installed app is noise — skip releases
+  // whose CTA is the download action when running in the Tauri shell.
+  if (isDesktopApp && candidate.cta && "action" in candidate.cta) return null;
   if (!isUserOldEnoughForReleaseNotice(session?.user?.createdAt, now)) {
     return null;
   }
