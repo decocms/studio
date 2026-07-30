@@ -288,7 +288,8 @@ function AssigneeDisplay({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title="Assign"
+          title={t("taskBoard.taskBoard.assignButton")}
+          aria-label={t("taskBoard.taskBoard.assignButton")}
           onClick={(e) => {
             e.stopPropagation();
             setOpen(true);
