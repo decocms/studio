@@ -139,22 +139,45 @@ jobs:
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
 
-      - name: tauri build
+      # Tauri's CLI signs whenever APPLE_SIGNING_IDENTITY is *defined* — and
+      # an `env:` mapping of an unset secret defines it as "", so mapping the
+      # secrets directly onto `tauri build` made every unconfigured run die
+      # in codesign with `no identity found` instead of shipping unsigned.
+      # Export each var only when its secret is non-empty; a var that is
+      # absent (not empty) leaves an unsigned build
+      # (https://v2.tauri.app/distribute/sign/macos/).
+      #
+      # TAURI_SIGNING_* signs the updater artifact the day tauri.conf enables
+      # the `updater` bundle target. Wired in this SHIPPING job (not just
+      # native.yml's non-shipping CI build) so no edit is needed here on
+      # release day; a no-op while that target stays dormant.
+      - name: Export signing env
         if: steps.guard.outputs.release == 'true'
-        working-directory: apps/native
         env:
-          # Consumed by the Tauri CLI when non-empty; absent secrets leave an
-          # unsigned build (https://v2.tauri.app/distribute/sign/macos/).
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Signs the updater artifact the day tauri.conf enables the
-          # `updater` bundle target. Wired in the SHIPPING job (not just
-          # native.yml's non-shipping CI build) so no edit is needed here on
-          # release day; a no-op while that target stays dormant.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # Heredoc form because TAURI_SIGNING_PRIVATE_KEY may be multiline.
+        run: |
+          for VAR in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD \
+                     APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY \
+                     TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -n "${!VAR}" ]; then
+              {
+                echo "$VAR<<__SIGNING_EOF__"
+                echo "${!VAR}"
+                echo "__SIGNING_EOF__"
+              } >> "$GITHUB_ENV"
+            fi
+          done
+
+      - name: tauri build
+        if: steps.guard.outputs.release == 'true'
+        working-directory: apps/native
+        # Signing env (when configured) comes from "Export signing env" above.
         # The binary's version comes from apps/native/package.json — the one
         # release-tagging bumps — overriding Cargo.toml's static workspace
         # version, so the DMG, the About panel, and the cask all agree.
@@ -276,4 +299,3 @@ jobs:
           done
           echo "::error::cask bump push failed after retries"
           exit 1
-          git push "$REMOTE" HEAD:main
