@@ -122,6 +122,12 @@ import { usePanelActions } from "@/layouts/shell-layout";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
+import {
+  isRectOverChatDropTarget,
+  TASK_CHAT_DRAG_OVER_EVENT,
+  TASK_CHAT_DROP_EVENT,
+  type DraggedTaskPayload,
+} from "@/lib/task-drag";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/components/chat/types";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
@@ -1180,8 +1186,38 @@ function Lanes({
     );
   };
 
+  // Tracks whether the dragged card is currently hovering the chat composer
+  // (a sibling panel outside this DndContext) — only dispatched on
+  // enter/leave transitions so the composer isn't re-rendered every frame.
+  const wasOverChatRef = useRef(false);
+  const notifyChatDragOver = (over: boolean) => {
+    if (wasOverChatRef.current === over) return;
+    wasOverChatRef.current = over;
+    window.dispatchEvent(
+      new CustomEvent(TASK_CHAT_DRAG_OVER_EVENT, { detail: over }),
+    );
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const id = String(event.active.id);
+    const draggedRect = event.active.rect.current.translated;
+    notifyChatDragOver(false);
+    if (draggedRect && isRectOverChatDropTarget(draggedRect)) {
+      const item = placed.find((candidate) => candidate.id === id);
+      setActiveId(null);
+      setOverrides(new Map());
+      if (item) {
+        const payload: DraggedTaskPayload = {
+          id: item.id,
+          title: item.title,
+          description: item.description,
+        };
+        window.dispatchEvent(
+          new CustomEvent(TASK_CHAT_DROP_EVENT, { detail: payload }),
+        );
+      }
+      return;
+    }
     setActiveId(null);
     const lane =
       laneOf(event.over?.id) ?? placed.find((item) => item.id === id)?.status;
@@ -1243,9 +1279,14 @@ function Lanes({
         setActiveId(String(event.active.id));
         setLandedIds([]);
       }}
+      onDragMove={(event) => {
+        const rect = event.active.rect.current.translated;
+        notifyChatDragOver(Boolean(rect && isRectOverChatDropTarget(rect)));
+      }}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={() => {
+        notifyChatDragOver(false);
         setActiveId(null);
         setOverrides(new Map());
       }}

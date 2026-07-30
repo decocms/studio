@@ -48,6 +48,13 @@ import {
   type UnsupportedFileInfo,
 } from "./tiptap/file";
 import { useCurrentEditor } from "@tiptap/react";
+import { insertMention } from "./tiptap/mention";
+import {
+  CHAT_DROP_TARGET_ATTR,
+  TASK_CHAT_DRAG_OVER_EVENT,
+  TASK_CHAT_DROP_EVENT,
+  type DraggedTaskPayload,
+} from "@/lib/task-drag";
 import {
   TiptapInput,
   TiptapProvider,
@@ -92,7 +99,7 @@ function useWindowFileDrop(
 ) {
   const { editor } = useCurrentEditor();
   const t = useT();
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [dragKind, setDragKind] = useState<"file" | "task" | null>(null);
   const dragCounterRef = useRef(0);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -101,14 +108,14 @@ function useWindowFileDrop(
       if (e.dataTransfer?.types.includes("Files")) {
         e.preventDefault();
         dragCounterRef.current++;
-        setIsDraggingOver(true);
+        setDragKind("file");
       }
     };
     const onDragLeave = (e: DragEvent) => {
       e.preventDefault();
       dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
       if (dragCounterRef.current === 0) {
-        setIsDraggingOver(false);
+        setDragKind(null);
       }
     };
     const onDragOver = (e: DragEvent) => {
@@ -119,7 +126,7 @@ function useWindowFileDrop(
     const onDrop = (e: DragEvent) => {
       e.preventDefault();
       dragCounterRef.current = 0;
-      setIsDraggingOver(false);
+      setDragKind(null);
 
       if (
         disabled ||
@@ -165,7 +172,37 @@ function useWindowFileDrop(
     };
   }, [editor, selectedModel, onUnsupportedFile, t, disabled]);
 
-  return isDraggingOver;
+  // Task board cards drag via dnd-kit (pointer events, not native DragEvents)
+  // from a sibling panel outside this composer's DOM tree — the board
+  // hit-tests against `data-chat-drop-target` and notifies over these window
+  // events instead (see apps/web/src/lib/task-drag.ts).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const onTaskDragOver = (e: Event) => {
+      const over = (e as CustomEvent<boolean>).detail;
+      setDragKind((prev) => (over ? "task" : prev === "task" ? null : prev));
+    };
+    const onTaskDrop = (e: Event) => {
+      setDragKind(null);
+      if (disabled || !editor) return;
+      const task = (e as CustomEvent<DraggedTaskPayload>).detail;
+      insertMention(editor, editor.state.selection, {
+        id: task.id,
+        name: task.title,
+        char: "@",
+        kind: "task",
+        metadata: { title: task.title, description: task.description },
+      });
+    };
+    window.addEventListener(TASK_CHAT_DRAG_OVER_EVENT, onTaskDragOver);
+    window.addEventListener(TASK_CHAT_DROP_EVENT, onTaskDrop);
+    return () => {
+      window.removeEventListener(TASK_CHAT_DRAG_OVER_EVENT, onTaskDragOver);
+      window.removeEventListener(TASK_CHAT_DROP_EVENT, onTaskDrop);
+    };
+  }, [editor, disabled]);
+
+  return dragKind;
 }
 
 // ============================================================================
@@ -203,6 +240,18 @@ function FileDropZoneUnsupported() {
   );
 }
 
+function TaskDropZone() {
+  const t = useT();
+  return (
+    <>
+      <BookOpen01 size={24} />
+      <span className="text-sm font-medium">
+        {t("chat.input.dropTaskHere")}
+      </span>
+    </>
+  );
+}
+
 // ============================================================================
 // FileDropZone - Overlay that catches file drops from anywhere on the window
 // ============================================================================
@@ -216,7 +265,7 @@ function FileDropZone({
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
   disabled?: boolean;
 }) {
-  const isDraggingOver = useWindowFileDrop(
+  const dragKind = useWindowFileDrop(
     selectedModel,
     onUnsupportedFile,
     disabled,
@@ -227,13 +276,15 @@ function FileDropZone({
     <div
       className={cn(
         "absolute inset-0 z-20 rounded-xl flex flex-col items-center justify-center gap-2 bg-muted border-2 border-dashed transition-opacity",
-        isDraggingOver ? "opacity-100" : "opacity-0 pointer-events-none",
-        supportsFiles
-          ? "border-primary/40 text-primary/70"
-          : "border-destructive/30 text-destructive/70",
+        dragKind ? "opacity-100" : "opacity-0 pointer-events-none",
+        dragKind === "file" && !supportsFiles
+          ? "border-destructive/30 text-destructive/70"
+          : "border-primary/40 text-primary/70",
       )}
     >
-      {supportsFiles ? (
+      {dragKind === "task" ? (
+        <TaskDropZone />
+      ) : supportsFiles ? (
         <FileDropZoneSupported selectedModel={selectedModel} />
       ) : (
         <FileDropZoneUnsupported />
@@ -568,7 +619,10 @@ export function ChatInput({
   return (
     <>
       <div className="flex flex-col w-full justify-end">
-        <div className="relative rounded-2xl w-full flex flex-col">
+        <div
+          {...{ [CHAT_DROP_TARGET_ATTR]: true }}
+          className="relative rounded-2xl w-full flex flex-col"
+        >
           {/* Muted background for connections banner - peeks through form's bottom radius */}
           {showConnectionsBanner && (
             <div className="absolute inset-0 rounded-2xl pointer-events-none bg-muted/50" />

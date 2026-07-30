@@ -4,6 +4,7 @@
  */
 
 import { KEYS } from "@/lib/query-keys";
+import { useTaskBoardItems } from "@/hooks/use-task-board-items";
 import {
   isDecopilot,
   listResources,
@@ -29,15 +30,17 @@ interface AtMentionProps {
   suggestionOpenRef?: { current: boolean };
 }
 
-type AtMode = "categories" | "agents" | "resources";
+type AtMode = "categories" | "agents" | "resources" | "tasks";
 
 interface AtItem extends BaseItem {
   /** Discriminator for item type */
-  kind: "category" | "agent" | "resource";
+  kind: "category" | "agent" | "resource" | "task";
   /** Agent ID (for agents) */
   agentId?: string;
   /** Resource URI (for resources) */
   uri?: string;
+  /** Task board item (for tasks) */
+  taskId?: string;
 }
 
 export const AtMention = ({
@@ -49,6 +52,7 @@ export const AtMention = ({
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const agents = useVirtualMCPs();
+  const { items: tasks } = useTaskBoardItems();
   // Dev agents are reached via the Develop/Live toggle, not @-mentioned.
   const devAgentIds = getDevAgentIds(agents);
   const client = useMCPClient({
@@ -86,6 +90,13 @@ export const AtMention = ({
       kind: "category" as const,
       drillable: true,
     },
+    {
+      name: "tasks",
+      title: t("chat.mentionAt.tasksTitle"),
+      description: t("chat.mentionAt.tasksDescription"),
+      kind: "category" as const,
+      drillable: true,
+    },
   ];
 
   const handleItemSelect = async ({
@@ -104,7 +115,13 @@ export const AtMention = ({
 
     if (item.kind === "category") {
       // Drill into category — keep menu open
-      setMode(item.name === "agents" ? "agents" : "resources");
+      setMode(
+        item.name === "agents"
+          ? "agents"
+          : item.name === "tasks"
+            ? "tasks"
+            : "resources",
+      );
       return false;
     }
 
@@ -114,6 +131,22 @@ export const AtMention = ({
         name: item.name,
         metadata: { agentId: item.agentId, title: item.name },
         char: "@",
+      });
+      setMode("categories");
+      return;
+    }
+
+    if (item.kind === "task" && item.taskId) {
+      const task = tasks.find((t) => t.id === item.taskId);
+      insertMention(editor, range, {
+        id: item.taskId,
+        name: item.title ?? item.name,
+        char: "@",
+        kind: "task",
+        metadata: {
+          title: item.title ?? item.name,
+          description: task?.description,
+        },
       });
       setMode("categories");
       return;
@@ -193,7 +226,21 @@ export const AtMention = ({
           }));
       })();
 
-      return [...matchedAgents, ...matchedResources];
+      const matchedTasks: AtItem[] = tasks
+        .filter(
+          (task) =>
+            task.title.toLowerCase().includes(lq) ||
+            task.description?.toLowerCase().includes(lq),
+        )
+        .map((task) => ({
+          name: task.title,
+          title: task.title,
+          description: task.description ?? undefined,
+          kind: "task" as const,
+          taskId: task.id,
+        }));
+
+      return [...matchedAgents, ...matchedResources, ...matchedTasks];
     }
 
     if (currentMode === "agents") {
@@ -219,6 +266,25 @@ export const AtMention = ({
         icon: agent.icon ?? null,
         kind: "agent" as const,
         agentId: agent.id,
+      }));
+    }
+
+    if (currentMode === "tasks") {
+      let filtered = tasks;
+      if (query.trim()) {
+        const lq = query.toLowerCase();
+        filtered = filtered.filter(
+          (task) =>
+            task.title.toLowerCase().includes(lq) ||
+            task.description?.toLowerCase().includes(lq),
+        );
+      }
+      return filtered.map((task) => ({
+        name: task.title,
+        title: task.title,
+        description: task.description ?? undefined,
+        kind: "task" as const,
+        taskId: task.id,
       }));
     }
 

@@ -261,6 +261,7 @@ export const chat = {
   "chat.input.createImage": "Criar imagem",
   "chat.input.deepResearch": "Pesquisa profunda",
   "chat.input.dropFilesHere": "Solte {fileTypes} aqui",
+  "chat.input.dropTaskHere": "Solte para referenciar esta tarefa",
   "chat.input.microphoneAccessDenied":
     "Acesso ao microfone negado — clique para tentar novamente",
   "chat.input.modelCannotReadAttachments":
@@ -277,7 +278,7 @@ export const chat = {
   "chat.input.voiceInput": "Entrada de voz",
   "chat.input.webSearch": "Busca na web",
   "chat.input.placeholder":
-    "Pergunte qualquer coisa, / para prompts & habilidades, @ para agentes & recursos...",
+    "Pergunte qualquer coisa, / para prompts & habilidades, @ para agentes, recursos & tarefas...",
   "chat.markdown.copyAsCSV": "Copiar como CSV",
   "chat.markdown.copyCode": "Copiar código",
   "chat.markdown.image": "Imagem",
@@ -289,6 +290,8 @@ export const chat = {
     "Falha ao carregar recurso. Tente novamente.",
   "chat.mentionAt.resourcesDescription": "Anexar um recurso como contexto",
   "chat.mentionAt.resourcesTitle": "Recursos",
+  "chat.mentionAt.tasksDescription": "Referenciar uma tarefa como contexto",
+  "chat.mentionAt.tasksTitle": "Tarefas",
   "chat.mentionSlash.failedLoadPrompt":
     "Falha ao carregar prompt. Tente novamente.",
   "chat.mentionSlash.failedLoadResource":
