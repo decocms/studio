@@ -8,6 +8,7 @@ import {
   agentOptionFor,
   agentOptionIsAvailable,
   preferredLocalAgentOption,
+  resolveNativeAgentOption,
   resolveOfflineAgentOption,
 } from "./agent-options";
 
@@ -136,6 +137,65 @@ describe("preferredLocalAgentOption", () => {
         codex: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveNativeAgentOption", () => {
+  test("does not turn unresolved native detection into cloud Decopilot", () => {
+    const unresolved = {
+      ...ALL_AVAILABLE,
+      claudeCode: false,
+      codex: false,
+    };
+    for (const pendingOption of [null, "decopilot"] as const) {
+      expect(
+        resolveNativeAgentOption({
+          pendingOption,
+          lockedHarness: null,
+          availability: unresolved,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  test("ignores a stale persisted Decopilot choice", () => {
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "decopilot",
+        lockedHarness: null,
+        availability: ALL_AVAILABLE,
+      }),
+    ).toBe("claude-code-desktop");
+  });
+
+  test("uses Codex when it is the only detected local CLI", () => {
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: null,
+        lockedHarness: null,
+        availability: { ...ALL_AVAILABLE, claudeCode: false },
+      }),
+    ).toBe("codex-desktop");
+  });
+
+  test("preserves an explicit local choice", () => {
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "codex-desktop",
+        lockedHarness: null,
+        availability: ALL_AVAILABLE,
+      }),
+    ).toBe("codex-desktop");
+  });
+
+  test("a locked local harness wins without requiring its sandbox tuple", () => {
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "codex-desktop",
+        lockedHarness: "claude-code",
+        availability: ALL_AVAILABLE,
+      }),
+    ).toBe("claude-code-desktop");
   });
 });
 
