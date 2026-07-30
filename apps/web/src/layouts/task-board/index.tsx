@@ -3,7 +3,7 @@
  * description, status, priority, assignee), independent of chat threads.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -107,6 +107,7 @@ import {
 import { useTags } from "@/hooks/use-tags";
 import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -1076,6 +1077,7 @@ function Lanes({
   //      to its old lane for a frame.
   // Entries retire themselves once `items` reports the same placement.
   const [overrides, setOverrides] = useState<Map<string, Placement>>(new Map());
+  const boardRef = useRef<HTMLDivElement>(null);
 
   const placed =
     overrides.size > 0
@@ -1104,6 +1106,15 @@ function Lanes({
       });
     }
   }
+
+  // Animates lane changes that land without a drag (agent auto-move, the bulk
+  // "Move to" action) — disabled while `activeId` is set so it stays out of
+  // dnd-kit's own motion during an actual drag.
+  useFlipLanes(
+    boardRef,
+    placed.map((item) => `${item.id}:${item.status}`).join(","),
+    activeId === null,
+  );
 
   const laneItems = (status: TaskBoardItemStatus) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
@@ -1241,7 +1252,7 @@ function Lanes({
     >
       {/* Scroll container spans the full panel width so the wheel works even
           when the pointer is in the empty margins on wide monitors. */}
-      <div className="min-h-0 flex-1 overflow-x-auto">
+      <div ref={boardRef} className="min-h-0 flex-1 overflow-x-auto">
         {/* Padding lives on the capped row (not the scroll container) so its
             left edge matches the header's max-w + px exactly. Bottom breathing
             room is handled per-lane by each column's own scrollable div — a pb
@@ -1284,7 +1295,10 @@ function Lanes({
         // `landed` / `animate-card-land`), which reads regardless of distance.
         <DragOverlay dropAnimation={null}>
           {activeItem && (
-            <div className="relative cursor-grabbing">
+            // Matches the lane's card width (w-[300px] column minus the
+            // scroll container's px-1) — outside the lane, nothing else
+            // constrains the card's width, so it would shrink to its content.
+            <div className="relative w-[292px] cursor-grabbing">
               <TaskCard
                 item={activeItem}
                 assignee={
@@ -1299,7 +1313,7 @@ function Lanes({
                 }
                 selected={selectedIds.has(activeItem.id)}
                 onOpen={() => {}}
-                className="shadow-lg"
+                className="w-full shadow-lg"
               />
               {activeGroup.length > 1 && (
                 <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
@@ -1368,9 +1382,26 @@ function Lane({
       )}
     >
       {/* Sticky so the column header stays visible while the cards scroll
-          vertically under it. */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
-        <LaneIcon size={15} className={cn("shrink-0", config.iconClassName)} />
+          vertically under it — needs an opaque bg for that to hide scrolled-
+          under cards, so it tracks the lane's own highlight color (solid,
+          since bg-muted/50 would let cards show through) rather than a fixed
+          one that'd seam against it while a drag is over the lane. */}
+      <div
+        className={cn(
+          "sticky top-0 z-10 flex items-center gap-2 px-2 py-1.5 transition-colors",
+          isTarget ? "bg-muted" : "bg-background",
+        )}
+      >
+        {/* Static in the header — unlike the card's own status icon, this
+            one isn't tied to a specific task, so spinning it reads as the
+            whole lane being "busy" rather than as in-progress work. */}
+        <LaneIcon
+          size={15}
+          className={cn(
+            "shrink-0",
+            config.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+          )}
+        />
         <span className="text-sm font-medium text-foreground">
           {t(config.labelKey)}
         </span>
@@ -1410,9 +1441,12 @@ function Lane({
         </button>
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
-          overflow-y container clips the x-axis too. */}
+          overflow-y container clips the x-axis too, which would clip a FLIP-
+          animated card mid-flight between lanes (see `use-flip-lanes`,
+          keyed off `data-lane-scroll`). */}
       <div
         ref={setNodeRef}
+        data-lane-scroll={status}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
       >
         <SortableContext
@@ -1481,20 +1515,27 @@ function SortableTaskCard({
   } = useSortable({ id: item.id });
 
   return (
-    <TaskCard
-      {...props}
-      item={item}
-      dragRef={setNodeRef}
-      bindings={{ attributes, listeners }}
-      className={cn(landed && "animate-card-land")}
-      style={{
-        transform: CSS.Translate.toString(transform),
-        transition,
-        // The dragged card (and the rest of its group, riding along in the
-        // overlay) leaves a gap rather than a ghost.
-        opacity: isDragging || hidden ? 0 : undefined,
-      }}
-    />
+    // FLIP (see `use-flip-lanes`) owns this wrapper's `transform`/`transition`
+    // imperatively, outside React — it needs an element React never re-styles
+    // itself, since dnd-kit's own transform/transition below is applied to the
+    // card and gets reset on every render, which would cancel FLIP's animation
+    // as soon as any unrelated re-render landed mid-flight.
+    <div className="flex" data-flip-id={item.id} data-flip-lane={item.status}>
+      <TaskCard
+        {...props}
+        item={item}
+        dragRef={setNodeRef}
+        bindings={{ attributes, listeners }}
+        className={cn("w-full", landed && "animate-card-land")}
+        style={{
+          transform: CSS.Translate.toString(transform),
+          transition,
+          // The dragged card (and the rest of its group, riding along in the
+          // overlay) leaves a gap rather than a ghost.
+          opacity: isDragging || hidden ? 0 : undefined,
+        }}
+      />
+    </div>
   );
 }
 
