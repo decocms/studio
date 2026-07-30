@@ -1104,8 +1104,14 @@ export function resolveSchema(
       if (!isChoiceUnion || def.properties) continue;
       const built = buildProperty(def, 0);
       if (built.type === "inline-union" && built.inlineUnionBranches) {
+        // deco names an anonymous union def after its branches
+        // ("A|B|C" / a jsdelivr URL "…@Props"). That machine name leaks in as
+        // the field label — drop it unless the dev gave the type a real @title.
+        const machineTitle =
+          typeof built.title === "string" && /[|@]|:\/\//.test(built.title);
         return {
           ...built,
+          title: machineTitle ? undefined : built.title,
           inlineUnionBranches: resolveTypeConst
             ? built.inlineUnionBranches.map((branch) => ({
                 ...branch,

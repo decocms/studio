@@ -86,7 +86,7 @@ export function InlineUnionField(props: FieldProps) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor={path}>{label}</Label>
+        {label && <Label htmlFor={path}>{label}</Label>}
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>
           <SelectTrigger id={path}>
             <SelectValue

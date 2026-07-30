@@ -1620,6 +1620,10 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
         // broke the first attempt (resolving one `$ref` level stopped here).
         Props: { $ref: "#/definitions/Union", title: "…@Props" },
         Union: {
+          // deco names an anonymous union def after its branches — this must
+          // NOT leak in as the field label.
+          title:
+            "AnonymousWithoutCart|AnonymousWithCart|LoggedIn|LoggedInWithRecentOrders",
           anyOf: [
             { $ref: "#/definitions/AnonymousWithoutCart" },
             { $ref: "#/definitions/LoggedIn" },
@@ -1679,6 +1683,8 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
       "Logged in",
       "Logged in with recent orders",
     ]);
+    // The machine-generated union name must not leak in as the field label.
+    expect(resolved?.title).toBeUndefined();
   });
 
   test("carries __resolveType + segment as discriminators so both survive selection", () => {
