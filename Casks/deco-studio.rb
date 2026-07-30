@@ -29,6 +29,15 @@ cask "deco-studio" do
 
   app "deco.app"
 
+  # Drop this block once releases are signed + notarized (the six APPLE_*
+  # secrets in release-native.yaml) — at that point Gatekeeper passes and
+  # the quarantine flag no longer needs clearing.
+  caveats <<~EOS
+    deco studio is not yet signed/notarized, so macOS reports the app as
+    "damaged" on first launch. Clear the quarantine flag and relaunch:
+      xattr -dr com.apple.quarantine "#{appdir}/deco.app"
+  EOS
+
   zap trash: [
     "~/Library/Application Support/com.decocms.studio",
     "~/Library/Caches/com.decocms.studio",
