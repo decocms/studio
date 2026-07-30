@@ -66,6 +66,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
               type="button"
               variant="ghost"
               size="icon-sm"
+              aria-label={t("chat.queueTray.sendNow")}
               onClick={() => void stop()}
             >
               <ArrowUp size={14} />
@@ -96,6 +97,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
               variant="ghost"
               size="icon-sm"
               title={t("chat.queueTray.removeFromQueue")}
+              aria-label={t("chat.queueTray.removeFromQueue")}
               onClick={() =>
                 void actions.cancel(taskId, item.messageId).then((ok) => {
                   if (ok) {
