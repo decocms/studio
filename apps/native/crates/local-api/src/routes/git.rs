@@ -789,7 +789,10 @@ fn parse_porcelain_files(out: &str) -> Vec<GitStatusFile> {
                 let mut orig_path = None;
                 if is_rename_or_copy {
                     i += 1;
-                    orig_path = parts.get(i).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                    orig_path = parts
+                        .get(i)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string());
                 }
                 files.push(GitStatusFile {
                     path,
