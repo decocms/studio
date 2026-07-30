@@ -542,7 +542,14 @@ export function TaskBoardPage() {
             <div className="inline-flex rounded-lg bg-muted p-0.5">
               <LayoutToggle
                 active={layout === "list"}
-                onClick={() => setLayout("list")}
+                onClick={() => {
+                  setLayout("list");
+                  // Selection is a board-only concept (List has no way to see
+                  // or change which cards are selected) — leaving it wedges
+                  // the floating bulk-action bar on-screen, operating on a
+                  // selection the user can no longer see.
+                  clearSelection();
+                }}
                 icon={List}
                 label={t("common.taskBoard.listView")}
               />
