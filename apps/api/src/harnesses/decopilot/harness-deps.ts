@@ -167,17 +167,11 @@ export function buildClusterEnvironmentTools(args: {
               runContext.branch ?? undefined,
             ).catch(() => null);
           }
-          return createVirtualClientFrom(
-            vm,
-            ctx,
-            "passthrough",
-            opts?.superUser ?? false,
-            {
-              listTimeoutMs: opts?.listTimeoutMs,
-              includeSkillsCatalog: true,
-              additionalConnections: devConnection ? [devConnection] : [],
-            },
-          );
+          return createVirtualClientFrom(vm, ctx, opts?.superUser ?? false, {
+            listTimeoutMs: opts?.listTimeoutMs,
+            includeSkillsCatalog: true,
+            additionalConnections: devConnection ? [devConnection] : [],
+          });
         },
         provider: modelRuntime.thinking.provider,
         imageProvider:

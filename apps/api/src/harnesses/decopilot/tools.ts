@@ -129,9 +129,9 @@ export interface AssembleDecopilotToolsExtras {
   backgroundDispatcher?: BackgroundDispatcher | null;
   /**
    * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
-   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx,
-   * "passthrough", superUser, { listTimeoutMs })` so the daemon/desktop can
-   * swap in an HTTP `Client` at the agent's `mcp.url`. The cluster impl
+   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx, superUser,
+   * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
+   * the agent's `mcp.url`. The cluster impl
    * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
    * `PassthroughClient`; the caller owns closing it via `result.close()`.
    */

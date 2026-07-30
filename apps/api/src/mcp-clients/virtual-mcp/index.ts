@@ -53,7 +53,7 @@ export async function createVirtualClient(
   }
 
   // Create client from virtual MCP entity
-  return createVirtualClientFrom(virtualMcp, ctx, "passthrough", superUser);
+  return createVirtualClientFrom(virtualMcp, ctx, superUser);
 }
 
 /**
@@ -62,14 +62,12 @@ export async function createVirtualClient(
  *
  * @param virtualMcp - Virtual MCP entity from database
  * @param ctx - Studio context for creating proxies
- * @param _strategy - Kept for backward compatibility, always uses passthrough
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
  */
 export async function createVirtualClientFrom(
   virtualMcp: VirtualMCPEntity,
   ctx: StudioContext,
-  _strategy: "passthrough",
   superUser = false,
   options?: {
     listTimeoutMs?: number;
