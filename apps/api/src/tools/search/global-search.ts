@@ -69,6 +69,16 @@ function toIso(value: string | Date | null | undefined): string {
   return typeof value === "string" ? value : value.toISOString();
 }
 
+/**
+ * Trims the query and treats a whitespace-only string as "no query" so it
+ * falls back to the documented "most recently updated" behavior instead of
+ * ILIKE-matching a literal run of whitespace against titles.
+ */
+export function normalizeSearchQuery(query: string): string | undefined {
+  const trimmed = query.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export const GLOBAL_SEARCH = defineTool({
   name: "GLOBAL_SEARCH",
   description:
@@ -97,7 +107,7 @@ export const GLOBAL_SEARCH = defineTool({
       const { threads, total } = await ctx.storage.threads.list(undefined, {
         limit,
         offset: 0,
-        search: input.query,
+        search: normalizeSearchQuery(input.query),
         includeArchived: false,
       });
       totalCount += total;

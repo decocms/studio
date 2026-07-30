@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { GLOBAL_SEARCH } from "./global-search";
+import { GLOBAL_SEARCH, normalizeSearchQuery } from "./global-search";
 
 describe("GLOBAL_SEARCH input schema", () => {
   it("rejects a query longer than 256 characters", () => {
@@ -14,5 +14,23 @@ describe("GLOBAL_SEARCH input schema", () => {
       query: "a".repeat(256),
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("normalizeSearchQuery", () => {
+  it("treats an empty string as no query", () => {
+    expect(normalizeSearchQuery("")).toBeUndefined();
+  });
+
+  it("treats a whitespace-only string as no query", () => {
+    expect(normalizeSearchQuery("   \n\t ")).toBeUndefined();
+  });
+
+  it("trims surrounding whitespace from a real query", () => {
+    expect(normalizeSearchQuery("  foo  ")).toBe("foo");
+  });
+
+  it("leaves an already-trimmed query unchanged", () => {
+    expect(normalizeSearchQuery("foo bar")).toBe("foo bar");
   });
 });
