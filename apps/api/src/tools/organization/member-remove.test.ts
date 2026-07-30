@@ -2,14 +2,18 @@ import { describe, expect, it, mock } from "bun:test";
 import { ORGANIZATION_MEMBER_REMOVE } from "./member-remove";
 
 function makeCtx(organization: { id: string } | undefined) {
-  const removeMember = mock(async () => {});
+  const removeMember = mock(async () => ({
+    member: { id: "member-1", userId: "removed-user-1" },
+  }));
+  const invalidateMemberRole = mock(() => {});
   const ctx = {
     auth: { user: { id: "user-1" } },
     organization,
     access: { check: mock(async () => {}) },
     boundAuth: { organization: { removeMember } },
+    invalidateMemberRole,
   } as unknown as Parameters<typeof ORGANIZATION_MEMBER_REMOVE.handler>[1];
-  return { ctx, removeMember };
+  return { ctx, removeMember, invalidateMemberRole };
 }
 
 describe("ORGANIZATION_MEMBER_REMOVE", () => {
@@ -44,5 +48,22 @@ describe("ORGANIZATION_MEMBER_REMOVE", () => {
       organizationId: "org-a",
       memberIdOrEmail: "member@example.com",
     });
+  });
+
+  it("invalidates the removed member's cached role", async () => {
+    // Regression: the cached role fast-path (member-role-cache.ts) was never
+    // invalidated on removal, so a just-removed admin/owner kept passing
+    // permission checks until the cache TTL expired.
+    const { ctx, invalidateMemberRole } = makeCtx({ id: "org-a" });
+
+    await ORGANIZATION_MEMBER_REMOVE.handler(
+      { organizationId: "org-a", memberIdOrEmail: "member@example.com" },
+      ctx,
+    );
+
+    expect(invalidateMemberRole).toHaveBeenCalledWith(
+      "removed-user-1",
+      "org-a",
+    );
   });
 });

@@ -394,7 +394,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       removeMember: async (data) => {
-        await auth.api.removeMember({
+        return auth.api.removeMember({
           headers,
           body: data,
         });
