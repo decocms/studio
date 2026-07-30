@@ -94,8 +94,6 @@ export const chat = {
     "useChatTask deve ser usado dentro de ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Fechar",
   "chat.collapsibleHighlight.closeTitle": "Fechar",
-  "chat.common.copy": "Copiar",
-  "chat.common.seeAll": "Ver todos os {count} {noun}",
   "chat.connectDesktopDialog.agentClaudeCodeDescription":
     "Executa através do CLI do Claude Code",
   "chat.connectDesktopDialog.agentClaudeCodeLabel": "Claude Code",
