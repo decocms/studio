@@ -59,6 +59,10 @@ Decopilot works with multiple AI providers — Anthropic, Google, OpenRouter, th
 
 When a task needs focused work — a customer-support question, a research pass, a data analysis — Decopilot can hand it off to a specialist [agent](/en/studio/agents) in a **subtask**. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
 
+<Callout type="tip">
+  **Self-hosting:** the number of `subtask` subagents that can run concurrently per pod is capped by the `DECOPILOT_MAX_CONCURRENT_SUBAGENTS` environment variable (default `4`). Extra calls queue and start as slots free. A malformed value now fails Studio at startup instead of silently falling back to a concurrency of 1.
+</Callout>
+
 ## Built-in tools
 
 Decopilot ships with tools for coordinating work across any scope:
