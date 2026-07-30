@@ -2,6 +2,7 @@ import {
   CheckCircle,
   FilterLines,
   Inbox01,
+  Monitor01,
   Stars02,
   Users03,
   Zap,
@@ -20,7 +21,11 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  cta?: { label: string; href: string };
+  // href navigates; action is handled by the card (currently only opening
+  // the desktop-app download dialog).
+  cta?:
+    | { label: string; href: string }
+    | { label: string; action: "download-app" };
   learnMoreHref?: string;
 }
 
@@ -29,6 +34,26 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 export const RELEASES: Release[] = [
+  {
+    id: "desktop-app-macos",
+    date: "2026-07-30",
+    eyebrow: "Now Available",
+    title: "The deco studio desktop app is here",
+    bullets: [
+      {
+        icon: Monitor01,
+        title: "A native Mac app",
+        body: "Run deco studio as a desktop app, with your org's filesystem mounted natively. macOS on Apple Silicon only for now — more platforms coming.",
+      },
+      {
+        icon: Zap,
+        title: "One-line install",
+        body: "Install and update through Homebrew with a single terminal command — click Download for Mac to copy it.",
+      },
+    ],
+    cta: { label: "Download for Mac", action: "download-app" },
+    learnMoreHref: "https://github.com/decocms/studio/releases",
+  },
   {
     id: "codex-gpt-5-6-defaults",
     date: "2026-07-13",
