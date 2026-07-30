@@ -22,6 +22,11 @@ function toIsoString(v: Date | string): string {
   return typeof v === "string" ? v : v.toISOString();
 }
 
+/** Escapes LIKE/ILIKE wildcards so a free-text `search` term matches a literal substring. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 // ============================================================================
 // Org-Scoped Thread Storage (repository pattern)
 // ============================================================================
@@ -579,7 +584,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
       );
     }
     if (options?.search) {
-      query = query.where("title", "ilike", `%${options.search}%`);
+      query = query.where(
+        "title",
+        "ilike",
+        `%${escapeLikePattern(options.search)}%`,
+      );
     }
     if (options?.status) {
       query = query.where("status", "=", options.status as ThreadStatus);
@@ -617,7 +626,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
       );
     }
     if (options?.search) {
-      countQuery = countQuery.where("title", "ilike", `%${options.search}%`);
+      countQuery = countQuery.where(
+        "title",
+        "ilike",
+        `%${escapeLikePattern(options.search)}%`,
+      );
     }
     if (options?.status) {
       countQuery = countQuery.where(
