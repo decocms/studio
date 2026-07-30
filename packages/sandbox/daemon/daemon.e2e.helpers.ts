@@ -32,12 +32,17 @@ const PORT_WAIT_TIMEOUT_MS = 20_000;
 /**
  * Resolve the command used to spawn the daemon under test.
  *
- * Default (`DAEMON_E2E_CMD` unset): run the bundled TS daemon under Bun. A
- * reimplementation sets `DAEMON_E2E_CMD` to its own argv — either a JSON array
+ * `raw` unset/empty: run the bundled TS daemon under Bun. A reimplementation
+ * sets `DAEMON_E2E_CMD` to its own argv — either a JSON array
  * (`["./target/release/daemon"]`, required when args contain spaces) or a
  * plain whitespace-separated string (`"bun /abs/daemon.js"`).
+ *
+ * `raw` is a required parameter rather than defaulting to the env var: a JS
+ * default fires on an explicit `undefined` too, so with a default the
+ * "no override" case would be untestable under a DAEMON_E2E_CMD run — the
+ * conformance suite would fail on its own harness self-check.
  */
-export function resolveDaemonCmd(raw = process.env.DAEMON_E2E_CMD): string[] {
+export function resolveDaemonCmd(raw: string | undefined): string[] {
   if (!raw || raw.trim().length === 0) return ["bun", DAEMON_BUNDLE];
   try {
     const parsed = JSON.parse(raw);
@@ -53,7 +58,7 @@ export function resolveDaemonCmd(raw = process.env.DAEMON_E2E_CMD): string[] {
   return parts;
 }
 
-const DAEMON_CMD = resolveDaemonCmd();
+const DAEMON_CMD = resolveDaemonCmd(process.env.DAEMON_E2E_CMD);
 
 export interface Daemon {
   port: number;
