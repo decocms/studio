@@ -7,23 +7,32 @@ import {
 } from "./release-changes";
 
 const API_MANIFEST = "apps/api/package.json";
+const NATIVE_MANIFEST = "apps/native/package.json";
 
 describe("release change classification", () => {
   test.each([
     {
       files: ["apps/api/src/index.ts"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "server",
     },
     {
       files: ["apps/web/src/main.tsx"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "web",
     },
     {
       files: ["apps/api/src/index.ts", "apps/web/src/main.tsx"],
-      manifests: [API_MANIFEST],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
       scope: "both",
+    },
+    {
+      // Native-only: bumps the shared line (both manifests) but rolls no
+      // pod, so the deploy scope is "none" — the fix that stops a desktop
+      // change from triggering a full server+web rollout.
+      files: ["apps/native/crates/local-api/src/lib.rs"],
+      manifests: [API_MANIFEST, NATIVE_MANIFEST],
+      scope: "none",
     },
     {
       files: ["packages/runtime/src/index.ts"],
@@ -40,6 +49,23 @@ describe("release change classification", () => {
     },
   );
 
+  /** ONE release line: api, web and native changes all bump BOTH manifests,
+   *  so the deployed server and the installed desktop app always answer
+   *  "what version?" with the same number. A single-sided bump here is how
+   *  the two lines would silently fork. */
+  test("api, web and native changes each bump both manifests", () => {
+    for (const file of [
+      "apps/api/src/x.ts",
+      "apps/web/src/x.tsx",
+      "apps/native/src-tauri/tauri.conf.json5",
+    ]) {
+      expect(releaseManifestCandidates([file])).toEqual([
+        API_MANIFEST,
+        NATIVE_MANIFEST,
+      ]);
+    }
+  });
+
   test("maps release inputs to sorted, deduplicated manifests", () => {
     const files = [
       "packages/ui/src/button.tsx",
@@ -54,6 +80,7 @@ describe("release change classification", () => {
 
     expect(releaseManifestCandidates(files)).toEqual([
       API_MANIFEST,
+      NATIVE_MANIFEST,
       "packages/runtime/package.json",
       "packages/ui/package.json",
     ]);

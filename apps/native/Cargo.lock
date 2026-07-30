@@ -951,7 +951,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "decocms-desktop"
+name = "deco"
 version = "0.1.0"
 dependencies = [
  "async-trait",

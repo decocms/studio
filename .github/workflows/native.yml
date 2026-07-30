@@ -250,15 +250,12 @@ jobs:
           bun test e2e
 
   # ---------------------------------------------------------------------
-  # 4. tauri-build — bundles the debug .app, uploads it as an artifact, and
-  #    boot-smokes it. macOS code-signing / notarization / updater-artifact
-  #    signing are handled ENTIRELY by the Tauri CLI itself once the
-  #    matching env vars are non-empty (https://v2.tauri.app/distribute/
-  #    sign/macos/) — this job does not hand-roll `security`/`notarytool`
-  #    calls, it just wires the documented secret names through as env and
-  #    lets `tauri build` no-op into an unsigned/ad-hoc build when they're
-  #    absent (the fork-safe default: every secret below is empty on a
-  #    fork PR, so signing/notarization are skipped, never failed).
+  # 4. tauri-build — bundles the RELEASE .app (the same profile
+  #    release-native.yaml ships; a debug bundle used to be built here but
+  #    gated nothing the release profile doesn't, while leaving the shipped
+  #    profile untested until release day), uploads it as an artifact, and
+  #    boot-smokes it. Unsigned always — signing/notarization live in
+  #    release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
     if: github.event_name != 'schedule'
@@ -342,7 +339,7 @@ jobs:
       - name: Build desktop frontend bundle
         run: bun run --cwd apps/web build:native
 
-      - name: tauri build --debug
+      - name: tauri build
         working-directory: apps/native
         # This build is NEVER signed, whether or not the secrets exist.
         # boot-smoke runs the binary directly and a Developer ID buys it
@@ -350,15 +347,14 @@ jobs:
         # of six repo secrets — which is exactly how it has been failing:
         # "failed codesign application: failed to import keychain certificate",
         # from a cert that is present but not importable. Signing belongs to
-        # the separate, secret-gated release job (see the native release
-        # contract).
-        run: bunx @tauri-apps/cli@latest build --debug
+        # release-native.yaml, the secret-gated release job.
+        run: bunx @tauri-apps/cli@latest build
 
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: decocms-desktop-debug-app
-          path: apps/native/target/debug/bundle/macos/decocms-desktop.app
+          name: deco-app
+          path: apps/native/target/release/bundle/macos/deco.app
           if-no-files-found: error
           retention-days: 14
 

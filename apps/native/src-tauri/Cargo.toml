@@ -1,5 +1,5 @@
 [package]
-name = "decocms-desktop"
+name = "deco"
 version.workspace = true
 description = "Studio desktop shell — Tauri v2 app embedding the local-api Rust core in-process"
 authors = ["decocms"]

@@ -99,7 +99,7 @@ function createFixture(): Fixture {
   const targetSource = `#!/bin/sh
 printf '%s\\n' "${basename(root)}:$*" >>"$FAKE_EXECUTION_LOG"
 `;
-  const app = join(root, "decocms-desktop");
+  const app = join(root, "deco");
   const otherBinary = join(root, "local-api-test");
   executable(app, targetSource);
   executable(otherBinary, targetSource);
@@ -135,7 +135,7 @@ if [ "\${1:-}" = "-d" ]; then
   if [ -f "$FAKE_SIGNATURE_STATE" ]; then
     cat "$FAKE_SIGNATURE_STATE" >&2
   else
-    printf '%s\\n' "Identifier=decocms-desktop" "Signature=adhoc" >&2
+    printf '%s\\n' "Identifier=deco" "Signature=adhoc" >&2
   fi
   exit 0
 fi

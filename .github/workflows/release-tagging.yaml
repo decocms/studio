@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/api/**"
       - "apps/web/**"
+      - "apps/native/**"
       - "package.json"
       - "scripts/build-studio.ts"
       - "scripts/release-changes.ts"

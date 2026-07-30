@@ -7,7 +7,7 @@
 set -eu
 
 bin="$1"
-if [ "${bin##*/}" != "decocms-desktop" ]; then
+if [ "${bin##*/}" != "deco" ]; then
   exec "$@"
 fi
 

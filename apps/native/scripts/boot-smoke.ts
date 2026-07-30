@@ -4,7 +4,8 @@
  *
  * End-to-end boot smoke for the Tauri shell (`apps/native/src-tauri/`):
  *
- *   1. Builds the debug `.app` bundle (`bunx @tauri-apps/cli build --debug`)
+ *   1. Builds the release `.app` bundle (`bunx @tauri-apps/cli build`) —
+ *      the same profile the shipped app uses, so the smoke gates what ships
  *      if it doesn't already exist (pass `--rebuild` to force a fresh
  *      build — useful after touching Rust or frontend source).
  *   2. Launches `Contents/MacOS/<bin>` DIRECTLY (not `open -a`, which
@@ -20,7 +21,7 @@
  *   5. Checks for orphaned children: captures the app's OS-level
  *      descendant PIDs while it's running, then asserts none of them are
  *      still alive after it exits (`pgrep -P <pid>`, plus a broad
- *      `pgrep -f` sweep for the standalone `local-api`/`decocms-desktop`
+ *      `pgrep -f` sweep for the standalone `local-api`/`deco`
  *      binaries in case something detached from the process tree
  *      entirely — e.g. a double-forked PTY child).
  *
@@ -51,10 +52,10 @@ import {
 } from "./boot-smoke-paths";
 
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
-const APP_BINARY_NAME = "decocms-desktop";
+const APP_BINARY_NAME = "deco";
 const APP_BUNDLE = join(
   DESKTOP_DIR,
-  `target/debug/bundle/macos/${APP_BINARY_NAME}.app`,
+  `target/release/bundle/macos/${APP_BINARY_NAME}.app`,
 );
 const SELFTEST_DEADLINE_MS = 60_000;
 const ORPHAN_CHECK_SETTLE_MS = 1000;
@@ -149,7 +150,7 @@ async function ensureBuilt(forceRebuild: boolean): Promise<void> {
     const bundleBin = statSync(binaryPath()).mtimeMs;
     const webDir = join(DESKTOP_DIR, "..", "web");
     const inputs = [
-      join(DESKTOP_DIR, "target", "debug", "decocms-desktop"),
+      join(DESKTOP_DIR, "target", "release", "deco"),
       join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
       join(webDir, "index.native.html"),
       join(webDir, "vite.config.ts"),
@@ -169,15 +170,15 @@ async function ensureBuilt(forceRebuild: boolean): Promise<void> {
     log("existing bundle is older than its inputs — rebuilding");
   }
   log(
-    "building debug app bundle: bunx @tauri-apps/cli@latest build --debug --bundles app",
+    "building release app bundle: bunx @tauri-apps/cli@latest build --bundles app",
   );
   const code = await run(
     "bunx",
-    ["@tauri-apps/cli@latest", "build", "--debug", "--bundles", "app"],
+    ["@tauri-apps/cli@latest", "build", "--bundles", "app"],
     { cwd: DESKTOP_DIR },
   );
   if (code !== 0) {
-    fail(`tauri build --debug exited ${code}`);
+    fail(`tauri build exited ${code}`);
   }
   if (!existsSync(APP_BUNDLE)) {
     fail(`build reported success but ${APP_BUNDLE} does not exist`);
@@ -212,10 +213,19 @@ function livingChildPids(pid: number): number[] {
  *  child), which `pgrep -P` alone would miss. */
 /** All PIDs matching the desktop binaries, for the pre/post orphan diff. */
 function sweepForBinaries(): number[] {
+  // Each pattern ends the binary name at a word boundary (whitespace before
+  // args, or end of the command line). Without it, the bare `deco` prefix
+  // also matches sibling target binaries — `decocms-keychain-helper`, a
+  // dev-run `deco`-prefixed build — and a process spawning during the smoke
+  // window gets misreported as a leaked orphan.
   return [
-    ...livingProcessesMatching("target/debug/decocms-desktop"),
-    ...livingProcessesMatching("target/debug/bundle/macos/decocms-desktop"),
-    ...livingProcessesMatching("target/(debug|release)/local-api"),
+    ...livingProcessesMatching("target/(debug|release)/deco([[:space:]]|$)"),
+    ...livingProcessesMatching(
+      "target/(debug|release)/bundle/macos/deco\\.app/Contents/MacOS/deco([[:space:]]|$)",
+    ),
+    ...livingProcessesMatching(
+      "target/(debug|release)/local-api([[:space:]]|$)",
+    ),
   ];
 }
 

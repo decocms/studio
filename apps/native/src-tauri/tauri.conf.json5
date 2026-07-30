@@ -2,7 +2,7 @@
 // stable control-origin, cookie-auth, and preview-origin design.
 {
   "$schema": "https://schema.tauri.app/config/2",
-  productName: "decocms-desktop",
+  productName: "deco",
   version: "0.1.0",
   // Bundle identifier — stable across builds (org slugs / update manifests
   // key off this, and macOS Keychain ACLs the `crates/upstream` token store
