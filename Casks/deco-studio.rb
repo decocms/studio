@@ -27,6 +27,14 @@ cask "deco-studio" do
   depends_on formula: "git"
   depends_on formula: "ripgrep"
 
+  # The app updates itself (Tauri updater — see
+  # apps/native/docs/native-updater-plan.md). Without this, `brew upgrade`
+  # compares the tap version against its install receipt and REINSTALLS
+  # (downgrades) over a self-updated app. `--greedy` still overwrites, which
+  # is fine (the app self-updates back) and is the documented break-glass
+  # recovery path if the updater signing key is ever lost.
+  auto_updates true
+
   app "deco.app"
 
   # Drop this block once releases are signed + notarized (the six APPLE_*

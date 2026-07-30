@@ -229,6 +229,14 @@ pub fn build(
             "/_auth/mcp-callback/result",
             get(routes::mcp_callback::result).delete(routes::mcp_callback::discard),
         )
+        // Apply a staged self-update by restarting through the graceful
+        // shutdown pipeline — see routes::update's module doc. Lives in this
+        // guard-carrying sub-router deliberately: a top-level `.route()`
+        // would get only `require_expected_host` (no Origin check on POST,
+        // no session cookie), i.e. an unauthenticated restart trigger.
+        // Mounted in BOTH auth modes so the standalone binary answers its
+        // documented 409 and the e2e auth matrix can cover the route.
+        .route("/_local/update/restart", post(routes::update::restart))
         .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     let mut app = Router::new()
