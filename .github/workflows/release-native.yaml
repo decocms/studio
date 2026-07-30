@@ -47,8 +47,18 @@ jobs:
     env:
       BUN_VERSION: "1.3.14"
     steps:
+      # persist-credentials: false — checkout would otherwise store the
+      # default GITHUB_TOKEN as an http.extraheader Authorization header,
+      # which git keeps sending even on a push to an explicit
+      # x-access-token URL; the header wins, so the cask-bump push below
+      # authenticated as github-actions[bot] (not a ruleset bypass actor)
+      # and main's protection rejected it. Nothing else in this job needs
+      # persisted creds: the repo is public (fetches work anonymously) and
+      # every gh/push step supplies its own token.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read app version
         id: version
