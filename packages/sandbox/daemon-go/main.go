@@ -292,6 +292,9 @@ func (d *daemon) vmRoute(w http.ResponseWriter, r *http.Request, prefix, vmPath 
 	}
 	if method == "POST" {
 		switch vmPath {
+		case "/tools/sync":
+			d.handlers["tools-sync"](w, r)
+			return
 		case "/setup/clone":
 			d.handlers["setup-clone"](w, r)
 			return
@@ -650,6 +653,7 @@ func main() {
 			GetStatus:   d.getStatus,
 			SetStatus:   d.setStatus,
 		}),
+		"tools-sync":    routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
 		"setup-clone":   routes.Setup("clone", func(string) { d.orchestrator.ResumeFrom(setup.StepClone) }),
 		"setup-install": routes.Setup("install", func(string) { d.orchestrator.ResumeFrom(setup.StepInstall) }),
 		"setup-start":   routes.Setup("start", func(string) { d.orchestrator.ResumeFrom(setup.StepStart) }),

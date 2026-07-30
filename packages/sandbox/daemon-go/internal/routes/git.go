@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,11 @@ func GitPublish(deps GitDeps) http.HandlerFunc {
 			GetOperator: deps.GetOperator,
 		}, body.Message)
 		if err != nil {
+			var blocked *gitx.PublishBlockedError
+			if errors.As(err, &blocked) {
+				httpx.Error(w, 409, blocked.Error())
+				return
+			}
 			httpx.Error(w, 500, gitx.FormatGitError(err))
 			return
 		}

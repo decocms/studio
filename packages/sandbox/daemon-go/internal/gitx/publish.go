@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -41,6 +42,18 @@ func SyncOriginRemote(repoDir, cloneUrl string) error {
 	return err
 }
 
+// PublishBlockedError is returned when publish refuses the current branch. The
+// HTTP layer maps it to 409 — it is a precondition the caller can fix (switch
+// branches), not a daemon failure.
+type PublishBlockedError struct{ Branch string }
+
+func (e *PublishBlockedError) Error() string {
+	return fmt.Sprintf(
+		"Refusing to push to protected branch %q from a sandbox. Work on a feature branch; changes reach the default branch via PR.",
+		e.Branch,
+	)
+}
+
 type PublishDeps struct {
 	RepoDir     string
 	GetCloneUrl func() string
@@ -61,7 +74,11 @@ func changedPaths(status WorkingTreeStatus) []string {
 }
 
 func pushBranch(repoDir, branch string) error {
-	args := []string{"-c", "credential.helper=", "-c", "safe.directory=*", "push", "-u", "origin", branch}
+	// --no-verify: skip native pre-push hooks (parity with the --no-verify
+	// commit above). A repo's pre-push script can fail or hang the push, and the
+	// shutdown sync — which shares this path — has no room to wait it out before
+	// the pod's grace period elapses and SIGKILL drops the unsynced work.
+	args := []string{"-c", "credential.helper=", "-c", "safe.directory=*", "push", "--no-verify", "-u", "origin", branch}
 	env := map[string]string{
 		"GIT_CEILING_DIRECTORIES": repoDir,
 		"GIT_OPTIONAL_LOCKS":      "0",
@@ -82,6 +99,16 @@ func Publish(deps PublishDeps, message string) error {
 	}
 	if branch == "" || branch == "HEAD" {
 		return &GitError{Msg: "Cannot publish from a detached HEAD", Status: -1}
+	}
+	// The pre-push hook (InstallProtectedBranchHook) also guards this, but the
+	// push below runs with --no-verify and skips it — so the block MUST live in
+	// code too. Refuse before committing so we never leave a stray commit on a
+	// protected branch either. Changes reach the default branch via PR, never a
+	// direct push.
+	for _, protected := range ProtectedBranches(repoDir) {
+		if branch == protected {
+			return &PublishBlockedError{Branch: branch}
+		}
 	}
 
 	status, err := ComputeWorkingTreeStatus(repoDir)

@@ -80,25 +80,44 @@ func CheckoutBranch(p CheckoutBranchParams) error {
 	return fmt.Errorf("git ls-remote --heads origin %s exited %d", p.Branch, probe)
 }
 
+// The protected branch list is a plain data file, not interpolated into the
+// script, so an unusual (but valid) ref name can't inject shell syntax here.
 const protectedBranchHook = `#!/bin/sh
+protected="$(dirname "$0")/protected-branches"
 while IFS=' ' read -r _local_ref _local_sha remote_ref _remote_sha; do
   branch="${remote_ref#refs/heads/}"
-  case "$branch" in
-    main|master)
-      echo "error: pushing to '$branch' is not allowed from a sandbox" >&2
-      exit 1
-      ;;
-  esac
+  if grep -qxF "$branch" "$protected" 2>/dev/null; then
+    echo "error: pushing to '$branch' is not allowed from a sandbox" >&2
+    exit 1
+  fi
 done
 exit 0
 `
+
+// ProtectedBranches lists branches a sandbox must never push to directly. Not
+// every repo names its default branch main/master (trunk, develop, etc.) —
+// protect the repo's actual default too, or a sandbox push would sail straight
+// through on those repos. Single source of truth for both the pre-push hook and
+// the in-code guard in Publish (the hook alone is not enough: the publish path
+// pushes with --no-verify, which skips pre-push hooks entirely).
+func ProtectedBranches(repoDir string) []string {
+	out := []string{"main", "master"}
+	if def := ResolveRemoteDefaultBranch(repoDir); def != "" && def != "main" && def != "master" {
+		out = append(out, def)
+	}
+	return out
+}
 
 func InstallProtectedBranchHook(repoDir string) error {
 	hooksDir := filepath.Join(repoDir, ".git", "hooks")
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(hooksDir, "pre-push"), []byte(protectedBranchHook), 0o755)
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-push"), []byte(protectedBranchHook), 0o755); err != nil {
+		return err
+	}
+	list := strings.Join(ProtectedBranches(repoDir), "\n") + "\n"
+	return os.WriteFile(filepath.Join(hooksDir, "protected-branches"), []byte(list), 0o644)
 }
 
 func ConfigureGitIdentity(repoDir, userName, userEmail string) error {

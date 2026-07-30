@@ -39,14 +39,21 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 	}
 	defer clientConn.Close()
 
+	// A failure to reach the dev server is reported as a WebSocket close, not an
+	// HTTP error: by the time the browser has sent an upgrade it only surfaces
+	// close codes, and a 502 on the upgrade reads as a protocol error (1002).
 	if port == 0 {
-		closeHandshake(clientConn, r)
+		if completeHandshake(clientConn, r) == nil {
+			sendClose(clientConn, 1011, "no upstream dev server")
+		}
 		return
 	}
 
 	upstream, err := dialLoopbackTCP(port)
 	if err != nil {
-		clientConn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n"))
+		if completeHandshake(clientConn, r) == nil {
+			sendClose(clientConn, 1011, "upstream not reachable")
+		}
 		return
 	}
 	defer upstream.Close()
@@ -113,13 +120,14 @@ func writeUpgradeRequest(upstream net.Conn, r *http.Request) error {
 	return err
 }
 
-// closeHandshake completes the WS upgrade then immediately sends a close
-// frame — the port=null contract ("connect then close", not a 4xx).
-func closeHandshake(conn net.Conn, r *http.Request) {
+// completeHandshake answers the client's upgrade with a 101 so the connection
+// becomes a real WebSocket — the "connect then close" contract, which lets the
+// daemon report an upstream problem as a close code instead of a 4xx/5xx.
+func completeHandshake(conn net.Conn, r *http.Request) error {
 	key := r.Header.Get("Sec-Websocket-Key")
 	if key == "" {
 		conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"))
-		return
+		return fmt.Errorf("missing Sec-WebSocket-Key")
 	}
 	h := sha1.New()
 	io.WriteString(h, key+wsGUID)
@@ -135,7 +143,20 @@ func closeHandshake(conn net.Conn, r *http.Request) {
 		}
 	}
 	b.WriteString("\r\n")
-	conn.Write([]byte(b.String()))
-	// Server-sent close frame: FIN + opcode 8, empty payload.
-	conn.Write([]byte{0x88, 0x00})
+	_, err := conn.Write([]byte(b.String()))
+	return err
+}
+
+// sendClose writes an unmasked server close frame carrying `code` and `reason`.
+// Payloads stay well under 125 bytes, so the 7-bit length form always applies.
+func sendClose(conn net.Conn, code uint16, reason string) {
+	payload := make([]byte, 2, 2+len(reason))
+	payload[0] = byte(code >> 8)
+	payload[1] = byte(code)
+	payload = append(payload, reason...)
+	if len(payload) > 125 {
+		payload = payload[:125]
+	}
+	frame := append([]byte{0x88, byte(len(payload))}, payload...)
+	conn.Write(frame)
 }
