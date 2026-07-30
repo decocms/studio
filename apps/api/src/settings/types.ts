@@ -106,6 +106,10 @@ export interface Settings {
    *  (DISABLE_ORGFS_MOUNTS). org-fs is otherwise always mounted; this is
    *  for low-level mount debugging, not a supported org-fs-off mode. */
   orgFsMountsDisabled: boolean;
+  /** Process-wide cap on concurrent `subtask` subagent streams per pod
+   *  (DECOPILOT_MAX_CONCURRENT_SUBAGENTS). Excess calls queue and start as
+   *  slots free — see `subagent-concurrency.ts`. */
+  decopilotMaxConcurrentSubagents: number;
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;

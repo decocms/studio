@@ -270,6 +270,11 @@ export function resolveConfig(
     ),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
     orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
+    decopilotMaxConcurrentSubagents: toPositiveIntegerOrDefault(
+      "DECOPILOT_MAX_CONCURRENT_SUBAGENTS",
+      envVars.DECOPILOT_MAX_CONCURRENT_SUBAGENTS,
+      4,
+    ),
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
     s3Bucket: envVars.S3_BUCKET,
