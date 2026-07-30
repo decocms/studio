@@ -2,9 +2,11 @@
  * Black-box ordering contract for filesystem mutation shutdown.
  *
  * A slow streaming `write_from_url` must never write directly into the Git
- * worktree. SIGTERM cancels and joins its detached preparation owner before
- * the shutdown publish hook runs: an earlier completed write is pushed, while
- * neither a partial target nor mutation-stage residue reaches the repository.
+ * worktree. SIGTERM cancels and joins its detached preparation owner, and
+ * shutdown deliberately performs NO git commit or push: an earlier completed
+ * write survives in the worktree uncommitted (durable local state, reused on
+ * the next launch), the remote stays untouched, and neither a partial target
+ * nor mutation-stage residue reaches the repository.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -51,7 +53,7 @@ function git(cwd: string, args: string[], allowFailure = false): string {
   return result.stdout;
 }
 
-function configurePublishFixture(localApi: LocalApi): string {
+function configureOriginFixture(localApi: LocalApi): string {
   const root = mkdtempSync(join(tmpdir(), "native-fs-shutdown-origin-"));
   originRoot = root;
   const bare = join(root, "origin.git");
@@ -78,10 +80,10 @@ afterEach(async () => {
 });
 
 describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
-  it("cancels a staged download before publishing and leaves no partial worktree file", async () => {
+  it("cancels a staged download, keeps completed work local and unpushed, and leaves no partial worktree file", async () => {
     const first = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
     api = first;
-    const bare = configurePublishFixture(first);
+    const bare = configureOriginFixture(first);
     const repo = join(first.workdir, "repo");
 
     const completed = await fetch(url(first, "/_sandbox/write"), {
@@ -89,7 +91,7 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
       headers: jsonAuthHeaders(),
       body: JSON.stringify({
         path: "before-shutdown.txt",
-        content: "must be published\n",
+        content: "must stay local\n",
       }),
     });
     expect(completed.status).toBe(200);
@@ -149,12 +151,20 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
     expect(Date.now() - shutdownStartedAt).toBeLessThan(15_000);
     expect(first.proc.exitCode).toBe(0);
     expect(existsSync(join(repo, "slow-download.bin"))).toBe(false);
+    // The completed write survives shutdown in the worktree, uncommitted:
+    // shutdown neither commits nor pushes local work.
     expect(readFileSync(join(repo, "before-shutdown.txt"), "utf8")).toBe(
-      "must be published\n",
+      "must stay local\n",
     );
-    expect(git(bare, ["show", "sandbox-work:before-shutdown.txt"]).trim()).toBe(
-      "must be published",
+    expect(git(repo, ["status", "--porcelain"])).toContain(
+      "before-shutdown.txt",
     );
+    const publishedToRemote = spawnSync(
+      "git",
+      ["show", "sandbox-work:before-shutdown.txt"],
+      { cwd: bare, encoding: "utf8" },
+    );
+    expect(publishedToRemote.status).not.toBe(0);
     const partialInRemote = spawnSync(
       "git",
       ["show", "sandbox-work:slow-download.bin"],
@@ -170,8 +180,8 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
       }
     }, RETRY_OPTIONS);
 
-    // The instance lock remains held until mutation cancellation, publish,
-    // and listener drain all finish. Immediate same-root restart proves no
+    // The instance lock remains held until mutation cancellation and
+    // listener drain finish. Immediate same-root restart proves no
     // detached filesystem owner retained the previous server lifecycle.
     const restarted = await startLocalApi(
       { LOCAL_API_TOKEN_STORE: "memory" },

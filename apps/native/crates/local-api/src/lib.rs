@@ -4,8 +4,8 @@
 //! axum, no sidecar" decision and the native implementation contract §5). This
 //! file is a MECHANICAL EXTRACTION of the boot sequence that used to live
 //! entirely in `main.rs`'s `fn main()`: every side effect (dir creation,
-//! `AppState` construction, router build, listener bind,
-//! `routes::git::register`) is byte-for-byte unchanged, just reachable
+//! `AppState` construction, router build, listener bind) is byte-for-byte
+//! unchanged, just reachable
 //! from a function signature instead of only from a binary's entrypoint.
 //! `main.rs` now calls into [`boot_from_env`] for exactly what its old
 //! `main()` body did — the daemon-parity and local-api contract e2e
@@ -37,9 +37,11 @@
 //!
 //! Shutdown is an explicit ordered pipeline: stop listener admission; close
 //! request/setup admission; reap chat harnesses; concurrently TERM→KILL and
-//! join every global/per-sandbox process owner; run git publish; perform one
-//! final awaited registry sweep; then join (or abort+join) both axum tasks.
-//! The app-root instance lock remains held until those joins complete.
+//! join every global/per-sandbox process owner; perform one final awaited
+//! registry sweep; then join (or abort+join) both axum tasks. The app-root
+//! instance lock remains held until those joins complete. There is NO git
+//! publish on shutdown — local worktrees are durable and are reused as-is on
+//! the next launch (see `routes/git.rs`'s "No publish on shutdown" section).
 
 mod auth;
 mod client_auth;
@@ -72,7 +74,7 @@ pub use config::ConfigStore;
 pub use events::Broadcaster;
 pub use sandbox::SandboxManager;
 pub use setup::SetupOrchestrator;
-pub use shutdown::{ShutdownCoordinator, ShutdownHook};
+pub use shutdown::ShutdownCoordinator;
 pub use state::{ApiMode, AppState};
 pub use tasks::{KillSignal, TaskRegistry};
 pub use ui::{UiAsset, UiAssetProvider};
@@ -235,9 +237,9 @@ pub enum StartError {
 /// Each listener's serve loop runs on its own `tokio::spawn`'d task; dropping
 /// a `ServerHandle` WITHOUT calling [`ServerHandle::shutdown`] leaves both
 /// tasks running detached (nothing calls `abort()` on drop by design). An
-/// unclean process exit, e.g. `SIGKILL`, bypasses git publish and every local
-/// cleanup hook; harnesses have their own parent-death watchdog, but callers
-/// must use `shutdown()` for the complete ordered reap/publish/drain contract.
+/// unclean process exit, e.g. `SIGKILL`, bypasses every local cleanup step;
+/// harnesses have their own parent-death watchdog, but callers must use
+/// `shutdown()` for the complete ordered reap/drain contract.
 pub struct ServerHandle {
     port: u16,
     preview_port: u16,
@@ -458,9 +460,11 @@ impl ServerHandle {
         }
 
         // Defense-in-depth for global, non-setup request tasks: admission is
-        // already closed, so this final snapshot is complete and awaited. It
-        // runs BEFORE publish: a task that survives means quiescence was not
-        // proven and git must not race it.
+        // already closed, so this final snapshot is complete and awaited.
+        // There is deliberately NO git publish here: local worktrees are
+        // durable and are reused as-is on the next launch (see
+        // `routes/git.rs`'s "No publish on shutdown" module-doc section), so
+        // close never blocks on a network push.
         let final_tasks = state
             .tasks
             .kill_all_and_wait(CHILD_TERM_GRACE, CHILD_KILL_GRACE)
@@ -473,40 +477,12 @@ impl ServerHandle {
             );
         }
 
-        // Only the git publish hook remains registered. Publishing while any
-        // child family is merely "timed out" would trade shutdown latency for
-        // silent worktree corruption, so skip it unless EVERY owner proved
-        // quiescence. Listener/serve cleanup still continues either way.
         let process_tree_quiescent = decopilot_stopped
             && dispatch_stopped
             && global_setup_stopped
             && sandbox_setups_stopped
             && final_tasks_stopped
             && mutation_quiescence.is_quiescent();
-        if process_tree_quiescent {
-            state.shutdown.run().await;
-        } else {
-            tracing::error!(
-                "shutdown: skipping git publish because child quiescence was not proven"
-            );
-        }
-
-        // A publish hook owns its Git process tree through a hidden registry
-        // entry. If the coordinator's bounded hook budget expires, it drops
-        // only the hook waiter; the detached owner remains enumerable here.
-        // Attempt the same bounded TERM -> KILL + join policy as every other
-        // process family, and report any owner that still cannot prove exit.
-        let post_publish_tasks = state
-            .tasks
-            .kill_all_and_wait(CHILD_TERM_GRACE, CHILD_KILL_GRACE)
-            .await;
-        let post_publish_stopped = post_publish_tasks.remaining.is_empty();
-        if !post_publish_stopped {
-            tracing::error!(
-                remaining = ?post_publish_tasks.remaining,
-                "shutdown: post-publish git owners did not fully stop"
-            );
-        }
 
         // `with_graceful_shutdown` waits for every in-flight response. The
         // events SSE stream can intentionally live forever, so poll each
@@ -547,7 +523,7 @@ impl ServerHandle {
         // bounded, but another server in this process cannot acquire the same
         // root and race the old owner. The OS still closes the descriptor on
         // normal exit, SIGTERM escalation, or SIGKILL.
-        if process_tree_quiescent && post_publish_stopped {
+        if process_tree_quiescent {
             drop(_instance_lock);
         } else {
             tracing::error!(
@@ -559,8 +535,7 @@ impl ServerHandle {
 }
 
 /// Builds `AppState`, the router, binds the listener, and spawns the
-/// server in the background. See the module doc comment for the shutdown
-/// hooks this registers.
+/// server in the background.
 pub async fn start(opts: StartOptions) -> Result<ServerHandle, StartError> {
     start_with_client_auth(opts, ClientAuthMode::Bearer).await
 }
@@ -739,10 +714,6 @@ pub async fn start_with_client_auth(
         setup: setup_orchestrator,
         sandbox_manager,
     };
-
-    // Git family's SIGTERM/shutdown publish hook — see
-    // `routes/git.rs`'s module doc ("Shutdown-hook wiring").
-    routes::git::register(&state);
 
     // Clear worktree registrations orphaned by a sandbox directory that
     // vanished while the app was down; git would otherwise refuse to re-add a
