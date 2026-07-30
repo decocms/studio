@@ -420,7 +420,9 @@ test("segment union: selecting a branch writes segment AND preserves __resolveTy
   );
 
   await component.getByRole("combobox").click();
-  await page.getByRole("option", { name: "Logged in with recent orders" }).click();
+  await page
+    .getByRole("option", { name: "Logged in with recent orders" })
+    .click();
 
   await expect
     .poll(async () => {
