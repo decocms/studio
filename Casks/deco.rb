@@ -24,6 +24,8 @@ cask "deco" do
 
   depends_on arch: :arm64
   depends_on macos: :big_sur
+  depends_on formula: "git"
+  depends_on formula: "ripgrep"
 
   app "deco.app"
 
