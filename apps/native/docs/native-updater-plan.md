@@ -305,7 +305,10 @@ no updater either — the axes differ.
     boot contention). Deliberately NOT the 5-min revalidate cadence: the
     manifest changes ≤ ~1.2×/day and card latency is dominated by the
     dialog's own 5-min × 2-confirmation poll anyway; 5-min checks would be
-    ~288 no-op manifest fetches/day.
+    ~288 no-op manifest fetches/day. `DECOCMS_UPDATE_CHECK_INTERVAL_SECS`
+    (floored at 15 s) overrides the interval for spikes and the manual
+    runbook — harmless in the threat model (a local process able to set env
+    already has the kill switch).
   - Per tick:
     1. `check()` with `UpdaterBuilder::timeout(…)` set. `check()` itself
        gates on remote > running (semver, built-in) — do not re-implement
@@ -569,7 +572,11 @@ promotion:
 1. Background download+install succeeds (App Management TCC does not block
    the bundle swap; the `.app` on disk is N).
 2. The card appears — worst case ~35-40 min with the 30-min check interval +
-   two 5-min drift confirmations (do NOT expect "~10 minutes").
+   two 5-min drift confirmations (do NOT expect "~10 minutes"). For spikes
+   and this runbook, `DECOCMS_UPDATE_CHECK_INTERVAL_SECS` (floored at 15 s;
+   terminal-launched processes only — Finder launches don't inherit shell
+   env) shortens the updater's own interval; the dialog's two 5-min poll
+   confirmations still bound how fast the card itself appears.
 3. "Restart to update" → the process **actually respawns** into N (explicit
    criterion — open report tauri#13923 says macOS restart can quit without
    relaunching; the instance lock must have been released by the graceful
