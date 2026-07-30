@@ -76,7 +76,8 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
         groups: { organization: organizationId },
         properties: {
           organization_id: organizationId,
-          member_id_or_email: input.memberIdOrEmail,
+          member_id: removed.member.id,
+          target_user_id: removed.member.userId,
         },
       });
     }
