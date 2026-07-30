@@ -358,6 +358,11 @@ export class SetupOrchestrator {
     // intentionally out of scope for now (its content is at most idle-TTL stale,
     // not the days-stale case this targets).
     await this.maybeFastForwardToBase(config.repoDir);
+    // Re-read HEAD: a fast-forward above may have moved it past what gitSetup's
+    // checkout captured. installState fingerprints against this field, so a
+    // stale (pre-fast-forward) value would let a changed lockfile slip past
+    // the install-skip cache on the next cycle.
+    this.refreshBranchHead();
     this.deps.branchStatus.refresh();
     return true;
   }
@@ -734,7 +739,6 @@ export class SetupOrchestrator {
         );
       }
     }
-    this.refreshBranchHead();
   }
 
   private markInstallSucceeded(config: Config): void {

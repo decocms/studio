@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { execSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -1009,4 +1010,129 @@ describe("SetupOrchestrator no-install reporting", () => {
       cleanup();
     }
   });
+});
+
+describe("SetupOrchestrator install fingerprint after boot fast-forward", () => {
+  const GITCFG =
+    "-c init.defaultBranch=main -c user.email=test@example.com " +
+    "-c user.name=test -c commit.gpgsign=false";
+  const GIT_OPTS = { stdio: "ignore" as const };
+  function git(cwd: string, cmd: string): void {
+    execSync(`git ${GITCFG} -C ${cwd} ${cmd}`, GIT_OPTS);
+  }
+  function headOf(cwd: string): string {
+    return execSync(`git ${GITCFG} -C ${cwd} rev-parse HEAD`, {
+      encoding: "utf-8",
+    }).trim();
+  }
+
+  /** Bare origin with `main` (2 commits) and `feat/x` forked from main's
+   *  first commit — behind main by one, no local commits — cloned into
+   *  `repoDir` at `feat/x`, mirroring an idle sandbox resuming on boot. */
+  function setupIdleClone(root: string): { bare: string; repoDir: string } {
+    const bare = join(root, "origin.git");
+    const seed = join(root, "seed");
+    execSync(`git ${GITCFG} init --bare ${bare}`, GIT_OPTS);
+    execSync(`git ${GITCFG} init ${seed}`, GIT_OPTS);
+    writeFileSync(join(seed, "readme.md"), "v1\n");
+    git(seed, "add .");
+    git(seed, 'commit -m "initial"');
+    git(seed, "branch -M main");
+    git(seed, `remote add origin ${bare}`);
+    git(seed, "push -u origin main");
+    git(seed, "checkout -b feat/x");
+    git(seed, "push -u origin feat/x");
+    git(seed, "checkout main");
+    writeFileSync(join(seed, "readme.md"), "v2\n");
+    git(seed, "add .");
+    git(seed, 'commit -m "advance main"');
+    git(seed, "push origin main");
+
+    const repoDir = join(root, "repo");
+    execSync(
+      `git ${GITCFG} clone --branch feat/x ${bare} ${repoDir}`,
+      GIT_OPTS,
+    );
+    git(repoDir, "config user.email test@example.com");
+    git(repoDir, "config user.name test");
+    return { bare, repoDir };
+  }
+
+  async function drain(o: {
+    isRunning: () => boolean;
+    pendingCount: () => number;
+  }) {
+    const deadline = Date.now() + 15_000;
+    while (o.isRunning() || o.pendingCount() > 0) {
+      if (Date.now() > deadline) throw new Error("orchestrator hung");
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  // A boot-time fast-forward (#5390) advances the branch past whatever
+  // gitSetup's checkout captured. The install-skip cache fingerprints against
+  // `currentBranchHead`, so if that field isn't re-read afterward, it stays
+  // pinned to the pre-fast-forward commit — letting a lockfile change that
+  // rode in on the fast-forward slip past the cache on the next cycle.
+  it("fingerprints install against the post-fast-forward HEAD, not the pre-checkout one", async () => {
+    const root = mkdtempSync(join(tmpdir(), "orch-ff-"));
+    try {
+      const { bare, repoDir } = setupIdleClone(root);
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+      let capturedHead: string | undefined;
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: root, repoDir },
+        store: {
+          read: () => ({
+            git: { repository: { cloneUrl: bare, branch: "feat/x" } },
+            application: {},
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => null,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: {
+          isInstalledFor: (
+            _config: unknown,
+            branchHead: string | undefined,
+          ) => {
+            capturedHead = branchHead;
+            return false;
+          },
+          mark: () => {},
+        } as never,
+        logsDir: root,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      orchestrator.handle({
+        kind: "branch-change",
+        from: "main",
+        to: "feat/x",
+      });
+      await drain(orchestrator);
+
+      expect(capturedHead).toBeDefined();
+      expect(capturedHead).toBe(headOf(repoDir));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
 });
