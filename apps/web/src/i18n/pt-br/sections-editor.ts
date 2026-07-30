@@ -179,8 +179,6 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.back": "Voltar",
   "sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant":
     "Não é possível excluir a única variante.",
-  "sectionsEditor.sectionsEditor.couldNotAddSection":
-    "Não foi possível adicionar seção.",
   "sectionsEditor.sectionsEditor.couldNotAddVariant":
     "Não foi possível adicionar variante.",
   "sectionsEditor.sectionsEditor.couldNotApplySavedRule":

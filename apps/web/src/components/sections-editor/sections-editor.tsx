@@ -100,7 +100,6 @@ import {
 } from "./variant-matcher-override";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
-import { buildSectionBlockFromCatalogEntry } from "../sandbox/content/section-create";
 import { formatMatcher } from "./format-matcher";
 import {
   AddVariantButton,
@@ -1073,31 +1072,6 @@ export function SectionsEditor({
     });
   };
 
-  // Add a section into an array-of-sections field (e.g. a section prop that
-  // holds `Section[]`). Creates a saved block for the picked entry and appends
-  // a reference to it — mirrors AppEditor's array-of-sections flow.
-  const handleAddSectionItem = async (
-    entry: SectionCatalogEntry,
-    append: (item: unknown) => void,
-  ) => {
-    if (!decofile) return;
-    try {
-      const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
-        entry,
-        decofile,
-      );
-      await saveBlock.mutateAsync({ blockKey: newKey, data });
-      append({ __resolveType: newKey });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotAddSection");
-      toast.error(message);
-      throw err;
-    }
-  };
-
   // An array-of-sections field asks to open the picker; stash its `append`
   // callback so the shared AddSectionModal routes the selection back to it.
   const handleRequestAddSection = (context: {
@@ -1107,19 +1081,20 @@ export function SectionsEditor({
     setAddSectionOpen(true);
   };
 
-  // Dispatches an AddSectionModal selection: to the pending array field when
-  // one requested the picker, otherwise to the page's section list.
+  // Dispatches an AddSectionModal selection: when an array-of-sections field
+  // requested the picker, append an inline section reference to it (the same
+  // `{ __resolveType }` shape `handleAddSection` uses for the page list, and
+  // that `ArrayField.addItem` uses for block-ref items). Otherwise fall back to
+  // adding a section to the page's section list.
   const handleSelectSectionFromModal = (entry: SectionCatalogEntry) => {
     const append = pendingAppendRef.current;
     if (!append) {
       handleAddSection(entry);
       return;
     }
-    void handleAddSectionItem(entry, (item) => {
-      append(item);
-      setAddSectionOpen(false);
-      pendingAppendRef.current = null;
-    });
+    append({ __resolveType: entry.resolveType });
+    setAddSectionOpen(false);
+    pendingAppendRef.current = null;
   };
 
   const handleSelectSectionVariant = (variantIndex: number) => {
@@ -2785,7 +2760,6 @@ export function SectionsEditor({
             sandbox={sandbox}
             previewBaseUrl={previewUrl}
             onRequestAddSection={handleRequestAddSection}
-            onAddSectionItem={handleAddSectionItem}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2809,7 +2783,6 @@ export function SectionsEditor({
             sandbox={sandbox}
             previewBaseUrl={previewUrl}
             onRequestAddSection={handleRequestAddSection}
-            onAddSectionItem={handleAddSectionItem}
           />
         </ScrollArea>
       ) : (

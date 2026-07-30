@@ -124,7 +124,6 @@ export function SchemaFormPanel({
   sandbox,
   previewBaseUrl,
   onRequestAddSection,
-  onAddSectionItem,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -145,7 +144,6 @@ export function SchemaFormPanel({
   sandbox?: SandboxConfig | null;
   previewBaseUrl?: string | null;
   onRequestAddSection?: FieldProps["onRequestAddSection"];
-  onAddSectionItem?: FieldProps["onAddSectionItem"];
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -174,7 +172,6 @@ export function SchemaFormPanel({
           sandbox={sandbox}
           previewBaseUrl={previewBaseUrl}
           onRequestAddSection={onRequestAddSection}
-          onAddSectionItem={onAddSectionItem}
         />
       )
     ) : null;
