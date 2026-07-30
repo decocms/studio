@@ -66,6 +66,12 @@ export interface HarnessAssembledTools {
   /** The live MCP passthrough client (in-process on the cluster, HTTP on the
    *  desktop). The adapter owns its lifecycle. */
   passthroughClient: Client;
+  /** Oversized tool outputs stashed for `read_tool_output`. The engine
+   *  re-assembles the MCP tools internally, so it MUST write into this same
+   *  map — `read_tool_output` (a built-in, injected via `extraTools`) is bound
+   *  to it. Two maps = every read_tool_output on an MCP output returns
+   *  "Available ids: (none)". */
+  toolOutputMap: Map<string, string>;
 
   // ── Per-run streaming wiring owned by the adapter ───────────────────
   /** Forwarded UIMessageStreamWriter the built-in tools stream output through. */
@@ -122,6 +128,9 @@ export interface RunEngineArgs {
   /** Built-in tools + the state-dependent enable_tool, merged after the
    *  engine's own assembly. */
   extraTools: ToolSet;
+  /** The run's `read_tool_output` backing map — the engine binds its
+   *  re-assembled MCP tools to THIS map instead of minting its own. */
+  toolOutputMap?: Map<string, string>;
   /** Per-request inline <system> blocks + the currently-enabled-tools tail. */
   additionalSystemMessages: SystemModelMessage[];
   /** Names `prepareStep` will pass as `activeTools` — the only tools whose

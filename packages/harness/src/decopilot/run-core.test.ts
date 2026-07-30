@@ -81,6 +81,7 @@ function makeToolRuntime(opts: {
   };
   tools?: ToolSet;
   captured?: { args?: RunEngineArgs };
+  bundleRef?: { bundle?: HarnessAssembledTools };
 }) {
   const tools: ToolSet = opts.tools ?? ({} as ToolSet);
   const bundle: HarnessAssembledTools = {
@@ -96,10 +97,12 @@ function makeToolRuntime(opts: {
       listPrompts: async () => ({ prompts: [] }),
       getInstructions: () => "",
     } as never,
+    toolOutputMap: new Map(),
     writer: { write: () => {}, merge: () => {} } as never,
     pendingImages: [],
     close: async () => {},
   };
+  if (opts.bundleRef) opts.bundleRef.bundle = bundle;
   return {
     buildEnvironmentTools: async () => bundle,
     runEngine: async (args: RunEngineArgs): Promise<AssembledEngineHandle> => {
@@ -303,6 +306,34 @@ describe("runDecopilotCore conversation input", () => {
 
     expect(captured.args?.messages).toHaveLength(2);
   });
+
+  test("engine gets the run's read_tool_output map, not a fresh one", async () => {
+    const input: RunDecopilotCoreDeps["input"] = {
+      ...baseInput,
+      signal: new AbortController().signal,
+    };
+    const captured: { args?: RunEngineArgs } = {};
+    const bundleRef: { bundle?: HarnessAssembledTools } = {};
+
+    for await (const _ of runDecopilotCore({
+      input,
+      modelRuntime,
+      toolRuntime: makeToolRuntime({
+        chunks: [{ type: "finish" } as UIMessageChunk],
+        totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        captured,
+        bundleRef,
+      }),
+      kind: "main",
+    })) {
+      // drain
+    }
+
+    // The engine re-assembles the MCP tools. If it binds them to its own map,
+    // every truncated MCP output is written where `read_tool_output` (bound to
+    // the bundle's map via extraTools) can't see it — "Available ids: (none)".
+    expect(captured.args?.toolOutputMap).toBe(bundleRef.bundle!.toolOutputMap);
+  });
 });
 
 describe("usage roll-up (parent final metadata includes child tokens)", () => {
@@ -337,6 +368,7 @@ describe("usage roll-up (parent final metadata includes child tokens)", () => {
             listPrompts: async () => ({ prompts: [] }),
             getInstructions: () => "",
           } as never,
+          toolOutputMap: new Map(),
           writer: { write: () => {}, merge: () => {} } as never,
           pendingImages: [],
           close: async () => {},
