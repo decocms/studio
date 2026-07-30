@@ -657,6 +657,7 @@ export function TaskBoardPage() {
         onClose={closeDialog}
         item={activeItem ?? undefined}
         defaultStatus={createStatus ?? undefined}
+        tasks={items}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutGithub(input.assigneeId)) {
