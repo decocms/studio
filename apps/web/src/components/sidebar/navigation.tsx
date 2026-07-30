@@ -104,7 +104,7 @@ function NavigationSidebarInner({
   return (
     <Sidebar variant={variant}>
       {header && (
-        <SidebarHeader className="sidebar-titlebar wco-drag shrink-0 h-12 flex flex-row items-center px-2 py-0 group-data-[collapsible=icon]/sidebar:hidden">
+        <SidebarHeader className="shrink-0 h-12 flex flex-row items-center px-2 py-0 group-data-[collapsible=icon]/sidebar:hidden">
           {header}
         </SidebarHeader>
       )}

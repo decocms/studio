@@ -1,6 +1,5 @@
 export const common = {
   "common.accountPopover.account": "Account",
-  "common.accountPopover.addToHomeScreen": "Add to Home Screen",
   "common.accountPopover.adminDashboard": "Admin Dashboard",
   "common.accountPopover.community": "Community",
   "common.accountPopover.copyUserId": "Copy user ID",

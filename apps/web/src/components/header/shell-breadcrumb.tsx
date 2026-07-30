@@ -37,7 +37,7 @@ import { usePendingInvitations } from "@/hooks/use-pending-invitations";
 import { useT } from "@/i18n/use-t.ts";
 
 const crumbBtnClass =
-  "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md pl-1 pr-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
+  "inline-flex items-center gap-1.5 min-w-0 rounded-md pl-1 pr-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 /**
  * Agent crumb — resolves the active agent (thread's agent when inside a thread,
@@ -71,7 +71,7 @@ function AgentCrumb({
         type="button"
         onClick={onOpenHome}
         aria-label={t("header.shellBreadcrumb.openAgentHome", { name: title })}
-        className="wco-no-drag flex items-center shrink-0 rounded-md p-1 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex items-center shrink-0 rounded-md p-1 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <AgentAvatar
           icon={(entity?.icon as string | null) ?? null}
@@ -132,7 +132,7 @@ export function OrgSwitcherCrumb({ showName }: { showName?: boolean } = {}) {
               // pl-[5px] centers the 24px org icon on the same axis (x=25) as the
               // collapsed rail centers it (the 50px icon-rail's midpoint), so the
               // icon doesn't shift 1px when the sidebar collapses/expands.
-              className="wco-no-drag flex items-center gap-1.5 shrink-0 rounded-lg pl-[5px] pr-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex items-center gap-1.5 shrink-0 rounded-lg pl-[5px] pr-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <span className="relative inline-flex">
                 <OrgIcon org={org} size="sm" />
@@ -263,7 +263,7 @@ export function NewChatCrumb() {
           type="button"
           onClick={handleNewChat}
           aria-label={t("sidebar.taskGroupsList.newChat")}
-          className="wco-no-drag flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <Edit05 size={16} />
         </button>

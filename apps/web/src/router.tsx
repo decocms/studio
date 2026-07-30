@@ -377,17 +377,6 @@ const settingsLayout = createRoute({
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
 });
 
-// Per-org install page (/$org/install) — swaps the document manifest to an
-// org-branded one so installing here produces a distinct home-screen app for
-// the org. Studio itself is installed via the browser's native "Add to Home
-// Screen" (the default manifest stays active everywhere else). See
-// routes/org-install.tsx and lib/pwa-install.ts.
-const orgInstallRoute = createRoute({
-  getParentRoute: () => orgLayout,
-  path: "/install",
-  component: lazyRouteComponent(() => import("./routes/org-install.tsx")),
-});
-
 // Settings index → redirect to /general
 const settingsIndexRoute = createRoute({
   getParentRoute: () => settingsLayout,
@@ -628,7 +617,6 @@ const orgShellWithChildren = orgShellLayout.addChildren([
 const orgLayoutWithChildren = orgLayout.addChildren([
   orgShellWithChildren,
   settingsWithChildren,
-  orgInstallRoute,
 ]);
 
 const shellRouteTree = shellLayout.addChildren([
