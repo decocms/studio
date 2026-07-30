@@ -118,12 +118,14 @@ jobs:
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
   #    binary, point packages/sandbox's curated 5-file daemon e2e suite at
-  #    it via DAEMON_E2E_CMD, and assert the EXACT documented 133 pass / 7
-  #    fail outcome — not just the counts. apps/native/docs/
-  #    the native parity contract pins the 7 failing test names as intentional
-  #    auth/CORS tightening (+ one harness self-check artifact); a NEW
-  #    failure (regression) or a VANISHED one (doc gone stale) both fail
-  #    this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
+  #    it via DAEMON_E2E_CMD, and assert the EXACT pinned failing-test set
+  #    in scripts/ci/daemon-parity-allowlist.json — not just the counts.
+  #    Each pinned name is an intentional divergence: auth/CORS tightening,
+  #    one harness self-check artifact, and the local app's deliberate
+  #    no-publish-on-close shutdown (worktrees are durable on a user's
+  #    machine, unlike a pod's — see local-api's routes/git.rs module doc).
+  #    A NEW failure (regression) or a VANISHED one (allowlist gone stale)
+  #    both fail this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
   #
   #    `daemon.proxy.e2e.test.ts` + `daemon.ws-proxy.e2e.test.ts` (12 tests,
   #    formerly "all pass") are DELIBERATELY excluded from this curated set

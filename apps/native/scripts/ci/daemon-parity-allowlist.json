@@ -7,5 +7,6 @@
   "daemon e2e: smoke, CORS, dual-prefix > no-auth GETs tolerate an arbitrary Authorization header",
   "daemon e2e: smoke, CORS, dual-prefix > POST /_decopilot_vm/bash (legacy prefix) with bearer is not 401/404",
   "daemon e2e: SSE wire shapes — lifecycle, branch, scripts > cloning a repo with no start script drives all three to a terminal, coherent state",
-  "daemon e2e: git (cloned repo) > POST /git/publish pushes past a failing pre-push hook"
+  "daemon e2e: git (cloned repo) > POST /git/publish pushes past a failing pre-push hook",
+  "daemon e2e: git (cloned repo) > SIGTERM triggers a graceful publish to origin before exit"
 ]
