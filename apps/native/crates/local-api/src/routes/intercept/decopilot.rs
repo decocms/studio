@@ -4508,7 +4508,7 @@ mod tests {
         };
         tokio::task::yield_now().await;
 
-        state.shutdown.run().await;
+        state.shutdown.begin_shutdown().await;
         drop(lifecycle_guard);
         let response = sender.await.unwrap();
 

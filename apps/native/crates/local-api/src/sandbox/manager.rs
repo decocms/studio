@@ -262,11 +262,6 @@ impl SandboxManager {
         self.registry.record(handle)
     }
 
-    /// Every handle with a durable registry row, regardless of agent.
-    pub(crate) fn registered_handles(&self) -> Result<Vec<String>, String> {
-        self.registry.handles()
-    }
-
     /// Every durable sandbox this agent has claimed — the registry-backed
     /// replacement for walking `worktrees/` and reading sidecars on request
     /// paths.
