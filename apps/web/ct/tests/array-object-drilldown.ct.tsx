@@ -275,6 +275,46 @@ test("deleting a row removes the right item from the array", async ({
     .toEqual({ cards: [{ name: "Beta" }] });
 });
 
+test("colliding fallback-title rows are position-disambiguated and each drills into its own content", async ({
+  mount,
+}) => {
+  // The osklen bug: object-array items with no name/title field all fall back
+  // to the item schema `title` ("Spec"), so every row's label collided and
+  // navigation collapsed every item back to the first ("all items show the
+  // same content"). Rows must now render as "Spec 1/2/3", and drilling a
+  // NON-first row must uniquely address that row (no reliance on a transient
+  // open-index), showing its own value.
+  const meta = sectionWithProps({
+    specs: {
+      type: "array",
+      title: "Specs",
+      items: {
+        type: "object",
+        title: "Spec",
+        properties: { body: { type: "string", title: "Body" } },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ specs: [{ body: "a" }, { body: "b" }, { body: "c" }] }}
+    />,
+  );
+
+  await expect(itemRow(component, "Spec 1")).toBeVisible();
+  await expect(itemRow(component, "Spec 2")).toBeVisible();
+  await expect(itemRow(component, "Spec 3")).toBeVisible();
+
+  await itemRow(component, "Spec 3").click();
+
+  await expect.poll(() => readBreadcrumb(component)).toContain("Spec 3");
+  const body = component.getByLabel("Body");
+  await expect(body).toHaveAttribute("id", "specs.2.body");
+  await expect(body).toHaveValue("c");
+});
+
 test("fallback label 'Item 1' when itemSchema has no titleBy/title and item has no name", async ({
   mount,
 }) => {
