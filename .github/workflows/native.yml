@@ -4,16 +4,15 @@ name: Native
 # Gates the Rust/Tauri desktop app (apps/native/) — a separate cargo
 # workspace, independent of the Bun workspaces the other workflows cover.
 #
-# Path-filtered (not the `changes`-job PR-diff pattern test.yml/e2e.yml/
-# sandbox-daemon.yml use) because this workflow is NOT yet a required
-# branch-protection check — apps/native is still behind the migration flag
-# (the desktop migration contract's `desktopAppAvailable`, default off) and this branch hasn't
-# merged to main. A never-scheduled REQUIRED check blocks merges forever if
-# skipped via workflow-level `paths:` (see test.yml's comment on its
-# `changes` job) — but an opt-in, non-required check like this one is exactly
-# what daemon-e2e-windows.yml already does with plain `paths:`, so this
-# mirrors that convention. If/when this becomes a required check, switch to
-# the `changes`-job pattern first.
+# Uses the `changes`-job PR-diff pattern (like test.yml/e2e.yml/
+# sandbox-daemon.yml) so its jobs always REPORT on PRs — pass or skipped —
+# which is what lets them be required branch-protection checks. A required
+# check whose workflow never runs (workflow-level `paths:` filtering) blocks
+# the merge forever; a job skipped via `if:`, by contrast, reports as passed.
+# The `pull_request` trigger is therefore unfiltered and the `changes` job
+# skips the expensive macOS jobs when the PR touches nothing native-relevant.
+# Pushes to main keep the `paths:` filter — required checks gate PRs, not
+# pushes, so a never-run workflow is harmless there.
 on:
   push:
     branches:
@@ -27,12 +26,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "apps/native/**"
-      - "apps/web/**"
-      - "packages/sandbox/daemon/**"
-      - "packages/shared/**"
-      - ".github/workflows/native.yml"
   # stub-seam-nightly keeps the DAEMON_E2E_CMD swap seam (packages/sandbox/
   # daemon/e2e-stub/) from rotting even on weeks with no apps/native PRs —
   # see the desktop migration contract §5.1's "nightly job running the daemon-e2e stub-seam
@@ -52,8 +45,8 @@ on:
 # post-merge verification. GitHub holds at most one queued run per group,
 # so bursts still collapse to "in-progress finishes, newest waits".
 #
-# Relatedly, every job below also skips `[release]:` bump pushes (see the
-# jobs' `if:`): the bot's bump touches only package.json versions, seconds
+# Relatedly, every job below also skips `[release]:` bump pushes (via the
+# `changes` gate): the bot's bump touches only package.json versions, seconds
 # after the merge commit that was already verified — building it doubled
 # main's native runs for zero extra signal. release-native.yaml, not this
 # workflow, owns the shipping build of the bumped version.
@@ -65,6 +58,50 @@ env:
   BUN_VERSION: "1.3.14"
 
 jobs:
+  # Gate: skip the macOS jobs when a PR touches nothing native-relevant.
+  # Required checks can't be skipped via workflow-level `paths` filters — a
+  # never-scheduled required check blocks the merge forever. A job skipped
+  # via `if`, by contrast, reports as passed (same pattern as test.yml).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Pushes to main, schedule, and dispatch run everything — except
+            # the [release]: version-bump push, which only touches version
+            # strings (release-native.yaml owns the shipping build).
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          if ! FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename'); then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              apps/native/*|apps/web/*|packages/sandbox/daemon/*|packages/shared/*|.github/workflows/native.yml)
+                relevant=true ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
   # ---------------------------------------------------------------------
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
   #    workspace (crates/local-api, crates/harness, crates/upstream,
@@ -75,10 +112,10 @@ jobs:
   #    this phase doesn't need to carry.
   # ---------------------------------------------------------------------
   rust-checks:
+    needs: changes
     if: >-
-      github.event_name != 'schedule' &&
-      !(github.event_name == 'push' &&
-        startsWith(github.event.head_commit.message, '[release]:'))
+      needs.changes.outputs.relevant == 'true' &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -156,10 +193,10 @@ jobs:
   #    `real-ui-passthrough.e2e.test.ts`).
   # ---------------------------------------------------------------------
   daemon-e2e-vs-rust:
+    needs: changes
     if: >-
-      github.event_name != 'schedule' &&
-      !(github.event_name == 'push' &&
-        startsWith(github.event.head_commit.message, '[release]:'))
+      needs.changes.outputs.relevant == 'true' &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -237,10 +274,10 @@ jobs:
   #    the bar is simply "all green" — no allowlist needed.
   # ---------------------------------------------------------------------
   contract-suite:
+    needs: changes
     if: >-
-      github.event_name != 'schedule' &&
-      !(github.event_name == 'push' &&
-        startsWith(github.event.head_commit.message, '[release]:'))
+      needs.changes.outputs.relevant == 'true' &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -282,10 +319,10 @@ jobs:
   #    release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
+    needs: changes
     if: >-
-      github.event_name != 'schedule' &&
-      !(github.event_name == 'push' &&
-        startsWith(github.event.head_commit.message, '[release]:'))
+      needs.changes.outputs.relevant == 'true' &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 45
     env:
