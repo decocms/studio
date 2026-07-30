@@ -9,7 +9,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.js";
 import { SchemaForm } from "./schema-form";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
-import type { SandboxConfig } from "./fields/field-props";
+import type { FieldProps, SandboxConfig } from "./fields/field-props";
 import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
@@ -122,6 +122,9 @@ export function SchemaFormPanel({
   decofile,
   onSaveReferencedBlock,
   sandbox,
+  previewBaseUrl,
+  onRequestAddSection,
+  onAddSectionItem,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -140,6 +143,9 @@ export function SchemaFormPanel({
     data: Record<string, unknown>,
   ) => void;
   sandbox?: SandboxConfig | null;
+  previewBaseUrl?: string | null;
+  onRequestAddSection?: FieldProps["onRequestAddSection"];
+  onAddSectionItem?: FieldProps["onAddSectionItem"];
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -166,6 +172,9 @@ export function SchemaFormPanel({
           decofile={decofile}
           onSaveReferencedBlock={onSaveReferencedBlock}
           sandbox={sandbox}
+          previewBaseUrl={previewBaseUrl}
+          onRequestAddSection={onRequestAddSection}
+          onAddSectionItem={onAddSectionItem}
         />
       )
     ) : null;

@@ -100,6 +100,7 @@ import {
 } from "./variant-matcher-override";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
+import { buildSectionBlockFromCatalogEntry } from "../sandbox/content/section-create";
 import { formatMatcher } from "./format-matcher";
 import {
   AddVariantButton,
@@ -227,6 +228,10 @@ export function SectionsEditor({
   const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
+  // When the section picker is opened from an array-of-sections field (rather
+  // than the page's section list), the field hands us an `append` callback here.
+  // A non-null ref routes the modal selection to that field instead of the page.
+  const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
 
   // Inline SEO editing mode — same breadcrumb UX as editing a section
   const [editingSeo, setEditingSeo] = useState(initialEditSeo);
@@ -1065,6 +1070,55 @@ export function SectionsEditor({
         setSectionRuleResolveType(null);
         setSectionRuleFormValue(null);
       },
+    });
+  };
+
+  // Add a section into an array-of-sections field (e.g. a section prop that
+  // holds `Section[]`). Creates a saved block for the picked entry and appends
+  // a reference to it — mirrors AppEditor's array-of-sections flow.
+  const handleAddSectionItem = async (
+    entry: SectionCatalogEntry,
+    append: (item: unknown) => void,
+  ) => {
+    if (!decofile) return;
+    try {
+      const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
+        entry,
+        decofile,
+      );
+      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      append({ __resolveType: newKey });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.couldNotAddSection");
+      toast.error(message);
+      throw err;
+    }
+  };
+
+  // An array-of-sections field asks to open the picker; stash its `append`
+  // callback so the shared AddSectionModal routes the selection back to it.
+  const handleRequestAddSection = (context: {
+    append: (item: unknown) => void;
+  }) => {
+    pendingAppendRef.current = context.append;
+    setAddSectionOpen(true);
+  };
+
+  // Dispatches an AddSectionModal selection: to the pending array field when
+  // one requested the picker, otherwise to the page's section list.
+  const handleSelectSectionFromModal = (entry: SectionCatalogEntry) => {
+    const append = pendingAppendRef.current;
+    if (!append) {
+      handleAddSection(entry);
+      return;
+    }
+    void handleAddSectionItem(entry, (item) => {
+      append(item);
+      setAddSectionOpen(false);
+      pendingAppendRef.current = null;
     });
   };
 
@@ -2729,6 +2783,9 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
+            previewBaseUrl={previewUrl}
+            onRequestAddSection={handleRequestAddSection}
+            onAddSectionItem={handleAddSectionItem}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2750,6 +2807,9 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
+            previewBaseUrl={previewUrl}
+            onRequestAddSection={handleRequestAddSection}
+            onAddSectionItem={handleAddSectionItem}
           />
         </ScrollArea>
       ) : (
@@ -2874,11 +2934,14 @@ export function SectionsEditor({
       {previewUrl && (
         <AddSectionModal
           open={addSectionOpen}
-          onOpenChange={setAddSectionOpen}
+          onOpenChange={(open) => {
+            setAddSectionOpen(open);
+            if (!open) pendingAppendRef.current = null;
+          }}
           meta={meta}
           decofile={decofile}
           previewBaseUrl={previewUrl}
-          onSelect={handleAddSection}
+          onSelect={handleSelectSectionFromModal}
         />
       )}
 

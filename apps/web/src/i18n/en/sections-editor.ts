@@ -170,6 +170,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.back": "Back",
   "sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant":
     "Cannot delete the only variant.",
+  "sectionsEditor.sectionsEditor.couldNotAddSection": "Could not add section.",
   "sectionsEditor.sectionsEditor.couldNotAddVariant": "Could not add variant.",
   "sectionsEditor.sectionsEditor.couldNotApplySavedRule":
     "Could not apply saved rule",

@@ -190,6 +190,9 @@ export function AnyOfField({
   decofile,
   onSaveReferencedBlock,
   sandbox,
+  previewBaseUrl,
+  onRequestAddSection,
+  onAddSectionItem,
 }: FieldProps) {
   const t = useT();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
@@ -360,6 +363,9 @@ export function AnyOfField({
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}
         sandbox={sandbox}
+        previewBaseUrl={previewBaseUrl}
+        onRequestAddSection={onRequestAddSection}
+        onAddSectionItem={onAddSectionItem}
       />
     ) : null;
 
