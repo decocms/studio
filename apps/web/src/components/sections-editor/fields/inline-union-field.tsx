@@ -31,6 +31,10 @@ function branchFormSchema(branch: Branch): SchemaProperty | null {
   for (const [key, prop] of Object.entries(schema.properties)) {
     if (!discKeys.has(key)) properties[key] = prop;
   }
+  // A branch whose only fields are const discriminators (e.g. a userSegment
+  // option with no extra config) has nothing to edit — render just the selector
+  // instead of an empty "no fields" form.
+  if (Object.keys(properties).length === 0) return null;
   return { ...schema, properties };
 }
 

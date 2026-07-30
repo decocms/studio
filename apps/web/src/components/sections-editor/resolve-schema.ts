@@ -1066,6 +1066,57 @@ export function resolveSchema(
     };
   };
 
+  // deco wraps a block's config as
+  //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
+  //     required:["__resolveType"] }
+  // (see @deco/deco engine/schema builder.ts). When `<Props>` is itself a
+  // discriminated / plain-data union (e.g. the VTEX `userSegment` matcher:
+  // AnonymousWithoutCart | … | LoggedInWithRecentOrders), `collectProps` would
+  // flatten every branch into a single object — dropping the variant selector
+  // and collapsing the hidden discriminant so only a stray field survives.
+  // Instead render the union as a branch selector (like the legacy admin),
+  // carrying the block's `__resolveType` as a constant discriminator on every
+  // branch so it is preserved when the editor picks a branch.
+  const ownProps = (schemaRoot.properties ?? {}) as Record<string, RawSchema>;
+  const onlyPlumbingProps = Object.keys(ownProps).every((k) =>
+    k.startsWith("__"),
+  );
+  if (Array.isArray(schemaRoot.allOf) && onlyPlumbingProps) {
+    const rtProp = ownProps.__resolveType as RawSchema | undefined;
+    const resolveTypeConst =
+      Array.isArray(rtProp?.enum) && typeof rtProp.enum[0] === "string"
+        ? (rtProp.enum[0] as string)
+        : typeof rtProp?.const === "string"
+          ? rtProp.const
+          : typeof rtProp?.default === "string"
+            ? rtProp.default
+            : undefined;
+    for (const part of schemaRoot.allOf as RawSchema[]) {
+      const def = typeof part.$ref === "string" ? resolveRef(part.$ref) : part;
+      const isChoiceUnion =
+        Array.isArray(def.anyOf) || Array.isArray(def.oneOf);
+      // A choice union with no own object properties — a plain "A | B | C".
+      // (`allOf` intersections and base-object-plus-extension shapes fall
+      // through to the normal merge below.)
+      if (!isChoiceUnion || def.properties) continue;
+      const built = buildProperty(def, 0);
+      if (built.type === "inline-union" && built.inlineUnionBranches) {
+        return {
+          ...built,
+          inlineUnionBranches: resolveTypeConst
+            ? built.inlineUnionBranches.map((branch) => ({
+                ...branch,
+                discriminators: {
+                  ...(branch.discriminators ?? {}),
+                  __resolveType: resolveTypeConst,
+                },
+              }))
+            : built.inlineUnionBranches,
+        };
+      }
+    }
+  }
+
   // Collect top-level properties and build typed map
   const topRaw = collectProps(schemaRoot);
   const properties: Record<string, SchemaProperty> = {};

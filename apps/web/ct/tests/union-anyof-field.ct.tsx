@@ -367,3 +367,106 @@ test("type union: switching back to Image Card swaps the active discriminator", 
 
   await expect(component.getByLabel("Src")).toBeVisible();
 });
+
+// ── (C) block-config-wrapped inline union (VTEX userSegment matcher) ─────────
+// deco wraps a matcher's config as `{ allOf:[Props], properties:{__resolveType} }`.
+// When `Props` is a discriminated union, resolveSchema emits an inline-union
+// whose branches carry BOTH the real discriminant (`segment`) and the block's
+// `__resolveType` as constant discriminators — so picking a segment preserves
+// the matcher's resolveType (losing it would break rule resolution).
+const USER_SEGMENT_RT = "vtex/matchers/userSegment.ts";
+const userSegmentUnion: SchemaProperty = {
+  type: "inline-union",
+  title: "Segment",
+  inlineUnionBranches: [
+    {
+      title: "Anonymous without cart",
+      discriminators: {
+        segment: "anonymous-without-cart",
+        __resolveType: USER_SEGMENT_RT,
+      },
+      schema: {
+        type: "object",
+        properties: { segment: { type: "string", hidden: true } },
+      },
+    },
+    {
+      title: "Logged in with recent orders",
+      discriminators: {
+        segment: "logged-in-with-recent-orders",
+        __resolveType: USER_SEGMENT_RT,
+      },
+      schema: {
+        type: "object",
+        properties: {
+          segment: { type: "string", hidden: true },
+          months: { type: "number", title: "Months" },
+        },
+      },
+    },
+  ],
+};
+
+test("segment union: selecting a branch writes segment AND preserves __resolveType", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={userSegmentUnion}
+      label="Segment"
+      initialValue={{ __resolveType: USER_SEGMENT_RT }}
+    />,
+  );
+
+  await component.getByRole("combobox").click();
+  await page.getByRole("option", { name: "Logged in with recent orders" }).click();
+
+  await expect
+    .poll(async () => {
+      const value = (await readFormValue(component)) as Record<string, unknown>;
+      return { segment: value?.segment, rt: value?.__resolveType };
+    })
+    .toEqual({
+      segment: "logged-in-with-recent-orders",
+      rt: USER_SEGMENT_RT,
+    });
+});
+
+test("segment union: editing the branch's Months keeps segment and __resolveType", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={userSegmentUnion}
+      label="Segment"
+      initialValue={{
+        __resolveType: USER_SEGMENT_RT,
+        segment: "logged-in-with-recent-orders",
+        months: 3,
+      }}
+    />,
+  );
+
+  // Pre-populated value selects the recent-orders branch; Months is editable.
+  await expect(component.getByRole("combobox")).toHaveText(
+    "Logged in with recent orders",
+  );
+
+  await component.getByLabel("Months").fill("6");
+
+  await expect
+    .poll(async () => {
+      const value = (await readFormValue(component)) as Record<string, unknown>;
+      return {
+        segment: value?.segment,
+        rt: value?.__resolveType,
+        months: value?.months,
+      };
+    })
+    .toEqual({
+      segment: "logged-in-with-recent-orders",
+      rt: USER_SEGMENT_RT,
+      months: 6,
+    });
+});

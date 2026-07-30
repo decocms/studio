@@ -1592,3 +1592,103 @@ describe("inferSchemaFromValue – form from saved props", () => {
     expect(inferSchemaFromValue({ __resolveType: "x" })).toBeNull();
   });
 });
+
+describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
+  // The real deco shape: a matcher whose `Props` is a discriminated union.
+  // @deco/deco wraps the block config as
+  //   { type:object, allOf:[{$ref:Props}], properties:{__resolveType}, required:[__resolveType] }
+  // and `Props` is `anyOf` of $refs to the branch interfaces. The discriminant
+  // `segment` is a string `const` marked `@hide true` (emitted as the string
+  // "true"). Only the last branch adds a visible `months` field.
+  const rt = "vtex/matchers/userSegment.ts";
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: { matchers: { [rt]: { $ref: "#/definitions/Wrapper" } } },
+    },
+    schema: {
+      definitions: {
+        Wrapper: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/Props" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [rt], default: rt },
+          },
+        },
+        Props: {
+          anyOf: [
+            { $ref: "#/definitions/AnonymousWithoutCart" },
+            { $ref: "#/definitions/LoggedIn" },
+            { $ref: "#/definitions/LoggedInWithRecentOrders" },
+          ],
+        },
+        AnonymousWithoutCart: {
+          type: "object",
+          title: "Anonymous without cart",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "anonymous-without-cart",
+              default: "anonymous-without-cart",
+              hide: "true",
+            },
+          },
+        },
+        LoggedIn: {
+          type: "object",
+          title: "Logged in",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "logged-in",
+              default: "logged-in",
+              hide: "true",
+            },
+          },
+        },
+        LoggedInWithRecentOrders: {
+          type: "object",
+          title: "Logged in with recent orders",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "logged-in-with-recent-orders",
+              default: "logged-in-with-recent-orders",
+              hide: "true",
+            },
+            months: { type: "number", title: "Months", default: 3 },
+          },
+        },
+      },
+    },
+  };
+
+  test("renders a branch selector titled by each interface", () => {
+    const resolved = resolveSchema(rt, meta);
+    expect(resolved?.type).toBe("inline-union");
+    expect(resolved?.properties).toBeUndefined();
+    expect(resolved?.inlineUnionBranches?.map((b) => b.title)).toEqual([
+      "Anonymous without cart",
+      "Logged in",
+      "Logged in with recent orders",
+    ]);
+  });
+
+  test("carries __resolveType + segment as discriminators so both survive selection", () => {
+    const branches = resolveSchema(rt, meta)?.inlineUnionBranches;
+    expect(branches?.[0]?.discriminators).toEqual({
+      segment: "anonymous-without-cart",
+      __resolveType: rt,
+    });
+    expect(branches?.[2]?.discriminators).toEqual({
+      segment: "logged-in-with-recent-orders",
+      __resolveType: rt,
+    });
+    // `months` stays on its own branch, not merged onto every option.
+    expect(branches?.[2]?.schema?.properties?.months?.type).toBe("number");
+    expect(branches?.[1]?.schema?.properties?.months).toBeUndefined();
+  });
+});
