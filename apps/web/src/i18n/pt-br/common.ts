@@ -2,7 +2,6 @@ import type { common as commonEn } from "../en/common.ts";
 
 export const common = {
   "common.accountPopover.account": "Conta",
-  "common.accountPopover.addToHomeScreen": "Adicionar à tela inicial",
   "common.accountPopover.adminDashboard": "Painel de administração",
   "common.accountPopover.community": "Comunidade",
   "common.accountPopover.copyUserId": "Copiar ID do usuário",

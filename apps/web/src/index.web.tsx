@@ -5,7 +5,6 @@ import { Providers } from "@/providers/providers";
 import { router } from "@/router";
 import "../index.css";
 import { migrateLegacyStorageKeys } from "@/lib/legacy-storage";
-import { initPwaInstallCapture } from "@/lib/pwa-install";
 
 migrateLegacyStorageKeys(window.localStorage);
 
@@ -14,8 +13,6 @@ migrateLegacyStorageKeys(window.localStorage);
 if (import.meta.env.VITE_TAURI_APP === "1") {
   void import("./index.native");
 }
-
-initPwaInstallCapture();
 
 const rootElement = document.getElementById("root")!;
 

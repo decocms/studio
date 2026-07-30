@@ -34,7 +34,7 @@ export function ChatToggle({
       disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
       // Distinctive icon — collapses with the system tabs at 768px of header.
       labelCollapse="sooner"
-      className="wco-no-drag h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+      className="h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
       onClick={() => {
         track("agent_toolbar_toggled", {
           button: "chat",

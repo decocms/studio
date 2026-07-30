@@ -28,9 +28,10 @@
           var isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (isDark) {
             document.documentElement.classList.add("dark");
-            // Also pre-set <meta name="theme-color"> so the PWA title-bar (WCO)
-            // doesn't flash light before the React runtime syncs it from --sidebar.
-            // Value approximates dark --sidebar: oklch(0.155 0.005 60).
+            // Also pre-set <meta name="theme-color"> so the mobile browser
+            // chrome doesn't flash light before the React runtime syncs it
+            // from --sidebar. Value approximates dark --sidebar:
+            // oklch(0.155 0.005 60).
             var meta = document.querySelector('meta[name="theme-color"]');
             if (meta) meta.setAttribute("content", "#272524");
           }
@@ -49,17 +50,6 @@
     <meta name="twitter:description" content="Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in." />
     <meta name="twitter:image" content="/og-image.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- PWA install. The manifest + apple-touch-icon below are the "deco
-         Studio" defaults and stay active on every route, so the browser's own
-         "Add to Home Screen" installs Studio itself. The per-org install page
-         (/:org/install) temporarily swaps these for org-branded values via
-         usePwaManifest, so installing from there produces a separate app for
-         that org, then restores the defaults on leaving the page. -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="deco Studio" />
   </head>
   <body>
     <div id="root"></div>
