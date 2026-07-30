@@ -50,6 +50,9 @@ const loginRoute = createRoute({
       scope: z.string().optional(),
       code_challenge: z.string().optional(),
       code_challenge_method: z.string().optional(),
+      // WhatsApp Concierge attribution (e.g. ?src=wa&ref=<leadId>)
+      src: z.string().optional(),
+      ref: z.string().optional(),
     }),
   ),
 });
