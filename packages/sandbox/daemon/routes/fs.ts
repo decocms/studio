@@ -715,7 +715,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
       );
     }
 
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    await mkdir(path.dirname(filePath), { recursive: true });
 
     // pipeline() guarantees: backpressure honored, errors propagate
     // through the chain, all streams destroyed on failure. The Transform
@@ -739,7 +739,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
       // Any failure (network RST, TLS error, size cap, write fault)
       // leaves a partial file. Remove it so a later skill step can't
       // read a half-baked artifact.
-      fs.rmSync(filePath, { force: true });
+      await rm(filePath, { force: true });
       return jsonResponse(
         {
           error: abortController.signal.aborted
@@ -782,24 +782,26 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
       return jsonResponse({ error: "Path escapes project root" }, 400);
     }
 
-    let stat: fs.Stats;
+    let fileStat: fs.Stats;
     try {
-      stat = fs.statSync(filePath);
+      fileStat = await stat(filePath);
     } catch {
       return jsonResponse({ error: `File not found: ${body.path}` }, 400);
     }
-    if (stat.isDirectory()) {
+    if (fileStat.isDirectory()) {
       return jsonResponse({ error: "Path is a directory" }, 400);
     }
-    if (stat.size > MAX_TRANSFER_BYTES) {
+    if (fileStat.size > MAX_TRANSFER_BYTES) {
       return jsonResponse(
-        { error: `File too large (${stat.size} > ${MAX_TRANSFER_BYTES})` },
+        {
+          error: `File too large (${fileStat.size} > ${MAX_TRANSFER_BYTES})`,
+        },
         413,
       );
     }
 
     const headers: Record<string, string> = {
-      "Content-Length": String(stat.size),
+      "Content-Length": String(fileStat.size),
     };
     if (body.contentType) headers["Content-Type"] = body.contentType;
 
@@ -844,7 +846,7 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
         502,
       );
     }
-    return jsonResponse({ ok: true, size: stat.size });
+    return jsonResponse({ ok: true, size: fileStat.size });
   };
 }
 
