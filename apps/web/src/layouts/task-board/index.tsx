@@ -3,8 +3,30 @@
  * description, status, priority, assignee), independent of chat threads.
  */
 
-import { Fragment, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import { useState } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -95,7 +117,6 @@ import {
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
-import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useThreadActions } from "@/components/chat/store/hooks";
@@ -131,43 +152,6 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   const d = new Date(iso);
   const overdue = d.getTime() < Date.now();
   return { label: DATE_FMT.format(d), overdue };
-}
-
-/**
- * Dragging a card that's part of a multi-selection should show the whole
- * stack moving together, not just the one card under the cursor — clone the
- * dragged card, stamp a count badge on it, and swap it in as the native drag
- * image (removed on the next frame, once the browser has snapshotted it).
- */
-function setSelectionDragImage(e: DragEvent<HTMLButtonElement>, count: number) {
-  const source = e.currentTarget;
-  const clone = source.cloneNode(true) as HTMLElement;
-  clone.style.position = "fixed";
-  clone.style.top = "-9999px";
-  clone.style.left = "-9999px";
-  clone.style.width = `${source.offsetWidth}px`;
-
-  const badge = document.createElement("div");
-  badge.textContent = String(count);
-  badge.style.cssText =
-    "position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:9999px;background:var(--color-foreground);color:var(--color-background);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;";
-  clone.appendChild(badge);
-
-  document.body.appendChild(clone);
-  e.dataTransfer.setDragImage(clone, 20, 20);
-  requestAnimationFrame(() => clone.remove());
-}
-
-/** `onDragStart` always writes a JSON array of ids (see `TaskCard`) — parse
- *  it back, tolerating a bare id string from any other drag source. */
-function parseDragIds(raw: string): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [raw];
-  } catch {
-    return [raw];
-  }
 }
 
 /**
@@ -1028,6 +1012,27 @@ function LayoutToggle({
   );
 }
 
+/** Prefix for a lane's own droppable id, so it can't collide with a card id. */
+const LANE_DROPPABLE_PREFIX = "lane:";
+
+/** Where a card sits locally: while a drag is in flight, and then until the
+ *  server's optimistic patch catches up. */
+interface Placement {
+  status: TaskBoardItemStatus;
+  sortOrder: number;
+}
+
+/** Bits `useSortable` hands back that have to land on the card's own element
+ *  for it to be draggable. Derived from the hook so there's no deep import. */
+type SortableBindings = Pick<
+  ReturnType<typeof useSortable>,
+  "attributes" | "listeners"
+>;
+
+function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
+  return a.sortOrder - b.sortOrder;
+}
+
 function Lanes({
   items,
   members,
@@ -1057,212 +1062,439 @@ function Lanes({
   onAutoFix?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
-  const t = useT();
-  const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
-  // Which card the dragged one would land before, within `overLane` — null
-  // means "at the end of the lane". Drives both the drop math and the
-  // insertion-line indicator.
-  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
-  // Ids moving together in the in-flight drag, primary (grabbed) card first —
-  // while set, its lane renders only that one card (as a placeholder) instead
-  // of every selected card, so the group doesn't look duplicated mid-drag.
-  const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
-  const boardRef = useRef<HTMLDivElement>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // Cards that just landed from a drop — they get the settle animation. Cleared
+  // on drag start so dropping the same card twice replays it (a CSS animation
+  // only re-runs when the class is removed and re-added).
+  const [landedIds, setLandedIds] = useState<string[]>([]);
+  // Local placement overrides, doing two jobs with one mechanism:
+  //   1. Live preview — while dragging across lanes the card is rendered into
+  //      the lane under the cursor, which is what makes dnd-kit's sortable
+  //      strategy open a gap there.
+  //   2. Bridge — after the drop they hold the new placement until the
+  //      mutation's optimistic cache patch lands, so a card never flicks back
+  //      to its old lane for a frame.
+  // Entries retire themselves once `items` reports the same placement.
+  const [overrides, setOverrides] = useState<Map<string, Placement>>(new Map());
 
-  // Re-run FLIP whenever a card's lane or ordering changes.
-  const signature = items.map((t) => `${t.id}:${t.status}`).join(",");
-  useFlipLanes(boardRef, signature);
+  const placed =
+    overrides.size > 0
+      ? items.map((item) => {
+          const override = overrides.get(item.id);
+          return override ? { ...item, ...override } : item;
+        })
+      : items;
+
+  // Retire settled overrides during render — React's supported "adjust state
+  // while rendering" path, so no frame paints with a stale override and this
+  // needs no effect (banned in this codebase).
+  if (overrides.size > 0 && !activeId) {
+    const settled = [...overrides].filter(([id, placement]) => {
+      const server = items.find((item) => item.id === id);
+      return (
+        server?.status === placement.status &&
+        server.sortOrder === placement.sortOrder
+      );
+    });
+    if (settled.length > 0) {
+      setOverrides((prev) => {
+        const next = new Map(prev);
+        for (const [id] of settled) next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  const laneItems = (status: TaskBoardItemStatus) =>
+    placed.filter((item) => item.status === status).sort(bySortOrder);
+
+  /** The lane a drop target belongs to: a lane's own droppable, or the lane of
+   *  the card being hovered. Resolved against `placed` rather than dnd-kit's
+   *  `over.data`, which is a ref and can't be read during render. */
+  const laneOf = (overId: string | number | undefined) => {
+    if (overId === undefined) return null;
+    const id = String(overId);
+    if (id.startsWith(LANE_DROPPABLE_PREFIX)) {
+      const status = id.slice(LANE_DROPPABLE_PREFIX.length);
+      return STATUSES.find((candidate) => candidate === status) ?? null;
+    }
+    return placed.find((item) => item.id === id)?.status ?? null;
+  };
+
+  // A card inside a multi-selection drags the whole selection, grabbed card
+  // first so it leads the run and the others follow in order.
+  const groupOf = (id: string) =>
+    selectedIds.has(id) && selectedIds.size > 1
+      ? [id, ...Array.from(selectedIds).filter((other) => other !== id)]
+      : [id];
+
+  const place = (ids: string[], status: TaskBoardItemStatus, slot: number) => {
+    const orders = runSortOrders(slot, ids.length);
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      ids.forEach((id, i) => next.set(id, { status, sortOrder: orders[i]! }));
+      return next;
+    });
+  };
+
+  const sensors = useSensors(
+    // Distance threshold so a plain click (open the task) and a shift-click
+    // (toggle selection) still work — the drag only engages once the pointer
+    // actually travels.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const id = String(event.active.id);
+    const lane = laneOf(event.over?.id);
+    const current = placed.find((item) => item.id === id);
+    if (!lane || !current || current.status === lane) return;
+    // Crossed into a different lane: preview the group there so the gap opens
+    // under the cursor. Reordering *within* a lane needs no override — the
+    // sortable strategy already shifts the neighbours.
+    const ids = groupOf(id);
+    const overId = String(event.over?.id ?? "");
+    const target = laneItems(lane).filter((item) => !ids.includes(item.id));
+    place(
+      ids,
+      lane,
+      insertSortOrder(
+        target,
+        overId.startsWith(LANE_DROPPABLE_PREFIX) ? null : overId,
+        id,
+      ),
+    );
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const id = String(event.active.id);
+    setActiveId(null);
+    const lane =
+      laneOf(event.over?.id) ?? placed.find((item) => item.id === id)?.status;
+    if (!lane) {
+      setOverrides(new Map());
+      return;
+    }
+    const ids = groupOf(id);
+    // `placed` already shows the arrangement the user is looking at (a
+    // cross-lane hover was applied in handleDragOver), so the landing slot is
+    // just the sortable reorder within `lane`.
+    const laneNow = laneItems(lane);
+    const overId = String(event.over?.id ?? "");
+    const from = laneNow.findIndex((item) => item.id === id);
+    const to = overId.startsWith(LANE_DROPPABLE_PREFIX)
+      ? laneNow.length - 1
+      : laneNow.findIndex((item) => item.id === overId);
+    const reordered =
+      from === -1 || to === -1 ? laneNow : arrayMove(laneNow, from, to);
+
+    // Dropped back exactly where it started — skip the write entirely.
+    const serverOrder = items
+      .filter((item) => item.status === lane)
+      .sort(bySortOrder)
+      .map((item) => item.id)
+      .join();
+    if (serverOrder === reordered.map((item) => item.id).join()) {
+      setOverrides(new Map());
+      return;
+    }
+
+    // The first non-group card after the landing point defines the slot; group
+    // members are excluded so they can't skew their own midpoint.
+    const after = reordered
+      .slice(reordered.findIndex((item) => item.id === id) + 1)
+      .find((item) => !ids.includes(item.id));
+    const slot = insertSortOrder(
+      laneNow.filter((item) => !ids.includes(item.id)),
+      after?.id ?? null,
+      id,
+    );
+    place(ids, lane, slot);
+    setLandedIds(ids);
+    onMove(ids, lane, slot);
+  };
+
+  const activeItem = activeId
+    ? placed.find((item) => item.id === activeId)
+    : null;
+  const activeGroup = activeId ? groupOf(activeId) : [];
 
   return (
-    // Scroll container spans the full panel width so the wheel works even when
-    // the pointer is in the empty margins on wide monitors. The lane row inside
-    // is capped + centered to the same width as the header (so they align), and
-    // overflows this row to scroll when it doesn't fit.
-    <div
-      ref={boardRef}
-      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+    <DndContext
+      sensors={sensors}
+      // Corners beat centers across lanes: a tall card's center can sit outside
+      // the column the pointer is actually over.
+      collisionDetection={closestCorners}
+      onDragStart={(event: DragStartEvent) => {
+        setActiveId(String(event.active.id));
+        setLandedIds([]);
+      }}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setActiveId(null);
+        setOverrides(new Map());
+      }}
     >
-      {/* Padding lives on the capped row (not the scroll container) so its left
-          edge matches the header's max-w + px exactly. */}
-      <div className="mx-auto flex w-full max-w-[1680px] gap-3 px-4 pt-6 pb-16 sm:px-8">
-        {STATUSES.map((status) => {
-          const laneItems = items.filter((t) => t.status === status);
-          const config = STATUS_CONFIG[status];
-          const LaneIcon = config.icon;
-          return (
-            <div
+      {/* Scroll container spans the full panel width so the wheel works even
+          when the pointer is in the empty margins on wide monitors. */}
+      <div className="min-h-0 flex-1 overflow-x-auto">
+        {/* Padding lives on the capped row (not the scroll container) so its
+            left edge matches the header's max-w + px exactly. Bottom breathing
+            room is handled per-lane by each column's own scrollable div — a pb
+            here would eat into this row's h-full and cut every column short,
+            since it no longer wraps a single page-level scroll. */}
+        <div className="mx-auto flex h-full w-full max-w-[1680px] gap-3 px-4 pt-6 sm:px-8">
+          {STATUSES.map((status) => (
+            <Lane
               key={status}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setOverLane(status);
-                // Only reached when not over a card (cards stop propagation),
-                // i.e. the empty area below the last card — drop at the end.
-                setDropBeforeId(null);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  setOverLane(null);
-                  setDropBeforeId(null);
+              status={status}
+              items={laneItems(status)}
+              members={members}
+              memberByUserId={memberByUserId}
+              selectedIds={selectedIds}
+              // Highlight the lane the drag currently sits in. Derived from the
+              // preview rather than `useDroppable`'s `isOver`, which goes false
+              // whenever a card (not the lane) is the drop target and would
+              // strobe the background.
+              isTarget={activeItem?.status === status}
+              hiddenIds={activeGroup}
+              landedIds={landedIds}
+              onToggleSelect={onToggleSelect}
+              onSelectAllInLane={onSelectAllInLane}
+              onOpen={onOpen}
+              onCreate={onCreate}
+              onAutoFix={onAutoFix}
+              onAssign={onAssign}
+            />
+          ))}
+        </div>
+      </div>
+      {/* Portal to body so the overlay's `position: fixed` resolves against the
+          viewport rather than the workspace PanelCard's transformed containing
+          block (which would offset the card from the cursor). */}
+      {createPortal(
+        // No drop animation: because the lane opens a live gap under the
+        // cursor, the card's final slot IS where you released it — measured at
+        // ~10px of travel on a normal drop, so any flight here is invisible
+        // work. The landing is animated on the card itself instead (see
+        // `landed` / `animate-card-land`), which reads regardless of distance.
+        <DragOverlay dropAnimation={null}>
+          {activeItem && (
+            <div className="relative cursor-grabbing">
+              <TaskCard
+                item={activeItem}
+                assignee={
+                  activeItem.assigneeId
+                    ? memberByUserId.get(activeItem.assigneeId)
+                    : undefined
                 }
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const ids = parseDragIds(e.dataTransfer.getData("text/plain"));
-                if (ids.length > 0) {
-                  onMove(
-                    ids,
-                    status,
-                    insertSortOrder(laneItems, dropBeforeId, ids[0]!),
-                  );
+                assignedBy={
+                  activeItem.assignedBy
+                    ? memberByUserId.get(activeItem.assignedBy)
+                    : undefined
                 }
-                setOverLane(null);
-                setDropBeforeId(null);
-              }}
-              className={cn(
-                "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
-                overLane === status && "bg-muted/50",
+                selected={selectedIds.has(activeItem.id)}
+                onOpen={() => {}}
+                className="shadow-lg"
+              />
+              {activeGroup.length > 1 && (
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
+                  {activeGroup.length}
+                </span>
               )}
-            >
-              {/* Sticky so the column header stays visible while the cards
-                  scroll vertically under it. */}
-              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
-                <LaneIcon
-                  size={15}
-                  className={cn("shrink-0", config.iconClassName)}
-                />
-                <span className="text-sm font-medium text-foreground">
-                  {t(config.labelKey)}
-                </span>
-                <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
-                  {laneItems.length}
-                </span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                        lane: t(config.labelKey),
-                      })}
-                      className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <DotsHorizontal size={15} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
-                      {t("taskBoard.taskBoard.selectAllInLane")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <button
-                  type="button"
-                  aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                    lane: t(config.labelKey),
-                  })}
-                  title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-                    lane: t(config.labelKey),
-                  })}
-                  onClick={() => onCreate(status)}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Plus size={15} />
-                </button>
-              </div>
-              <div className="flex min-h-12 flex-col pt-1">
-                {laneItems.map((item) => {
-                  // Every other card in the in-flight group hides from its
-                  // lane — only the grabbed card (draggingIds[0]) stays, as a
-                  // stand-in for the whole selection.
-                  if (
-                    draggingIds &&
-                    draggingIds.length > 1 &&
-                    draggingIds.includes(item.id) &&
-                    item.id !== draggingIds[0]
-                  ) {
-                    return null;
-                  }
-                  const dragIds =
-                    selectedIds.has(item.id) && selectedIds.size > 1
-                      ? [
-                          item.id,
-                          ...Array.from(selectedIds).filter(
-                            (id) => id !== item.id,
-                          ),
-                        ]
-                      : [item.id];
-                  return (
-                    <Fragment key={item.id}>
-                      <DropDivider
-                        show={overLane === status && dropBeforeId === item.id}
-                      />
-                      <TaskCard
-                        item={item}
-                        assignee={
-                          item.assigneeId
-                            ? memberByUserId.get(item.assigneeId)
-                            : undefined
-                        }
-                        assignedBy={
-                          item.assignedBy
-                            ? memberByUserId.get(item.assignedBy)
-                            : undefined
-                        }
-                        members={members}
-                        selected={selectedIds.has(item.id)}
-                        dragIds={dragIds}
-                        isPlaceholder={draggingIds?.[0] === item.id}
-                        onDragStartCard={setDraggingIds}
-                        onDragEndCard={() => setDraggingIds(null)}
-                        onToggleSelect={() => onToggleSelect(item.id)}
-                        onOpen={() => onOpen(item)}
-                        onAutoFix={
-                          onAutoFix ? () => onAutoFix(item) : undefined
-                        }
-                        onAssign={
-                          onAssign
-                            ? (userId) => onAssign(item.id, userId)
-                            : undefined
-                        }
-                        onDragOverCard={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setOverLane(status);
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const before = e.clientY - rect.top < rect.height / 2;
-                          if (before) {
-                            setDropBeforeId(item.id);
-                          } else {
-                            const index = laneItems.indexOf(item);
-                            setDropBeforeId(laneItems[index + 1]?.id ?? null);
-                          }
-                        }}
-                      />
-                    </Fragment>
-                  );
-                })}
-                <DropDivider
-                  show={overLane === status && dropBeforeId === null}
-                />
-              </div>
             </div>
-          );
-        })}
+          )}
+        </DragOverlay>,
+        document.body,
+      )}
+    </DndContext>
+  );
+}
+
+function Lane({
+  status,
+  items,
+  members,
+  memberByUserId,
+  selectedIds,
+  isTarget,
+  hiddenIds,
+  landedIds,
+  onToggleSelect,
+  onSelectAllInLane,
+  onOpen,
+  onCreate,
+  onAutoFix,
+  onAssign,
+}: {
+  status: TaskBoardItemStatus;
+  items: TaskBoardItem[];
+  members: Member[];
+  memberByUserId: Map<string, Member>;
+  selectedIds: Set<string>;
+  isTarget: boolean;
+  /** Cards riding in the DragOverlay — held in the layout as gaps. */
+  hiddenIds: string[];
+  /** Cards that just landed from a drop — they play the settle animation. */
+  landedIds: string[];
+  onToggleSelect: (id: string) => void;
+  onSelectAllInLane: (status: TaskBoardItemStatus) => void;
+  onOpen: (item: TaskBoardItem) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
+  onAutoFix?: (item: TaskBoardItem) => void;
+  onAssign?: (id: string, userId: string | null) => void;
+}) {
+  const t = useT();
+  const config = STATUS_CONFIG[status];
+  const LaneIcon = config.icon;
+  // The lane's own droppable covers the empty space below the last card, so an
+  // empty lane (and the area past the end of a short one) still takes a drop.
+  const { setNodeRef } = useDroppable({
+    id: `${LANE_DROPPABLE_PREFIX}${status}`,
+  });
+
+  return (
+    <div
+      // Stable hook for e2e drag specs — lane columns are otherwise only
+      // identifiable by their localized label or utility classes.
+      data-lane={status}
+      className={cn(
+        "flex h-full w-[300px] shrink-0 flex-col rounded-xl py-1 transition-colors",
+        isTarget && "bg-muted/50",
+      )}
+    >
+      {/* Sticky so the column header stays visible while the cards scroll
+          vertically under it. */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
+        <LaneIcon size={15} className={cn("shrink-0", config.iconClassName)} />
+        <span className="text-sm font-medium text-foreground">
+          {t(config.labelKey)}
+        </span>
+        <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+          {items.length}
+        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                lane: t(config.labelKey),
+              })}
+              className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <DotsHorizontal size={15} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
+              {t("taskBoard.taskBoard.selectAllInLane")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+            lane: t(config.labelKey),
+          })}
+          title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
+            lane: t(config.labelKey),
+          })}
+          onClick={() => onCreate(status)}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+      {/* px-1 so each card's shadow has room inside the scrollport — an
+          overflow-y container clips the x-axis too. */}
+      <div
+        ref={setNodeRef}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pt-1 pb-16 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1"
+      >
+        <SortableContext
+          items={items.map((item) => item.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {items.map((item) => (
+            <SortableTaskCard
+              key={item.id}
+              item={item}
+              assignee={
+                item.assigneeId
+                  ? memberByUserId.get(item.assigneeId)
+                  : undefined
+              }
+              assignedBy={
+                item.assignedBy
+                  ? memberByUserId.get(item.assignedBy)
+                  : undefined
+              }
+              members={members}
+              selected={selectedIds.has(item.id)}
+              hidden={hiddenIds.includes(item.id)}
+              landed={landedIds.includes(item.id)}
+              onToggleSelect={() => onToggleSelect(item.id)}
+              onOpen={() => onOpen(item)}
+              onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+              onAssign={
+                onAssign ? (userId) => onAssign(item.id, userId) : undefined
+              }
+            />
+          ))}
+        </SortableContext>
       </div>
     </div>
   );
 }
 
-/** Thin line marking where a dragged card will land between two others. */
-function DropDivider({ show }: { show: boolean }) {
+/** A card in a lane. `useSortable` supplies the transform that slides it aside
+ *  to open a gap, and the transition that animates it into place. */
+function SortableTaskCard({
+  item,
+  hidden,
+  landed,
+  ...props
+}: {
+  item: TaskBoardItem;
+  assignee?: Member;
+  assignedBy?: Member;
+  members?: Member[];
+  selected?: boolean;
+  hidden: boolean;
+  landed: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
+  onAutoFix?: () => void;
+  onAssign?: (userId: string | null) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
   return (
-    <div className="flex h-3 shrink-0 items-center px-1">
-      <div
-        className={cn(
-          "h-0.5 w-full rounded-full transition-colors",
-          show ? "bg-primary/20" : "bg-transparent",
-        )}
-      />
-    </div>
+    <TaskCard
+      {...props}
+      item={item}
+      dragRef={setNodeRef}
+      bindings={{ attributes, listeners }}
+      className={cn(landed && "animate-card-land")}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition,
+        // The dragged card (and the rest of its group, riding along in the
+        // overlay) leaves a gap rather than a ghost.
+        opacity: isDragging || hidden ? 0 : undefined,
+      }}
+    />
   );
 }
 
@@ -1272,35 +1504,29 @@ function TaskCard({
   assignedBy,
   members,
   selected,
-  dragIds,
-  isPlaceholder,
+  className,
+  dragRef,
+  bindings,
+  style,
   onToggleSelect,
-  onDragStartCard,
-  onDragEndCard,
   onOpen,
   onAutoFix,
   onAssign,
-  onDragOverCard,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
   selected?: boolean;
-  /** Ids that should move together when this card is dragged — the whole
-   *  selection (this card first) when it's part of a multi-card selection,
-   *  otherwise just this card's own id. */
-  dragIds?: string[];
-  /** True while this card is standing in for its whole dragged group (see
-   *  `Lanes`) — rendered as a faded placeholder instead of the normal card. */
-  isPlaceholder?: boolean;
+  className?: string;
+  /** Supplied by `SortableTaskCard`; absent for the DragOverlay clone. */
+  dragRef?: (node: HTMLElement | null) => void;
+  bindings?: SortableBindings;
+  style?: CSSProperties;
   onToggleSelect?: () => void;
-  onDragStartCard?: (ids: string[]) => void;
-  onDragEndCard?: () => void;
   onOpen: () => void;
   onAutoFix?: () => void;
   onAssign?: (userId: string | null) => void;
-  onDragOverCard?: (e: DragEvent<HTMLButtonElement>) => void;
 }) {
   const t = useT();
   const StatusIcon = STATUS_CONFIG[item.status].icon;
@@ -1314,26 +1540,18 @@ function TaskCard({
   return (
     <button
       type="button"
-      draggable
-      data-flip-id={item.id}
-      data-flip-lane={item.status}
-      onDragStart={(e) => {
-        const ids = dragIds ?? [item.id];
-        e.dataTransfer.setData("text/plain", JSON.stringify(ids));
-        e.dataTransfer.effectAllowed = "move";
-        if (ids.length > 1) setSelectionDragImage(e, ids.length);
-        onDragStartCard?.(ids);
-      }}
-      onDragEnd={onDragEndCard}
-      onDragOver={onDragOverCard}
+      ref={dragRef}
+      style={style}
+      {...bindings?.attributes}
+      {...bindings?.listeners}
       onClick={(e) => {
         if (e.shiftKey && onToggleSelect) onToggleSelect();
         else onOpen();
       }}
       className={cn(
-        "group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing",
+        "group flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
         selected && "bg-accent",
-        isPlaceholder && "opacity-50",
+        className,
       )}
       title={item.title}
     >
