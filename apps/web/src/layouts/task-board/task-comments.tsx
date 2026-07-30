@@ -595,7 +595,9 @@ function CommentComposer({
       disabled={!value.trim()}
       onClick={submit}
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      // cursor-pointer: the composer around it sets cursor-text, which would
+      // otherwise inherit onto the button.
+      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       <ArrowUp size={16} />
     </button>
@@ -611,9 +613,21 @@ function CommentComposer({
       />
     ) : null;
 
+  // The whole composer is the click target, not just the one-line input inside
+  // it: the empty space below "Leave a comment..." and the gap either side of
+  // "Leave a reply..." read as part of the field, so clicking them should put
+  // the caret there. A click that lands on the send button hits the button
+  // first and bubbles here after, which only re-focuses the (now empty)
+  // composer.
+  const focusInput = () => ref.current?.focus();
+
   if (variant === "root") {
     return (
-      <div className="relative flex flex-col gap-1 rounded-xl bg-card p-3 card-shadow">
+      <div
+        data-testid="new-comment-composer"
+        onClick={focusInput}
+        className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
+      >
         {textarea}
         <div className="flex items-center justify-end">{actions}</div>
         {menu}
@@ -622,7 +636,11 @@ function CommentComposer({
   }
 
   return (
-    <div className="relative flex items-start gap-2 p-3">
+    <div
+      data-testid="reply-composer"
+      onClick={focusInput}
+      className="relative flex cursor-text items-start gap-2 p-3"
+    >
       <span className="mt-0.5 shrink-0">
         <AuthorGlyph author={author} />
       </span>
