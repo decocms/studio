@@ -57,7 +57,6 @@ export async function resolveSubagent(
     const mcpClient = await createVirtualClientFrom(
       effectiveVirtualMcp,
       ctx,
-      "passthrough",
       superUser,
       { includeSkillsCatalog: true },
     );

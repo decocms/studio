@@ -180,7 +180,6 @@ export async function handleVirtualMcpRequest(
           const result = await createVirtualClientFrom(
             virtualMcp,
             ctx,
-            "passthrough",
             false,
             // Serves the agent's MCP (incl. the desktop daemon); surface the
             // skill catalog in the instructions it reads.
