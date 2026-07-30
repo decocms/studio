@@ -9,6 +9,7 @@ import {
   Zap,
 } from "@untitledui/icons";
 import type { ComponentType } from "react";
+import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
 
 export interface ReleaseBullet {
   icon: ComponentType<{ size?: number; className?: string }>;
@@ -34,7 +35,7 @@ export interface Release {
  * Release feed, newest first. Add new entries at the top.
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
-export const RELEASES: Release[] = [
+const ALL_RELEASES: Release[] = [
   {
     id: "native-app-macos",
     date: "2026-07-30",
@@ -267,3 +268,10 @@ export const RELEASES: Release[] = [
     ],
   },
 ];
+
+// An install prompt inside the installed app is noise: when the Tauri build
+// flag is set, drop releases whose CTA is the download action at the source,
+// so every consumer (floating card, inbox counts) agrees.
+export const RELEASES: Release[] = isDesktopAppEnvironment()
+  ? ALL_RELEASES.filter((release) => !(release.cta && "action" in release.cta))
+  : ALL_RELEASES;
