@@ -44,9 +44,22 @@ on:
     - cron: "17 3 * * *" # nightly, arbitrary off-hour offset to dodge the top-of-hour stampede
   workflow_dispatch: {}
 
+# Cancel superseded runs on PR branches, but QUEUE on main: with
+# cancel-in-progress everywhere, every main push killed the previous
+# commit's in-flight jobs (tauri-build runs 10-20 min; merges land minutes
+# apart), so nearly every main commit ended with cancelled — rendered as a
+# red X — checks, and only the last commit of a burst ever completed
+# post-merge verification. GitHub holds at most one queued run per group,
+# so bursts still collapse to "in-progress finishes, newest waits".
+#
+# Relatedly, every job below also skips `[release]:` bump pushes (see the
+# jobs' `if:`): the bot's bump touches only package.json versions, seconds
+# after the merge commit that was already verified — building it doubled
+# main's native runs for zero extra signal. release-native.yaml, not this
+# workflow, owns the shipping build of the bumped version.
 concurrency:
   group: native-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   BUN_VERSION: "1.3.14"
@@ -62,7 +75,10 @@ jobs:
   #    this phase doesn't need to carry.
   # ---------------------------------------------------------------------
   rust-checks:
-    if: github.event_name != 'schedule'
+    if: >-
+      github.event_name != 'schedule' &&
+      !(github.event_name == 'push' &&
+        startsWith(github.event.head_commit.message, '[release]:'))
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -140,7 +156,10 @@ jobs:
   #    `real-ui-passthrough.e2e.test.ts`).
   # ---------------------------------------------------------------------
   daemon-e2e-vs-rust:
-    if: github.event_name != 'schedule'
+    if: >-
+      github.event_name != 'schedule' &&
+      !(github.event_name == 'push' &&
+        startsWith(github.event.head_commit.message, '[release]:'))
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -218,7 +237,10 @@ jobs:
   #    the bar is simply "all green" — no allowlist needed.
   # ---------------------------------------------------------------------
   contract-suite:
-    if: github.event_name != 'schedule'
+    if: >-
+      github.event_name != 'schedule' &&
+      !(github.event_name == 'push' &&
+        startsWith(github.event.head_commit.message, '[release]:'))
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -260,7 +282,10 @@ jobs:
   #    release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
-    if: github.event_name != 'schedule'
+    if: >-
+      github.event_name != 'schedule' &&
+      !(github.event_name == 'push' &&
+        startsWith(github.event.head_commit.message, '[release]:'))
     runs-on: macos-latest
     timeout-minutes: 45
     env:
