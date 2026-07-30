@@ -1,7 +1,7 @@
 import type { downloadApp as downloadAppEn } from "../en/download-app.ts";
 
 export const downloadApp = {
-  "downloadApp.title": "Baixar o app do deco studio",
+  "downloadApp.title": "Baixar o app do Studio",
   "downloadApp.description":
     "O app é instalado pelo Terminal do seu Mac — copie o comando abaixo, cole lá e pressione Return.",
   "downloadApp.copyLabel": "Copiar comando de instalação",
@@ -10,5 +10,5 @@ export const downloadApp = {
     "Dica: pressione ⌘ Espaço e digite “Terminal” para abri-lo.",
   "downloadApp.appleSiliconNote":
     "Para Macs com Apple Silicon (M1 ou mais novo) — Windows em breve. Requer o Homebrew.",
-  "downloadApp.openLabel": "Baixar o app do deco studio",
+  "downloadApp.openLabel": "Baixar o app do Studio",
 } satisfies Record<keyof typeof downloadAppEn, string>;
