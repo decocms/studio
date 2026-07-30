@@ -565,6 +565,21 @@ existing `--config` overlay extended to override
 makes the test a repeatable runbook instead of archaeology — there is
 otherwise NO end-to-end integration path for the updater at all.
 
+Verified by a full local spike (2026-07-30, macOS 26): two `--config`-versioned
+release builds + a `python3 -m http.server` channel — check → download →
+signature verify → version-pairing check → eager install (on-disk `.app`
+swapped while the old process runs) → `/api/config` reporting the staged
+version → `POST /_local/update/restart` 202 → graceful shutdown → **relaunch
+into the new version ~2 s later** (tauri#13923 did not reproduce), with the
+relaunched process's own check correctly finding nothing to do. Two
+spike-environment gotchas for whoever reruns it: the updater plugin REFUSES
+to construct when `current_exe()` contains a symlink ("StartingBinary …
+symlink on a non-allowed platform") — run the app from a symlink-free path
+(`/private/tmp/...`, not `/tmp/...`; real `/Applications` installs are
+unaffected) — and use a throwaway `identifier` override
+(`com.decocms.studio.spike`) in BOTH builds so the spike gets its own app
+root/instance lock instead of colliding with a running dev or prod app.
+
 On macOS 14+: install staging-N−1 via the real cask flow (quarantine-cleared),
 publish staging-N, then verify — pass criteria, go/no-go for first real
 promotion:
