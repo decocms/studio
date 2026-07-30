@@ -698,7 +698,7 @@ mod tests {
             // The user's own rclone, serving their own backup.
             " 102 /usr/local/bin/rclone mount remote: /Users/me/backup\n",
             // Our app itself.
-            " 103 /App.app/Contents/MacOS/decocms-desktop\n",
+            " 103 /App.app/Contents/MacOS/deco\n",
             // Something merely MENTIONING the path — a grep, an editor.
             " 104 grep -r rclone /data/orgs\n",
             // Another app's org mounts, same layout, different root.

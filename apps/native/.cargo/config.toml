@@ -1,5 +1,5 @@
 # macOS dev-build signing hook. Cargo routes each locally-executed binary
-# through the runner, but the script signs only `decocms-desktop`; test binaries
+# through the runner, but the script signs only `deco`; test binaries
 # pass through unchanged. The app uses the local self-signed `decocms-dev`
 # identity with an explicit certificate-hash + bundle-identifier requirement so
 # Keychain ACLs remain stable across rebuilds. Signing fails closed instead of

@@ -2,16 +2,10 @@
 // stable control-origin, cookie-auth, and preview-origin design.
 {
   "$schema": "https://schema.tauri.app/config/2",
-  // One name everywhere a user looks: `deco.app`, the inner binary, the
-  // menu bar and the About panel all read "deco" (Tauri derives the display
-  // name from productName). The cargo crate keeps `decocms-desktop` — the
-  // dev signing runner gates on it and nothing user-facing sees it.
+  // One name, one spelling: the cargo crate, the built binary, `deco.app`,
+  // the menu bar and the About panel all read `deco` — no mainBinaryName
+  // rename, no crate/product boundary to keep in anyone's head.
   productName: "deco",
-  // Renames the built binary too (schema: "we will rename that binary in
-  // tauri build") so ps/Activity Monitor read `deco`, not the crate name.
-  // `tauri dev` still runs the cargo-named binary — the dev signing runner's
-  // gate on `decocms-desktop` keeps working.
-  mainBinaryName: "deco",
   version: "0.1.0",
   // Bundle identifier — stable across builds (org slugs / update manifests
   // key off this, and macOS Keychain ACLs the `crates/upstream` token store

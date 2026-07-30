@@ -21,7 +21,7 @@
  *   5. Checks for orphaned children: captures the app's OS-level
  *      descendant PIDs while it's running, then asserts none of them are
  *      still alive after it exits (`pgrep -P <pid>`, plus a broad
- *      `pgrep -f` sweep for the standalone `local-api`/`decocms-desktop`
+ *      `pgrep -f` sweep for the standalone `local-api`/`deco`
  *      binaries in case something detached from the process tree
  *      entirely — e.g. a double-forked PTY child).
  *
@@ -52,8 +52,6 @@ import {
 } from "./boot-smoke-paths";
 
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
-// The BUNDLE's name (tauri.conf productName) — the raw cargo binary in
-// target/(debug|release)/ keeps the crate name `decocms-desktop`.
 const APP_BINARY_NAME = "deco";
 const APP_BUNDLE = join(
   DESKTOP_DIR,
@@ -152,8 +150,6 @@ async function ensureBuilt(forceRebuild: boolean): Promise<void> {
     const bundleBin = statSync(binaryPath()).mtimeMs;
     const webDir = join(DESKTOP_DIR, "..", "web");
     const inputs = [
-      // `mainBinaryName` renames the build output; dev builds keep the
-      // crate name, but this staleness probe always follows a `tauri build`.
       join(DESKTOP_DIR, "target", "release", "deco"),
       join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
       join(webDir, "index.native.html"),
