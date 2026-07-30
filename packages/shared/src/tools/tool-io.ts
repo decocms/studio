@@ -6622,7 +6622,6 @@ export interface StudioToolIO {
         avatarUrl: string;
         type: string;
       }[];
-      appSlug?: string | undefined;
     };
   };
   LINK_CURRENT_GET: {

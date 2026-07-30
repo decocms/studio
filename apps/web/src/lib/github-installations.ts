@@ -1,3 +1,6 @@
+export const GITHUB_APP_INSTALL_URL =
+  "https://github.com/apps/deco-cms/installations/new";
+
 export type GithubInstallation = {
   installationId: number;
   login: string;
@@ -13,7 +16,7 @@ type McpCallTool = (req: {
 export async function fetchGithubInstallations(
   selfCallTool: McpCallTool,
   connectionId: string,
-): Promise<{ installations: GithubInstallation[]; appSlug?: string }> {
+): Promise<{ installations: GithubInstallation[] }> {
   const result = await selfCallTool({
     name: "GITHUB_LIST_USER_ORGS",
     arguments: { connectionId },
@@ -26,7 +29,6 @@ export async function fetchGithubInstallations(
   try {
     return JSON.parse(content) as {
       installations: GithubInstallation[];
-      appSlug?: string;
     };
   } catch {
     throw new Error("Invalid response from GITHUB_LIST_USER_ORGS");
