@@ -73,6 +73,8 @@
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { UIMessageChunk } from "ai";
+import { HeartbeatEmitter } from "@decocms/harness/liveness-heartbeat";
+import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import type {
   DispatchRunDeps,
   DispatchRunRuntimeInput,
@@ -209,25 +211,6 @@ export async function runHostedHarness(
     studioCtx.metadata.runMetadata = request.runMetadata;
   }
 
-  // A Super Agent task run is starting to execute — move its card to In Progress.
-  // Fire-and-forget: the transition is best-effort and must not delay the loop.
-  void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
-
-  // If the user re-engaged a task that had moved to In Review, pull it back to
-  // In Progress. Link-based (`task_board_item_threads`), so it fires for a
-  // re-prompt that carries no run metadata — unlike the forward advance above.
-  //
-  // Skipped when `runMetadata.taskBoardItemId` is set: that means this
-  // execution IS the Super Agent's own task run (dispatched by
-  // `enqueueSuperAgentForTask`, or DBOS recovering/retrying it after a pod
-  // death) — never a human re-prompt, which never carries that key. Firing
-  // unconditionally here would regress an already-reviewed card (PR opened,
-  // pod died, DBOS re-runs the workflow) back to In Progress every time the
-  // run resumes, with no second PR coming to re-advance it.
-  if (!request.runMetadata?.taskBoardItemId) {
-    void reopenTasksOnThreadRun(studioCtx, input.threadId);
-  }
-
   // No wall-clock cap: a hosted run lives as long as it makes progress. The
   // RunRegistry idle reaper aborts + fails a run that goes RUN_IDLE_TIMEOUT_MS
   // with no progress (see run-registry.ts). The AbortController is retained for
@@ -237,8 +220,58 @@ export async function runHostedHarness(
   // Cap concurrent agent loops per pod (see hosted-run-concurrency.ts). The
   // slot is held only for the loop itself, not the ctx resolution above; excess
   // runs park here until a slot frees.
-  const releaseSlot = await acquireHostedRunSlot();
+  //
+  // A parked run must keep publishing or it dies for being quiet: the parent
+  // gate already tails this run's subject under a RUN_IDLE_TIMEOUT_MS silence
+  // window (consume-run-projection.ts), so a longer park failed the turn as a
+  // liveness breach before the loop started — and the child then ran anyway,
+  // streaming under a fence nobody projected. `waiting-capacity`, re-published
+  // on the heartbeat interval, resets that window (any message does — see
+  // nats-chunk-source.ts) and is the only feedback a queued run gives the UI.
+  let parked = false;
+  const parkedStatus = new HeartbeatEmitter({
+    emit: () => publishWaitingCapacity(rt, input),
+  });
+  const releaseSlot = await acquireHostedRunSlot(() => {
+    parked = true;
+    void publishWaitingCapacity(rt, input);
+    parkedStatus.arm();
+  }).finally(() => parkedStatus.stop());
+
   try {
+    // Stop, pressed while this run was still queued, cancels this child
+    // workflow — but DBOS cannot interrupt a step that already started, and a
+    // parked step has no registered run for the in-memory abort to reach
+    // either (see `cancelActiveThreadRun` in routes.ts). Without this check a
+    // cancelled run starts its agent loop here, minutes after the user stopped
+    // it. Only a run that actually parked can have been cancelled in that
+    // window, so the healthy path pays nothing.
+    if (parked && (await hostedRunWasCancelled(input))) {
+      throw new Error("run cancelled while queued for a free runner");
+    }
+
+    // A Super Agent task run is starting to execute — move its card to In
+    // Progress. Fire-and-forget: the transition is best-effort and must not
+    // delay the loop. Deliberately AFTER the slot acquire: a parked run has
+    // not started, and flipping the card on enqueue made the board show every
+    // queued task as In Progress while the pod was only running its cap.
+    void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
+
+    // If the user re-engaged a task that had moved to In Review, pull it back to
+    // In Progress. Link-based (`task_board_item_threads`), so it fires for a
+    // re-prompt that carries no run metadata — unlike the forward advance above.
+    //
+    // Skipped when `runMetadata.taskBoardItemId` is set: that means this
+    // execution IS the Super Agent's own task run (dispatched by
+    // `enqueueSuperAgentForTask`, or DBOS recovering/retrying it after a pod
+    // death) — never a human re-prompt, which never carries that key. Firing
+    // unconditionally here would regress an already-reviewed card (PR opened,
+    // pod died, DBOS re-runs the workflow) back to In Progress every time the
+    // run resumes, with no second PR coming to re-advance it.
+    if (!request.runMetadata?.taskBoardItemId) {
+      void reopenTasksOnThreadRun(studioCtx, input.threadId);
+    }
+
     await rt.dispatchRunFn(
       { ...request, abortSignal: abortController.signal },
       studioCtx,
@@ -246,6 +279,38 @@ export async function runHostedHarness(
     );
   } finally {
     releaseSlot();
+  }
+}
+
+/** The stage a run publishes while it waits for a free slot. */
+const publishWaitingCapacity = (
+  rt: HostedHarnessRuntime,
+  input: HostedHarnessInput,
+): Promise<void> =>
+  publishRunStatusStage(rt.deps.streamBuffer, input.runId, "waiting-capacity");
+
+/**
+ * Was THIS attempt's child workflow cancelled while it sat parked? Reads DBOS's
+ * own status for the child id, which `cancelHostedHarness` flips — so the check
+ * is per-attempt, unlike the thread-level `cancel_requested_at` flag, which a
+ * previous turn's Stop leaves set and would make a healthy queued turn skip
+ * itself. A read failure reports "not cancelled": losing a cancel is better
+ * than refusing to run a live turn.
+ */
+async function hostedRunWasCancelled(
+  input: HostedHarnessInput,
+): Promise<boolean> {
+  try {
+    const status = await DBOS.getWorkflowStatus(
+      hostedChildWorkflowId(input.runId, input.fenceToken),
+    );
+    return status?.status === "CANCELLED";
+  } catch (err) {
+    console.error(
+      `[hostedHarness] could not read child status for run=${input.runId} fence=${input.fenceToken}`,
+      err,
+    );
+    return false;
   }
 }
 

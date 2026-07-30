@@ -1,9 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { sleep } from "@decocms/shared/std";
 import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
 import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
+import { buildRunStatusChunk } from "@/api/routes/decopilot/run-status-stage";
 import type { StudioContext } from "@/core/studio-context";
+import { acquireHostedRunSlot, hostedRunStats } from "./hosted-run-concurrency";
 import {
   buildTerminalErrorChunks,
   hostedChildWorkflowId,
@@ -332,6 +335,70 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
     // done was never published — the half-terminal invariant.
     expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
     expect(streamBuffer.publishDone).not.toHaveBeenCalled();
+  });
+});
+
+// Regression: a run parked at the per-pod concurrency cap published NOTHING
+// while it waited. The parent gate is already live-tailing the run's subject
+// with a RUN_IDLE_TIMEOUT_MS silence window, so a queue longer than that window
+// failed the turn as a liveness breach before the loop had started — and the
+// child then ran anyway under a fence nobody was projecting. The parked run now
+// publishes `waiting-capacity` (which both resets that window and is the only
+// feedback a queued run gives the UI).
+describe("a run queued at the concurrency cap", () => {
+  const input: HostedHarnessInput = {
+    runId: "run-parked",
+    fenceToken: "fence-parked",
+    threadId: "thread-parked",
+    request: {
+      organizationId: "org-1",
+      userId: "user-1",
+    } as SerializableDispatchRunInput,
+  };
+
+  test("publishes waiting-capacity while parked, and starts the loop only once a slot frees", async () => {
+    // Saturate the real gate by holding every slot it has, so the run under
+    // test genuinely parks (no env/module games — the cap is read once at
+    // import time).
+    const held = await Promise.all(
+      Array.from({ length: hostedRunStats().max }, () =>
+        acquireHostedRunSlot(),
+      ),
+    );
+    try {
+      const dispatchRunFn = mock(() => Promise.resolve({ taskId: "t" }));
+      const streamBuffer = {
+        publishRawChunk: mock(() => Promise.resolve(true)),
+        publishDone: mock(() => Promise.resolve(true)),
+      } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+      setHostedHarnessRuntime({
+        dispatchRunFn,
+        studioContextFactory: async () => null,
+        deps: {
+          runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+          cancelBroadcast:
+            {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+          streamBuffer,
+        },
+      });
+
+      const run = runHostedHarness(input, {} as StudioContext);
+      // Let the park's publish settle (it is fire-and-forget by design — the
+      // status must never delay the run).
+      await sleep(0);
+
+      expect(streamBuffer.publishRawChunk).toHaveBeenCalledWith(
+        input.runId,
+        buildRunStatusChunk("waiting-capacity"),
+      );
+      expect(dispatchRunFn).not.toHaveBeenCalled();
+
+      held[0]?.();
+      await run;
+      expect(dispatchRunFn).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const release of held) release();
+    }
   });
 });
 

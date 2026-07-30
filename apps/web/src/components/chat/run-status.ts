@@ -3,6 +3,7 @@ export const RUN_STATUS_STAGE_ORDER = [
   "received",
   "waiting-runner",
   "starting-run",
+  "waiting-capacity",
   "gathering-context",
   "preparing-tools",
   "starting-assistant",
@@ -33,6 +34,11 @@ export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
   "starting-run": {
     label: "Getting started",
     detail: "Setting up to work on your message",
+  },
+  "waiting-capacity": {
+    label: "Waiting for a free runner",
+    detail:
+      "Other runs are using every slot — this one starts as soon as one frees up",
   },
   "gathering-context": {
     label: "Reading the chat",

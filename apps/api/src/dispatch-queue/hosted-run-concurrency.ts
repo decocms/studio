@@ -69,7 +69,17 @@ export const hostedRunStats = (): {
   max: number;
 } => ({ active: gate.active, pending: gate.pending, max: MAX });
 
-export const acquireHostedRunSlot = (): Promise<() => void> => {
+/**
+ * Acquire a run slot. `onPark` fires (synchronously, before the wait) only when
+ * this caller has to queue for a slot — the same condition the log below
+ * reports. Callers use it to tell the user their run is waiting: a parked run
+ * publishes nothing on its own, and silence on a run's subject is what the
+ * projector's idle window reads as a dead executor (see
+ * `hosted-harness-workflow.ts`'s `runHostedHarness`).
+ */
+export const acquireHostedRunSlot = (
+  onPark?: () => void,
+): Promise<() => void> => {
   // Log when a run parks so a saturating pod is visible in prod — the whole
   // point of the cap. (gate exposes active/pending for exactly this.)
   if (gate.active >= MAX) {
@@ -78,6 +88,7 @@ export const acquireHostedRunSlot = (): Promise<() => void> => {
       pending: gate.pending,
       max: MAX,
     });
+    onPark?.();
   }
   return gate.acquire();
 };
