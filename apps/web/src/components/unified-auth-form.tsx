@@ -78,10 +78,12 @@ interface UnifiedAuthFormProps {
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
   /**
-   * Overrides for the underlying network/post-auth actions. Omitted (the web
-   * `/login` route never passes this) -> `defaultAuthFormActions`, i.e. the
-   * exact `authClient` calls + `window.location.href` navigate this form
-   * always used. See `apps/web/src/components/auth-form-actions.ts`.
+   * Overrides for the underlying network/post-auth actions. `AuthEntry`
+   * passes the platform-resolved overrides here (desktop browser-hop/
+   * Keychain-bridge actions in the desktop build, `undefined` on web).
+   * Omitted -> `defaultAuthFormActions`, i.e. the exact `authClient` calls +
+   * `window.location.href` navigate this form always used. See
+   * `apps/web/src/components/auth-form-actions.ts`.
    */
   actions?: Partial<AuthFormActions>;
 }
@@ -256,6 +258,10 @@ export function UnifiedAuthForm({
   });
   const [emailError, setEmailError] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  // Social sign-in has no mutation of its own — without this state a failed
+  // `socialSignIn` (misconfigured provider, network error) was tracked in
+  // analytics but INVISIBLE in the UI: the button just "did nothing".
+  const [socialError, setSocialError] = useState<Error | null>(null);
   const copy = { ...DEFAULT_AUTH_FORM_COPY, ...copyOverrides };
 
   const isSignUp = view === "signUp";
@@ -488,6 +494,7 @@ export function UnifiedAuthForm({
     setOtpSent(false);
     setEmailError("");
     setResetEmailSent(false);
+    setSocialError(null);
     emailPasswordMutation.reset();
     forgotPasswordMutation.reset();
     sendOtpMutation.reset();
@@ -544,10 +551,11 @@ export function UnifiedAuthForm({
     return error.message || copy.genericError;
   };
 
-  const displayError = error || forgotPasswordError || otpError;
+  const displayError = error || forgotPasswordError || otpError || socialError;
 
   const handleSocialSignIn = async (provider: string) => {
     emitAuthEvent({ type: "started", method: "social", provider });
+    setSocialError(null);
     try {
       const result = await resolvedActions.socialSignIn({
         provider,
@@ -566,6 +574,7 @@ export function UnifiedAuthForm({
         error: message,
       });
       track("social_signin_failed", { provider, error: message });
+      setSocialError(error instanceof Error ? error : new Error(message));
     }
   };
 

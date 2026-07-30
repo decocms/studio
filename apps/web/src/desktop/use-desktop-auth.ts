@@ -1,8 +1,10 @@
 /**
  * Auth gate state for the desktop shell. Wraps the Tauri `auth_status` /
  * `auth_login` / `auth_logout` commands (`@/lib/desktop/tauri-bridge`)
- * behind one hook so `index.native.tsx` and `sign-in-screen.tsx` share a
- * single source of truth instead of each polling `auth_status` themselves.
+ * behind one hook so `index.native.tsx`, `use-desktop-auth-form-defaults.ts`
+ * (the shared form's desktop actions), and `use-native-session-sync.ts`
+ * share a single source of truth instead of each polling `auth_status`
+ * themselves.
  *
  * Also called (unconditionally, but effectively a no-op) from the SHARED
  * `/login` route (`routes/login.tsx`), which is compiled into both the web
@@ -46,7 +48,7 @@ export interface DesktopAuth {
    * local-api's bare `/api/auth/*`, cookie captured server-side) into
    * the Keychain via `auth_complete_session`, then re-checks `auth_status`.
    * Wired as the shared form's `onAuthenticated` action for desktop — see
-   * `auth-actions.ts` / `sign-in-screen.tsx`.
+   * `auth-actions.ts` / `use-desktop-auth-form-defaults.ts`.
    */
   completeSession: () => Promise<void>;
   /** Re-runs `auth_status` after a transient Keychain access failure. */
