@@ -923,15 +923,15 @@ type GlobScanState = {
 };
 
 /** Depth-bounded directory walk — avoids scanning the full tree for maxDepth. */
-function walkRepoWithinMaxDepth(
+async function walkRepoWithinMaxDepth(
   absDir: string,
   repoRelDir: string,
   maxDepth: number,
   state: GlobScanState,
-): boolean {
+): Promise<boolean> {
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(absDir, { withFileTypes: true });
+    entries = await readdir(absDir, { withFileTypes: true });
   } catch {
     return false;
   }
@@ -956,7 +956,7 @@ function walkRepoWithinMaxDepth(
       state.directoryPaths.add(childRel);
       if (depth < maxDepth) {
         const childAbs = path.join(absDir, entry.name);
-        if (walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
+        if (await walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
           return true;
         }
       }
@@ -1086,7 +1086,7 @@ export function makeGlobHandler(deps: FsDeps) {
           directoryPaths,
           resultLimit,
         };
-        truncated = walkRepoWithinMaxDepth(
+        truncated = await walkRepoWithinMaxDepth(
           searchPath,
           repoRelativePrefix(searchPath, deps.repoDir),
           maxDepth,
@@ -1104,7 +1104,7 @@ export function makeGlobHandler(deps: FsDeps) {
           const abs = path.join(searchPath, rel);
           let relPath: string;
           try {
-            const stat = fs.statSync(abs);
+            const fileStat = await stat(abs);
             relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
             const depth = pathSegmentDepth(relPath);
             if (maxDepth !== undefined && depth > maxDepth) {
@@ -1112,13 +1112,13 @@ export function makeGlobHandler(deps: FsDeps) {
                 relPath,
                 maxDepth,
                 directoryPaths,
-                stat.isFile(),
+                fileStat.isFile(),
               );
               continue;
             }
-            if (stat.isDirectory()) {
+            if (fileStat.isDirectory()) {
               directoryPaths.add(relPath);
-            } else if (stat.isFile()) {
+            } else if (fileStat.isFile()) {
               filePaths.push(relPath);
             }
           } catch {
