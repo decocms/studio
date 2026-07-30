@@ -112,6 +112,10 @@ export interface RunAgentLoopOptions {
    *  built from `enabledTools` reconstructed from message history). Subagents
    *  don't pass this. Merged last so parent extras shadow assembled tools. */
   extraTools?: ToolSet;
+  /** The caller's `read_tool_output` backing map. Parent passes it so the MCP
+   *  tools assembled here and the `read_tool_output` arriving via `extraTools`
+   *  share one map. Subagents omit it (their built-ins are assembled here). */
+  toolOutputMap?: Map<string, string>;
   /** Full built-in params for a SUBAGENT — gives a delegated subagent the
    *  parent's heavy built-ins (vm file tools, generate_image, web_search) instead
    *  of the light core. Forwarded verbatim to `assembleAgentTools`. */
@@ -206,6 +210,7 @@ export async function runAgentLoop(
     onToolCalled,
     onPrOpened,
     fullBuiltInParams: opts.subagentBuiltInParams,
+    toolOutputMap: opts.toolOutputMap,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.

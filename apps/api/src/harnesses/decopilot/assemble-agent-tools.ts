@@ -65,6 +65,11 @@ export interface AssembleAgentToolsOptions {
    * extraTools instead.
    */
   fullBuiltInParams?: Omit<BuiltinToolParams, "toolOutputMap">;
+  /** The caller's `read_tool_output` map. The main-agent path MUST pass it:
+   *  its `read_tool_output` comes in via `extraTools` bound to that map, so a
+   *  fresh one here would swallow every truncated MCP output. Omitted by the
+   *  subagent path, which takes its built-ins from `fullBuiltInParams`. */
+  toolOutputMap?: Map<string, string>;
 }
 
 export interface AssembleAgentToolsResult {
@@ -76,7 +81,7 @@ export interface AssembleAgentToolsResult {
 export async function assembleAgentTools(
   opts: AssembleAgentToolsOptions,
 ): Promise<AssembleAgentToolsResult> {
-  const toolOutputMap = new Map<string, string>();
+  const toolOutputMap = opts.toolOutputMap ?? new Map<string, string>();
 
   // 1. MCP tools — truncation always on.
   const { tools: mcpTools, nameMap } = await toolsFromMCP(
