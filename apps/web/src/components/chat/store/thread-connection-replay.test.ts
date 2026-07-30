@@ -444,4 +444,85 @@ describe("UI message stream replay (web_search)", () => {
     expect(toolPart).toBeDefined();
     expect((toolPart as { state: string }).state).toBe("output-available");
   });
+
+  // Tail lands mid-`tool-input` streaming: deltas without their
+  // `tool-input-start`.
+  const midInputChunks: UIMessageChunk[] = [
+    {
+      type: "tool-input-delta",
+      toolCallId: TOOL_CALL_ID,
+      inputTextDelta: JSON.stringify({ query: QUERY }),
+    } as UIMessageChunk,
+    {
+      type: "tool-input-available",
+      toolCallId: TOOL_CALL_ID,
+      toolName: "web_search",
+      input: { query: QUERY },
+    },
+    {
+      type: "tool-output-available",
+      toolCallId: TOOL_CALL_ID,
+      output: { success: true, content: REPORT, query: QUERY },
+    },
+    { type: "finish-step" },
+    { type: "finish" },
+  ];
+
+  test("reattach mid-tool-input: unguarded delta without start throws", async () => {
+    const errors: unknown[] = [];
+    const iter = readUIMessageStream({
+      stream: streamOf(midInputChunks),
+      onError: (e) => errors.push(e),
+    });
+
+    const { error } = await drain(iter);
+    const combined =
+      error ??
+      (errors[0] instanceof Error ? errors[0] : new Error(String(errors[0])));
+    expect(String(combined?.message ?? "")).toContain(
+      "Received tool-input-delta for missing tool call",
+    );
+  });
+
+  test("guarded: reattach mid-tool-input folds cleanly, with and without a seed", async () => {
+    for (const seed of [
+      undefined,
+      {
+        id: MESSAGE_ID,
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-web_search",
+            toolCallId: TOOL_CALL_ID,
+            state: "input-available",
+            input: { query: QUERY },
+          },
+        ],
+      } as unknown as UIMessage,
+    ]) {
+      const errors: unknown[] = [];
+      const iter = readUIMessageStream({
+        message: seed ? (structuredClone(seed) as UIMessage) : undefined,
+        stream: guardToolInvariant(streamOf(midInputChunks), seed),
+        onError: (e) => errors.push(e),
+      });
+
+      const { messages, error } = await drain(iter);
+      expect(error).toBeNull();
+      expect(errors).toEqual([]);
+
+      const toolPart = messages
+        .at(-1)
+        ?.parts.find(
+          (p) =>
+            typeof p === "object" &&
+            p !== null &&
+            "type" in p &&
+            (p as { type: string }).type === "tool-web_search",
+        ) as { state: string; output?: { content?: string } } | undefined;
+      expect(toolPart).toBeDefined();
+      expect(toolPart!.state).toBe("output-available");
+      expect(toolPart!.output?.content).toBe(REPORT);
+    }
+  });
 });
