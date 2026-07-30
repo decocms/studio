@@ -60,6 +60,7 @@ import {
   readMatcherRuleFormState,
   resolveEffectiveMatcherRule,
   resolveVariantRuleLabel,
+  seedMatcherRule,
   unwrapMatcherRule,
 } from "./matcher-rules";
 import {
@@ -1513,10 +1514,12 @@ export function SectionsEditor({
 
   const handleMatcherTypeChange = (newRt: string) => {
     setRuleResolveType(newRt);
+    // Seed union-matcher discriminants so accepting the default branch still
+    // persists a valid rule (see seedMatcherRule).
     const newRule: Record<string, unknown> = newRt
-      ? { __resolveType: newRt }
+      ? seedMatcherRule(newRt, meta)
       : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
-    setRuleFormValue({});
+    setRuleFormValue(newRt ? newRule : {});
     scheduleRuleSave(newRule);
   };
 
@@ -1701,12 +1704,11 @@ export function SectionsEditor({
 
   const handleSectionMatcherTypeChange = (newRt: string) => {
     setSectionRuleResolveType(newRt);
-    setSectionRuleFormValue({});
-    scheduleSectionRuleSave(
-      newRt
-        ? { __resolveType: newRt }
-        : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE },
-    );
+    const newRule: Record<string, unknown> = newRt
+      ? seedMatcherRule(newRt, meta)
+      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+    setSectionRuleFormValue(newRt ? newRule : {});
+    scheduleSectionRuleSave(newRule);
   };
 
   const handleSectionRuleFormChange = (val: unknown) => {

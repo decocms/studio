@@ -9,8 +9,10 @@ import {
   readMatcherRuleFormState,
   resolveEffectiveMatcherRule,
   resolveVariantRuleLabel,
+  seedMatcherRule,
   unwrapMatcherRule,
 } from "./matcher-rules";
+import type { LiveMeta } from "./resolve-schema";
 
 describe("matcher-rules", () => {
   const decofile = {
@@ -193,5 +195,99 @@ describe("matcher-rules", () => {
     expect(
       getSavedMatcherBlockKey({ __resolveType: "Header" }, decofile),
     ).toBeNull();
+  });
+});
+
+describe("seedMatcherRule", () => {
+  const RT = "vtex/matchers/userSegment.ts";
+
+  // Real deco shape: block config wraps a `$ref`-alias union of branch defs.
+  const unionMeta = {
+    manifest: {
+      blocks: { matchers: { [RT]: { $ref: "#/definitions/Wrapper" } } },
+    },
+    schema: {
+      definitions: {
+        Wrapper: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/Props" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [RT], default: RT },
+          },
+        },
+        Props: { $ref: "#/definitions/Union" },
+        Union: {
+          anyOf: [
+            { $ref: "#/definitions/AnonymousWithoutCart" },
+            { $ref: "#/definitions/LoggedIn" },
+          ],
+        },
+        AnonymousWithoutCart: {
+          type: "object",
+          title: "Anonymous without cart",
+          required: ["segment"],
+          properties: {
+            segment: { type: "string", const: "anonymous-without-cart" },
+          },
+        },
+        LoggedIn: {
+          type: "object",
+          title: "Logged in",
+          required: ["segment"],
+          properties: { segment: { type: "string", const: "logged-in" } },
+        },
+      },
+    },
+  } as unknown as LiveMeta;
+
+  // A plain (non-union) matcher: config is a single object with a `match` enum.
+  const plainMeta = {
+    manifest: {
+      blocks: {
+        matchers: {
+          "vtex/matchers/birthday.ts": { $ref: "#/definitions/BWrap" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        BWrap: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/BProps" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["vtex/matchers/birthday.ts"],
+            },
+          },
+        },
+        BProps: {
+          type: "object",
+          properties: { match: { type: "string", enum: ["day", "month"] } },
+        },
+      },
+    },
+  } as unknown as LiveMeta;
+
+  it("seeds the first union branch's discriminants so the default persists a valid rule", () => {
+    // Before the fix a user who accepted the default branch saved just
+    // `{ __resolveType }` (no `segment`), and the matcher never resolved.
+    expect(seedMatcherRule(RT, unionMeta)).toEqual({
+      __resolveType: RT,
+      segment: "anonymous-without-cart",
+    });
+  });
+
+  it("gives a plain-object matcher only __resolveType", () => {
+    expect(seedMatcherRule("vtex/matchers/birthday.ts", plainMeta)).toEqual({
+      __resolveType: "vtex/matchers/birthday.ts",
+    });
+  });
+
+  it("falls back to __resolveType when meta is missing or resolveType is empty", () => {
+    expect(seedMatcherRule(RT, null)).toEqual({ __resolveType: RT });
+    expect(seedMatcherRule("", unionMeta)).toEqual({ __resolveType: "" });
   });
 });
