@@ -79,6 +79,18 @@ export function normalizeSearchQuery(query: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Omitting `types` searches every resource type; passing `types: []` (e.g. a
+ * caller unchecked every filter) must narrow to none rather than falling
+ * back to "search everything".
+ */
+export function includesSearchType(
+  types: readonly string[] | undefined,
+  type: string,
+): boolean {
+  return types === undefined || types.includes(type);
+}
+
 export const GLOBAL_SEARCH = defineTool({
   name: "GLOBAL_SEARCH",
   description:
@@ -97,8 +109,7 @@ export const GLOBAL_SEARCH = defineTool({
     requireOrganization(ctx);
 
     const limit = input.limit ?? 20;
-    const requested = input.types?.length ? new Set(input.types) : null;
-    const includeThreads = !requested || requested.has("thread");
+    const includeThreads = includesSearchType(input.types, "thread");
 
     const items: z.infer<typeof SearchResultSchema>[] = [];
     let totalCount = 0;
