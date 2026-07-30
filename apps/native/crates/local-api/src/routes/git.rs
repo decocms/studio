@@ -750,6 +750,10 @@ struct GitStatusFile {
     path: String,
     index: String,
     working_dir: String,
+    /// Pre-rename path, present only for R/C entries (`-z` emits it as the
+    /// next null-separated field) — byte-parity with
+    /// `porcelain.ts::PorcelainFileStatus.origPath`.
+    orig_path: Option<String>,
 }
 
 fn parse_porcelain_entry(entry: &str) -> Option<(char, char, String)> {
@@ -772,7 +776,7 @@ fn parse_porcelain_entry(entry: &str) -> Option<(char, char, String)> {
 
 /// Parses full `git status --porcelain=v1 -z` output. Rename/copy entries
 /// (`index` is `R`/`C`) are followed by the original path as a second `-z`
-/// segment — skip it, matching `porcelain.ts::parsePorcelainFiles`.
+/// segment, captured as `orig_path` — matching `porcelain.ts::parsePorcelainFiles`.
 fn parse_porcelain_files(out: &str) -> Vec<GitStatusFile> {
     let parts: Vec<&str> = out.split('\0').collect();
     let mut files = Vec::new();
@@ -782,14 +786,17 @@ fn parse_porcelain_files(out: &str) -> Vec<GitStatusFile> {
         if !entry.is_empty() {
             if let Some((index, working, path)) = parse_porcelain_entry(entry) {
                 let is_rename_or_copy = index == 'R' || index == 'C';
+                let mut orig_path = None;
+                if is_rename_or_copy {
+                    i += 1;
+                    orig_path = parts.get(i).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                }
                 files.push(GitStatusFile {
                     path,
                     index: index.to_string(),
                     working_dir: working.to_string(),
+                    orig_path,
                 });
-                if is_rename_or_copy {
-                    i += 1;
-                }
             }
         }
         i += 1;
@@ -1315,7 +1322,25 @@ async fn discard_files(
 
     let mut to_restore = Vec::new();
     let mut to_delete = Vec::new();
+    // A renamed file's new path never existed at HEAD, so the `is_new` check
+    // below would treat it as untracked and unlink it outright — losing the
+    // content entirely, since the original path is already gone from the
+    // working tree too. Discarding a rename must instead restore the
+    // original file from HEAD and unstage + drop the new path.
+    let mut to_restore_from_head = Vec::new();
+    let mut renamed_new_paths = Vec::new();
     for fp in &validated {
+        if let Some(orig_path) = status
+            .files
+            .iter()
+            .find(|f| &f.path == fp)
+            .and_then(|f| f.orig_path.clone())
+        {
+            to_restore_from_head.push(orig_path);
+            renamed_new_paths.push(fp.clone());
+            to_delete.push(fp.clone());
+            continue;
+        }
         let is_new = status.not_added.contains(fp)
             || status.created.contains(fp)
             || read_ref_file(repo_dir, "HEAD", fp, &env).await.is_none();
@@ -1326,6 +1351,22 @@ async fn discard_files(
         }
     }
 
+    if !to_restore_from_head.is_empty() {
+        // Unstage the rename's "new path added" side before restoring the
+        // original — otherwise it survives in the index even after the
+        // working tree file below is deleted.
+        let mut reset_args: Vec<String> = vec!["reset".to_string(), "--".to_string()];
+        reset_args.extend(renamed_new_paths);
+        run_git(repo_dir, &reset_args, &env)
+            .await
+            .map_err(|e| e.message)?;
+        let mut checkout_args: Vec<String> =
+            vec!["checkout".to_string(), "HEAD".to_string(), "--".to_string()];
+        checkout_args.extend(to_restore_from_head);
+        run_git(repo_dir, &checkout_args, &env)
+            .await
+            .map_err(|e| e.message)?;
+    }
     if !to_restore.is_empty() {
         let mut args: Vec<String> = vec!["checkout".to_string(), "--".to_string()];
         args.extend(to_restore);
@@ -1942,7 +1983,8 @@ mod tests {
             GitStatusFile {
                 path: "untracked.txt".into(),
                 index: "?".into(),
-                working_dir: "?".into()
+                working_dir: "?".into(),
+                orig_path: None
             }
         );
         assert_eq!(
@@ -1950,7 +1992,8 @@ mod tests {
             GitStatusFile {
                 path: "modified.txt".into(),
                 index: " ".into(),
-                working_dir: "M".into()
+                working_dir: "M".into(),
+                orig_path: None
             }
         );
     }
@@ -1962,7 +2005,9 @@ mod tests {
         assert_eq!(files.len(), 2);
         assert_eq!(files[0].path, "new.txt");
         assert_eq!(files[0].index, "R");
+        assert_eq!(files[0].orig_path.as_deref(), Some("old.txt"));
         assert_eq!(files[1].path, "other.txt");
+        assert_eq!(files[1].orig_path, None);
     }
 
     #[test]
@@ -2350,6 +2395,31 @@ mod tests {
             std::fs::read_to_string(repo.work_dir.join("README.md")).unwrap(),
             "hello\n"
         );
+    }
+
+    #[tokio::test]
+    async fn discard_restores_renamed_file_instead_of_deleting_it() {
+        let repo = setup_repo();
+        std::fs::rename(
+            repo.work_dir.join("README.md"),
+            repo.work_dir.join("RENAMED.md"),
+        )
+        .unwrap();
+        git(&repo.work_dir, &["add", "-A"]);
+        discard_files(&repo.work_dir, &repo.work_dir, &["RENAMED.md".to_string()])
+            .await
+            .unwrap();
+        assert!(
+            !repo.work_dir.join("RENAMED.md").exists(),
+            "renamed path must not survive discard"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.work_dir.join("README.md")).unwrap(),
+            "hello\n",
+            "original content must be restored from HEAD, not lost"
+        );
+        let status = compute_working_tree_status(&repo.work_dir).await.unwrap();
+        assert!(status.files.is_empty(), "discard must leave a clean tree");
     }
 
     #[tokio::test]
