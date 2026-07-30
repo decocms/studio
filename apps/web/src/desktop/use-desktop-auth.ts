@@ -1,27 +1,43 @@
 /**
  * Auth gate state for the desktop shell. Wraps the Tauri `auth_status` /
  * `auth_login` / `auth_logout` commands (`@/lib/desktop/tauri-bridge`)
- * behind one hook so `index.native.tsx` and `sign-in-screen.tsx` share a
- * single source of truth instead of each polling `auth_status` themselves.
+ * behind one hook so `index.native.tsx`, `use-desktop-auth-form-defaults.ts`
+ * (the shared form's desktop actions), and `use-native-session-sync.ts`
+ * share a single source of truth instead of each polling `auth_status`
+ * themselves.
  *
- * Also called (unconditionally, but effectively a no-op) from the SHARED
- * `/login` route (`routes/login.tsx`), which is compiled into both the web
- * and desktop bundles — the underlying query is gated on
- * `isDesktopAppEnvironment()` internally so a normal browser tab never fires
- * the Tauri IPC call (`fetchAuthStatus` throws outside the webview).
+ * This module is reachable from the SHARED shell (`AuthEntry`, the `/login`
+ * route), which is compiled into both the web and desktop bundles — so the
+ * bridge is loaded through `loadBridge()` below rather than a static import.
+ * The underlying query is gated on `isDesktopAppEnvironment()`, so a normal
+ * browser tab never fires the Tauri IPC call.
  */
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
-import {
-  fetchAuthStatus,
-  listenForAuthStatus,
-  performAuthCompleteSession,
-  performAuthLogin,
-  performAuthLogout,
-  type AuthStatus,
-} from "@/lib/desktop/tauri-bridge";
+import type { AuthStatus } from "@/lib/desktop/tauri-bridge";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
+
+type DesktopBridge = typeof import("@/lib/desktop/tauri-bridge");
+
+/**
+ * Lazy, build-flag-guarded access to the Tauri bridge. The literal
+ * `import.meta.env.VITE_TAURI_APP` check (the same single knob
+ * `isDesktopAppEnvironment()` reads — see its "one knob" doc) must sit
+ * DIRECTLY at the dynamic-import site: Rollup decides chunk emission per
+ * module, so only a statically-false branch here keeps the bridge chunk out
+ * of the browser bundle entirely. A static import — or a dynamic one behind
+ * the helper function, which Rollup cannot inline — would ship Tauri IPC
+ * code to every browser visitor and trip the
+ * `scripts/check-web-bundle-desktop-free.ts` CI guard, which scans every
+ * emitted asset.
+ */
+async function loadBridge(): Promise<DesktopBridge> {
+  if (import.meta.env.VITE_TAURI_APP !== "1") {
+    throw new Error("Tauri bridge is unavailable outside the desktop build");
+  }
+  return import("@/lib/desktop/tauri-bridge");
+}
 
 export interface DesktopAuth {
   status: AuthStatus | undefined;
@@ -46,7 +62,7 @@ export interface DesktopAuth {
    * local-api's bare `/api/auth/*`, cookie captured server-side) into
    * the Keychain via `auth_complete_session`, then re-checks `auth_status`.
    * Wired as the shared form's `onAuthenticated` action for desktop — see
-   * `auth-actions.ts` / `sign-in-screen.tsx`.
+   * `auth-actions.ts` / `use-desktop-auth-form-defaults.ts`.
    */
   completeSession: () => Promise<void>;
   /** Re-runs `auth_status` after a transient Keychain access failure. */
@@ -58,9 +74,9 @@ export function useDesktopAuth(): DesktopAuth {
   const isDesktopApp = isDesktopAppEnvironment();
   const statusQuery = useQuery({
     queryKey: KEYS.desktopAuthStatus(),
-    queryFn: fetchAuthStatus,
+    queryFn: async () => (await loadBridge()).fetchAuthStatus(),
     // Outside the Tauri webview (the shared `/login` route's web build)
-    // `fetchAuthStatus` would only throw — never fetch, never enable.
+    // `loadBridge` would only throw — never fetch, never enable.
     enabled: isDesktopApp,
     staleTime: 30_000,
     // A stale/expired upstream session should self-heal by re-checking on
@@ -80,9 +96,12 @@ export function useDesktopAuth(): DesktopAuth {
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listenForAuthStatus((status) => {
-      queryClient.setQueryData(KEYS.desktopAuthStatus(), status);
-    })
+    void loadBridge()
+      .then((bridge) =>
+        bridge.listenForAuthStatus((status) => {
+          queryClient.setQueryData(KEYS.desktopAuthStatus(), status);
+        }),
+      )
       .then((stopListening) => {
         if (disposed) {
           stopListening();
@@ -104,8 +123,9 @@ export function useDesktopAuth(): DesktopAuth {
     setPending(true);
     setLoginError(null);
     try {
-      await performAuthLogin();
-      const status = await fetchAuthStatus();
+      const bridge = await loadBridge();
+      await bridge.performAuthLogin();
+      const status = await bridge.fetchAuthStatus();
       queryClient.setQueryData(KEYS.desktopAuthStatus(), status);
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Sign-in failed");
@@ -117,8 +137,9 @@ export function useDesktopAuth(): DesktopAuth {
   async function logout(): Promise<void> {
     setPending(true);
     try {
-      await performAuthLogout();
-      const status = await fetchAuthStatus();
+      const bridge = await loadBridge();
+      await bridge.performAuthLogout();
+      const status = await bridge.fetchAuthStatus();
       queryClient.setQueryData(KEYS.desktopAuthStatus(), status);
     } finally {
       setPending(false);
@@ -128,8 +149,18 @@ export function useDesktopAuth(): DesktopAuth {
   async function completeSession(): Promise<void> {
     setCompletingSession(true);
     setCompleteSessionError(null);
+    let bridge: DesktopBridge;
     try {
-      await performAuthCompleteSession();
+      bridge = await loadBridge();
+    } catch (err) {
+      setCompleteSessionError(
+        err instanceof Error ? err.message : "Sign-in failed",
+      );
+      setCompletingSession(false);
+      return;
+    }
+    try {
+      await bridge.performAuthCompleteSession();
     } catch (err) {
       // Bridging failed (e.g. the mesh authorize call itself errored) — the
       // Better-Auth cookie session may still be sitting in local-api's jar,
@@ -142,7 +173,7 @@ export function useDesktopAuth(): DesktopAuth {
       );
     } finally {
       try {
-        const status = await fetchAuthStatus();
+        const status = await bridge.fetchAuthStatus();
         queryClient.setQueryData(KEYS.desktopAuthStatus(), status);
       } finally {
         setCompletingSession(false);
