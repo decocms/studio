@@ -265,6 +265,7 @@ export function UnifiedAuthForm({
   const copy = { ...DEFAULT_AUTH_FORM_COPY, ...copyOverrides };
   const formId = useId();
   const emailFieldId = `${formId}-email`;
+  const emailErrorId = `${formId}-email-error`;
   const nameFieldId = `${formId}-name`;
   const passwordFieldId = `${formId}-password`;
   const otpFieldId = `${formId}-otp`;
@@ -639,14 +640,20 @@ export function UnifiedAuthForm({
 
       {/* Error message */}
       {displayError && (
-        <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+        <div
+          role="alert"
+          className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center"
+        >
           {getErrorMessage(displayError)}
         </div>
       )}
 
       {/* Success message for forgot password */}
       {resetEmailSent && (
-        <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
+        <div
+          role="status"
+          className="rounded-xl bg-success/10 p-3 text-sm text-success text-center"
+        >
           {copy.resetEmailSent}
         </div>
       )}
@@ -739,10 +746,17 @@ export function UnifiedAuthForm({
                   required
                   disabled={isLoading}
                   aria-invalid={!!emailError}
+                  aria-describedby={emailError ? emailErrorId : undefined}
                   className="h-11 rounded-lg"
                 />
                 {emailError && (
-                  <p className="text-xs text-destructive">{emailError}</p>
+                  <p
+                    id={emailErrorId}
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {emailError}
+                  </p>
                 )}
               </div>
 
@@ -842,10 +856,17 @@ export function UnifiedAuthForm({
               required
               disabled={isLoading}
               aria-invalid={!!emailError}
+              aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
             />
             {emailError && (
-              <p className="text-xs text-destructive mt-1.5">{emailError}</p>
+              <p
+                id={emailErrorId}
+                role="alert"
+                className="text-xs text-destructive mt-1.5"
+              >
+                {emailError}
+              </p>
             )}
           </div>
 
@@ -900,10 +921,17 @@ export function UnifiedAuthForm({
               required
               disabled={isLoading}
               aria-invalid={!!emailError}
+              aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
             />
             {emailError && (
-              <p className="text-xs text-destructive mt-1.5">{emailError}</p>
+              <p
+                id={emailErrorId}
+                role="alert"
+                className="text-xs text-destructive mt-1.5"
+              >
+                {emailError}
+              </p>
             )}
           </div>
           <div>
