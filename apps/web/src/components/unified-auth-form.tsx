@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { track } from "@/lib/posthog-client";
@@ -263,6 +263,11 @@ export function UnifiedAuthForm({
   // analytics but INVISIBLE in the UI: the button just "did nothing".
   const [socialError, setSocialError] = useState<Error | null>(null);
   const copy = { ...DEFAULT_AUTH_FORM_COPY, ...copyOverrides };
+  const formId = useId();
+  const emailFieldId = `${formId}-email`;
+  const nameFieldId = `${formId}-name`;
+  const passwordFieldId = `${formId}-password`;
+  const otpFieldId = `${formId}-otp`;
 
   const isSignUp = view === "signUp";
   const isForgotPassword = view === "forgotPassword";
@@ -716,6 +721,7 @@ export function UnifiedAuthForm({
             >
               <div className="grid gap-2">
                 <label
+                  htmlFor={emailFieldId}
                   className={cn(
                     "text-sm font-medium text-foreground",
                     compact && "sr-only",
@@ -724,6 +730,7 @@ export function UnifiedAuthForm({
                   {copy.emailLabel}
                 </label>
                 <Input
+                  id={emailFieldId}
                   type="email"
                   placeholder={copy.emailPlaceholder}
                   value={email}
@@ -760,6 +767,7 @@ export function UnifiedAuthForm({
             >
               <div className="grid gap-2">
                 <label
+                  htmlFor={otpFieldId}
                   className={cn(
                     "text-sm font-medium text-foreground",
                     compact && "sr-only",
@@ -768,6 +776,7 @@ export function UnifiedAuthForm({
                   {copy.verificationCodeLabel}
                 </label>
                 <Input
+                  id={otpFieldId}
                   type="text"
                   placeholder={copy.enterCodePlaceholder}
                   value={otp}
@@ -817,10 +826,14 @@ export function UnifiedAuthForm({
       {isForgotPassword && emailAndPasswordEnabled && !resetEmailSent && (
         <form onSubmit={handleForgotPassword} className="grid gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label
+              htmlFor={emailFieldId}
+              className="block text-sm font-medium text-foreground mb-2"
+            >
               {copy.emailLabel}
             </label>
             <Input
+              id={emailFieldId}
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -852,10 +865,14 @@ export function UnifiedAuthForm({
         <form onSubmit={handleEmailPassword} className="grid gap-5">
           {isSignUp && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor={nameFieldId}
+                className="block text-sm font-medium text-foreground mb-2"
+              >
                 {copy.nameLabel}
               </label>
               <Input
+                id={nameFieldId}
                 type="text"
                 placeholder={copy.namePlaceholder}
                 value={name}
@@ -867,10 +884,14 @@ export function UnifiedAuthForm({
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label
+              htmlFor={emailFieldId}
+              className="block text-sm font-medium text-foreground mb-2"
+            >
               {copy.emailLabel}
             </label>
             <Input
+              id={emailFieldId}
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -887,7 +908,10 @@ export function UnifiedAuthForm({
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-foreground">
+              <label
+                htmlFor={passwordFieldId}
+                className="block text-sm font-medium text-foreground"
+              >
                 {copy.passwordLabel}
               </label>
               {!isSignUp && resetPassword.enabled && (
@@ -901,6 +925,7 @@ export function UnifiedAuthForm({
               )}
             </div>
             <Input
+              id={passwordFieldId}
               type="password"
               placeholder="••••••••"
               value={password}
