@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   CommandDialog,
   CommandInput,
@@ -65,6 +65,16 @@ export function extractMatcherGlobals(
 const ALWAYS_MATCHER_ICON = "Users03";
 
 /**
+ * Case-insensitive substring match, replacing cmdk's default fuzzy scorer.
+ * The fuzzy scorer matches loose subsequences, so a query like "random" would
+ * surface unrelated matchers whose description happens to contain those letters
+ * in order. "Contains" keeps the description searchable without false hits.
+ */
+export function substringFilter(value: string, search: string): number {
+  return value.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0;
+}
+
+/**
  * Extract the list of available matcher block types from live meta.
  * Looks for block-type keys that contain "matchers" (e.g. "matchers",
  * "website/matchers") and collects each entry's resolveType + title.
@@ -72,13 +82,25 @@ const ALWAYS_MATCHER_ICON = "Users03";
 export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
   const blocks = meta.manifest?.blocks ?? {};
   const result: MatcherEntry[] = [];
+  const seen = new Set<string>();
 
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("matchers")) continue;
+    // The `$live/matchers/*` group holds legacy compat aliases (e.g.
+    // `MatchUserAgent`) that only re-export the canonical `website/matchers/*`
+    // blocks. Listing them would show every built-in matcher twice, so offer
+    // only the canonical types. Old decofiles that reference the aliases are
+    // still read via format-matcher.ts.
+    if (blockType.startsWith("$live/")) continue;
 
     for (const resolveType of Object.keys(blockMap)) {
-      // Skip "always" — it's hardcoded as the first option in the picker
-      if (resolveType.includes("always")) continue;
+      // Skip "always" — it's hardcoded as the first option in the picker.
+      // Case-insensitive so the legacy `MatchAlways` alias is caught too.
+      if (resolveType.toLowerCase().includes("always")) continue;
+      // Guard against the same matcher being registered under more than one
+      // block-type group (e.g. "matchers" and "website/matchers").
+      if (seen.has(resolveType)) continue;
+      seen.add(resolveType);
 
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
 
@@ -168,6 +190,7 @@ export function MatcherPicker({
         title={t("sectionsEditor.matcherPicker.chooseRuleTitle")}
         description={t("sectionsEditor.matcherPicker.chooseRuleDescription")}
         className="sm:max-w-lg"
+        filter={substringFilter}
       >
         <CommandInput
           placeholder={t("sectionsEditor.matcherPicker.searchRulesPlaceholder")}
