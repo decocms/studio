@@ -227,6 +227,10 @@ export function SectionsEditor({
   const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
+  // When the section picker is opened from an array-of-sections field (rather
+  // than the page's section list), the field hands us an `append` callback here.
+  // A non-null ref routes the modal selection to that field instead of the page.
+  const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
 
   // Inline SEO editing mode — same breadcrumb UX as editing a section
   const [editingSeo, setEditingSeo] = useState(initialEditSeo);
@@ -1066,6 +1070,31 @@ export function SectionsEditor({
         setSectionRuleFormValue(null);
       },
     });
+  };
+
+  // An array-of-sections field asks to open the picker; stash its `append`
+  // callback so the shared AddSectionModal routes the selection back to it.
+  const handleRequestAddSection = (context: {
+    append: (item: unknown) => void;
+  }) => {
+    pendingAppendRef.current = context.append;
+    setAddSectionOpen(true);
+  };
+
+  // Dispatches an AddSectionModal selection: when an array-of-sections field
+  // requested the picker, append an inline section reference to it (the same
+  // `{ __resolveType }` shape `handleAddSection` uses for the page list, and
+  // that `ArrayField.addItem` uses for block-ref items). Otherwise fall back to
+  // adding a section to the page's section list.
+  const handleSelectSectionFromModal = (entry: SectionCatalogEntry) => {
+    const append = pendingAppendRef.current;
+    if (!append) {
+      handleAddSection(entry);
+      return;
+    }
+    append({ __resolveType: entry.resolveType });
+    setAddSectionOpen(false);
+    pendingAppendRef.current = null;
   };
 
   const handleSelectSectionVariant = (variantIndex: number) => {
@@ -2729,6 +2758,8 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
+            previewBaseUrl={previewUrl}
+            onRequestAddSection={handleRequestAddSection}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2750,6 +2781,8 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
+            previewBaseUrl={previewUrl}
+            onRequestAddSection={handleRequestAddSection}
           />
         </ScrollArea>
       ) : (
@@ -2874,11 +2907,14 @@ export function SectionsEditor({
       {previewUrl && (
         <AddSectionModal
           open={addSectionOpen}
-          onOpenChange={setAddSectionOpen}
+          onOpenChange={(open) => {
+            setAddSectionOpen(open);
+            if (!open) pendingAppendRef.current = null;
+          }}
           meta={meta}
           decofile={decofile}
           previewBaseUrl={previewUrl}
-          onSelect={handleAddSection}
+          onSelect={handleSelectSectionFromModal}
         />
       )}
 
