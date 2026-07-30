@@ -668,6 +668,14 @@ fn try_serve_ui(runtime: &MainRuntime, req: &Request) -> Option<Response> {
     if !ui::is_safe_asset_path(path) {
         return Some(ApiError::not_found("Not found").into_response());
     }
+    // Browsers request bundle files percent-encoded (`/logos/deco%20logo.svg`
+    // for the on-disk `logos/deco logo.svg`) while providers do exact
+    // raw-path lookup. Decoding is only safe AFTER `is_safe_asset_path`: it
+    // rejects every encoded traversal byte (%2e/%2f/%5c) on the raw path, so
+    // a decode can change a file name, never the directory structure. An
+    // undecodable path (invalid UTF-8 escape) stays raw and can only miss.
+    let decoded = urlencoding::decode(path).unwrap_or(std::borrow::Cow::Borrowed(path));
+    let path = decoded.as_ref();
 
     if matches!(path, "/" | "/index.html") {
         return Some(index_response(provider, runtime, req.method()));
@@ -756,6 +764,14 @@ mod tests {
                     Bytes::from_static(b"console.log('ok')"),
                     "text/javascript",
                     "public, max-age=31536000, immutable",
+                )),
+                // Space in the file name on purpose: the real bundle ships
+                // `logos/deco logo.svg`, which browsers request as
+                // `/logos/deco%20logo.svg`.
+                "/logos/deco logo.svg" => Some(UiAsset::new(
+                    Bytes::from_static(b"<svg/>"),
+                    "image/svg+xml",
+                    "no-cache",
                 )),
                 _ => None,
             }
@@ -855,6 +871,37 @@ mod tests {
             "public, max-age=31536000, immutable"
         );
         assert_eq!(asset.headers()[header::CONTENT_TYPE], "text/javascript");
+    }
+
+    #[tokio::test]
+    async fn percent_encoded_asset_paths_decode_before_lookup_but_traversal_stays_rejected() {
+        let (app, _root) = embedded_router();
+
+        let logo = app
+            .clone()
+            .oneshot(request(Method::GET, "/logos/deco%20logo.svg"))
+            .await
+            .unwrap();
+        assert_eq!(logo.status(), StatusCode::OK);
+        assert_eq!(logo.headers()[header::CONTENT_TYPE], "image/svg+xml");
+
+        // Decoding must never open up traversal: encoded dot/slash/backslash
+        // bytes are rejected on the RAW path, before any decode happens.
+        for path in [
+            "/logos/%2e%2e/secret.svg",
+            "/logos/..%2Fsecret.svg",
+            "/logos/%5c..%5csecret.svg",
+        ] {
+            assert_eq!(
+                app.clone()
+                    .oneshot(request(Method::GET, path))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND,
+                "{path} should stay rejected"
+            );
+        }
     }
 
     #[tokio::test]

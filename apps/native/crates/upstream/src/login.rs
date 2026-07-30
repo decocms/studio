@@ -178,24 +178,7 @@ pub async fn perform_interactive_login(
         .await
         .inspect_err(|e| tracing::error!(error = %e, "auth_login: session bridge failed"))?;
 
-    // Better Auth prefixes its session cookie with `__Secure-` whenever it
-    // issues secure cookies, which it does BY DEFAULT on an https baseURL
-    // (mesh sets no `advanced.useSecureCookies` override, so the installed
-    // better-auth's `createCookieGetter` rule — literally
-    // `baseURL.startsWith("https://")` — applies). `get-session` reads the
-    // cookie back by that EXACT prefixed name, so forwarding an unprefixed
-    // `better-auth.session_token` to an https upstream is silently ignored:
-    // the bearer probe still reports signed-in, but the real shell's session
-    // gate finds no cookie and bounces the user to /login. Match Better Auth's
-    // own rule so the forwarded Cookie NAME is byte-identical to a browser
-    // sign-in (the hybrid cookie-relay path in `bridge.rs` gets this for free
-    // by capturing the real `Set-Cookie`; this system-browser path has to
-    // reconstruct the name itself).
-    let cookie_name = if target.starts_with("https://") {
-        "__Secure-better-auth.session_token"
-    } else {
-        "better-auth.session_token"
-    };
+    let cookie_name = session_cookie_name(&target);
     tracing::info!(
         cookie_name,
         "auth_login: session cookie minted; login complete"
@@ -260,7 +243,28 @@ pub async fn perform_interactive_login(
 /// half-signed-in state, exactly the bug this bridge exists to close. A
 /// clear, surfaced login error is strictly better than reintroducing it
 /// through a different door.
-async fn mint_session_from_access_token(
+/// Better Auth prefixes its session cookie with `__Secure-` whenever it
+/// issues secure cookies, which it does BY DEFAULT on an https baseURL
+/// (mesh sets no `advanced.useSecureCookies` override, so the installed
+/// better-auth's `createCookieGetter` rule — literally
+/// `baseURL.startsWith("https://")` — applies). `get-session` reads the
+/// cookie back by that EXACT prefixed name, so forwarding an unprefixed
+/// `better-auth.session_token` to an https upstream is silently ignored:
+/// the bearer probe still reports signed-in, but the real shell's session
+/// gate finds no cookie and bounces the user to /login. Match Better Auth's
+/// own rule so the forwarded Cookie NAME is byte-identical to a browser
+/// sign-in (the hybrid cookie-relay path in `bridge.rs` gets this for free
+/// by capturing the real `Set-Cookie`; the system-browser login path and
+/// `session.rs`'s cookie re-mint both have to reconstruct the name).
+pub(crate) fn session_cookie_name(target: &str) -> &'static str {
+    if target.starts_with("https://") {
+        "__Secure-better-auth.session_token"
+    } else {
+        "better-auth.session_token"
+    }
+}
+
+pub(crate) async fn mint_session_from_access_token(
     http: &reqwest::Client,
     target: &str,
     access_token: &str,
