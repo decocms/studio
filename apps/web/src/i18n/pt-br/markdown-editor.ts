@@ -1,0 +1,27 @@
+import type { markdownEditor as markdownEditorEn } from "../en/markdown-editor.ts";
+
+export const markdownEditor = {
+  "markdownEditor.toolbarAriaLabel": "Formatação de texto",
+  "markdownEditor.bold": "Negrito",
+  "markdownEditor.italic": "Itálico",
+  "markdownEditor.strikethrough": "Riscado",
+  "markdownEditor.code": "Código em linha",
+  "markdownEditor.heading1": "Título grande",
+  "markdownEditor.heading2": "Título médio",
+  "markdownEditor.heading3": "Título pequeno",
+  "markdownEditor.bulletList": "Lista com marcadores",
+  "markdownEditor.orderedList": "Lista numerada",
+  "markdownEditor.quote": "Citação",
+  "markdownEditor.link": "Link",
+  "markdownEditor.linkPlaceholder": "Cole ou digite um link",
+  "markdownEditor.linkInputAriaLabel": "URL do link",
+  "markdownEditor.linkApply": "Aplicar link",
+  "markdownEditor.linkRemove": "Remover link",
+  "markdownEditor.addImage": "Adicionar imagem",
+  "markdownEditor.removeImage": "Remover imagem",
+  "markdownEditor.imageAltFallback": "Imagem anexada",
+  "markdownEditor.uploading": "Enviando imagem…",
+  "markdownEditor.uploadingCount": "Enviando {count} imagens…",
+  "markdownEditor.uploadFailed": "Não foi possível enviar {name}",
+  "markdownEditor.imageTooLarge": "{name} tem mais de 10MB",
+} satisfies Record<keyof typeof markdownEditorEn, string>;

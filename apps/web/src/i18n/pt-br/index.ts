@@ -13,6 +13,7 @@ import { registry } from "./registry.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
+import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
 import { layouts } from "./layouts.ts";
 import { home } from "./home.ts";
@@ -51,6 +52,7 @@ export const ptBR = {
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,
+  ...markdownEditor,
   ...library,
   ...layouts,
   ...home,
