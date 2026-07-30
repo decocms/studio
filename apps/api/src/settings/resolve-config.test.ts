@@ -388,3 +388,24 @@ describe("resolveConfig topup fee percent", () => {
     ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
   });
 });
+
+describe("resolveConfig decopilot max concurrent subagents", () => {
+  it("defaults to 4", () => {
+    expect(
+      resolveConfig(flags, {}).settings.decopilotMaxConcurrentSubagents,
+    ).toBe(4);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_SUBAGENTS: "8" }).settings
+        .decopilotMaxConcurrentSubagents,
+    ).toBe(8);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_SUBAGENTS: "free" }),
+    ).toThrow("DECOPILOT_MAX_CONCURRENT_SUBAGENTS must be a positive integer");
+  });
+});
