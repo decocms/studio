@@ -53,6 +53,7 @@ import {
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
+  statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   type Member,
@@ -333,7 +334,11 @@ export function TaskBoardItemDialog({
                   <button type="button" className={PROPERTY_BUTTON}>
                     <StatusIcon
                       size={16}
-                      className={STATUS_CONFIG[status].iconClassName}
+                      className={
+                        item
+                          ? statusIconClassName({ ...item, status })
+                          : STATUS_CONFIG[status].iconClassName
+                      }
                     />
                     {t(STATUS_CONFIG[status].labelKey)}
                   </button>
