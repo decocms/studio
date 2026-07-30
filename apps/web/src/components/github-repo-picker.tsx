@@ -41,7 +41,10 @@ import {
 import { useAutoInstallGitHub } from "@/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { fetchGithubInstallations } from "@/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  githubAppInstallUrl,
+} from "@/lib/github-installations";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -628,9 +631,7 @@ function InstallationPicker({
   const data = installationsQuery.data;
   if (!data) return null;
 
-  const installUrl = data.appSlug
-    ? `https://github.com/apps/${data.appSlug}/installations/new`
-    : "https://github.com/settings/installations";
+  const installUrl = githubAppInstallUrl(data.appSlug);
 
   if (data.installations.length === 0) {
     return (

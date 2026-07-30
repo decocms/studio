@@ -1,3 +1,14 @@
+/**
+ * Fallback GitHub App slug for when GITHUB_LIST_USER_ORGS can't report one —
+ * the slug is harvested from the user's installations, so a user with zero
+ * installations (the exact case that needs the install link) never gets it.
+ */
+const DEFAULT_GITHUB_APP_SLUG = "deco-cms";
+
+export function githubAppInstallUrl(appSlug?: string): string {
+  return `https://github.com/apps/${appSlug ?? DEFAULT_GITHUB_APP_SLUG}/installations/new`;
+}
+
 export type GithubInstallation = {
   installationId: number;
   login: string;

@@ -19,6 +19,7 @@ import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import {
   fetchGithubInstallations,
   findGithubInstallation,
+  githubAppInstallUrl,
 } from "@/lib/github-installations";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
 import {
@@ -193,9 +194,7 @@ export function ImportFromDecoDialog({
         githubRepo.owner,
       );
       if (!githubInstallation) {
-        const installUrl = appSlug
-          ? `https://github.com/apps/${appSlug}/installations/new`
-          : "https://github.com/settings/installations";
+        const installUrl = githubAppInstallUrl(appSlug);
         throw new Error(
           t("common.importFromDecoDialog.installGithubApp", {
             owner: githubRepo.owner,
