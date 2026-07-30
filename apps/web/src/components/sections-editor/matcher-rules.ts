@@ -4,7 +4,7 @@ import {
   isSavedBlockResolveType,
 } from "./block-type-utils";
 import { globalSectionLabel } from "./page-list";
-import type { LiveMeta } from "./resolve-schema";
+import { resolveSchema, type LiveMeta } from "./resolve-schema";
 
 const PAGE_RESOLVE_TYPES = new Set([
   "website/pages/Page.tsx",
@@ -190,4 +190,27 @@ export function readMatcherRuleFormState(
     return { resolveType: "", formValue: {} };
   }
   return { resolveType: unwrapped.resolveType, formValue: unwrapped.data };
+}
+
+/**
+ * Initial rule value for a freshly-selected matcher type. Most matchers only
+ * need `{ __resolveType }`, but a discriminated-union matcher (e.g. VTEX
+ * `userSegment`) renders as a branch selector whose DEFAULT branch often has no
+ * editable field — so a user who accepts the default never triggers a write,
+ * and the saved config would be `{ __resolveType }` with no discriminant. Seed
+ * the first branch's discriminators (which already carry `__resolveType`) so a
+ * valid, resolvable rule is persisted even if the user changes nothing.
+ */
+export function seedMatcherRule(
+  resolveType: string,
+  meta?: LiveMeta | null,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = { __resolveType: resolveType };
+  if (!resolveType || !meta) return base;
+  const schema = resolveSchema(resolveType, meta);
+  const discriminators =
+    schema?.type === "inline-union"
+      ? schema.inlineUnionBranches?.[0]?.discriminators
+      : undefined;
+  return discriminators ? { ...base, ...discriminators } : base;
 }

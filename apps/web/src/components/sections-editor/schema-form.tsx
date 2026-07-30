@@ -435,7 +435,7 @@ export function SchemaForm({
   // userSegment matcher). It has no wrapping `properties`, so render it as that
   // field (a branch selector) instead of an empty form.
   if (!properties) {
-    if (schema.type === "inline-union" || schema.type === "block-ref") {
+    if (schema.type === "inline-union") {
       return renderField({
         schema,
         value,

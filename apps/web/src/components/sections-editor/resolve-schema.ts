@@ -1081,7 +1081,15 @@ export function resolveSchema(
   const onlyPlumbingProps = Object.keys(ownProps).every((k) =>
     k.startsWith("__"),
   );
-  if (Array.isArray(schemaRoot.allOf) && onlyPlumbingProps) {
+  // Restrict to deco's single-member wrapper (`allOf:[{$ref:Props}]`). A
+  // multi-member `allOf` (base object + union) must NOT early-return the union
+  // alone — that would silently drop the base object's fields; let it fall
+  // through to the merge instead.
+  if (
+    Array.isArray(schemaRoot.allOf) &&
+    schemaRoot.allOf.length === 1 &&
+    onlyPlumbingProps
+  ) {
     const rtProp = ownProps.__resolveType as RawSchema | undefined;
     const resolveTypeConst =
       Array.isArray(rtProp?.enum) && typeof rtProp.enum[0] === "string"
@@ -1107,8 +1115,12 @@ export function resolveSchema(
         // deco names an anonymous union def after its branches
         // ("A|B|C" / a jsdelivr URL "…@Props"). That machine name leaks in as
         // the field label — drop it unless the dev gave the type a real @title.
+        // Only treat as machine-generated a URL or pipe-joined identifiers with
+        // no spaces, so a human title like "Q&A | Help" is kept.
+        const t = built.title;
         const machineTitle =
-          typeof built.title === "string" && /[|@]|:\/\//.test(built.title);
+          typeof t === "string" &&
+          (t.includes("://") || /^[^\s|]+(\|[^\s|]+)+$/.test(t));
         return {
           ...built,
           title: machineTitle ? undefined : built.title,

@@ -1701,4 +1701,37 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
     expect(branches?.[2]?.schema?.properties?.months?.type).toBe("number");
     expect(branches?.[1]?.schema?.properties?.months).toBeUndefined();
   });
+
+  test("keeps a human-authored @title on the union (only machine names are dropped)", () => {
+    const humanMeta = structuredClone(meta) as LiveMeta;
+    const defs = humanMeta.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    // spaces around the pipe → human copy, not a machine name
+    defs.Union!.title = "Q&A | Help";
+    expect(resolveSchema(rt, humanMeta)?.title).toBe("Q&A | Help");
+  });
+
+  test("does NOT collapse a multi-member allOf (base object + union) into the union", () => {
+    // A `{ allOf: [Base, Union] }` wrapper must fall through to the merge rather
+    // than early-returning the union alone and silently dropping Base's fields.
+    const multiMeta = structuredClone(meta) as LiveMeta;
+    const defs = multiMeta.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    defs.Base = {
+      type: "object",
+      properties: { country: { type: "string", title: "Country" } },
+    };
+    defs.Wrapper!.allOf = [
+      { $ref: "#/definitions/Base" },
+      { $ref: "#/definitions/Props" },
+    ];
+    const resolved = resolveSchema(rt, multiMeta);
+    expect(resolved?.type).toBe("object");
+    expect(resolved?.properties?.country?.title).toBe("Country");
+    expect(resolved?.inlineUnionBranches).toBeUndefined();
+  });
 });
