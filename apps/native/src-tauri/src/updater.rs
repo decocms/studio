@@ -44,6 +44,10 @@ use tokio::sync::watch;
 /// (`--config {"version": ...}`) carry a real version.
 const PLACEHOLDER_VERSION: &str = "0.1.0";
 const KILL_SWITCH_ENV: &str = "DECOCMS_DISABLE_AUTO_UPDATE";
+/// Spike/manual-runbook override for [`CHECK_INTERVAL`] (seconds, floored at
+/// 15 so a typo can't hot-loop against GitHub). Harmless in the threat
+/// model: a local process able to set env already has the kill switch above.
+const CHECK_INTERVAL_ENV: &str = "DECOCMS_UPDATE_CHECK_INTERVAL_SECS";
 /// Deliberately NOT the 5-minute revalidate cadence: the channel manifest
 /// moves at most ~1.2x/day (release-workflow throttle) and card latency is
 /// dominated by the dialog's own 5-min × 2-confirmation poll — a 5-minute
@@ -134,8 +138,20 @@ fn kill_switch_active() -> bool {
     std::env::var_os(KILL_SWITCH_ENV).is_some_and(|value| !value.is_empty() && value != "0")
 }
 
+/// [`CHECK_INTERVAL`] unless the override env holds a parseable second
+/// count; floored, never trusted below 15 s. Pure so the parsing is
+/// unit-testable.
+fn check_interval(override_secs: Option<&str>) -> Duration {
+    override_secs
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|secs| Duration::from_secs(secs.max(15)))
+        .unwrap_or(CHECK_INTERVAL)
+}
+
 async fn run(parts: TaskParts) {
-    let mut interval = tokio::time::interval(CHECK_INTERVAL);
+    let mut interval = tokio::time::interval(check_interval(
+        std::env::var(CHECK_INTERVAL_ENV).ok().as_deref(),
+    ));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // The first tick completes immediately; consuming it here means the
     // first real check runs one full interval after boot — no boot-path
@@ -378,6 +394,16 @@ mod tests {
     use super::*;
 
     const HOUR: Duration = Duration::from_secs(3600);
+
+    #[test]
+    fn check_interval_override_parses_and_floors() {
+        assert_eq!(check_interval(None), CHECK_INTERVAL);
+        assert_eq!(check_interval(Some("nonsense")), CHECK_INTERVAL);
+        assert_eq!(check_interval(Some("")), CHECK_INTERVAL);
+        assert_eq!(check_interval(Some("120")), Duration::from_secs(120));
+        // Floored: a typo can't hot-loop against the channel.
+        assert_eq!(check_interval(Some("1")), Duration::from_secs(15));
+    }
 
     #[test]
     fn backoff_doubles_and_caps_at_a_day() {
