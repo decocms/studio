@@ -14,7 +14,7 @@ export const announcements = {
   "announcements.version.description":
     "Refresh to load the latest Studio updates.",
   "announcements.version.descriptionNative":
-    "An update is installed and ready. Restart the app to start using it.",
+    "An update is ready. Restart the app to finish installing it.",
   "announcements.version.currentSession": "Current session · {version}",
   "announcements.version.refresh": "Refresh now",
   "announcements.version.restart": "Restart to update",
