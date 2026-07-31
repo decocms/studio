@@ -8,7 +8,7 @@
  *   1. **Caller override.** `SANDBOX_START`'s `input.daemonImpl`. The escape
  *      hatch both ways: opt one sandbox in, or pin one back to `ts` inside a
  *      flagged org.
- *   2. **Org flag** `sandboxGoDaemon`. Who gets Go *by default* — what puts a
+ *   2. **Org flag** `sandbox_go_daemon`. Who gets Go *by default* — what puts a
  *      real user's sandboxes on Go without asking them to pass anything.
  *   3. **`ts`.** Deployed is not enabled.
  *
@@ -29,5 +29,5 @@ export function resolveDaemonImpl(args: {
   flags?: OrgFlags | null;
 }): SandboxDaemonImpl {
   if (args.explicit) return args.explicit;
-  return args.flags?.sandboxGoDaemon ? "go" : "ts";
+  return args.flags?.sandbox_go_daemon ? "go" : "ts";
 }

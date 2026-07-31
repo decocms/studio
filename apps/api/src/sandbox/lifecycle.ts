@@ -92,7 +92,7 @@ function readSandboxTemplateName(): string | undefined {
 
 // Name of the sandbox-env chart's opt-in `<name>-go` SandboxTemplate. Presence
 // is the GLOBAL KILL SWITCH for the Go daemon rollout: unset, both the
-// `sandboxGoDaemon` org flag and SANDBOX_START's `daemonImpl` prop are ignored,
+// `sandbox_go_daemon` org flag and SANDBOX_START's `daemonImpl` prop are ignored,
 // because there is no template to point a claim at. Unsetting it routes the next
 // sandbox back to TS with no rebuild; live sandboxes drain on their own binary.
 function readGoSandboxTemplateName(): string | undefined {

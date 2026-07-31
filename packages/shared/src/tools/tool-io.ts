@@ -121,7 +121,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            sandboxGoDaemon?: boolean | undefined;
+            sandbox_go_daemon?: boolean | undefined;
           }
         | null
         | undefined;
@@ -184,7 +184,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            sandboxGoDaemon?: boolean | undefined;
+            sandbox_go_daemon?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -247,7 +247,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
-            sandboxGoDaemon?: boolean | undefined;
+            sandbox_go_daemon?: boolean | undefined;
           }
         | null
         | undefined;

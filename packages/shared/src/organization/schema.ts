@@ -137,7 +137,7 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
-  sandboxGoDaemon: z
+  sandbox_go_daemon: z
     .boolean()
     .optional()
     .describe(

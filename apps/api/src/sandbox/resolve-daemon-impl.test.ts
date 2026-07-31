@@ -9,18 +9,25 @@ describe("resolveDaemonImpl", () => {
   });
 
   it("honors the org flag", () => {
-    expect(resolveDaemonImpl({ flags: { sandboxGoDaemon: true } })).toBe("go");
-    expect(resolveDaemonImpl({ flags: { sandboxGoDaemon: false } })).toBe("ts");
+    expect(resolveDaemonImpl({ flags: { sandbox_go_daemon: true } })).toBe(
+      "go",
+    );
+    expect(resolveDaemonImpl({ flags: { sandbox_go_daemon: false } })).toBe(
+      "ts",
+    );
   });
 
   it("lets the explicit prop win in both directions", () => {
     expect(
-      resolveDaemonImpl({ explicit: "go", flags: { sandboxGoDaemon: false } }),
+      resolveDaemonImpl({
+        explicit: "go",
+        flags: { sandbox_go_daemon: false },
+      }),
     ).toBe("go");
     // The escape hatch that matters most: pinning one sandbox back to ts
     // inside an org that is otherwise on Go.
     expect(
-      resolveDaemonImpl({ explicit: "ts", flags: { sandboxGoDaemon: true } }),
+      resolveDaemonImpl({ explicit: "ts", flags: { sandbox_go_daemon: true } }),
     ).toBe("ts");
   });
 });

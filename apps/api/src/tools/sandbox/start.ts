@@ -115,7 +115,7 @@ export const SANDBOX_START = defineTool({
     daemonImpl: sandboxDaemonImplSchema
       .optional()
       .describe(
-        "Target this one sandbox at a specific sandbox daemon implementation, overriding the org's `sandboxGoDaemon` flag in either direction. Only honored on `agent-sandbox`, and only when the deployment configures a Go SandboxTemplate; otherwise the sandbox lands on `ts`. Applies to a sandbox being created — an existing sandbox keeps the binary it booted with.",
+        "Target this one sandbox at a specific sandbox daemon implementation, overriding the org's `sandbox_go_daemon` flag in either direction. Only honored on `agent-sandbox`, and only when the deployment configures a Go SandboxTemplate; otherwise the sandbox lands on `ts`. Applies to a sandbox being created — an existing sandbox keeps the binary it booted with.",
       ),
   }),
   outputSchema: z.object({

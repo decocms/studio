@@ -208,7 +208,7 @@ function makeCtx(overrides: {
   /** Row returned by `storage.threads.get` — set `created_by` to exercise the
    *  thread-owner keying (see resolveSandboxUserId). */
   thread?: { created_by: string; metadata: Record<string, unknown> } | null;
-  /** `organization_settings.flags` — drives the `sandboxGoDaemon` rollout flag. */
+  /** `organization_settings.flags` — drives the `sandbox_go_daemon` rollout flag. */
   orgFlags?: Record<string, boolean> | null;
 }): StudioContext {
   const {
@@ -254,7 +254,7 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
-      // Read once per provision to resolve the `sandboxGoDaemon` rollout flag.
+      // Read once per provision to resolve the `sandbox_go_daemon` rollout flag.
       // Default: no flags set, so every sandbox lands on the TS daemon.
       organizationSettings: {
         get: mock(async (_id: string) => ({ flags: orgFlags })),
@@ -880,7 +880,7 @@ describe("SANDBOX_START", () => {
   it("sends daemonImpl=go when the org flag is on", async () => {
     const ctx = makeCtx({
       virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
-      orgFlags: { sandboxGoDaemon: true },
+      orgFlags: { sandbox_go_daemon: true },
     });
     await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH } as Parameters<
@@ -897,7 +897,7 @@ describe("SANDBOX_START", () => {
   it("lets an explicit daemonImpl=ts pin one sandbox inside a flagged org", async () => {
     const ctx = makeCtx({
       virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
-      orgFlags: { sandboxGoDaemon: true },
+      orgFlags: { sandbox_go_daemon: true },
     });
     await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH, daemonImpl: "ts" } as Parameters<
