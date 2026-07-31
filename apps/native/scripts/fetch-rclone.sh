@@ -29,15 +29,24 @@ host_triple() {
   rustc --print host-tuple 2>/dev/null || rustc -vV | awk '/^host: /{print $2}'
 }
 
-# rclone.org release slugs. macOS only for now: Linux and Windows are not
-# built or tested for this app (every desktop CI job is macos-latest), and
-# Windows additionally needs WinFsp, a third-party kernel driver.
+# rclone.org release slugs — Go arch names, not Rust triple fragments, so the
+# mapping is spelled out rather than derived. Windows is out of scope: it
+# additionally needs WinFsp, a third-party kernel driver. The Linux binary is
+# bundled from day one but stays unused until the org filesystem is ported
+# (see `apps/native/docs/linux-support-plan.md`).
 slug_for_triple() {
   case "$1" in
     aarch64-apple-darwin) echo "osx-arm64" ;;
     x86_64-apple-darwin) echo "osx-amd64" ;;
+    x86_64-unknown-linux-gnu) echo "linux-amd64" ;;
+    aarch64-unknown-linux-gnu) echo "linux-arm64" ;;
     *) return 1 ;;
   esac
+}
+
+# macOS ships `shasum` but no `sha256sum`; most Linux distros ship the reverse.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | awk '{print $1}'
 }
 
 fetch_one() {
@@ -70,7 +79,7 @@ fetch_one() {
     echo "[rclone] ${name}.zip is not listed in SHA256SUMS — refusing" >&2
     return 1
   fi
-  actual="$(shasum -a 256 "${tmp}/rclone.zip" | awk '{print $1}')"
+  actual="$(sha256_of "${tmp}/rclone.zip")"
   if [ "$expected" != "$actual" ]; then
     echo "[rclone] checksum mismatch for ${name}.zip" >&2
     echo "[rclone]   expected ${expected}" >&2
