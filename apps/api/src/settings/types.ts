@@ -110,6 +110,10 @@ export interface Settings {
    *  (DECOPILOT_MAX_CONCURRENT_SUBAGENTS). Excess calls queue and start as
    *  slots free — see `subagent-concurrency.ts`. */
   decopilotMaxConcurrentSubagents: number;
+  /** Process-wide cap on concurrent top-level hosted agent-loop runs per pod
+   *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Excess runs park and start as
+   *  slots free — see `hosted-run-concurrency.ts`. */
+  decopilotMaxConcurrentHostedRuns: number;
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;
