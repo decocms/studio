@@ -286,10 +286,6 @@ export const common = {
     "Falha ao iniciar o chat. Tente novamente.",
   "common.useStartThreadFromPrompt.mcpClientNotAvailable":
     "Cliente MCP não disponível",
-  "common.versionCheckDialog.available": "Uma nova versão está disponível",
-  "common.versionCheckDialog.outdatedVersion":
-    "Você está visualizando uma versão desatualizada desta página. Atualize para obter as últimas atualizações.",
-  "common.versionCheckDialog.refresh": "Atualizar",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
   "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
