@@ -160,9 +160,15 @@ export function createLocalSubtaskTool(params: LocalSubtaskParams) {
         | { text?: string; error?: string; finishReason?: string }
         | undefined;
       if (o?.error) {
+        // Kept in sync with the cluster `subtask.ts`: hand back whatever the
+        // subagent DID produce before it died, so the parent doesn't redo work
+        // whose side effects already landed.
+        const partial = o.text?.trim();
         return {
           type: "error-text" as const,
-          value: `Subtask failed: ${o.error}`,
+          value: partial
+            ? `Subtask failed: ${o.error}\n\nPartial result produced before the failure (its tool calls already ran — do not repeat them blindly):\n\n${partial}`
+            : `Subtask failed: ${o.error}`,
         };
       }
       const text = o?.text?.trim();
