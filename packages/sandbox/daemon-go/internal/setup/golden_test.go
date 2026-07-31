@@ -3,6 +3,7 @@ package setup
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -220,18 +221,29 @@ func TestPruneGoldens(t *testing.T) {
 	})
 }
 
-// useBestCloner points cloneTree at the most faithful clone this machine can
-// actually do, and reports whether it is copy-on-write. Prod reflinks on xfs;
-// a dev mac has clonefile but no GNU cp, and ext4 CI has neither — so the
-// publish/restore/isolation logic is tested everywhere and only the CoW
-// independence assertion is conditional.
+// useBestCloner points cloneTree at the most faithful clone this machine can do
+// and reports whether it is copy-on-write — only the CoW independence assertion
+// is conditional on that.
 func useBestCloner(t *testing.T) (isCoW bool) {
 	t.Helper()
 	probe := func(fn func(string, string) int) bool {
 		src, dst := t.TempDir(), filepath.Join(t.TempDir(), "probe")
+		// The probe tree MUST contain a file. Cloning an *empty* directory
+		// copies no data blocks, so `cp --reflink=always` succeeds on ext4 —
+		// which made this pick reflinkClone on CI and then fail for real on the
+		// first tree with contents in it.
+		if err := os.WriteFile(filepath.Join(src, "probe.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		return fn(src, dst) == 0
 	}
 	darwinClone := func(src, dst string) int {
+		// GOOS-gated, not probed: GNU cp also accepts `-c` (a deprecated
+		// SELinux-context flag), so on Linux this would "succeed" as a plain
+		// copy and we would wrongly claim the clone was copy-on-write.
+		if runtime.GOOS != "darwin" {
+			return 1
+		}
 		return runCp([]string{"-a", "-c", src, dst})
 	}
 	plainCopy := func(src, dst string) int {

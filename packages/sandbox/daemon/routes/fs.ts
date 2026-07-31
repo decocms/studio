@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { safePath } from "../paths";
 import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
-import { assertAllowedRefUrl } from "./offload-fetch";
+import { assertAllowedRefUrl, fetchAllowedUrl } from "./offload-fetch";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
@@ -707,7 +707,17 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     );
     let resp: Response;
     try {
-      resp = await fetch(body.url, { signal: abortController.signal });
+      // Not a plain fetch: the default redirect:"follow" would chase a 302 off
+      // the allowlist (a compliant-looking origin → 169.254.169.254 is the
+      // whole SSRF), so every hop is re-gated.
+      resp = await fetchAllowedUrl(
+        body.url,
+        { signal: abortController.signal },
+        {
+          allowedHosts: deps.offloadAllowedHosts ?? [],
+          allowSameHostDev: deps.offloadAllowSameHostDev ?? false,
+        },
+      );
     } catch (err) {
       clearTimeout(deadlineTimer);
       return jsonResponse(
@@ -843,15 +853,24 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
     );
     let resp: Response;
     try {
-      resp = await fetch(body.url, {
-        method: "PUT",
-        body: Bun.file(filePath).stream(),
-        headers,
-        signal: abortController.signal,
-        // No SSRF revalidation here — the URL is studio-minted (presigned
-        // PUT to S3/R2), so the model can't influence where bytes go.
-        // upload PUTs don't redirect under S3/R2 semantics anyway.
-      });
+      // maxRedirects: 0 — the body is a one-shot stream that could not be
+      // replayed to a second URL anyway, and S3/R2 presigned PUTs do not
+      // redirect. A 3xx here is either a misconfiguration or an attempt to walk
+      // the upload somewhere else; both are errors, not something to follow.
+      resp = await fetchAllowedUrl(
+        body.url,
+        {
+          method: "PUT",
+          body: Bun.file(filePath).stream(),
+          headers,
+          signal: abortController.signal,
+        },
+        {
+          allowedHosts: deps.offloadAllowedHosts ?? [],
+          allowSameHostDev: deps.offloadAllowSameHostDev ?? false,
+          maxRedirects: 0,
+        },
+      );
     } catch (err) {
       return jsonResponse(
         {

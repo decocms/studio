@@ -515,6 +515,13 @@ describe("daemon e2e: url transfer SSRF gate", () => {
         url: `http://127.0.0.1:${origin.port}/redirect`,
       });
       expect(res.status).not.toBe(200);
+      // Assert on the *reason*, not just the status. A daemon that happily
+      // follows the 302 also fails `not.toBe(200)` — on a dev laptop the
+      // connection to 169.254.169.254 is refused instantly and the 502 reads
+      // like a pass, while on a cloud runner (where that IP is the real
+      // metadata endpoint) the same code hangs. Only the gate message proves
+      // the hop was rejected before any socket was opened.
+      expect(await res.text()).toContain("host not allowed");
     });
   });
 });
