@@ -10,6 +10,19 @@ ARG NODE_MAJOR=26
 # digest cache the base image already depends on. Multi-arch like the rest.
 FROM node:${NODE_MAJOR}-slim AS node-dist
 
+# The Go daemon (packages/sandbox/daemon-go), shipped alongside the TS one while
+# the rewrite rolls out; the entrypoint picks between them at runtime. Every dep
+# is pure Go, so CGO_ENABLED=0 cross-compiles from the build host's arch to the
+# target's — no emulation, no per-arch toolchain.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS daemon-go
+ARG TARGETARCH
+WORKDIR /src
+COPY daemon-go/go.mod daemon-go/go.sum ./
+RUN go mod download
+COPY daemon-go/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
+      go build -trimpath -ldflags="-s -w" -o /out/daemon-go .
+
 FROM oven/bun:1.3.14-debian
 
 ARG COREPACK_VERSION=0.35.0
@@ -113,6 +126,9 @@ COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen
 RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
 COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
+COPY --from=daemon-go --chown=sandbox:sandbox /out/daemon-go /opt/sandbox-daemon/daemon-go
+COPY --chown=sandbox:sandbox image/start-daemon.sh /opt/sandbox-daemon/start-daemon.sh
+RUN chmod +x /opt/sandbox-daemon/start-daemon.sh
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 
 # Expose skill helper scripts as bare commands. Wrappers in skills/_bin/
@@ -124,4 +140,6 @@ RUN chmod +x /mnt/skills/public/_bin/* \
 ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000
-CMD ["bun", "/opt/sandbox-daemon/daemon.js"]
+# Which daemon runs is SANDBOX_DAEMON_IMPL (ts | go), read at container start —
+# see start-daemon.sh for why this is env and not a CMD swap.
+CMD ["/opt/sandbox-daemon/start-daemon.sh"]

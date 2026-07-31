@@ -94,6 +94,48 @@ jobs:
         # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
         run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
 
+  # The Go daemon (packages/sandbox/daemon-go) drives the SAME suite through
+  # DAEMON_E2E_CMD. Both jobs exist because "the conformance suite passes on both
+  # daemons" is the entire basis for the rewrite's parity claims — asserted in a
+  # doc it rots on the first divergence; asserted here it cannot.
+  daemon-e2e-go:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/sandbox/daemon-go/go.mod
+          cache-dependency-path: packages/sandbox/daemon-go/go.sum
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Go vet and unit tests
+        working-directory: packages/sandbox/daemon-go
+        # -race: the daemon's concurrency (probe, orchestrator, watcher, dispatch)
+        # is exactly what the rewrite bought, so a data race is a regression in the
+        # thing being bought.
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: Build both daemons
+        run: |
+          bun run --cwd=packages/sandbox build
+          (cd packages/sandbox/daemon-go && go build -o bin/daemon .)
+
+      - name: Run daemon e2e tests against the Go daemon
+        env:
+          DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
+        run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
+
   docker-smoke:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
@@ -115,26 +157,36 @@ jobs:
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
 
+      # Both daemons ship in the image and the entrypoint picks by env, so the
+      # image is only smoke-tested if BOTH selections are. An unset variable must
+      # land on the TS daemon: deployed does not mean enabled.
       - name: Smoke test
         run: |
-          docker run -d --name sandbox-smoke -p 19999:9000 \
-            -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
-            -e DAEMON_BOOT_ID="ci-smoke" \
-            -e APP_ROOT=/app \
-            -e PROXY_PORT=9000 \
-            -e DAEMON_NO_AUTOSTART=1 \
-            studio-sandbox:ci
-          for _ in $(seq 1 30); do
-            if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
-              echo "ok"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "smoke test failed — daemon did not return /health with ci-smoke bootId"
-          docker logs sandbox-smoke
-          exit 1
+          smoke() {
+            impl="$1"; name="sandbox-smoke-$1"; port="$2"
+            docker run -d --name "$name" -p "$port:9000" \
+              -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
+              -e DAEMON_BOOT_ID="ci-smoke-$impl" \
+              -e APP_ROOT=/app \
+              -e PROXY_PORT=9000 \
+              -e DAEMON_NO_AUTOSTART=1 \
+              ${3:+-e SANDBOX_DAEMON_IMPL=$3} \
+              studio-sandbox:ci
+            for _ in $(seq 1 30); do
+              if curl -fsS "http://localhost:$port/health" \
+                   | grep -q "\"bootId\":\"ci-smoke-$impl\""; then
+                echo "$impl ok"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "smoke test failed ($impl) — /health did not report ci-smoke-$impl"
+            docker logs "$name"
+            return 1
+          }
+          smoke default 19999
+          smoke go 19998 go
 
       - name: Tear down
         if: always()
-        run: docker rm -f sandbox-smoke || true
+        run: docker rm -f sandbox-smoke-default sandbox-smoke-go || true

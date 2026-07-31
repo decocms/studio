@@ -7,8 +7,11 @@ runs a real sandbox pod, in what order, and how each claim gets proven.
 Written 2026-07-30, against `wt/daemon-go` @ `bbe3cde12` (conformance suite
 153/153, unreferenced by any deploy path).
 
-**Progress (2026-07-30, same day):** §2.0 free wins and all of §2.2 (G2) are
-done; the suite is now **176/176 on both daemons**. G0, G3 and G4 are untouched.
+**Progress (2026-07-30, same day):** §2.0, all of §2.2 (G2) and §2.3 (G3's L1)
+are done, G4's remaining *code* is done (org-fs links, probe-under-load), and G6
+now has a real kill switch. The suite is **184/184 on both daemons**, and CI runs
+it against both. What is left needs a human in a pod (G4's real session, G5's
+real harness run, G6's drill) plus one owner decision on the harness transport.
 See [§6 Status](#6-status) for the line-by-line ledger.
 
 ## 0. Definition of done
@@ -135,17 +138,24 @@ This is where the rewrite meets reality, and where the suite is least useful.
   studio-injected per-boot id; Studio re-reads it on rehydrate and **tears the
   sandbox down on a single missed probe**. Verify: boot-id round-trip, probe
   latency under a heavy git operation, and that no daemon-internal lock can
-  stall the probe handler.
+  stall the probe handler. *Probe latency under load is now asserted by
+  `daemon.probe.e2e.test.ts` against Studio's real 500ms budget (§6); the pod
+  measurement still has to happen on pod hardware.*
 - **Graceful shutdown = git publish.** SIGTERM must publish before SIGKILL, and
   finish inside the pod's real grace period — this is precisely why publish
   pushes `--no-verify`. The suite covers the SIGTERM path in-process; verify
   against the actual configured grace period in a pod.
-- **Org-fs mounting** (WebDAV, sidecar, repo-link, invalidator, detach) —
+- ~~**Org-fs mounting** (WebDAV, sidecar, repo-link, invalidator, detach) —
   currently config-parse-only, so any sandbox with org volumes is broken. The
-  largest single chunk of remaining work.
-- **`resolve-shell` / `structured-command`** — exec/bash divergence, on the
-  scripting-agent path.
-- **`fsnotify`** — declared in `go.mod`, unused; watching is a 3s poll.
+  largest single chunk of remaining work.~~ **Resolved, and it was never the
+  largest chunk:** a cluster pod cannot mount at all (the sidecar does), and
+  daemon-side mounting exists only on the desktop, which runs the TS bundle. The
+  pod-side half — relay, status gate, repo link, per-run thread links — is ported
+  with a 5-test e2e on both daemons. See §6.
+- ~~**`resolve-shell` / `structured-command`**~~ — done; `resolve-shell` is
+  win32-only and deliberately not ported (§6).
+- ~~**`fsnotify`** — declared in `go.mod`, unused; watching is a 3s poll.~~ Now
+  used (`internal/gitx/watch.go`), with the poll kept as the safety net.
 
 **Acceptance:** a human drives a full session on a kind pod, then a stg pod:
 clone → install → dev server → preview through the proxy → HMR over the WS proxy
@@ -211,20 +221,33 @@ tell you the bridge works. **Acceptance is a real `claude-code` run, by hand.**
 
 ## 6. Status
 
-Conformance suite: **176/176 on both daemons** (was 153; the 23 new tests all
+Conformance suite: **184/184 on both daemons** (was 153; the 23 new tests all
 run against the TS daemon too, which is what makes them parity evidence rather
 than Go-only assertions).
 
 | Gate | State |
 | --- | --- |
 | §2.0 free wins | **Done** — logs on stdout via `log/slog` with an explicit `level=`, guarded by `logging_test.go`. Branches still local (see below). |
-| **G0** observability | **Partly done** — dependency telemetry ported and proven byte-identical to TS; structured logs done. Per-phase boot timing still open, and it needs a decision (see below). |
-| **G1** ledger has no untested row | **Closer** — 3 rows closed with tests, 1 reclassified as won't-port (`resolve-shell` is win32-only). 5 rows remain. |
-| **G2** correctness + security | **Done** — every row has an e2e; see below. |
-| **G3** boot economics | Not started. `PublishPendingGolden()` is still a no-op. |
-| **G4** runtime fidelity | uid/gid **decided and pinned**; org-fs, probe-under-load and the real-pod run remain. |
-| **G5** dispatch | Not started; transport still unpicked. |
-| **G6** rollout | Not started. |
+| **G0** observability | **Partly done** — dependency telemetry ported and proven byte-identical to TS; structured logs done. Per-phase boot timing is now a *recorded deferral*, not a gap (see below). |
+| **G1** ledger has no untested row | **Done** — every remaining row is either tested or an explicit won't-port with its reason (README ledger). The won't-ports: L2 golden (infra-blocked, §5 non-goal), the `sh -c` install chain (fixed-table inputs), org-fs *mounting* (desktop-only path; this binary ships in the cluster image), per-phase boot timing (no schema, no panel, no TS counterpart). |
+| **G2** correctness + security | **Done** — every row has an e2e, including the per-repo cache isolation row that was deferred here from G2. |
+| **G3** boot economics | **L1 done** — reflink restore/publish, health-gated publish, TTL + per-repo cap GC, dormant behind `GOLDEN_CACHE_ENABLED`; unit + e2e on both daemons. L2 stays out of scope (§5). Boot p50/p95 comparison still needs a real pod. |
+| **G4** runtime fidelity | **Code done, pod pending** — uid/gid decided and pinned; org-fs links ported with a 5-test e2e on both daemons; probe-under-load asserted against Studio's real 500ms budget. The human-driven session in kind and stg remains. |
+| **G5** dispatch | **Blocked on one decision**, and the branch reading changes it: there is no `HARNESS_RUNNER_CMD` runner in this repo at all, while the extraction branch ships a tested runner whose protocol was written for a non-TS daemon. See the README's transport section. |
+| **G6** rollout | **Kill switch done** — `SANDBOX_DAEMON_IMPL` (`ts` default) selected by the image entrypoint, `daemonImpl` in the `sandbox-env` chart, both smoke-tested in CI. Canary, alerts and the drill remain. |
+
+### What landed in G3 / G4 / G6 (this pass)
+
+| Item | Evidence |
+| --- | --- |
+| Golden cache L1 | `internal/setup/golden.go` + `PublishPendingGolden` deferred to the probe's `running` transition. Unit: key isolation, lockfile hashing, kill switch, GC bounds, and a real reflink round trip that asserts CoW independence where the filesystem supports it. e2e: an install-fine/never-healthy boot publishes nothing **and never even attempts it** (`d.stdout` carries no `[golden]` line — the store check alone would pass on a non-CoW filesystem while the gate was broken) |
+| Per-repo cache isolation (the G2 row deferred here) | `TestGoldenRoundTrip` asserts repo B cannot restore repo A's golden for a byte-identical lockfile, and `TestGoldenNodeModulesPath` that neither repo's path nests inside the other's |
+| Org-fs links | `internal/orgfs/links.go` + `daemon.orgfs.e2e.test.ts` (5 tests, both daemons): output/upload point at the calling thread and repoint across threads; nothing is linked while the sidecar reports no live mount; a non-single-segment threadId is refused; a repo tracking its own `org/` is never shadowed; a pod with no sidecar env stays inert |
+| Catalog sync on dispatch | `toolscatalog.Coalescer`, wired into dispatch's `BeforeRun`; unit tests cover the 20-way burst, the interval floor, per-endpoint keying, and a run with no MCP endpoint |
+| File watching | `internal/gitx/watch.go`. The e2e that proves it (`a file written outside the fs routes still emits file-changed`) was **control-tested**: with the watcher disabled the Go daemon fails it, because only the fs routes would report writes — and a CLI harness edits through `bash` |
+| Probe under load | `daemon.probe.e2e.test.ts` samples `/health` for 4s while `git status` runs over 4000 untracked files, asserting Studio's real 500ms budget. Measured on this machine: **Go p50 0ms / p95 0ms / worst 1ms; TS p50 22ms / p95 60ms / worst 186ms**. Both pass; the margin is the rewrite's whole point, and TS's worst case is 37% of the budget before a slower node or a bigger repo is in the picture |
+| Runtime binary selection | `image/start-daemon.sh` (`exec`, so the daemon stays PID 1 and SIGTERM still triggers the publish) + `daemonImpl` in the chart; CI smokes the image with the variable unset **and** set to `go` |
+| Parity is now enforced, not asserted | `.github/workflows/sandbox-daemon.yml` gains `daemon-e2e-go`: `go vet`, `go test -race`, then the whole conformance suite via `DAEMON_E2E_CMD`. The "passes on both daemons" claim was previously a sentence in a doc |
 
 ### What landed in G2
 
@@ -308,8 +331,16 @@ no k8s `runAsUser` override. The drop is already a no-op in prod and engages
 only under root, where it is correct. Pinned by `internal/gitx/uiddrop_test.go`
 so a future edit can't silently make it unconditional.
 
-### Still true, still unstarted
+### What is left, and who has to do it
 
-`docs-design/` RFCs are lost and **the branches are still local only** —
-`wt/daemon-go`, `wt/sandbox-controller-go`. Everything above is uncommitted
-working-tree state. Push before anything else.
+Nothing below can be closed by writing more code in this repo.
+
+| Left | Why it needs a human |
+| --- | --- |
+| **G5 transport pick** | Reversing an assumption this daemon was built on, and it means deleting one of two implementations across two branches. The reading argues for loopback HTTP — the extraction branch's runner is tested and its protocol was written for a non-TS daemon, while **no `HARNESS_RUNNER_CMD` runner exists in this repo at all**, so stdio cannot dispatch a real harness today either way. Owner's call. |
+| **G4's real session** | kind, then a stg pod: clone → install → dev server → preview → HMR → agent edit → publish → SIGTERM → work on origin. Also the pod-hardware boot p50/p95 (G3) and the SIGTERM-inside-the-real-grace-period check, neither of which a laptop can measure. |
+| **G5 acceptance** | A real `claude-code` run. Needs model providers and MCP. |
+| **G6 canary + drill** | Flip `daemonImpl: go` on one org, flip it back, confirm the next sandbox lands on TS and no work was lost. Alerts split by implementation before traffic. |
+| **Per-phase boot timing** | Pick the log-line schema and build the panel first — see the G0 note above; emitting an unread line into two daemons is worse than not emitting it. |
+| **Chart rollout** | `sandbox-env` is pinned in `deco-apps-cd`; the new `daemonImpl` value ships only with a `targetRevision` bump. A prior fix was lost exactly this way. |
+| **The branches** | `wt/daemon-go` and `wt/sandbox-controller-go` are committed but **local only**, and `docs-design/`'s RFCs were already lost to an uncommitted worktree once. Pushing is one command and is not mine to run.

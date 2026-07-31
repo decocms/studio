@@ -31,6 +31,22 @@ type Deps struct {
 	// (HARNESS_RUNNER_CMD env). Empty → every dispatch fails with
 	// unknown_harness over SSE.
 	HarnessRunnerCmd []string
+	// BeforeRun prepares the workspace for a dispatched run before the harness
+	// streams: the org-fs `output`/`upload` links must point at this run's thread
+	// from its first write, and the run's MCP endpoint is what keeps `.deco/tools/`
+	// fresh. Must not block for long and must not fail the run. Optional.
+	BeforeRun func(RunInfo)
+}
+
+// RunInfo is what the daemon needs from a dispatched run's input to prepare the
+// workspace. Extracted in one place so both dispatch paths (inline input and
+// offloaded messages) feed the same hook.
+type RunInfo struct {
+	ThreadId string
+	// Mcp is the run's Virtual MCP endpoint; zero URL when the run carries none.
+	McpURL       string
+	McpHeaders   map[string]string
+	McpExpiresAt int64
 }
 
 type Registry struct {
@@ -306,6 +322,12 @@ func (reg *Registry) streamHarnessRun(
 		sse.WriteEvent(map[string]any{"type": "done"})
 		reg.unregister(runId)
 	}()
+
+	// Per-run workspace state, before the harness can touch the workspace. Here
+	// rather than in each caller so the offloaded-messages path gets it too.
+	if deps.BeforeRun != nil {
+		deps.BeforeRun(runInfoOf(input))
+	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
 		sse.WriteEvent(map[string]any{

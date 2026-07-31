@@ -272,6 +272,13 @@ readOnlyRootFilesystem: true
 # for a repo reachable by multiple orgs (public/template) — key by org if
 # that matters. Do NOT widen to a shared cache without making it read-only
 # to tenant pods.
+# Which sandbox daemon implementation the image runs: "ts" (default, the
+# TypeScript daemon on Bun) or "go" (packages/sandbox/daemon-go). Both ship in
+# every image; this only selects which one the entrypoint execs, so a rollback is
+# this one value — not a rebuild. Roll out per environment, and note that
+# switching only affects sandboxes created after the change.
+daemonImpl: ts
+
 depsCache:
   enabled: false
   # Node path backing the cache. Created root-owned by kubelet

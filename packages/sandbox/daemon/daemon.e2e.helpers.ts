@@ -66,6 +66,12 @@ export interface Daemon {
   appDir: string;
   /** Captured stderr, for surfacing startup crashes in assertions. */
   stderr: { value: string };
+  /**
+   * Captured stdout — the daemon's log/setup stream. Lets a test assert that
+   * something was never even ATTEMPTED, which is stronger than asserting its
+   * side effect is absent (an attempt that merely failed leaves the same state).
+   */
+  stdout: { value: string };
 }
 
 export function authHeaders(
@@ -139,13 +145,17 @@ export async function startDaemon(
     env: buildDaemonEnv(appDir, port, extraEnv),
   });
   const stderr = { value: "" };
-  proc.stdout?.on("data", (c) => process.stderr.write(`[daemon:out] ${c}`));
+  const stdout = { value: "" };
+  proc.stdout?.on("data", (c) => {
+    stdout.value += c.toString();
+    process.stderr.write(`[daemon:out] ${c}`);
+  });
   proc.stderr?.on("data", (c) => {
     stderr.value += c.toString();
     process.stderr.write(`[daemon:err] ${c}`);
   });
   await waitForPort(port, proc, stderr);
-  return { port, proc, appDir, stderr };
+  return { port, proc, appDir, stderr, stdout };
 }
 
 export function buildDaemonEnv(

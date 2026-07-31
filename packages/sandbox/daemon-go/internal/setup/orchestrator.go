@@ -56,6 +56,10 @@ type Orchestrator struct {
 	currentBranchHead string
 	latestScripts     []string
 	hasScripts        bool
+	// A fresh install not yet published as a golden — published by
+	// PublishPendingGolden() once the dev server is confirmed healthy. Nil when
+	// the boot restored an existing golden (nothing new to publish).
+	pendingGolden *GoldenParams
 }
 
 func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
@@ -117,10 +121,25 @@ func (o *Orchestrator) DiscoveredScripts() ([]string, bool) {
 	return o.latestScripts, o.hasScripts
 }
 
-// PublishPendingGolden is the golden-cache publish hook, called once the
-// probe confirms the dev server healthy. Golden cache is deferred in the Go
-// daemon: no-op.
-func (o *Orchestrator) PublishPendingGolden() {}
+// PublishPendingGolden publishes the golden for this boot's fresh install — but
+// only now that the probe has confirmed the dev server healthy, so a
+// broken-but-exit-0 install can never become a golden every later boot reuses.
+// No-op when nothing is pending (a golden-restore boot, or a boot that never
+// installed).
+func (o *Orchestrator) PublishPendingGolden() {
+	o.mu.Lock()
+	pending := o.pendingGolden
+	o.pendingGolden = nil
+	o.mu.Unlock()
+	if pending == nil {
+		return
+	}
+	// Untee'd, matching the TS daemon: publish runs after the dev server is up,
+	// and its log belongs in the setup stream, not in the pod's stdout.
+	pending.Log = func(m string) { o.rawChunk(m + "\r\n") }
+	PublishGolden(*pending)
+	PruneGoldens("")
+}
 
 func (o *Orchestrator) enqueue(step Step) {
 	o.mu.Lock()
@@ -298,17 +317,38 @@ func (o *Orchestrator) stepInstall() bool {
 	}
 
 	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstalling})
+
+	// Timed from here so the reported cost is the whole dependency step — a
+	// failed golden probe (stat, partial reflink, cleanup) is real boot latency,
+	// and on a miss the cost a remote tier would replace is probe + install, not
+	// install alone.
+	depsStartedAt := time.Now()
+	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
+	bootId := os.Getenv("DAEMON_BOOT_ID")
+	elapsedMs := func() int64 { return time.Since(depsStartedAt).Milliseconds() }
+
+	// Golden fast path: reflink a cached node_modules for this exact lockfile and
+	// skip install entirely. Best-effort — a miss or any failure falls through.
+	golden := GoldenParams{
+		CloneUrl:    cloneUrl,
+		InstallRoot: paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
+		Pm:          pm,
+		Log:         func(m string) { o.chunk(m + "\r\n") },
+	}
+	if TryRestoreGolden(golden) {
+		o.mu.Lock()
+		o.pendingGolden = nil // restored an existing golden — nothing to publish
+		o.mu.Unlock()
+		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId)
+		o.markInstallSucceeded(cfg)
+		return true
+	}
+
 	o.chunk("[orchestrator] installing dependencies\r\n")
 
 	installLogPath := paths.AppLogPath(o.deps.LogsDir, "install")
 	os.Remove(installLogPath)
 	installTee := proc.NewLogTee(installLogPath, installLogMaxBytes)
-	// Timed from here so the reported cost is the whole dependency step — what
-	// a golden tier would replace — not the install command alone.
-	depsStartedAt := time.Now()
-	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
-	bootId := os.Getenv("DAEMON_BOOT_ID")
-	elapsedMs := func() int64 { return time.Since(depsStartedAt).Milliseconds() }
 
 	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) {
 		o.rawChunk(data)
@@ -330,9 +370,16 @@ func (o *Orchestrator) stepInstall() bool {
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
 		return false
 	}
-	// No golden cache in this daemon yet, so a completed install is always a miss.
 	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId)
 	o.markInstallSucceeded(cfg)
+
+	// Don't publish the golden yet — PublishPendingGolden(), which the probe's
+	// `running` transition calls, does it once the dev server is confirmed
+	// healthy. Publishing only from a boot that actually came up is what keeps a
+	// broken install from becoming a sticky bad golden.
+	o.mu.Lock()
+	o.pendingGolden = &golden
+	o.mu.Unlock()
 
 	// Install scripts (postinstall/prepare — lefthook, husky) can overwrite
 	// .git/hooks/pre-push; reinstall so branch protection survives.

@@ -24,11 +24,13 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/lifecycle"
+	"github.com/decocms/studio/sandbox-daemon/internal/orgfs"
 	"github.com/decocms/studio/sandbox-daemon/internal/probe"
 	"github.com/decocms/studio/sandbox-daemon/internal/proc"
 	"github.com/decocms/studio/sandbox-daemon/internal/proxy"
 	"github.com/decocms/studio/sandbox-daemon/internal/routes"
 	"github.com/decocms/studio/sandbox-daemon/internal/setup"
+	"github.com/decocms/studio/sandbox-daemon/internal/toolscatalog"
 )
 
 const (
@@ -43,6 +45,21 @@ func randomUUID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	s := hex.EncodeToString(b)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
+}
+
+// The workspace-touching routes, and the reason they are one map: they are also
+// the set that resolves relative `org/...` paths, so the org-fs link hook and
+// the handler lookup must never drift apart.
+var fsRoutes = map[string]string{
+	"/read": "read", "/write": "write", "/unlink": "unlink", "/mkdir": "mkdir",
+	"/rename": "rename", "/edit": "edit", "/grep": "grep", "/glob": "glob",
+	"/write_from_url": "write_from_url", "/upload_to_url": "upload_to_url",
+	"/bash": "bash",
+}
+
+func isFsRoute(vmPath string) bool {
+	_, ok := fsRoutes[vmPath]
+	return ok
 }
 
 type daemon struct {
@@ -70,6 +87,7 @@ type daemon struct {
 	proxyHandler *proxy.Handler
 	dispatchReg  *dispatch.Registry
 	dispatchDeps dispatch.Deps
+	orgFsLinks   *orgfs.Links
 
 	fileChangedMu    sync.Mutex
 	fileChangedTimer *time.Timer
@@ -256,6 +274,23 @@ func (d *daemon) vmRoute(w http.ResponseWriter, r *http.Request, prefix, vmPath 
 		return
 	}
 
+	// Hosted harnesses drive the sandbox through the fs/exec routes WITHOUT a
+	// /dispatch envelope, so the org links must be ensured here too — before
+	// bash/read/write resolve the prompts' relative `org/...` paths. vm-tools
+	// stamp the thread on each call (x-thread-id) so `org/output` can point at the
+	// running thread's folder; memoized, so repeat calls cost one lstat. ONLY
+	// these routes: gating /orgfs-config would deadlock provisioning into the full
+	// fail-open wait (the mounts it polls for appear only after that POST lands),
+	// and gating /setup/clone would create `repo/org` ahead of the clone — the
+	// boot-time hazard the repo link is deliberately deferred to avoid.
+	if method == "POST" && (isFsRoute(vmPath) || strings.HasPrefix(vmPath, "/exec/")) {
+		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
+			d.orgFsLinks.RepointForRun(threadId)
+		} else {
+			d.orgFsLinks.EnsureRepoLink()
+		}
+	}
+
 	if vmPath == "/config" {
 		switch method {
 		case "GET":
@@ -313,12 +348,6 @@ func (d *daemon) vmRoute(w http.ResponseWriter, r *http.Request, prefix, vmPath 
 	if name, ok := gitRoutes[vmPath]; ok && (method == "GET" || method == "POST") {
 		d.handlers[name](w, r)
 		return
-	}
-	fsRoutes := map[string]string{
-		"/read": "read", "/write": "write", "/unlink": "unlink", "/mkdir": "mkdir",
-		"/rename": "rename", "/edit": "edit", "/grep": "grep", "/glob": "glob",
-		"/write_from_url": "write_from_url", "/upload_to_url": "upload_to_url",
-		"/bash": "bash",
 	}
 	if name, ok := fsRoutes[vmPath]; ok && method == "POST" {
 		d.handlers[name](w, r)
@@ -507,7 +536,9 @@ func main() {
 		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", s.ExitCode)
 	})
 
-	d.branchStatus = gitx.NewBranchStatusMonitor(repoDir, d.broadcaster)
+	// The watcher is what makes edits the daemon did not perform itself visible —
+	// a CLI harness writes through `bash`, so the fs routes never see them.
+	d.branchStatus = gitx.NewBranchStatusMonitor(repoDir, d.broadcaster, d.emitFileChanged)
 
 	d.orchestrator = setup.NewOrchestrator(setup.OrchestratorDeps{
 		AppRoot:      appRoot,
@@ -540,6 +571,32 @@ func main() {
 		},
 	})
 
+	// Org-fs: this daemon links, the privileged sidecar mounts (see
+	// internal/orgfs/links.go). Inert unless the pod sets the sidecar env.
+	d.orgFsLinks = &orgfs.Links{
+		AppRoot:    appRoot,
+		RepoDir:    repoDir,
+		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
+		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
+	}
+	// Fail loud rather than silently unmounted: ORGFS_CONFIG is the desktop's
+	// "mount them yourself" env, which only the TS bundle implements.
+	if os.Getenv("ORGFS_CONFIG") != "" && d.orgFsLinks.StatusPath == "" {
+		slog.Warn("ORGFS_CONFIG is set but this daemon does not mount org volumes " +
+			"(cluster sidecar path only) — org files will not appear in the workspace")
+	}
+	// Same rule for the golden cache's remote tier: the pod may be configured for
+	// L2, but this daemon implements L1 only. Boots stay correct, just slower.
+	if os.Getenv("GOLDEN_CACHE_REMOTE") != "" {
+		slog.Warn("GOLDEN_CACHE_REMOTE is set but this daemon implements the " +
+			"node-local golden tier only — remote restore/publish is skipped")
+	}
+
+	catalogSync := toolscatalog.NewCoalescer(
+		toolscatalog.Opts{AppRoot: appRoot, RepoDir: repoDir},
+		toolscatalog.DefaultSyncMinInterval,
+	)
+
 	d.dispatchReg = dispatch.NewRegistry()
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
@@ -547,6 +604,19 @@ func main() {
 		AllowedHosts:     offloadHosts,
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
+		// Share-files-back: point `org/output` at this run's thread subtree before
+		// the harness can touch it. A failure degrades to no link, never blocks the
+		// run. Same call refreshes `.deco/tools/` from the run's MCP endpoint
+		// (coalesced in the background) so a renamed tool does not stay stale until
+		// something calls /tools/sync explicitly.
+		BeforeRun: func(info dispatch.RunInfo) {
+			d.orgFsLinks.RepointForRun(info.ThreadId)
+			catalogSync.Sync(toolscatalog.Endpoint{
+				URL:       info.McpURL,
+				Headers:   info.McpHeaders,
+				ExpiresAt: info.McpExpiresAt,
+			})
+		},
 	}
 
 	fsDeps := routes.FsDeps{

@@ -213,6 +213,14 @@ spec:
           env:
             - name: WORKDIR
               value: "/app"
+            {{- if ne (.Values.daemonImpl | default "ts") "ts" }}
+            # Which daemon binary the image's entrypoint execs. Its own switch,
+            # never piggybacked on another flag, and read at container start so
+            # flipping it back routes the NEXT sandbox to the TS daemon with no
+            # rebuild. In-flight sandboxes drain on their existing binary.
+            - name: SANDBOX_DAEMON_IMPL
+              value: {{ .Values.daemonImpl | quote }}
+            {{- end }}
             {{- if .Values.depsCache.enabled }}
             # Root of the node-local dependency cache; the daemon derives a
             # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).

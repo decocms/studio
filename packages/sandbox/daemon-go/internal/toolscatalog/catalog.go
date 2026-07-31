@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
 )
 
@@ -116,7 +117,7 @@ func WriteCatalog(tools []Tool, opts Opts) (count int, names []string, err error
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return 0, nil, err
 	}
-	ensureGitExclude(opts.RepoDir, "/"+CatalogDir+"/")
+	gitx.EnsureExclude(opts.RepoDir, "/"+CatalogDir+"/")
 
 	keep := map[string]bool{}
 	names = []string{}
@@ -164,7 +165,7 @@ func WriteEndpointFile(ep Endpoint, opts Opts) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return false, err
 	}
-	ensureGitExclude(opts.RepoDir, "/"+CatalogDir+"/")
+	gitx.EnsureExclude(opts.RepoDir, "/"+CatalogDir+"/")
 	if ep.Headers == nil {
 		ep.Headers = map[string]string{}
 	}
@@ -176,38 +177,4 @@ func WriteEndpointFile(ep Endpoint, opts Opts) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-// ensureGitExclude registers `line` in `<repoDir>/.git/info/exclude` so the
-// daemon's shutdown `git add -A` never commits daemon-managed paths onto user
-// branches. info/exclude is local-only (unlike .gitignore), so it never leaks
-// into the repo. No-op without a `.git` dir. Best-effort: an unwritable .git
-// never blocks the caller.
-func ensureGitExclude(repoDir, line string) {
-	gitDir := filepath.Join(repoDir, ".git")
-	st, err := os.Lstat(gitDir)
-	if err != nil || !st.IsDir() {
-		return
-	}
-	excludePath := filepath.Join(gitDir, "info", "exclude")
-	existing, err := os.ReadFile(excludePath)
-	if err != nil {
-		// Template-less clones (libgit2/JGit, bare templates) lack info/exclude.
-		if mkErr := os.MkdirAll(filepath.Join(gitDir, "info"), 0o755); mkErr != nil {
-			return
-		}
-		os.WriteFile(excludePath, []byte(line+"\n"), 0o644)
-		return
-	}
-	for _, l := range strings.Split(string(existing), "\n") {
-		if l == line {
-			return
-		}
-	}
-	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.WriteString(line + "\n")
 }

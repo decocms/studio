@@ -17,9 +17,9 @@ type branchBroadcaster interface {
 }
 
 // BranchStatusMonitor surfaces BranchMeta (branch, dirty, divergence) with a
-// content-hash dirty-baseline. Change detection is a 3s poll (the fs routes
-// call Refresh directly on writes); a recursive fs watcher is a deferred
-// addition.
+// content-hash dirty-baseline. Change detection is an fsnotify watch over the
+// repo (see watch.go) plus a 3s poll as the safety net for atomic editor saves
+// and watch gaps; the fs routes also call Refresh directly on their own writes.
 type BranchStatusMonitor struct {
 	mu          sync.Mutex
 	repoDir     string
@@ -30,14 +30,18 @@ type BranchStatusMonitor struct {
 	pollStop    chan struct{}
 	pollStarted bool
 	stopped     bool
+	// onFileChanged reports a changed repo-relative path (slash-separated) for the
+	// `file-changed` SSE event. Debouncing is the caller's.
+	onFileChanged func(path string)
 }
 
-func NewBranchStatusMonitor(repoDir string, b branchBroadcaster) *BranchStatusMonitor {
+func NewBranchStatusMonitor(repoDir string, b branchBroadcaster, onFileChanged func(path string)) *BranchStatusMonitor {
 	return &BranchStatusMonitor{
-		repoDir:     repoDir,
-		broadcaster: b,
-		last:        events.BranchMeta{Kind: "unknown"},
-		pollStop:    make(chan struct{}),
+		repoDir:       repoDir,
+		broadcaster:   b,
+		last:          events.BranchMeta{Kind: "unknown"},
+		pollStop:      make(chan struct{}),
+		onFileChanged: onFileChanged,
 	}
 }
 
@@ -91,7 +95,10 @@ func (m *BranchStatusMonitor) Refresh() {
 	m.mu.Unlock()
 	m.broadcaster.Emit("branch", map[string]any{"meta": *next})
 	if startPoll {
+		// Started on the first real refresh, never at boot: the repo does not exist
+		// until the clone lands.
 		go m.pollLoop()
+		go m.watchLoop()
 	}
 }
 

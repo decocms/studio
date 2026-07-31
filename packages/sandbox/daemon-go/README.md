@@ -5,9 +5,12 @@ on Bun). One daemon runs per `(user, project)` sandbox pod and owns the
 workspace: clone, dependency install, dev-server supervision, fs/git/exec
 routes, the reverse proxy, and harness dispatch.
 
-**Status: passes the full daemon conformance suite (176/176), same as the TS
-daemon.** Not wired into any deploy path — the sandbox image still ships the TS
-daemon. Several production behaviors are unported; see [Gap ledger](#gap-ledger).
+**Status: passes the full daemon conformance suite (184/184), same as the TS
+daemon, and CI runs it against both.** The sandbox image now ships both daemons;
+which one runs is `SANDBOX_DAEMON_IMPL`, default `ts` — so the Go daemon is
+deployed but not enabled anywhere. Remaining divergences are in the
+[Gap ledger](#gap-ledger); what still needs a human is in
+[PRODUCTION-READINESS.md](./PRODUCTION-READINESS.md).
 
 ## Why Go
 
@@ -57,8 +60,9 @@ is clamped to it), `PROXY_PORT`, `DAEMON_BOOT_ID`.
   JSON, missing `harnessId`/`runId`, malformed input envelope, run
   cancellation), never a real run. A real run needs model providers and MCP. The harness bridge is unverified by tests; it was verified once by
   hand against real `claude-code`.
-- **Anything in the [gap ledger](#gap-ledger).** These are unported *and*
-  untested — the suite passing is not evidence they work.
+- **The [gap ledger](#gap-ledger)'s remaining rows.** Each is now either an
+  explicit won't-port or blocked on infrastructure — but a won't-port is a
+  judgement, not a test result, so re-read the reason before relying on it.
 - **uid/gid drop.** Settled: the sandbox image runs `USER sandbox` (uid 1000)
   with no k8s `runAsUser` override, and Go's `applyUidDrop` is guarded by
   `os.Geteuid() != 0` — so the drop is a no-op in prod, exactly as under Bun. It
@@ -79,7 +83,7 @@ is clamped to it), `PROXY_PORT`, `DAEMON_BOOT_ID`.
 | `internal/events` | `daemon/events/` | Lifecycle SSE broadcaster + replay buffer |
 | `internal/toolscatalog` | `daemon/tools-catalog.ts` | `/tools/sync`: Virtual MCP catalog → `.deco/tools/` |
 | `internal/lifecycle`, `internal/probe` | `daemon/lifecycle/`, `probe.ts` | Lifecycle state machine, dev-server health probe |
-| `internal/orgfs` | `daemon/org-fs/` | Org-fs mount config parsing **only** (see gaps) |
+| `internal/orgfs` | `daemon/org-fs/` | Sidecar config relay + status gate, `repo/org` link, per-run thread links. Mounting is the sidecar's (cluster) or the TS bundle's (desktop) — see gaps |
 
 `internal/toolscatalog` carries its own minimal MCP client (Streamable HTTP:
 `initialize`, `notifications/initialized`, paged `tools/list`) instead of an MCP
@@ -110,20 +114,24 @@ Behaviors with no local justification in the code that reads like a bug if
   (which targets non-dot `*.json`) never eats it; 0600 because it holds a bearer
   credential.
 - **Golden-cache publish happens only after a health signal.** Publishing a
-  broken cache poisons every later boot.
+  broken cache poisons every later boot. The orchestrator therefore holds the
+  pending publish until the probe's `running` transition
+  (`PublishPendingGolden`), and a restore-hit boot publishes nothing.
+- **Org-fs links are gated on the sidecar's *status*, never on the mount-point
+  directory existing.** The directory is there even when the mount failed;
+  linking into it silently strands the user's shared files on the pod's
+  ephemeral disk. (`internal/orgfs/links.go`)
+- **The `repo/org` link is created at dispatch time, not at boot.** A link in
+  place first makes `git clone` refuse the non-empty directory.
 
 ## Gap ledger
 
-Unported and untested. Each is a real production behavior of the TS daemon.
-
 | Gap | Consequence today |
 | --- | --- |
-| **Org-fs mounting.** `internal/orgfs` parses `OrgFsMountConfig` and stops. No WebDAV mount, sidecar, repo-link, invalidator, or detach. | Org volumes never appear in the workspace. |
-| **Golden cache.** `Orchestrator.PublishPendingGolden()` is a no-op; no L1 reflink, no L2 remote archive (`setup/remote-golden.ts`). | Every boot pays a full dependency install. This is the dominant boot cost. |
-| **`fsnotify` is in `go.mod` but unused** — file watching is a 3s poll. | Slower change detection than the TS daemon; wasted wakeups. |
-| **Per-phase boot timing** (clone → install → start → first healthy probe). | G3 can't attribute a boot regression to a phase. New telemetry for *both* daemons — needs a line schema and a panel before either emits it. |
-| **Catalog sync on dispatch.** TS wires `makeCatalogSync` into dispatch's `onDispatchMcp` (coalesced, 60s min interval). Go serves `/tools/sync` only. | The catalog is not refreshed automatically per run. |
-| **Install runs as one `sh -c` chain.** TS models it as two structured commands (corepack argv, then install argv); Go keeps `corepack … && cd … && <install>` because the chain needs a shell. | Divergence only. The interpolated values are a config path and a package-manager command from a fixed table, not free text. |
+| **Golden cache L2** (remote archive, `setup/remote-golden.ts`). L1 is done. | A pod landing on a cold node pays a full install even when another node is warm. `GOLDEN_CACHE_REMOTE` in the pod env is *warned about* at boot rather than honored. |
+| **Per-phase boot timing** (clone → install → start → first healthy probe). | A boot regression can't be attributed to a phase. New telemetry for *both* daemons: no TS counterpart exists, so there is no contract to match — someone has to pick the line schema and build the panel first, and emitting an unread line into two daemons is worse than not emitting it. |
+| **Install runs as one `sh -c` chain.** TS models it as two structured commands (corepack argv, then install argv); Go keeps `corepack … && cd … && <install>` because the chain needs a shell. | Divergence only, and **won't port**: the interpolated values are a config path and a package-manager command from a fixed table, never free text. |
+| **Org-fs *mounting*** (`mount-manager.ts`, `webdav.ts`, `mounter.ts`, `invalidator.ts`, `detach-mount.ts`). | **Won't port** while this binary ships only in the sandbox image. Mounting-by-the-daemon is the desktop path (`ORGFS_CONFIG` + `ORGFS_RCLONE_PATH`, set by `link-daemon`), and the desktop runs the TS bundle. A cluster pod cannot mount at all — a privileged sidecar does, and the daemon's half of that (relay, status gate, links) **is** ported. Boot warns if `ORGFS_CONFIG` reaches this binary. |
 
 ### Closed since the ledger was written
 
@@ -133,6 +141,22 @@ Unported and untested. Each is a real production behavior of the TS daemon.
 | `force-push` with lease, `fast-forward-to-base` | `gitx.ForcePushWithLease`, `gitx.FastForwardToBase`, wired into publish's reconcile path and the boot path; e2e for both |
 | `resolve-shell`, `structured-command` | Daemon-owned git steps (clone, checkout) now spawn **argv**, never `sh -c`. `resolve-shell` itself is win32-only and deliberately not ported — this daemon ships linux-only |
 | OTLP metrics/tracing | Not an OTLP job: a sandbox pod's egress is locked to 53/443, so no collector is reachable — the TS daemon emits JSON log lines. `internal/setup/depmetrics.go` matches that contract byte for byte (`sandbox.deps.restore`, chunked `sandbox.deps`) |
+| Golden cache L1 | `internal/setup/golden.go`: reflink restore/publish keyed by (repo, pm, lockfile), publish gated on the dev server's first healthy probe, TTL + per-repo cap GC. Dormant behind `GOLDEN_CACHE_ENABLED`. Unit + e2e (`daemon.golden.e2e.test.ts`, both daemons) |
+| Org-fs links (the cluster half) | `internal/orgfs/links.go`: sidecar status gate, one-shot first-mount grace, `repo/org` link (+ `.git/info/exclude`), per-run `output`/`upload` thread links. e2e `daemon.orgfs.e2e.test.ts` (5 tests, both daemons) |
+| Catalog sync on dispatch | `toolscatalog.Coalescer` (one sync in flight per endpoint, 60s floor), wired into dispatch's `BeforeRun`. Unit-tested incl. the burst case |
+| `fsnotify` declared but unused | `internal/gitx/watch.go` watches the repo (noisy dirs and `.git/objects` skipped, watch count bounded), 250ms debounce, 3s poll kept as the safety net. Control-tested by an e2e that fails with the watcher disabled |
+
+## How it ships
+
+Both daemons live in the sandbox image (`image/Dockerfile` builds the Go binary
+in a `CGO_ENABLED=0` cross-compile stage), and `image/start-daemon.sh` `exec`s
+one of them based on **`SANDBOX_DAEMON_IMPL`** (`ts` default, `go` opt-in). Env,
+not `CMD`: a `CMD` change is a rebuild, and a rebuild is not a rollback. Flipping
+the chart's `daemonImpl` back routes the *next* sandbox to the TS daemon; live
+sandboxes drain on the binary they started with.
+
+`exec` matters — the daemon must be PID 1 so SIGTERM reaches it directly, since
+that signal is what triggers the shutdown git publish.
 
 ## Open decision: harness-runner transport
 
@@ -154,6 +178,18 @@ lifetime differ. **Pick one before wiring either into a deploy path** — stdio 
 simpler to supervise and needs no port or token; loopback HTTP keeps one warm
 runner across runs and already has an e2e
 (`daemon.harness-runner.e2e.test.ts`, on that branch).
+
+**Reading the branch changes the balance.** `harness-runner/protocol.ts` there
+says in its own docblock that it "must stay free of harness imports — it is the
+piece a non-TS daemon reimplements", and the branch ships the runner side
+(`serve.ts`), the daemon side (`client.ts`, `supervisor.ts`) and a 249-line e2e.
+Nothing equivalent exists for stdio: **this repo has no `HARNESS_RUNNER_CMD`
+runner at all**, so the Go daemon's stdio path cannot dispatch a real harness
+today no matter what — picking stdio means *writing* a runner mode and discarding
+tested code. That is the argument for adopting loopback HTTP in Go (≈200 lines:
+spawn + ready-line parse + supervise + POST/stream + abort-to-cancel) and
+deleting the stdio spawner. Not done here — it reverses the assumption this
+daemon was built on, so it is the owner's call.
 
 ## Related
 

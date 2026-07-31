@@ -52,6 +52,29 @@ func ValidateHarnessInput(input json.RawMessage) string {
 	return ""
 }
 
+// runInfoOf pulls the workspace-preparation fields off a harness input. Lenient
+// by design: it runs on already-validated input, and a missing field just means
+// the corresponding preparation step is skipped.
+func runInfoOf(raw json.RawMessage) RunInfo {
+	var in struct {
+		ThreadId string `json:"threadId"`
+		Mcp      struct {
+			URL       string            `json:"url"`
+			Headers   map[string]string `json:"headers"`
+			ExpiresAt float64           `json:"expiresAt"`
+		} `json:"mcp"`
+	}
+	if json.Unmarshal(raw, &in) != nil {
+		return RunInfo{}
+	}
+	return RunInfo{
+		ThreadId:     in.ThreadId,
+		McpURL:       in.Mcp.URL,
+		McpHeaders:   in.Mcp.Headers,
+		McpExpiresAt: int64(in.Mcp.ExpiresAt),
+	}
+}
+
 func requireString(obj map[string]json.RawMessage, key string) string {
 	raw, ok := obj[key]
 	if !ok {
