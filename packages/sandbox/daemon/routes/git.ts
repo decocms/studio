@@ -1,4 +1,5 @@
 import fs, { mkdtempSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
@@ -749,7 +750,7 @@ export function publish(
   return { pushed: true };
 }
 
-function discard(deps: GitDeps, filepaths: string[]): void {
+async function discard(deps: GitDeps, filepaths: string[]): Promise<void> {
   const repoDir = deps.repoDir;
   const validated = filepaths.map((fp) => resolveRepoRelativePath(deps, fp));
   const status = computeWorkingTreeStatus(repoDir);
@@ -792,7 +793,7 @@ function discard(deps: GitDeps, filepaths: string[]): void {
   for (const fp of toDelete) {
     const abs = path.join(repoDir, fp);
     try {
-      fs.unlinkSync(abs);
+      await unlink(abs);
     } catch {
       // ignore missing files
     }
@@ -924,7 +925,7 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       return jsonResponse({ error: "filepaths is required" }, 400);
     }
     try {
-      discard(deps, filepaths);
+      await discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
       if (err instanceof InvalidDiscardPathError) {
