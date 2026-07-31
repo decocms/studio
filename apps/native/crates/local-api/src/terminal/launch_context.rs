@@ -27,7 +27,25 @@ const HOOK_TOKEN_ENV: &str = "STUDIO_AGENT_HOOK_TOKEN";
 const OPENCODE_CONFIG_CONTENT_ENV: &str = "OPENCODE_CONFIG_CONTENT";
 const OPENCODE_RESUME_SESSION_ENV: &str = "STUDIO_OPENCODE_SESSION_ID";
 const OPENCODE_AGENT_NAME_PREFIX: &str = "studio-native";
+/// How [`crate::sandbox::org_mount::MountCredentials::ca_cert`] reaches a
+/// child whose runtime offers an "additional CAs" knob. Node's (and Bun's)
+/// documented variable — it EXTENDS the runtime's bundled roots, so the CLI's
+/// own `api.anthropic.com` connection is untouched. Honored identically by
+/// Bun on every OS, so this never varies.
 const NODE_EXTRA_CA_CERTS_ENV: &str = "NODE_EXTRA_CA_CERTS";
+/// How [`crate::sandbox::org_mount::MountCredentials::ca_bundle`] reaches a
+/// child that reads no OS trust store and offers no "additional CAs" knob —
+/// codex, whose rustls-native-certs path honors this variable.
+///
+/// This one REPLACES the root store rather than extending it, which is why
+/// the field it comes from is a SUPERSET bundle (public roots + ours) and is
+/// `None` whenever such a superset could not be built. Pointed at our CA
+/// alone, this variable would take the whole public internet away from the
+/// child. It is also why `ca_cert` is never routed here.
+///
+/// macOS supplies neither: the local root is installed in the login keychain,
+/// which rustls-platform-verifier consults directly.
+const SSL_CERT_FILE_ENV: &str = "SSL_CERT_FILE";
 const CODEX_HOME_INITIALIZED_MARKER: &str = ".studio-initialized-v1";
 const CODEX_PROFILE_PREFIX: &str = "studio-thread-";
 const HOOK_FORWARDER_FILENAME: &str = "forward-hook.sh";
@@ -351,6 +369,30 @@ pub struct LaunchRequest<'a> {
     pub provider_session_id: Option<&'a str>,
 }
 
+/// The trust-store variables a spawned CLI needs to verify this process's own
+/// listener, given what the platform's own trust store already carries. Split
+/// out of [`prepare`] so the fail-closed rule — a REPLACEMENT store is
+/// exported only when a real superset bundle exists — is testable without a
+/// live launch.
+fn child_ca_env(
+    credentials: &crate::sandbox::org_mount::MountCredentials,
+) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(ca_cert) = credentials.ca_cert.as_ref() {
+        env.push((
+            NODE_EXTRA_CA_CERTS_ENV.to_string(),
+            ca_cert.display().to_string(),
+        ));
+    }
+    if let Some(ca_bundle) = credentials.ca_bundle.as_ref() {
+        env.push((
+            SSL_CERT_FILE_ENV.to_string(),
+            ca_bundle.display().to_string(),
+        ));
+    }
+    env
+}
+
 pub async fn prepare(
     state: &AppState,
     db: &'static ThreadsDb,
@@ -397,12 +439,7 @@ pub async fn prepare(
         (HOOK_URL_ENV.to_string(), hook_url),
         (HOOK_TOKEN_ENV.to_string(), request.hook_token.to_string()),
     ];
-    if let Some(ca_cert) = credentials.ca_cert {
-        env.push((
-            NODE_EXTRA_CA_CERTS_ENV.to_string(),
-            ca_cert.display().to_string(),
-        ));
-    }
+    env.extend(child_ca_env(&credentials));
 
     let program = argv.remove(0);
     let mut title_environment = harness::title::TitleEnvironment::default();
@@ -1875,6 +1912,46 @@ mod tests {
             .await
             .unwrap();
         git_dir
+    }
+
+    fn mount_credentials_fixture() -> crate::sandbox::org_mount::MountCredentials {
+        crate::sandbox::org_mount::MountCredentials {
+            base_url: "https://localhost:43121".to_string(),
+            origin: "https://localhost:43121".to_string(),
+            mount_token: "mount-token".to_string(),
+            ca_cert: Some(PathBuf::from("/app-root/tls/ca-cert.pem")),
+            ca_bundle: None,
+        }
+    }
+
+    /// `SSL_CERT_FILE` REPLACES the child's root store, so it may be exported
+    /// only when a real superset bundle exists — and its presence must never
+    /// disturb the additive variable claude depends on.
+    #[test]
+    fn the_replacement_store_is_exported_only_when_a_superset_bundle_exists() {
+        let mut with_bundle = mount_credentials_fixture();
+        with_bundle.ca_bundle = Some(PathBuf::from("/app-root/tls/ca-bundle.pem"));
+        let env = child_ca_env(&with_bundle);
+        assert!(
+            env.iter()
+                .any(|(name, value)| name == "SSL_CERT_FILE"
+                    && value == "/app-root/tls/ca-bundle.pem")
+        );
+        assert!(
+            env.iter().any(|(name, value)| name == "NODE_EXTRA_CA_CERTS"
+                && value == "/app-root/tls/ca-cert.pem"),
+            "the additive variable is unaffected by the replacement one"
+        );
+
+        // The default everywhere the platform's own trust store already
+        // carries the CA, and everywhere no system store was found to build a
+        // superset from. Our CA alone must never land here.
+        let env = child_ca_env(&mount_credentials_fixture());
+        assert!(!env.iter().any(|(name, _)| name == "SSL_CERT_FILE"));
+        assert!(env
+            .iter()
+            .any(|(name, value)| name == "NODE_EXTRA_CA_CERTS"
+                && value == "/app-root/tls/ca-cert.pem"));
     }
 
     #[test]

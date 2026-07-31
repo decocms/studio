@@ -68,7 +68,7 @@ pub mod thread_tools;
 
 pub(crate) use sandbox_lifecycle::{
     config_from_virtual_mcp, preview_host_base, preview_scheme, set_preview_host, set_preview_port,
-    set_preview_scheme,
+    set_preview_host_observer, set_preview_scheme,
 };
 pub(crate) mod watch;
 

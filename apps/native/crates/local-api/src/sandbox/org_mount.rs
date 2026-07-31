@@ -39,6 +39,30 @@ use crate::process_group::ProcessGroupChild;
 
 use super::org_view::ORG_VOLUMES;
 
+/// Whether this platform has an org-filesystem mount stack at all.
+///
+/// Everything below — `rclone nfsmount`, the BSD `mount` table, `umount -f` —
+/// is macOS-shaped. Phase 2 of `apps/native/docs/linux-support-plan.md` ports
+/// the FUSE path and flips this to `|| cfg!(target_os = "linux")`.
+const PLATFORM_SUPPORTED: bool = cfg!(target_os = "macos");
+
+/// Set to anything to force the unsupported-platform path.
+const DISABLE_ENV: &str = "DECOCMS_DISABLE_ORG_FS";
+
+/// Whether to mount at all. The env var is the runtime escape: a wedged FUSE
+/// mount, a host without `/dev/fuse`, or an unexpected rclone failure degrades
+/// to the already-supported empty-`org/` path without waiting for a release.
+fn org_fs_enabled() -> bool {
+    org_fs_enabled_for(PLATFORM_SUPPORTED, std::env::var_os(DISABLE_ENV).is_some())
+}
+
+/// Split out so the matrix is testable without mutating this process's
+/// environment, which no test may do under cargo's in-process parallel
+/// harness.
+fn org_fs_enabled_for(platform_supported: bool, disabled: bool) -> bool {
+    platform_supported && !disabled
+}
+
 /// What a non-browser client in this process needs to satisfy local-api's own
 /// guard.
 ///
@@ -62,12 +86,19 @@ pub struct MountCredentials {
     /// [`crate::client_auth::MOUNT_TOKEN_HEADER`].
     pub mount_token: String,
     /// The root [`Self::base_url`]'s certificate chains to, when the listener
-    /// serves TLS. Consumers whose runtime verifies against the macOS
-    /// keychain (rclone via Go, codex via rustls-platform-verifier) never
-    /// need it; the claude CLI is Bun/BoringSSL, reads neither the keychain
-    /// nor anything but its bundled Mozilla roots, and without this file its
-    /// MCP connection to `base_url` fails TLS outright.
+    /// serves TLS. Alone it is only usable by a consumer that ADDS roots: the
+    /// claude CLI is Bun/BoringSSL, reads nothing but its bundled Mozilla
+    /// roots, and without this file its MCP connection to `base_url` fails
+    /// TLS outright. On macOS nothing else needs it — rclone (Go) and codex
+    /// (rustls-platform-verifier) both consult the keychain, where this root
+    /// is installed. Where no OS trust store carries it, those two are served
+    /// by [`Self::ca_bundle`] instead.
     pub ca_cert: Option<PathBuf>,
+    /// A store containing every PUBLIC root plus [`Self::ca_cert`], for
+    /// consumers that only accept a REPLACEMENT store (`SSL_CERT_FILE`).
+    /// `None` unless such a superset could actually be built — see
+    /// `src-tauri/src/local_tls.rs`'s `ensure_child_ca_bundle`.
+    pub ca_bundle: Option<PathBuf>,
 }
 
 fn credentials_cell() -> &'static OnceLock<MountCredentials> {
@@ -205,7 +236,14 @@ fn settle(org_slug: &str, ok: bool) {
 /// into this org" and "the user switched to it" — so the mounts are warming
 /// while the user is still navigating to an agent. Cheap and idempotent: an
 /// org that is ready, in flight, or cooling off returns immediately.
+///
+/// Where [`org_fs_enabled`] is false this does nothing at all — no task, no
+/// claim — so the state map stays empty and every sandbox takes the
+/// empty-`org/` path it already handles.
 pub fn warm(app_root: &Path, org_slug: &str) {
+    if !org_fs_enabled() {
+        return;
+    }
     if claim(org_slug).is_none() {
         return;
     }
@@ -225,6 +263,19 @@ pub fn warm(app_root: &Path, org_slug: &str) {
 /// (a resurrect on boot, a test), and such a caller must not wait out the
 /// timeout for something nobody started.
 pub async fn wait_ready(app_root: &Path, org_slug: &str) -> bool {
+    wait_ready_when(app_root, org_slug, org_fs_enabled()).await
+}
+
+/// [`wait_ready`] with the platform gate passed in, so the disabled path is
+/// testable on a host where org-fs is supported.
+async fn wait_ready_when(app_root: &Path, org_slug: &str, enabled: bool) -> bool {
+    // Answered here rather than by the loop below: nothing writes a state for
+    // this org when the gate is off, and an absent state means "keep waiting"
+    // (see the loop's own comment), so falling through would burn the whole
+    // [`READY_TIMEOUT`] on every sandbox ensure to reach the same `false`.
+    if !enabled {
+        return false;
+    }
     warm(app_root, org_slug);
     let deadline = Instant::now() + READY_TIMEOUT;
     loop {
@@ -335,7 +386,16 @@ async fn mount_all(app_root: &Path, org_slug: &str) -> bool {
                 continue;
             }
         };
-        match spawn_mount(&bin, &config, &mountpoint, volume, &lock_path).await {
+        match spawn_mount(
+            &bin,
+            &config,
+            &mountpoint,
+            volume,
+            &lock_path,
+            creds.ca_bundle.as_deref(),
+        )
+        .await
+        {
             Ok(child) => {
                 children()
                     .lock()
@@ -407,14 +467,23 @@ async fn restrict(_path: &Path, _mode: u32) -> std::io::Result<()> {
 /// (it exits 1 rather than attaching), so the child has to be supervised here.
 ///
 /// Nothing secret is passed here at all — see [`write_rclone_config`].
+///
+/// `ca_bundle` is a SUPERSET store (public roots + ours) or nothing: rclone is
+/// Go, and Go reads `SSL_CERT_FILE` as a REPLACEMENT for the system roots, so
+/// a local-CA-only file here would take the public internet away from a
+/// process that also talks to remote backends.
 async fn spawn_mount(
     bin: &Path,
     config: &Path,
     mountpoint: &Path,
     volume: &str,
     lifetime_lock: &Path,
+    ca_bundle: Option<&Path>,
 ) -> std::io::Result<ProcessGroupChild> {
     let mut cmd = Command::new(bin);
+    if let Some(ca_bundle) = ca_bundle {
+        cmd.env("SSL_CERT_FILE", ca_bundle);
+    }
     cmd.arg("--config")
         .arg(config)
         .arg("nfsmount")
@@ -759,6 +828,39 @@ mod tests {
         assert_eq!(mount_plan(false, true), MountPlan::ReclaimGhostThenSpawn);
         assert_eq!(mount_plan(true, false), MountPlan::ReapOwnThenSpawn);
         assert_eq!(mount_plan(false, false), MountPlan::Spawn);
+    }
+
+    /// The gate is the ONLY thing keeping a platform without this mount stack
+    /// from spawning rclone, and the env var is the escape a user reaches for
+    /// when a mount wedges — neither may be conditional on the other.
+    #[test]
+    fn org_fs_runs_only_where_it_is_supported_and_not_disabled() {
+        assert!(org_fs_enabled_for(true, false));
+        assert!(!org_fs_enabled_for(true, true), "the env var always wins");
+        assert!(!org_fs_enabled_for(false, false));
+        assert!(!org_fs_enabled_for(false, true));
+
+        assert_eq!(PLATFORM_SUPPORTED, cfg!(target_os = "macos"));
+    }
+
+    /// An absent state means "keep waiting", and a disabled org-fs never
+    /// writes one — so answering from the loop would spend `READY_TIMEOUT` on
+    /// every single sandbox ensure to reach the same `false`.
+    #[tokio::test]
+    async fn a_disabled_org_fs_answers_immediately_instead_of_waiting_the_timeout() {
+        let started = Instant::now();
+        let ready = wait_ready_when(Path::new("/nonexistent"), "disabled-org", false).await;
+        let elapsed = started.elapsed();
+
+        assert!(!ready);
+        assert!(
+            elapsed < READY_TIMEOUT,
+            "waited {elapsed:?} for an answer that needs no waiting"
+        );
+        assert!(
+            lock_states().get("disabled-org").is_none(),
+            "a disabled org-fs must not touch the claim/settle state machine"
+        );
     }
 
     #[test]
