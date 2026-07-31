@@ -52,7 +52,10 @@ import {
   detectRepoRuntime,
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { resolveDaemonImpl } from "../../sandbox/resolve-daemon-impl";
@@ -132,10 +135,7 @@ export const SANDBOX_START = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
     const resolvedBranch =
-      input.branch ??
-      generateBranchName(
-        ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-      );
+      input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.

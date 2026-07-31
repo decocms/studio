@@ -34,9 +34,30 @@ function slugify(label: string | null | undefined): string {
 }
 
 /**
+ * The label to hand `generateBranchName` for a user: their display name, or
+ * their email local-part when there's no usable name.
+ *
+ * Use this instead of writing `user?.name ?? user?.email?.split("@")[0]` at the
+ * call site. `??` is wrong there: Better Auth stores an unset display name as
+ * `""`, which is not nullish, so `??` returns the empty string, never reaches
+ * the email, and `slugify` falls back to the literal `"user"`. Every branch for
+ * such a user was named `user-<stamp>` — 171 prod threads before this existed.
+ * `||` skips the empty string.
+ *
+ * Returns `undefined` (not `""`) when neither field is usable, so
+ * `generateBranchName`'s own fallback stays the single place that decides what
+ * an unidentifiable user's branch looks like.
+ */
+export function branchUserLabel(
+  user: { name?: string | null; email?: string | null } | null | undefined,
+): string | undefined {
+  return user?.name || user?.email?.split("@")[0] || undefined;
+}
+
+/**
  * Build a branch name for `userLabel` (the creator's display name, or their
- * email local-part as a fallback). Callers should pass the most human-readable
- * identity they have; slugification handles the rest.
+ * email local-part as a fallback — see `branchUserLabel`). Callers should pass
+ * the most human-readable identity they have; slugification handles the rest.
  */
 export function generateBranchName(userLabel?: string | null): string {
   const slug = slugify(userLabel);

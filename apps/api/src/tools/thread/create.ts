@@ -34,7 +34,10 @@ import {
   ThreadEntitySchema,
 } from "@decocms/shared/thread/schema";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -134,9 +137,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       branch =
         data.branch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName(
-          ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-        );
+        generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
     const result = await ctx.storage.threads.create({
