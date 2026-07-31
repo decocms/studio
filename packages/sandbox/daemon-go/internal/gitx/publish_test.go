@@ -82,3 +82,40 @@ func TestInstallProtectedBranchHookWritesTheBranchList(t *testing.T) {
 		// Any other error is expected — this repo has no `origin` to push to.
 	}
 }
+
+// Discarding a staged rename must restore the original file at its original
+// path, not delete it: the new path never existed at HEAD, so treating it as
+// merely "untracked" loses the content entirely once the old path is also
+// gone from the working tree.
+func TestDiscardRestoresRenamedFile(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature/x")
+	if err := os.WriteFile(filepath.Join(repo, "old.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "old.txt"},
+		{"commit", "-q", "-m", "add old.txt"},
+		{"mv", "old.txt", "new.txt"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	if err := Discard(repo, []string{"new.txt"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(repo, "old.txt"))
+	if err != nil {
+		t.Fatalf("old.txt was not restored: %v", err)
+	}
+	if string(got) != "hello\n" {
+		t.Fatalf("old.txt content: got %q, want %q", got, "hello\n")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "new.txt")); !os.IsNotExist(err) {
+		t.Fatalf("new.txt should have been removed, stat err: %v", err)
+	}
+}
