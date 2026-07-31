@@ -782,8 +782,36 @@ async fn observe_process_identity(
     Ok(Some(DevProcessIdentity {
         pid,
         birth: fields[3..8].join(" "),
-        executable: fields[8..].join(" "),
+        executable: resolve_executable(pid, fields[8..].join(" ")),
     }))
+}
+
+/// The executable identity to persist for `pid`. `ps_name` is the `ps comm`
+/// value: argv stays excluded on every platform so a child's secrets are
+/// never copied into the sidecar (`sandbox::persist::DevProcessIdentity`).
+///
+/// Linux upgrades that to the full `/proc/<pid>/exe` path, which is also
+/// argv-free but survives comm's 15-byte truncation. The kernel appends
+/// " (deleted)" when the binary was replaced or unlinked since exec; that is
+/// not a stable identity to compare a later boot against, so it falls back to
+/// the `ps` value. A record that still fails to match yields
+/// `GroupIdentityMatch::Unverifiable`, which withholds the signal — an
+/// unrecognized process is never killed.
+#[cfg(unix)]
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+fn resolve_executable(pid: u32, ps_name: String) -> String {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(target) = std::fs::read_link(format!("/proc/{pid}/exe")) {
+            if let Some(path) = target
+                .to_str()
+                .filter(|path| !path.is_empty() && !path.ends_with(" (deleted)"))
+            {
+                return path.to_string();
+            }
+        }
+    }
+    ps_name
 }
 
 #[cfg(not(unix))]
@@ -947,6 +975,17 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn unresolvable_executable_falls_back_to_the_ps_name() {
+        // No live process can hold the maximum pid, so the Linux
+        // /proc/<pid>/exe lookup is guaranteed to miss on every platform.
+        assert_eq!(
+            resolve_executable(u32::MAX, "next-server".to_string()),
+            "next-server"
+        );
+    }
+
     #[test]
     fn empty_observation_means_the_recorded_group_is_gone() {
         let recorded = vec![identity(42, "Wed Jul 22 11:00:00 2026", "next-server")];
@@ -983,6 +1022,12 @@ mod tests {
         assert!(identities
             .iter()
             .all(|identity| !identity.executable.is_empty()));
+        // Linux resolves /proc/<pid>/exe, so every live member reports an
+        // absolute path rather than the truncated `ps comm` name.
+        #[cfg(target_os = "linux")]
+        assert!(identities
+            .iter()
+            .all(|identity| identity.executable.starts_with('/')));
     }
 
     #[cfg(unix)]

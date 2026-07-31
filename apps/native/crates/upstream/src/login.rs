@@ -300,12 +300,21 @@ pub(crate) async fn mint_session_from_access_token(
     Ok(data.session_token)
 }
 
-/// `open <url>` — macOS only (v1 desktop target, `the desktop migration contract`), mirrors
-/// `login.ts::defaultOpenBrowser`'s darwin branch. A dedicated function
-/// (rather than inlined at the `perform_interactive_login` call site) so
-/// tests can inject a no-op/spy in place of actually launching a browser.
+/// `<opener> <url>` — mirrors `login.ts::defaultOpenBrowser`: `open` on
+/// macOS, `xdg-open` elsewhere. A dedicated function (rather than inlined at
+/// the `perform_interactive_login` call site) so tests can inject a
+/// no-op/spy in place of actually launching a browser.
+///
+/// A host without the opener installed (a bare Linux session with no
+/// `xdg-utils`) fails at spawn, which the caller soft-fails into logging the
+/// authorize URL for the user to open by hand.
 pub fn open_system_browser(url: &str) -> std::io::Result<()> {
-    std::process::Command::new("open")
+    #[cfg(target_os = "macos")]
+    const OPENER: &str = "open";
+    #[cfg(not(target_os = "macos"))]
+    const OPENER: &str = "xdg-open";
+
+    std::process::Command::new(OPENER)
         .arg(url)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

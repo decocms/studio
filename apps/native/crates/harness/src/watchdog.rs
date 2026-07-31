@@ -17,10 +17,14 @@
 //! - an enumeration error parks it forever: an indeterminate cleanup fails
 //!   closed rather than unblocking durable recovery.
 //!
-//! macOS note: `pgrep` excludes its own ancestors, so from inside the
-//! watchdog `pgrep -g $$ .` enumerates only the sibling workload and its
-//! descendants, never the anchor. The explicit `.` pattern is required by BSD
-//! `pgrep`.
+//! `pgrep` note: the two implementations differ on what they omit from their
+//! own output. BSD `pgrep` (macOS) excludes its ancestors, so the anchor —
+//! `pgrep`'s parent shell — never appears; procps-ng `pgrep` (Linux) excludes
+//! only itself, so `pgrep -g $$ .` does list the anchor. The script's own
+//! `$$` skip is therefore the load-bearing exclusion on both platforms: it is
+//! what keeps the anchor from signalling itself, and it must survive any edit
+//! to the enumeration loops. The explicit `.` pattern is required by BSD
+//! `pgrep` and matches every process name under procps-ng.
 //!
 //! PTY startup uses a watcher-first admission protocol. The PTY wrapper
 //! atomically publishes its pid and tty, checks its actual PPID while waiting,
