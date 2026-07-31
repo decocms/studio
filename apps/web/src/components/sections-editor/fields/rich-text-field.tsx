@@ -15,7 +15,7 @@ import {
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
-import { FontSize, TextStyle } from "@tiptap/extension-text-style";
+import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
   Select,
@@ -27,10 +27,26 @@ import {
 import { cn } from "@deco/ui/lib/utils.js";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { RichTextColorControl } from "../rich-text-color-control";
 import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
 
 /** Heading levels the editor supports, in dropdown order. */
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * Serialize the editor's HTML without a block wrapper, for `rich-text-inline`
+ * fields whose value gets injected where a `<p>`/`<div>` can't legally nest
+ * (inside another `<p>`, a phrasing-only context, etc.). ProseMirror always
+ * keeps a top-level block internally, so we unwrap it on output: a single
+ * block returns its inline contents; multiple blocks join with `<br>`. This
+ * round-trips — TipTap re-wraps the inline HTML in a paragraph on load.
+ */
+function toInlineHtml(html: string): string {
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const blocks = Array.from(body.children);
+  if (blocks.length === 0) return body.innerHTML;
+  return blocks.map((block) => block.innerHTML).join("<br>");
+}
 
 /** Font-size stepper bounds (px). Default is the prose base when unset. */
 const FONT_SIZE_MIN = 8;
@@ -44,7 +60,15 @@ export function RichTextField({
   onChange,
   path,
   label,
-}: FieldProps) {
+  inline = false,
+}: FieldProps & {
+  /**
+   * When true (the `rich-text-inline` format), the value is serialized without
+   * a block wrapper and the block-structure controls (heading/list/align) are
+   * hidden — those don't survive unwrapping and produce no legal inline HTML.
+   */
+  inline?: boolean;
+}) {
   const t = useT();
   const strValue = typeof value === "string" ? value : "";
 
@@ -53,21 +77,31 @@ export function RichTextField({
   onChangeRef.current = onChange;
 
   const [linkOpen, setLinkOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [...HEADING_LEVELS] },
+        // Inline fields can't carry block structure — it wouldn't survive the
+        // unwrap in toInlineHtml — so disable headings/lists/blockquote there.
+        heading: inline ? false : { levels: [...HEADING_LEVELS] },
+        bulletList: inline ? false : undefined,
+        orderedList: inline ? false : undefined,
+        listItem: inline ? false : undefined,
+        blockquote: inline ? false : undefined,
         // Clear the extension's default target/rel so each link's own
         // `target` attribute controls same-tab vs new-tab (see link control).
         link: { HTMLAttributes: {} },
       }),
-      TextAlign.configure({
-        types: ["heading", "paragraph"],
-      }),
-      // FontSize stores its px value on the textStyle mark, so both are needed.
+      // Text alignment is a block attribute; meaningless once unwrapped inline.
+      ...(inline
+        ? []
+        : [TextAlign.configure({ types: ["heading", "paragraph"] })]),
+      // FontSize and Color both store their value on the textStyle mark, so
+      // TextStyle is required alongside them.
       TextStyle,
       FontSize,
+      Color,
     ],
     content: strValue || "",
     editorProps: {
@@ -79,8 +113,9 @@ export function RichTextField({
       },
     },
     onUpdate: ({ editor }) => {
-      const next = editor.getHTML();
-      onChangeRef.current(next === "<p></p>" ? "" : next);
+      const html = editor.getHTML();
+      const next = inline ? toInlineHtml(html) : html;
+      onChangeRef.current(next === "<p></p>" || next === "" ? "" : next);
     },
   });
 
@@ -100,6 +135,8 @@ export function RichTextField({
         ) ?? 0,
       // px string (e.g. "18px") when a size is set on the selection, else null.
       fontSize: (editor?.getAttributes("textStyle").fontSize as string) ?? null,
+      // hex string (e.g. "#e11d48") when a color is set, else null.
+      color: (editor?.getAttributes("textStyle").color as string) ?? null,
       bulletList: editor?.isActive("bulletList") ?? false,
       orderedList: editor?.isActive("orderedList") ?? false,
       link: editor?.isActive("link") ?? false,
@@ -174,31 +211,37 @@ export function RichTextField({
             <Strikethrough01 size={14} />
           </ToolbarButton>
 
-          <div className="mx-0.5 h-4 w-px bg-border" />
+          {!inline && (
+            <>
+              <div className="mx-0.5 h-4 w-px bg-border" />
 
-          <Select value={styleValue} onValueChange={applyStyle}>
-            <SelectTrigger
-              size="sm"
-              aria-label={t("sectionsEditor.richTextField.styleLabel")}
-              // Keep the editor selection while opening the dropdown.
-              onMouseDown={(e) => e.preventDefault()}
-              // Flatten the design-system trigger so it blends with the
-              // ghost-style toolbar instead of reading as a raised card.
-              className="w-[116px] gap-1 bg-transparent px-2 text-muted-foreground shadow-none! hover:bg-muted hover:text-foreground"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="paragraph">
-                {t("sectionsEditor.richTextField.styleParagraph")}
-              </SelectItem>
-              {HEADING_LEVELS.map((level) => (
-                <SelectItem key={level} value={`h${level}`}>
-                  {t("sectionsEditor.richTextField.styleHeading", { level })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <Select value={styleValue} onValueChange={applyStyle}>
+                <SelectTrigger
+                  size="sm"
+                  aria-label={t("sectionsEditor.richTextField.styleLabel")}
+                  // Keep the editor selection while opening the dropdown.
+                  onMouseDown={(e) => e.preventDefault()}
+                  // Flatten the design-system trigger so it blends with the
+                  // ghost-style toolbar instead of reading as a raised card.
+                  className="w-[116px] gap-1 bg-transparent px-2 text-muted-foreground shadow-none! hover:bg-muted hover:text-foreground"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paragraph">
+                    {t("sectionsEditor.richTextField.styleParagraph")}
+                  </SelectItem>
+                  {HEADING_LEVELS.map((level) => (
+                    <SelectItem key={level} value={`h${level}`}>
+                      {t("sectionsEditor.richTextField.styleHeading", {
+                        level,
+                      })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
@@ -224,20 +267,35 @@ export function RichTextField({
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
-          <ToolbarButton
-            active={marks.bulletList}
-            label="Bullet list"
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-          >
-            <List size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.orderedList}
-            label="Ordered list"
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          >
-            <span className="text-[11px] font-semibold leading-none">1.</span>
-          </ToolbarButton>
+          <RichTextColorControl
+            editor={editor}
+            currentColor={marks.color}
+            open={colorOpen}
+            onOpenChange={setColorOpen}
+          />
+
+          {!inline && (
+            <>
+              <div className="mx-0.5 h-4 w-px bg-border" />
+
+              <ToolbarButton
+                active={marks.bulletList}
+                label="Bullet list"
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+              >
+                <List size={14} />
+              </ToolbarButton>
+              <ToolbarButton
+                active={marks.orderedList}
+                label="Ordered list"
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+              >
+                <span className="text-[11px] font-semibold leading-none">
+                  1.
+                </span>
+              </ToolbarButton>
+            </>
+          )}
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
@@ -248,36 +306,48 @@ export function RichTextField({
             onOpenChange={setLinkOpen}
           />
 
-          <div className="mx-0.5 h-4 w-px bg-border" />
+          {!inline && (
+            <>
+              <div className="mx-0.5 h-4 w-px bg-border" />
 
-          <ToolbarButton
-            active={marks.alignLeft}
-            label="Align left"
-            onClick={() => editor.chain().focus().setTextAlign("left").run()}
-          >
-            <AlignLeft size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.alignCenter}
-            label="Align center"
-            onClick={() => editor.chain().focus().setTextAlign("center").run()}
-          >
-            <AlignCenter size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.alignRight}
-            label="Align right"
-            onClick={() => editor.chain().focus().setTextAlign("right").run()}
-          >
-            <AlignRight size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.alignJustify}
-            label="Justify"
-            onClick={() => editor.chain().focus().setTextAlign("justify").run()}
-          >
-            <AlignJustify size={14} />
-          </ToolbarButton>
+              <ToolbarButton
+                active={marks.alignLeft}
+                label="Align left"
+                onClick={() =>
+                  editor.chain().focus().setTextAlign("left").run()
+                }
+              >
+                <AlignLeft size={14} />
+              </ToolbarButton>
+              <ToolbarButton
+                active={marks.alignCenter}
+                label="Align center"
+                onClick={() =>
+                  editor.chain().focus().setTextAlign("center").run()
+                }
+              >
+                <AlignCenter size={14} />
+              </ToolbarButton>
+              <ToolbarButton
+                active={marks.alignRight}
+                label="Align right"
+                onClick={() =>
+                  editor.chain().focus().setTextAlign("right").run()
+                }
+              >
+                <AlignRight size={14} />
+              </ToolbarButton>
+              <ToolbarButton
+                active={marks.alignJustify}
+                label="Justify"
+                onClick={() =>
+                  editor.chain().focus().setTextAlign("justify").run()
+                }
+              >
+                <AlignJustify size={14} />
+              </ToolbarButton>
+            </>
+          )}
         </div>
         <EditorContent editor={editor} />
       </div>
