@@ -51,8 +51,13 @@ afterAll(() => {
 
 beforeEach(() => {
   localStorageStub = stubLocalStorage();
-  (globalThis.window as { localStorage?: unknown }).localStorage =
-    localStorageStub;
+  // defineProperty, not assignment: when another test file registered happy-dom
+  // first, window.localStorage is a readonly accessor and `=` throws.
+  Object.defineProperty(globalThis.window, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: localStorageStub,
+  });
 });
 
 describe("readCachedOrg/writeCachedOrg", () => {

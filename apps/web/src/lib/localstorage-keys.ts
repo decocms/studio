@@ -25,6 +25,8 @@ export const LOCALSTORAGE_KEYS = {
   preferences: () => `studio:user:preferences`,
   lastOrgSlug: () => `studio:last-org-slug`,
   lastLocation: () => `studio:last-location`,
+  /** Principal that owns the two keys above (see claimRestoreStateFor). */
+  lastUserId: () => `studio:last-user-id`,
   connectionsTab: (org: string) => `studio:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `studio:chat:task-last-viewed:${locator}`,

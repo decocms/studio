@@ -15,7 +15,11 @@ import * as z from "zod";
 
 import { listOrganizationsCached } from "@/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { readLastLocation, saveLastLocation } from "@/lib/last-location";
+import {
+  markRestoreRedirect,
+  readLastLocation,
+  saveLastLocation,
+} from "@/lib/last-location";
 
 const rootRoute = createRootRoute({
   // No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
@@ -164,6 +168,7 @@ const homeRoute = createRoute({
     // OrgAccessGate clears it and bounces back to "/".
     const lastLocation = readLastLocation();
     if (lastLocation) {
+      markRestoreRedirect(lastLocation.org);
       throw redirect({ to: "/$org", params: { org: lastLocation.org } });
     }
 
@@ -174,6 +179,7 @@ const homeRoute = createRoute({
     // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
     const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     if (lastOrgSlug) {
+      markRestoreRedirect(lastOrgSlug);
       throw redirect({
         to: "/$org",
         params: { org: lastOrgSlug },

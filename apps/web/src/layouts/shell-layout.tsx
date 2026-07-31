@@ -9,6 +9,7 @@ import { isModKey } from "@/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
+import { claimRestoreStateFor, clearRestoreState } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readCachedOrg, writeCachedOrg } from "@/lib/query-persist";
 import { PostHogGroupSync } from "@/providers/posthog-group-sync";
@@ -227,6 +228,11 @@ function ShellLayoutContent() {
   const userId = session?.user?.id;
   const cachedOrg = org && userId ? readCachedOrg(userId, org) : null;
 
+  // Drop restore state left behind by a different account on this browser, so
+  // the next cold entry ("/") resolves this user's own default org instead of
+  // redirecting into an org they can't access.
+  if (userId) claimRestoreStateFor(userId);
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K / ⌘[ shortcuts; DOM event listener has no React 19 alternative
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
@@ -340,10 +346,8 @@ function ShellLayoutContent() {
 
   const isArchivedOrg = isOrgArchived(activeOrg);
   if (isArchivedOrg) {
-    // Clear stale slug so /home redirect doesn't bounce the user back here
-    if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org) {
-      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    }
+    // Clear stale restore state so "/" doesn't bounce the user back here
+    clearRestoreState();
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 

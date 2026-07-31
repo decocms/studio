@@ -14,6 +14,7 @@
 
 import { type QueryClient, dehydrate, hydrate } from "@tanstack/react-query";
 import { clearHtmlResourceCache } from "./html-resource-persist";
+import { clearRestoreState } from "./last-location";
 
 const STORAGE_KEY = "studio:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
@@ -195,6 +196,9 @@ export function clearPersistedQueryCache(): void {
   // Drop the IndexedDB UI-resource HTML store too (org-scoped UI shells).
   clearHtmlResourceCache();
   if (typeof window === "undefined") return;
+  // Where the user last was is theirs, not the browser's — leaving it behind
+  // redirects the next account into an org it can't access.
+  clearRestoreState();
   try {
     window.localStorage.removeItem(STORAGE_KEY);
     for (let i = window.localStorage.length - 1; i >= 0; i--) {

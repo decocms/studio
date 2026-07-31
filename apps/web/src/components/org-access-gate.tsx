@@ -4,7 +4,11 @@ import { PendingInviteScreen } from "@/components/pending-invite-screen";
 import { RequestPendingScreen } from "@/components/request-pending-screen";
 import { RequestToJoinScreen } from "@/components/request-to-join-screen";
 import { useOrgAccessStatus } from "@/hooks/use-org-access-status";
-import { clearLastLocation, readLastLocation } from "@/lib/last-location";
+import {
+  clearLastLocation,
+  consumeRestoreRedirect,
+  readLastLocation,
+} from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
 /**
@@ -23,19 +27,17 @@ export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   // write for every non-member status so leaving actually leaves.
   if (data.status !== "member") {
     if (readLastLocation()?.org === orgSlug) clearLastLocation();
-
-    const cachedSlugMatches =
-      localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug;
-    if (cachedSlugMatches) {
+    if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug) {
       localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     }
 
-    // not-found / no-access have nothing actionable here. If the user only
-    // landed here via the stale cached slug, bounce back to "/" so the loader
-    // picks a valid destination instead of dead-ending. A deliberate visit to a
-    // bad org (e.g. a shared link) still shows the screen rather than bouncing.
+    // not-found / no-access have nothing actionable here. If the user never
+    // asked for this org — the home loader restored it from stale state, e.g.
+    // another account's last org on this browser — bounce back to "/" so it
+    // picks their own default org instead of dead-ending. A deliberate visit to
+    // a foreign org (a shared link) still shows the screen.
     if (
-      cachedSlugMatches &&
+      consumeRestoreRedirect(orgSlug) &&
       (data.status === "not-found" || data.status === "no-access")
     ) {
       window.location.href = "/";
