@@ -158,6 +158,7 @@ import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-event
 import { SqlThreadStorage } from "../storage/threads";
 import { TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
+import { enqueueReviewersOnThreadFinish } from "../tools/task-board/enqueue-reviewer";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -1614,12 +1615,21 @@ export async function createApp(options: CreateAppOptions = {}) {
       // without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
-      if (flipped)
+      if (flipped) {
         await advanceTasksToReviewOnThreadFinish(
           projectorTaskBoard,
           runId,
           orgId,
         );
+        // Headless reviewer trigger: a Super Agent run just finished — enqueue
+        // the enabled reviewers if it left a PR In Review, no UI required.
+        void enqueueReviewersOnThreadFinish({
+          contextFactory: automationContextFactory,
+          taskBoard: projectorTaskBoard,
+          threadId: runId,
+          orgId,
+        });
+      }
       return flipped;
     },
     markRunRequiresAction: async (runId, orgId) => {
@@ -1638,12 +1648,21 @@ export async function createApp(options: CreateAppOptions = {}) {
         kind,
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
-      if (flipped)
+      if (flipped) {
         await advanceTasksToReviewOnThreadFinish(
           projectorTaskBoard,
           runId,
           orgId,
         );
+        // Headless reviewer trigger — see completeRunIfNotCompleted above. A
+        // failed run rarely leaves a task In Review (the guard inside no-ops).
+        void enqueueReviewersOnThreadFinish({
+          contextFactory: automationContextFactory,
+          taskBoard: projectorTaskBoard,
+          threadId: runId,
+          orgId,
+        });
+      }
       return flipped;
     },
     clearSynthesizedError: async (runId, fenceToken) => {

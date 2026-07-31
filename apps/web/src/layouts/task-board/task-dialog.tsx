@@ -18,6 +18,7 @@ import {
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
@@ -42,6 +43,10 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { QaAgentIcon } from "@/components/qa-agent-icon";
+import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
+import { MemoizedMarkdown } from "@/components/chat/markdown";
+import { isReviewerThreadTitle } from "@decocms/shared/task-board";
 import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
@@ -62,11 +67,18 @@ import {
   type TaskBoardItemStatus,
   type TaskBoardItemThread,
 } from "./config";
+import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
 } from "@/hooks/use-task-board-activity";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
+import {
+  enabledReviewers,
+  reviewsSatisfiedForPromotion,
+} from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -762,6 +774,10 @@ function ThreadActivityItem({
   const t = useT();
   const state = thread.status ? threadStatusStyle(thread.status, t) : null;
   const message = thread.lastMessage;
+  // The Super Agent and both reviewers run on the org agent, distinguished only
+  // by their thread title prefix — reflect that in the card's glyph/name.
+  const isQaThread = isReviewerThreadTitle(thread.title, "qa");
+  const isCodeReviewThread = isReviewerThreadTitle(thread.title, "code_review");
 
   return (
     <button
@@ -771,7 +787,13 @@ function ThreadActivityItem({
       className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
     >
       <div className="flex items-center gap-2">
-        <SuperAgentIcon size={16} className="shrink-0" />
+        {isQaThread ? (
+          <QaAgentIcon size={16} className="shrink-0" />
+        ) : isCodeReviewThread ? (
+          <CodeReviewerIcon size={16} className="shrink-0" />
+        ) : (
+          <SuperAgentIcon size={16} className="shrink-0" />
+        )}
         <span className="truncate text-sm font-medium text-foreground">
           {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
         </span>
@@ -858,6 +880,36 @@ function prStateStyle(
   };
 }
 
+/** Icon + label + color for a PR's live CI checks state. `null` renders
+ *  nothing — a PR with no checks shouldn't show a badge at all. */
+function prChecksStyle(
+  checksStatus: TaskBoardItemPr["checksStatus"],
+  t: ReturnType<typeof useT>,
+): { label: string; className: string; icon: typeof CheckCircle } | null {
+  switch (checksStatus) {
+    case "passing":
+      return {
+        label: t("taskBoard.taskDialog.prChecksPassing"),
+        className: "text-success",
+        icon: CheckCircle,
+      };
+    case "failing":
+      return {
+        label: t("taskBoard.taskDialog.prChecksFailing"),
+        className: "text-destructive",
+        icon: AlertCircle,
+      };
+    case "pending":
+      return {
+        label: t("taskBoard.taskDialog.prChecksPending"),
+        className: "text-warning",
+        icon: Loading02,
+      };
+    default:
+      return null;
+  }
+}
+
 /** Extract outbound links from the description text — bare URLs, deduped, for
  *  the Links panel. */
 function extractDescriptionLinks(
@@ -875,6 +927,239 @@ function extractDescriptionLinks(
   return out;
 }
 
+/** Check-run conclusions that mean the run failed. */
+const FAILED_CHECK_CONCLUSIONS = new Set([
+  "failure",
+  "cancelled",
+  "timed_out",
+  "action_required",
+  "startup_failure",
+  "stale",
+]);
+
+/** Icon + color for one CI check row in the footer. */
+function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
+  icon: typeof CheckCircle;
+  className: string;
+  spin: boolean;
+} {
+  if (check.status !== "completed") {
+    return { icon: Loading02, className: "text-warning", spin: true };
+  }
+  const c = check.conclusion;
+  if (c && FAILED_CHECK_CONCLUSIONS.has(c)) {
+    return { icon: AlertCircle, className: "text-destructive", spin: false };
+  }
+  if (c === "success" || c === "neutral" || c === "skipped") {
+    return { icon: CheckCircle, className: "text-success", spin: false };
+  }
+  return { icon: HelpCircle, className: "text-muted-foreground", spin: false };
+}
+
+/**
+ * One PR card: identity + the `#123 ↗` GitHub link, an action row (Edit /
+ * preview / ship), and an expandable checks footer that opens each CI check
+ * with its GitHub output markdown (fetched for failing runs).
+ */
+function PrCard({
+  pr,
+  previewThread,
+  reviewsReady,
+  shipPending,
+  onShip,
+  onOpenThread,
+}: {
+  pr: TaskBoardItemPr;
+  previewThread?: TaskBoardItemThread;
+  /** Task-level: In Review + every enabled reviewer approved + auto-merge off. */
+  reviewsReady: boolean;
+  shipPending: boolean;
+  onShip: () => void;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+}) {
+  const t = useT();
+  const [checksOpen, setChecksOpen] = useState(false);
+  const style = prStateStyle(pr, t);
+  const checksHeader = prChecksStyle(pr.checksStatus, t);
+  const isOpen = pr.state === "open" && !pr.merged;
+  // Never ship on red/in-flight CI — only passing or no checks.
+  const checksOk =
+    pr.checksStatus !== "failing" && pr.checksStatus !== "pending";
+  const showShip = reviewsReady && isOpen && checksOk;
+  const hasActions = !!previewThread || !!pr.previewUrl || showShip;
+  // Null-safe: react-query cache from before `checks` shipped can lack it.
+  const checks = pr.checks ?? [];
+  const hasChecksFooter = checks.length > 0 || checksHeader != null;
+  const expandable = checks.length > 0;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+      <div className="flex items-center gap-3">
+        <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
+        </span>
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-1 text-xs font-medium",
+            style.className,
+          )}
+        >
+          <style.icon size={13} />
+          {style.label}
+        </span>
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noreferrer"
+          title={pr.url}
+          className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+        >
+          #{pr.number}
+          <LinkExternal01
+            size={12}
+            className="text-muted-foreground/60 group-hover:text-foreground"
+          />
+        </a>
+      </div>
+      {hasActions && (
+        <div className="flex flex-wrap items-center gap-2">
+          {previewThread && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              title={t("taskBoard.taskDialog.openPreviewTitle")}
+              onClick={() => onOpenThread?.(previewThread)}
+            >
+              <Edit05 size={13} />
+              {t("taskBoard.taskDialog.openPreviewButton")}
+            </Button>
+          )}
+          {pr.previewUrl && (
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+            >
+              <a href={pr.previewUrl} target="_blank" rel="noreferrer">
+                <Globe01 size={14} />
+                {t("taskBoard.taskDialog.previewLabel")}
+                <LinkExternal01 size={12} />
+              </a>
+            </Button>
+          )}
+          {showShip && (
+            <Button
+              type="button"
+              variant="success"
+              size="sm"
+              disabled={shipPending}
+              onClick={onShip}
+            >
+              {t("taskBoard.taskDialog.shipToProductionButton")}
+            </Button>
+          )}
+        </div>
+      )}
+      {hasChecksFooter && (
+        <div className="border-t border-border pt-2 text-xs">
+          <button
+            type="button"
+            disabled={!expandable}
+            onClick={() => setChecksOpen((o) => !o)}
+            className="flex w-full items-center gap-1.5 font-medium disabled:cursor-default"
+          >
+            {checksHeader ? (
+              <checksHeader.icon size={13} className={checksHeader.className} />
+            ) : (
+              <CheckCircle size={13} className="text-muted-foreground" />
+            )}
+            <span
+              className={cn(checksHeader?.className ?? "text-muted-foreground")}
+            >
+              {checksHeader?.label ?? t("taskBoard.taskDialog.prChecksLabel")}
+            </span>
+            {expandable && (
+              <ChevronRight
+                size={14}
+                className={cn(
+                  "ml-auto text-muted-foreground/60 transition-transform",
+                  checksOpen && "rotate-90",
+                )}
+              />
+            )}
+          </button>
+          {checksOpen && (
+            <div className="mt-2 flex flex-col gap-2">
+              {checks.map((c) => {
+                const cs = checkRunStyle(c);
+                return (
+                  <div key={c.name} className="rounded-md bg-muted/40 p-2">
+                    <div className="flex items-center gap-2">
+                      <cs.icon
+                        size={13}
+                        className={cn(
+                          "shrink-0",
+                          cs.className,
+                          cs.spin && "animate-spin",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                        {c.name}
+                      </span>
+                      {c.detailsUrl && (
+                        <a
+                          href={c.detailsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+                        >
+                          <LinkExternal01 size={12} />
+                        </a>
+                      )}
+                    </div>
+                    {c.summary && (
+                      <div className="mt-1.5 max-h-64 overflow-auto text-muted-foreground">
+                        <MemoizedMarkdown
+                          id={`${pr.url}-${c.name}`}
+                          text={c.summary}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Placeholder card shown while the PR's live GitHub state (title/state/checks/
+ *  preview) is still loading — the enrichment can take a moment. */
+function PrCardSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-4 shrink-0 rounded" />
+        <Skeleton className="h-4 min-w-0 flex-1" />
+        <Skeleton className="h-4 w-16 shrink-0" />
+        <Skeleton className="h-4 w-10 shrink-0" />
+      </div>
+      <div className="flex gap-2">
+        <Skeleton className="h-7 w-20" />
+        <Skeleton className="h-7 w-28" />
+      </div>
+    </div>
+  );
+}
+
 /**
  * Links panel: the task's related pull requests (live GitHub state) plus any
  * links found in the description, aggregated in one place. Hidden when there's
@@ -890,9 +1175,38 @@ function LinksSection({
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-  const { data: prs } = useTaskBoardItemPrs(item.id);
+  const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
+  const { data: activity } = useTaskBoardActivity(item.id);
+  const qaEnabled = useOrgFlag("qa_agent_enabled");
+  const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
+  const autoMerge = useOrgFlag("auto_merge");
+  const promote = usePromoteToProduction(item.id);
   const links = extractDescriptionLinks(description);
-  if ((!prs || prs.length === 0) && links.length === 0) return null;
+  // Keep the section up (with a skeleton) while the PR enrichment loads; a
+  // PR-less task resolves instantly, so the skeleton barely flashes for it.
+  const loadingPrs = prsLoading && !prs;
+  if (!loadingPrs && (!prs || prs.length === 0) && links.length === 0) {
+    return null;
+  }
+
+  // Task-level readiness for the manual ship button: In Review + every enabled
+  // reviewer approved + auto-merge off. The per-card PrCard adds the PR-open +
+  // green-checks gate (so a failing PR never offers the button).
+  const reviewsReady =
+    item.status === "in_review" &&
+    !autoMerge &&
+    reviewsSatisfiedForPromotion(
+      activity ?? [],
+      enabledReviewers({ qa: qaEnabled, codeReview: codeReviewerEnabled }),
+    );
+  const onShip = () =>
+    promote.mutate(undefined, {
+      onSuccess: (res) =>
+        res?.merged
+          ? toast.success(t("taskBoard.taskDialog.shipSuccess"))
+          : toast.error(t("taskBoard.taskDialog.shipError")),
+      onError: () => toast.error(t("taskBoard.taskDialog.shipError")),
+    });
 
   // The task's preview-capable thread (a bound repo checked out on the PR's
   // branch). Opening it paints that branch's live dev server — so "Edit" lands
@@ -909,56 +1223,21 @@ function LinksSection({
       <span className="mb-1 text-xs font-medium text-muted-foreground">
         {t("taskBoard.taskDialog.linksLabel")}
       </span>
-      {(prs ?? []).map((pr) => {
-        const style = prStateStyle(pr, t);
-        return (
-          <div
+      {loadingPrs ? (
+        <PrCardSkeleton />
+      ) : (
+        (prs ?? []).map((pr) => (
+          <PrCard
             key={pr.url}
-            className="flex items-center gap-3 rounded-xl bg-card p-3 card-shadow"
-          >
-            <a
-              href={pr.url}
-              target="_blank"
-              rel="noreferrer"
-              className="group flex min-w-0 flex-1 items-center gap-3"
-            >
-              <GitHubIcon className="size-4 shrink-0 text-foreground" />
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
-              </span>
-              <span
-                className={cn(
-                  "flex shrink-0 items-center gap-1 text-xs font-medium",
-                  style.className,
-                )}
-              >
-                <style.icon size={13} />
-                {style.label}
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                #{pr.number}
-              </span>
-              <LinkExternal01
-                size={13}
-                className="shrink-0 text-muted-foreground/50 group-hover:text-foreground"
-              />
-            </a>
-            {previewThread && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 gap-1.5 px-2"
-                title={t("taskBoard.taskDialog.openPreviewTitle")}
-                onClick={() => onOpenThread?.(previewThread)}
-              >
-                <Edit05 size={13} />
-                {t("taskBoard.taskDialog.openPreviewButton")}
-              </Button>
-            )}
-          </div>
-        );
-      })}
+            pr={pr}
+            previewThread={previewThread}
+            reviewsReady={reviewsReady}
+            shipPending={promote.isPending}
+            onShip={onShip}
+            onOpenThread={onOpenThread}
+          />
+        ))
+      )}
       {links.map((link) => (
         <a
           key={link.url}
@@ -1116,6 +1395,13 @@ function interleaveChips(
 }
 
 /** One timeline line: prose from `t()`, values rendered as chips. */
+/** Display name for a reviewer kind stored in an activity payload. */
+function reviewerName(reviewer: unknown, t: ReturnType<typeof useT>): string {
+  return reviewer === "code_review"
+    ? t("taskBoard.taskDialog.codeReviewerLabel")
+    : t("taskBoard.taskDialog.qaAgentLabel");
+}
+
 function describeActivity(
   a: TaskBoardActivity,
   t: ReturnType<typeof useT>,
@@ -1201,6 +1487,18 @@ function describeActivity(
       />
     );
   };
+  const reviewerChip = (reviewer: unknown) => (
+    <ValueChip
+      icon={
+        reviewer === "code_review" ? (
+          <CodeReviewerIcon size={14} />
+        ) : (
+          <QaAgentIcon size={14} />
+        )
+      }
+      label={reviewerName(reviewer, t)}
+    />
+  );
 
   const d = a.data;
   const from = chipSentinel("from");
@@ -1259,6 +1557,31 @@ function describeActivity(
           to: tagsChip(d.to),
         },
       );
+    case "review_requested":
+      return interleaveChips(
+        t("taskBoard.taskDialog.activityDelegated", {
+          name: chipSentinel("name"),
+        }),
+        { name: reviewerChip(d.reviewer) },
+      );
+    case "review_approved":
+      return typeof d.notes === "string" && d.notes.trim()
+        ? t("taskBoard.taskDialog.activityReviewApprovedWithNotes", {
+            reviewer: reviewerName(d.reviewer, t),
+            notes: d.notes,
+          })
+        : t("taskBoard.taskDialog.activityReviewApproved", {
+            reviewer: reviewerName(d.reviewer, t),
+          });
+    case "review_changes_requested":
+      return typeof d.notes === "string" && d.notes.trim()
+        ? t("taskBoard.taskDialog.activityReviewChangesRequestedWithNotes", {
+            reviewer: reviewerName(d.reviewer, t),
+            notes: d.notes,
+          })
+        : t("taskBoard.taskDialog.activityReviewChangesRequested", {
+            reviewer: reviewerName(d.reviewer, t),
+          });
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

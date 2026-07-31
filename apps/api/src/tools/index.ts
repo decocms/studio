@@ -55,6 +55,8 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
+  TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
+  TaskBoardTools.TASK_BOARD_PROMOTE_TO_PRODUCTION,
   TaskBoardTools.TASK_BOARD_ACTIVITY_LIST,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,

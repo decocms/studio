@@ -42,7 +42,10 @@ import {
 } from "@decocms/harness/offload-messages";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
+import {
+  composeSandboxRef,
+  resolveSandboxProviderKindFromEnv,
+} from "@decocms/sandbox/provider";
 import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   buildAnonymousCloneInfo,
@@ -54,7 +57,10 @@ import { resolveSandboxUserId } from "@/tools/sandbox/thread-repo";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
 import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "@/links/link-work-item";
-import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
+import {
+  resolveDispatchTarget,
+  type DispatchTarget,
+} from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
@@ -887,13 +893,19 @@ async function prepareRun(
     rootSpan.setAttribute("decopilot.harnessId", harnessId);
 
     // Resolve the dispatch target. POST /messages already runs
-    // `resolveDispatchTarget` and forwards the result on `input.target`;
-    // we re-read it here (defaulting to a hosted target for any
-    // caller — e.g. legacy automation paths — that hasn't been migrated
-    // yet).
-    const target: DispatchTarget = input.target ?? {
-      sandboxProviderKind: "agent-sandbox",
-    };
+    // `resolveDispatchTarget` and forwards the result on `input.target`; we
+    // re-read it here. Background enqueues (Super Agent / QA task runs, cron &
+    // webhook automations) never set `input.target`, so fall back to the
+    // deployment's configured provider (`STUDIO_SANDBOX_PROVIDER`) rather than a
+    // hardcoded hosted target — in production that env is `agent-sandbox` (no
+    // change), but in local dev (`--local-sandbox-provider` → `user-desktop`)
+    // the old default sent these runs to a cluster that isn't there, so
+    // `load_repo` failed with "Failed to create SandboxClaim".
+    const target: DispatchTarget =
+      input.target ??
+      resolveDispatchTarget({
+        sandboxProviderKind: resolveSandboxProviderKindFromEnv(),
+      });
 
     // Stash the resolved target on the context so downstream consumers
     // (the desktop sandbox provider, remote-cli dispatch) can read it

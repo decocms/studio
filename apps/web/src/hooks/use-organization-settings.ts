@@ -250,6 +250,27 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
   return data ?? false;
 }
 
+/**
+ * Writer for a single org flag. Updates shallow-merge server-side, so writing
+ * one flag never disturbs its neighbors in the `flags` bag.
+ */
+export function useSetOrgFlag() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (
+      flag: keyof OrgFlags,
+      value: boolean,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutate({ flags: { [flag]: value } }, options),
+    mutateAsync: (
+      flag: keyof OrgFlags,
+      value: boolean,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ flags: { [flag]: value } }, options),
+  };
+}
+
 export function useRegistryConfig(): RegistryConfig | null {
   const { data } = useOrganizationSettings((s) => s.registry_config);
   return data ?? null;

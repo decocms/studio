@@ -152,6 +152,7 @@ import * as migration150taskboardactivity from "./150-task-board-activity.ts";
 import * as migration151taskboardtags from "./151-task-board-tags.ts";
 import * as migration152repairconnectionslug from "./152-repair-connection-slug.ts";
 import * as migration153taskboardlatestassistantpartindex from "./153-task-board-latest-assistant-part-index.ts";
+import * as migration154taskboardqaactivity from "./154-task-board-qa-activity.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -330,6 +331,7 @@ const migrations: Record<string, Migration> = {
   "152-repair-connection-slug": migration152repairconnectionslug,
   "153-task-board-latest-assistant-part-index":
     migration153taskboardlatestassistantpartindex,
+  "154-task-board-qa-activity": migration154taskboardqaactivity,
 };
 
 export default migrations;

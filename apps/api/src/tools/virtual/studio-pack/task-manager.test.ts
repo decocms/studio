@@ -15,6 +15,7 @@ describe("taskManagerAgent", () => {
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
+      "TASK_BOARD_REVIEW_DECISION",
     ]);
   });
 
