@@ -284,10 +284,12 @@ function SecretsContent() {
     <>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {t("settings.secrets.secretsCount", {
-            count: secrets.length,
-            plural: secrets.length === 1 ? "" : "s",
-          })}
+          {t(
+            secrets.length === 1
+              ? "settings.secrets.secretsCountSingular"
+              : "settings.secrets.secretsCountPlural",
+            { count: secrets.length },
+          )}
         </p>
         <Button onClick={() => setCreateOpen(true)} size="sm">
           <Plus size={14} />
