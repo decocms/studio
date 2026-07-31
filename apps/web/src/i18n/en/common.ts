@@ -1,4 +1,6 @@
 export const common = {
+  "common.copy": "Copy",
+  "common.seeAll": "See all {count} {noun}",
   "common.accountPopover.account": "Account",
   "common.accountPopover.adminDashboard": "Admin Dashboard",
   "common.accountPopover.community": "Community",
