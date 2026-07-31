@@ -488,6 +488,12 @@ describe("resolveConfig topup fee percent", () => {
       resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "free" }),
     ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
   });
+
+  it("rejects a value above 100 instead of silently overcharging top-ups", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "150" }),
+    ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be at most 100");
+  });
 });
 
 describe("resolveConfig decopilot max concurrent subagents", () => {
