@@ -1,11 +1,14 @@
 package setup
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
 // Dependency telemetry leaves the pod as JSON lines on stdout, NOT OTLP: a
@@ -62,6 +65,11 @@ func EmitDepsRestore(source RestoreSource, cloneUrl string, durationMs int64, bo
 	if line := BuildDepsRestoreLine(source, cloneUrl, durationMs, bootId); line != "" {
 		os.Stdout.WriteString(line + "\n")
 	}
+	// Same event, second channel. The stdout line stays byte-compatible with
+	// the TS daemon and is what existing panels read; the metric is what
+	// survives the log pipeline, which samples info-level lines at 1% and so
+	// cannot be counted on at canary volume. No-op unless OTLP is configured.
+	telemetry.RecordDepsRestore(context.Background(), string(source), durationMs)
 }
 
 // IsPackageManifest reports whether rel (relative to node_modules) is a real

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/proxy"
 	"github.com/decocms/studio/sandbox-daemon/internal/routes"
 	"github.com/decocms/studio/sandbox-daemon/internal/setup"
+	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 	"github.com/decocms/studio/sandbox-daemon/internal/toolscatalog"
 	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
@@ -459,6 +461,22 @@ func main() {
 	// same `impl=` key.
 	slog.Info("daemon boot", "impl", "go", "boot_id", bootId)
 
+	// Metrics are opt-in via OTEL_EXPORTER_OTLP_ENDPOINT and best-effort: a
+	// collector that is unreachable, misconfigured or absent must never keep a
+	// sandbox from booting, so a failure here is logged and execution continues
+	// with the no-op provider. No shutdown flush on SIGTERM either — that path
+	// belongs to the git-sync that saves the user's work, and metrics do not get
+	// to spend its grace period.
+	otelShutdown, err := telemetry.Init(context.Background(), bootId, "go")
+	if err != nil {
+		slog.Warn("otlp metrics disabled: exporter init failed", "err", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = otelShutdown(ctx)
+	}()
+
 	appRoot := os.Getenv("WORKDIR")
 	if appRoot == "" {
 		appRoot = os.Getenv("APP_ROOT")
@@ -524,6 +542,12 @@ func main() {
 	}
 
 	d.phases = proc.NewPhaseManager()
+	// One hook covers every phase: clone, install and dev-server start all go
+	// through Begin/Done, so per-phase boot cost needs no per-call-site
+	// instrumentation and a phase added later is measured for free.
+	d.phases.OnFinish = func(name, status string, durationMs int64) {
+		telemetry.RecordPhase(context.Background(), name, status, durationMs)
+	}
 	d.tasks = proc.NewTaskManager(proc.TaskManagerDeps{
 		LogsDir:      tmpDir,
 		PhaseManager: d.phases,
