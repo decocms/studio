@@ -330,7 +330,11 @@ export function resolveConfig(
     // Runtime flags
     isCli: true,
     noTui: flags.noTui === true,
-    podName: envVars.POD_NAME ?? crypto.randomUUID(),
+    // `||` (not `??`): an env var explicitly set to "" (a deployment template
+    // rendering an unset POD_NAME as empty rather than omitting the key) must
+    // fall through to a random id instead of every pod sharing "" as its
+    // identity in logs/metrics — see resolveAliasedEnv above for the same trap.
+    podName: envVars.POD_NAME || crypto.randomUUID(),
     dispatchRole: resolveDispatchRole(
       resolveAliasedEnv(
         envVars.STUDIO_DISPATCH_ROLE,
