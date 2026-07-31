@@ -287,9 +287,10 @@ async function postAgentCommentReplyOnThreadFinish(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
+  opts?: { postFallback?: boolean },
 ): Promise<void> {
   try {
-    const outcome = await taskBoard.finishCommentRun(threadId, orgId);
+    const outcome = await taskBoard.finishCommentRun(threadId, orgId, opts);
     if (!outcome) return;
     for (const comment of outcome.posted)
       emitTaskCommentCreated(orgId, comment);
@@ -352,4 +353,19 @@ const HTTP_POST = /(?:-X|--request)\s+POST/;
 export function isPrCreateBashCommand(command: string): boolean {
   if (GH_PR_CREATE.test(command)) return true;
   return GITHUB_API_PULLS.test(command) && HTTP_POST.test(command);
+}
+
+/**
+ * A comment run parked on `user_ask` — it's waiting for a person, so nothing is
+ * posted on its behalf, but the thread must stop showing it as replying.
+ * Best-effort; no-op off a comment-started run.
+ */
+export async function clearCommentTypingOnRunParked(
+  taskBoard: TaskBoardStorage,
+  threadId: string,
+  orgId: string,
+): Promise<void> {
+  await postAgentCommentReplyOnThreadFinish(taskBoard, threadId, orgId, {
+    postFallback: false,
+  });
 }

@@ -49,6 +49,10 @@ export function useTaskBoardComments(itemId: string) {
   const query = useQuery({
     queryKey,
     enabled: !!itemId,
+    // SSE is the fast path, this is the floor: a dropped connection (or a tab
+    // that slept through the event) still converges within one interval instead
+    // of showing a stale thread until the next mutation refetches it.
+    refetchInterval: 15_000,
     queryFn: async () =>
       (
         await studio.call("TASK_BOARD_COMMENT_LIST", {

@@ -38,6 +38,58 @@ import {
   emitTaskCommentCreated,
 } from "./run-reactions";
 
+/** A comment the agent hasn't answered yet, as the prompt renders it. */
+type CommentBacklogEntry = {
+  id: string;
+  authorName: string;
+  body: string;
+  mentions: TaskBoardCommentMention[];
+};
+
+/**
+ * Everything said since the agent last spoke, oldest first, with mentions
+ * flagged. Answering only the newest comment is what made it look like it
+ * ignored people, so the backlog is spelled out and the obligation with it: a
+ * mention needs an answer, an unmentioned comment may be read and skipped.
+ *
+ * Falls back to the triggering comment alone if the backlog read came back empty
+ * (it shouldn't — that comment is in it — but a turn with no question in it is
+ * worse than a duplicated one).
+ */
+function formatBacklog(
+  backlog: CommentBacklogEntry[],
+  trigger: TaskBoardComment,
+): string {
+  const entries = backlog.length
+    ? backlog
+    : [
+        {
+          id: trigger.id,
+          authorName: "Someone",
+          body: trigger.body,
+          mentions: trigger.mentions,
+        },
+      ];
+
+  const lines = entries.map((c) => {
+    const mentioned = mentionsSuperAgent(c.mentions);
+    return [
+      `- ${c.authorName}${mentioned ? " (mentions you — needs a reply)" : ""} [comment_id: ${c.id}]`,
+      c.body
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n"),
+    ].join("\n");
+  });
+
+  return [
+    entries.length > 1
+      ? "Comments on this task you haven't answered yet, oldest first — cover ALL of them, and don't claim you can't see one that's listed here:"
+      : "Comment:",
+    ...lines,
+  ].join("\n");
+}
+
 /** The org of the calling context, or a hard error — comments are org-scoped
  *  through their task. */
 function requireOrg(ctx: StudioContext): string {
@@ -256,12 +308,25 @@ async function dispatchSuperAgentForComment(
     task.id,
     organizationId,
   );
+  // Everything said since the agent's last word, not just the comment that
+  // triggered this turn: a comment with no mention starts no run of its own, so
+  // this is the only place it can reach the agent.
+  const backlog = await ctx.storage.taskBoard.unansweredCommentBacklog(
+    task.id,
+    organizationId,
+  );
+  const newest = backlog[backlog.length - 1]?.createdAt;
 
   const threadId = await enqueueSuperAgentForTask(ctx, task, {
     prompt: existing
-      ? followUpPrompt(comment)
-      : firstMentionPrompt(task, comment),
-    runMetadata: { taskBoardCommentId: comment.id },
+      ? followUpPrompt(backlog, comment)
+      : firstMentionPrompt(task, backlog, comment),
+    runMetadata: {
+      taskBoardCommentId: comment.id,
+      // The mid-run feed starts after what the prompt already carries, so a
+      // comment isn't shown twice.
+      ...(newest ? { taskBoardCommentsSince: newest } : {}),
+    },
     // A comment run isn't a work session on the card — see `enqueueSuperAgentForTask`.
     linkThread: false,
     threadId: existing ?? undefined,
@@ -283,6 +348,7 @@ async function dispatchSuperAgentForComment(
  */
 function firstMentionPrompt(
   task: { id: string; title: string; description: string | null },
+  backlog: CommentBacklogEntry[],
   comment: TaskBoardComment,
 ): string {
   return [
@@ -290,13 +356,14 @@ function firstMentionPrompt(
     "",
     `Task: ${task.title}`,
     task.description ? `\nDescription:\n${task.description}\n` : "",
-    "Comment:",
-    comment.body,
+    formatBacklog(backlog, comment),
     "",
     "How to reply:",
     "- Use `reply_comment`: it posts under the comment for you — never hand the posting to another agent.",
     "- Reply FIRST, investigate second. If the task, the comment, and what you already know are enough to answer — a greeting, an opinion, a design question, anything conversational — call `reply_comment` as your very first action and stop. Reading files or running commands before answering just makes the person wait.",
-    "- Only open files or run commands when the comment asks you to do or check something you genuinely can't answer without them. If a tool errors, don't retry it: answer with what you have and say what you couldn't verify.",
+    "- Only open files or run commands when the comment asks you to do or check something you genuinely can't answer without them.",
+    "- If a tool errors, that tool is done for this run: do not call it again, and do not reach for a sibling tool to route around the same broken thing (a failing sandbox breaks bash, grep, glob and read alike). One failure, then stop touching it.",
+    "- When you're blocked on something only a person can clear — a decision, a credential, broken infrastructure — say so once with `reply_comment` and then call `user_ask` with the question. That parks the run as needing attention instead of ending quietly as if the work were done. Don't keep retrying and don't report the same failure twice.",
     "- You can reply more than once (say, an answer now and a finding later), but don't spam the thread: no acknowledgements, no progress narration, no repeating yourself. One reply is usually right.",
     "- Keep it short and answer only what the comment asks. If it's just a greeting, greet back in one line and name the obvious next step on this task.",
     "- If the comment asks you to actually start the work, say so with `reply_comment` AND move the card with `set_task_status` (`in_progress`) — the board doesn't move itself just because you're talking. Then do the work. Don't move the card for a conversation.",
@@ -308,12 +375,14 @@ function firstMentionPrompt(
 
 /** A later comment on a task whose conversation thread already exists — the
  *  rules are in this thread's history, so this turn stays short. */
-function followUpPrompt(comment: TaskBoardComment): string {
+function followUpPrompt(
+  backlog: CommentBacklogEntry[],
+  comment: TaskBoardComment,
+): string {
   return [
-    "New comment on this task:",
-    "",
-    comment.body,
+    formatBacklog(backlog, comment),
     "",
     "Answer it with `reply_comment`, same rules as before: reply first, investigate only if it asks for work, and if it asks you to start, move the card with `set_task_status` (`in_progress`) before you begin.",
+    "If a tool is still failing, don't grind on it: reply once and call `user_ask` so a person picks it up.",
   ].join("\n");
 }

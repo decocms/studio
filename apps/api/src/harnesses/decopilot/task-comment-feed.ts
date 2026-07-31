@@ -34,8 +34,9 @@ export interface TaskCommentFeed {
  * A feed for the run's linked task, or null when this run isn't working on one
  * (`runMetadata.taskBoardItemId` is set by the task-board dispatch paths).
  *
- * `since` starts at run assembly: the comment that triggered the run is already
- * in the prompt, so the feed only ever carries what came after.
+ * `since` starts where the dispatch prompt's backlog ended
+ * (`runMetadata.taskBoardCommentsSince`), falling back to run assembly, so the
+ * feed only carries what the prompt didn't.
  */
 export function createTaskCommentFeed(
   ctx: StudioContext,
@@ -44,7 +45,11 @@ export function createTaskCommentFeed(
   const organizationId = ctx.organization?.id;
   if (!taskBoardItemId || !organizationId) return null;
 
-  let since = new Date().toISOString();
+  // Start after the backlog the dispatch prompt already carries, so the same
+  // comment isn't shown twice; run start is the fallback.
+  let since =
+    ctx.metadata?.runMetadata?.taskBoardCommentsSince ??
+    new Date().toISOString();
   let inFlight: Promise<void> | null = null;
 
   const read = async (sink: string[]) => {

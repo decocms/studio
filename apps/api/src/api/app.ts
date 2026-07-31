@@ -157,7 +157,10 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { TaskBoardStorage } from "../storage/task-board";
-import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
+import {
+  advanceTasksToReviewOnThreadFinish,
+  clearCommentTypingOnRunParked,
+} from "../tools/task-board/run-reactions";
 import { enqueueReviewersOnThreadFinish } from "../tools/task-board/enqueue-reviewer";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -1638,6 +1641,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         orgId,
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      // A comment run parked on `user_ask` owes no reply — a person does. Drop
+      // the "replying…" indicator without answering for it.
+      if (flipped)
+        await clearCommentTypingOnRunParked(projectorTaskBoard, runId, orgId);
       return flipped;
     },
     markRunFailed: async (runId, orgId, reason, kind) => {

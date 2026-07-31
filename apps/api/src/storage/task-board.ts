@@ -967,6 +967,51 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Human comments on a task the agent hasn't answered yet: everything written
+   * after its most recent reply (all of them, when it has never replied).
+   *
+   * A dispatched turn is prompted with this whole backlog, not just the comment
+   * that triggered it. Otherwise a comment with no mention is invisible forever —
+   * it starts no run of its own, and the mid-run feed only carries what arrives
+   * *while* a run is live. That's how "also what day is today?" got skipped, and
+   * why the agent then truthfully said it couldn't see it.
+   */
+  async unansweredCommentBacklog(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<
+    {
+      id: string;
+      authorName: string;
+      body: string;
+      mentions: TaskBoardCommentMention[];
+      createdAt: string;
+    }[]
+  > {
+    const lastReply = await this.db
+      .selectFrom("task_board_comments")
+      .select("created_at")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("author_id", "is", null)
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    const since =
+      lastReply?.created_at instanceof Date
+        ? lastReply.created_at.toISOString()
+        : ((lastReply?.created_at as string | undefined) ??
+          new Date(0).toISOString());
+
+    const rows = await this.listCommentsSince(
+      taskBoardItemId,
+      organizationId,
+      since,
+    );
+    return rows.map(({ threadRootId: _root, ...rest }) => rest);
+  }
+
+  /**
    * Threads on a task where someone mentioned the Super Agent and it hasn't
    * answered *since* that mention. "Answered" is an agent-authored comment
    * (`author_id IS NULL`) in the same thread, newer than the mention — so a
@@ -1050,6 +1095,7 @@ export class TaskBoardStorage {
   async finishCommentRun(
     threadId: string,
     organizationId: string,
+    opts?: { postFallback?: boolean },
   ): Promise<{
     taskBoardItemId: string;
     threadRootIds: string[];
@@ -1076,6 +1122,12 @@ export class TaskBoardStorage {
         ...unanswered.map((m) => m.threadRootId),
       ]),
     ];
+
+    // A run parked on `user_ask` is waiting for a person, not done answering —
+    // clear the indicator but don't put words in its mouth.
+    if (opts?.postFallback === false) {
+      return { taskBoardItemId, threadRootIds, posted: [] };
+    }
 
     const fallbackBody = await this.lastAssistantText(threadId);
     if (!fallbackBody) return { taskBoardItemId, threadRootIds, posted: [] };
