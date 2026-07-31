@@ -1,12 +1,8 @@
 package dispatch
 
-// Harness-runner transport: a long-lived subprocess serving loopback HTTP.
-//
-// The `claude-code` / `codex` harnesses are TypeScript and can only be embedded
-// by a TS process, so `/dispatch` drives them through a runner subprocess. The
-// wire is the one defined by `daemon/harness-runner/protocol.ts` — the file
-// whose docblock says it is "the piece a non-TS daemon reimplements". This is
-// that reimplementation, so keep the two in step:
+// Harness-runner transport: the TS harnesses can only be embedded by a TS
+// process, so `/dispatch` drives them through a subprocess serving loopback
+// HTTP. Wire per `daemon/harness-runner/protocol.ts` — keep the two in step:
 //
 //	spawn   argv from HARNESS_RUNNER_CMD, env HARNESS_RUNNER_MODE=1 and a
 //	        per-spawn HARNESS_RUNNER_TOKEN
@@ -16,13 +12,9 @@ package dispatch
 //	        DispatchSSEEvent per line, always terminated by {"type":"done"}
 //	cancel  abort the request — the runner tears its CLI down with it
 //
-// One shared runner, spawned on demand, **never auto-respawned**: a crash costs
-// each in-flight run one `harness_crashed` and nothing more, where a respawn
-// loop would turn one bad run into a storm. The next dispatch spawns a fresh one.
-//
-// The daemon holds the runner's stdin open and never writes to it. That is the
-// parent-death signal: if this daemon is SIGKILLed, the pipe closes and the
-// runner exits instead of lingering in the pod holding a port.
+// One shared runner, never auto-respawned: a respawn loop would turn one bad run
+// into a storm. Its stdin is held open as a parent-death signal so a SIGKILLed
+// daemon does not leave it holding a port.
 
 import (
 	"bufio"
@@ -49,10 +41,8 @@ const (
 	runnerReadyPrefix = "HARNESS_RUNNER_READY "
 )
 
-// readyTimeout bounds the wait for the ready line. A runner that never reports
-// is a crash, and a dispatch must fail rather than hang: Studio's dispatch
-// caller has its own deadline, and a stuck dispatch reads to the user as a
-// silent agent. Variable, not const, so tests do not pay 30s.
+// readyTimeout bounds the wait for the ready line — a dispatch must fail rather
+// than hang. Variable, not const, so tests do not pay 30s.
 var readyTimeout = 30 * time.Second
 
 // Runner supervises the single harness-runner subprocess.
@@ -73,10 +63,8 @@ type runnerHandle struct {
 func NewRunner() *Runner {
 	return &Runner{
 		client: &http.Client{
-			// No client-level timeout: a run legitimately streams for minutes, and a
-			// deadline here would cut a working agent off mid-answer. The response
-			// *headers* are a different matter — those come immediately or the runner
-			// is wedged — and cancellation is the request context's job.
+			// No client-level timeout: a run legitimately streams for minutes.
+			// Headers, though, arrive immediately or the runner is wedged.
 			Transport: &http.Transport{
 				DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
 				ResponseHeaderTimeout: 30 * time.Second,

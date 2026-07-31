@@ -121,11 +121,9 @@ func (o *Orchestrator) DiscoveredScripts() ([]string, bool) {
 	return o.latestScripts, o.hasScripts
 }
 
-// PublishPendingGolden publishes the golden for this boot's fresh install — but
-// only now that the probe has confirmed the dev server healthy, so a
-// broken-but-exit-0 install can never become a golden every later boot reuses.
-// No-op when nothing is pending (a golden-restore boot, or a boot that never
-// installed).
+// PublishPendingGolden publishes this boot's fresh install as the golden, called
+// only once the probe confirms the dev server healthy — a broken-but-exit-0
+// install must never become a sticky golden. No-op when nothing is pending.
 func (o *Orchestrator) PublishPendingGolden() {
 	o.mu.Lock()
 	pending := o.pendingGolden
@@ -318,10 +316,8 @@ func (o *Orchestrator) stepInstall() bool {
 
 	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstalling})
 
-	// Timed from here so the reported cost is the whole dependency step — a
-	// failed golden probe (stat, partial reflink, cleanup) is real boot latency,
-	// and on a miss the cost a remote tier would replace is probe + install, not
-	// install alone.
+	// Timed from here so the reported cost is the whole dependency step: a failed
+	// golden probe is real boot latency too.
 	depsStartedAt := time.Now()
 	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
 	bootId := os.Getenv("DAEMON_BOOT_ID")
@@ -373,10 +369,8 @@ func (o *Orchestrator) stepInstall() bool {
 	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId)
 	o.markInstallSucceeded(cfg)
 
-	// Don't publish the golden yet — PublishPendingGolden(), which the probe's
-	// `running` transition calls, does it once the dev server is confirmed
-	// healthy. Publishing only from a boot that actually came up is what keeps a
-	// broken install from becoming a sticky bad golden.
+	// Not published yet: PublishPendingGolden runs off the probe's `running`
+	// transition, so only a boot that actually came up publishes.
 	o.mu.Lock()
 	o.pendingGolden = &golden
 	o.mu.Unlock()

@@ -29,13 +29,9 @@ type FastForwardResult struct {
 	Skipped FastForwardSkipReason
 }
 
-// FastForwardToBase advances the current branch to origin/<base> by pure
-// fast-forward, then pushes, when the branch has no local commits and merely
-// fell behind while the sandbox sat idle. Anything with local commits is left
-// for the manual, conflict-resolving RebaseOntoBase path.
-//
-// Best-effort and non-throwing for every expected condition, so a caller on the
-// boot path never has to guard it.
+// FastForwardToBase advances the current branch to origin/<base> and pushes,
+// when it has no local commits and merely fell behind. Anything with local
+// commits is left to RebaseOntoBase. Best-effort — safe on the boot path.
 func FastForwardToBase(repoDir string) FastForwardResult {
 	run := func(args ...string) (string, bool) {
 		return rebaseTry(repoDir, args)

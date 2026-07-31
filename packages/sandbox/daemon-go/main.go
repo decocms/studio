@@ -275,15 +275,11 @@ func (d *daemon) vmRoute(w http.ResponseWriter, r *http.Request, prefix, vmPath 
 		return
 	}
 
-	// Hosted harnesses drive the sandbox through the fs/exec routes WITHOUT a
-	// /dispatch envelope, so the org links must be ensured here too — before
-	// bash/read/write resolve the prompts' relative `org/...` paths. vm-tools
-	// stamp the thread on each call (x-thread-id) so `org/output` can point at the
-	// running thread's folder; memoized, so repeat calls cost one lstat. ONLY
-	// these routes: gating /orgfs-config would deadlock provisioning into the full
-	// fail-open wait (the mounts it polls for appear only after that POST lands),
-	// and gating /setup/clone would create `repo/org` ahead of the clone — the
-	// boot-time hazard the repo link is deliberately deferred to avoid.
+	// Hosted harnesses drive the sandbox through fs/exec without a /dispatch
+	// envelope, so the org links must be ensured here too, keyed on x-thread-id.
+	// Only these routes: gating /orgfs-config would deadlock provisioning on
+	// mounts that appear only after that POST, and gating /setup/clone would
+	// create `repo/org` ahead of the clone.
 	if method == "POST" && (isFsRoute(vmPath) || strings.HasPrefix(vmPath, "/exec/")) {
 		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
 			d.orgFsLinks.RepointForRun(threadId)
@@ -615,11 +611,9 @@ func main() {
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
 		Runner:           d.harnessRunner,
-		// Share-files-back: point `org/output` at this run's thread subtree before
-		// the harness can touch it. A failure degrades to no link, never blocks the
-		// run. Same call refreshes `.deco/tools/` from the run's MCP endpoint
-		// (coalesced in the background) so a renamed tool does not stay stale until
-		// something calls /tools/sync explicitly.
+		// Point `org/output` at this run's thread subtree, and refresh `.deco/tools/`
+		// from its MCP endpoint, before the harness can touch either. Degrades to no
+		// link; never blocks the run.
 		BeforeRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.RepointForRun(info.ThreadId)
 			catalogSync.Sync(toolscatalog.Endpoint{

@@ -16,14 +16,10 @@ func RemoteBranchSha(repoDir, branch string) (string, bool) {
 	return rebaseTry(repoDir, []string{"rev-parse", "--verify", "refs/remotes/origin/" + branch})
 }
 
-// ForcePushWithLease force-pushes branch to origin, preferring
-// --force-with-lease over a plain --force.
-//
-// The lease is NOT a concurrent-writer safeguard: on a stale-lease rejection we
-// re-fetch, re-lease against the NEW remote tip and clobber it. It is safe only
-// under the single-writer-per-branch invariant both callers rely on; it just
-// avoids a blind --force in the common case. An empty leaseSha falls straight
-// through to --force.
+// ForcePushWithLease force-pushes branch, preferring --force-with-lease. The
+// lease is not a concurrent-writer safeguard — a stale-lease rejection re-leases
+// against the new tip and clobbers it; it only avoids a blind --force in the
+// common case. Empty leaseSha falls through to --force.
 func ForcePushWithLease(repoDir, branch, leaseSha string, opts ForcePushOpts) error {
 	run := func(args []string) (string, error) {
 		return Run(args, RunOpts{Cwd: repoDir, Env: rebaseEnv(repoDir, opts.Env)})
@@ -60,11 +56,9 @@ func ForcePushWithLease(repoDir, branch, leaseSha string, opts ForcePushOpts) er
 	return push("--force")
 }
 
-// IsNonFastForwardError reports a divergence rejection: origin/<branch> has
-// commits the local branch lacks. Deliberately excludes the generic "failed to
-// push some refs" summary, which git also prints for server-side hook and
-// branch-protection rejections (those print "[remote rejected]", which does not
-// contain the "[rejected]" substring).
+// IsNonFastForwardError reports a divergence rejection. Excludes the generic
+// "failed to push some refs" summary, which git also prints for server-side hook
+// and branch-protection rejections.
 func IsNonFastForwardError(err error) bool {
 	message := FormatGitError(err)
 	return strings.Contains(message, "fetch first") ||

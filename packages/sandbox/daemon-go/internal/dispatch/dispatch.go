@@ -32,10 +32,9 @@ type Deps struct {
 	// falls back to a process-wide runner, so a caller that only exercises the
 	// gates does not have to build one.
 	Runner *Runner
-	// BeforeRun prepares the workspace for a dispatched run before the harness
-	// streams: the org-fs `output`/`upload` links must point at this run's thread
-	// from its first write, and the run's MCP endpoint is what keeps `.deco/tools/`
-	// fresh. Must not block for long and must not fail the run. Optional.
+	// BeforeRun prepares the workspace before the harness streams: org-fs links
+	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
+	// long and must not fail the run. Optional.
 	BeforeRun func(RunInfo)
 }
 

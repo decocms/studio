@@ -1,14 +1,8 @@
 package dispatch
 
-// Tests for the harness-runner bridge (runner.go). The black-box conformance
-// suite cannot reach here: it drives a daemon with no runner configured, and the
-// TS daemon on this branch still runs harnesses in-process, so a fake-runner
-// test there would only pass on one implementation.
-//
-// The fake runner is THIS TEST BINARY re-executed with FAKE_RUNNER set — it
-// speaks the real protocol (ready line, bearer, NDJSON, done) without needing
-// Bun, the harnesses, or a model provider. What it cannot prove is that a real
-// harness streams; that is G5's by-hand acceptance.
+// Tests for the harness-runner bridge (runner.go). The fake runner is this test
+// binary re-executed with FAKE_RUNNER set: it speaks the real protocol (ready
+// line, bearer, NDJSON, done) without Bun, the harnesses or a model provider.
 
 import (
 	"context"

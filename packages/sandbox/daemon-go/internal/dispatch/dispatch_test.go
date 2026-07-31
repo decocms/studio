@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// TestSseWriterGuardsWriteAfterClose is the named test for the dispatch
-// closed-controller storm invariant (§4.2 item 13): once the consumer is
-// gone, further writes must be swallowed — never a panic, never a bogus
-// harness_crashed.
+// Once the consumer is gone, further writes must be swallowed — never a panic,
+// never a bogus harness_crashed.
 func TestSseWriterGuardsWriteAfterClose(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sse := newSseWriter(rec)

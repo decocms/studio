@@ -136,11 +136,10 @@ func filterInvalidDecofileBlocks(repoDir string, paths []string, mode OnInvalidB
 	return out, nil
 }
 
-// expandUntrackedDirs replaces directory entries with the files under them.
-// `git status --porcelain` collapses an untracked directory into a single
-// `?? .deco/` entry, which would hide a block file from the validator below
-// while `git add -- .deco/` still commits it. git does the expansion so
-// .gitignore is honored — walking it ourselves would stage ignored files.
+// expandUntrackedDirs replaces directory entries with the files under them:
+// `git status --porcelain` collapses an untracked dir into one `?? .deco/` entry,
+// hiding a block file from the validator while `git add` still commits it. git
+// does the expansion so .gitignore is honored.
 func expandUntrackedDirs(repoDir string, paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -177,10 +176,8 @@ func pushEnv(repoDir string) map[string]string {
 }
 
 func pushBranch(repoDir, branch string, reconcileRemote bool) error {
-	// --no-verify: skip native pre-push hooks (parity with the --no-verify
-	// commit above). A repo's pre-push script can fail or hang the push, and the
-	// shutdown sync — which shares this path — has no room to wait it out before
-	// the pod's grace period elapses and SIGKILL drops the unsynced work.
+	// --no-verify: a repo's pre-push script can hang the push, and the shutdown
+	// sync shares this path with no room to wait it out before SIGKILL.
 	args := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "-u", "origin", branch)
 	_, err := Run(args, RunOpts{Cwd: repoDir, Env: pushEnv(repoDir)})
 	if err == nil {
@@ -213,11 +210,8 @@ func Publish(deps PublishDeps, message string) error {
 	if branch == "" || branch == "HEAD" {
 		return &GitError{Msg: "Cannot publish from a detached HEAD", Status: -1}
 	}
-	// The pre-push hook (InstallProtectedBranchHook) also guards this, but the
-	// push below runs with --no-verify and skips it — so the block MUST live in
-	// code too. Refuse before committing so we never leave a stray commit on a
-	// protected branch either. Changes reach the default branch via PR, never a
-	// direct push.
+	// The pre-push hook guards this too, but the push below runs --no-verify and
+	// skips it. Refuse before committing, so no stray commit is left either.
 	for _, protected := range ProtectedBranches(repoDir) {
 		if branch == protected {
 			return &PublishBlockedError{Branch: branch}

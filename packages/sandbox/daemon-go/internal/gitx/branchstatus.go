@@ -16,10 +16,9 @@ type branchBroadcaster interface {
 	Emit(name string, payload any)
 }
 
-// BranchStatusMonitor surfaces BranchMeta (branch, dirty, divergence) with a
-// content-hash dirty-baseline. Change detection is an fsnotify watch over the
-// repo (see watch.go) plus a 3s poll as the safety net for atomic editor saves
-// and watch gaps; the fs routes also call Refresh directly on their own writes.
+// BranchStatusMonitor surfaces BranchMeta with a content-hash dirty-baseline.
+// Change detection: fsnotify (watch.go) + a 3s poll for atomic saves and watch
+// gaps; the fs routes also Refresh on their own writes.
 type BranchStatusMonitor struct {
 	mu          sync.Mutex
 	repoDir     string

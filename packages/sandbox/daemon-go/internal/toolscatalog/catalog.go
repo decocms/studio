@@ -63,12 +63,10 @@ type Opts struct {
 
 var unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
 
-// CatalogFiles renders one JSON Schema file per tool: `<TOOL>.json` holding
-// `{ name, description?, inputSchema, outputSchema? }`. Pure — the caller
-// writes them. Filenames are sanitized to filesystem-safe chars while the
-// original tool name is preserved inside the file. Distinct tools whose names
-// sanitize to the same string (e.g. `a/b` and `a_b`) get a `-2`, `-3`… suffix
-// so no tool is silently dropped; stable for a given input order.
+// CatalogFiles renders one `<TOOL>.json` per tool holding
+// `{ name, description?, inputSchema, outputSchema? }`. Pure — the caller writes
+// them. Filenames are sanitized; names that collide after sanitizing get a
+// `-2`, `-3`… suffix so no tool is silently dropped.
 func CatalogFiles(tools []Tool) ([]File, error) {
 	used := map[string]bool{}
 	out := make([]File, 0, len(tools))
@@ -100,11 +98,9 @@ func CatalogFiles(tools []Tool) ([]File, error) {
 	return out, nil
 }
 
-// WriteCatalog writes the catalog under `<repoDir>/.deco/tools/`, clamped to
-// AppRoot, and prunes stale `*.json` left by a previous sync (renamed/removed
-// tools). Registers the dir in `.git/info/exclude` so the daemon's shutdown
-// `git add -A` never commits the catalog onto the user's branch. Returns the
-// tool names written. Errors only on a real filesystem failure.
+// WriteCatalog writes the catalog under `<repoDir>/.deco/tools/` (clamped to
+// AppRoot), prunes stale `*.json` from a previous sync, and excludes the dir so
+// the shutdown `git add -A` never commits it. Returns the tool names written.
 func WriteCatalog(tools []Tool, opts Opts) (count int, names []string, err error) {
 	files, err := CatalogFiles(tools)
 	if err != nil {
@@ -152,11 +148,8 @@ func WriteCatalog(tools []Tool, opts Opts) (count int, names []string, err error
 }
 
 // WriteEndpointFile writes the run's MCP endpoint to
-// `<repoDir>/.deco/tools/.endpoint.json` so in-workspace scripts and the
-// typegen CLI can call tools without flags or env. 0600 — it holds a bearer
-// credential (the same one the run's harness already wields on the user's
-// behalf; the daemon and the agent share a uid, so this guards against
-// accidental exposure, not the agent itself).
+// `<repoDir>/.deco/tools/.endpoint.json` so in-workspace scripts and the typegen
+// CLI can call tools without flags or env. 0600 — it holds a bearer credential.
 func WriteEndpointFile(ep Endpoint, opts Opts) (bool, error) {
 	target, ok := paths.SafePath(opts.AppRoot, opts.RepoDir, CatalogDir+"/"+EndpointFilename)
 	if !ok {

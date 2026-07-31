@@ -1,31 +1,14 @@
 package orgfs
 
-// Org-fs links — the cluster-pod half of org-fs.
+// Org-fs links: a privileged sidecar mounts the org volumes at
+// `<appRoot>/org/<volume>`; this daemon only links them so relative `org/...`
+// paths resolve — `<repoDir>/org → ../org`, plus `org/output` and `org/upload`
+// repointed per run at the running thread's subtree. Every step is gated on the
+// sidecar's status file, not on directory existence: a mount-point dir exists
+// even when the mount failed, and linking into that strands the user's files on
+// ephemeral disk. Fails open — org-fs is additive and must never break a call.
 //
-// A hosted sandbox's main container cannot mount (locked-down
-// securityContext); a privileged sidecar FUSE-mounts the org volumes at
-// `<appRoot>/org/<volume>` and Bidirectional propagation surfaces them here.
-// This daemon's job is therefore not mounting but *linking*, so every harness —
-// including CLI ones that only read real files — resolves the prompts' relative
-// `org/...` paths:
-//
-//   - `<repoDir>/org` → `../org`, so a harness shell with cwd `<appRoot>/repo`
-//     sees the volumes (repo-link).
-//   - `<appRoot>/org/output` → `.outputs/<threadId>` and `org/upload` →
-//     `.uploads/<threadId>`, repointed per run, so an agent writing the bare
-//     link path lands in the running thread's subtree (thread-links).
-//
-// Every step is gated on the volumes being ACTUALLY mounted, read from the
-// sidecar's status file: a mount-point dir exists locally even when the mount
-// failed, and linking into that would silently strand the user's files on the
-// pod's ephemeral disk. Never returns an error — org-fs is additive, and a
-// failure must never break a tool call.
-//
-// The rclone/WebDAV mounting side (`org-fs/mount-manager.ts`, `webdav.ts`,
-// `mounter.ts`, `invalidator.ts`, `detach-mount.ts`) is deliberately NOT ported:
-// it runs only where the daemon mounts for itself, which is the desktop
-// (`ORGFS_CONFIG` + `ORGFS_RCLONE_PATH`, set by `link-daemon`), and the desktop
-// ships the TS bundle. Boot warns if that env reaches this binary.
+// Mounting itself (rclone/WebDAV) is desktop-only and stays in the TS bundle.
 
 import (
 	"encoding/json"
@@ -39,11 +22,8 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
 )
 
-// First-touch grace: a freshly provisioned sandbox can take its first tool call
-// while the sidecar is still attaching (~2-5s after the config relay), so the
-// agent's very first `ls org/` races the mount. Waited once, deadline-bounded,
-// fail-open — after this window every call takes the cheap path, so a broken
-// sidecar can never cause a recurring stall.
+// First-touch grace: the first tool call can race the sidecar still attaching.
+// Waited once, fail-open, so a broken sidecar never causes a recurring stall.
 const (
 	firstMountWait = 10 * time.Second
 	firstMountPoll = 250 * time.Millisecond
@@ -71,18 +51,15 @@ type Links struct {
 	// StatusPath is ORGFS_SIDECAR_STATUS_PATH — what the sidecar reports mounted.
 	StatusPath string
 	// ConfigPath is ORGFS_SIDECAR_CONFIG_PATH. Its presence alone means org-fs is
-	// expected on this pod, which is what makes the first-touch wait fire before
-	// the sidecar has written any status.
+	// expected, which is what makes the first-touch wait fire before any status.
 	ConfigPath string
 
 	firstWait sync.Once
 	firstOk   bool
 
-	// One mutex serializes the whole repoint. The links are shared mutable state:
-	// without it, two concurrent runs could interleave and leave the memo naming
-	// thread A while the symlink points at thread B — silently misrouting a
-	// thread's files. ponytail: coarse by design; a stuck FUSE lstat blocks only
-	// org-fs callers (never the health probe, which is the TS daemon's hazard).
+	// Serializes the whole repoint: without it two concurrent runs can leave the
+	// memo naming thread A while the symlink points at B. ponytail: coarse by
+	// design — a stuck FUSE lstat blocks only org-fs callers.
 	mu               sync.Mutex
 	lastOutputThread string
 }
@@ -177,18 +154,16 @@ func (l *Links) RepointForRun(threadId string) bool {
 		}
 		return false
 	}
-	// Uploads is best-effort: sandboxes provisioned before the uploads volume
-	// existed have no `.uploads` mount, and inbound attachments flow through
-	// Studio regardless — never fail a run over it.
+	// Best-effort: older sandboxes have no `.uploads` mount, and attachments flow
+	// through Studio regardless.
 	if mounted(".uploads") {
 		l.repointThreadLink(threadId, ".uploads", "upload")
 	}
 	if !mounted(".outputs") {
 		return false
 	}
-	// Cache only a CONFIRMED repoint: repointThreadLink fails soft, and caching a
-	// failure would pin the memo at this thread while the symlink still points at
-	// the previous one, with no retry.
+	// Cache only a confirmed repoint — caching a soft failure would pin the memo
+	// here while the symlink still points at the previous thread.
 	if !l.repointThreadLink(threadId, ".outputs", "output") {
 		return false
 	}
@@ -196,10 +171,9 @@ func (l *Links) RepointForRun(threadId string) bool {
 	return true
 }
 
-// ensureRepoLinkLocked drops the relative `<repoDir>/org → ../org` symlink and
-// registers it in `.git/info/exclude` so the shutdown `git add -A` never commits
-// it onto a user branch. Created at dispatch time, never at boot — a link in
-// place first would make `git clone` refuse the non-empty dir.
+// ensureRepoLinkLocked drops `<repoDir>/org → ../org` and excludes it so the
+// shutdown `git add -A` never commits it. At dispatch time, not boot — a link in
+// place first makes `git clone` refuse the non-empty dir.
 func (l *Links) ensureRepoLinkLocked() {
 	if l.RepoDir == "" {
 		return
@@ -228,8 +202,7 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 	}
 	orgRoot := filepath.Join(l.AppRoot, "org")
 	volumeMount := filepath.Join(orgRoot, mountDir)
-	// Defense in depth (the caller already gates on the live mount): without the
-	// mount, MkdirAll would create local dirs that later shadow it.
+	// Without the mount, MkdirAll would create local dirs that later shadow it.
 	if st, err := os.Lstat(volumeMount); err != nil || !st.IsDir() {
 		return false
 	}

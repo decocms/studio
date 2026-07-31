@@ -1,23 +1,12 @@
 /**
- * Daemon conformance suite — GOLDEN CACHE (health-gated publish).
+ * Daemon conformance suite — golden cache publish gate.
  *
- * The golden node_modules cache is the boot's biggest lever and its worst
- * failure mode: a golden published from a boot that never came up healthy gets
- * reused by every later boot of that lockfile, so one bad install poisons the
- * repo until the TTL reaps it. The daemon therefore defers the publish to the
- * dev server's first healthy probe.
- *
- * That gate is what this asserts, black-box: run a boot that installs fine but
- * whose dev server never starts (the fixture repo has no `dev`/`start` script),
- * and require that no publish was even ATTEMPTED — no `[golden]` line in the
- * setup stream. Asserting only "the store is empty" would be vacuous: publish
- * uses `cp --reflink=always`, which fails on any non-CoW filesystem (a dev mac,
- * ext4 CI), so an ungated publish would leave the store empty too and the test
- * would pass while the invariant was broken. The store check is kept as the
- * stronger assertion where reflink does work.
- *
- * The positive direction — a published golden reflinking back into a later boot
- * — needs a CoW filesystem and lives in the implementation's own tests.
+ * A golden published from a boot that never came up healthy is reused by every
+ * later boot of that lockfile, so the publish is deferred to the dev server's
+ * first healthy probe. Asserted on the setup stream, not just an empty store:
+ * publish reflinks, which fails on non-CoW filesystems anyway, so the store
+ * check alone would pass while the gate was broken. The positive direction needs
+ * a CoW filesystem and lives in the implementation's own tests.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -91,10 +80,8 @@ describe("daemon e2e: golden cache", () => {
       expect(res.status).toBe(200);
       await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
 
-      // Install ran and succeeded; start could not (no dev/start script), so the
-      // probe never reported healthy. The publish must not have been ATTEMPTED —
-      // asserting only the empty store would pass on a filesystem where the
-      // reflink fails anyway, i.e. while the gate was broken.
+      // Install succeeded; start could not (no dev/start script), so the probe
+      // never reported healthy and the publish must not have been attempted.
       expect(d.stdout.value).not.toInclude("[golden]");
       expect(publishedGoldens(cacheRoot!)).toEqual([]);
     },
@@ -112,8 +99,8 @@ describe("daemon e2e: golden cache", () => {
       expect(res.status).toBe(200);
       await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
 
-      // Golden ships dormant: without its own opt-in, the install path must not
-      // create the store at all, even though DEPS_CACHE_ROOT is set.
+      // Golden ships dormant: without its own opt-in the store is never created,
+      // even though DEPS_CACHE_ROOT is set.
       expect(existsSync(join(cacheRoot!, "golden"))).toBe(false);
     },
     SETUP_TIMEOUT_MS,

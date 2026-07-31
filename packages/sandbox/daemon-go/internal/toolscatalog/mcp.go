@@ -1,15 +1,10 @@
 package toolscatalog
 
-// Minimal MCP client over the Streamable HTTP transport — just enough to
-// `initialize` and page through `tools/list`. The daemon never calls tools
-// itself (the in-workspace typegen CLI does, reading .endpoint.json), so a
-// full MCP SDK would be dead weight here.
-//
-// Transport shape: every request is a JSON-RPC POST. The server answers either
-// `application/json` or a one-shot `text/event-stream` carrying the response as
-// a single SSE `data:` frame — both are accepted. A session id may come back in
-// the `Mcp-Session-Id` response header; when it does, it is required on every
-// subsequent request.
+// Minimal MCP client over Streamable HTTP — just enough to `initialize` and page
+// through `tools/list`; the daemon never calls tools itself. Every request is a
+// JSON-RPC POST answered as `application/json` or a one-shot `text/event-stream`
+// (both accepted); an `Mcp-Session-Id` response header, when present, is
+// required on every subsequent request.
 
 import (
 	"bufio"

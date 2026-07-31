@@ -6,11 +6,9 @@ import (
 	"strings"
 )
 
-// EnsureExclude registers `line` in `<repoDir>/.git/info/exclude` so the
-// daemon's shutdown `git add -A` never commits daemon-managed paths onto user
-// branches. info/exclude is local-only (unlike .gitignore), so it never leaks
-// into the repo. No-op without a `.git` dir. Best-effort: an unwritable .git
-// never blocks the caller.
+// EnsureExclude registers `line` in `<repoDir>/.git/info/exclude` — local-only,
+// unlike .gitignore — so the shutdown `git add -A` never commits daemon-managed
+// paths. Best-effort; no-op without a `.git` dir.
 func EnsureExclude(repoDir, line string) {
 	gitDir := filepath.Join(repoDir, ".git")
 	st, err := os.Lstat(gitDir)

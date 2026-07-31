@@ -7,10 +7,9 @@ import (
 	"time"
 )
 
-// DefaultSyncMinInterval bounds how often a dispatched run may trigger a
-// background catalog re-sync per endpoint. Every run carries an MCP endpoint, so
-// without a floor a busy sandbox would re-list the whole Virtual MCP on each
-// dispatch — pure added latency and load for a catalog that rarely changes.
+// DefaultSyncMinInterval floors how often a dispatched run may trigger a
+// background re-sync per endpoint — otherwise a busy sandbox re-lists the whole
+// Virtual MCP on every dispatch.
 const DefaultSyncMinInterval = 60 * time.Second
 
 // Coalescer keeps `.deco/tools/` fresh from dispatch traffic without letting

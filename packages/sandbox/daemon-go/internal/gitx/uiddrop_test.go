@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// The sandbox image runs `USER sandbox` (uid 1000) with no k8s runAsUser
-// override, so the daemon is already uid 1000 and there is nothing to drop.
-// Dropping unconditionally would EPERM every git route — the guard is what
-// keeps this a no-op rather than a landmine.
+// The image already runs as uid 1000, so there is nothing to drop; dropping
+// unconditionally would EPERM every git route.
 func TestUidDropOnlyWhenRoot(t *testing.T) {
 	cmd := exec.Command("git", "status")
 	applyUidDrop(cmd)

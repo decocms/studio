@@ -94,10 +94,8 @@ jobs:
         # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
         run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
 
-  # The Go daemon (packages/sandbox/daemon-go) drives the SAME suite through
-  # DAEMON_E2E_CMD. Both jobs exist because "the conformance suite passes on both
-  # daemons" is the entire basis for the rewrite's parity claims — asserted in a
-  # doc it rots on the first divergence; asserted here it cannot.
+  # The Go daemon drives the SAME suite through DAEMON_E2E_CMD — that is what
+  # keeps the two implementations at parity.
   daemon-e2e-go:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
@@ -119,9 +117,6 @@ jobs:
 
       - name: Go vet and unit tests
         working-directory: packages/sandbox/daemon-go
-        # -race: the daemon's concurrency (probe, orchestrator, watcher, dispatch)
-        # is exactly what the rewrite bought, so a data race is a regression in the
-        # thing being bought.
         run: |
           go vet ./...
           go test -race ./...
@@ -157,9 +152,7 @@ jobs:
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
 
-      # Both daemons ship in the image and the entrypoint picks by env, so the
-      # image is only smoke-tested if BOTH selections are. An unset variable must
-      # land on the TS daemon: deployed does not mean enabled.
+      # Both selections are smoked: an unset variable must land on the TS daemon.
       - name: Smoke test
         run: |
           smoke() {

@@ -1,24 +1,12 @@
 /**
- * Daemon conformance suite — ORG-FS LINKS (cluster/sidecar path).
+ * Daemon conformance suite — org-fs links.
  *
- * A hosted sandbox's main container cannot mount; a privileged sidecar mounts
- * the org volumes at `<appRoot>/org/<volume>` and reports what it mounted in a
- * status file on a shared control volume. The daemon's job is the *links* that
- * make those volumes reachable the way the prompts assume:
- *
- *   - `<repoDir>/org` → `../org`, so a harness shell (cwd `<appRoot>/repo`)
- *     resolves relative `org/...` paths, and the link is `.git/info/exclude`d so
- *     the shutdown `git add -A` never commits it to a user branch;
- *   - `org/output` → `.outputs/<threadId>` and `org/upload` →
- *     `.uploads/<threadId>`, repointed per run so an agent writing the bare link
- *     path lands in the *running* thread's subtree.
- *
- * The sidecar is faked here (its own runtime is not what this asserts): a status
- * file plus real mount-point dirs. What matters is the gate — the daemon must
- * link ONLY what the status file reports live. A mount-point dir exists locally
- * even when the mount failed, so linking on directory existence alone would
- * silently strand the user's shared files on the pod's ephemeral disk, which is
- * exactly the failure this suite exists to prevent.
+ * A privileged sidecar mounts the org volumes at `<appRoot>/org/<volume>` and
+ * reports them in a status file; the daemon links them (`<repoDir>/org → ../org`,
+ * `org/output` and `org/upload` repointed per run). The sidecar is faked here —
+ * a status file plus real mount-point dirs — because what matters is the gate:
+ * the daemon must link only what the status file reports live, since a
+ * mount-point dir exists even when the mount failed.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {

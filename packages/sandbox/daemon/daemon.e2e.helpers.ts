@@ -35,12 +35,9 @@ const PORT_WAIT_TIMEOUT_MS = 20_000;
  * `raw` unset/empty: run the bundled TS daemon under Bun. A reimplementation
  * sets `DAEMON_E2E_CMD` to its own argv — either a JSON array
  * (`["./target/release/daemon"]`, required when args contain spaces) or a
- * plain whitespace-separated string (`"bun /abs/daemon.js"`).
- *
- * `raw` is a required parameter rather than defaulting to the env var: a JS
- * default fires on an explicit `undefined` too, so with a default the
- * "no override" case would be untestable under a DAEMON_E2E_CMD run — the
- * conformance suite would fail on its own harness self-check.
+ * plain whitespace-separated string (`"bun /abs/daemon.js"`). Passed in rather
+ * than defaulted so the "no override" case stays testable under a
+ * DAEMON_E2E_CMD run.
  */
 export function resolveDaemonCmd(raw: string | undefined): string[] {
   if (!raw || raw.trim().length === 0) return ["bun", DAEMON_BUNDLE];
@@ -66,11 +63,7 @@ export interface Daemon {
   appDir: string;
   /** Captured stderr, for surfacing startup crashes in assertions. */
   stderr: { value: string };
-  /**
-   * Captured stdout — the daemon's log/setup stream. Lets a test assert that
-   * something was never even ATTEMPTED, which is stronger than asserting its
-   * side effect is absent (an attempt that merely failed leaves the same state).
-   */
+  /** Captured stdout — the daemon's log/setup stream. */
   stdout: { value: string };
 }
 

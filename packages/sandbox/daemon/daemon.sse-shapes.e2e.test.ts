@@ -204,9 +204,8 @@ describe("daemon e2e: SSE wire shapes — file-changed", () => {
     expect(event).toEqual({ path: "sse-shape-probe.txt" });
   });
 
-  // The fs routes report their own writes, so an fs-route-only implementation
-  // passes the test above while a CLI harness — which edits through `bash`, not
-  // the routes — leaves the UI's file tree stale. This is the watcher's test.
+  // The fs routes report their own writes; only the watcher catches an edit made
+  // through `bash`, as the CLI harnesses do.
   it(
     "a file written outside the fs routes still emits file-changed",
     async () => {

@@ -7,10 +7,8 @@ import (
 	"testing"
 )
 
-// The behavior of these links against a real daemon lives in the black-box suite
-// (`daemon.orgfs.e2e.test.ts`, which runs on both daemons). What is here is the
-// one invariant that suite cannot see: the memo must never cache a repoint that
-// did not happen.
+// The end-to-end behavior lives in daemon.orgfs.e2e.test.ts. Here: the one
+// invariant that suite cannot see — the memo must never cache a failed repoint.
 func TestRepointDoesNotCacheAFailedLink(t *testing.T) {
 	appRoot := t.TempDir()
 	statusPath := filepath.Join(t.TempDir(), "status.json")

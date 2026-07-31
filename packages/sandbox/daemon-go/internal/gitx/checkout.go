@@ -118,12 +118,10 @@ done
 exit 0
 `
 
-// ProtectedBranches lists branches a sandbox must never push to directly. Not
-// every repo names its default branch main/master (trunk, develop, etc.) —
-// protect the repo's actual default too, or a sandbox push would sail straight
-// through on those repos. Single source of truth for both the pre-push hook and
-// the in-code guard in Publish (the hook alone is not enough: the publish path
-// pushes with --no-verify, which skips pre-push hooks entirely).
+// ProtectedBranches lists branches a sandbox must never push to directly,
+// including the repo's actual default (not every repo uses main/master). Shared
+// by the pre-push hook and Publish's in-code guard — the hook alone is not
+// enough, since publish pushes with --no-verify.
 func ProtectedBranches(repoDir string) []string {
 	out := []string{"main", "master"}
 	if def := ResolveRemoteDefaultBranch(repoDir); def != "" && def != "main" && def != "master" {

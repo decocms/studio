@@ -1,16 +1,8 @@
 #!/bin/sh
-# Sandbox daemon entrypoint — picks the implementation at RUNTIME.
-#
-# Two daemons ship in this image while the Go rewrite rolls out. Selection is an
-# env var, deliberately not the image's CMD: flipping a CMD means a rebuild and a
-# re-push, which is not a rollback. With this, disabling the Go daemon is one
-# config change on the pod template and the NEXT sandbox lands on the TS daemon.
-#
-# Default is the TS daemon: deployed must never mean enabled.
-#
-# exec (not a child process) so the daemon is PID 1 and receives SIGTERM
-# directly — that signal is what triggers the shutdown git publish, and the
-# user's uncommitted work depends on it arriving before SIGKILL.
+# Sandbox daemon entrypoint. Both daemons ship in the image; selection is env,
+# not CMD, so a rollback is a config change rather than a rebuild. Defaults to
+# TS. exec so the daemon is PID 1 and gets SIGTERM directly — that is what
+# triggers the shutdown git publish.
 set -e
 
 case "${SANDBOX_DAEMON_IMPL:-ts}" in
