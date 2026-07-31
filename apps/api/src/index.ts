@@ -94,7 +94,7 @@ DBOS.setConfig(
     // SDK default is 10. Cap lower so N replicas don't exhaust RDS slots —
     // bump via `DBOS_POOL_SIZE` if the workflow workload demands more in-flight
     // steps per pod.
-    poolSize: Number(process.env.DBOS_POOL_SIZE ?? 5),
+    poolSize: settings.dbosPoolSize,
     executorID: settings.podName,
     // Pod-role queue filter (see RUN_QUEUES above). undefined => "all".
     listenQueues,
