@@ -16,10 +16,7 @@ import { fileURLToPath } from "node:url";
 
 // Exercise the real shell scripts through their process boundary. The fake
 // platform CLIs keep the suite deterministic and guarantee no Keychain access.
-//
-// macOS-only: the scripts under test drive `security`, `codesign` and BSD
-// `stat`, none of which exist (or share a flag vocabulary) on Linux, and the
-// dev-signing identity they manage has no Linux counterpart at all.
+// macOS-only: the scripts drive `security`, `codesign` and BSD `stat`.
 const describeMacOnly = describe.skipIf(process.platform !== "darwin");
 const IDENTITY_HASH = "0123456789ABCDEF0123456789ABCDEF01234567";
 const IDENTITY_NAME = "decocms-dev";
