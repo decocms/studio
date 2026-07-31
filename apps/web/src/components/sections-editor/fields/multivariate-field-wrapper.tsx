@@ -193,7 +193,9 @@ export function MultivariateFieldWrapper({
 
       <div className="space-y-4 px-2 pt-3">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Rule</Label>
+          <Label className="text-xs text-muted-foreground">
+            {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
+          </Label>
           <MatcherPicker
             currentRt={currentRt}
             currentLabel={formatMatcher(currentRule)}
