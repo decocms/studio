@@ -52,21 +52,46 @@ on the node, instead of here.
 {{- if and (eq $impl "go") (not .Values.image.goRepository) }}
 {{- fail "sandbox-env: daemonImpl=go requires image.goRepository (the studio-sandbox-go image). Set it, or leave daemonImpl=ts." -}}
 {{- end }}
+{{- if and .Values.goTemplate.enabled (not .Values.image.goRepository) }}
+{{- fail "sandbox-env: goTemplate.enabled requires image.goRepository (the studio-sandbox-go image)." -}}
+{{- end }}
 {{- end }}
 
 {{/*
-Sandbox container image, selected by daemonImpl. The daemon implementation is
-the image — `studio-sandbox` runs the TS daemon, `studio-sandbox-go` the Go one
-— so there is no runtime switch to disagree with. One tag drives both: they are
-released together from the same source revision and must never skew.
+Container image for a given daemon impl. The daemon implementation is the image
+— `studio-sandbox` runs the TS daemon, `studio-sandbox-go` the Go one — so there
+is no runtime switch to disagree with. One tag drives both: they are released
+together from the same source revision and must never skew.
+
+Takes a dict: `root` (the chart context) and `impl` ("ts" | "go").
+*/}}
+{{- define "sandbox-env.imageFor" -}}
+{{- $root := .root -}}
+{{- $repo := $root.Values.image.repository -}}
+{{- if eq .impl "go" -}}
+{{- $repo = $root.Values.image.goRepository -}}
+{{- end -}}
+{{- printf "%s:%s" $repo ($root.Values.image.tag | default $root.Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+The env's default SandboxTemplate name and the impl it runs — what
+STUDIO_SANDBOX_TEMPLATE_NAME must point at.
 */}}
 {{- define "sandbox-env.sandboxImage" -}}
 {{- include "sandbox-env.validateDaemonImpl" . -}}
-{{- $repo := .Values.image.repository -}}
-{{- if eq (.Values.daemonImpl | default "ts") "go" -}}
-{{- $repo = .Values.image.goRepository -}}
-{{- end -}}
-{{- printf "%s:%s" $repo (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- include "sandbox-env.imageFor" (dict "root" . "impl" (.Values.daemonImpl | default "ts")) -}}
+{{- end }}
+
+{{/*
+Name of the opt-in second SandboxTemplate that always runs the Go daemon.
+Studio points STUDIO_SANDBOX_GO_TEMPLATE_NAME at this so a *single* sandbox can
+be routed to Go while every other sandbox in the env keeps the default impl —
+`spec.sandboxTemplateRef` is the only per-claim lever, because the operator
+rejects per-claim `spec.env` on any claim that may bind a warm pod.
+*/}}
+{{- define "sandbox-env.goSandboxName" -}}
+{{- printf "%s-go" (include "sandbox-env.sandboxName" .) -}}
 {{- end }}
 
 {{/*
