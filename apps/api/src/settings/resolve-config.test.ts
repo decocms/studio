@@ -217,6 +217,26 @@ describe("resolveConfig deployment admin emails", () => {
   });
 });
 
+describe("resolveConfig pod name", () => {
+  it("generates a random id when POD_NAME is unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.podName).toBeTruthy();
+  });
+
+  it("falls back to a random id when POD_NAME is set to an empty string", () => {
+    const result = resolveConfig(flags, { POD_NAME: "" });
+
+    expect(result.settings.podName).toBeTruthy();
+  });
+
+  it("uses POD_NAME when set", () => {
+    const result = resolveConfig(flags, { POD_NAME: "studio-worker-abc123" });
+
+    expect(result.settings.podName).toBe("studio-worker-abc123");
+  });
+});
+
 describe("resolveConfig Studio environment aliases", () => {
   it("prefers Studio JWT and dispatch variables", () => {
     const result = resolveConfig(flags, {
