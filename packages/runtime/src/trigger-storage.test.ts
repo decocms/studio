@@ -134,7 +134,7 @@ describe("JsonFileStorage", () => {
       );
 
       try {
-        const removed = await storage.prune(0); // Max age = 0, remove all old
+        const removed = await storage.prune(60_000); // 1 minute threshold
         expect(removed).toBe(1); // Only the entry without timestamp
         expect(await storage.get("conn-old")).toBeNull();
         expect(await storage.get("conn-new")).not.toBeNull();
