@@ -38,11 +38,21 @@ export interface SmokeTarget {
   /** True for the one entry of `bundleDir` that IS the shipped artifact. */
   isBundleArtifact: (name: string) => boolean;
   /**
-   * The launched binary, relative to the launch root — which is the bundle
+   * The app binary, relative to the launch root — which is the bundle
    * artifact itself on macOS (a directory) and the AppImage extraction
-   * directory on Linux (the artifact is a single file).
+   * directory on Linux (the artifact is a single file). This is what the
+   * staging assertions look at; it is NOT necessarily what gets spawned.
    */
   launchedBinaryRelPath: string;
+  /**
+   * What the smoke actually spawns. Identical to [`launchedBinaryRelPath`] on
+   * macOS, but on Linux it is the AppImage's `AppRun`: WebKitGTK resolves its
+   * helper processes (`WebKitNetworkProcess`) through `WEBKIT_EXEC_PATH` and
+   * the bundled library path, both of which only `AppRun` exports. Executing
+   * `usr/bin/deco` directly boots the Rust side fine and then dies with
+   * `Failed to spawn child process ".///lib/.../WebKitNetworkProcess"`.
+   */
+  launchEntryRelPath: string;
   /**
    * `externalBin` sidecars that must sit beside the launched binary. Empty on
    * macOS: the smoke has never asserted staging there, and adding it would
@@ -71,6 +81,7 @@ export function resolveSmokeTarget(
       bundleDir: join(desktopDir, "target", "release", "bundle", "macos"),
       isBundleArtifact: (name) => name === `${APP_BINARY_NAME}.app`,
       launchedBinaryRelPath: join("Contents", "MacOS", APP_BINARY_NAME),
+      launchEntryRelPath: join("Contents", "MacOS", APP_BINARY_NAME),
       requiredSidecars: [],
       sweepPatterns: [...SWEEP_PATTERNS],
     };
@@ -87,6 +98,7 @@ export function resolveSmokeTarget(
         "bin",
         APP_BINARY_NAME,
       ),
+      launchEntryRelPath: join(APPIMAGE_EXTRACT_DIR, "AppRun"),
       requiredSidecars: ["rclone"],
       sweepPatterns: [
         ...SWEEP_PATTERNS,
