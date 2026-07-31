@@ -8,13 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
@@ -31,6 +28,10 @@ type Deps struct {
 	// (HARNESS_RUNNER_CMD env). Empty → every dispatch fails with
 	// unknown_harness over SSE.
 	HarnessRunnerCmd []string
+	// Runner supervises the harness-runner subprocess. Optional: a zero Deps
+	// falls back to a process-wide runner, so a caller that only exercises the
+	// gates does not have to build one.
+	Runner *Runner
 	// BeforeRun prepares the workspace for a dispatched run before the harness
 	// streams: the org-fs `output`/`upload` links must point at this run's thread
 	// from its first write, and the run's MCP endpoint is what keeps `.deco/tools/`
@@ -308,9 +309,9 @@ func writeSseHeaders(w http.ResponseWriter) {
 	w.WriteHeader(200)
 }
 
-// streamHarnessRun spawns the harness-runner subprocess (HARNESS_RUNNER_CMD
-// seam), forwards the frame on stdin, and pipes NDJSON events back as SSE
-// data frames. Always emits done; clears the run registry in defer.
+// streamHarnessRun runs the harness through the harness-runner subprocess (see
+// runner.go) and pipes its NDJSON events back as SSE data frames. Always emits
+// done; clears the run registry in defer.
 func (reg *Registry) streamHarnessRun(
 	ctx context.Context,
 	sse *sseWriter,
@@ -337,49 +338,28 @@ func (reg *Registry) streamHarnessRun(
 		return
 	}
 
-	cmd := exec.Command(deps.HarnessRunnerCmd[0], deps.HarnessRunnerCmd[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stderr = os.Stdout
-	stdin, err := cmd.StdinPipe()
+	runner := deps.Runner
+	if runner == nil {
+		runner = defaultRunner
+	}
+	body, err := runner.Stream(ctx, deps.HarnessRunnerCmd, harnessId, input)
 	if err != nil {
-		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
-		return
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
-		return
-	}
-	if err := cmd.Start(); err != nil {
-		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
-		return
-	}
-
-	killed := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-			time.AfterFunc(3*time.Second, func() {
-				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		// Spawn, ready-line and /run failures all land here. They are the same
+		// thing to the client as an in-process harness throw: the run produced
+		// nothing and will not.
+		if ctx.Err() == nil {
+			slog.Error("harness runner unavailable", "harness", harnessId, "run_id", runId, "err", err)
+			sse.WriteEvent(map[string]any{
+				"type": "error", "code": "harness_crashed", "message": err.Error(),
 			})
-		case <-killed:
 		}
-	}()
-
-	frame, _ := json.Marshal(map[string]any{
-		"runId":     runId,
-		"harnessId": harnessId,
-		"input":     json.RawMessage(input),
-	})
-	go func() {
-		stdin.Write(append(frame, '\n'))
-		stdin.Close()
-	}()
+		return
+	}
+	defer body.Close()
 
 	sawDone := false
 	chunkCount := 0
-	scanner := bufio.NewScanner(stdout)
+	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -403,11 +383,15 @@ func (reg *Registry) streamHarnessRun(
 		}
 		sse.WriteEvent(event)
 	}
-	err = cmd.Wait()
-	close(killed)
-	if !sawDone && err != nil && ctx.Err() == nil {
-		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "err", err)
-		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
+	// A stream that ends without `done` means the runner (or the harness inside
+	// it) died mid-run. Cancellation is not that — the client asked for it.
+	if !sawDone && ctx.Err() == nil {
+		reason := "harness-runner stream ended before done"
+		if err := scanner.Err(); err != nil {
+			reason = err.Error()
+		}
+		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "err", reason)
+		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": reason})
 		return
 	}
 	slog.Info("dispatch done", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "aborted", ctx.Err() != nil)

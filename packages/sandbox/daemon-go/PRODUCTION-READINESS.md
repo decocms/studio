@@ -163,6 +163,11 @@ clone → install → dev server → preview through the proxy → HMR over the 
 
 ### 2.5 G5 — Dispatch (parallel track)
 
+**Resolved 2026-07-30: loopback HTTP.** Implemented in
+`internal/dispatch/runner.go` with the stdio spawner deleted; see the README's
+transport section for the wire table and the two carried invariants. The original
+framing is kept below for the record.
+
 Resolve the transport mismatch, then verify by hand:
 
 - **This daemon:** spawns `HARNESS_RUNNER_CMD` per run, request frame on stdin,
@@ -233,7 +238,7 @@ than Go-only assertions).
 | **G2** correctness + security | **Done** — every row has an e2e, including the per-repo cache isolation row that was deferred here from G2. |
 | **G3** boot economics | **L1 done** — reflink restore/publish, health-gated publish, TTL + per-repo cap GC, dormant behind `GOLDEN_CACHE_ENABLED`; unit + e2e on both daemons. L2 stays out of scope (§5). Boot p50/p95 comparison still needs a real pod. |
 | **G4** runtime fidelity | **Code done, pod pending** — uid/gid decided and pinned; org-fs links ported with a 5-test e2e on both daemons; probe-under-load asserted against Studio's real 500ms budget. The human-driven session in kind and stg remains. |
-| **G5** dispatch | **Blocked on one decision**, and the branch reading changes it: there is no `HARNESS_RUNNER_CMD` runner in this repo at all, while the extraction branch ships a tested runner whose protocol was written for a non-TS daemon. See the README's transport section. |
+| **G5** dispatch | **Transport decided and implemented** — loopback HTTP (owner decision): `internal/dispatch/runner.go` speaks the extraction branch's protocol, the stdio spawner is deleted, and `runner_test.go` covers the bridge with a fake runner. Two things remain, both outside this daemon: merge `wt/harness-runner-extraction` so `HARNESS_RUNNER_CMD` has a runner to point at, and the by-hand `claude-code` run. |
 | **G6** rollout | **Kill switch done** — `SANDBOX_DAEMON_IMPL` (`ts` default) selected by the image entrypoint, `daemonImpl` in the `sandbox-env` chart, both smoke-tested in CI. Canary, alerts and the drill remain. |
 
 ### What landed in G3 / G4 / G6 (this pass)
@@ -337,7 +342,7 @@ Nothing below can be closed by writing more code in this repo.
 
 | Left | Why it needs a human |
 | --- | --- |
-| **G5 transport pick** | Reversing an assumption this daemon was built on, and it means deleting one of two implementations across two branches. The reading argues for loopback HTTP — the extraction branch's runner is tested and its protocol was written for a non-TS daemon, while **no `HARNESS_RUNNER_CMD` runner exists in this repo at all**, so stdio cannot dispatch a real harness today either way. Owner's call. |
+| **Merging `wt/harness-runner-extraction`** | The transport is decided (loopback HTTP) and the Go side is done, but the runner it talks to lives on that branch — it splits `entry.ts` into `daemon-entry.ts` + `harness-runner/`, which is a merge, not a port. Until it lands, `HARNESS_RUNNER_CMD` has nothing to point at and dispatch on the Go daemon answers `harness_crashed`. The image and chart also need that env once it exists. |
 | **G4's real session** | kind, then a stg pod: clone → install → dev server → preview → HMR → agent edit → publish → SIGTERM → work on origin. Also the pod-hardware boot p50/p95 (G3) and the SIGTERM-inside-the-real-grace-period check, neither of which a laptop can measure. |
 | **G5 acceptance** | A real `claude-code` run. Needs model providers and MCP. |
 | **G6 canary + drill** | Flip `daemonImpl: go` on one org, flip it back, confirm the next sandbox lands on TS and no work was lost. Alerts split by implementation before traffic. |

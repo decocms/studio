@@ -74,20 +74,21 @@ type daemon struct {
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
 
-	broadcaster  *events.Broadcaster
-	sniffer      *proc.PortSniffer
-	store        *config.Store
-	installState *setup.InstallState
-	lifecycle    *lifecycle.Manager
-	phases       *proc.PhaseManager
-	tasks        *proc.TaskManager
-	branchStatus *gitx.BranchStatusMonitor
-	orchestrator *setup.Orchestrator
-	prober       *probe.Prober
-	proxyHandler *proxy.Handler
-	dispatchReg  *dispatch.Registry
-	dispatchDeps dispatch.Deps
-	orgFsLinks   *orgfs.Links
+	broadcaster   *events.Broadcaster
+	sniffer       *proc.PortSniffer
+	store         *config.Store
+	installState  *setup.InstallState
+	lifecycle     *lifecycle.Manager
+	phases        *proc.PhaseManager
+	tasks         *proc.TaskManager
+	branchStatus  *gitx.BranchStatusMonitor
+	orchestrator  *setup.Orchestrator
+	prober        *probe.Prober
+	proxyHandler  *proxy.Handler
+	dispatchReg   *dispatch.Registry
+	dispatchDeps  dispatch.Deps
+	harnessRunner *dispatch.Runner
+	orgFsLinks    *orgfs.Links
 
 	fileChangedMu    sync.Mutex
 	fileChangedTimer *time.Timer
@@ -414,6 +415,9 @@ func (d *daemon) shutdown() {
 
 	d.tasks.Shutdown()
 	d.branchStatus.Stop()
+	// Before the publish, and unconditionally: the runner holds harness CLIs that
+	// would otherwise keep writing into the tree the publish is about to commit.
+	d.harnessRunner.Shutdown()
 
 	cfg := d.store.Read()
 	if cfg != nil && cfg.Branch() != "" {
@@ -598,12 +602,14 @@ func main() {
 	)
 
 	d.dispatchReg = dispatch.NewRegistry()
+	d.harnessRunner = dispatch.NewRunner()
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
 		AllowedHosts:     offloadHosts,
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
+		Runner:           d.harnessRunner,
 		// Share-files-back: point `org/output` at this run's thread subtree before
 		// the harness can touch it. A failure degrades to no link, never blocks the
 		// run. Same call refreshes `.deco/tools/` from the run's MCP endpoint

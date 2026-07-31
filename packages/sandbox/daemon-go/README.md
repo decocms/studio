@@ -158,38 +158,42 @@ sandboxes drain on the binary they started with.
 `exec` matters — the daemon must be PID 1 so SIGTERM reaches it directly, since
 that signal is what triggers the shutdown git publish.
 
-## Open decision: harness-runner transport
+## Harness-runner transport — decided: loopback HTTP
 
 `/dispatch` runs the `claude-code` / `codex` harnesses, which are TypeScript and
-can only be embedded by a TS process. Both tracks agree the harness moves to a
-subprocess behind a seam — they disagree on the seam:
+can only be embedded by a TS process, so the harness lives in a runner
+subprocess. Two transports were on the table; **loopback HTTP won** (owner
+decision, 2026-07-30) and the stdio spawner is deleted.
 
-- **This daemon** (`internal/dispatch/dispatch.go`): spawns `HARNESS_RUNNER_CMD`
-  per run, writes the request frame to **stdin**, reads NDJSON events from
-  stdout.
-- **`wt/harness-runner-extraction`** (TS, branch also on origin): spawns the
-  daemon's own bundle with `HARNESS_RUNNER_MODE=1`, reads
-  `HARNESS_RUNNER_READY <port>` from stdout, then **POSTs `/run` over loopback
-  HTTP** with a per-spawn bearer token, answered `200 application/x-ndjson`.
-  Cancellation is aborting the request; the runner is long-lived and supervised.
+Why: `wt/harness-runner-extraction` already ships that runner — `serve.ts`,
+`supervisor.ts`, `client.ts`, a 249-line e2e — and its `protocol.ts` docblock
+says outright that it is "the piece a non-TS daemon reimplements". Stdio had no
+runner anywhere in the repo, so picking it meant *writing* an untested runner
+mode and discarding tested code. Warm runner across runs is a bonus; per-run
+process isolation was the thing given up.
 
-Both carry the same NDJSON event stream, so only the transport and the runner
-lifetime differ. **Pick one before wiring either into a deploy path** — stdio is
-simpler to supervise and needs no port or token; loopback HTTP keeps one warm
-runner across runs and already has an e2e
-(`daemon.harness-runner.e2e.test.ts`, on that branch).
+`internal/dispatch/runner.go` is this daemon's side of that protocol:
 
-**Reading the branch changes the balance.** `harness-runner/protocol.ts` there
-says in its own docblock that it "must stay free of harness imports — it is the
-piece a non-TS daemon reimplements", and the branch ships the runner side
-(`serve.ts`), the daemon side (`client.ts`, `supervisor.ts`) and a 249-line e2e.
-Nothing equivalent exists for stdio: **this repo has no `HARNESS_RUNNER_CMD`
-runner at all**, so the Go daemon's stdio path cannot dispatch a real harness
-today no matter what — picking stdio means *writing* a runner mode and discarding
-tested code. That is the argument for adopting loopback HTTP in Go (≈200 lines:
-spawn + ready-line parse + supervise + POST/stream + abort-to-cancel) and
-deleting the stdio spawner. Not done here — it reverses the assumption this
-daemon was built on, so it is the owner's call.
+| Step | Wire |
+| --- | --- |
+| spawn | argv from `HARNESS_RUNNER_CMD`, env `HARNESS_RUNNER_MODE=1` + a per-spawn `HARNESS_RUNNER_TOKEN` |
+| ready | runner prints `HARNESS_RUNNER_READY {"port":N}` on stdout (30s budget) |
+| run | `POST http://127.0.0.1:N/run` with that bearer, body `{harnessId, input}` → `200 application/x-ndjson`, one event per line, terminated by `{"type":"done"}` |
+| cancel | abort the request; the runner tears its CLI down with it |
+| death | one shared runner, spawned on demand, **never auto-respawned** — a crash costs each in-flight run one `harness_crashed`, and the next dispatch spawns fresh |
+
+Two invariants worth not "cleaning up": the daemon holds the runner's **stdin
+open and never writes** (the pipe closing is how the runner detects this daemon
+died, even under SIGKILL), and the HTTP client has **no overall timeout** — a run
+streams for minutes, so only the response *headers* are deadlined and
+cancellation is the request context's job.
+
+Covered by `internal/dispatch/runner_test.go`, where the fake runner is the test
+binary re-executed: frame integrity, runner reuse across runs, respawn after a
+mid-stream death, cancel-one-run-without-killing-the-runner, a runner that never
+reports ready, and a missing binary. It cannot prove a real harness streams —
+that is still G5's by-hand acceptance, and it needs the extraction branch merged
+so `HARNESS_RUNNER_CMD` has something to point at.
 
 ## Related
 
