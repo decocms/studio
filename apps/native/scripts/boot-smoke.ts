@@ -366,6 +366,21 @@ async function main(): Promise<void> {
         // production Keychain item; persistence itself is covered by the
         // isolated-Keychain fresh-process E2E suite.
         LOCAL_API_TOKEN_STORE: "memory",
+        // WebKitGTK's DMABUF renderer and accelerated compositing both want a
+        // real GPU; under Xvfb (no DRI device) initialization aborts, and glib
+        // turns a fatal error into SIGTRAP — the process dies before it can
+        // print anything the self-test would report. Software rendering is
+        // what a headless smoke wants anyway: it exercises the shell and IPC
+        // contract, not paint output. Overridable so a desktop Linux run can
+        // exercise the real renderer.
+        ...(process.platform === "linux"
+          ? {
+              WEBKIT_DISABLE_DMABUF_RENDERER:
+                process.env.WEBKIT_DISABLE_DMABUF_RENDERER ?? "1",
+              WEBKIT_DISABLE_COMPOSITING_MODE:
+                process.env.WEBKIT_DISABLE_COMPOSITING_MODE ?? "1",
+            }
+          : {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -379,35 +394,45 @@ async function main(): Promise<void> {
       stderr += c.toString();
     });
 
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        log(
-          `deadline (${SELFTEST_DEADLINE_MS}ms) exceeded — killing pid ${pid}`,
-        );
-        proc.kill("SIGKILL");
-      }, SELFTEST_DEADLINE_MS);
-      proc.once("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-      proc.once("exit", (code, signal) => {
-        clearTimeout(timer);
-        if (code === null) {
-          reject(
-            new Error(
-              `process was killed by signal ${signal} before self-test completed`,
-            ),
-          );
-          return;
-        }
-        resolve(code);
-      });
-    });
+    // `finally`, not a trailing call: a signal death or a deadline kill
+    // rejects, and a crash whose cause only ever reached stderr is otherwise
+    // reported as a bare signal name with nothing to diagnose it.
+    const dumpChildOutput = () => {
+      console.log("--- app stdout/stderr ---");
+      console.log(stdout);
+      console.error(stderr);
+      console.log("-------------------------");
+    };
 
-    console.log("--- app stdout/stderr ---");
-    console.log(stdout);
-    console.error(stderr);
-    console.log("-------------------------");
+    let exitCode: number;
+    try {
+      exitCode = await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          log(
+            `deadline (${SELFTEST_DEADLINE_MS}ms) exceeded — killing pid ${pid}`,
+          );
+          proc.kill("SIGKILL");
+        }, SELFTEST_DEADLINE_MS);
+        proc.once("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        proc.once("exit", (code, signal) => {
+          clearTimeout(timer);
+          if (code === null) {
+            reject(
+              new Error(
+                `process was killed by signal ${signal} before self-test completed`,
+              ),
+            );
+            return;
+          }
+          resolve(code);
+        });
+      });
+    } finally {
+      dumpChildOutput();
+    }
 
     if (exitCode !== 0) {
       fail(`app exited ${exitCode} (expected 0) — see stdout/stderr above`);
