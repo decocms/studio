@@ -43,7 +43,7 @@ jobs:
     # Skip the [release]: version-bump commit — it only changes the version
     # string and would otherwise re-run this heavy suite on every release.
     if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[release]:')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
     steps:

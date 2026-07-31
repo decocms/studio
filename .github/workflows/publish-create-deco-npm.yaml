@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Only run if CLI workflow completed successfully or if triggered by create-deco changes
     if: |
       github.event_name == 'workflow_dispatch' ||

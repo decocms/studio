@@ -22,7 +22,7 @@ env:
 jobs:
   build-push:
     name: Build & Push orgfs-sidecar image
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -61,6 +61,9 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha,format=short
 
+      # Multi-arch in a single job: `useblacksmith/build-push-action` does not
+      # support multi-platform builds yet (its documented path is a per-arch
+      # matrix on native runners), so this build keeps buildx + QEMU emulation.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

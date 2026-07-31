@@ -20,7 +20,7 @@ concurrency:
 jobs:
   sandbox-operator:
     name: sandbox-operator chart
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
@@ -58,7 +58,7 @@ jobs:
 
   sandbox-env:
     name: sandbox-env chart
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
@@ -125,7 +125,7 @@ jobs:
 
   studio:
     name: studio chart
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 

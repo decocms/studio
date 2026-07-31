@@ -37,7 +37,7 @@ jobs:
   # packages code, so web/plugins/scripts-only PRs skip the suite entirely.
   # Pushes to main always run.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -79,7 +79,7 @@ jobs:
   storage-integration:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:16

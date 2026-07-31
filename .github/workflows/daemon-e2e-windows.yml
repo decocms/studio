@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   daemon-e2e:
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 30
     steps:
       - name: Checkout repository

@@ -31,7 +31,7 @@ env:
 jobs:
   prepare:
     name: Prepare release metadata
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Releases are cut by the [release]: version-bump commit that release-tagging
     # pushes to main (the bot push uses the App token, which re-triggers
     # workflows). We run on EVERY push here — a non-bump push just reads an
@@ -114,7 +114,7 @@ jobs:
       needs.prepare.outputs.version-changed == 'true' ||
       needs.prepare.outputs.image-exists == 'false' ||
       needs.prepare.outputs.nginx-image-exists == 'false'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     steps:
@@ -174,7 +174,7 @@ jobs:
     name: Publish to NPM
     needs: [prepare, build-dist]
     if: needs.prepare.outputs.version-changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       id-token: write
@@ -221,10 +221,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -235,7 +235,8 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
       - name: Download package artifact into build context
         uses: actions/download-artifact@v4
         with:
@@ -255,7 +256,7 @@ jobs:
       # index that `buildx imagetools create` can't merge cleanly.
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v5
+        uses: useblacksmith/build-push-action@v2
         with:
           context: ./docker-context
           file: ./apps/api/Dockerfile
@@ -263,8 +264,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=studio-api-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=studio-api-${{ matrix.arch }}
       - name: Export digest
         run: |
           mkdir -p "${{ runner.temp }}/digests"
@@ -296,10 +295,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -310,7 +309,8 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
       - name: Download package artifact into build context
         uses: actions/download-artifact@v4
         with:
@@ -327,7 +327,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v5
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: ./apps/web/Dockerfile
@@ -335,8 +335,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=studio-web-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=studio-web-${{ matrix.arch }}
       - name: Export digest
         run: |
           mkdir -p "${{ runner.temp }}/nginx-digests"
@@ -360,7 +358,7 @@ jobs:
       always() &&
       needs.prepare.outputs.image-exists == 'false' &&
       needs.build-docker.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -378,7 +376,8 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
       - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
@@ -419,7 +418,7 @@ jobs:
       always() &&
       needs.prepare.outputs.nginx-image-exists == 'false' &&
       needs.build-nginx-docker.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -437,7 +436,8 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
       - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
@@ -485,7 +485,7 @@ jobs:
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped') &&
       (needs.merge-nginx-docker.result == 'success' || needs.merge-nginx-docker.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
@@ -578,7 +578,7 @@ jobs:
           needs.merge-nginx-docker.result == 'success'
         )
       )
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT already used to
     # dispatch the Studio image bump (non-personal; decobot is admin on
     # decocms/deco-apps-cd). Same bot, same mechanism as the legacy repo, no
@@ -633,7 +633,7 @@ jobs:
     name: Notify docs agent
     needs: [prepare, release]
     if: always() && needs.release.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       WEBHOOK_URL: ${{ vars.DOCS_AGENT_WEBHOOK_URL }}
       WEBHOOK_TOKEN: ${{ secrets.DOCS_AGENT_WEBHOOK_TOKEN }}

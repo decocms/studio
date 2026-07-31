@@ -84,7 +84,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
     # Updater signing secrets live here (deployment branch policy: main).
     # Environments cannot restrict by workflow FILE — any main-branch

@@ -63,7 +63,7 @@ jobs:
   # never-scheduled required check blocks the merge forever. A job skipped
   # via `if`, by contrast, reports as passed (same pattern as test.yml).
   changes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -116,7 +116,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -197,7 +197,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -278,7 +278,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -323,6 +323,14 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
+    # Deliberately GitHub-hosted while the workflow's other macOS jobs
+    # (rust-checks, contract-suite, daemon-e2e-vs-rust) run on Blacksmith:
+    # this is the only one that LAUNCHES the app. On a Blacksmith macOS
+    # runner the boot smoke's WebKit self-test made no progress at all —
+    # the app never wrote its report and was SIGKILLed at the 60s deadline
+    # (run 30643058418), while the same step passes in ~20s here. Move it
+    # once a launched-GUI-app smoke is verified on that pool; the headless
+    # macOS jobs above stay on Blacksmith.
     runs-on: macos-latest
     timeout-minutes: 45
     # (No job-level env: both signing families below are deliberately unwired
@@ -466,7 +474,7 @@ jobs:
   # ---------------------------------------------------------------------
   stub-seam-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout repository
