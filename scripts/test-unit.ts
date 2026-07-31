@@ -7,6 +7,7 @@ const repoRoot = join(import.meta.dir, "..");
 const testRoots = [
   "apps/api/src",
   "apps/api/migrations",
+  "apps/native/scripts",
   "apps/web/src",
   "packages",
   "plugins",
