@@ -48,6 +48,40 @@ describe("authEnvSchema", () => {
     });
   });
 
+  it("rejects Google OAuth configured without a client secret", () => {
+    expect(() =>
+      authEnvSchema.parse({ AUTH_GOOGLE_CLIENT_ID: "client-id" }),
+    ).toThrow(/AUTH_GOOGLE_CLIENT_SECRET/);
+  });
+
+  it("accepts Google OAuth when fully configured", () => {
+    const config = authEnvSchema.parse({
+      AUTH_GOOGLE_CLIENT_ID: "client-id",
+      AUTH_GOOGLE_CLIENT_SECRET: "secret",
+    });
+    expect(config.socialProviders?.google).toEqual({
+      clientId: "client-id",
+      clientSecret: "secret",
+    });
+  });
+
+  it("rejects GitHub OAuth configured without a client secret", () => {
+    expect(() =>
+      authEnvSchema.parse({ AUTH_GITHUB_CLIENT_ID: "client-id" }),
+    ).toThrow(/AUTH_GITHUB_CLIENT_SECRET/);
+  });
+
+  it("accepts GitHub OAuth when fully configured", () => {
+    const config = authEnvSchema.parse({
+      AUTH_GITHUB_CLIENT_ID: "client-id",
+      AUTH_GITHUB_CLIENT_SECRET: "secret",
+    });
+    expect(config.socialProviders?.github).toEqual({
+      clientId: "client-id",
+      clientSecret: "secret",
+    });
+  });
+
   it("rejects Microsoft SSO configured without a client secret", () => {
     expect(() =>
       authEnvSchema.parse({

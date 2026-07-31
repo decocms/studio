@@ -94,6 +94,24 @@ export const authEnvSchema = z
       }
     }
 
+    if (env.AUTH_GOOGLE_CLIENT_ID && !env.AUTH_GOOGLE_CLIENT_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_GOOGLE_CLIENT_SECRET"],
+        message:
+          "AUTH_GOOGLE_CLIENT_ID is set but AUTH_GOOGLE_CLIENT_SECRET is not",
+      });
+    }
+
+    if (env.AUTH_GITHUB_CLIENT_ID && !env.AUTH_GITHUB_CLIENT_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_GITHUB_CLIENT_SECRET"],
+        message:
+          "AUTH_GITHUB_CLIENT_ID is set but AUTH_GITHUB_CLIENT_SECRET is not",
+      });
+    }
+
     if (env.AUTH_MAGIC_LINK_ENABLED && configured.size === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
