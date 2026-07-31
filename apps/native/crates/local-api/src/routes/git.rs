@@ -413,7 +413,15 @@ async fn run_git_raw_with_timeout<S: AsRef<str>>(
         .kill_on_drop(true)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stderr(std::process::Stdio::piped())
+        // `continue_rebase`'s "staged changes in your working tree",
+        // `resolve_conflicts`'s "CONFLICT", and
+        // `force_push_rebased_branch`'s "stale info"/"failed to push some
+        // refs" all read git's ENGLISH message text, and git localizes every
+        // one of them under a translated system locale. Pin the child's
+        // locale so those detectors can't silently miss a known, recoverable
+        // condition — same fix as `setup/clone.rs`'s `run_git`.
+        .env("LC_ALL", "C");
     for (k, v) in env {
         cmd.env(k, v);
     }
