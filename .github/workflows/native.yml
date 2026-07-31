@@ -114,11 +114,14 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             # First match wins, so order these most-specific-first. Editing
-            # this workflow sets `rust` (i.e. everything) on purpose: it is the
-            # config for all four jobs and a comment-only YAML edit isn't
-            # cheaply distinguishable from a behavioral one.
+            # THIS workflow matches nothing on purpose: most edits here are
+            # comments or gate wiring, and burning 4 macOS jobs (one of them a
+            # 45-minute bundle) to prove a YAML comment is why this gate got
+            # split in the first place. The `push:` trigger above includes this
+            # file and runs the full set on main, so a workflow change is
+            # verified the moment it merges.
             case "$f" in
-              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh|.github/workflows/native.yml)
+              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
                 rust=true ;;
               packages/sandbox/daemon/*|apps/native/scripts/ci/*) suite=true ;;
               apps/native/e2e/*) contract=true ;;
