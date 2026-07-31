@@ -618,5 +618,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.moreProviders": "{count} more provider{plural}",
+  "settings.aiProviders.moreProvidersSingular": "{count} more provider",
+  "settings.aiProviders.moreProvidersPlural": "{count} more providers",
 } as const;

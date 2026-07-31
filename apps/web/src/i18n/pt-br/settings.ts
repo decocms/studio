@@ -657,5 +657,6 @@ export const settings = {
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.moreProviders": "{count} provedor{plural} adicional",
+  "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
+  "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
 } satisfies Record<keyof typeof settingsEn, string>;
