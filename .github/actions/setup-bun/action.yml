@@ -11,10 +11,41 @@ inputs:
   bun-version:
     description: Bun version to install — single source of truth for CI.
     default: "1.3.14"
+  node-version:
+    description: >-
+      Node version installed only when the runner's default Node is older than
+      `min-node-major`. Jobs that pin their own Node keep it.
+    default: "24"
+  min-node-major:
+    description: Oldest Node major that `bun install` works on.
+    default: "22"
 
 runs:
   using: composite
   steps:
+    # `node-pty` has no linux-x64 prebuild, so `bun install` always rebuilds it
+    # through `node-gyp@13`, which needs Node >= 22 (it loads undici, which
+    # calls `webidl.util.markAsUncloneable`). Runner images that default to
+    # Node 20 fail the install outright, so provision a supported Node first,
+    # while leaving jobs that already set up their own Node untouched.
+    - name: Check runner Node version
+      id: node-check
+      shell: bash
+      run: |
+        major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+        echo "runner node major: $major"
+        if [ "$major" -lt "${{ inputs.min-node-major }}" ]; then
+          echo "setup=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "setup=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Node
+      if: steps.node-check.outputs.setup == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       with:
