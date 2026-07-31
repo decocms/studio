@@ -229,8 +229,10 @@ See `values.yaml` for the full set. The most-tuned ones:
 | Key | Default | Notes |
 | --- | --- | --- |
 | `envName` | _(required)_ | DNS-label suffix on every resource name |
-| `image.repository` | `ghcr.io/decocms/studio/studio-sandbox` | studio-sandbox image |
-| `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
+| `image.repository` | `ghcr.io/decocms/studio/studio-sandbox` | studio-sandbox image (TS daemon) |
+| `image.goRepository` | `ghcr.io/decocms/studio/studio-sandbox-go` | same image with the Go daemon; used when `daemonImpl: go` |
+| `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json; drives BOTH images (released together) |
+| `daemonImpl` | `ts` | which daemon this template's sandboxes run — selects the image, not a runtime switch |
 | `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |

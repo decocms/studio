@@ -38,6 +38,38 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
+Validate daemonImpl before it selects an image. An unrecognised value would
+otherwise fall through to the TS repository and quietly run the wrong daemon —
+a canary that reads as "Go is fine" while never having run Go. A missing
+goRepository would render `:<tag>` and fail as an ImagePullBackOff minutes later,
+on the node, instead of here.
+*/}}
+{{- define "sandbox-env.validateDaemonImpl" -}}
+{{- $impl := .Values.daemonImpl | default "ts" -}}
+{{- if not (has $impl (list "ts" "go")) }}
+{{- fail (printf "sandbox-env: daemonImpl must be \"ts\" or \"go\" (got %q)" $impl) -}}
+{{- end }}
+{{- if and (eq $impl "go") (not .Values.image.goRepository) }}
+{{- fail "sandbox-env: daemonImpl=go requires image.goRepository (the studio-sandbox-go image). Set it, or leave daemonImpl=ts." -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Sandbox container image, selected by daemonImpl. The daemon implementation is
+the image — `studio-sandbox` runs the TS daemon, `studio-sandbox-go` the Go one
+— so there is no runtime switch to disagree with. One tag drives both: they are
+released together from the same source revision and must never skew.
+*/}}
+{{- define "sandbox-env.sandboxImage" -}}
+{{- include "sandbox-env.validateDaemonImpl" . -}}
+{{- $repo := .Values.image.repository -}}
+{{- if eq (.Values.daemonImpl | default "ts") "go" -}}
+{{- $repo = .Values.image.goRepository -}}
+{{- end -}}
+{{- printf "%s:%s" $repo (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
 Studio runner Role / RoleBinding name. Stays under 63 chars even with a
 32-char envName.
 */}}

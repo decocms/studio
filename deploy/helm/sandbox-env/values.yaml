@@ -40,13 +40,22 @@ envName: ""
 # ── sandbox pod image (used by SandboxTemplate) ────────────────────────
 image:
   repository: ghcr.io/decocms/studio/studio-sandbox
+  # Same image with the Go daemon instead of the TS one, built from the same
+  # Dockerfile and released under the same version. Used when daemonImpl: go.
+  goRepository: ghcr.io/decocms/studio/studio-sandbox-go
   # Pinned to a specific version so chart upgrades pull a matching image
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.28.7"
+  tag: "1.29.0"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
+
+# Which daemon this template's sandboxes run: "ts" (default) or "go". Selects
+# the image (image.repository vs image.goRepository) — there is no in-image
+# switch, so a pod cannot disagree with the template that created it. Only
+# affects sandboxes created after the change.
+daemonImpl: ts
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.

@@ -9,6 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.55: the sandbox daemon implementation is now the IMAGE, not a runtime
+# switch. `daemonImpl` (default "ts") selects image.repository vs
+# image.goRepository (studio-sandbox vs studio-sandbox-go), and the pod no
+# longer receives SANDBOX_DAEMON_IMPL — a pod cannot disagree with the template
+# that created it. Default render is unchanged; `daemonImpl: go` requires
+# image.goRepository (validated at template time). One tag drives both images:
+# they are released together from the same source revision.
 # 0.9.44: opt-in L2 cross-node golden archive (depsCache.remote.*,
 # default off) — mounts an RWX PVC READ-ONLY and sets
 # GOLDEN_CACHE_REMOTE so the daemon can restore a per-(repo,lockfile)
@@ -52,7 +59,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.54
+version: 0.9.55
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.28.7"
+appVersion: "1.29.0"
 kubeVersion: ">=1.30.0-0"

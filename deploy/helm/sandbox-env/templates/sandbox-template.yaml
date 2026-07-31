@@ -105,7 +105,7 @@ spec:
         # per pod (idempotent). Reuses the sandbox image — already on the
         # node, no extra pull.
         - name: deps-cache-init
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
           resources:
@@ -207,7 +207,7 @@ spec:
       {{- end }}
       containers:
         - name: sandbox
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: /app
           env:
