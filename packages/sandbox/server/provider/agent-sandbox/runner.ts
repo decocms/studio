@@ -1378,11 +1378,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // (separate endpoint — see postOrgFsConfig). Post-bind on purpose:
       // warm-pool claims reject spec.env. Best-effort: mounts are additive,
       // a relay failure must not fail provisioning.
-      if (opts.orgFsConfigJson) {
-        await postOrgFsConfig(daemonUrl, token, opts.orgFsConfigJson).catch(
-          (err) => console.warn("[org-fs] sidecar config relay failed", err),
-        );
-      }
+      await this.relayOrgFsConfig(daemonUrl, token, opts.orgFsConfigJson);
     } catch (err) {
       this.closeForwarder(daemonForward);
       await this.deleteHttpRouteIfManaged(handle).catch(() => {});
@@ -1430,6 +1426,24 @@ export class AgentSandboxProvider implements SandboxProvider {
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
     });
+  }
+
+  /**
+   * Relay org-fs mount config to the pod's privileged sidecar (separate
+   * endpoint — see `postOrgFsConfig`). Shared by fresh provision and
+   * warm-pool re-bootstrap; a recreated pool pod's sidecar starts unmounted
+   * and must be re-configured the same way a fresh one is. Best-effort:
+   * mounts are additive, a relay failure must not fail provisioning/recovery.
+   */
+  private async relayOrgFsConfig(
+    daemonUrl: string,
+    token: string,
+    orgFsConfigJson: string | undefined,
+  ): Promise<void> {
+    if (!orgFsConfigJson) return;
+    await postOrgFsConfig(daemonUrl, token, orgFsConfigJson).catch((err) =>
+      console.warn("[org-fs] sidecar config relay failed", err),
+    );
   }
 
   /**
@@ -1576,6 +1590,14 @@ export class AgentSandboxProvider implements SandboxProvider {
       await postConfig(daemonUrl, this.sentinelToken, payload, {
         rotateToken: token,
       });
+      // A recreated pool pod boots with an empty sidecar — the org-fs mounts
+      // from the original provision must be re-relayed here too, or a pod
+      // recreated under a live claim silently loses them.
+      await this.relayOrgFsConfig(
+        daemonUrl,
+        token,
+        ensureOpts?.orgFsConfigJson,
+      );
       return true;
     } catch (err) {
       // A 401 means the daemon no longer accepts the sentinel: it was already
@@ -1588,6 +1610,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       if (err instanceof ConfigRequestError && err.status === 401) {
         try {
           await postConfig(daemonUrl, token, payload, { rotateToken: token });
+          await this.relayOrgFsConfig(
+            daemonUrl,
+            token,
+            ensureOpts?.orgFsConfigJson,
+          );
           return true;
         } catch (retryErr) {
           console.warn(
@@ -2516,12 +2543,17 @@ function tenantAttrs(
  * (k8s ignores it — template pins the image) and any nullish entries so the
  * persisted blob stays small.
  */
-function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
+export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   const out: EnsureOptions = {};
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
   if (opts.tenant) out.tenant = opts.tenant;
+  // Without this, `resurrectByHandle` re-provisioning from these persisted
+  // opts (no SANDBOX_START in that loop) would silently drop the org-fs
+  // mounts a live sandbox had — same class of bug as the daemonImpl
+  // stickiness below, just for mounts instead of the binary.
+  if (opts.orgFsConfigJson) out.orgFsConfigJson = opts.orgFsConfigJson;
   // Stickiness: `resurrectByHandle` re-provisions from these opts with no
   // SANDBOX_START in the loop, so without this an autonomously recovered
   // sandbox would silently come back on the other binary — which makes any
