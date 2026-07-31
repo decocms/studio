@@ -45,6 +45,13 @@ interface GenerateImagePartProps {
   latency?: number;
 }
 
+/** Validated `images` array — guards against a malformed (non-array) backend payload. */
+export function getGeneratedImages(
+  result: GenerateImageResult | undefined,
+): GenerateImageResult["images"] {
+  return Array.isArray(result?.images) ? result.images : undefined;
+}
+
 function extractUsage(
   result: GenerateImageResult | undefined,
 ): UsageStats | null {
@@ -102,7 +109,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   const state = getEffectiveState(part.state);
   const input = part.input as GenerateImageInput | undefined;
   const result = part.output as GenerateImageResult | undefined;
-  const images = result?.images;
+  const images = getGeneratedImages(result);
   const usage = extractUsage(result);
   const modelLabel = result?.model;
   const refImages = Array.isArray(input?.referenceImages)
