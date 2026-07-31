@@ -21,6 +21,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Copy01,
+  Download01,
   File06,
   Globe01,
   LinkExternal01,
@@ -43,6 +44,11 @@ import { track } from "@/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/lib/query-persist";
 import { usePreferences, type ThemeMode } from "@/hooks/use-preferences.ts";
 import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app.ts";
+import {
+  DownloadAppDialog,
+  isMacDesktopBrowser,
+} from "@/components/download-app-dialog";
 import { toast } from "@deco/ui/components/sonner.js";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -354,8 +360,10 @@ export function AccountPopover() {
   const [preferences, setPreferences] = usePreferences();
   const isMobile = useIsMobile();
   const { isAdmin: isDeploymentAdmin } = useDeploymentAdmin();
+  const isDesktopApp = useIsDesktopApp();
 
   const [open, setOpen] = useState(false);
+  const [downloadAppOpen, setDownloadAppOpen] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
@@ -392,6 +400,19 @@ export function AccountPopover() {
                 params: { org: currentOrg.slug },
               });
             },
+          } satisfies MenuItem,
+        ]
+      : []),
+    // Same gate as the other DownloadAppDialog triggers: the terminal
+    // installer only works on Mac desktop browsers, and is pointless
+    // inside the desktop app itself.
+    ...(isMacDesktopBrowser() && !isDesktopApp
+      ? [
+          {
+            key: "install-on-mac",
+            label: t("downloadApp.installOnMac"),
+            icon: <Download01 size={16} />,
+            onClick: () => setDownloadAppOpen(true),
           } satisfies MenuItem,
         ]
       : []),
@@ -583,6 +604,10 @@ export function AccountPopover() {
           </PopoverContent>
         </Popover>
       )}
+      <DownloadAppDialog
+        open={downloadAppOpen}
+        onOpenChange={setDownloadAppOpen}
+      />
     </>
   );
 }
