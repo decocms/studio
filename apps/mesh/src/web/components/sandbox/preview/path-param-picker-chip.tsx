@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, SearchSm } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.js";
 import {
   Command,
   CommandEmpty,
