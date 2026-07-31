@@ -621,7 +621,8 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
-  "settings.secrets.secretsCount": "{count} segredo{plural} armazenado",
+  "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
+  "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
