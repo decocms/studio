@@ -783,8 +783,10 @@ Each with its recommended default.
 6. **glib-networking inside the AppImage** — without it every https load fails
    `G_TLS_ERROR_UNAVAILABLE`. Default: extract the first CI AppImage and check the gio modules;
    the secure-mode smoke is the automated tripwire.
-7. **Whether the whole workspace compiles on Linux** (keyring/zbus system libs). Default: the
-   ubuntu `rust-checks` leg is the gate; add `libdbus-1-dev` if the first run demands it.
+7. ~~**Whether the whole workspace compiles on Linux**~~ — **RESOLVED** (PR #5509, first ubuntu
+   run): `cargo clippy --workspace --all-targets -- -D warnings` is clean on ubuntu-22.04,
+   compiling `webkit2gtk`/`webkit2gtk-sys` 2.0.2 against `libwebkit2gtk-4.1-dev` 2.50.4. The
+   apt surface in §5 is sufficient as written — `libdbus-1-dev` was **not** needed.
 8. **Xvfb WebKit knobs** (`WEBKIT_DISABLE_DMABUF_RENDERER=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`).
    Default: don't set them; add on first observed hang (surfaces as the smoke's 60s deadline kill).
 9. **rclone Linux zip inner layout** (assumed `rclone-<ver>-linux-amd64/rclone`). Default: assume;
@@ -794,12 +796,22 @@ Each with its recommended default.
 11. **Release `--config` overlay × `tauri.linux.conf.json5` merge.** Both merge into one effective
     config; last-writer-per-key is verified, the combination is untested. Default: keep the
     release overlay minimal and inspect the effective config on the first release build.
-12. **`dev-signing-runner.e2e.test.ts` on Linux** (its platform CLIs are stubbed). Default: run
-    once; add `skipIf` only if it misbehaves.
+12. ~~**`dev-signing-runner.e2e.test.ts` on Linux**~~ — **RESOLVED** (PR #5509): it misbehaves.
+    The fixtures stub `security`/`codesign`, but the assertions call BSD `stat -f %Lp`, which
+    GNU coreutils rejects. The suite is now `skipIf(platform !== "darwin")` — it exercises
+    macOS-only signing scripts that have no Linux counterpart.
 
 *Closed during planning:* `RELEASE_BOT_APP_PRIVATE_KEY` is repo-scoped (so `publish` needs no
 environment); `TAURI_SIGNING_*` is environment-scoped only (so the assert must live in the build
 legs); no e2e suite depends on the mac-only download copy.
+
+*Closed by the first ubuntu CI run (PR #5509):* the whole workspace compiles and lints on Linux
+(OQ7); `dev-signing-runner` needs the macOS gate (OQ12); the keychain-backed auth-proxy suite
+needs it too — `LOCAL_API_TOKEN_STORE=keychain` cannot reach a D-Bus Secret Service on a CI
+runner, so restoring that coverage means standing up `gnome-keyring-daemon`, not relaxing the
+suite. Also newly pinned rather than assumed: `portable-pty`'s signal exit code differs by libc
+(BSD `strsignal` suffixes the number, glibc does not), so `exit_info_from_pty` yields `128+sig`
+on macOS and `1` on Linux — already the documented fallback, now asserted per platform.
 
 ---
 
