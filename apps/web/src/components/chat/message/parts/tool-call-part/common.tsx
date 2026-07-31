@@ -23,8 +23,6 @@ export interface ToolCallShellProps {
   title: ReactNode;
   /** Usage stats for the operation (optional) */
   usage?: UsageStatsType | null;
-  /** Latency in seconds for the operation (optional) */
-  latency?: number;
   /** Short status text (or node, e.g. a live countdown) shown inline after the label */
   summary?: ReactNode;
   /** Derived UI state computed by caller based on their loading semantics */
@@ -53,7 +51,6 @@ export function ToolCallShell({
   icon,
   title,
   usage,
-  latency: _latency,
   summary,
   state,
   detail,

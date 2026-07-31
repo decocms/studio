@@ -418,7 +418,6 @@ export function GenericToolCallPart({
           </>
         }
         title={friendlyName}
-        latency={latency}
         summary={summary}
         state={effectiveState}
         detail={detail || null}
