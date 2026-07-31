@@ -184,28 +184,28 @@ export function RichTextField({
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
             active={marks.bold}
-            label="Bold"
+            label={t("sectionsEditor.richTextField.bold")}
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
             <Bold01 size={14} />
           </ToolbarButton>
           <ToolbarButton
             active={marks.italic}
-            label="Italic"
+            label={t("sectionsEditor.richTextField.italic")}
             onClick={() => editor.chain().focus().toggleItalic().run()}
           >
             <Italic01 size={14} />
           </ToolbarButton>
           <ToolbarButton
             active={marks.underline}
-            label="Underline"
+            label={t("sectionsEditor.richTextField.underline")}
             onClick={() => editor.chain().focus().toggleUnderline().run()}
           >
             <Underline01 size={14} />
           </ToolbarButton>
           <ToolbarButton
             active={marks.strike}
-            label="Strikethrough"
+            label={t("sectionsEditor.richTextField.strikethrough")}
             onClick={() => editor.chain().focus().toggleStrike().run()}
           >
             <Strikethrough01 size={14} />
@@ -280,14 +280,14 @@ export function RichTextField({
 
               <ToolbarButton
                 active={marks.bulletList}
-                label="Bullet list"
+                label={t("sectionsEditor.richTextField.bulletList")}
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
               >
                 <List size={14} />
               </ToolbarButton>
               <ToolbarButton
                 active={marks.orderedList}
-                label="Ordered list"
+                label={t("sectionsEditor.richTextField.orderedList")}
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
               >
                 <span className="text-[11px] font-semibold leading-none">
@@ -312,7 +312,7 @@ export function RichTextField({
 
               <ToolbarButton
                 active={marks.alignLeft}
-                label="Align left"
+                label={t("sectionsEditor.richTextField.alignLeft")}
                 onClick={() =>
                   editor.chain().focus().setTextAlign("left").run()
                 }
@@ -321,7 +321,7 @@ export function RichTextField({
               </ToolbarButton>
               <ToolbarButton
                 active={marks.alignCenter}
-                label="Align center"
+                label={t("sectionsEditor.richTextField.alignCenter")}
                 onClick={() =>
                   editor.chain().focus().setTextAlign("center").run()
                 }
@@ -330,7 +330,7 @@ export function RichTextField({
               </ToolbarButton>
               <ToolbarButton
                 active={marks.alignRight}
-                label="Align right"
+                label={t("sectionsEditor.richTextField.alignRight")}
                 onClick={() =>
                   editor.chain().focus().setTextAlign("right").run()
                 }
@@ -339,7 +339,7 @@ export function RichTextField({
               </ToolbarButton>
               <ToolbarButton
                 active={marks.alignJustify}
-                label="Justify"
+                label={t("sectionsEditor.richTextField.alignJustify")}
                 onClick={() =>
                   editor.chain().focus().setTextAlign("justify").run()
                 }
