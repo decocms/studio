@@ -105,7 +105,7 @@ spec:
         # per pod (idempotent). Reuses the sandbox image — already on the
         # node, no extra pull.
         - name: deps-cache-init
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
           resources:
@@ -207,18 +207,12 @@ spec:
       {{- end }}
       containers:
         - name: sandbox
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: /app
           env:
             - name: WORKDIR
               value: "/app"
-            {{- if ne (.Values.daemonImpl | default "ts") "ts" }}
-            # Read at container start, so flipping it back routes the next
-            # sandbox to the TS daemon with no rebuild.
-            - name: SANDBOX_DAEMON_IMPL
-              value: {{ .Values.daemonImpl | quote }}
-            {{- end }}
             {{- if .Values.depsCache.enabled }}
             # Root of the node-local dependency cache; the daemon derives a
             # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).

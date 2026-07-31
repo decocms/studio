@@ -1,4 +1,17 @@
-# Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
+# Two images, one shared base. The daemon implementation is the image, not a
+# runtime switch: one SandboxTemplate per image, and a claim picks the template.
+#
+#   TS  (default): docker build -t studio-sandbox:local              -f packages/sandbox/image/Dockerfile packages/sandbox
+#   Go:            docker build -t studio-sandbox-go:local --target go -f packages/sandbox/image/Dockerfile packages/sandbox
+#
+# `ts` is deliberately the LAST stage so it stays the implicit `--target`, and
+# every existing build command keeps producing the TS image.
+#
+# Everything expensive (LibreOffice, Python, Node, Deno, corepack, node-pty)
+# lives in `runtime-base`, so the two images are byte-identical below their
+# daemon layer and the second build is nearly free from cache. Do not move a
+# shared dependency into a leaf stage — that is how the two drift.
+#
 # Published multi-arch (linux/amd64 + linux/arm64) by
 # .github/workflows/release-studio-sandbox.yaml so sandboxes run natively on
 # arm64 nodes (Apple Silicon, arm64 cloud) as well as amd64.
@@ -10,8 +23,9 @@ ARG NODE_MAJOR=26
 # digest cache the base image already depends on. Multi-arch like the rest.
 FROM node:${NODE_MAJOR}-slim AS node-dist
 
-# The Go daemon, shipped alongside the TS one; the entrypoint picks at runtime.
-# Every dep is pure Go, so CGO_ENABLED=0 cross-compiles without emulation.
+# The Go daemon. Only the `go` target consumes this stage, so a `--target ts`
+# build skips it entirely. Every dep is pure Go, so CGO_ENABLED=0
+# cross-compiles without emulation.
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS daemon-go
 ARG TARGETARCH
 WORKDIR /src
@@ -21,7 +35,7 @@ COPY daemon-go/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
       go build -trimpath -ldflags="-s -w" -o /out/daemon-go .
 
-FROM oven/bun:1.3.14-debian
+FROM oven/bun:1.3.14-debian AS runtime-base
 
 ARG COREPACK_VERSION=0.35.0
 ARG DENO_VERSION=v1.46.3
@@ -123,10 +137,6 @@ RUN apt-get update \
 COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
 RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
-COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
-COPY --from=daemon-go --chown=sandbox:sandbox /out/daemon-go /opt/sandbox-daemon/daemon-go
-COPY --chown=sandbox:sandbox image/start-daemon.sh /opt/sandbox-daemon/start-daemon.sh
-RUN chmod +x /opt/sandbox-daemon/start-daemon.sh
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 
 # Expose skill helper scripts as bare commands. Wrappers in skills/_bin/
@@ -138,5 +148,20 @@ RUN chmod +x /mnt/skills/public/_bin/* \
 ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000
-# Which daemon runs is SANDBOX_DAEMON_IMPL (ts | go), read at container start.
-CMD ["/opt/sandbox-daemon/start-daemon.sh"]
+
+# ── Go daemon image ─────────────────────────────────────────────────────────
+# `studio-sandbox-go`. No daemon.js: nothing in this image can start the TS
+# daemon, which is the point — the running implementation is a property of the
+# image, provable by inspection rather than by reading an env var.
+FROM runtime-base AS go
+COPY --from=daemon-go --chown=sandbox:sandbox /out/daemon-go /opt/sandbox-daemon/daemon-go
+# exec form, so the daemon is PID 1 and gets SIGTERM directly — that is what
+# triggers the shutdown git publish.
+CMD ["/opt/sandbox-daemon/daemon-go"]
+
+# ── TS daemon image (default target) ────────────────────────────────────────
+# `studio-sandbox`. Last stage on purpose: this is what a bare `docker build`
+# produces, so no existing build command changes meaning.
+FROM runtime-base AS ts
+COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
+CMD ["bun", "/opt/sandbox-daemon/daemon.js"]

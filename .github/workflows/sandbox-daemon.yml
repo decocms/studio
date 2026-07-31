@@ -145,31 +145,44 @@ jobs:
       - name: Build daemon bundle
         run: bun run --cwd=packages/sandbox build
 
-      - name: Build sandbox image
+      # Both targets. The bare (no --target) build must still produce the TS
+      # image — `ts` is the last stage precisely so that stays true.
+      - name: Build both sandbox images
         run: |
           docker build \
             -t studio-sandbox:ci \
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
+          docker build \
+            --target go \
+            -t studio-sandbox-go:ci \
+            -f packages/sandbox/image/Dockerfile \
+            packages/sandbox
 
-      # Both selections are smoked: an unset variable must land on the TS daemon.
+      # Each image must boot its own daemon with no env telling it which — the
+      # `impl=` boot line is the assertion, so an image that shipped the wrong
+      # daemon fails here rather than in a canary panel.
       - name: Smoke test
         run: |
           smoke() {
-            impl="$1"; name="sandbox-smoke-$1"; port="$2"
+            image="$1"; impl="$2"; port="$3"; name="sandbox-smoke-$impl"
             docker run -d --name "$name" -p "$port:9000" \
               -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
               -e DAEMON_BOOT_ID="ci-smoke-$impl" \
               -e APP_ROOT=/app \
               -e PROXY_PORT=9000 \
               -e DAEMON_NO_AUTOSTART=1 \
-              ${3:+-e SANDBOX_DAEMON_IMPL=$3} \
-              studio-sandbox:ci
+              "$image"
             for _ in $(seq 1 30); do
               if curl -fsS "http://localhost:$port/health" \
                    | grep -q "\"bootId\":\"ci-smoke-$impl\""; then
-                echo "$impl ok"
-                return 0
+                if docker logs "$name" 2>&1 | grep -q "impl=$impl"; then
+                  echo "$impl ok"
+                  return 0
+                fi
+                echo "$image answered /health but did not log impl=$impl"
+                docker logs "$name"
+                return 1
               fi
               sleep 1
             done
@@ -177,9 +190,9 @@ jobs:
             docker logs "$name"
             return 1
           }
-          smoke default 19999
-          smoke go 19998 go
+          smoke studio-sandbox:ci    ts 19999
+          smoke studio-sandbox-go:ci go 19998
 
       - name: Tear down
         if: always()
-        run: docker rm -f sandbox-smoke-default sandbox-smoke-go || true
+        run: docker rm -f sandbox-smoke-ts sandbox-smoke-go || true
