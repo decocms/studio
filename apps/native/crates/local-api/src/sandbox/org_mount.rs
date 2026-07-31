@@ -42,8 +42,8 @@ use super::org_view::ORG_VOLUMES;
 /// Whether this platform has an org-filesystem mount stack at all.
 ///
 /// Everything below — `rclone nfsmount`, the BSD `mount` table, `umount -f` —
-/// is macOS-shaped. Phase 2 of `apps/native/docs/linux-support-plan.md` ports
-/// the FUSE path and flips this to `|| cfg!(target_os = "linux")`.
+/// is macOS-shaped. Porting the FUSE path flips this to
+/// `|| cfg!(target_os = "linux")`.
 const PLATFORM_SUPPORTED: bool = cfg!(target_os = "macos");
 
 /// Set to anything to force the unsupported-platform path.

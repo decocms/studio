@@ -141,8 +141,8 @@ jobs:
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
   #    workspace (crates/local-api, crates/harness, crates/upstream,
   #    src-tauri), on BOTH shipping targets. The macos leg gates the v1
-  #    desktop target; the ubuntu leg gates the Linux port (apps/native/
-  #    docs/linux-support-plan.md) — src-tauri's window/webview stack is
+  #    desktop target; the ubuntu leg gates the Linux port — src-tauri's
+  #    window/webview stack is
   #    GTK + WebKitGTK there rather than the macOS system frameworks, so
   #    that leg carries an apt surface the macOS leg gets for free:
   #    libwebkit2gtk-4.1-dev (webview + webkit2gtk-sys pkg-config),
