@@ -4,6 +4,8 @@ export const downloadApp = {
     "The app installs from your Mac's Terminal — copy the command below, paste it there, and press Return.",
   "downloadApp.copyLabel": "Copy install command",
   "downloadApp.copiedLabel": "Copied — now paste it in Terminal",
+  "downloadApp.copyFailedLabel":
+    "Couldn't copy the command — select it manually",
   "downloadApp.terminalHint":
     "Tip: press ⌘ Space and type “Terminal” to open it.",
   "downloadApp.appleSiliconNote":

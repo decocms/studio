@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
+import { toast } from "@deco/ui/components/sonner.js";
 import { Check, Copy01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
@@ -57,10 +58,13 @@ export function DownloadAppDialog({
             type="button"
             className="w-full gap-2"
             onClick={() => {
-              navigator.clipboard.writeText(command).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              });
+              navigator.clipboard.writeText(command).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                },
+                () => toast.error(t("downloadApp.copyFailedLabel")),
+              );
             }}
           >
             {copied ? <Check size={16} /> : <Copy01 size={16} />}
