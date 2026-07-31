@@ -44,6 +44,7 @@ import {
 } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { generateBranchName } from "@decocms/shared/branch-name";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -63,6 +64,7 @@ import {
   SandboxLifecycleProvider,
   resolveVmEntry,
   overlayThreadSandboxMap,
+  shouldAdoptBranch,
   type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
@@ -146,7 +148,7 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
-  const { currentBranch, activeTask } = useChatTask();
+  const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
   const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -165,6 +167,37 @@ function VmEventsBridge({
   });
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
+
+  // Assign a branch to a loaded repo-backed thread that has none, so the
+  // branch-gated auto-start can run for it. Only reachable when the repo was
+  // attached to the agent after the thread was created (COLLECTION_THREADS_CREATE
+  // assigns one otherwise). See shouldAdoptBranch.
+  //
+  // Ceiling: two tabs on the same such thread each mint once, and the row keeps
+  // the last write — the loser's sandbox is orphaned. Bounded to one mint per
+  // thread per tab; a shared lock is the fix if that ever shows up in practice.
+  const adoptedBranchForThreadRef = useRef<string | null>(null);
+  const adoptBranchEligible = shouldAdoptBranch({
+    threadLoaded: !!activeTask,
+    isOwner: !!userId && activeTask?.created_by === userId,
+    hasActiveGithubRepo: effectiveHasGithubRepo,
+    branch: currentBranch ?? null,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
+    attempted: adoptedBranchForThreadRef.current === (activeTask?.id ?? null),
+  });
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot row write gated on the resolved thread; no render-time equivalent
+  useEffect(() => {
+    if (!adoptBranchEligible || !activeTask) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
+    adoptedBranchForThreadRef.current = activeTask.id;
+    setCurrentTaskBranch(
+      generateBranchName(
+        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
+        // would let Better Auth's empty display name through and slug to "user".
+        session?.user?.name || session?.user?.email?.split("@")[0],
+      ),
+    );
+  }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.

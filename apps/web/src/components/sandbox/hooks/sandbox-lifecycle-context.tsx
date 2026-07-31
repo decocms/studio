@@ -66,6 +66,39 @@ export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   );
 }
 
+export interface ShouldAdoptBranchArgs {
+  /** The thread row has resolved. `false` while `useEnsureTask` is still
+   *  fetching/creating, when a null branch means "not known yet". */
+  threadLoaded: boolean;
+  /** The viewer created this thread. A teammate's row stays read-only. */
+  isOwner: boolean;
+  hasActiveGithubRepo: boolean;
+  branch: string | null;
+  /** Already adopted once for this thread in this session. */
+  attempted: boolean;
+}
+
+/**
+ * A loaded thread on a repo-backed agent with no branch gets one assigned, so
+ * the branch-gated auto-start (`shouldAutoStart`) can fire for it.
+ *
+ * Threads only reach this state when the repo was attached to the agent AFTER
+ * they were created — `COLLECTION_THREADS_CREATE` assigns a branch whenever the
+ * agent already has a `githubRepo`. Before the branch gate those threads were
+ * covered by `SANDBOX_START` minting a branch server-side, which is exactly the
+ * race that leaked a sandbox per new chat; minting here instead is safe because
+ * the row already exists, so nothing else is naming it concurrently.
+ */
+export function shouldAdoptBranch(args: ShouldAdoptBranchArgs): boolean {
+  return (
+    args.threadLoaded &&
+    args.isOwner &&
+    args.hasActiveGithubRepo &&
+    !args.branch &&
+    !args.attempted
+  );
+}
+
 export interface ShouldSelfHealArgs {
   notFound: boolean;
   deadVmId: string | null;
