@@ -15,6 +15,10 @@ mod shutdown;
 mod state;
 mod ui_assets;
 mod updater;
+/// Linux has no OS-level trust step for the local certificate — the webview
+/// gets a per-host exception instead. Nothing else needs this module.
+#[cfg(target_os = "linux")]
+mod webview_trust;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
