@@ -28,7 +28,7 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 
 import {
   authHeaders,
-  describeLocalApi,
+  describeLocalApiKeychain,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   type LocalApi,
@@ -302,7 +302,7 @@ function startStubMesh() {
   };
 }
 
-describeLocalApi(
+describeLocalApiKeychain(
   "local-api e2e: /api/auth/* cookie jar + auth_complete_session bridge",
   () => {
     let stub: ReturnType<typeof startStubMesh>;
