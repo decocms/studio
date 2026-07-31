@@ -69,6 +69,8 @@ function ChatSidePanelContent() {
 
       {/* Chat view */}
       <div
+        inert={activePanel !== "chat" ? true : undefined}
+        aria-hidden={activePanel !== "chat"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel !== "chat"
@@ -100,6 +102,8 @@ function ChatSidePanelContent() {
 
       {/* Context view */}
       <div
+        inert={activePanel !== "context" ? true : undefined}
+        aria-hidden={activePanel !== "context"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel === "context"
