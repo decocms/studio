@@ -12,11 +12,9 @@
  *      built the exact artifact it needs to test, passes
  *      `--require-existing-bundle` to fail when that bundle is absent and
  *      never rebuild it.
- *   2. Launches the bundled binary DIRECTLY (not `open -a`, which
- *      detaches from this process's stdio/exit-code and complicates
- *      cleanup) — `Contents/MacOS/<bin>` on macOS, and on Linux the
- *      `usr/bin/<bin>` of an `--appimage-extract` unpack (no FUSE needed)
- *      into the same temp root the run already owns — with
+ *   2. Launches it DIRECTLY (not `open -a`, which detaches from this
+ *      process's stdio/exit-code and complicates cleanup) — the launch
+ *      entry point per platform, see `boot-smoke-target.ts` — with
  *      `DESKTOP_SELFTEST=1`,
  *      `DESKTOP_SELFTEST_APP_DATA_DIR=<unique tmp root>/app-data`, and
  *      `DESKTOP_SELFTEST_OUT=<unique tmp report>` — see
@@ -395,19 +393,6 @@ async function main(): Promise<void> {
         // production Keychain item; persistence itself is covered by the
         // isolated-Keychain fresh-process E2E suite.
         LOCAL_API_TOKEN_STORE: "memory",
-        // Precautionary, not a fix for any observed crash: WebKitGTK's DMABUF
-        // renderer and accelerated compositing both want a real GPU, which
-        // Xvfb does not provide. A headless smoke exercises the shell and IPC
-        // contract, not paint output, so software rendering is what it wants.
-        // Overridable so a desktop Linux run exercises the real renderer.
-        ...(process.platform === "linux"
-          ? {
-              WEBKIT_DISABLE_DMABUF_RENDERER:
-                process.env.WEBKIT_DISABLE_DMABUF_RENDERER ?? "1",
-              WEBKIT_DISABLE_COMPOSITING_MODE:
-                process.env.WEBKIT_DISABLE_COMPOSITING_MODE ?? "1",
-            }
-          : {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -421,9 +406,8 @@ async function main(): Promise<void> {
       stderr += c.toString();
     });
 
-    // `finally`, not a trailing call: a signal death or a deadline kill
-    // rejects, and a crash whose cause only ever reached stderr is otherwise
-    // reported as a bare signal name with nothing to diagnose it.
+    // `finally`: a signal death rejects, and its cause only ever reaches
+    // stderr — a trailing call would report a bare signal name.
     const dumpChildOutput = () => {
       console.log("--- app stdout/stderr ---");
       console.log(stdout);

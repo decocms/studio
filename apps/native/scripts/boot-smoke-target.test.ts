@@ -54,8 +54,6 @@ describe("resolveSmokeTarget(linux)", () => {
       join(DESKTOP_DIR, "target/release/bundle/appimage"),
     );
     expect(target.launchedBinaryRelPath).toBe("squashfs-root/usr/bin/deco");
-    // Spawning usr/bin/deco directly boots Rust but kills WebKitGTK, which
-    // finds WebKitNetworkProcess only via the env AppRun exports.
     expect(target.launchEntryRelPath).toBe("squashfs-root/AppRun");
   });
 
