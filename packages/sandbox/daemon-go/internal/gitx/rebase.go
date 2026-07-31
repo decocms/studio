@@ -165,34 +165,6 @@ func resolveConflictsRecursively(repoDir string, wip int) error {
 	return nil
 }
 
-func remoteBranchSha(repoDir, branch string) (string, bool) {
-	return rebaseTry(repoDir, []string{"rev-parse", "--verify", "refs/remotes/origin/" + branch})
-}
-
-func forcePushRebasedBranch(repoDir, branch, leaseSha string) error {
-	if leaseSha != "" {
-		leaseRef := "refs/heads/" + branch + ":" + leaseSha
-		_, err := rebaseRun(repoDir, []string{"push", "--force-with-lease=" + leaseRef, "origin", branch})
-		if err == nil {
-			return nil
-		}
-		message := FormatGitError(err)
-		retriable := strings.Contains(message, "stale info") || strings.Contains(message, "failed to push some refs")
-		if !retriable {
-			return err
-		}
-		rebaseRun(repoDir, []string{"fetch", "origin", branch})
-		if refreshed, ok := remoteBranchSha(repoDir, branch); ok {
-			_, err := rebaseRun(repoDir, []string{"push", "--force-with-lease=refs/heads/" + branch + ":" + refreshed, "origin", branch})
-			if err == nil {
-				return nil
-			}
-		}
-	}
-	_, err := rebaseRun(repoDir, []string{"push", "--force", "origin", branch})
-	return err
-}
-
 // RebaseOntoBase rebases the current branch onto origin/<base>, preferring
 // branch changes on conflict, then force-pushes.
 func RebaseOntoBase(repoDir, base string, operator *CoAuthorIdentity) error {
@@ -210,7 +182,7 @@ func RebaseOntoBase(repoDir, base string, operator *CoAuthorIdentity) error {
 	if _, err := rebaseRun(repoDir, []string{"fetch", "-p", "origin", base, branch}); err != nil {
 		return err
 	}
-	leaseSha, _ := remoteBranchSha(repoDir, branch)
+	leaseSha, _ := RemoteBranchSha(repoDir, branch)
 
 	rebaseTry(repoDir, []string{"submodule", "update", "--init", "--recursive", "--depth", "1"})
 
@@ -237,5 +209,5 @@ func RebaseOntoBase(repoDir, base string, operator *CoAuthorIdentity) error {
 		return &GitError{Msg: "Rebase did not complete", Status: -1}
 	}
 
-	return forcePushRebasedBranch(repoDir, branch, leaseSha)
+	return ForcePushWithLease(repoDir, branch, leaseSha, ForcePushOpts{})
 }

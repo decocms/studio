@@ -28,10 +28,9 @@ func localBranchExists(repoDir, branch string) bool {
 type CheckoutBranchParams struct {
 	RepoDir string
 	Branch  string
-	// Gc is the prefixed git command (env prefix + git flags) interpolated
-	// into `sh -c` steps.
-	Gc      string
-	RunStep func(cmd string) int
+	// RunStep spawns git argv directly. No shell: `branch` is config-supplied
+	// and git permits `;`, `$` and backticks in ref names.
+	RunStep func(argv []string) int
 	Log     func(message string)
 }
 
@@ -40,19 +39,28 @@ const lsRemoteNoMatch = 2
 // CheckoutBranch checks out `branch` in an existing clone: remote branch →
 // fetch+reset, local-only → checkout, absent → fork from default branch.
 func CheckoutBranch(p CheckoutBranchParams) error {
+	if err := AssertValidRemoteBranchName(p.Branch); err != nil {
+		return err
+	}
 	if head, ok := Try([]string{"rev-parse", "--abbrev-ref", "HEAD"}, RunOpts{Cwd: p.RepoDir}); ok {
 		if strings.TrimSpace(head) == p.Branch {
 			return nil
 		}
 	}
+	git := func(extra ...string) []string {
+		return append(CheckoutBaseArgv(p.RepoDir), extra...)
+	}
+	refspec := func(b string) string {
+		return fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", b, b)
+	}
 
-	probe := p.RunStep(fmt.Sprintf("%s ls-remote --exit-code --heads origin %s", p.Gc, p.Branch))
+	probe := p.RunStep(git("ls-remote", "--exit-code", "--heads", "origin", p.Branch))
 
 	if probe == 0 {
-		if code := p.RunStep(fmt.Sprintf("%s fetch --depth 1 origin +refs/heads/%s:refs/remotes/origin/%s", p.Gc, p.Branch, p.Branch)); code != 0 {
+		if code := p.RunStep(git("fetch", "--depth", "1", "origin", refspec(p.Branch))); code != 0 {
 			return fmt.Errorf("git fetch origin %s exited %d", p.Branch, code)
 		}
-		if code := p.RunStep(fmt.Sprintf("%s checkout -B %s refs/remotes/origin/%s", p.Gc, p.Branch, p.Branch)); code != 0 {
+		if code := p.RunStep(git("checkout", "-B", p.Branch, "refs/remotes/origin/"+p.Branch)); code != 0 {
 			return fmt.Errorf("git checkout -B %s exited %d", p.Branch, code)
 		}
 		return nil
@@ -61,23 +69,39 @@ func CheckoutBranch(p CheckoutBranchParams) error {
 	if probe == lsRemoteNoMatch {
 		if localBranchExists(p.RepoDir, p.Branch) {
 			p.Log(fmt.Sprintf("[orchestrator] branch '%s' not on remote; checking out local branch\r\n", p.Branch))
-			if code := p.RunStep(fmt.Sprintf("%s checkout %s", p.Gc, p.Branch)); code != 0 {
+			if code := p.RunStep(git("checkout", p.Branch)); code != 0 {
 				return fmt.Errorf("git checkout %s exited %d", p.Branch, code)
 			}
 			return nil
 		}
 		defaultBranch := ResolveRemoteDefaultBranch(p.RepoDir)
+		if !IsSafeRefName(defaultBranch) {
+			return fmt.Errorf("refusing unsafe default branch name %q", defaultBranch)
+		}
 		p.Log(fmt.Sprintf("[orchestrator] branch '%s' not on remote; creating from default branch '%s'\r\n", p.Branch, defaultBranch))
-		if code := p.RunStep(fmt.Sprintf("%s fetch --depth 1 origin +refs/heads/%s:refs/remotes/origin/%s", p.Gc, defaultBranch, defaultBranch)); code != 0 {
+		if code := p.RunStep(git("fetch", "--depth", "1", "origin", refspec(defaultBranch))); code != 0 {
 			return fmt.Errorf("git fetch origin %s exited %d", defaultBranch, code)
 		}
-		if code := p.RunStep(fmt.Sprintf("%s checkout -B %s refs/remotes/origin/%s", p.Gc, p.Branch, defaultBranch)); code != 0 {
+		if code := p.RunStep(git("checkout", "-B", p.Branch, "refs/remotes/origin/"+defaultBranch)); code != 0 {
 			return fmt.Errorf("git checkout -B %s exited %d", p.Branch, code)
 		}
 		return nil
 	}
 
 	return fmt.Errorf("git ls-remote --heads origin %s exited %d", p.Branch, probe)
+}
+
+// CheckoutBaseArgv is the argv prefix for checkout's git steps.
+func CheckoutBaseArgv(repoDir string) []string {
+	return []string{
+		"git",
+		"-c", "safe.directory=*",
+		"-c", "credential.helper=",
+		"-c", "http.connectTimeout=10",
+		"-c", "http.lowSpeedLimit=1",
+		"-c", "http.lowSpeedTime=10",
+		"-C", repoDir,
+	}
 }
 
 // The protected branch list is a plain data file, not interpolated into the

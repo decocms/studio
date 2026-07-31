@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
@@ -256,8 +257,30 @@ func (o *Orchestrator) stepClone() bool {
 
 	o.gitSetup(cfg)
 	o.fillApplicationDefaults()
+	// Before install, so install runs against the up-to-date lockfile.
+	o.maybeFastForwardToBase()
+	// Re-read HEAD: the fast-forward may have moved it past what gitSetup's
+	// checkout captured, and installState fingerprints against this field.
+	o.refreshBranchHead()
 	o.deps.BranchStatus.Refresh()
 	return true
+}
+
+// maybeFastForwardToBase advances an idle, unchanged sandbox to its base
+// branch. No-op unless the branch is clean-of-commits and behind base.
+func (o *Orchestrator) maybeFastForwardToBase() {
+	result := gitx.FastForwardToBase(o.deps.RepoDir)
+	if !result.FastForwarded {
+		return
+	}
+	pushed := ""
+	if result.Pushed {
+		pushed = ", pushed"
+	}
+	o.chunk(fmt.Sprintf(
+		"[orchestrator] fast-forwarded %s to origin/%s (+%d commits%s)\r\n",
+		result.Branch, result.Base, result.BehindBase, pushed,
+	))
 }
 
 func (o *Orchestrator) stepInstall() bool {
@@ -280,12 +303,23 @@ func (o *Orchestrator) stepInstall() bool {
 	installLogPath := paths.AppLogPath(o.deps.LogsDir, "install")
 	os.Remove(installLogPath)
 	installTee := proc.NewLogTee(installLogPath, installLogMaxBytes)
+	// Timed from here so the reported cost is the whole dependency step — what
+	// a golden tier would replace — not the install command alone.
+	depsStartedAt := time.Now()
+	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
+	bootId := os.Getenv("DAEMON_BOOT_ID")
+	elapsedMs := func() int64 { return time.Since(depsStartedAt).Milliseconds() }
+
 	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) {
 		o.rawChunk(data)
 		installTee.Write(data)
 	})
 	installTee.Close()
 	if !ran {
+		// Reported, not silent: this is the path every Deno project takes, and
+		// without a line here "no data" and "the cache is irrelevant for this
+		// runtime" look identical in the log store.
+		EmitDepsRestore(RestoreNoInstall, cloneUrl, elapsedMs(), bootId)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -296,7 +330,25 @@ func (o *Orchestrator) stepInstall() bool {
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
 		return false
 	}
+	// No golden cache in this daemon yet, so a completed install is always a miss.
+	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId)
 	o.markInstallSucceeded(cfg)
+
+	// Install scripts (postinstall/prepare — lefthook, husky) can overwrite
+	// .git/hooks/pre-push; reinstall so branch protection survives.
+	if o.deps.RepoDir != "" {
+		if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall protected-branch hook: %s\r\n", err.Error()))
+		}
+	}
+
+	go EmitInstalledDeps(DepMetricsInput{
+		InstallRoot:    paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
+		PackageManager: pm,
+		BootId:         bootId,
+		RepoName:       cfg.RepoName(),
+		Branch:         cfg.Branch(),
+	})
 	return true
 }
 
@@ -441,14 +493,12 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 
 func (o *Orchestrator) checkoutBranch(branch string) error {
 	repoDir := o.deps.RepoDir
-	gc := fmt.Sprintf("GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C %s", repoDir)
 	return gitx.CheckoutBranch(gitx.CheckoutBranchParams{
 		RepoDir: repoDir,
 		Branch:  branch,
-		Gc:      gc,
-		RunStep: func(cmd string) int {
-			o.rawChunk("$ " + cmd + "\r\n")
-			return SpawnStep(cmd, func(data string) { o.rawChunk(data) }, nil)
+		RunStep: func(argv []string) int {
+			o.rawChunk("$ " + formatArgv(argv) + "\r\n")
+			return SpawnStepArgv(argv, func(data string) { o.rawChunk(data) }, gitStepEnv)
 		},
 		Log: func(message string) { o.chunk(message) },
 	})

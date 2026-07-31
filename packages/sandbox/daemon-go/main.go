@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -348,7 +348,7 @@ func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
 		if !d.firstWorkLogged {
 			d.firstWorkLogged = true
-			log.Printf("[daemon] boot_id=%s first request: METHOD=%s PATH=%s", d.bootId, method, p)
+			slog.Info("daemon first request", "boot_id", d.bootId, "method", method, "path", p)
 		}
 		d.mu.Unlock()
 	}
@@ -392,9 +392,12 @@ func (d *daemon) shutdown() {
 			RepoDir:     d.repoDir,
 			GetCloneUrl: func() string { return cfg.CloneUrl() },
 			GetOperator: d.operatorIdentity,
+			// "skip", not "throw": an invalid block must not abort the whole
+			// shutdown sync and lose the user's other valid work.
+			OnInvalidBlock: gitx.InvalidBlockSkip,
 		}, "chore(daemon): sync all local changes to remote on shutdown")
 		if err != nil {
-			log.Printf("[daemon] shutdown publish failed: %v", err)
+			slog.Error("shutdown publish failed", "err", err)
 		}
 	}
 	os.Exit(0)
@@ -413,6 +416,8 @@ func (d *daemon) operatorIdentity() *gitx.CoAuthorIdentity {
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
 	bootId := os.Getenv("DAEMON_BOOT_ID")
 	if bootId == "" {
 		bootId = randomUUID()
@@ -436,7 +441,8 @@ func main() {
 	os.Setenv("DAEMON_PORT", portStr)
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Fatalf("invalid port: %s", portStr)
+		slog.Error("invalid port", "port", portStr)
+		os.Exit(1)
 	}
 
 	repoDir := filepath.Join(appRoot, "repo")
@@ -478,7 +484,7 @@ func main() {
 			}
 		}
 		if prev.Phase != next.Phase {
-			log.Printf("[lifecycle] %s → %s", prev.Phase, next.Phase)
+			slog.Info("lifecycle transition", "from", prev.Phase, "to", next.Phase)
 		}
 	}
 
@@ -498,11 +504,7 @@ func main() {
 		if label == "" {
 			label = s.ID
 		}
-		exitCode := "null"
-		if s.ExitCode != nil {
-			exitCode = strconv.Itoa(*s.ExitCode)
-		}
-		log.Printf("[task] %s %s (exit=%s)", label, s.Status, exitCode)
+		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", s.ExitCode)
 	})
 
 	d.branchStatus = gitx.NewBranchStatusMonitor(repoDir, d.broadcaster)
@@ -554,6 +556,8 @@ func main() {
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
+		AllowedHosts:     offloadHosts,
+		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 	}
 	gitDeps := routes.GitDeps{
 		AppRoot: appRoot,
@@ -664,7 +668,7 @@ func main() {
 		d.orchestrator.Handle(config.Transition{Kind: config.KindBootstrap, Config: diskCfg})
 	}
 	if d.store.Read() == nil {
-		log.Printf("[daemon] boot_id=%s ready, unclaimed — waiting for workload config", bootId)
+		slog.Info("daemon ready, unclaimed — waiting for workload config", "boot_id", bootId)
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -679,5 +683,6 @@ func main() {
 		Handler:           d,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
-	log.Fatal(server.ListenAndServe())
+	slog.Error("http server exited", "err", server.ListenAndServe())
+	os.Exit(1)
 }

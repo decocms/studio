@@ -98,6 +98,13 @@ func (c *TenantConfig) Branch() string {
 	return *c.Git.Repository.Branch
 }
 
+func (c *TenantConfig) RepoName() string {
+	if c == nil || c.Git == nil || c.Git.Repository == nil || c.Git.Repository.RepoName == nil {
+		return ""
+	}
+	return *c.Git.Repository.RepoName
+}
+
 func (c *TenantConfig) HasBranch() bool {
 	return c != nil && c.Git != nil && c.Git.Repository != nil && c.Git.Repository.Branch != nil
 }

@@ -70,14 +70,14 @@ let stub: ReturnType<typeof Bun.serve>;
 let stubUrl: string;
 let d: Daemon;
 
-beforeEach(async () => {
+/** One stub Virtual MCP serving `tools`. The transport is session-bound, so a
+ *  re-sync needs its own stub rather than a second session on this one. */
+async function startStubMcp(tools: typeof TOOLS) {
   const server = new Server(
     { name: "stub-mcp", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS,
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async () => ({
     content: [{ type: "text", text: "{}" }],
     structuredContent: {},
@@ -86,8 +86,20 @@ beforeEach(async () => {
     sessionIdGenerator: () => crypto.randomUUID(),
   });
   await server.connect(transport);
-  stub = Bun.serve({ port: 0, fetch: (req) => transport.handleRequest(req) });
-  stubUrl = `http://localhost:${stub.port}/mcp/virtual-mcp/test`;
+  const serve = Bun.serve({
+    port: 0,
+    fetch: (req) => transport.handleRequest(req),
+  });
+  return {
+    serve,
+    url: `http://localhost:${serve.port}/mcp/virtual-mcp/test`,
+  };
+}
+
+beforeEach(async () => {
+  const started = await startStubMcp(TOOLS);
+  stub = started.serve;
+  stubUrl = started.url;
 
   d = await startDaemon();
 }, HOOK_TIMEOUT_MS);
@@ -186,6 +198,26 @@ describe("POST /_sandbox/tools/sync", () => {
     expect(res.status).toBe(502);
     // The endpoint file needs no MCP round-trip — `call` keeps working even
     // when the tool listing fails.
+    expect(existsSync(catalogPath(".endpoint.json"))).toBe(true);
+  });
+
+  test("prunes tools that disappeared, keeping the endpoint dotfile", async () => {
+    expect((await sync({ url: stubUrl, headers: {} })).status).toBe(200);
+    expect(existsSync(catalogPath("SEND_EMAIL.json"))).toBe(true);
+
+    // The Virtual MCP dropped a tool (renamed or removed upstream).
+    const shrunk = await startStubMcp(
+      TOOLS.filter((t) => t.name !== "SEND_EMAIL"),
+    );
+    const res = await sync({ url: shrunk.url, headers: {} });
+    shrunk.serve.stop(true);
+    expect(res.status).toBe(200);
+    expect((await res.json()).count).toBe(3);
+
+    // Stale tool gone, survivors intact...
+    expect(existsSync(catalogPath("SEND_EMAIL.json"))).toBe(false);
+    expect(existsSync(catalogPath("LIST_CUSTOMERS.json"))).toBe(true);
+    // ...and the prune (which targets non-dot *.json) spared the dotfile.
     expect(existsSync(catalogPath(".endpoint.json"))).toBe(true);
   });
 

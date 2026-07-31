@@ -2,7 +2,7 @@ package routes
 
 import (
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/activity"
@@ -73,7 +73,7 @@ func OrgFsConfig(deps OrgFsDeps) http.HandlerFunc {
 			return
 		}
 		if err := orgfs.RelaySidecarConfig(deps.ConfigPath, raw); err != nil {
-			log.Printf("[org-fs] sidecar config relay failed: %v", err)
+			slog.Error("org-fs sidecar config relay failed", "err", err)
 			httpx.Error(w, 500, "relay failed")
 			return
 		}

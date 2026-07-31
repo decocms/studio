@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/decocms/studio/sandbox-daemon/internal/urlallow"
 )
 
 const maxOffloadBytes = 32 * 1024 * 1024
@@ -34,40 +35,16 @@ func ParseMessagesRef(frame map[string]json.RawMessage) *MessagesRef {
 	return &ref
 }
 
-// AssertAllowedRefUrl enforces the SSRF allowlist: https only (http loopback
-// in dev), host must be in allowedHosts (from boot env, never the frame).
-// Empty allowlist fails closed.
+// AssertAllowedRefUrl enforces the SSRF allowlist on an offloaded messagesRef.
 func AssertAllowedRefUrl(raw string, allowedHosts []string, allowSameHostDev bool) error {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return errors.New("offload ref: malformed URL")
-	}
-	isHttps := u.Scheme == "https"
-	host := u.Hostname()
-	isLoopback := host == "127.0.0.1" || host == "localhost" || host == "::1"
-	if allowSameHostDev && u.Scheme == "http" && isLoopback {
-		// dev loopback allowed
-	} else if !isHttps {
-		return errors.New("offload ref: only https is allowed")
-	}
-	for _, h := range allowedHosts {
-		if h == host {
-			return nil
-		}
-	}
-	return fmt.Errorf("offload ref: host not allowed (%s)", host)
+	return urlallow.Assert(raw, allowedHosts, allowSameHostDev)
 }
 
 func FetchOffloadedMessages(rawUrl string, allowedHosts []string, allowSameHostDev bool, expectedSha256 string) (json.RawMessage, error) {
 	if err := AssertAllowedRefUrl(rawUrl, allowedHosts, allowSameHostDev); err != nil {
 		return nil, err
 	}
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := urlallow.Client(30*time.Second, allowedHosts, allowSameHostDev)
 	var res *http.Response
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {

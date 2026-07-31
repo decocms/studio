@@ -7,6 +7,10 @@ runs a real sandbox pod, in what order, and how each claim gets proven.
 Written 2026-07-30, against `wt/daemon-go` @ `bbe3cde12` (conformance suite
 153/153, unreferenced by any deploy path).
 
+**Progress (2026-07-30, same day):** §2.0 free wins and all of §2.2 (G2) are
+done; the suite is now **176/176 on both daemons**. G0, G3 and G4 are untouched.
+See [§6 Status](#6-status) for the line-by-line ledger.
+
 ## 0. Definition of done
 
 The Go daemon is production ready when **a real user session — clone, install,
@@ -204,3 +208,108 @@ tell you the bridge works. **Acceptance is a real `claude-code` run, by hand.**
 - The `wt/sandbox-controller-go` track (Studio's k8s orchestration). Related, separately scoped.
 - The agent-sandbox `v1alpha1` → `v1beta1` operator migration.
 - Golden cache L2 / remote archive — blocked on infrastructure, not on this daemon.
+
+## 6. Status
+
+Conformance suite: **176/176 on both daemons** (was 153; the 23 new tests all
+run against the TS daemon too, which is what makes them parity evidence rather
+than Go-only assertions).
+
+| Gate | State |
+| --- | --- |
+| §2.0 free wins | **Done** — logs on stdout via `log/slog` with an explicit `level=`, guarded by `logging_test.go`. Branches still local (see below). |
+| **G0** observability | **Partly done** — dependency telemetry ported and proven byte-identical to TS; structured logs done. Per-phase boot timing still open, and it needs a decision (see below). |
+| **G1** ledger has no untested row | **Closer** — 3 rows closed with tests, 1 reclassified as won't-port (`resolve-shell` is win32-only). 5 rows remain. |
+| **G2** correctness + security | **Done** — every row has an e2e; see below. |
+| **G3** boot economics | Not started. `PublishPendingGolden()` is still a no-op. |
+| **G4** runtime fidelity | uid/gid **decided and pinned**; org-fs, probe-under-load and the real-pod run remain. |
+| **G5** dispatch | Not started; transport still unpicked. |
+| **G6** rollout | Not started. |
+
+### What landed in G2
+
+| Item | Evidence |
+| --- | --- |
+| Decofile block validation | `internal/decofile` + both dispositions; unit table + 5 e2e (write, edit, publish-throw, shutdown-skip) |
+| SSRF fail-closed | `internal/urlallow` now gates `/write_from_url` + `/upload_to_url` (they had **no** validation in either daemon); 17-case unit table + redirect tests + 11 e2e |
+| Protected-branch guard | Promoted to e2e: 409 on `main`, and HEAD is unmoved so no stray commit |
+| `force-push` w/ lease + `fast-forward-to-base` | `gitx.ForcePushWithLease` / `gitx.FastForwardToBase`; e2e for diverged-origin reconcile, for shutdown *not* reconciling, and for boot fast-forward (control-tested — it fails without the implementation) |
+| Catalog prune-on-resync | e2e: stale tool file removed, survivors kept, `.endpoint.json` spared |
+| Per-repo cache isolation | **Deferred to G3** — `PublishPendingGolden()` is a no-op, so there is no cache to isolate yet. The test lands with the implementation. |
+
+### §2.1's premise was wrong: G0 is not an OTLP job
+
+§2.1 asks for "OTLP traces + metrics … including `setup/dep-metrics.ts`". But
+`dep-metrics.ts` documents the opposite, and gives the reason: a sandbox pod's
+**egress is locked to 53/443, so no in-cluster OTLP collector is reachable**.
+Its stdout, scraped out-of-band, is the only channel that leaves the pod. That
+is why the TS daemon emits JSON *log lines*, not spans, and why the per-package
+data is logs rather than metrics (per-package cardinality would wreck
+Prometheus).
+
+So the G0 deliverable is **matching the log-line contract**, and no otel
+dependency belongs in `go.mod`. `internal/setup/depmetrics.go` now emits both
+shapes:
+
+- `sandbox.deps.restore` — one line per dependency step (`source`, `repo_hash`,
+  `duration_ms`, `bootId`). `repo_hash` strips credentials before hashing.
+- `sandbox.deps` — the installed dep set, byte-chunked under 600 bytes/line
+  with `deps` as a pre-encoded JSON string (both simpler shapes fail in the
+  pipeline: one big line is truncated at 16KB, one line per dep gets ~99%
+  rate-sampled away).
+
+**Proven, not asserted:** booting both daemons against the same repo produces
+identical `sandbox.deps.restore` lines (modulo hash/duration/bootId), and
+feeding 120 deps with over-long meta through each implementation's line builder
+yields **18 byte-identical lines**. Go can only report `miss` / `no-install`
+today — `l1`/`l2` arrive with the golden cache in G3.
+
+**Still open in G0:** per-phase boot timing (clone → install → start → first
+healthy probe). This is *new* telemetry — the TS daemon has no counterpart, so
+there is no contract to match and no panel that reads it. Someone should pick
+the line schema and build the panel before either daemon emits it; inventing one
+here would just add an unread log line to two daemons.
+
+### Three findings worth carrying to the TS daemon
+
+Both were found by writing the e2e against the TS baseline first, exactly as
+§2.2 prescribes — and both were **fixed in the TS daemon too**, since the suite
+has to pass on the daemon that is actually in production.
+
+1. **The decofile last-resort net never fired for a new block.** `git status
+   --porcelain` collapses an untracked directory into a single `?? .deco/`
+   entry, so the validator never saw the file while `git add -- .deco/` still
+   committed it. An invalid block written by bash reached the user's branch and
+   broke the site render — the exact outcome the net exists to prevent. Fixed in
+   both daemons by expanding directory entries via `git ls-files --others
+   --exclude-standard` (git does the expansion so `.gitignore` is honored).
+2. **`/write_from_url` and `/upload_to_url` had no URL validation at all** — in
+   the TS daemon, the Go daemon, *and* the Rust local-api. The TS comment
+   asserting SSRF defenses "aren't needed" because the model can't supply a URL
+   rested on `copy_to_sandbox`/`share_with_user`, which have since been removed
+   from the harness tool list — so nothing enforced the premise any more. Both
+   daemons now enforce the boot-env allowlist and re-check every redirect hop.
+   `apps/native`'s Rust implementation is **untouched and still unguarded**.
+3. **A zero-dependency install emitted a stderr error instead of its telemetry.**
+   `readInstalledDeps` scanned a `node_modules` that a zero-dep install never
+   creates, threw ENOENT into the catch, and logged `[install] dep metrics emit
+   failed` — so the countable zero-dep line its own comment calls load-bearing
+   for the denominator was never emitted, and every such boot wrote a spurious
+   error line. Fixed in TS with an `existsSync` guard; Go emits the line by
+   construction. This also serves §2.0's acceptance — that stderr line was
+   inflating the TS pod's error rate.
+
+### Correction to §2.4's uid/gid entry
+
+The premise ("Go's `syscall.Credential` will honor it", so a Go daemon "will
+EPERM in the git routes") does not hold: `applyUidDrop` is guarded by
+`os.Geteuid() != 0`, and the sandbox image runs `USER sandbox` (uid 1000) with
+no k8s `runAsUser` override. The drop is already a no-op in prod and engages
+only under root, where it is correct. Pinned by `internal/gitx/uiddrop_test.go`
+so a future edit can't silently make it unconditional.
+
+### Still true, still unstarted
+
+`docs-design/` RFCs are lost and **the branches are still local only** —
+`wt/daemon-go`, `wt/sandbox-controller-go`. Everything above is uncommitted
+working-tree state. Push before anything else.

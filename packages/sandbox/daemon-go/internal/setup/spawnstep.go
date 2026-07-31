@@ -8,12 +8,23 @@ import (
 	"syscall"
 )
 
-// SpawnStep runs `sh -c cmd` streaming merged stdout+stderr to onChunk and
-// returning the exit code. Extra env is merged over the daemon's env.
-// Corepack strict-off and download-prompt-off are forced in the child env
-// (no process-global to patch in Go).
+// SpawnStep runs `sh -c cmd` for USER-owned commands (start script, /exec,
+// /bash). Daemon-owned steps must use SpawnStepArgv instead — a config-supplied
+// clone URL or branch name interpolated into a shell string is injectable.
 func SpawnStep(cmd string, onChunk func(data string), extraEnv map[string]string) int {
-	c := exec.Command("sh", "-c", cmd)
+	return SpawnStepArgv([]string{"sh", "-c", cmd}, onChunk, extraEnv)
+}
+
+// SpawnStepArgv spawns argv directly — no shell interprets it — streaming
+// merged stdout+stderr to onChunk and returning the exit code. Extra env is
+// merged over the daemon's env. Corepack strict-off and download-prompt-off are
+// forced in the child env (no process-global to patch in Go).
+func SpawnStepArgv(argv []string, onChunk func(data string), extraEnv map[string]string) int {
+	if len(argv) == 0 {
+		onChunk("spawn error: empty argv\r\n")
+		return -1
+	}
+	c := exec.Command(argv[0], argv[1:]...)
 	env := map[string]string{}
 	for _, kv := range os.Environ() {
 		if i := strings.IndexByte(kv, '='); i >= 0 {

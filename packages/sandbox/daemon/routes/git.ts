@@ -498,6 +498,46 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   ];
 }
 
+/**
+ * `git status --porcelain` collapses an untracked directory into a single
+ * `?? .deco/` entry. That hides the block files inside it from the decofile
+ * validator in publish() while `git add -- .deco/` still commits them — so an
+ * invalid block written by bash lands on the branch. git does the expansion
+ * itself so .gitignore is honored; walking the dir here would stage ignored
+ * files and make `git add` fail.
+ */
+function expandUntrackedDirs(repoDir: string, paths: string[]): string[] {
+  const out: string[] = [];
+  for (const p of paths) {
+    let isDir = false;
+    try {
+      isDir = fs.statSync(path.join(repoDir, p)).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) {
+      out.push(p);
+      continue;
+    }
+    const listed = tryGit(repoDir, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "--",
+      p,
+    ]);
+    if (listed === null) {
+      out.push(p);
+      continue;
+    }
+    for (const f of listed.split("\n")) {
+      const trimmed = f.trim();
+      if (trimmed) out.push(trimmed);
+    }
+  }
+  return out;
+}
+
 /** A discard request path that escapes the repo — a client/data condition, not a server fault. */
 class InvalidDiscardPathError extends Error {
   constructor(message: string) {
@@ -663,7 +703,7 @@ export async function publish(
   }
 
   const status = computeWorkingTreeStatus(repoDir);
-  let paths = changedPathsFromStatus(status);
+  let paths = expandUntrackedDirs(repoDir, changedPathsFromStatus(status));
   // Last-resort net: never let a syntactically invalid decofile block reach the
   // branch. The /write and /edit handlers already reject invalid blocks, but a
   // mutation that bypassed them (bash, a git merge, a future write path) would

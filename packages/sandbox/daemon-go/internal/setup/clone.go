@@ -12,7 +12,39 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
 )
 
-const gitCmdPrefix = "GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10"
+// gitBaseArgv is the argv prefix for every daemon-owned git step. argv, not a
+// shell string: the clone URL and branch name are config-supplied and would be
+// injectable through `sh -c`.
+func gitBaseArgv() []string {
+	return []string{
+		"git",
+		"-c", "safe.directory=*",
+		"-c", "credential.helper=",
+		"-c", "http.connectTimeout=10",
+		"-c", "http.lowSpeedLimit=1",
+		"-c", "http.lowSpeedTime=10",
+	}
+}
+
+var gitStepEnv = map[string]string{"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true"}
+
+func gitArgv(extra ...string) []string {
+	return append(gitBaseArgv(), extra...)
+}
+
+// formatArgv renders argv for the `$ …` log line. Display only — quoting here
+// is cosmetic, nothing re-parses it.
+func formatArgv(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		if strings.ContainsAny(a, " \t") {
+			parts[i] = `"` + a + `"`
+		} else {
+			parts[i] = a
+		}
+	}
+	return strings.Join(parts, " ")
+}
 
 var transientErrors = []string{
 	"Could not resolve host",
@@ -46,11 +78,11 @@ func normalizeCarriageReturns(data string) string {
 	return crNormalizeRe.ReplaceAllString(data, "\r\n$1")
 }
 
-func runStep(cmd string, deps CloneDeps) int {
-	deps.OnChunk("$ " + cmd + "\r\n")
-	return SpawnStep(cmd, func(data string) {
+func runStep(argv []string, deps CloneDeps) int {
+	deps.OnChunk("$ " + formatArgv(argv) + "\r\n")
+	return SpawnStepArgv(argv, func(data string) {
 		deps.OnChunk(normalizeCarriageReturns(data))
-	}, nil)
+	}, gitStepEnv)
 }
 
 func isTransient(output string) bool {
@@ -62,8 +94,8 @@ func isTransient(output string) bool {
 	return false
 }
 
-func runNetworkStep(cmd string, deps CloneDeps) int {
-	return runNetworkStepCapture(cmd, deps).code
+func runNetworkStep(argv []string, deps CloneDeps) int {
+	return runNetworkStepCapture(argv, deps).code
 }
 
 type stepResult struct {
@@ -71,7 +103,7 @@ type stepResult struct {
 	output string
 }
 
-func runNetworkStepCapture(cmd string, deps CloneDeps) stepResult {
+func runNetworkStepCapture(argv []string, deps CloneDeps) stepResult {
 	var output string
 	for attempt := 0; attempt <= cloneMaxRetries; attempt++ {
 		if attempt > 0 {
@@ -85,7 +117,7 @@ func runNetworkStepCapture(cmd string, deps CloneDeps) stepResult {
 			output += data
 			deps.OnChunk(data)
 		}
-		code := runStep(cmd, tee)
+		code := runStep(argv, tee)
 		if code == 0 {
 			return stepResult{code: 0, output: output}
 		}
@@ -98,8 +130,8 @@ func runNetworkStepCapture(cmd string, deps CloneDeps) stepResult {
 
 var lsRemoteHeadRe = regexp.MustCompile(`ref:\s+refs/heads/(\S+)\s+HEAD`)
 
-func fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote string, deps CloneDeps) {
-	res := runNetworkStepCapture(fmt.Sprintf("%s ls-remote --symref %s HEAD", gc, cloneUrl), deps)
+func fetchBaseBranch(dir, cloneUrl, branchOnRemote string, deps CloneDeps) {
+	res := runNetworkStepCapture(gitArgv("ls-remote", "--symref", cloneUrl, "HEAD"), deps)
 	if res.code != 0 {
 		deps.OnChunk("\r\n[clone] warning: could not resolve remote default branch; divergence vs base unavailable until next fetch\r\n")
 		return
@@ -116,11 +148,12 @@ func fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote string, deps CloneDeps) {
 		deps.OnChunk(fmt.Sprintf("\r\n[clone] warning: refusing unsafe base branch name %q; divergence vs base unavailable until next fetch\r\n", base))
 		return
 	}
-	if code := runNetworkStep(fmt.Sprintf("%s -C %s fetch --depth 1 origin +refs/heads/%s:refs/remotes/origin/%s", gc, dir, base, base), deps); code != 0 {
+	refspec := fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", base, base)
+	if code := runNetworkStep(gitArgv("-C", dir, "fetch", "--depth", "1", "origin", refspec), deps); code != 0 {
 		deps.OnChunk(fmt.Sprintf("\r\n[clone] warning: failed to fetch base branch '%s'; divergence vs base unavailable until next fetch\r\n", base))
 		return
 	}
-	runStep(fmt.Sprintf("%s -C %s symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/%s", gc, dir, base), deps)
+	runStep(gitArgv("-C", dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/"+base), deps)
 }
 
 type CloneResult struct {
@@ -155,7 +188,6 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		return CloneResult{Code: 1}
 	}
 
-	gc := gitCmdPrefix
 	dir := deps.RepoDir
 
 	branch := ""
@@ -166,7 +198,12 @@ func SpawnClone(deps CloneDeps) CloneResult {
 	branchOnRemote := ""
 	branchToForkLocally := ""
 	if branch != "" {
-		probe := runNetworkStep(fmt.Sprintf("%s ls-remote --exit-code --heads %s %s", gc, cloneUrl, branch), deps)
+		// The branch is config-supplied and flows into git argv below.
+		if err := gitx.AssertValidRemoteBranchName(branch); err != nil {
+			deps.OnChunk(fmt.Sprintf("\r\n[clone] refusing invalid branch name %q\r\n", branch))
+			return CloneResult{Code: 1}
+		}
+		probe := runNetworkStep(gitArgv("ls-remote", "--exit-code", "--heads", cloneUrl, branch), deps)
 		switch {
 		case probe == 0:
 			branchOnRemote = branch
@@ -183,14 +220,14 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		return func(onChunk func(data string)) {
 			d := deps
 			d.OnChunk = onChunk
-			fetchBaseBranch(gc, dir, cloneUrl, remote, d)
+			fetchBaseBranch(dir, cloneUrl, remote, d)
 		}
 	}
 
 	if isNonEmptyWithoutGit(dir) {
-		for _, step := range []string{
-			fmt.Sprintf("%s -C %s init", gc, dir),
-			fmt.Sprintf("%s -C %s remote add origin %s", gc, dir, cloneUrl),
+		for _, step := range [][]string{
+			gitArgv("-C", dir, "init"),
+			gitArgv("-C", dir, "remote", "add", "origin", cloneUrl),
 		} {
 			if code := runStep(step, deps); code != 0 {
 				return CloneResult{Code: code}
@@ -200,18 +237,18 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		if branchOnRemote != "" {
 			fetchRef = fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", branchOnRemote, branchOnRemote)
 		}
-		if code := runNetworkStep(fmt.Sprintf("%s -C %s fetch --depth 1 origin %s", gc, dir, fetchRef), deps); code != 0 {
+		if code := runNetworkStep(gitArgv("-C", dir, "fetch", "--depth", "1", "origin", fetchRef), deps); code != 0 {
 			return CloneResult{Code: code}
 		}
-		checkoutCmd := fmt.Sprintf("%s -C %s checkout -f FETCH_HEAD", gc, dir)
+		checkoutCmd := gitArgv("-C", dir, "checkout", "-f", "FETCH_HEAD")
 		if branchOnRemote != "" {
-			checkoutCmd = fmt.Sprintf("%s -C %s checkout -f -B %s refs/remotes/origin/%s", gc, dir, branchOnRemote, branchOnRemote)
+			checkoutCmd = gitArgv("-C", dir, "checkout", "-f", "-B", branchOnRemote, "refs/remotes/origin/"+branchOnRemote)
 		}
 		if code := runStep(checkoutCmd, deps); code != 0 {
 			return CloneResult{Code: code}
 		}
 		if branchToForkLocally != "" {
-			return CloneResult{Code: runStep(fmt.Sprintf("%s -C %s checkout -B %s", gc, dir, branchToForkLocally), deps)}
+			return CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)}
 		}
 		res := CloneResult{Code: 0}
 		if branchOnRemote != "" {
@@ -220,15 +257,15 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		return res
 	}
 
-	cloneCmd := fmt.Sprintf("%s clone --depth 1 %s %s", gc, cloneUrl, dir)
+	cloneCmd := gitArgv("clone", "--depth", "1", cloneUrl, dir)
 	if branchOnRemote != "" {
-		cloneCmd = fmt.Sprintf("%s clone --depth 1 --branch %s %s %s", gc, branchOnRemote, cloneUrl, dir)
+		cloneCmd = gitArgv("clone", "--depth", "1", "--branch", branchOnRemote, cloneUrl, dir)
 	}
 	if code := runNetworkStep(cloneCmd, deps); code != 0 {
 		return CloneResult{Code: code}
 	}
 	if branchToForkLocally != "" {
-		return CloneResult{Code: runStep(fmt.Sprintf("%s -C %s checkout -B %s", gc, dir, branchToForkLocally), deps)}
+		return CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)}
 	}
 	res := CloneResult{Code: 0}
 	if branchOnRemote != "" {

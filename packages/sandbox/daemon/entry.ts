@@ -364,6 +364,8 @@ const fsDeps = {
     branchStatus.refresh();
     emitFileChanged(filePath);
   },
+  offloadAllowedHosts: bootConfig.offloadAllowedHosts,
+  offloadAllowSameHostDev: bootConfig.offloadAllowSameHostDev,
 };
 const readH = makeReadHandler(fsDeps);
 const toolsSyncH = makeToolsSyncHandler(fsDeps);

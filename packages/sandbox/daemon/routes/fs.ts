@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { safePath } from "../paths";
 import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
+import { assertAllowedRefUrl } from "./offload-fetch";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
@@ -41,6 +42,28 @@ export interface FsDeps {
    * without waiting for the `.git/` watcher poll.
    */
   onWorkingTreeWrite?: (path: string) => void;
+  /**
+   * SSRF allowlist for `/write_from_url` and `/upload_to_url`. Comes from boot
+   * env (`OFFLOAD_ALLOWED_HOSTS`), NEVER from the request body — that is the
+   * guarantee. Empty denies every transfer (fail closed).
+   */
+  offloadAllowedHosts?: string[];
+  /** Maps to `OFFLOAD_ALLOW_SAME_HOST_DEV=1` — http loopback in dev. */
+  offloadAllowSameHostDev?: boolean;
+}
+
+/** Fail-closed URL gate shared by the two transfer routes. */
+function assertTransferUrl(raw: string, deps: FsDeps): string | null {
+  try {
+    assertAllowedRefUrl(
+      raw,
+      deps.offloadAllowedHosts ?? [],
+      deps.offloadAllowSameHostDev ?? false,
+    );
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 function spawnOpts(
@@ -671,10 +694,12 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
 
-    // The URL here is studio-minted (presigned GET to S3/R2) — the model
-    // can't supply arbitrary URLs through copy_to_sandbox, so SSRF +
-    // DNS-rebinding defenses aren't needed. Plain fetch with a wall-
-    // clock deadline is enough.
+    // The URL is expected to be studio-minted (a presigned GET to S3/R2), but
+    // this route is reachable by anything holding the daemon token — so the
+    // allowlist is enforced here rather than assumed upstream.
+    const urlError = assertTransferUrl(body.url, deps);
+    if (urlError) return jsonResponse({ error: urlError }, 400);
+
     const abortController = new AbortController();
     const deadlineTimer = setTimeout(
       () => abortController.abort(),
@@ -781,6 +806,8 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
     if (!filePath) {
       return jsonResponse({ error: "Path escapes project root" }, 400);
     }
+    const urlError = assertTransferUrl(body.url, deps);
+    if (urlError) return jsonResponse({ error: urlError }, 400);
 
     let fileStat: fs.Stats;
     try {

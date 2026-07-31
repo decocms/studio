@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
+	"github.com/decocms/studio/sandbox-daemon/internal/urlallow"
 )
 
 const (
@@ -28,6 +30,10 @@ type FsDeps struct {
 	AppRoot            string
 	RepoDir            string
 	OnWorkingTreeWrite func(path string)
+	// AllowedHosts gates /write_from_url and /upload_to_url. Boot env, never
+	// the request body. Empty denies every transfer.
+	AllowedHosts     []string
+	AllowSameHostDev bool
 }
 
 func (d FsDeps) notifyWrite(path string) {
@@ -187,6 +193,10 @@ func Write(deps FsDeps) http.HandlerFunc {
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
 			httpx.Error(w, 400, "Path escapes app root")
+			return
+		}
+		if jsonErr := decofile.InvalidBlockJSON(body.Path, *body.Content); jsonErr != "" {
+			httpx.Error(w, 400, "Refusing to write "+jsonErr)
 			return
 		}
 		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
@@ -411,6 +421,10 @@ func Edit(deps FsDeps) http.HandlerFunc {
 			replacements = count
 		} else {
 			updated = strings.Replace(content, body.OldString, *body.NewString, 1)
+		}
+		if jsonErr := decofile.InvalidBlockJSON(body.Path, updated); jsonErr != "" {
+			httpx.Error(w, 400, "Refusing to write "+jsonErr)
+			return
 		}
 		if err := os.WriteFile(filePath, []byte(updated), 0o644); err != nil {
 			httpx.Error(w, 500, err.Error())
@@ -745,7 +759,11 @@ func WriteFromUrl(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, "Path escapes app root")
 			return
 		}
-		client := &http.Client{Timeout: transferDeadline}
+		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {
+			httpx.Error(w, 400, err.Error())
+			return
+		}
+		client := urlallow.Client(transferDeadline, deps.AllowedHosts, deps.AllowSameHostDev)
 		resp, err := client.Get(body.URL)
 		if err != nil {
 			httpx.Error(w, 502, fmt.Sprintf("fetch failed: %s", err.Error()))
@@ -804,6 +822,10 @@ func UploadToUrl(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, "Path escapes project root")
 			return
 		}
+		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {
+			httpx.Error(w, 400, err.Error())
+			return
+		}
 		stat, err := os.Stat(filePath)
 		if err != nil {
 			httpx.Error(w, 400, fmt.Sprintf("File not found: %s", body.Path))
@@ -832,7 +854,7 @@ func UploadToUrl(deps FsDeps) http.HandlerFunc {
 		if body.ContentType != "" {
 			req.Header.Set("Content-Type", body.ContentType)
 		}
-		client := &http.Client{Timeout: transferDeadline}
+		client := urlallow.Client(transferDeadline, deps.AllowedHosts, deps.AllowSameHostDev)
 		resp, err := client.Do(req)
 		if err != nil {
 			httpx.Error(w, 502, fmt.Sprintf("upload failed: %s", err.Error()))

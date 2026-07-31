@@ -89,8 +89,16 @@ func GitPublish(deps GitDeps) http.HandlerFunc {
 			RepoDir:     deps.RepoDir,
 			GetCloneUrl: deps.GetCloneUrl,
 			GetOperator: deps.GetOperator,
+			// Interactive publish reconciles a diverged origin/<branch> instead
+			// of failing "fetch first". Shutdown sync (main.go) leaves it off.
+			ReconcileRemote: true,
 		}, body.Message)
 		if err != nil {
+			var invalidBlock *gitx.InvalidDecofileBlockError
+			if errors.As(err, &invalidBlock) {
+				httpx.Error(w, 400, invalidBlock.Error())
+				return
+			}
 			var blocked *gitx.PublishBlockedError
 			if errors.As(err, &blocked) {
 				httpx.Error(w, 409, blocked.Error())

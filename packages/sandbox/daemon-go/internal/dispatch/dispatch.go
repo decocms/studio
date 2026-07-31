@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -220,7 +220,7 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 
 	ctx, cancel := context.WithCancel(r.Context())
 	reg.register(runId, cancel)
-	log.Printf("[dispatch] received harness=%s runId=%s", harnessId, runId)
+	slog.Info("dispatch received", "harness", harnessId, "run_id", runId)
 
 	writeSseHeaders(w)
 	sse := newSseWriter(w)
@@ -253,7 +253,7 @@ func (reg *Registry) handleOffloadDispatch(
 
 	messages, err := FetchOffloadedMessages(ref.URL, deps.AllowedHosts, deps.AllowSameHostDev, ref.Sha256)
 	if err != nil {
-		log.Printf("[dispatch] offload fetch failed harness=%s url=%s: %v", harnessId, ref.URL, err)
+		slog.Error("dispatch offload fetch failed", "harness", harnessId, "url", ref.URL, "err", err)
 		fail("offload_fetch_failed", err.Error())
 		return
 	}
@@ -278,7 +278,7 @@ func (reg *Registry) handleOffloadDispatch(
 		return
 	}
 
-	log.Printf("[dispatch] received (offload) harness=%s runId=%s bytes=%v", harnessId, runId, ref.Bytes)
+	slog.Info("dispatch received (offload)", "harness", harnessId, "run_id", runId, "bytes", ref.Bytes)
 	rebased := rebaseInput(merged, deps.AppRoot)
 	reg.streamHarnessRun(ctx, sse, deps, harnessId, runId, rebased)
 }
@@ -317,7 +317,7 @@ func (reg *Registry) streamHarnessRun(
 
 	cmd := exec.Command(deps.HarnessRunnerCmd[0], deps.HarnessRunnerCmd[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = os.Stdout
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
@@ -384,11 +384,11 @@ func (reg *Registry) streamHarnessRun(
 	err = cmd.Wait()
 	close(killed)
 	if !sawDone && err != nil && ctx.Err() == nil {
-		log.Printf("[dispatch] harness crashed harness=%s runId=%s chunks=%d: %v", harnessId, runId, chunkCount, err)
+		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "err", err)
 		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": err.Error()})
 		return
 	}
-	log.Printf("[dispatch] done harness=%s runId=%s chunks=%d aborted=%v", harnessId, runId, chunkCount, ctx.Err() != nil)
+	slog.Info("dispatch done", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "aborted", ctx.Err() != nil)
 }
 
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)

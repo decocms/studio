@@ -5,7 +5,7 @@ on Bun). One daemon runs per `(user, project)` sandbox pod and owns the
 workspace: clone, dependency install, dev-server supervision, fs/git/exec
 routes, the reverse proxy, and harness dispatch.
 
-**Status: passes the full daemon conformance suite (153/153), same as the TS
+**Status: passes the full daemon conformance suite (176/176), same as the TS
 daemon.** Not wired into any deploy path — the sandbox image still ships the TS
 daemon. Several production behaviors are unported; see [Gap ledger](#gap-ledger).
 
@@ -59,10 +59,11 @@ is clamped to it), `PROXY_PORT`, `DAEMON_BOOT_ID`.
   hand against real `claude-code`.
 - **Anything in the [gap ledger](#gap-ledger).** These are unported *and*
   untested — the suite passing is not evidence they work.
-- **uid/gid drop.** Some paths request uid/gid 1000, but Bun silently ignores
-  spawn uid/gid, so the TS daemon never exercised it and the suite runs as the
-  invoking user. A daemon that honored it while running as another user on Linux
-  would EPERM in the git routes. Runtime quirk the suite leans on, not contract.
+- **uid/gid drop.** Settled: the sandbox image runs `USER sandbox` (uid 1000)
+  with no k8s `runAsUser` override, and Go's `applyUidDrop` is guarded by
+  `os.Geteuid() != 0` — so the drop is a no-op in prod, exactly as under Bun. It
+  engages only if the daemon is run as root, where dropping to 1000 matches the
+  workspace's ownership. Pinned by `internal/gitx/uiddrop_test.go`.
 
 ## Package map
 
@@ -119,12 +120,19 @@ Unported and untested. Each is a real production behavior of the TS daemon.
 | --- | --- |
 | **Org-fs mounting.** `internal/orgfs` parses `OrgFsMountConfig` and stops. No WebDAV mount, sidecar, repo-link, invalidator, or detach. | Org volumes never appear in the workspace. |
 | **Golden cache.** `Orchestrator.PublishPendingGolden()` is a no-op; no L1 reflink, no L2 remote archive (`setup/remote-golden.ts`). | Every boot pays a full dependency install. This is the dominant boot cost. |
-| **Decofile block validation.** No port of `decofile-json.ts`. | An invalid decofile block reaches the branch through `/write`, `/edit`, and `publish`, breaking the site render. |
 | **`fsnotify` is in `go.mod` but unused** — file watching is a 3s poll. | Slower change detection than the TS daemon; wasted wakeups. |
-| **Git: `force-push` with lease, `fast-forward-to-base`.** | The PR-flow force-push and fast-forward paths are missing; `publish` cannot recover a diverged `origin/<branch>`. |
-| **`resolve-shell`, `structured-command`.** | Exec/bash shell resolution and structured-command parsing diverge from TS. |
-| **OTLP metrics/tracing** (`setup/dep-metrics.ts`, no otel dep). | No dependency-install or boot metrics; the observability gap is on the critical path for boot-cost work. |
+| **Per-phase boot timing** (clone → install → start → first healthy probe). | G3 can't attribute a boot regression to a phase. New telemetry for *both* daemons — needs a line schema and a panel before either emits it. |
 | **Catalog sync on dispatch.** TS wires `makeCatalogSync` into dispatch's `onDispatchMcp` (coalesced, 60s min interval). Go serves `/tools/sync` only. | The catalog is not refreshed automatically per run. |
+| **Install runs as one `sh -c` chain.** TS models it as two structured commands (corepack argv, then install argv); Go keeps `corepack … && cd … && <install>` because the chain needs a shell. | Divergence only. The interpolated values are a config path and a package-manager command from a fixed table, not free text. |
+
+### Closed since the ledger was written
+
+| Was | Now |
+| --- | --- |
+| Decofile block validation unported | `internal/decofile` + both publish dispositions (`throw` / `skip`), unit + e2e |
+| `force-push` with lease, `fast-forward-to-base` | `gitx.ForcePushWithLease`, `gitx.FastForwardToBase`, wired into publish's reconcile path and the boot path; e2e for both |
+| `resolve-shell`, `structured-command` | Daemon-owned git steps (clone, checkout) now spawn **argv**, never `sh -c`. `resolve-shell` itself is win32-only and deliberately not ported — this daemon ships linux-only |
+| OTLP metrics/tracing | Not an OTLP job: a sandbox pod's egress is locked to 53/443, so no collector is reachable — the TS daemon emits JSON log lines. `internal/setup/depmetrics.go` matches that contract byte for byte (`sandbox.deps.restore`, chunked `sandbox.deps`) |
 
 ## Open decision: harness-runner transport
 
