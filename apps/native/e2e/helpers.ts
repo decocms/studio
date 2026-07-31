@@ -141,6 +141,19 @@ export const describeEmbeddedLocalApi = bunDescribe.skipIf(
   LOCAL_API_EMBEDDED_CMD === null,
 );
 
+/**
+ * [`describeLocalApi`] for suites that opt into the `keychain` token store.
+ *
+ * That store talks to the OS credential service — the login Keychain on macOS,
+ * a D-Bus Secret Service on Linux. CI's Linux runners have no session bus and
+ * no unlocked keyring daemon, so every such call fails to connect. Restoring
+ * this coverage on Linux means standing up `gnome-keyring-daemon` in the job,
+ * not relaxing the suite.
+ */
+export const describeLocalApiKeychain = bunDescribe.skipIf(
+  SKIP_NO_BINARY || process.platform !== "darwin",
+);
+
 export interface LocalApi {
   port: number;
   /** The dedicated PREVIEW listener's port — see `local_api::ServerHandle`'s
