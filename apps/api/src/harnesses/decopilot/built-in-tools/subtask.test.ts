@@ -8,10 +8,42 @@
 import { describe, expect, test } from "bun:test";
 import {
   createSubtaskTool,
+  isTransientStreamError,
   resolveSubtaskCodingWorkspace,
   SubtaskInputSchema,
   type SubtaskParams,
 } from "./subtask";
+
+describe("isTransientStreamError", () => {
+  test("resumes a broken transport", () => {
+    for (const message of [
+      // The prod failure this was written for (thread c12c86aa, 2026-07-31).
+      "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+      "read ECONNRESET",
+      "write EPIPE",
+      "connect ETIMEDOUT 1.2.3.4:443",
+      "fetch failed",
+      "terminated",
+      "Provider returned error 502",
+      "upstream timed out",
+      "Model is overloaded, please try again",
+    ]) {
+      expect(isTransientStreamError(message)).toBe(true);
+    }
+  });
+
+  test("does not resume a request the provider rejected on its merits", () => {
+    for (const message of [
+      "This endpoint's maximum context length is 200000 tokens",
+      "Invalid API key provided",
+      "No endpoints found that support tool use",
+      "Run aborted before completion.",
+      "messages: at least one message is required",
+    ]) {
+      expect(isTransientStreamError(message)).toBe(false);
+    }
+  });
+});
 
 const mockParams: SubtaskParams = {
   provider: { thinkingModel: {} as never } as never,
@@ -312,7 +344,7 @@ describe("toModelOutput (new runAgentLoop-based contract)", () => {
     expect(result.value).toContain("prompt is too long");
   });
 
-  test("error takes precedence over text", () => {
+  test("error-text carries the partial result instead of discarding it", () => {
     const result = toModelOutput({
       ...baseArgs,
       output: {
@@ -322,6 +354,21 @@ describe("toModelOutput (new runAgentLoop-based contract)", () => {
       } as never,
     }) as { type: string; value: string };
     expect(result.type).toBe("error-text");
+    expect(result.value).toContain("Context window exceeded");
+    // Was previously dropped, which made the parent redo already-applied work.
+    expect(result.value).toContain("Step 1 done.");
+  });
+
+  test("error-text omits the partial section when there is no partial text", () => {
+    const result = toModelOutput({
+      ...baseArgs,
+      output: {
+        text: "",
+        error: "Context window exceeded",
+        finishReason: "error",
+      } as never,
+    }) as { type: string; value: string };
+    expect(result.value).toBe("Subtask failed: Context window exceeded");
   });
 
   test("prefixes text with step-limit notice when finishReason is 'length'", () => {
