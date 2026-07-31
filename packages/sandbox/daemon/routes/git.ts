@@ -1,5 +1,5 @@
-import fs, { mkdtempSync } from "node:fs";
-import { readFile, unlink } from "node:fs/promises";
+import fs from "node:fs";
+import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
@@ -478,9 +478,9 @@ function formatGitError(err: unknown): string {
 
 /** Empty dir passed as core.hooksPath so publish commits never run lefthook/husky. */
 let emptyHooksDir: string | null = null;
-function getEmptyHooksDir(): string {
+async function getEmptyHooksDir(): Promise<string> {
   if (!emptyHooksDir) {
-    emptyHooksDir = mkdtempSync(
+    emptyHooksDir = await mkdtemp(
       path.join(tmpdir(), "studio-sandbox-no-hooks-"),
     );
   }
@@ -714,11 +714,12 @@ export async function publish(
     // --no-verify: we may want to run hooks here eventually, but removing it
     // requires surfacing hook failures clearly in the publish UI (which step
     // failed, logs, retry) instead of a generic daemon 500.
+    const hooksDir = await getEmptyHooksDir();
     runGit(
       repoDir,
       [
         "-c",
-        `core.hooksPath=${getEmptyHooksDir()}`,
+        `core.hooksPath=${hooksDir}`,
         "commit",
         "--no-verify",
         "-m",
