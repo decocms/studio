@@ -26,13 +26,16 @@ use crate::tasks::TaskRegistry;
 /// change together with the `/_local/update/restart` route in `router.rs`.
 #[derive(Clone)]
 pub struct UpdateHooks {
-    /// Version the update task has installed on disk, `None` until an
-    /// install completes. Read by the `/api/config` proxy rewrite so the
-    /// webview's version-drift card fires iff an update is actually staged.
+    /// Version the update task has downloaded, verified, and staged for
+    /// apply-at-exit; `None` until staging completes. Read by the
+    /// `/api/config` proxy rewrite so the webview's version-drift card
+    /// fires iff an update is actually ready. (The install itself is
+    /// deferred to the shell's exit path — swapping the bundle under a live
+    /// process breaks macOS Keychain access.)
     pub staged_version: tokio::sync::watch::Receiver<Option<String>>,
-    /// True while a download/install cycle is running. The restart route
-    /// refuses (409) while set — restarting mid-swap could re-exec a
-    /// half-replaced bundle.
+    /// True while a download/verify/stage cycle is running. The restart
+    /// route refuses (409) while set — restarting mid-restage would race
+    /// the pending-archive swap.
     pub installing: Arc<AtomicBool>,
     /// Graceful app restart (Tauri `request_restart` — delivers
     /// `ExitRequested`, so the single shutdown pipeline runs first).

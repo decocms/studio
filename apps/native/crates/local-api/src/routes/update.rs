@@ -3,11 +3,13 @@
 //!
 //! The webview's version card calls this (desktop builds only) instead of
 //! `window.location.reload()`: a reload re-serves the bundle embedded in the
-//! RUNNING binary, so it can never pick up the new `.app` the updater staged
-//! on disk — only a process restart can. The restart callback is Tauri's
+//! RUNNING binary, so it can never pick up the update the shell staged —
+//! only a process restart can. The restart callback is Tauri's
 //! `request_restart`, which delivers `RunEvent::ExitRequested`, so the single
-//! shutdown path (child sweeps, drain, instance-lock release) always runs
-//! before the respawn.
+//! shutdown path (child sweeps, drain, instance-lock release) always runs,
+//! the staged update is INSTALLED at the end of it (deferred apply — see
+//! `src-tauri`'s `updater` module doc for the Keychain rationale), and only
+//! then does the process respawn into the new version.
 //!
 //! 409s are the contract, not errors: the card only renders when
 //! `/api/config` reports a staged version, but the state can move between

@@ -276,7 +276,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     // `/_local/update/restart` route; the background task itself only spawns
     // after the server is up (below). `hooks()` is `None` in every non-release
     // context — see `updater`'s module doc for the gating story.
-    let updater = crate::updater::init(app);
+    let updater = crate::updater::init(app, &app_root);
     let handle = local_api::start_embedded(
         local_api::StartOptions {
             // Serve the leaf minted above: the webview's origin must be a

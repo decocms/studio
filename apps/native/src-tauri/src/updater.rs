@@ -1,19 +1,27 @@
-//! Background self-update: check → download → verify → install, silently.
+//! Background self-update: check → download → verify → stage, silently;
+//! the actual INSTALL happens in the exit path ([`apply_pending_update`]).
 //!
 //! The design (see `apps/native/docs/native-updater-plan.md`): the packaged
 //! app polls the rolling `native-updates` GitHub prerelease's `latest.json`,
-//! auto-installs anything newer, and publishes the staged version into
-//! local-api via [`local_api::UpdateHooks`]. The `/api/config` proxy rewrite
-//! then reports the staged version, the webview's existing version card
-//! fires, and its button POSTs `/_local/update/restart` — which calls the
+//! downloads and verifies anything newer, stages the archive under
+//! `<app_root>/updates/`, and publishes the staged version into local-api
+//! via [`local_api::UpdateHooks`]. The `/api/config` proxy rewrite then
+//! reports the staged version, the webview's existing version card fires,
+//! and its button POSTs `/_local/update/restart` — which calls the
 //! `request_restart` closure built here (Tauri's `request_restart`, the
 //! variant documented to deliver `RunEvent::ExitRequested`, so
-//! `shutdown::run_blocking`'s pipeline always runs before the respawn; plain
-//! `restart()`/JS `relaunch()` skip those events on the main thread).
+//! `shutdown::run_blocking`'s pipeline always runs before the respawn).
 //!
-//! On macOS the install swaps the `.app` on disk while the running process
-//! keeps serving from its own open inode — install-eagerly is safe, and even
-//! a plain quit+reopen lands on the new version.
+//! Install is DEFERRED to the exit path deliberately — an earlier design
+//! installed eagerly and the live spike caught the consequence: macOS
+//! validates a process's code identity against its binary ON DISK, so the
+//! moment the bundle was swapped under the running app every Keychain
+//! operation failed ("keychain unavailable … UNIX[No such file or
+//! directory]") — sign-in broke and rotated-refresh-token saves would fail
+//! silently until restart. Applying inside `shutdown.rs`, after local-api
+//! has drained, means no Keychain writer can ever observe a swapped bundle,
+//! and because BOTH the card's restart and a plain quit funnel through
+//! `ExitRequested`, install-on-quit still holds.
 //!
 //! The task never runs outside a real shipped build — three independent
 //! gates, because `cfg!(debug_assertions)` alone is NOT enough: CI's
@@ -34,8 +42,9 @@
 //! rotation, categorically different from flaky networks.
 
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
@@ -73,15 +82,35 @@ struct TaskParts {
     app: tauri::AppHandle,
     staged_tx: watch::Sender<Option<String>>,
     installing: Arc<AtomicBool>,
+    updates_dir: PathBuf,
 }
 
-pub fn init(app: &tauri::AppHandle) -> Updater {
+/// The staged, fully verified update waiting for [`apply_pending_update`].
+/// Process-global (not `AppState`) because the apply site is the shutdown
+/// path in `src-tauri`, after local-api has already been torn down.
+struct PendingUpdate {
+    version: String,
+    archive: PathBuf,
+    update: tauri_plugin_updater::Update,
+}
+
+fn pending_slot() -> &'static Mutex<Option<PendingUpdate>> {
+    static PENDING: OnceLock<Mutex<Option<PendingUpdate>>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(None))
+}
+
+pub fn init(app: &tauri::AppHandle, app_root: &Path) -> Updater {
     if !enabled(app) {
         return Updater {
             hooks: None,
             task: None,
         };
     }
+    let updates_dir = app_root.join("updates");
+    // A staged archive from a crashed previous session is stale by
+    // definition (its PendingUpdate handle died with the process); the loop
+    // below re-downloads if the channel still offers that version.
+    let _ = std::fs::remove_dir_all(&updates_dir);
     let (staged_tx, staged_rx) = watch::channel(None);
     let installing = Arc::new(AtomicBool::new(false));
     let restart_handle = app.clone();
@@ -96,7 +125,38 @@ pub fn init(app: &tauri::AppHandle) -> Updater {
             app: app.clone(),
             staged_tx,
             installing,
+            updates_dir,
         }),
+    }
+}
+
+/// Install the staged update, if any. Called from `shutdown::run_blocking`
+/// AFTER local-api has drained — the bundle swap happens when no Keychain
+/// writer is left to observe it, and since both the card's restart and a
+/// plain quit funnel through `ExitRequested`, this is also what makes
+/// install-on-quit true. Failures log and fall through: the process exits
+/// on the old version and the next boot re-downloads.
+pub fn apply_pending_update() {
+    let pending = pending_slot().lock().ok().and_then(|mut slot| slot.take());
+    let Some(pending) = pending else { return };
+    tracing::info!(version = %pending.version, "self-update: applying staged update before exit");
+    let bytes = match std::fs::read(&pending.archive) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            tracing::error!(%error, "self-update: staged archive unreadable; exiting without applying");
+            return;
+        }
+    };
+    // install() re-verifies the minisign signature over these exact bytes,
+    // so a staged file tampered with between stage and apply fails closed.
+    match pending.update.install(bytes) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&pending.archive);
+            tracing::info!(version = %pending.version, "self-update: applied; relaunch runs the new version");
+        }
+        Err(error) => {
+            tracing::error!(%error, "self-update: apply failed; exiting on the current version");
+        }
     }
 }
 
@@ -203,18 +263,25 @@ async fn cycle(parts: &TaskParts, memo: &mut Option<FailureMemo>) {
     }
 
     tracing::info!(%candidate, "self-update: downloading");
-    // `installing` fences the restart route for the whole download+install:
-    // restarting mid-swap could re-exec a half-replaced bundle.
+    // `installing` fences the restart route for the whole download+stage:
+    // a restart mid-restage would race the pending-archive swap.
     parts.installing.store(true, Ordering::SeqCst);
-    let result = download_verify_install(&update, &candidate).await;
+    let result = download_verify_stage(&update, &candidate, &parts.updates_dir).await;
     parts.installing.store(false, Ordering::SeqCst);
 
     match result {
-        Ok(()) => {
+        Ok(archive) => {
             *memo = None;
+            if let Ok(mut slot) = pending_slot().lock() {
+                *slot = Some(PendingUpdate {
+                    version: candidate.clone(),
+                    archive,
+                    update: update.clone(),
+                });
+            }
             // Receivers only observe; send failure (no receivers) is fine.
             let _ = parts.staged_tx.send(Some(candidate.clone()));
-            tracing::info!(%candidate, "self-update: installed and staged; restart applies it");
+            tracing::info!(%candidate, "self-update: verified and staged; applies on restart or quit");
         }
         Err(error) => {
             let failure = record_failure(memo.take(), &candidate, Instant::now());
@@ -254,10 +321,11 @@ impl InstallError {
     }
 }
 
-async fn download_verify_install(
+async fn download_verify_stage(
     update: &tauri_plugin_updater::Update,
     expected_version: &str,
-) -> Result<(), InstallError> {
+    updates_dir: &Path,
+) -> Result<PathBuf, InstallError> {
     let bytes = tokio::time::timeout(DOWNLOAD_TIMEOUT, update.download(|_, _| {}, || {}))
         .await
         .map_err(|_| InstallError::new("download timed out".to_string()))?
@@ -274,18 +342,30 @@ async fn download_verify_install(
         .map_err(|error| InstallError::new(format!("bundle inspection failed: {error}")))?;
     if embedded != expected_version {
         return Err(InstallError::new(format!(
-            "version-pairing mismatch: manifest claims {expected_version} but the signed bundle is {embedded} — refusing to install"
+            "version-pairing mismatch: manifest claims {expected_version} but the signed bundle is {embedded} — refusing to stage"
         )));
     }
 
-    // install() is synchronous gunzip+untar+swap I/O — off the runtime
-    // worker, same rationale as setup.rs's TLS spawn_blocking.
-    let update = update.clone();
-    tauri::async_runtime::spawn_blocking(move || update.install(bytes))
+    // Stage to disk instead of installing NOW: swapping the bundle under the
+    // running process breaks macOS Keychain access (see the module doc).
+    // Sync fs on a blocking thread — ~80-100 MB write.
+    let dir = updates_dir.to_path_buf();
+    let version = expected_version.to_string();
+    tauri::async_runtime::spawn_blocking(move || stage_archive(&dir, &version, &bytes))
         .await
-        .map_err(|join| InstallError::new(format!("install task failed: {join}")))?
-        .map_err(|error| InstallError::new(format!("install failed: {error}")))?;
-    Ok(())
+        .map_err(|join| InstallError::new(format!("stage task failed: {join}")))?
+        .map_err(|error| InstallError::new(format!("staging failed: {error}")))
+}
+
+/// Clear-then-write: at most ONE pending archive ever exists, so a
+/// superseding version can never leave the old one behind and the apply
+/// path never has to disambiguate.
+fn stage_archive(dir: &Path, version: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(format!("pending-{version}.app.tar.gz"));
+    std::fs::write(&path, bytes)?;
+    Ok(path)
 }
 
 /// `CFBundleShortVersionString` of the top-level `.app` inside the updater
@@ -442,6 +522,19 @@ mod tests {
         assert_eq!(memo.attempts, 2);
         let memo = record_failure(Some(memo), "2.1.0", now);
         assert_eq!(memo.attempts, 1);
+    }
+
+    #[test]
+    fn stage_archive_is_clear_then_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let updates = dir.path().join("updates");
+        let first = stage_archive(&updates, "9.0.1", b"first").unwrap();
+        assert_eq!(std::fs::read(&first).unwrap(), b"first");
+        // A superseding stage removes the previous archive entirely.
+        let second = stage_archive(&updates, "9.0.2", b"second").unwrap();
+        assert!(!first.exists());
+        assert_eq!(std::fs::read(&second).unwrap(), b"second");
+        assert_eq!(std::fs::read_dir(&updates).unwrap().count(), 1);
     }
 
     #[test]
