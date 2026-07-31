@@ -693,6 +693,7 @@ resources:
     cpu: "750m"
   limits:
     memory: "1Gi"
+    cpu: "1"
 
 nginx:
   resources:
