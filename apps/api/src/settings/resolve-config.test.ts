@@ -409,3 +409,26 @@ describe("resolveConfig decopilot max concurrent subagents", () => {
     ).toThrow("DECOPILOT_MAX_CONCURRENT_SUBAGENTS must be a positive integer");
   });
 });
+
+describe("resolveConfig decopilot max concurrent hosted runs", () => {
+  it("defaults to 3", () => {
+    expect(
+      resolveConfig(flags, {}).settings.decopilotMaxConcurrentHostedRuns,
+    ).toBe(3);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS: "5" })
+        .settings.decopilotMaxConcurrentHostedRuns,
+    ).toBe(5);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS: "free" }),
+    ).toThrow(
+      "DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS must be a positive integer",
+    );
+  });
+});
