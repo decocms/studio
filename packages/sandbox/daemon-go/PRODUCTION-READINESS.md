@@ -188,23 +188,117 @@ tell you the bridge works. **Acceptance is a real `claude-code` run, by hand.**
 
 ## 3. Rollout
 
-- **One flag, default off, its own.** Never piggyback on a neighbor's flag.
-  Deployed must not mean enabled. Selecting the binary belongs behind an env
-  switch, **not** a `Dockerfile` `CMD` swap — a `CMD` change is a rebuild, which
-  is not a rollback.
-- **Canary shape:** preview/dev-server workloads first (they do not need G5),
-  one org, then a percentage.
-- **Kill switch:** flipping the flag off must route the *next* sandbox to the TS
-  daemon. In-flight sandboxes drain naturally — never migrate a live workspace.
-- **Rollback drill before the canary, not after.** Flip on, flip off, confirm
-  the next sandbox lands on TS and no work was lost. An undrilled rollback is a
-  hypothesis.
-- **Chart caveat:** the `sandbox-env` chart is pinned in `deco-apps-cd`; a chart
-  change needs a `targetRevision` bump or it silently will not ship. A prior fix
-  was lost exactly this way.
-- **Alerts before traffic:** probe-miss rate, sandbox teardown rate, publish
-  failure rate, boot p95 — each split by daemon implementation so a regression
-  is attributable at a glance.
+Principles (unchanged): one flag of its own, default off — deployed must not mean
+enabled; the switch is env, **not** a `Dockerfile` `CMD` swap, because a `CMD`
+change is a rebuild and a rebuild is not a rollback; flipping off routes the
+*next* sandbox to TS while live sandboxes drain, never migrating a live
+workspace; the drill happens *before* the canary, not after; and the `sandbox-env`
+chart is pinned in `deco-apps-cd`, so a chart change needs a `targetRevision`
+bump or it silently will not ship.
+
+### 3.0 What a cluster canary does not have to cover
+
+**Harness dispatch is not used by cluster sandboxes.** Confirmed in code, not
+assumed:
+
+- `apps/api/src/harnesses/local-dispatch.ts` — "This is the ONLY dispatch path
+  for hosted (agent-sandbox / legacy) harnesses." The cluster runs the harness
+  **in the API process** (`InProcessSandboxClient.dispatch` → `localDispatch`:
+  "a direct call, no HTTP, no wire").
+- `dispatch-run.ts` — a CLI harness "never reaches a successful dispatch on this
+  path: … on agent-sandbox it is rejected up front by the gate (cloud-CLI is a
+  planned follow-up)".
+- The only callers of the daemon's `POST /_sandbox/dispatch` are the desktop
+  path (`apps/api/src/link-daemon/handle-local-dispatch.ts`) and
+  `apps/native/e2e`. Desktop runs the **TS bundle** materialized by
+  `daemon-spawn.ts`, never this image.
+
+So on a cluster pod the daemon serves fs/git/exec/tasks, the dev-server proxy,
+the tools catalog and the org-fs links — and `/dispatch` is dead code there.
+**G5 does not gate this rollout at all**; it gates cloud-CLI, whenever that
+lands. Re-check this section if cloud-CLI ships.
+
+### 3.1 The mechanism: why the prop cannot be a per-claim env var
+
+`SANDBOX_DAEMON_IMPL` is read by the image entrypoint at container start, so the
+choice must be made *before* the pod exists. In prod the pod usually already
+exists — it comes from the warm pool — and
+`provider/agent-sandbox/runner.ts:buildClaim` spells out the constraint: in
+warm-pool mode the claim carries `spec.env: []` and `warmpool: "default"`,
+because **the operator rejects per-claim env when the claim may bind a warm
+pod**. A per-sandbox env var is therefore only available on the
+`warmpool: "none"` path, which forces a cold pod per claim — acceptable for a
+one-off smoke, not for a canary whose whole point is that boot cost stays
+comparable.
+
+What *is* per-claim is `spec.sandboxTemplateRef`. So selection is by **template**:
+
+- Extend `deploy/helm/sandbox-env` with an opt-in second `SandboxTemplate`
+  (`<name>-go`, identical but with `SANDBOX_DAEMON_IMPL=go`) plus its own small
+  `SandboxWarmPool`. **Same helm release** — a second release would mint a second
+  sentinel Secret (`randAlphaNum 64` per install) that Studio's single
+  `STUDIO_SANDBOX_SENTINEL_TOKEN` could not authenticate against, and would
+  duplicate the preview Gateway, cert, housekeeper and RBAC.
+- `AgentSandboxProviderOptions.sandboxTemplateName` is instance-level today; add
+  a per-ensure override so one claim can point at the Go template.
+
+Three layers of control, each able to stop the rollout on its own:
+
+| Layer | Where | Purpose |
+| --- | --- | --- |
+| `STUDIO_SANDBOX_GO_TEMPLATE_NAME` | API deployment env | Global kill switch. Unset → the prop and the flag are ignored entirely; there is nothing to point a claim at. |
+| `sandboxGoDaemon` org flag | `organization_settings.flags` (`OrgFlagsSchema`) | Who gets Go *by default* — this is what puts a real user's sandboxes on Go without asking them to pass anything. |
+| `daemonImpl?: "ts" \| "go"` | `SANDBOX_START` input | Targets one sandbox. The escape hatch in both directions: opt a single sandbox in for testing, or pin one back to `ts` inside a flagged org. |
+
+Resolution order: **explicit prop → org flag → `ts`**, mirroring how
+`resolveSandboxProvider` already resolves the provider kind. Two properties this
+must have:
+
+- **Sticky per sandbox.** Persist the resolved impl in `sandbox_runner_state`
+  alongside the handle, so autonomous recovery (pod recreated under a live claim)
+  rebuilds the pod on the same binary. A sandbox that silently changed
+  implementation mid-life would make every incident unattributable.
+- **Attributable.** Stamp `studio.decocms.com/daemon-impl` in the claim's
+  `additionalPodMetadata.labels` (next to the existing tenant labels) and emit
+  one boot log line naming the implementation from *both* daemons. Without the
+  label, every panel below is a guess.
+
+### 3.2 Phases
+
+Each phase states what makes it green and what undoes it. Do not start a phase
+whose predecessor is not green.
+
+| Phase | Scope | Green when | Undo |
+| --- | --- | --- | --- |
+| **P0 — kind** | Local `kind-studio-sandbox-dev`, both templates rendered, one sandbox started with `daemonImpl: "go"` | The G4 session runs end to end: clone → install → dev server → preview through the proxy → HMR over the WS proxy → agent edits a file → publish → SIGTERM → the work is on origin. Plus: `/health` keeps answering during a big `git status`, and the org-fs links appear if the sidecar is enabled. | Nothing shipped. |
+| **P1 — stg, one sandbox, by hand** | The prop only; no org flag yet | Same checklist against a stg pod, on pod hardware. Boot p50/p95 for Go ≤ TS on the same repo, measured from `sandbox.deps.restore` and the pod's lifecycle transitions. First look at the split-by-impl panels with real data in them. | Stop passing the prop. |
+| **P2 — rollback drill** | stg | Flip the org flag on for a stg org, start a sandbox (lands on Go), flip it off, start another (**lands on TS**), and the first sandbox's uncommitted work is still published on shutdown. An undrilled rollback is a hypothesis. | n/a — this *is* the undo, rehearsed. |
+| **P3 — prod, one internal org** | `sandboxGoDaemon` on for a single internal org; Go warm pool sized 1–2 | 7-day soak with no regression on the four alerts below, and no manual intervention. Publish-failure rate is the one that matters most: it is the only metric that maps to lost work. | Flip the org flag off. Next sandbox is TS; in-flight ones drain. |
+| **P4 — widen** | A second org, then a percentage, then the default | Out of scope for "targeted sandboxes only" — revisit with P3's numbers in hand. | Same flag. |
+
+### 3.3 Alerts before traffic
+
+Four, each **split by `daemon-impl`** so a regression is attributable at a
+glance, and each with a TS baseline captured *before* P3 starts:
+
+- **probe-miss rate** — the teardown trigger, and the metric the rewrite exists
+  for (measured locally: Go worst 1ms vs TS worst 186ms under load).
+- **sandbox teardown rate** — the user-visible consequence of a missed probe.
+- **publish failure rate** — the only one that means lost work; page on it.
+- **boot p50/p95** — parity is the floor per §0.
+
+### 3.4 Work items
+
+1. `EnsureOptions.daemonImpl` + a per-ensure `sandboxTemplateRef` override in
+   `AgentSandboxProviderOptions`/`buildClaim`, and the resolved value persisted
+   in `sandbox_runner_state`.
+2. `daemonImpl` on `SANDBOX_START`'s input schema + `resolveDaemonImpl(input,
+   flags, env)` next to `resolveSandboxProvider`; regenerate tool contracts.
+3. `sandboxGoDaemon` in `OrgFlagsSchema` (one line — flags are a jsonb bag).
+4. Chart: opt-in `<name>-go` `SandboxTemplate` + `SandboxWarmPool`, same release,
+   same sentinel Secret; then the `targetRevision` bump in `deco-apps-cd`.
+5. The `daemon-impl` pod label and the boot log line in both daemons.
+6. Panels + the four alerts, split by impl, with a TS baseline recorded.
 
 ## 4. Risk register
 
@@ -239,7 +333,7 @@ than Go-only assertions).
 | **G3** boot economics | **L1 done** — reflink restore/publish, health-gated publish, TTL + per-repo cap GC, dormant behind `GOLDEN_CACHE_ENABLED`; unit + e2e on both daemons. L2 stays out of scope (§5). Boot p50/p95 comparison still needs a real pod. |
 | **G4** runtime fidelity | **Code done, pod pending** — uid/gid decided and pinned; org-fs links ported with a 5-test e2e on both daemons; probe-under-load asserted against Studio's real 500ms budget. The human-driven session in kind and stg remains. |
 | **G5** dispatch | **Transport decided and implemented** — loopback HTTP (owner decision): `internal/dispatch/runner.go` speaks the extraction branch's protocol, the stdio spawner is deleted, and `runner_test.go` covers the bridge with a fake runner. Two things remain, both outside this daemon: merge `wt/harness-runner-extraction` so `HARNESS_RUNNER_CMD` has a runner to point at, and the by-hand `claude-code` run. |
-| **G6** rollout | **Kill switch done** — `SANDBOX_DAEMON_IMPL` (`ts` default) selected by the image entrypoint, `daemonImpl` in the `sandbox-env` chart, both smoke-tested in CI. Canary, alerts and the drill remain. |
+| **G6** rollout | **Kill switch done** — `SANDBOX_DAEMON_IMPL` (`ts` default) selected by the image entrypoint, `daemonImpl` in the `sandbox-env` chart, both smoke-tested in CI. The per-sandbox targeting mechanism, phases and alerts are specified in §3; none of it is built yet. |
 
 ### What landed in G3 / G4 / G6 (this pass)
 
@@ -344,7 +438,7 @@ Nothing below can be closed by writing more code in this repo.
 | --- | --- |
 | **Merging `wt/harness-runner-extraction`** | The transport is decided (loopback HTTP) and the Go side is done, but the runner it talks to lives on that branch — it splits `entry.ts` into `daemon-entry.ts` + `harness-runner/`, which is a merge, not a port. Until it lands, `HARNESS_RUNNER_CMD` has nothing to point at and dispatch on the Go daemon answers `harness_crashed`. The image and chart also need that env once it exists. |
 | **G4's real session** | kind, then a stg pod: clone → install → dev server → preview → HMR → agent edit → publish → SIGTERM → work on origin. Also the pod-hardware boot p50/p95 (G3) and the SIGTERM-inside-the-real-grace-period check, neither of which a laptop can measure. |
-| **G5 acceptance** | A real `claude-code` run. Needs model providers and MCP. |
+| **G5 acceptance** | A real `claude-code` run. Needs model providers and MCP — and note §3.0: this gates cloud-CLI, **not** the cluster canary, because cluster harnesses run in the API process and never touch the daemon's `/dispatch`. |
 | **G6 canary + drill** | Flip `daemonImpl: go` on one org, flip it back, confirm the next sandbox lands on TS and no work was lost. Alerts split by implementation before traffic. |
 | **Per-phase boot timing** | Pick the log-line schema and build the panel first — see the G0 note above; emitting an unread line into two daemons is worse than not emitting it. |
 | **Chart rollout** | `sandbox-env` is pinned in `deco-apps-cd`; the new `daemonImpl` value ships only with a `targetRevision` bump. A prior fix was lost exactly this way. |
