@@ -5,8 +5,9 @@
  * resumes that thread's single sandbox instead of booting a private copy of the
  * same git branch (see `resolveSandboxUserId`).
  * Provider-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `sandboxMap` bookkeeping. Branch defaults to a Bayer-style
- * `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) when omitted.
+ * handler only does `sandboxMap` bookkeeping. Branch is minted from the caller's
+ * slug + a timestamp (`generateBranchName`) when omitted — a fresh identity, so
+ * callers that have a branch must pass it or they get a second sandbox.
  *
  * Different sandbox provider kinds coexist as siblings under the same
  * (user, branch) key — no stale-sandbox teardown is needed on kind change.
@@ -105,7 +106,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted the handler generates a Bayer-style `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) and uses it. The resolved branch is returned in the response so callers can persist it.",
+        "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
