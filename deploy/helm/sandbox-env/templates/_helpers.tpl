@@ -118,6 +118,22 @@ the Gateway/HTTPRoute name so the cert ↔ listener pairing is obvious.
 {{- end }}
 
 {{/*
+OTLP endpoint handed to the daemon, built from the same ip/port the netinit
+ACCEPT rule is built from so the configured destination is by construction the
+reachable one. Fails at template time rather than shipping a sandbox that
+retries into a REJECT for its whole life.
+*/}}
+{{- define "sandbox-env.otlpEndpoint" -}}
+{{- if not .Values.telemetry.otlp.ip }}
+{{- fail "sandbox-env: telemetry.enabled requires telemetry.otlp.ip — the OTLP collector's ClusterIP. A DNS name will NOT work: sandboxes use dnsPolicy: None with public resolvers, so in-cluster names do not resolve. Get it with: kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'" -}}
+{{- end }}
+{{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" .Values.telemetry.otlp.ip) }}
+{{- fail (printf "sandbox-env: telemetry.otlp.ip must be a bare IPv4 address, got %q. It is interpolated into an iptables -d rule; a hostname there fails the init container and the pod never starts." .Values.telemetry.otlp.ip) -}}
+{{- end }}
+{{- printf "http://%s:%v" .Values.telemetry.otlp.ip .Values.telemetry.otlp.port -}}
+{{- end }}
+
+{{/*
 Selector labels for sandbox pods. The runner stamps the same name label
 onto every pod it creates via SandboxClaim.additionalPodMetadata, so the
 NetworkPolicy podSelector can target it. Per-env, so two envs' netpols
