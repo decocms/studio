@@ -81,20 +81,25 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha,format=short
 
+      # Multi-arch in a single job: `useblacksmith/build-push-action` does not
+      # support multi-platform builds yet (its documented path is a per-arch
+      # matrix on native runners), so this build keeps buildx + QEMU emulation.
+      - name: Set up Docker Buildx
         if: steps.tag-check.outputs.exists != 'true'
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
         id: build
         if: steps.tag-check.outputs.exists != 'true'
-        uses: useblacksmith/build-push-action@v2
+        uses: docker/build-push-action@v5
         with:
           context: ./packages/sandbox
           file: ./packages/sandbox/image/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           # Multi-arch to match every sibling image (Studio API, orgfs-sidecar,
           # sandbox-netinit, s3-sync). Without arm64 the sandbox can't run
           # natively on Apple Silicon / arm64 nodes. buildx emulates arm64 via

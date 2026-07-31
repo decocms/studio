@@ -221,7 +221,7 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - arch: arm64
             platform: linux/arm64
             runner: blacksmith-4vcpu-ubuntu-2404-arm
@@ -295,7 +295,7 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - arch: arm64
             platform: linux/arm64
             runner: blacksmith-4vcpu-ubuntu-2404-arm
