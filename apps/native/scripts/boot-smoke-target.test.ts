@@ -21,6 +21,8 @@ describe("resolveSmokeTarget(darwin)", () => {
       join(DESKTOP_DIR, "target/release/bundle/macos"),
     );
     expect(target.launchedBinaryRelPath).toBe("Contents/MacOS/deco");
+    // macOS spawns the binary itself — no wrapper, unchanged from before Linux.
+    expect(target.launchEntryRelPath).toBe(target.launchedBinaryRelPath);
     expect(
       join(target.bundleDir, "deco.app", target.launchedBinaryRelPath),
     ).toBe(
@@ -52,6 +54,9 @@ describe("resolveSmokeTarget(linux)", () => {
       join(DESKTOP_DIR, "target/release/bundle/appimage"),
     );
     expect(target.launchedBinaryRelPath).toBe("squashfs-root/usr/bin/deco");
+    // Spawning usr/bin/deco directly boots Rust but kills WebKitGTK, which
+    // finds WebKitNetworkProcess only via the env AppRun exports.
+    expect(target.launchEntryRelPath).toBe("squashfs-root/AppRun");
   });
 
   test("identifies a versioned AppImage, not the AppDir beside it", () => {
@@ -91,6 +96,12 @@ describe("launch roots", () => {
     );
     expect(bin.startsWith(root + sep)).toBe(true);
     expect(bin).toBe(join(smokeRoot, "squashfs-root/usr/bin/deco"));
+    const entry = join(
+      root,
+      resolveSmokeTarget("linux", DESKTOP_DIR).launchEntryRelPath,
+    );
+    expect(entry.startsWith(root + sep)).toBe(true);
+    expect(entry).toBe(join(smokeRoot, "squashfs-root/AppRun"));
   });
 });
 
