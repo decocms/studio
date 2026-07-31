@@ -42,6 +42,7 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
@@ -72,6 +73,7 @@ import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
+import { extractDescriptionLinks } from "./description-links";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -264,23 +266,14 @@ export function TaskBoardItemDialog({
 
             <div className="flex flex-col gap-6 p-6 pt-6 sm:p-8 sm:pt-6">
               <div className="group relative flex flex-col">
-                {/* Hugs its content (same auto-grow as the title) so a long
-                    description is never clipped behind an inner scrollbar — the
-                    pane scrolls instead. */}
-                <textarea
-                  ref={(el) => {
-                    if (!el) return;
-                    el.style.height = "auto";
-                    el.style.height = `${el.scrollHeight}px`;
-                  }}
-                  value={description}
-                  onChange={(e) => {
-                    setDescription(e.target.value);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${e.target.scrollHeight}px`;
-                  }}
+                {/* Markdown in, markdown out — the value also becomes prompt
+                    context for the agent, and plain-text descriptions written
+                    before this editor existed still parse as-is. Grows with its
+                    content so the pane scrolls, not an inner scrollbar. */}
+                <MarkdownEditor
+                  defaultValue={description}
+                  onChange={setDescription}
                   placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
-                  className="min-h-[200px] w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[320px]"
                 />
                 {description && (
                   <Button
@@ -861,23 +854,6 @@ function prStateStyle(
     className: "text-success",
     icon: GitPullRequest,
   };
-}
-
-/** Extract outbound links from the description text — bare URLs, deduped, for
- *  the Links panel. */
-function extractDescriptionLinks(
-  text: string,
-): { url: string; label: string }[] {
-  if (!text) return [];
-  const out: { url: string; label: string }[] = [];
-  const seen = new Set<string>();
-  for (const m of text.matchAll(/https?:\/\/[^\s)]+/g)) {
-    const url = m[0];
-    if (seen.has(url)) continue;
-    seen.add(url);
-    out.push({ url, label: url });
-  }
-  return out;
 }
 
 /**
