@@ -83,6 +83,7 @@ async function runClusterEngine(
     passthroughClient: args.passthroughClient,
     connectionsData: args.connectionsData,
     extraTools: args.extraTools,
+    toolOutputMap: args.toolOutputMap,
     additionalSystemMessages: args.additionalSystemMessages,
     activeToolNames: args.activeToolNames,
     // Subtask core runs cap the loop at SUBAGENT_STEP_LIMIT (Task 17).
@@ -206,6 +207,7 @@ export function buildClusterEnvironmentTools(args: {
         connectionTitleMap: assembled.connectionTitleMap,
         serverInstructions: assembled.serverInstructions,
         passthroughClient: assembled.passthroughClient,
+        toolOutputMap,
         writer: sideChannel.writer,
         pendingImages,
         sideChunks: sideChannel.stream,

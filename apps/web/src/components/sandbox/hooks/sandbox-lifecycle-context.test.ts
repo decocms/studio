@@ -3,6 +3,7 @@ import {
   resolveVmEntry,
   selectVmEntry,
   shouldAutoStart,
+  shouldAdoptBranch,
   shouldSelfHeal,
   computeDrawerStatus,
   buildSandboxStartArgs,
@@ -118,8 +119,11 @@ describe("shouldAutoStart", () => {
     expect(shouldAutoStart({ ...base, userId: null })).toBe(false);
   });
 
-  test("no branch → true (server generates branch on SANDBOX_START)", () => {
-    expect(shouldAutoStart({ ...base, branch: null })).toBe(true);
+  // Inverted from "no branch → true": letting the server mint the branch here
+  // raced COLLECTION_THREADS_CREATE's own mint and leaked an orphan sandbox
+  // (see shouldAutoStart). Only the user-driven start() may go branchless.
+  test("no branch → false (never let SANDBOX_START mint a branch)", () => {
+    expect(shouldAutoStart({ ...base, branch: null })).toBe(false);
   });
 
   test("vmEntry already present → false", () => {
@@ -141,6 +145,48 @@ describe("shouldAutoStart", () => {
 
   test("already attempted for this branch → false", () => {
     expect(shouldAutoStart({ ...base, attempted: true })).toBe(false);
+  });
+});
+
+describe("shouldAdoptBranch", () => {
+  const base = {
+    threadLoaded: true,
+    isOwner: true,
+    hasActiveGithubRepo: true,
+    branch: null as string | null,
+    attempted: false,
+  };
+
+  test("loaded repo-backed thread with no branch → true", () => {
+    expect(shouldAdoptBranch(base)).toBe(true);
+  });
+
+  // The whole point: shouldAutoStart refuses to start without a branch, so
+  // without this these threads would never boot a preview at all.
+  test("already has a branch → false", () => {
+    expect(shouldAdoptBranch({ ...base, branch: "rafael-z9x1cbam" })).toBe(
+      false,
+    );
+  });
+
+  // A null branch on an unresolved row means "not known yet", not "none" —
+  // minting here would race COLLECTION_THREADS_CREATE all over again.
+  test("thread row not loaded → false", () => {
+    expect(shouldAdoptBranch({ ...base, threadLoaded: false })).toBe(false);
+  });
+
+  test("teammate's thread → false (their row stays read-only)", () => {
+    expect(shouldAdoptBranch({ ...base, isOwner: false })).toBe(false);
+  });
+
+  test("no repo → false (nothing to clone, so no branch is needed)", () => {
+    expect(shouldAdoptBranch({ ...base, hasActiveGithubRepo: false })).toBe(
+      false,
+    );
+  });
+
+  test("already adopted for this thread → false", () => {
+    expect(shouldAdoptBranch({ ...base, attempted: true })).toBe(false);
   });
 });
 

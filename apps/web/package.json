@@ -46,6 +46,7 @@
     "@tiptap/core": "3.20.2",
     "@tiptap/extension-placeholder": "3.20.2",
     "@tiptap/extension-text-align": "3.20.2",
+    "@tiptap/extension-text-style": "3.20.2",
     "@tiptap/pm": "3.20.2",
     "@tiptap/react": "3.20.2",
     "@tiptap/starter-kit": "3.20.2",

@@ -14,8 +14,8 @@
 # once a version bump lands on main) rewrites both to real values and the tap
 # becomes installable. Until then this file only reserves the cask name.
 cask "deco-studio" do
-  version "4.149.2"
-  sha256 "2d9571563057591cae0556e738ee903f64ee7f6ab68d01454fb6a6a09a73e16e"
+  version "4.155.6"
+  sha256 "01ff235ba5832d128700d3616fa63a9cbffdae7ae175949f2c053abee4166120"
 
   url "https://github.com/decocms/studio/releases/download/native-v#{version}/deco-#{version}-aarch64.zip"
   name "deco studio"
@@ -26,6 +26,14 @@ cask "deco-studio" do
   depends_on macos: :big_sur
   depends_on formula: "git"
   depends_on formula: "ripgrep"
+
+  # The app updates itself (Tauri updater — see
+  # apps/native/docs/native-updater-plan.md). Without this, `brew upgrade`
+  # compares the tap version against its install receipt and REINSTALLS
+  # (downgrades) over a self-updated app. `--greedy` still overwrites, which
+  # is fine (the app self-updates back) and is the documented break-glass
+  # recovery path if the updater signing key is ever lost.
+  auto_updates true
 
   app "deco.app"
 

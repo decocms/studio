@@ -183,10 +183,12 @@ export function ProviderGrid({
           {shouldPreview && (
             <SettingsCardItem
               onClick={onShowAll}
-              title={t("settings.aiProviders.moreProviders", {
-                count: hiddenCount,
-                plural: hiddenCount === 1 ? "" : "s",
-              })}
+              title={t(
+                hiddenCount === 1
+                  ? "settings.aiProviders.moreProvidersSingular"
+                  : "settings.aiProviders.moreProvidersPlural",
+                { count: hiddenCount },
+              )}
               action={
                 <ChevronRight size={16} className="text-muted-foreground" />
               }

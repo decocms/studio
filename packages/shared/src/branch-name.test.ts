@@ -1,6 +1,43 @@
 import { describe, expect, test } from "bun:test";
 
-import { generateBranchName } from "./branch-name";
+import { branchUserLabel, generateBranchName } from "./branch-name";
+
+describe("branchUserLabel", () => {
+  test("prefers the display name", () => {
+    expect(branchUserLabel({ name: "Rafael", email: "valls@deco.cx" })).toBe(
+      "Rafael",
+    );
+  });
+
+  // The bug this helper exists for: Better Auth stores an unset display name as
+  // "", which `??` treats as present. Every such user's branch slugged to the
+  // literal "user" (171 prod threads) instead of their email local-part.
+  test("an empty display name falls through to the email local-part", () => {
+    expect(branchUserLabel({ name: "", email: "marco@wolycasa.com.br" })).toBe(
+      "marco",
+    );
+  });
+
+  test("null/absent name falls through to the email local-part", () => {
+    expect(branchUserLabel({ name: null, email: "a@b.c" })).toBe("a");
+    expect(branchUserLabel({ email: "a@b.c" })).toBe("a");
+  });
+
+  test("undefined when nothing is usable, so generateBranchName decides", () => {
+    expect(branchUserLabel({ name: "", email: "" })).toBeUndefined();
+    expect(branchUserLabel({})).toBeUndefined();
+    expect(branchUserLabel(null)).toBeUndefined();
+    expect(branchUserLabel(undefined)).toBeUndefined();
+  });
+
+  test("feeds generateBranchName a real slug for a name-less user", () => {
+    expect(
+      generateBranchName(
+        branchUserLabel({ name: "", email: "marco@wolycasa.com.br" }),
+      ),
+    ).toMatch(/^marco-[0-9a-z]+$/);
+  });
+});
 
 describe("generateBranchName", () => {
   test("returns <user-slug>-<base36-timestamp>", () => {

@@ -1,4 +1,5 @@
-import fs, { mkdtempSync } from "node:fs";
+import fs from "node:fs";
+import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
@@ -477,9 +478,9 @@ function formatGitError(err: unknown): string {
 
 /** Empty dir passed as core.hooksPath so publish commits never run lefthook/husky. */
 let emptyHooksDir: string | null = null;
-function getEmptyHooksDir(): string {
+async function getEmptyHooksDir(): Promise<string> {
   if (!emptyHooksDir) {
-    emptyHooksDir = mkdtempSync(
+    emptyHooksDir = await mkdtemp(
       path.join(tmpdir(), "studio-sandbox-no-hooks-"),
     );
   }
@@ -495,6 +496,46 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   return [
     ...new Set(status.files.map((f) => f.path).filter((p) => p.length > 0)),
   ];
+}
+
+/**
+ * `git status --porcelain` collapses an untracked directory into a single
+ * `?? .deco/` entry. That hides the block files inside it from the decofile
+ * validator in publish() while `git add -- .deco/` still commits them — so an
+ * invalid block written by bash lands on the branch. git does the expansion
+ * itself so .gitignore is honored; walking the dir here would stage ignored
+ * files and make `git add` fail.
+ */
+function expandUntrackedDirs(repoDir: string, paths: string[]): string[] {
+  const out: string[] = [];
+  for (const p of paths) {
+    let isDir = false;
+    try {
+      isDir = fs.statSync(path.join(repoDir, p)).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) {
+      out.push(p);
+      continue;
+    }
+    const listed = tryGit(repoDir, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "--",
+      p,
+    ]);
+    if (listed === null) {
+      out.push(p);
+      continue;
+    }
+    for (const f of listed.split("\n")) {
+      const trimmed = f.trim();
+      if (trimmed) out.push(trimmed);
+    }
+  }
+  return out;
 }
 
 /** A discard request path that escapes the repo — a client/data condition, not a server fault. */
@@ -635,11 +676,11 @@ class InvalidDecofileBlockError extends Error {
   }
 }
 
-export function publish(
+export async function publish(
   deps: GitDeps,
   message: string,
   opts: { onInvalidBlock?: "throw" | "skip"; reconcileRemote?: boolean } = {},
-): { pushed: boolean } {
+): Promise<{ pushed: boolean }> {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
   // directly, so a never-cloned/empty dir would throw 128 ("not a git
@@ -662,7 +703,7 @@ export function publish(
   }
 
   const status = computeWorkingTreeStatus(repoDir);
-  let paths = changedPathsFromStatus(status);
+  let paths = expandUntrackedDirs(repoDir, changedPathsFromStatus(status));
   // Last-resort net: never let a syntactically invalid decofile block reach the
   // branch. The /write and /edit handlers already reject invalid blocks, but a
   // mutation that bypassed them (bash, a git merge, a future write path) would
@@ -680,7 +721,7 @@ export function publish(
     if (!isDecofileBlockPath(rel)) continue;
     let content: string;
     try {
-      content = fs.readFileSync(path.join(repoDir, rel), "utf-8");
+      content = await readFile(path.join(repoDir, rel), "utf-8");
     } catch {
       continue; // deleted or unreadable — nothing to validate
     }
@@ -713,11 +754,12 @@ export function publish(
     // --no-verify: we may want to run hooks here eventually, but removing it
     // requires surfacing hook failures clearly in the publish UI (which step
     // failed, logs, retry) instead of a generic daemon 500.
+    const hooksDir = await getEmptyHooksDir();
     runGit(
       repoDir,
       [
         "-c",
-        `core.hooksPath=${getEmptyHooksDir()}`,
+        `core.hooksPath=${hooksDir}`,
         "commit",
         "--no-verify",
         "-m",
@@ -749,7 +791,7 @@ export function publish(
   return { pushed: true };
 }
 
-function discard(deps: GitDeps, filepaths: string[]): void {
+async function discard(deps: GitDeps, filepaths: string[]): Promise<void> {
   const repoDir = deps.repoDir;
   const validated = filepaths.map((fp) => resolveRepoRelativePath(deps, fp));
   const status = computeWorkingTreeStatus(repoDir);
@@ -792,7 +834,7 @@ function discard(deps: GitDeps, filepaths: string[]): void {
   for (const fp of toDelete) {
     const abs = path.join(repoDir, fp);
     try {
-      fs.unlinkSync(abs);
+      await unlink(abs);
     } catch {
       // ignore missing files
     }
@@ -883,11 +925,15 @@ export function makeGitPublishHandler(deps: GitDeps) {
     }
     try {
       return jsonResponse(
-        publish(deps, typeof body.message === "string" ? body.message : "", {
-          // Interactive publish: reconcile a diverged origin/<branch> instead of
-          // failing with "fetch first". Shutdown sync (entry.ts) omits this.
-          reconcileRemote: true,
-        }),
+        await publish(
+          deps,
+          typeof body.message === "string" ? body.message : "",
+          {
+            // Interactive publish: reconcile a diverged origin/<branch> instead of
+            // failing with "fetch first". Shutdown sync (entry.ts) omits this.
+            reconcileRemote: true,
+          },
+        ),
       );
     } catch (err) {
       // An invalid-block refusal is a client/data condition, not a server fault.
@@ -924,7 +970,7 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       return jsonResponse({ error: "filepaths is required" }, 400);
     }
     try {
-      discard(deps, filepaths);
+      await discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
       if (err instanceof InvalidDiscardPathError) {

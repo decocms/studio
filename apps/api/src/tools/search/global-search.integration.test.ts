@@ -79,14 +79,7 @@ describe("GLOBAL_SEARCH", () => {
     expect(parsed.items).toHaveLength(0);
   });
 
-  it("honors the `types` filter — empty array of thread results when threads are excluded", async () => {
-    // `types: []` would be filtered out by the input schema if treated as
-    // "none", so use a non-thread (future) type to assert the filter narrows.
-    // Today the only branch is `"thread"`, so passing `types: ["thread"]`
-    // still returns threads. The negative case is: explicitly request a type
-    // that doesn't exist yet — the input schema rejects unknown enum values,
-    // so we instead assert that requesting only `"thread"` works and matches
-    // the unfiltered call.
+  it("honors the `types` filter — matches the unfiltered call when `thread` is requested", async () => {
     const filtered = GLOBAL_SEARCH.outputSchema.parse(
       await GLOBAL_SEARCH.handler(
         { query: "launch", types: ["thread"] },
@@ -99,5 +92,15 @@ describe("GLOBAL_SEARCH", () => {
     expect(filtered.items.map((i) => i.id).sort()).toEqual(
       unfiltered.items.map((i) => i.id).sort(),
     );
+  });
+
+  it("returns no items when `types` is an empty array", async () => {
+    const raw = await GLOBAL_SEARCH.handler(
+      { query: "launch", types: [] },
+      env.ctx,
+    );
+    const parsed = GLOBAL_SEARCH.outputSchema.parse(raw);
+    expect(parsed.items).toHaveLength(0);
+    expect(parsed.totalCount).toBe(0);
   });
 });

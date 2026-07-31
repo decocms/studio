@@ -7,12 +7,14 @@ mod auth;
 mod commands;
 mod control_origin;
 mod csp;
+mod env_path;
 mod local_tls;
 mod selftest;
 mod setup;
 mod shutdown;
 mod state;
 mod ui_assets;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +25,12 @@ pub fn run() {
         )
         .init();
 
+    // Must run before `setup::run` boots local-api: every child spawn (agent
+    // detection, `bun install`, the script runner, ripgrep) inherits this
+    // process's environment, and a Finder/Dock launch starts with launchd's
+    // minimal PATH. See `env_path` for the repair strategy and its bounds.
+    env_path::repair();
+
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
 
     // MCP bridge for AI-assistant-driven dev tooling (@hypothesi/tauri-mcp-server).
@@ -30,6 +38,17 @@ pub fn run() {
     #[cfg(debug_assertions)]
     {
         builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+    }
+
+    // Self-update — release builds only, the exact mirror of the debug-only
+    // mcp-bridge above. The cfg-gate is load-bearing, not belt-and-braces: a
+    // debug binary with the plugin registered and the committed
+    // plugins.updater config WOULD self-update from the production channel
+    // if anything called check(). The background task has further runtime
+    // gates — see `updater`'s module doc.
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
     let app = builder

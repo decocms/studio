@@ -249,6 +249,30 @@ export function withTimeout<T>(
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Wraps `fetch` to refuse 3xx redirects. `isPrivateUrl` and the DNS check
+ * above only vet the URL we're about to connect to — the MCP SDK's client
+ * transports follow redirects by default, so a malicious/compromised remote
+ * server could 3xx-redirect the `tools/list` request to a private/metadata
+ * address and bypass both checks. `tryRawToolsList` already guards its own
+ * bare fetch this way; this does the same for the primary SDK-client path
+ * (attempted first, for every server).
+ */
+export function createNoRedirectFetch(
+  fetchImpl: (
+    url: string | URL,
+    init?: RequestInit,
+  ) => Promise<Response> = fetch,
+): (url: string | URL, init?: RequestInit) => Promise<Response> {
+  return async (url, init) => {
+    const res = await fetchImpl(url, { ...init, redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error("Refusing to follow a redirect from the remote server");
+    }
+    return res;
+  };
+}
+
 async function tryRawToolsList(
   url: string,
   timeoutMs: number,
@@ -359,6 +383,7 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
 
     let lastError: string | null = null;
     let authErrorUrl: string | null = null;
+    const noRedirectFetch = createNoRedirectFetch();
 
     for (const attempt of attempts) {
       let client: Client | null = null;
@@ -372,9 +397,11 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
           attempt.transport === "sse"
             ? new SSEClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: noRedirectFetch,
               })
             : new StreamableHTTPClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: noRedirectFetch,
               });
 
         await withTimeout(

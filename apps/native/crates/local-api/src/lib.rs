@@ -75,7 +75,7 @@ pub use events::Broadcaster;
 pub use sandbox::SandboxManager;
 pub use setup::SetupOrchestrator;
 pub use shutdown::ShutdownCoordinator;
-pub use state::{ApiMode, AppState};
+pub use state::{ApiMode, AppState, UpdateHooks};
 pub use tasks::{KillSignal, TaskRegistry};
 pub use ui::{UiAsset, UiAssetProvider};
 
@@ -107,6 +107,9 @@ pub struct StartOptions {
     /// cookie jars) AND a secure context (Web Crypto); only TLS gives both.
     /// Standalone/bearer callers and the tests keep plain HTTP.
     pub tls: Option<TlsFiles>,
+    /// Desktop-app self-update integration — see [`UpdateHooks`]. `None`
+    /// outside the packaged Tauri shell (standalone binary, tests).
+    pub update: Option<UpdateHooks>,
 }
 
 /// Paths to the material [`start`] serves HTTPS with.
@@ -713,6 +716,7 @@ pub async fn start_with_client_auth(
         shutdown: shutdown.clone(),
         setup: setup_orchestrator,
         sandbox_manager,
+        update: opts.update,
     };
 
     // Clear worktree registrations orphaned by a sandbox directory that
@@ -938,6 +942,8 @@ pub async fn boot_from_env() {
         // The standalone binary serves plain HTTP: local HTTPS exists for the
         // desktop webview's origin, and nothing here has a webview.
         tls: None,
+        // Self-update belongs to the packaged Tauri shell only.
+        update: None,
     })
     .await
     {
@@ -1214,6 +1220,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let options = |boot_id: &str| StartOptions {
             tls: None,
+            update: None,
             token: "t".repeat(32),
             boot_id: boot_id.to_string(),
             app_root: dir.path().to_path_buf(),

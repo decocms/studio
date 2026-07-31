@@ -41,7 +41,10 @@ import {
 import { useAutoInstallGitHub } from "@/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { fetchGithubInstallations } from "@/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  GITHUB_APP_INSTALL_URL,
+} from "@/lib/github-installations";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -628,10 +631,6 @@ function InstallationPicker({
   const data = installationsQuery.data;
   if (!data) return null;
 
-  const installUrl = data.appSlug
-    ? `https://github.com/apps/${data.appSlug}/installations/new`
-    : "https://github.com/settings/installations";
-
   if (data.installations.length === 0) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -667,7 +666,11 @@ function InstallationPicker({
 
           <div className="mt-5 flex items-center gap-2">
             <Button asChild size="sm">
-              <a href={installUrl} target="_blank" rel="noopener noreferrer">
+              <a
+                href={GITHUB_APP_INSTALL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {t("common.githubRepoPicker.chooseRepositories")}
                 <LinkExternal01 size={14} />
               </a>
@@ -741,7 +744,7 @@ function InstallationPicker({
 
       <div className="px-4 py-3 border-t border-border shrink-0">
         <a
-          href={installUrl}
+          href={GITHUB_APP_INSTALL_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"

@@ -30,6 +30,17 @@ export function isTaskBlocked(item: TaskBoardItem): boolean {
   return item.threads.some((t) => t.status === "requires_action");
 }
 
+/**
+ * Status-icon classes for a task card/row. An in-progress task's spinner spins,
+ * but one waiting on input stops spinning and pulses in `warning` — same token
+ * as its "Needs input" badge, so a stalled task doesn't look like it's working.
+ */
+export function statusIconClassName(item: TaskBoardItem): string {
+  return item.status === "in_progress" && isTaskBlocked(item)
+    ? "text-warning animate-pulse"
+    : STATUS_CONFIG[item.status].iconClassName;
+}
+
 /** The thread to surface in the card — the most recent linked run. */
 export function primaryThread(
   item: TaskBoardItem,
@@ -110,7 +121,7 @@ export const STATUS_CONFIG: Record<
   in_progress: {
     labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,
-    iconClassName: "text-primary",
+    iconClassName: "text-primary animate-spin",
   },
   in_review: {
     labelKey: "taskBoard.config.statusInReview",

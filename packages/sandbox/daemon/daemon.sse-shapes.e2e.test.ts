@@ -203,6 +203,42 @@ describe("daemon e2e: SSE wire shapes — file-changed", () => {
     ) as { path: string };
     expect(event).toEqual({ path: "sse-shape-probe.txt" });
   });
+
+  // The fs routes report their own writes; only the watcher catches an edit made
+  // through `bash`, as the CLI harnesses do.
+  it(
+    "a file written outside the fs routes still emits file-changed",
+    async () => {
+      const repo = setupBareRepo();
+      repoCleanup = repo.cleanup;
+      d = await startDaemon();
+      expect((await bootstrapRepo(d, repo.url)).status).toBe(200);
+      await waitForOrchestratorIdle(d);
+
+      const ssePromise = readSseUntil(url(d, "/_sandbox/events"), {
+        headers: authHeaders(),
+        predicate: (acc) =>
+          payloadsOf(acc, "file-changed").some(
+            (p) => (p as { path?: string }).path === "watcher-probe.txt",
+          ),
+        deadlineMs: 15_000,
+      });
+      const res = await fetch(url(d, "/_sandbox/bash"), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ command: "echo hi > watcher-probe.txt" }),
+      });
+      expect(res.status).toBe(200);
+
+      const { text } = await ssePromise;
+      expect(
+        payloadsOf(text, "file-changed").find(
+          (p) => (p as { path?: string }).path === "watcher-probe.txt",
+        ),
+      ).toEqual({ path: "watcher-probe.txt" });
+    },
+    SETUP_TIMEOUT_MS,
+  );
 });
 
 // --- tasks (reconnect snapshot while a task is active) ---------------------

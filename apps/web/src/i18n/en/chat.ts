@@ -89,8 +89,6 @@ export const chat = {
     "useChatTask must be used within ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Close",
   "chat.collapsibleHighlight.closeTitle": "Close",
-  "chat.common.copy": "Copy",
-  "chat.common.seeAll": "See all {count} {noun}",
   "chat.connectDesktopDialog.agentClaudeCodeDescription":
     "Runs through the Claude Code CLI",
   "chat.connectDesktopDialog.agentClaudeCodeLabel": "Claude Code",
@@ -293,6 +291,15 @@ export const chat = {
     "Failed to load prompt. Please try again.",
   "chat.nextActionChip.mcpClientNotAvailable": "MCP client not available",
   "chat.nextActionChip.next": "Next:",
+  "chat.nativeAgentEmptyState.heading": "Choose your coding agent",
+  "chat.nativeAgentEmptyState.notDetected":
+    "{label} was not detected on this computer",
+  "chat.nativeAgentEmptyState.subtitleDetecting":
+    "Looking for coding agents installed on this computer…",
+  "chat.nativeAgentEmptyState.subtitleNoneDetected":
+    "No coding agent was detected. Install Claude Code or Codex, then pick it here to start chatting.",
+  "chat.nativeAgentEmptyState.subtitlePick":
+    "Chats run on a coding agent installed on this computer. Pick one to start.",
   "chat.noAiProviderEmptyState.connectDesktopLabel": "Connect your desktop",
   "chat.noAiProviderEmptyState.desktopLinkedLabel": "Desktop linked",
   "chat.noAiProviderEmptyState.headingDefault": "Your agents are almost ready",

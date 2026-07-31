@@ -39,6 +39,7 @@ use serde_json::{json, Value};
 use crate::error::ApiError;
 use crate::routes::upstream;
 use crate::sandbox::GitSandboxConfig;
+use crate::setup::detect_runtime::runtime_for_package_manager;
 use crate::state::AppState;
 
 /// The preview listener's port, published by [`crate::start`] once it binds.
@@ -165,18 +166,6 @@ pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> 
         fallback.get_or_insert(branch);
     }
     fallback.unwrap_or_else(|| EPHEMERAL_BRANCH.to_string())
-}
-
-/// `metadata.runtime.selected` names a package manager; `application.runtime`
-/// wants the JS runtime that drives it. Byte-parity with
-/// `packages/shared/src/runtime-defaults.ts::PACKAGE_MANAGER_CONFIG[pm].runtime`.
-fn runtime_for_package_manager(package_manager: &str) -> Option<&'static str> {
-    match package_manager {
-        "npm" | "pnpm" | "yarn" => Some("node"),
-        "bun" => Some("bun"),
-        "deno" => Some("deno"),
-        _ => None,
-    }
 }
 
 /// Build the sandbox config from a virtual MCP's `metadata`, or `None` when it

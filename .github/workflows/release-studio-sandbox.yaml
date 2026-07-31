@@ -9,7 +9,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # Two images from one Dockerfile: the daemon implementation IS the image, so a
+  # SandboxTemplate picks a daemon by picking an image. They share every layer
+  # below the daemon and are released in lockstep under the same version.
   IMAGE_NAME: ${{ github.repository }}/studio-sandbox
+  IMAGE_NAME_GO: ${{ github.repository }}/studio-sandbox-go
 
 jobs:
   build-push:
@@ -81,6 +85,17 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha,format=short
 
+      - name: Extract metadata for the Go-daemon image
+        id: meta-go
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GO }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,format=short
+
       - name: Set up Docker Buildx
         if: steps.tag-check.outputs.exists != 'true'
         uses: docker/setup-buildx-action@v3
@@ -92,6 +107,7 @@ jobs:
         with:
           context: ./packages/sandbox
           file: ./packages/sandbox/image/Dockerfile
+          target: ts
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -103,6 +119,24 @@ jobs:
           # the runner's preinstalled binfmt, same as orgfs-sidecar.
           platforms: linux/amd64,linux/arm64
 
+      # Second image, same context and Dockerfile, different target. Reuses the
+      # `runtime-base` layers the step above just cached, so this costs the Go
+      # compile plus one thin layer — not a second full build.
+      - name: Build and push the Go-daemon image
+        id: build-go
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./packages/sandbox
+          file: ./packages/sandbox/image/Dockerfile
+          target: go
+          push: true
+          tags: ${{ steps.meta-go.outputs.tags }}
+          labels: ${{ steps.meta-go.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
       - name: Install cosign
         if: steps.tag-check.outputs.exists != 'true'
         uses: sigstore/cosign-installer@v3
@@ -112,10 +146,15 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST_GO: ${{ steps.build-go.outputs.digest }}
+          TAGS_GO: ${{ steps.meta-go.outputs.tags }}
         run: |
           set -euo pipefail
           for tag in $(echo "${TAGS}" | tr ',' '\n'); do
             cosign sign --yes "${tag}@${DIGEST}"
+          done
+          for tag in $(echo "${TAGS_GO}" | tr ',' '\n'); do
+            cosign sign --yes "${tag}@${DIGEST_GO}"
           done
 
       - name: Generate SLSA build provenance
@@ -124,6 +163,14 @@ jobs:
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SLSA build provenance for the Go-daemon image
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GO }}
+          subject-digest: ${{ steps.build-go.outputs.digest }}
           push-to-registry: true
 
   # ---------------------------------------------------------------------------

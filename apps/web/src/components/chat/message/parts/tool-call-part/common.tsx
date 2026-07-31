@@ -23,8 +23,6 @@ export interface ToolCallShellProps {
   title: ReactNode;
   /** Usage stats for the operation (optional) */
   usage?: UsageStatsType | null;
-  /** Latency in seconds for the operation (optional) */
-  latency?: number;
   /** Short status text (or node, e.g. a live countdown) shown inline after the label */
   summary?: ReactNode;
   /** Derived UI state computed by caller based on their loading semantics */
@@ -53,7 +51,6 @@ export function ToolCallShell({
   icon,
   title,
   usage,
-  latency: _latency,
   summary,
   state,
   detail,
@@ -230,7 +227,7 @@ export function ToolCallShell({
                     type="button"
                     onClick={() => handleCopy(detail!)}
                     className="shrink-0 p-1.5 rounded-md text-muted-foreground/50 [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/50 transition-colors active:scale-[0.97]"
-                    aria-label={t("chat.common.copy")}
+                    aria-label={t("common.copy")}
                   >
                     {copied ? (
                       <Check className="size-3.5" />
@@ -289,7 +286,7 @@ export function SeeAllRow({
       onClick={onClick}
       className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
     >
-      {t("chat.common.seeAll", { count, noun })}
+      {t("common.seeAll", { count, noun })}
       <ArrowRight
         className="size-4 transition-transform group-hover:translate-x-0.5"
         aria-hidden="true"

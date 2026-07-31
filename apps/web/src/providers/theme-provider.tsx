@@ -93,8 +93,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
 
     // Keep <meta name="theme-color"> in sync with the resolved theme so the
-    // PWA title-bar (Window Controls Overlay) matches the app chrome. We
-    // read --sidebar from documentElement (which may be oklch) and round-trip
+    // mobile browser chrome (Android address bar, iOS Safari bars) matches the
+    // app chrome. We read --sidebar from documentElement (which may be oklch)
+    // and round-trip
     // through canvas's fillStyle setter — the setter normalises any valid CSS
     // color to canonical hex/rgb format, which is exactly what the meta tag
     // accepts. Runs *after* the dark class toggle so the var resolves to the

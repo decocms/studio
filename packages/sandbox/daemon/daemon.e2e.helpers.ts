@@ -32,12 +32,14 @@ const PORT_WAIT_TIMEOUT_MS = 20_000;
 /**
  * Resolve the command used to spawn the daemon under test.
  *
- * Default (`DAEMON_E2E_CMD` unset): run the bundled TS daemon under Bun. A
- * reimplementation sets `DAEMON_E2E_CMD` to its own argv — either a JSON array
+ * `raw` unset/empty: run the bundled TS daemon under Bun. A reimplementation
+ * sets `DAEMON_E2E_CMD` to its own argv — either a JSON array
  * (`["./target/release/daemon"]`, required when args contain spaces) or a
- * plain whitespace-separated string (`"bun /abs/daemon.js"`).
+ * plain whitespace-separated string (`"bun /abs/daemon.js"`). Passed in rather
+ * than defaulted so the "no override" case stays testable under a
+ * DAEMON_E2E_CMD run.
  */
-export function resolveDaemonCmd(raw = process.env.DAEMON_E2E_CMD): string[] {
+export function resolveDaemonCmd(raw: string | undefined): string[] {
   if (!raw || raw.trim().length === 0) return ["bun", DAEMON_BUNDLE];
   try {
     const parsed = JSON.parse(raw);
@@ -53,7 +55,7 @@ export function resolveDaemonCmd(raw = process.env.DAEMON_E2E_CMD): string[] {
   return parts;
 }
 
-const DAEMON_CMD = resolveDaemonCmd();
+const DAEMON_CMD = resolveDaemonCmd(process.env.DAEMON_E2E_CMD);
 
 export interface Daemon {
   port: number;
@@ -61,6 +63,8 @@ export interface Daemon {
   appDir: string;
   /** Captured stderr, for surfacing startup crashes in assertions. */
   stderr: { value: string };
+  /** Captured stdout — the daemon's log/setup stream. */
+  stdout: { value: string };
 }
 
 export function authHeaders(
@@ -134,13 +138,17 @@ export async function startDaemon(
     env: buildDaemonEnv(appDir, port, extraEnv),
   });
   const stderr = { value: "" };
-  proc.stdout?.on("data", (c) => process.stderr.write(`[daemon:out] ${c}`));
+  const stdout = { value: "" };
+  proc.stdout?.on("data", (c) => {
+    stdout.value += c.toString();
+    process.stderr.write(`[daemon:out] ${c}`);
+  });
   proc.stderr?.on("data", (c) => {
     stderr.value += c.toString();
     process.stderr.write(`[daemon:err] ${c}`);
   });
   await waitForPort(port, proc, stderr);
-  return { port, proc, appDir, stderr };
+  return { port, proc, appDir, stderr, stdout };
 }
 
 export function buildDaemonEnv(

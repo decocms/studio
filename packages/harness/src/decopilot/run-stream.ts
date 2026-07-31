@@ -487,6 +487,9 @@ export async function* runDecopilotStream(
     // etc.) as extraTools so the engine's lightweight assembled set is
     // overridden with the complete set. Also inject enable_tool, which is
     // state-dependent (built from enabledTools reconstructed above).
+    // The engine re-assembles the MCP tools; bind them to the run's map so
+    // their truncated outputs land where `read_tool_output` looks.
+    toolOutputMap: tools.toolOutputMap,
     extraTools: {
       ...(tools.builtInTools as ToolSet),
       ...(tools.connectionsBlockTools.length > 0 && streamTools.enable_tool

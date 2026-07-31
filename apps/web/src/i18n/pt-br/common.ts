@@ -1,8 +1,9 @@
 import type { common as commonEn } from "../en/common.ts";
 
 export const common = {
+  "common.copy": "Copiar",
+  "common.seeAll": "Ver todos os {count} {noun}",
   "common.accountPopover.account": "Conta",
-  "common.accountPopover.addToHomeScreen": "Adicionar à tela inicial",
   "common.accountPopover.adminDashboard": "Painel de administração",
   "common.accountPopover.community": "Comunidade",
   "common.accountPopover.copyUserId": "Copiar ID do usuário",
@@ -32,6 +33,12 @@ export const common = {
   "common.archivedOrgScreen.orgUnavailable": "Organização indisponível",
   "common.authEntry.autoLoginFailed": "Falha no auto-login",
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
+  "common.authEntry.browserOnlyCta": "Continuar no seu navegador",
+  "common.authEntry.browserOnlyDescription":
+    "Esta organização faz login com um link enviado por e-mail, que não pode ser aberto dentro do app. Continue no seu navegador para concluir o login.",
+  "common.authEntry.browserOnlyTitle": "Bem-vindo ao deco",
+  "common.authEntry.finishSignInInBrowser": "Conclua o login no seu navegador…",
+  "common.authEntry.finishingSignIn": "Concluindo login…",
   "common.authEntry.noLoginOptions": "Nenhuma opção de login disponível",
   "common.authEntry.tryRestartingServer": "Tente reiniciar o servidor.",
   "common.desktopKeychainUnavailable.description":
@@ -239,6 +246,9 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Solicitar acesso",
   "common.requestToJoinScreen.requesting": "Solicitando…",
   "common.requestToJoinScreen.title": "Solicitar acesso a {orgName}?",
+  "common.signInScreen.configLoadFailed":
+    "Não foi possível carregar as opções de login.",
+  "common.signInScreen.tryAgain": "Tentar novamente",
   "common.simpleIconPicker.filterPlaceholder": "Filtrar…",
   "common.simpleIconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.ssoRequiredScreen.goBack": "Voltar",
@@ -276,10 +286,6 @@ export const common = {
     "Falha ao iniciar o chat. Tente novamente.",
   "common.useStartThreadFromPrompt.mcpClientNotAvailable":
     "Cliente MCP não disponível",
-  "common.versionCheckDialog.available": "Uma nova versão está disponível",
-  "common.versionCheckDialog.outdatedVersion":
-    "Você está visualizando uma versão desatualizada desta página. Atualize para obter as últimas atualizações.",
-  "common.versionCheckDialog.refresh": "Atualizar",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
   "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",

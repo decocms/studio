@@ -71,9 +71,13 @@ use crate::tasks::{
 /// the native Git-sandbox contract's "Desktop adaptation" section,
 /// the user is on their OWN machine with their OWN git auth, so cloning
 /// should use exactly what `git clone` would do run by hand: the user's
-/// configured credential helper (macOS Keychain, `gh`, SSH agent, ...).
+/// configured credential helper (for example macOS Keychain, or `gh` after
+/// `gh auth setup-git`). An SSH agent only participates when the configured
+/// `cloneUrl` itself uses SSH; Git does not switch an HTTPS URL to SSH based on
+/// the protocol selected in `gh auth login`.
 /// Clearing `credential.helper` here would silently break every private
-/// repo a desktop user can otherwise already clone from a terminal.
+/// repo a desktop user can otherwise already clone from a terminal with the
+/// same URL.
 /// `GIT_TERMINAL_PROMPT=0` (below, in [`run_git`]) still applies regardless,
 /// so a repo the user's credentials genuinely can't reach fails fast rather
 /// than hanging on an interactive prompt.
@@ -159,6 +163,14 @@ async fn run_git(
     cmd.args(&full)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "true")
+        // Every matcher in this file — `ref_format_unsupported`,
+        // `refetch_after_case_collision`, clone_fresh_body's
+        // "already used by worktree" family — reads git's ENGLISH message
+        // text, and git localizes all of them. Pin the child's locale so a
+        // translated system can't blind the detectors into skipping a
+        // fallback (fresh clones hard-failing on a pre-reftable localized
+        // git) or a migration.
+        .env("LC_ALL", "C")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -468,7 +480,15 @@ async fn clone_fresh_body(
         return finish_fresh_checkout(orch, task_id, branch_to_fork, controller).await;
     };
 
-    ensure_canonical_repo(orch, task_id, clone_url, &canonical, controller).await?;
+    ensure_canonical_repo(
+        orch,
+        task_id,
+        clone_url,
+        &canonical,
+        branch_on_remote,
+        controller,
+    )
+    .await?;
 
     // Start point for the new worktree: always a REMOTE-TRACKING ref.
     //
@@ -613,6 +633,7 @@ async fn ensure_canonical_repo(
     task_id: &str,
     clone_url: &str,
     canonical: &Path,
+    branch_on_remote: Option<&str>,
     controller: &ProcessController,
 ) -> Result<(), String> {
     let canonical_str = canonical.to_string_lossy().into_owned();
@@ -628,6 +649,16 @@ async fn ensure_canonical_repo(
             &["-C", &canonical_str, "fetch", "--prune", "origin"],
             None,
             Some(controller),
+        )
+        .await?;
+        let (code, out) = refetch_after_case_collision(
+            orch,
+            task_id,
+            &canonical_str,
+            controller,
+            branch_on_remote,
+            code,
+            out,
         )
         .await?;
         if code != 0 {
@@ -679,14 +710,47 @@ async fn ensure_canonical_repo(
         "[worktree] no local mirror yet; creating the shared bare clone (once per repository)\r\n",
     )
     .await;
+    // `--ref-format=reftable` deliberately: the files backend stores each ref
+    // as a filesystem path, so two remote branches whose names differ only by
+    // case are unstorable on the case-insensitive filesystems macOS ships —
+    // git 2.46+ fails the fetch outright and recommends exactly this backend
+    // (refs live in a table, not paths). Try-with-fallback rather than a
+    // version probe: a git without reftable (< 2.45, or compiled out) rejects
+    // the flag, and `git clone` removes the destination it created on
+    // failure, so the plain retry starts clean.
     let (code, out) = run_git(
         orch,
         Some(task_id),
-        &["clone", "--bare", clone_url, &canonical_str],
+        &[
+            "clone",
+            "--bare",
+            "--ref-format=reftable",
+            clone_url,
+            &canonical_str,
+        ],
         None,
         Some(controller),
     )
     .await?;
+    let (code, out) = if code != 0 && ref_format_unsupported(&out) {
+        emit_chunk(
+            orch,
+            Some(task_id),
+            OutputStream::Stdout,
+            "[worktree] this git predates the reftable ref backend; using the files backend\r\n",
+        )
+        .await;
+        run_git(
+            orch,
+            Some(task_id),
+            &["clone", "--bare", clone_url, &canonical_str],
+            None,
+            Some(controller),
+        )
+        .await?
+    } else {
+        (code, out)
+    };
     if code != 0 {
         return Err(format!("git clone --bare exited {code}: {}", out.trim()));
     }
@@ -717,6 +781,16 @@ async fn ensure_canonical_repo(
         Some(controller),
     )
     .await?;
+    let (code, out) = refetch_after_case_collision(
+        orch,
+        task_id,
+        &canonical_str,
+        controller,
+        branch_on_remote,
+        code,
+        out,
+    )
+    .await?;
     if code != 0 {
         return Err(format!(
             "git fetch after bare clone exited {code}: {}",
@@ -735,6 +809,142 @@ async fn ensure_canonical_repo(
     .await;
     prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
     Ok(())
+}
+
+/// A git that does not know `--ref-format` (< 2.45) or the reftable value
+/// (compiled out) rejects the clone before touching the network — both
+/// spellings of that rejection, so the fallback never masks a real failure.
+fn ref_format_unsupported(out: &str) -> bool {
+    out.contains("unknown option") || out.contains("unknown ref storage format")
+}
+
+/// Serializes ref-storage surgery per canonical mirror. Two sandboxes CAN
+/// legitimately provision the same repository at once (same repo, different
+/// branches), and their per-handle locks don't compose into a per-mirror
+/// one — a `refs migrate` racing another sandbox's fetch would rewrite ref
+/// storage underneath it. Keyed by the canonical path; entries are tiny and
+/// never removed (one per distinct repository this process touched).
+fn mirror_surgery_lock(canonical_str: &str) -> Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    > = std::sync::OnceLock::new();
+    LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .expect("mirror lock map is never poisoned")
+        .entry(canonical_str.to_string())
+        .or_default()
+        .clone()
+}
+
+/// Recovery for a files-backend mirror that just hit git's case-collision
+/// refusal: the remote has branches whose names differ only by case, which
+/// filesystem-path ref storage cannot hold on the case-insensitive volumes
+/// macOS ships. In order of preference:
+///
+/// 1. `git worktree prune` + `git refs migrate --ref-format=reftable` +
+///    full refetch — the complete fix git's own error text recommends, but
+///    it is only possible while NO worktree is registered: git refuses to
+///    migrate a repository with worktrees on every released version ("not
+///    supported yet", a documented limitation), and every live sandbox IS a
+///    linked worktree of this mirror. The prune first clears STALE
+///    registrations (emptied workdirs), which alone also block it.
+/// 2. Narrow fetch of just the branch this acquisition needs. A single-ref
+///    write cannot collide with itself, so the requested branch lands at its
+///    true commit on ANY git version — even when the sibling's wrong-cased
+///    loose file is what physically absorbs the write. The colliding
+///    sibling's mirror ref may go stale until ITS next acquisition fetches
+///    it back; that harm is bounded (worktrees pin their commit at add time,
+///    and branch-currency checks compare names, not shas). Each ensure
+///    retries the migration first, so once the last worktree of a mirror is
+///    deleted the permanent fix lands by itself.
+/// 3. No branch to narrow to — pass the ORIGINAL failure through unchanged
+///    so each call site's existing handling still owns the outcome.
+///
+/// Known residue: a fetch that INTRODUCES one casing while the other already
+/// exists as a loose ref exits 0 (git silently writes through the wrong-
+/// cased file), so this handler fires one acquisition later, when the stale
+/// sibling makes the next fetch fail. The acquisition that triggered the
+/// clobber still checked out its own branch's correct commit.
+async fn refetch_after_case_collision(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical_str: &str,
+    controller: &ProcessController,
+    branch: Option<&str>,
+    code: i32,
+    out: String,
+) -> Result<(i32, String), String> {
+    if code == 0 || !out.contains("case-insensitive filesystem") {
+        return Ok((code, out));
+    }
+
+    let lock = mirror_surgery_lock(canonical_str);
+    let _surgery = lock.lock().await;
+
+    emit_chunk(
+        orch,
+        Some(task_id),
+        OutputStream::Stdout,
+        "[worktree] remote branches differ only by letter case, which this case-insensitive filesystem cannot store as files; migrating the mirror to the reftable backend\r\n",
+    )
+    .await;
+    // Stale worktree registrations (deleted workdirs) are enough to make the
+    // migration below refuse — clear them first, live ones are untouched.
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &["-C", canonical_str, "worktree", "prune"],
+        None,
+        Some(controller),
+    )
+    .await;
+    let (migrate_code, _) = run_git(
+        orch,
+        Some(task_id),
+        &[
+            "-C",
+            canonical_str,
+            "refs",
+            "migrate",
+            "--ref-format=reftable",
+        ],
+        None,
+        Some(controller),
+    )
+    .await?;
+    if migrate_code == 0 {
+        return run_git(
+            orch,
+            Some(task_id),
+            &["-C", canonical_str, "fetch", "--prune", "origin"],
+            None,
+            Some(controller),
+        )
+        .await;
+    }
+
+    let Some(branch) = branch else {
+        return Ok((code, out));
+    };
+    emit_chunk(
+        orch,
+        Some(task_id),
+        OutputStream::Stdout,
+        &format!(
+            "[worktree] the mirror cannot migrate while sandboxes hold worktrees; fetching only branch '{branch}'\r\n"
+        ),
+    )
+    .await;
+    let refspec = format!("+refs/heads/{branch}:refs/remotes/origin/{branch}");
+    run_git(
+        orch,
+        Some(task_id),
+        &["-C", canonical_str, "fetch", "origin", &refspec],
+        None,
+        Some(controller),
+    )
+    .await
 }
 
 /// Delete `refs/heads/*` that no worktree is using.
@@ -1065,6 +1275,104 @@ mod tests {
         );
     }
 
+    fn git_stdout(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git failed to spawn");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed in {dir:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// `--ref-format` landed in git 2.45; probe by using it rather than
+    /// parsing version strings (Apple git's suffix, reftable compiled out).
+    fn git_supports_reftable() -> bool {
+        let tmp = tempfile::tempdir().unwrap();
+        Command::new("git")
+            .args(["init", "-q", "--ref-format=reftable"])
+            .arg(tmp.path())
+            .output()
+            .is_ok_and(|out| out.status.success())
+    }
+
+    /// `git refs` (and its `migrate` subcommand) landed in 2.46. `LC_ALL=C`
+    /// because the `usage:` line this greps is localized, and a translated
+    /// probe would silently skip the migration tests.
+    fn git_supports_refs_migrate() -> bool {
+        Command::new("git")
+            .args(["refs", "-h"])
+            .env("LC_ALL", "C")
+            .output()
+            .is_ok_and(|out| {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                text.contains("usage: git refs")
+            })
+    }
+
+    /// A reftable-backend origin hosting two branches whose names differ only
+    /// by letter case — unbuildable on the files backend on the
+    /// case-insensitive filesystems macOS ships, which is precisely the
+    /// scenario the migration exists for. The colliding branches point at
+    /// DIFFERENT commits, deliberately: on an unmigrated files-backend
+    /// mirror the missing spelling resolves case-insensitively to its
+    /// sibling's loose file, so a same-sha fixture would pass its assertions
+    /// with the fix deleted. Returns `(origin, clone_url, main_sha,
+    /// fork_sha)` — `Feature/qa` at `main_sha`, `feature/qa` at `fork_sha` —
+    /// or `None` when this git predates reftable.
+    fn origin_with_case_colliding_branches() -> Option<(tempfile::TempDir, String, String, String)>
+    {
+        if !git_supports_reftable() {
+            return None;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let bare_dir = root.path().join("origin.git");
+        let work_dir = root.path().join("author");
+        std::fs::create_dir_all(&bare_dir).unwrap();
+        std::fs::create_dir_all(&work_dir).unwrap();
+        git(
+            &bare_dir,
+            &["init", "--bare", "-q", "--ref-format=reftable"],
+        );
+        git(&work_dir, &["init", "-q", "-b", "main"]);
+        git(&work_dir, &["config", "user.name", "Test User"]);
+        git(&work_dir, &["config", "user.email", "test@example.com"]);
+        std::fs::write(work_dir.join("f.txt"), "x").unwrap();
+        git(&work_dir, &["add", "."]);
+        git(&work_dir, &["commit", "-q", "-m", "initial"]);
+        let bare_str = bare_dir.to_str().unwrap().to_string();
+        git(&work_dir, &["remote", "add", "origin", &bare_str]);
+        git(&work_dir, &["push", "-q", "-u", "origin", "main"]);
+        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        let main_sha = git_stdout(&bare_dir, &["rev-parse", "refs/heads/main"]);
+        std::fs::write(work_dir.join("g.txt"), "y").unwrap();
+        git(&work_dir, &["add", "."]);
+        git(&work_dir, &["commit", "-q", "-m", "fork"]);
+        let fork_sha = git_stdout(&work_dir, &["rev-parse", "HEAD"]);
+        git(
+            &work_dir,
+            &["push", "-q", "origin", "HEAD:refs/heads/fork-src"],
+        );
+        git(
+            &bare_dir,
+            &["update-ref", "refs/heads/Feature/qa", &main_sha],
+        );
+        git(
+            &bare_dir,
+            &["update-ref", "refs/heads/feature/qa", &fork_sha],
+        );
+        git(&bare_dir, &["update-ref", "-d", "refs/heads/fork-src"]);
+        Some((root, bare_str, main_sha, fork_sha))
+    }
+
     /// A bare "origin" with a single `main` commit — returns the owning
     /// tempdir (keep it alive for the fixture's lifetime) and the bare
     /// repo's path (used directly as a `file://`-style `cloneUrl`).
@@ -1346,5 +1654,181 @@ mod tests {
             1,
             "second transcript should describe exactly one checkout, not two concatenated: {second:?}"
         );
+    }
+
+    /// A fresh shared mirror comes up on the reftable backend (case-collision
+    /// immunity from day one) — and on a git without reftable, the fallback
+    /// clone still succeeds on the files backend, which every other test in
+    /// this module implicitly covers.
+    #[tokio::test]
+    async fn fresh_mirror_uses_the_reftable_backend_when_git_supports_it() {
+        let (origin_root, bare_str) = bare_repo_with_one_commit();
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let clone_url = format!("file://{bare_str}");
+
+        assert!(
+            clone_fresh(&orch, &clone_url, Some("main")).await,
+            "{:?}",
+            orch.tasks
+                .logs()
+                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+                .await
+        );
+
+        if git_supports_reftable() {
+            let canonical =
+                crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+            assert_eq!(
+                git_stdout(&canonical, &["rev-parse", "--show-ref-format"]),
+                "reftable"
+            );
+        }
+        drop((origin_root, workdir));
+    }
+
+    /// The upgrade path for mirrors that predate the reftable default: a
+    /// files-backend mirror whose remote grows two branches differing only by
+    /// case. On a case-insensitive filesystem the fetch fails with git's
+    /// collision refusal, the mirror is migrated to reftable, and the retried
+    /// fetch lands BOTH refs; on a case-sensitive filesystem the fetch simply
+    /// succeeds. Either way the sandbox acquires the checkout and both remote
+    /// branches resolve.
+    #[tokio::test]
+    async fn case_colliding_remote_branches_survive_on_a_files_backend_mirror() {
+        if !git_supports_refs_migrate() {
+            return;
+        }
+        let Some((origin_root, bare_str, main_sha, fork_sha)) =
+            origin_with_case_colliding_branches()
+        else {
+            return;
+        };
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let clone_url = format!("file://{bare_str}");
+
+        // Pre-create the mirror on the FILES backend — the state every
+        // install that predates the reftable default is in. The clone itself
+        // survives colliding refs (they land in packed-refs, one file); the
+        // collision only bites when a FETCH writes them as loose files.
+        let canonical = files_backend_mirror(&orch, &clone_url, &bare_str);
+
+        assert!(
+            clone_fresh(&orch, &clone_url, Some("main")).await,
+            "{:?}",
+            orch.tasks
+                .logs()
+                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+                .await
+        );
+
+        // The user-visible guarantee, independent of filesystem case
+        // sensitivity: after acquisition BOTH case-colliding branches exist
+        // in the mirror, EACH at its own commit. Per-spelling shas rather
+        // than mutual equality — on an unmigrated files-backend mirror the
+        // missing spelling resolves case-insensitively to its sibling's
+        // loose file, so an equality assert would pass with the fix deleted.
+        assert_eq!(
+            git_stdout(
+                &canonical,
+                &["rev-parse", "--verify", "refs/remotes/origin/Feature/qa"]
+            ),
+            main_sha
+        );
+        assert_eq!(
+            git_stdout(
+                &canonical,
+                &["rev-parse", "--verify", "refs/remotes/origin/feature/qa"]
+            ),
+            fork_sha
+        );
+        drop((origin_root, workdir));
+    }
+
+    /// Pre-creates the canonical mirror on the files backend with the
+    /// production fetch refspec — the on-disk state of every install that
+    /// predates the reftable default.
+    fn files_backend_mirror(
+        orch: &Arc<SetupOrchestrator>,
+        clone_url: &str,
+        bare_str: &str,
+    ) -> std::path::PathBuf {
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, clone_url).unwrap();
+        std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+        let out = Command::new("git")
+            .args(["clone", "--bare", "-q", "--ref-format=files", bare_str])
+            .arg(&canonical)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        git(
+            &canonical,
+            &[
+                "config",
+                "remote.origin.fetch",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ],
+        );
+        canonical
+    }
+
+    /// The path production actually sits on: the files-backend mirror has a
+    /// LIVE worktree (every sandbox is one), which makes `git refs migrate`
+    /// refuse on every released git. Acquisition must still land the
+    /// requested colliding branch at its true commit via the narrow
+    /// single-branch fetch — and on a case-sensitive filesystem the full
+    /// fetch simply succeeds, so the same assertions hold everywhere.
+    #[tokio::test]
+    async fn a_live_worktree_blocks_migration_but_the_requested_branch_still_lands() {
+        let Some((origin_root, bare_str, main_sha, fork_sha)) =
+            origin_with_case_colliding_branches()
+        else {
+            return;
+        };
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let clone_url = format!("file://{bare_str}");
+        let canonical = files_backend_mirror(&orch, &clone_url, &bare_str);
+
+        // A blocking LIVE worktree, registered the way a sibling sandbox's
+        // acquisition would have.
+        let blocker = workdir.path().join("blocker");
+        git(
+            &canonical,
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                blocker.to_str().unwrap(),
+                &main_sha,
+            ],
+        );
+
+        assert!(
+            clone_fresh(&orch, &clone_url, Some("feature/qa")).await,
+            "{:?}",
+            orch.tasks
+                .logs()
+                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+                .await
+        );
+
+        // The requested spelling holds ITS commit — not the wrong-cased
+        // sibling's — and the checkout is cut from it.
+        assert_eq!(
+            git_stdout(
+                &canonical,
+                &["rev-parse", "--verify", "refs/remotes/origin/feature/qa"]
+            ),
+            fork_sha
+        );
+        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), fork_sha);
+        drop((origin_root, workdir));
     }
 }

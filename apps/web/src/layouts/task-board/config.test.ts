@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { insertSortOrder, runSortOrders } from "./config";
+import { insertSortOrder, runSortOrders, statusIconClassName } from "./config";
 import type { TaskBoardItem } from "./config";
 
 function item(id: string, sortOrder: number): TaskBoardItem {
@@ -67,5 +67,25 @@ describe("runSortOrders", () => {
   test("the whole run sits at or before the drop slot", () => {
     for (const order of runSortOrders(10, 5))
       expect(order).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("statusIconClassName", () => {
+  const working = { ...item("a", 0), status: "in_progress" } as TaskBoardItem;
+  const blocked = {
+    ...working,
+    threads: [{ status: "requires_action" }],
+  } as TaskBoardItem;
+
+  test("an in-progress task spins", () => {
+    expect(statusIconClassName(working)).toContain("animate-spin");
+  });
+
+  test("one waiting on input pulses in warning instead", () => {
+    expect(statusIconClassName(blocked)).toBe("text-warning animate-pulse");
+  });
+
+  test("other statuses keep their static class", () => {
+    expect(statusIconClassName(item("a", 0))).toBe("text-muted-foreground");
   });
 });

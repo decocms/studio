@@ -404,6 +404,128 @@ describe("daemon e2e: fs", () => {
   });
 });
 
+// --- url transfer SSRF gate --------------------------------------------------
+
+// /write_from_url and /upload_to_url fetch a caller-supplied URL from inside
+// the pod. The allowlist comes from boot env, never the request body.
+describe("daemon e2e: url transfer SSRF gate", () => {
+  const post = (d: Daemon, path: string, body: unknown) =>
+    fetch(url(d, path), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify(body),
+    });
+
+  describe("with no allowlist configured", () => {
+    let d: Daemon;
+    beforeEach(async () => {
+      d = await startDaemon();
+    }, HOOK_TIMEOUT_MS);
+    afterEach(async () => {
+      await stopDaemon(d);
+    }, HOOK_TIMEOUT_MS);
+
+    it("write_from_url denies every host (fail closed)", async () => {
+      const res = await post(d, "/_sandbox/write_from_url", {
+        path: "out.bin",
+        url: "https://s3.example.com/object",
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("upload_to_url denies every host (fail closed)", async () => {
+      await writeRepoFile(d, "up.txt", "payload\n");
+      const res = await post(d, "/_sandbox/upload_to_url", {
+        path: "up.txt",
+        url: "https://s3.example.com/object",
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("with an allowlist configured", () => {
+    let d: Daemon;
+    beforeEach(async () => {
+      d = await startDaemon({ OFFLOAD_ALLOWED_HOSTS: "s3.example.com" });
+    }, HOOK_TIMEOUT_MS);
+    afterEach(async () => {
+      await stopDaemon(d);
+    }, HOOK_TIMEOUT_MS);
+
+    for (const [name, target] of [
+      ["an unlisted host", "https://evil.example.com/x"],
+      ["a suffix of a listed host", "https://s3.example.com.evil.net/x"],
+      ["ip-literal loopback", "https://127.0.0.1/x"],
+      ["ipv6 loopback", "https://[::1]/x"],
+      ["cloud metadata", "https://169.254.169.254/latest/meta-data/"],
+      ["plain http on a listed host", "http://s3.example.com/x"],
+      ["a non-http scheme", "file:///etc/passwd"],
+    ] as const) {
+      it(`write_from_url rejects ${name}`, async () => {
+        const res = await post(d, "/_sandbox/write_from_url", {
+          path: "out.bin",
+          url: target,
+        });
+        expect(res.status).toBe(400);
+      });
+    }
+  });
+
+  describe("with a live loopback origin allowed", () => {
+    let d: Daemon;
+    let origin: ReturnType<typeof Bun.serve>;
+    beforeEach(async () => {
+      origin = Bun.serve({
+        port: 0,
+        fetch: (req) =>
+          new URL(req.url).pathname === "/redirect"
+            ? Response.redirect(
+                "https://169.254.169.254/latest/meta-data/",
+                302,
+              )
+            : new Response("payload-bytes"),
+      });
+      d = await startDaemon({
+        OFFLOAD_ALLOWED_HOSTS: "127.0.0.1",
+        OFFLOAD_ALLOW_SAME_HOST_DEV: "1",
+      });
+    }, HOOK_TIMEOUT_MS);
+    afterEach(async () => {
+      origin.stop(true);
+      await stopDaemon(d);
+    }, HOOK_TIMEOUT_MS);
+
+    it("write_from_url fetches from the allowed host", async () => {
+      const res = await post(d, "/_sandbox/write_from_url", {
+        path: "fetched.txt",
+        url: `http://127.0.0.1:${origin.port}/object`,
+      });
+      expect(res.status).toBe(200);
+      const read = await fetch(url(d, "/_sandbox/read"), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ path: "fetched.txt" }),
+      });
+      expect(await read.text()).toContain("payload-bytes");
+    });
+
+    it("write_from_url does not follow a redirect off the allowlist", async () => {
+      const res = await post(d, "/_sandbox/write_from_url", {
+        path: "redirected.txt",
+        url: `http://127.0.0.1:${origin.port}/redirect`,
+      });
+      expect(res.status).not.toBe(200);
+      // Assert on the *reason*, not just the status. A daemon that happily
+      // follows the 302 also fails `not.toBe(200)` — on a dev laptop the
+      // connection to 169.254.169.254 is refused instantly and the 502 reads
+      // like a pass, while on a cloud runner (where that IP is the real
+      // metadata endpoint) the same code hangs. Only the gate message proves
+      // the hop was rejected before any socket was opened.
+      expect(await res.text()).toContain("host not allowed");
+    });
+  });
+});
+
 // --- config (fresh daemon per test — mutates config/token) -------------------
 
 describe("daemon e2e: config", () => {

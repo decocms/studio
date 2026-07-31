@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { PackageManager } from "../types";
 import { repoHash } from "./golden-cache";
@@ -31,6 +32,11 @@ async function readInstalledDeps(
   nodeModulesDir: string,
 ): Promise<{ name: string; version: string }[]> {
   const seen = new Map<string, { name: string; version: string }>();
+  // A zero-dep install leaves no node_modules at all. Scanning it would throw
+  // ENOENT into the catch below, which both swallows the countable zero-dep
+  // line the denominator needs AND writes a spurious error to stderr on every
+  // such boot. Return empty and let the caller emit the line.
+  if (!existsSync(nodeModulesDir)) return [];
   const glob = new Bun.Glob("**/package.json");
   for await (const rel of glob.scan({
     cwd: nodeModulesDir,

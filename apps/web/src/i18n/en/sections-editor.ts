@@ -131,6 +131,11 @@ export const sectionsEditor = {
   "sectionsEditor.pageVariantTabs.duplicateAction": "Duplicate",
   "sectionsEditor.pageVariantTabs.renameAction": "Rename",
   "sectionsEditor.pageVariantTabs.variantsLabel": "Variants",
+  "sectionsEditor.richTextField.fontSizeDecrease": "Decrease font size",
+  "sectionsEditor.richTextField.fontSizeIncrease": "Increase font size",
+  "sectionsEditor.richTextField.styleHeading": "Heading {level}",
+  "sectionsEditor.richTextField.styleLabel": "Text style",
+  "sectionsEditor.richTextField.styleParagraph": "Paragraph",
   "sectionsEditor.richTextLinkControl.applyLinkLabel": "Apply link",
   "sectionsEditor.richTextLinkControl.linkButtonLabel": "Link",
   "sectionsEditor.richTextLinkControl.newTabLabel": "New tab",
@@ -194,6 +199,8 @@ export const sectionsEditor = {
     "This is a global section. Changes apply everywhere this section is used across your site.",
   "sectionsEditor.sectionsEditor.globalSectionTooltip":
     "A global section is a reusable block shared across your site. Editing it here updates it everywhere it's used.",
+  "sectionsEditor.sectionsEditor.noEditableFields":
+    "No editable fields on this section.",
   "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock":
     "No editable fields for this global block.",
   "sectionsEditor.sectionsEditor.noEditableFieldsForVariant":

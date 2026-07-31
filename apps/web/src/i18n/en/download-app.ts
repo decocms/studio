@@ -9,4 +9,5 @@ export const downloadApp = {
   "downloadApp.appleSiliconNote":
     "For Apple Silicon Macs (M1 and newer) — Windows coming soon.",
   "downloadApp.openLabel": "Download the Studio app",
+  "downloadApp.installOnMac": "Install on Mac",
 } as const;

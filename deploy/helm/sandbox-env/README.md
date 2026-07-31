@@ -229,13 +229,19 @@ See `values.yaml` for the full set. The most-tuned ones:
 | Key | Default | Notes |
 | --- | --- | --- |
 | `envName` | _(required)_ | DNS-label suffix on every resource name |
-| `image.repository` | `ghcr.io/decocms/studio/studio-sandbox` | studio-sandbox image |
-| `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
+| `image.repository` | `ghcr.io/decocms/studio/studio-sandbox` | studio-sandbox image (TS daemon) |
+| `image.goRepository` | `ghcr.io/decocms/studio/studio-sandbox-go` | same image with the Go daemon; used when `daemonImpl: go` |
+| `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json; drives BOTH images (released together) |
+| `daemonImpl` | `ts` | which daemon this template's sandboxes run — selects the image, not a runtime switch |
+| `goTemplate.enabled` | `false` | also render `studio-sandbox-<envName>-go`, a twin template pinned to the Go image, so a *single* sandbox can run Go while the env stays on `daemonImpl`. Point Studio's `STUDIO_SANDBOX_GO_TEMPLATE_NAME` at it; requires `image.goRepository` |
+| `goTemplate.warmPoolSize` | `0` | warm pods for that twin; size to the canary (1–2), never the fleet |
 | `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `readOnlyRootFilesystem` | `true` | RO rootfs + emptyDirs on /app, /tmp, /home |
 | `netinit.enabled` | `true` | installs the iptables egress policy before user code starts |
+| `telemetry.enabled` | `false` | let the daemon export OTLP metrics: opens ONE extra egress destination (the collector) and sets `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `telemetry.otlp.ip` / `telemetry.otlp.port` | `""` / `4318` | collector **ClusterIP** and port. Must be an IP — sandboxes use `dnsPolicy: None`, so in-cluster DNS names do not resolve. Goes stale if the Service is recreated |
 | `disableFsSidecar` | `false` | debug-only opt-out from the mandatory privileged org-fs sidecar |
 | `depsCache.enabled` / `depsCache.golden` | `false` / `false` | opt-in node-local dependency caches |
 | `depsCache.remote.enabled` / `depsCache.remote.pvcName` | `false` / `""` | opt-in L2 cross-node golden archive on an RWX PVC, mounted read-only |

@@ -221,21 +221,6 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extraindo contexto de marca",
   "routes.onboarding.uploadOrgLogo": "Fazer upload do logotipo da organização",
   "routes.onboarding.welcomeTitle": "Bem-vindo ao deco",
-  "routes.orgInstall.addToHomeScreen": "Adicione {name} à sua tela inicial",
-  "routes.orgInstall.addToHomeScreenButton": "Adicione {name} à tela inicial",
-  "routes.orgInstall.alreadyInstalled":
-    "{name} já está instalado neste dispositivo.",
-  "routes.orgInstall.backLink": "Voltar para {name}",
-  "routes.orgInstall.defaultOrgName": "esta organização",
-  "routes.orgInstall.fallbackInstructions":
-    'Para instalar, abra o menu do seu navegador e escolha Instalar {name} (ou "Adicionar à tela inicial"). Se você não vê isso ainda, interaja com o aplicativo por um momento e tente novamente.',
-  "routes.orgInstall.installDescription":
-    'Instale {name} como seu próprio aplicativo — uma janela independente que abre direto nesta organização. Para instalar o aplicativo completo do deco Studio, use "Adicionar à tela inicial" do seu navegador em qualquer outra página.',
-  "routes.orgInstall.installDismissed": "Instalação cancelada.",
-  "routes.orgInstall.installOnIos": "Instalar no iOS",
-  "routes.orgInstall.installing": "Instalando {name}…",
-  "routes.orgInstall.iosInstructions":
-    "Toque no botão Compartilhar e depois escolha Adicionar à tela inicial.",
   "routes.reports.failedToLoadReportAriaLabel":
     "Não foi possível carregar o relatório",
   "routes.reports.failedToLoadReportDescription":

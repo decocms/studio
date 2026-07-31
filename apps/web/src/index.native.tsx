@@ -67,7 +67,7 @@ function DesktopEntry() {
   }
 
   if (!auth.status?.signedIn) {
-    return <SignInScreen auth={auth} />;
+    return <SignInScreen />;
   }
 
   // `Providers` wraps the router here (not the root route) so router-level

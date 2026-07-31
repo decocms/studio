@@ -468,23 +468,23 @@ describe("git routes", () => {
     expect(res.status).toBe(200);
   });
 
-  it("publish() skips cleanly on a never-cloned dir (shutdown path)", () => {
+  it("publish() skips cleanly on a never-cloned dir (shutdown path)", async () => {
     const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
     const repoDir = join(appRoot, "app");
     mkdirSync(repoDir, { recursive: true });
     // The shutdown handler calls publish() directly, bypassing the handler's
     // isGitRepo() guard — it must not throw "not a git repository".
-    expect(publish({ appRoot, repoDir }, "shutdown sync")).toEqual({
+    expect(await publish({ appRoot, repoDir }, "shutdown sync")).toEqual({
       pushed: false,
     });
   });
 
-  it("publish() refuses to push to a protected branch (main)", () => {
+  it("publish() refuses to push to a protected branch (main)", async () => {
     const { appRoot, repoDir } = initRepo(); // initRepo checks out main
     writeFileSync(join(repoDir, "README.md"), "changed\n");
-    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow(
-      /protected branch "main"/,
-    );
+    await expect(
+      publish({ appRoot, repoDir }, "shutdown sync"),
+    ).rejects.toThrow(/protected branch "main"/);
     // Nothing was committed on main — the guard fires before add/commit.
     const log = gitSync(["log", "-1", "--pretty=%s"], {
       cwd: repoDir,
@@ -508,7 +508,7 @@ describe("git routes", () => {
     expect(body.error).toMatch(/protected branch "main"/);
   });
 
-  it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
+  it("publish() does not commit org-fs mount content excluded via .git/info/exclude", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir); // publish() refuses the protected default branch
     // Simulate the org-fs mount landing inside the working tree (org/…), as it
@@ -525,7 +525,7 @@ describe("git routes", () => {
 
     // No remote configured → the push throws, but the commit lands first.
     try {
-      publish({ appRoot, repoDir }, "shutdown sync");
+      await publish({ appRoot, repoDir }, "shutdown sync");
     } catch {
       // expected: push fails without a remote
     }
@@ -539,7 +539,7 @@ describe("git routes", () => {
     expect(files).not.toContain("org/");
   });
 
-  it("publish() refuses to commit an invalid decofile block and leaves HEAD untouched", () => {
+  it("publish() refuses to commit an invalid decofile block and leaves HEAD untouched", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     // The block already exists and is tracked (git reports edits to individual
@@ -566,16 +566,16 @@ describe("git routes", () => {
     // skip the bad file
     writeFileSync(join(repoDir, "README.md"), "changed\n");
 
-    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow(
-      /Refusing to publish.*invalid JSON.*pages-home\.json/,
-    );
+    await expect(
+      publish({ appRoot, repoDir }, "shutdown sync"),
+    ).rejects.toThrow(/Refusing to publish.*invalid JSON.*pages-home\.json/);
     // nothing committed — HEAD is exactly where it was
     expect(
       gitSync(["rev-parse", "HEAD"], { cwd: repoDir, asUser: false }),
     ).toBe(headBefore);
   });
 
-  it("publish() commits a valid decofile block", () => {
+  it("publish() commits a valid decofile block", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
@@ -585,7 +585,7 @@ describe("git routes", () => {
     );
     // No remote configured → the push throws, but the commit lands first.
     try {
-      publish({ appRoot, repoDir }, "shutdown sync");
+      await publish({ appRoot, repoDir }, "shutdown sync");
     } catch {
       // expected: push fails without a remote
     }
@@ -596,7 +596,7 @@ describe("git routes", () => {
     expect(files).toContain(".deco/blocks/pages-home.json");
   });
 
-  it("publish() commits a deleted block without trying to parse it", () => {
+  it("publish() commits a deleted block without trying to parse it", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
@@ -607,7 +607,7 @@ describe("git routes", () => {
     // delete it — the guard must skip (read fails), not throw
     rmSync(join(repoDir, rel));
     try {
-      publish({ appRoot, repoDir }, "shutdown sync");
+      await publish({ appRoot, repoDir }, "shutdown sync");
     } catch {
       // expected: push fails without a remote; the commit lands first
     }
@@ -618,7 +618,7 @@ describe("git routes", () => {
     expect(files).toContain(rel); // the deletion was committed
   });
 
-  it("publish() validates every changed block, not just the first", () => {
+  it("publish() validates every changed block, not just the first", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
@@ -630,16 +630,18 @@ describe("git routes", () => {
     gitSync(["commit", "-m", "add blocks"], { cwd: repoDir, asUser: false });
     // first stays valid, second is corrupted → error must point at the second
     writeFileSync(join(repoDir, b), "{ broken");
-    expect(() => publish({ appRoot, repoDir }, "sync")).toThrow(/b\.json/);
+    await expect(publish({ appRoot, repoDir }, "sync")).rejects.toThrow(
+      /b\.json/,
+    );
   });
 
-  it("publish() commits an invalid NON-block .json (out of scope) without throwing", () => {
+  it("publish() commits an invalid NON-block .json (out of scope) without throwing", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     // a plain .json outside .deco/blocks is not gated — invalid content is fine
     writeFileSync(join(repoDir, "data.json"), "{ not valid json");
     try {
-      publish({ appRoot, repoDir }, "sync");
+      await publish({ appRoot, repoDir }, "sync");
     } catch {
       // expected: push fails without a remote; the commit lands first
     }
@@ -650,7 +652,7 @@ describe("git routes", () => {
     expect(files).toContain("data.json");
   });
 
-  it("publish() with onInvalidBlock:skip syncs valid work and drops the bad block", () => {
+  it("publish() with onInvalidBlock:skip syncs valid work and drops the bad block", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
@@ -663,7 +665,7 @@ describe("git routes", () => {
     writeFileSync(join(repoDir, "README.md"), "changed\n");
     // skip mode must NOT throw on the bad block
     try {
-      publish({ appRoot, repoDir }, "shutdown sync", {
+      await publish({ appRoot, repoDir }, "shutdown sync", {
         onInvalidBlock: "skip",
       });
     } catch {
@@ -677,7 +679,7 @@ describe("git routes", () => {
     expect(files).not.toContain(block); // corrupt block NOT committed
   });
 
-  it("publish() rejects a tokenless github origin with a clear error", () => {
+  it("publish() rejects a tokenless github origin with a clear error", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
     gitSync(["remote", "add", "origin", "https://github.com/owner/repo.git"], {
@@ -685,7 +687,7 @@ describe("git routes", () => {
       asUser: false,
     });
     writeFileSync(join(repoDir, "README.md"), "changed\n");
-    expect(() => publish({ appRoot, repoDir }, "no creds")).toThrow(
+    await expect(publish({ appRoot, repoDir }, "no creds")).rejects.toThrow(
       /authenticated clone URL/,
     );
   });
@@ -757,13 +759,15 @@ describe("git routes", () => {
     expect(tree).not.toContain("OTHER.md");
   });
 
-  it("publish() (shutdown path) does NOT reconcile — it refuses to clobber a diverged remote", () => {
+  it("publish() (shutdown path) does NOT reconcile — it refuses to clobber a diverged remote", async () => {
     const { appRoot, repoDir, bare, branch } = initRepoWithRemote();
     pushDivergentCommitToRemote(appRoot, bare, branch);
     writeFileSync(join(repoDir, "README.md"), "sandbox change\n");
     // Default opts → reconcileRemote off: the shutdown-sync contract must never
     // force-push over a concurrent sandbox's work.
-    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow();
+    await expect(
+      publish({ appRoot, repoDir }, "shutdown sync"),
+    ).rejects.toThrow();
     // origin/<branch> keeps the divergent commit — nothing was clobbered.
     const tree = gitSync(["ls-tree", "--name-only", `refs/heads/${branch}`], {
       cwd: bare,

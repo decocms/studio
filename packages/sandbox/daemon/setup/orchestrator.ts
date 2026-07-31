@@ -157,7 +157,7 @@ export class SetupOrchestrator {
       pm: pending.pm,
       log,
     });
-    pruneGoldens();
+    await pruneGoldens();
     // L2 after L1, and only from this same healthy-boot gate. A broken
     // install published to the shared store would poison every node in the
     // fleet, not just this one. No-op when the archive already exists, so the

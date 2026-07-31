@@ -38,6 +38,63 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
+Validate daemonImpl before it selects an image. An unrecognised value would
+otherwise fall through to the TS repository and quietly run the wrong daemon —
+a canary that reads as "Go is fine" while never having run Go. A missing
+goRepository would render `:<tag>` and fail as an ImagePullBackOff minutes later,
+on the node, instead of here.
+*/}}
+{{- define "sandbox-env.validateDaemonImpl" -}}
+{{- $impl := .Values.daemonImpl | default "ts" -}}
+{{- if not (has $impl (list "ts" "go")) }}
+{{- fail (printf "sandbox-env: daemonImpl must be \"ts\" or \"go\" (got %q)" $impl) -}}
+{{- end }}
+{{- if and (eq $impl "go") (not .Values.image.goRepository) }}
+{{- fail "sandbox-env: daemonImpl=go requires image.goRepository (the studio-sandbox-go image). Set it, or leave daemonImpl=ts." -}}
+{{- end }}
+{{- if and .Values.goTemplate.enabled (not .Values.image.goRepository) }}
+{{- fail "sandbox-env: goTemplate.enabled requires image.goRepository (the studio-sandbox-go image)." -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Container image for a given daemon impl. The daemon implementation is the image
+— `studio-sandbox` runs the TS daemon, `studio-sandbox-go` the Go one — so there
+is no runtime switch to disagree with. One tag drives both: they are released
+together from the same source revision and must never skew.
+
+Takes a dict: `root` (the chart context) and `impl` ("ts" | "go").
+*/}}
+{{- define "sandbox-env.imageFor" -}}
+{{- $root := .root -}}
+{{- $repo := $root.Values.image.repository -}}
+{{- if eq .impl "go" -}}
+{{- $repo = $root.Values.image.goRepository -}}
+{{- end -}}
+{{- printf "%s:%s" $repo ($root.Values.image.tag | default $root.Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+The env's default SandboxTemplate name and the impl it runs — what
+STUDIO_SANDBOX_TEMPLATE_NAME must point at.
+*/}}
+{{- define "sandbox-env.sandboxImage" -}}
+{{- include "sandbox-env.validateDaemonImpl" . -}}
+{{- include "sandbox-env.imageFor" (dict "root" . "impl" (.Values.daemonImpl | default "ts")) -}}
+{{- end }}
+
+{{/*
+Name of the opt-in second SandboxTemplate that always runs the Go daemon.
+Studio points STUDIO_SANDBOX_GO_TEMPLATE_NAME at this so a *single* sandbox can
+be routed to Go while every other sandbox in the env keeps the default impl —
+`spec.sandboxTemplateRef` is the only per-claim lever, because the operator
+rejects per-claim `spec.env` on any claim that may bind a warm pod.
+*/}}
+{{- define "sandbox-env.goSandboxName" -}}
+{{- printf "%s-go" (include "sandbox-env.sandboxName" .) -}}
+{{- end }}
+
+{{/*
 Studio runner Role / RoleBinding name. Stays under 63 chars even with a
 32-char envName.
 */}}
@@ -58,6 +115,22 @@ the Gateway/HTTPRoute name so the cert ↔ listener pairing is obvious.
 */}}
 {{- define "sandbox-env.previewTlsSecretName" -}}
 {{- default (printf "agent-sandbox-preview-%s-tls" (include "sandbox-env.envName" .)) .Values.previewGateway.tlsSecretName -}}
+{{- end }}
+
+{{/*
+OTLP endpoint handed to the daemon, built from the same ip/port the netinit
+ACCEPT rule is built from so the configured destination is by construction the
+reachable one. Fails at template time rather than shipping a sandbox that
+retries into a REJECT for its whole life.
+*/}}
+{{- define "sandbox-env.otlpEndpoint" -}}
+{{- if not .Values.telemetry.otlp.ip }}
+{{- fail "sandbox-env: telemetry.enabled requires telemetry.otlp.ip — the OTLP collector's ClusterIP. A DNS name will NOT work: sandboxes use dnsPolicy: None with public resolvers, so in-cluster names do not resolve. Get it with: kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'" -}}
+{{- end }}
+{{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" .Values.telemetry.otlp.ip) }}
+{{- fail (printf "sandbox-env: telemetry.otlp.ip must be a bare IPv4 address, got %q. It is interpolated into an iptables -d rule; a hostname there fails the init container and the pod never starts." .Values.telemetry.otlp.ip) -}}
+{{- end }}
+{{- printf "http://%s:%v" .Values.telemetry.otlp.ip .Values.telemetry.otlp.port -}}
 {{- end }}
 
 {{/*

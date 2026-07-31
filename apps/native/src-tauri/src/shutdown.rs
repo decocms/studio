@@ -28,4 +28,12 @@ pub fn run_blocking(app: &AppHandle) {
     };
     tracing::info!("app exit requested: shutting down local-api");
     tauri::async_runtime::block_on(handle.shutdown());
+    // Apply a staged self-update ONLY here, after local-api has drained:
+    // swapping the bundle under a live process breaks macOS Keychain access
+    // (code identity is validated against the binary on disk), so the swap
+    // must happen when no Keychain writer is left. Covers both the restart
+    // button and a plain quit — this is what makes install-on-quit true.
+    // Inside the take-once guard above, so a duplicate ExitRequested cannot
+    // double-apply.
+    crate::updater::apply_pending_update();
 }

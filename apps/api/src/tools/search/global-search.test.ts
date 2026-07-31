@@ -1,5 +1,9 @@
 import { describe, it, expect } from "bun:test";
-import { GLOBAL_SEARCH, normalizeSearchQuery } from "./global-search";
+import {
+  GLOBAL_SEARCH,
+  normalizeSearchQuery,
+  includesSearchType,
+} from "./global-search";
 
 describe("GLOBAL_SEARCH input schema", () => {
   it("rejects a query longer than 256 characters", () => {
@@ -32,5 +36,23 @@ describe("normalizeSearchQuery", () => {
 
   it("leaves an already-trimmed query unchanged", () => {
     expect(normalizeSearchQuery("foo bar")).toBe("foo bar");
+  });
+});
+
+describe("includesSearchType", () => {
+  it("includes every type when `types` is omitted", () => {
+    expect(includesSearchType(undefined, "thread")).toBe(true);
+  });
+
+  it("includes a type present in the filter", () => {
+    expect(includesSearchType(["thread"], "thread")).toBe(true);
+  });
+
+  it("excludes a type absent from a non-empty filter", () => {
+    expect(includesSearchType(["other"], "thread")).toBe(false);
+  });
+
+  it("excludes every type when `types` is an empty array", () => {
+    expect(includesSearchType([], "thread")).toBe(false);
   });
 });

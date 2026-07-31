@@ -597,7 +597,8 @@ export const settings = {
   "settings.secrets.scopePrivate": "Private",
   "settings.secrets.scopePrivateDescription": "Private — only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
-  "settings.secrets.secretsCount": "{count} secret{plural} stored",
+  "settings.secrets.secretsCountSingular": "{count} secret stored",
+  "settings.secrets.secretsCountPlural": "{count} secrets stored",
   "settings.secrets.sectionOrganization": "Organization",
   "settings.secrets.sectionPrivate": "Private to me",
   "settings.secrets.valueLabel": "Value",
@@ -631,5 +632,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.moreProviders": "{count} more provider{plural}",
+  "settings.aiProviders.moreProvidersSingular": "{count} more provider",
+  "settings.aiProviders.moreProvidersPlural": "{count} more providers",
 } as const;

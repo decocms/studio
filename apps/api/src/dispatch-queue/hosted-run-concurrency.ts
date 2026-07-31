@@ -20,23 +20,22 @@
  * just delays that step — the workflow's step sequence and recorded I/O are
  * unchanged (recovery-compatible; no DBOS_WORKFLOW_VERSION bump).
  *
- * DRAFT: limit is read from the environment with a conservative default. If we
- * keep this, move it into Settings (resolve-config.ts) so it's tunable per
- * deployment without an env redeploy.
+ * The limit comes from `Settings.decopilotMaxConcurrentHostedRuns`
+ * (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS), validated at startup like every
+ * other numeric env var in this codebase — a malformed value fails boot
+ * instead of silently coercing to the default.
  */
 
 import { createConcurrencyGate } from "@/harnesses/decopilot/built-in-tools/subagent-concurrency";
+import { getSettings } from "@/settings";
 import { meter } from "@/observability";
 
-// A non-finite / non-positive env value would make the gate never block (fail
-// OPEN — the exact unbounded OOM this file prevents), so guard the default.
 // Default 3: prod worker is 768Mi request / 2Gi limit, run working set p90
 // ~450MB — 3×450≈1.35GB stays under the limit, 4-5 would OOM on p90 alone, and
 // a lower cap just parks more (which the KEDA queue-depth trigger can't see —
 // parked runs are PENDING, not ENQUEUED). The 1.8GB JSON.parse tail can still
 // OOM at any cap≥2; that's recovery's job, not this gate's.
-const parsed = Number(process.env.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS);
-const MAX = Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+const MAX = getSettings().decopilotMaxConcurrentHostedRuns;
 
 const gate = createConcurrencyGate(MAX);
 

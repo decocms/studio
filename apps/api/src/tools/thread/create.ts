@@ -7,9 +7,13 @@
  *   1. Honor `data.branch` when provided.
  *   2. Otherwise pick the most-recently-touched branch from the user's
  *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
- *   3. Fall back to a freshly generated Bayer-style `<greek>-<constellation>`
- *      name (e.g. `alpha-centauri`) when the user has no sandboxMap entries
- *      for this vMCP.
+ *   3. Fall back to `generateBranchName` (`<user-slug>-<timestamp>`) when the
+ *      user has no sandboxMap entries for this vMCP.
+ *
+ * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
+ * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
+ * invisible here and step 3 mints a sibling branch; the frontend must never
+ * auto-start without a branch (see `shouldAutoStart`).
  *
  * Threads created on a vMCP without a githubRepo always get `branch = null`.
  *
@@ -30,7 +34,10 @@ import {
   ThreadEntitySchema,
 } from "@decocms/shared/thread/schema";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -130,9 +137,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       branch =
         data.branch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName(
-          ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-        );
+        generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
     const result = await ctx.storage.threads.create({

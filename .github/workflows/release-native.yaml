@@ -21,6 +21,38 @@
 # straight to main with the same App token release-tagging uses. That commit
 # touches only Casks/**, which no other workflow's paths match, so it
 # triggers nothing.
+#
+# ## Updater channel (Tauri self-update)
+#
+# Alongside the immutable native-v<version> release, this workflow maintains
+# a ROLLING `native-updates` prerelease holding a single latest.json asset —
+# the manifest the desktop app's Tauri updater polls. Prerelease keeps it out
+# of GitHub's /releases/latest forever (latest = most recent non-prerelease).
+# Promotion is throttled to ~daily and decided by the unit-tested
+# apps/native/scripts/ci/native-update-channel.mjs (fail-open-to-promote on
+# any ambiguous manifest state; a workflow_dispatch bypasses the throttle for
+# urgent fixes and for healing a half-failed promotion). The manifest is
+# uploaded strictly AFTER the .app.tar.gz + .sig land on the immutable
+# release, so it can never reference missing assets.
+#
+# Caveats: enabling GitHub's opt-in "immutable releases" repo setting would
+# break the latest.json clobber — revisit this design before turning that
+# on. Clobbered same-name assets can serve stale from the CDN briefly
+# (tolerable at daily cadence).
+#
+# ## Updater signing runbook
+#
+# The minisign keypair (TAURI_SIGNING_PRIVATE_KEY/_PASSWORD, in the
+# `native-release` environment) signs updater artifacts; its PUBLIC key is
+# pinned in apps/native/src-tauri/tauri.conf.json5. Consequences:
+# - KEY LOSS: no future update verifies — the cask is the break-glass
+#   channel (`brew upgrade --greedy --cask deco-studio`); keep the cask
+#   bump below working forever.
+# - KEY LEAK: there is no revocation; rotation = new keypair + cask-forced
+#   fleet reinstall. Audit escrow access.
+# - BAD RELEASE: the updater never downgrades — ship a NEWER fixed release
+#   (use the force_promote dispatch input if inside the throttle window).
+#   Broken-cannot-launch installs recover via cask reinstall.
 name: Release Native
 
 on:
@@ -31,7 +63,15 @@ on:
       - "apps/native/package.json"
   # Manual escape hatch: re-cut a release whose run failed halfway, or cut
   # the first one. The tag-exists guard keeps this idempotent.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_promote:
+        description: >-
+          Bypass the ~daily updater-channel throttle (urgent fix, or healing
+          a half-failed promotion). Never regresses the channel to an older
+          version regardless.
+        type: boolean
+        default: false
 
 concurrency:
   group: release-native-main
@@ -39,11 +79,21 @@ concurrency:
 
 permissions:
   contents: write
+  # The failure-alert step files/updates a GitHub issue.
+  issues: write
 
 jobs:
   release:
     runs-on: macos-latest
     timeout-minutes: 60
+    # Updater signing secrets live here (deployment branch policy: main).
+    # Environments cannot restrict by workflow FILE — any main-branch
+    # workflow declaring this environment could read them — but that still
+    # beats repo-wide secrets, which every workflow (including the seven
+    # npm-publish ones) can read. Referencing a not-yet-created environment
+    # is safe: GitHub auto-creates it unprotected on first run; tighten it
+    # in repo settings.
+    environment: native-release
     env:
       BUN_VERSION: "1.3.14"
     steps:
@@ -90,6 +140,34 @@ jobs:
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # apps/api and apps/native versions are ONE release line
+      # (scripts/release-changes.ts bumps them together). The proxy's
+      # STUDIO_WEB_VERSION is baked from apps/api while the binary/manifest
+      # version comes from apps/native — a single-sided bump would ship a
+      # permanent version-drift nag in the shell, so fail loudly here.
+      - name: Assert api/native version lockstep
+        if: steps.guard.outputs.release == 'true'
+        run: |
+          API_VERSION=$(node -p "require('./apps/api/package.json').version")
+          NATIVE_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$API_VERSION" != "$NATIVE_VERSION" ]; then
+            echo "::error::version lockstep broken: apps/api=$API_VERSION apps/native=$NATIVE_VERSION (scripts/release-changes.ts bumps them together — a single-sided bump is an offset forever)"
+            exit 1
+          fi
+
+      # Inverts the fork-safe silence for this ONE secret: the build below
+      # requests updater artifacts (createUpdaterArtifacts), which REQUIRE
+      # the minisign key — a missing secret must fail here with a clear
+      # name, not inside `tauri build`. The secret value never enters a
+      # shell (the `env:` mapping is only compared for emptiness).
+      - name: Assert updater signing secret
+        if: steps.guard.outputs.release == 'true' && env.HAVE_SIGNING_KEY != 'true'
+        env:
+          HAVE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && 'true' || 'false' }}
+        run: |
+          echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set (native-release environment). Generate/escrow per apps/native/docs/native-updater-plan.md Phase 0, then set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
+          exit 1
 
       - name: Setup Rust toolchain
         if: steps.guard.outputs.release == 'true'
@@ -157,10 +235,9 @@ jobs:
       # absent (not empty) leaves an unsigned build
       # (https://v2.tauri.app/distribute/sign/macos/).
       #
-      # TAURI_SIGNING_* signs the updater artifact the day tauri.conf enables
-      # the `updater` bundle target. Wired in this SHIPPING job (not just
-      # native.yml's non-shipping CI build) so no edit is needed here on
-      # release day; a no-op while that target stays dormant.
+      # NOTE: TAURI_SIGNING_* is deliberately NOT exported here — $GITHUB_ENV
+      # makes it visible to every later step (third-party CLI code, the cask
+      # python, gh). It is step-scoped onto `tauri build` below instead.
       - name: Export signing env
         if: steps.guard.outputs.release == 'true'
         env:
@@ -168,13 +245,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        # Heredoc form because TAURI_SIGNING_PRIVATE_KEY may be multiline.
         run: |
           for VAR in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD \
-                     APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY \
-                     TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+                     APPLE_TEAM_ID; do
             if [ -n "${!VAR}" ]; then
               {
                 echo "$VAR<<__SIGNING_EOF__"
@@ -187,13 +260,24 @@ jobs:
       - name: tauri build
         if: steps.guard.outputs.release == 'true'
         working-directory: apps/native
-        # Signing env (when configured) comes from "Export signing env" above.
+        # Apple signing env (when configured) comes from "Export signing env"
+        # above; the updater minisign key is step-scoped HERE only. The CLI is
+        # pinned (never @latest): the signer/bundler executing with the key in
+        # scope must not change under us, and env-var-supplied key PASSWORDS
+        # have a version-sensitive history (tauri#13485) — verify signing
+        # still works when bumping this pin.
         # The binary's version comes from apps/native/package.json — the one
         # release-tagging bumps — overriding Cargo.toml's static workspace
         # version, so the DMG, the About panel, and the cask all agree.
+        # createUpdaterArtifacts lives in this overlay, NOT in the committed
+        # tauri.conf.json5 — committed, it would fail every secretless
+        # (fork/PR) build with a signing error.
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          bunx @tauri-apps/cli@latest build \
-            --config "{\"version\": \"${{ steps.version.outputs.version }}\"}"
+          bunx @tauri-apps/cli@2.11.4 build \
+            --config "{\"version\": \"${{ steps.version.outputs.version }}\", \"bundle\": {\"createUpdaterArtifacts\": true}}"
 
       - name: Package release assets
         if: steps.guard.outputs.release == 'true'
@@ -203,15 +287,25 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ZIP="deco-$VERSION-aarch64.zip"
           DMG_OUT="deco-$VERSION-aarch64.dmg"
+          TARGZ="deco-$VERSION-aarch64.app.tar.gz"
           # ditto preserves signatures, resource forks and the executable bit
           # — a plain `zip` bundle strips what codesign later needs intact.
           ditto -c -k --keepParent "macos/deco.app" "$ZIP"
           DMG_SRC=$(ls dmg/*.dmg | head -1)
           cp "$DMG_SRC" "$DMG_OUT"
-          echo "zip=apps/native/target/release/bundle/$ZIP" >> "$GITHUB_OUTPUT"
-          echo "dmg=apps/native/target/release/bundle/$DMG_OUT" >> "$GITHUB_OUTPUT"
+          # Updater artifacts (createUpdaterArtifacts in the build overlay):
+          # the tar.gz the updater downloads and the minisign signature that
+          # goes INTO latest.json.
+          cp "macos/deco.app.tar.gz" "$TARGZ"
+          cp "macos/deco.app.tar.gz.sig" "$TARGZ.sig"
           shasum -a 256 "$ZIP" | cut -d' ' -f1 > zip.sha256
-          echo "sha256=$(cat zip.sha256)" >> "$GITHUB_OUTPUT"
+          {
+            echo "zip=apps/native/target/release/bundle/$ZIP"
+            echo "dmg=apps/native/target/release/bundle/$DMG_OUT"
+            echo "targz=apps/native/target/release/bundle/$TARGZ"
+            echo "sig=apps/native/target/release/bundle/$TARGZ.sig"
+            echo "sha256=$(cat zip.sha256)"
+          } >> "$GITHUB_OUTPUT"
 
       # Create-or-update: on a repair dispatch the tag already exists, so
       # re-uploading the assets (--clobber) heals a run that died here or
@@ -224,18 +318,70 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           ZIP: ${{ steps.assets.outputs.zip }}
           DMG: ${{ steps.assets.outputs.dmg }}
+          TARGZ: ${{ steps.assets.outputs.targz }}
+          SIG: ${{ steps.assets.outputs.sig }}
         run: |
           set -euo pipefail
           NOTES="macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco-studio\` — or download the DMG below."
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
               --title "deco $VERSION" --notes "$NOTES"
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$ZIP" "$DMG"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+              "$ZIP" "$DMG" "$TARGZ" "$SIG"
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "deco $VERSION" --notes "$NOTES" \
-              "$ZIP" "$DMG"
+              "$ZIP" "$DMG" "$TARGZ" "$SIG"
           fi
+
+      # Runs strictly AFTER the immutable release holds the .app.tar.gz +
+      # .sig, so a manifest can never reference missing assets. Promotion is
+      # decided by the unit-tested script (throttle, never-regress, fail-open
+      # semantics — see its header); the decision is surfaced as a ::notice::
+      # so silent-skip streaks are greppable. Manifest generation happens in
+      # $RUNNER_TEMP: the cask step below hard-resets the worktree.
+      - name: Promote updater channel
+        if: steps.guard.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SIG: ${{ steps.assets.outputs.sig }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_promote && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          CHANNEL_TAG="native-updates"
+          CURRENT="$RUNNER_TEMP/current-latest.json"
+          MANIFEST="$RUNNER_TEMP/latest.json"
+          DECISION="$RUNNER_TEMP/decision.json"
+
+          # First-ever promotion: the channel release (or its asset) doesn't
+          # exist yet — the script treats an unreadable file as "no manifest"
+          # and promotes.
+          gh release download "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+            -p latest.json -O "$CURRENT" || rm -f "$CURRENT"
+
+          FORCE_FLAG=""
+          [ "$FORCE" = "true" ] && FORCE_FLAG="--force"
+          node apps/native/scripts/ci/native-update-channel.mjs should-promote \
+            --candidate "$VERSION" --current-file "$CURRENT" $FORCE_FLAG > "$DECISION"
+          PROMOTE=$(node -p "require('$DECISION').promote")
+          REASON=$(node -p "require('$DECISION').reason")
+          echo "::notice::updater channel decision: promote=$PROMOTE ($REASON)"
+          if [ "$PROMOTE" != "true" ]; then
+            exit 0
+          fi
+
+          node apps/native/scripts/ci/native-update-channel.mjs build \
+            --version "$VERSION" --sig-file "$SIG" \
+            --repo "$GITHUB_REPOSITORY" > "$MANIFEST"
+
+          gh release view "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+              --prerelease --title "deco update channel" \
+              --notes "Rolling updater manifest polled by the desktop app. Do not install from here — use the latest native-v release or Homebrew."
+          gh release upload "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+            --clobber "$MANIFEST"
+          echo "::notice::updater channel promoted to $VERSION"
 
       # Gated on the App credentials EXISTING: a fork without them still
       # builds and publishes the (unsigned) release above — this only skips
@@ -309,3 +455,28 @@ jobs:
           done
           echo "::error::cask bump push failed after retries"
           exit 1
+
+      # A failed release means unbounded, INVISIBLE staleness: the shell
+      # suppresses version drift by design, so nothing nags users and the
+      # update channel silently stops moving. Surface the failure as a
+      # GitHub issue (created once, then commented) — the || true guards
+      # keep a broken alert from masking the real failure.
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          TAG="${{ steps.version.outputs.tag }}"
+          BODY="Release run for \`${TAG:-unknown}\` failed: $RUN_URL
+
+          A failed native release stalls the desktop updater channel invisibly (drift is suppressed in the shell by design). Repair: fix the cause, then re-run via workflow_dispatch (idempotent; pass force_promote to bypass the channel throttle if needed)."
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --search "\"release-native failed\" in:title" --state open \
+            --json number --jq '.[0].number // empty' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "$BODY" || true
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "release-native failed (${TAG:-unknown})" --body "$BODY" || true
+          fi

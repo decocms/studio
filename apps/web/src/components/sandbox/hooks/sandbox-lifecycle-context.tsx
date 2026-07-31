@@ -41,13 +41,60 @@ export interface ShouldAutoStartArgs {
   attempted: boolean;
 }
 
+/**
+ * `branch` is REQUIRED. Auto-starting without one made `SANDBOX_START` mint a
+ * branch name of its own (`generateBranchName` — a `Date.now()` mint), racing
+ * the one `COLLECTION_THREADS_CREATE` mints for the thread row. Both won: the
+ * thread kept its branch and booted a second sandbox, while the auto-start's
+ * branch was left owning a live pod no thread ever referenced. Observed in
+ * prod as sibling branches minted 8ms apart (`user-fsif89sm` orphaned,
+ * `user-nsif89sm` on the thread), one leaked pod per new chat.
+ *
+ * The agent shell only mounts under `/$org/$taskId` and blocks rendering until
+ * `useEnsureTask` resolves the row, so a missing branch means "the row hasn't
+ * landed yet" — wait a render and start on the branch it carries.
+ */
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.hasActiveGithubRepo &&
     !!args.userId &&
+    !!args.branch &&
     !args.vmEntry &&
     !args.userStopped &&
     !args.isPending &&
+    !args.attempted
+  );
+}
+
+export interface ShouldAdoptBranchArgs {
+  /** The thread row has resolved. `false` while `useEnsureTask` is still
+   *  fetching/creating, when a null branch means "not known yet". */
+  threadLoaded: boolean;
+  /** The viewer created this thread. A teammate's row stays read-only. */
+  isOwner: boolean;
+  hasActiveGithubRepo: boolean;
+  branch: string | null;
+  /** Already adopted once for this thread in this session. */
+  attempted: boolean;
+}
+
+/**
+ * A loaded thread on a repo-backed agent with no branch gets one assigned, so
+ * the branch-gated auto-start (`shouldAutoStart`) can fire for it.
+ *
+ * Threads only reach this state when the repo was attached to the agent AFTER
+ * they were created — `COLLECTION_THREADS_CREATE` assigns a branch whenever the
+ * agent already has a `githubRepo`. Before the branch gate those threads were
+ * covered by `SANDBOX_START` minting a branch server-side, which is exactly the
+ * race that leaked a sandbox per new chat; minting here instead is safe because
+ * the row already exists, so nothing else is naming it concurrently.
+ */
+export function shouldAdoptBranch(args: ShouldAdoptBranchArgs): boolean {
+  return (
+    args.threadLoaded &&
+    args.isOwner &&
+    args.hasActiveGithubRepo &&
+    !args.branch &&
     !args.attempted
   );
 }
@@ -431,8 +478,8 @@ export function SandboxLifecycleProvider({
   // not already started → fire SANDBOX_START once for this branch."
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
-  // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
-  // single auto-start fires even before the server assigns a branch.
+  // `?? ""` only keeps the Set keyed by string — a null branch is never
+  // eligible (shouldAutoStart requires one), so the "" bucket is never written.
   const autoStartDedupKey = branch ?? "";
   const attempted =
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
