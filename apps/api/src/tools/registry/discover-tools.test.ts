@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  createNoRedirectFetch,
   isPrivateUrl,
   parseToolsListResponse,
   resolvesToPrivateAddress,
@@ -126,6 +127,34 @@ describe("withTimeout", () => {
     await expect(withTimeout(never, 10, "too slow")).rejects.toThrow(
       "too slow",
     );
+  });
+});
+
+describe("createNoRedirectFetch", () => {
+  it("rejects a 3xx redirect instead of letting the caller follow it", async () => {
+    const redirecting = async () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "http://169.254.169.254/" },
+      });
+    const wrapped = createNoRedirectFetch(redirecting);
+
+    await expect(wrapped("http://example.com/mcp")).rejects.toThrow(
+      "Refusing to follow a redirect",
+    );
+  });
+
+  it("passes through a non-redirect response and forces manual redirect handling", async () => {
+    let seenInit: RequestInit | undefined;
+    const ok = async (_url: string | URL, init?: RequestInit) => {
+      seenInit = init;
+      return new Response("{}", { status: 200 });
+    };
+    const wrapped = createNoRedirectFetch(ok);
+
+    const res = await wrapped("http://example.com/mcp", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(seenInit?.redirect).toBe("manual");
   });
 });
 
