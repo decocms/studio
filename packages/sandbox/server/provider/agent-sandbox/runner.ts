@@ -278,6 +278,17 @@ interface K8sRecord {
    * that case so the caller's normal SANDBOX_START flow can repopulate them.
    */
   ensureOpts: EnsureOptions | null;
+  /**
+   * Which daemon binary this sandbox's pod is actually running — the metric
+   * dimension the Go rollout is compared on. Distinct from
+   * `ensureOpts.daemonImpl` (what the caller *asked* for, which the kill
+   * switch can collapse) and resolvable on paths that have no `ensureOpts` at
+   * all: adopt recovers it from the claim label, which is the cluster-side
+   * source of truth. Null only when neither is available — reported as an
+   * empty attribute rather than defaulting to `ts`, so a Go sandbox can never
+   * be silently counted as a TS one.
+   */
+  daemonImpl: SandboxDaemonImpl | null;
 }
 
 interface PersistedK8sState {
@@ -540,7 +551,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // Decrement only when we actually held the record — getRecord can be
       // null after restart-without-state-store, in which case the gauge
       // was never incremented for this handle in this process.
-      this.metrics?.active.add(-1, tenantAttrs(rec.tenant));
+      this.metrics?.active.add(-1, tenantAttrs(rec.tenant, rec.daemonImpl));
     }
     // Drop the HTTPRoute first so traffic stops resolving immediately —
     // the operator's claim teardown can take a few seconds, and we don't
@@ -1115,7 +1126,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
     }
     if (this.metrics) {
-      const attrs = tenantAttrs(rec.tenant);
+      const attrs = tenantAttrs(rec.tenant, rec.daemonImpl);
       this.metrics.ensureOutcome.add(1, { ...attrs, outcome });
       // Only increment the active gauge on first observation to avoid
       // double-counting when the same handle is rehydrated multiple times
@@ -1236,6 +1247,16 @@ export class AgentSandboxProvider implements SandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
+    // The impl the claim actually gets — `go` collapses back to `ts` here when
+    // the kill switch is off. Resolved once and reused for the record, its
+    // persisted opts, and the claim itself (buildClaim re-derives it from the
+    // same pure function on the same inputs), so the metric attribute can
+    // never disagree with the pod that ran.
+    const { impl: resolvedImpl } = resolveClaimTemplate(
+      opts.daemonImpl,
+      this.sandboxTemplateName,
+      this.goSandboxTemplateName,
+    );
 
     const claim = this.buildClaim(handle, opts, {
       token,
@@ -1382,17 +1403,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       workload: opts.workload ?? null,
       daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
+      daemonImpl: resolvedImpl,
       // Persist the impl the claim actually got, not the one asked for: with the
       // kill switch off a `go` request lands on ts, and recovery must replay
       // what ran. Same pure call buildClaim made above.
-      ensureOpts: stripEnsureOpts({
-        ...opts,
-        daemonImpl: resolveClaimTemplate(
-          opts.daemonImpl,
-          this.sandboxTemplateName,
-          this.goSandboxTemplateName,
-        ).impl,
-      }),
+      ensureOpts: stripEnsureOpts({ ...opts, daemonImpl: resolvedImpl }),
     };
   }
 
@@ -1795,6 +1810,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       daemonBootId: live.bootId,
       tenant: state.tenant ?? null,
       ensureOpts: state.ensureOpts ?? null,
+      // Rows written before the rollout gate existed have no persisted impl;
+      // they are TS sandboxes by construction, but say null rather than guess.
+      daemonImpl: state.ensureOpts?.daemonImpl ?? null,
     };
   }
 
@@ -1870,6 +1888,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       // can't autonomously re-provision; falls back to the caller's
       // SANDBOX_START path.
       ensureOpts: null,
+      // The one thing that IS recoverable without ensureOpts: the claim label
+      // studio stamped at provision time. Without this, every adopted sandbox
+      // would drop out of the impl split during exactly the incident (studio
+      // restarted, state-store empty) you'd be reading the dashboard for.
+      daemonImpl: readClaimDaemonImpl(claim),
     };
   }
 
@@ -1978,7 +2001,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   ): void {
     if (!this.metrics) return;
     this.metrics.proxyDurationMs.record(durationMs, {
-      ...tenantAttrs(rec?.tenant ?? null),
+      ...tenantAttrs(rec?.tenant ?? null, rec?.daemonImpl ?? null),
       source,
       sandbox_handle: rec?.handle ?? fallbackHandle ?? "",
       status_code: statusCode || 0,
@@ -2192,7 +2215,7 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
   return {
     active: meter.createUpDownCounter("studio.sandbox.active", {
       description:
-        "Active sandbox count, by runner kind and owning org. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (studio deleted but K8s didn't reap) or unattributed pods.",
+        "Active sandbox count, by runner kind, owning org, and daemon impl. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (studio deleted but K8s didn't reap) or unattributed pods.",
       unit: "{sandbox}",
     }),
     ensureOutcome: meter.createCounter("studio.sandbox.ensure.outcome", {
@@ -2448,19 +2471,43 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 }
 
 /**
+ * Which daemon binary a claim's pod runs, per the label studio stamped at
+ * provision time. The cluster-side source of truth, and the only way to
+ * recover the impl on the adopt path (where `ensureOpts` is unrecoverable).
+ * Returns null for claims that predate the label rather than assuming `ts`.
+ */
+export function readClaimDaemonImpl(
+  claim: SandboxResource,
+): SandboxDaemonImpl | null {
+  const value = claim.metadata?.labels?.[LABEL_KEYS.daemonImpl];
+  return value === "go" || value === "ts" ? value : null;
+}
+
+/**
  * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
  * a given runner instance but included on every attrs set so downstream
  * dashboards can pivot across runners without re-aggregating.
+ *
+ * `daemon_impl` is the Go-rollout comparison dimension: it splits every
+ * sandbox metric by the binary the pod actually ran, so `go` and `ts` can be
+ * read side by side while both are live. Empty when unknown — never defaulted
+ * to `ts`, because a Go sandbox counted as TS is worse than one counted as
+ * neither. Cardinality is bounded at 3 (`go` | `ts` | `""`).
  */
-function tenantAttrs(tenant: RunnerTenant | null): {
+function tenantAttrs(
+  tenant: RunnerTenant | null,
+  daemonImpl: SandboxDaemonImpl | null,
+): {
   org_id: string;
   user_id: string;
   runner_kind: string;
+  daemon_impl: string;
 } {
   return {
     org_id: tenant?.orgId ?? "",
     user_id: tenant?.userId ?? "",
     runner_kind: RUNNER_KIND,
+    daemon_impl: daemonImpl ?? "",
   };
 }
 
