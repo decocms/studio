@@ -41,10 +41,24 @@ export interface ShouldAutoStartArgs {
   attempted: boolean;
 }
 
+/**
+ * `branch` is REQUIRED. Auto-starting without one made `SANDBOX_START` mint a
+ * branch name of its own (`generateBranchName` — a `Date.now()` mint), racing
+ * the one `COLLECTION_THREADS_CREATE` mints for the thread row. Both won: the
+ * thread kept its branch and booted a second sandbox, while the auto-start's
+ * branch was left owning a live pod no thread ever referenced. Observed in
+ * prod as sibling branches minted 8ms apart (`user-fsif89sm` orphaned,
+ * `user-nsif89sm` on the thread), one leaked pod per new chat.
+ *
+ * The agent shell only mounts under `/$org/$taskId` and blocks rendering until
+ * `useEnsureTask` resolves the row, so a missing branch means "the row hasn't
+ * landed yet" — wait a render and start on the branch it carries.
+ */
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.hasActiveGithubRepo &&
     !!args.userId &&
+    !!args.branch &&
     !args.vmEntry &&
     !args.userStopped &&
     !args.isPending &&
@@ -431,8 +445,8 @@ export function SandboxLifecycleProvider({
   // not already started → fire SANDBOX_START once for this branch."
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
-  // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
-  // single auto-start fires even before the server assigns a branch.
+  // `?? ""` only keeps the Set keyed by string — a null branch is never
+  // eligible (shouldAutoStart requires one), so the "" bucket is never written.
   const autoStartDedupKey = branch ?? "";
   const attempted =
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
