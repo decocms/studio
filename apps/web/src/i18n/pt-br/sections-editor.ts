@@ -136,6 +136,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageVariantTabs.duplicateAction": "Duplicar",
   "sectionsEditor.pageVariantTabs.renameAction": "Renomear",
   "sectionsEditor.pageVariantTabs.variantsLabel": "Variantes",
+  "sectionsEditor.richTextField.fontSizeDecrease": "Diminuir tamanho da fonte",
+  "sectionsEditor.richTextField.fontSizeIncrease": "Aumentar tamanho da fonte",
   "sectionsEditor.richTextField.styleHeading": "Título {level}",
   "sectionsEditor.richTextField.styleLabel": "Estilo do texto",
   "sectionsEditor.richTextField.styleParagraph": "Parágrafo",

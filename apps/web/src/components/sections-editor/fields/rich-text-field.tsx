@@ -7,12 +7,15 @@ import {
   Bold01,
   Italic01,
   List,
+  Minus,
+  Plus,
   Strikethrough01,
   Underline01,
 } from "@untitledui/icons";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
+import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
   Select,
@@ -28,6 +31,12 @@ import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
 
 /** Heading levels the editor supports, in dropdown order. */
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+/** Font-size stepper bounds (px). Default is the prose base when unset. */
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 128;
+const FONT_SIZE_DEFAULT = 16;
+const FONT_SIZE_STEP = 1;
 
 export function RichTextField({
   schema,
@@ -56,6 +65,9 @@ export function RichTextField({
       TextAlign.configure({
         types: ["heading", "paragraph"],
       }),
+      // FontSize stores its px value on the textStyle mark, so both are needed.
+      TextStyle,
+      FontSize,
     ],
     content: strValue || "",
     editorProps: {
@@ -86,6 +98,8 @@ export function RichTextField({
         HEADING_LEVELS.find(
           (level) => editor?.isActive("heading", { level }) ?? false,
         ) ?? 0,
+      // px string (e.g. "18px") when a size is set on the selection, else null.
+      fontSize: (editor?.getAttributes("textStyle").fontSize as string) ?? null,
       bulletList: editor?.isActive("bulletList") ?? false,
       orderedList: editor?.isActive("orderedList") ?? false,
       link: editor?.isActive("link") ?? false,
@@ -108,6 +122,15 @@ export function RichTextField({
     }
     const level = HEADING_LEVELS.find((l) => `h${l}` === next);
     if (level) chain.setHeading({ level }).run();
+  };
+
+  const parsedFontSize = marks.fontSize ? parseInt(marks.fontSize, 10) : NaN;
+  const currentFontSize = Number.isFinite(parsedFontSize)
+    ? parsedFontSize
+    : FONT_SIZE_DEFAULT;
+  const applyFontSize = (px: number) => {
+    const clamped = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, px));
+    editor.chain().focus().setFontSize(`${clamped}px`).run();
   };
 
   return (
@@ -176,6 +199,28 @@ export function RichTextField({
               ))}
             </SelectContent>
           </Select>
+
+          <div className="mx-0.5 h-4 w-px bg-border" />
+
+          <div className="flex items-center gap-0.5">
+            <ToolbarButton
+              active={false}
+              label={t("sectionsEditor.richTextField.fontSizeDecrease")}
+              onClick={() => applyFontSize(currentFontSize - FONT_SIZE_STEP)}
+            >
+              <Minus size={14} />
+            </ToolbarButton>
+            <span className="min-w-[2ch] text-center text-xs tabular-nums text-muted-foreground">
+              {currentFontSize}
+            </span>
+            <ToolbarButton
+              active={false}
+              label={t("sectionsEditor.richTextField.fontSizeIncrease")}
+              onClick={() => applyFontSize(currentFontSize + FONT_SIZE_STEP)}
+            >
+              <Plus size={14} />
+            </ToolbarButton>
+          </div>
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
