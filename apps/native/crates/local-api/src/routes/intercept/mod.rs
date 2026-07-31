@@ -256,6 +256,7 @@ pub(crate) fn test_state(root: &std::path::Path) -> AppState {
         broadcaster,
         shutdown: Arc::new(crate::shutdown::ShutdownCoordinator::new()),
         setup,
+        update: None,
     }
 }
 

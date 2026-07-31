@@ -21,6 +21,7 @@ pub mod scripts;
 pub mod setup;
 pub mod tasks;
 pub mod threads;
+pub mod update;
 pub mod upstream;
 pub mod webdav;
 pub mod ws_proxy;

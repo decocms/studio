@@ -51,6 +51,11 @@ const CASES: Case[] = [
     path: "/_sandbox/runs/some-run",
     method: "DELETE",
   },
+  // Correct-bearer answers 409 here (the standalone binary has no update
+  // integration — `StartOptions.update: None`), which satisfies the
+  // matrix's not-401 assertion; the 401 rows prove the route landed inside
+  // the guard rather than as an unauthenticated top-level route.
+  { name: "update: restart", path: "/_local/update/restart" },
 ];
 
 describeLocalApi("local-api e2e: auth matrix", () => {
@@ -95,6 +100,18 @@ describeLocalApi("local-api e2e: auth matrix", () => {
       expect(res.status).not.toBe(401);
     });
   }
+
+  it("update restart answers 409 in the standalone binary (no update integration)", async () => {
+    // The desktop shell injects UpdateHooks via StartOptions.update; the
+    // standalone binary never does, so the route's documented contract here
+    // is exactly 409 — never 404 (the route exists in both auth modes) and
+    // never 202 (nothing can be staged).
+    const res = await fetch(url(a, "/_local/update/restart"), {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(409);
+  });
 
   it("an empty configured token rejects everything (fail closed)", async () => {
     // A daemon spawned without a token must never accept a blank `Bearer `.

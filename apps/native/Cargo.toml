@@ -81,6 +81,10 @@ tauri = { version = "2", features = ["config-json5", "devtools"] }
 # `#[cfg(debug_assertions)]` in src-tauri/src/lib.rs — never in release).
 tauri-plugin-mcp-bridge = "0.12"
 tauri-plugin-opener = "2"
+# Self-update (registered under `#[cfg(not(debug_assertions))]` — the exact
+# mirror of mcp-bridge above; see src-tauri/src/updater.rs for the full
+# gating story).
+tauri-plugin-updater = "2"
 tauri-build = { version = "2", features = ["config-json5"] }
 # `crates/upstream`'s OAuth/Keychain-specific deps (`keyring`, `sha2`,
 # `base64`, `dirs`) are declared directly in `crates/upstream/Cargo.toml`

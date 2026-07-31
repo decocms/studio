@@ -2331,6 +2331,7 @@ mod tests {
             broadcaster.clone(),
         );
         AppState {
+            update: None,
             token: "test-token".into(),
             boot_id: "test-boot".into(),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.to_path_buf()),

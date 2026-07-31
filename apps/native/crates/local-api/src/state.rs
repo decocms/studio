@@ -6,6 +6,7 @@
 //! coherent across all 8 families.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use crate::config::ConfigStore;
@@ -14,6 +15,32 @@ use crate::sandbox::SandboxManager;
 use crate::setup::SetupOrchestrator;
 use crate::shutdown::ShutdownCoordinator;
 use crate::tasks::TaskRegistry;
+
+/// Desktop-app self-update integration, injected by the Tauri shell via
+/// `StartOptions::update`. `None` outside the packaged shell (the standalone
+/// binary, tests) — a separate axis from embedded-vs-bearer auth, because
+/// embedded DEBUG builds have no updater either.
+///
+/// Interface note (module-ownership contract): this struct and the
+/// `AppState`/`StartOptions` fields carrying it were added as ONE interface
+/// change together with the `/_local/update/restart` route in `router.rs`.
+#[derive(Clone)]
+pub struct UpdateHooks {
+    /// Version the update task has downloaded, verified, and staged for
+    /// apply-at-exit; `None` until staging completes. Read by the
+    /// `/api/config` proxy rewrite so the webview's version-drift card
+    /// fires iff an update is actually ready. (The install itself is
+    /// deferred to the shell's exit path — swapping the bundle under a live
+    /// process breaks macOS Keychain access.)
+    pub staged_version: tokio::sync::watch::Receiver<Option<String>>,
+    /// True while a download/verify/stage cycle is running. The restart
+    /// route refuses (409) while set — restarting mid-restage would race
+    /// the pending-archive swap.
+    pub installing: Arc<AtomicBool>,
+    /// Graceful app restart (Tauri `request_restart` — delivers
+    /// `ExitRequested`, so the single shutdown pipeline runs first).
+    pub request_restart: Arc<dyn Fn() + Send + Sync>,
+}
 
 /// `LOCAL_API_MODE` — see `cors.rs`'s module doc for exactly what this
 /// changes (origin-allowlist breadth only, never auth, never a wildcard
@@ -75,4 +102,6 @@ pub struct AppState {
     /// sniffed dev port. A non-git thread never touches this field — the
     /// plain `repo_dir`/`setup` path above is unchanged.
     pub sandbox_manager: Arc<SandboxManager>,
+    /// See [`UpdateHooks`]. `None` outside the packaged desktop shell.
+    pub update: Option<UpdateHooks>,
 }

@@ -587,6 +587,7 @@ mod tests {
             broadcaster.clone(),
         );
         AppState {
+            update: None,
             token: Arc::from("test-token"),
             boot_id: Arc::from("test-boot"),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
