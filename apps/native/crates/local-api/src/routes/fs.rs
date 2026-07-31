@@ -808,6 +808,14 @@ async fn drive_owned_rg(
     })
 }
 
+/// Install instruction shown when `rg` is not on PATH. Homebrew is the
+/// de-facto macOS package manager; Linux distros split across apt and dnf, so
+/// both are named rather than guessing the host's family.
+#[cfg(target_os = "macos")]
+const RIPGREP_HINT: &str = "brew install ripgrep";
+#[cfg(not(target_os = "macos"))]
+const RIPGREP_HINT: &str = "apt install ripgrep / dnf install ripgrep";
+
 async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process::Output, ApiError> {
     let Some(admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
@@ -831,7 +839,7 @@ async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process:
                 ApiError::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     format!(
-                        "grep unavailable: {error}. Install ripgrep (\"brew install ripgrep\") or use bash + grep."
+                        "grep unavailable: {error}. Install ripgrep (\"{RIPGREP_HINT}\") or use bash + grep."
                     ),
                 )
             })?;

@@ -1,9 +1,11 @@
 //! PATH repair for GUI launches.
 //!
-//! macOS starts Finder/Dock-launched apps with launchd's minimal PATH
-//! (`/usr/bin:/bin:/usr/sbin:/sbin`), so user-installed binaries — `claude`,
-//! `codex`, `bun`, `rg`, Homebrew's `git` — are invisible to every child this
-//! process spawns. All spawn sites (harness probes, setup installs, the
+//! A GUI launch inherits a minimal PATH: launchd gives a Finder/Dock-launched
+//! macOS app `/usr/bin:/bin:/usr/sbin:/sbin`, and a Linux `.desktop` or
+//! systemd-user launch gets whatever the session manager exported, which is
+//! likewise none of the user's shell config. So user-installed binaries —
+//! `claude`, `codex`, `bun`, `rg`, Homebrew's `git` — are invisible to every
+//! child this process spawns. All spawn sites (harness probes, setup installs, the
 //! script runner) rely on the inherited environment, so repairing PATH once
 //! here, before `local-api` boots, fixes them all.
 //!
@@ -36,6 +38,27 @@ mod unix {
     const DELIM_START: &str = "__DECO_PATH>";
     const DELIM_END: &str = "<DECO_PATH__";
 
+    /// Login shell to probe when `$SHELL` is unset or empty: macOS has shipped
+    /// zsh as the default login shell since Catalina; other unices default to
+    /// bash.
+    #[cfg(target_os = "macos")]
+    const DEFAULT_SHELL: &str = "/bin/zsh";
+    #[cfg(not(target_os = "macos"))]
+    const DEFAULT_SHELL: &str = "/bin/bash";
+
+    /// System-wide install locations, most specific first. macOS means
+    /// Homebrew (Apple Silicon prefix first, Intel/manual second); on Linux
+    /// `/snap/bin` and the Linuxbrew prefix are the equivalent opt-in
+    /// locations a minimal session PATH omits.
+    #[cfg(target_os = "macos")]
+    const SYSTEM_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
+    #[cfg(not(target_os = "macos"))]
+    const SYSTEM_DIRS: &[&str] = &[
+        "/usr/local/bin",
+        "/snap/bin",
+        "/home/linuxbrew/.linuxbrew/bin",
+    ];
+
     pub(super) fn repair() {
         let inherited = std::env::var("PATH").unwrap_or_default();
         let probed = probe_login_shell_path(PROBE_TIMEOUT);
@@ -65,7 +88,7 @@ mod unix {
         let shell = std::env::var("SHELL")
             .ok()
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "/bin/zsh".to_string());
+            .unwrap_or_else(|| DEFAULT_SHELL.to_string());
         let script = format!("printf '%s' \"{DELIM_START}$PATH{DELIM_END}\"");
         let mut child = std::process::Command::new(&shell)
             .args(["-l", "-c", &script])
@@ -122,8 +145,8 @@ mod unix {
             .then_some(path)
     }
 
-    /// Well-known per-user and Homebrew install locations. Existence is
-    /// checked by the caller so unit tests can inject temp dirs.
+    /// Well-known per-user install locations followed by [`SYSTEM_DIRS`].
+    /// Existence is checked by the caller so unit tests can inject temp dirs.
     fn fallback_dirs() -> Vec<PathBuf> {
         let mut dirs = Vec::new();
         if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
@@ -132,8 +155,7 @@ mod unix {
             dirs.push(home.join(".cargo/bin"));
             dirs.push(home.join(".deno/bin"));
         }
-        dirs.push(PathBuf::from("/opt/homebrew/bin"));
-        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.extend(SYSTEM_DIRS.iter().map(PathBuf::from));
         dirs
     }
 
@@ -209,6 +231,43 @@ mod unix {
             assert_eq!(extract_delimited("no delimiters"), None);
             let relative = format!("{DELIM_START}not-a-path{DELIM_END}");
             assert_eq!(extract_delimited(&relative), None);
+        }
+
+        /// `fallback_dirs` reads the ambient `HOME`; the tests below assert
+        /// the system tail and its ordering without mutating process env,
+        /// which the in-process parallel harness would leak across tests.
+        fn expected_home_dirs() -> Vec<PathBuf> {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| {
+                    vec![
+                        home.join(".bun/bin"),
+                        home.join(".local/bin"),
+                        home.join(".cargo/bin"),
+                        home.join(".deno/bin"),
+                    ]
+                })
+                .unwrap_or_default()
+        }
+
+        #[cfg(target_os = "macos")]
+        #[test]
+        fn fallback_dirs_keep_the_macos_order() {
+            let mut expected = expected_home_dirs();
+            expected.push(PathBuf::from("/opt/homebrew/bin"));
+            expected.push(PathBuf::from("/usr/local/bin"));
+            assert_eq!(fallback_dirs(), expected);
+        }
+
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn fallback_dirs_use_linux_locations() {
+            let mut expected = expected_home_dirs();
+            expected.push(PathBuf::from("/usr/local/bin"));
+            expected.push(PathBuf::from("/snap/bin"));
+            expected.push(PathBuf::from("/home/linuxbrew/.linuxbrew/bin"));
+            assert_eq!(fallback_dirs(), expected);
+            assert!(!fallback_dirs().contains(&PathBuf::from("/opt/homebrew/bin")));
         }
 
         #[test]
