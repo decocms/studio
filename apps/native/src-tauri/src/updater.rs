@@ -191,6 +191,16 @@ fn enabled(app: &tauri::AppHandle) -> bool {
         );
         return false;
     }
+    // Linux: the plugin swaps the file $APPIMAGE points at, in place. Run from a
+    // raw binary (dev checkout, extracted AppDir, future deb/rpm) it would
+    // overwrite current_exe() itself — never spawn there. The plugin has no such
+    // guard: tauri-plugin-updater 2.10.1 wires executable_path from env.appimage
+    // and install_appimage rewrites it with no "not an AppImage" error.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("APPIMAGE").is_none() {
+        tracing::info!("self-update disabled: not running from an AppImage");
+        return false;
+    }
     true
 }
 
