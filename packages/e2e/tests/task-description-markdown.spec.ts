@@ -132,7 +132,8 @@ test.describe("task description markdown editor", () => {
       .setInputFiles({ name: PNG_NAME, mimeType: "image/png", buffer: PNG });
 
     // Rendered as an actual image, and its URL is nowhere in the visible text.
-    const img = editor.locator("img");
+    // `img[src]`: ProseMirror adds 0×0 `ProseMirror-separator` images of its own.
+    const img = editor.locator("img[src]");
     await expect(img).toBeVisible({ timeout: 30_000 });
     await expect(editor).not.toContainText("![");
     await expect(editor).not.toContainText("/fs/uploads/");
@@ -142,9 +143,13 @@ test.describe("task description markdown editor", () => {
     // The dir separator arrives percent-encoded — the URL is built with
     // URLSearchParams.
     expect(src).toContain("/fs/uploads/read?path=editor-images%2F");
-    expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(
-      1,
-    );
+    // Polled, not read once: the element is visible as soon as it's laid out,
+    // and the bytes land a beat later.
+    await expect
+      .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), {
+        timeout: 30_000,
+      })
+      .toBe(1);
 
     await page.getByRole("button", { name: "Save" }).click();
 
@@ -163,12 +168,12 @@ test.describe("task description markdown editor", () => {
 
     // Reopen: still a preview, and the X removes it.
     await openTask(page, orgSlug, title);
-    const reopened = editorOf(page);
-    await expect(reopened.locator("img")).toBeVisible();
+    const reopened = editorOf(page).locator("img[src]");
+    await expect(reopened).toBeVisible();
 
-    await reopened.locator("img").hover();
+    await reopened.hover();
     await page.getByRole("button", { name: "Remove image" }).click();
-    await expect(reopened.locator("img")).toHaveCount(0);
+    await expect(reopened).toHaveCount(0);
 
     await page.getByRole("button", { name: "Save" }).click();
     await expect
@@ -212,7 +217,8 @@ test.describe("task description markdown editor", () => {
     await expect(download).toBeVisible({ timeout: 30_000 });
     await expect(editor).toContainText(DOC_NAME);
     await expect(editor).not.toContainText("/fs/uploads/");
-    await expect(editor.locator("img")).toHaveCount(0);
+    // `img[src]`: an inline atom gets a 0×0 `ProseMirror-separator` img beside it.
+    await expect(editor.locator("img[src]")).toHaveCount(0);
 
     // The download really points at the uploaded bytes, under the attachment
     // dir (not the image one), and saves under the name it was uploaded with.
