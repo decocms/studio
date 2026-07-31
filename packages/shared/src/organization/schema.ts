@@ -137,6 +137,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
+  sandboxGoDaemon: z
+    .boolean()
+    .optional()
+    .describe(
+      "Provision this org's new sandboxes on the Go sandbox daemon instead of the TypeScript one. Affects the NEXT sandbox only — live sandboxes drain on the binary they booted with. Ignored unless the deployment sets STUDIO_SANDBOX_GO_TEMPLATE_NAME (the global kill switch); SANDBOX_START's `daemonImpl` overrides it per sandbox in either direction.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

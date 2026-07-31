@@ -121,6 +121,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            sandboxGoDaemon?: boolean | undefined;
           }
         | null
         | undefined;
@@ -183,6 +184,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            sandboxGoDaemon?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -245,6 +247,7 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            sandboxGoDaemon?: boolean | undefined;
           }
         | null
         | undefined;
@@ -6596,6 +6599,7 @@ export interface StudioToolIO {
         | "user-desktop"
         | "cluster"
         | undefined;
+      daemonImpl?: "ts" | "go" | undefined;
     };
     output: {
       previewUrl: string | null;

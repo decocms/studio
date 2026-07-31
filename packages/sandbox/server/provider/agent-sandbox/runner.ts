@@ -59,6 +59,7 @@ import type {
   EnsureOptions,
   ProxyRequestInit,
   Sandbox,
+  SandboxDaemonImpl,
   SandboxId,
   SandboxProvider,
   Workload,
@@ -309,6 +310,18 @@ export interface AgentSandboxProviderOptions {
   /** SandboxTemplate all claims reference. */
   sandboxTemplateName?: string;
   /**
+   * SandboxTemplate for claims that asked for `daemonImpl: "go"` — the chart's
+   * opt-in `<name>-go` twin, identical except `SANDBOX_DAEMON_IMPL=go`.
+   *
+   * This is the **global kill switch**: leave it unset and `daemonImpl` is
+   * ignored everywhere, because there is nothing to point a claim at. That is
+   * also why the choice can't be per-claim env — the operator rejects
+   * `spec.env` whenever the claim may bind a warm pod, and the entrypoint
+   * reads `SANDBOX_DAEMON_IMPL` at container start, before Studio can talk to
+   * the daemon at all.
+   */
+  goSandboxTemplateName?: string;
+  /**
    * Shared sentinel token baked into the SandboxTemplate's pod env (via the
    * sandbox-env helm chart's Secret). Presence flips the runner into
    * warm-pool mode:
@@ -411,6 +424,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
+  /** See {@link AgentSandboxProviderOptions.goSandboxTemplateName}. */
+  private readonly goSandboxTemplateName: string | null;
   private readonly envName: string | null;
   private readonly tokenGenerator: () => string;
   private readonly idleTtlMs: number;
@@ -450,6 +465,9 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.namespace = opts.namespace ?? DEFAULT_NAMESPACE;
     this.sandboxTemplateName =
       opts.sandboxTemplateName ?? DEFAULT_TEMPLATE_NAME;
+    const trimmedGoTemplate = opts.goSandboxTemplateName?.trim() ?? "";
+    this.goSandboxTemplateName =
+      trimmedGoTemplate.length > 0 ? trimmedGoTemplate : null;
     this.envName = normalizeEnvName(opts.envName);
     this.tokenGenerator =
       opts.tokenGenerator ??
@@ -1152,6 +1170,16 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Carried on both the claim and the pod; empty → block omitted entirely.
     const annotations = buildTenantAnnotations(opts);
     const hasAnnotations = Object.keys(annotations).length > 0;
+    const { impl, templateName } = resolveClaimTemplate(
+      opts.daemonImpl,
+      this.sandboxTemplateName,
+      this.goSandboxTemplateName,
+    );
+    if (opts.daemonImpl === "go" && impl !== "go") {
+      console.warn(
+        `[${LOG_LABEL}] daemonImpl=go requested for ${handle} but no Go SandboxTemplate is configured (STUDIO_SANDBOX_GO_TEMPLATE_NAME); landing on ts`,
+      );
+    }
     return {
       apiVersion: `${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}`,
       kind: "SandboxClaim",
@@ -1164,13 +1192,14 @@ export class AgentSandboxProvider implements SandboxProvider {
         labels: {
           "app.kubernetes.io/name": "studio-sandbox",
           "app.kubernetes.io/managed-by": "studio",
+          [LABEL_KEYS.daemonImpl]: impl,
           ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           ...buildTenantLabels(opts.tenant),
         },
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: this.sandboxTemplateName },
+        sandboxTemplateRef: { name: templateName },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`
@@ -1180,6 +1209,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           labels: buildTenantLabels(opts.tenant, {
             [LABEL_KEYS.role]: "claimed",
             [LABEL_KEYS.sandboxHandle]: handle,
+            // Every panel that splits the Go canary from the TS fleet joins on
+            // this. Must NOT also be set in the SandboxTemplate's podTemplate:
+            // the operator rejects a claim whose additionalPodMetadata repeats a
+            // template label key, even with the same value.
+            [LABEL_KEYS.daemonImpl]: impl,
             ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           }),
           ...(hasAnnotations ? { annotations } : {}),
@@ -1348,7 +1382,17 @@ export class AgentSandboxProvider implements SandboxProvider {
       workload: opts.workload ?? null,
       daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
-      ensureOpts: stripEnsureOpts(opts),
+      // Persist the impl the claim actually got, not the one asked for: with the
+      // kill switch off a `go` request lands on ts, and recovery must replay
+      // what ran. Same pure call buildClaim made above.
+      ensureOpts: stripEnsureOpts({
+        ...opts,
+        daemonImpl: resolveClaimTemplate(
+          opts.daemonImpl,
+          this.sandboxTemplateName,
+          this.goSandboxTemplateName,
+        ).impl,
+      }),
     };
   }
 
@@ -2219,7 +2263,29 @@ const LABEL_KEYS = {
   orgId: "studio.decocms.com/org-id",
   userId: "studio.decocms.com/user-id",
   env: "studio.decocms.com/env",
+  daemonImpl: "studio.decocms.com/daemon-impl",
 } as const;
+
+/**
+ * Which SandboxTemplate a claim gets, and therefore which daemon binary its
+ * pod's entrypoint execs. Pure so the rollout gate is testable without a
+ * cluster: it is the one place `go` can collapse back to `ts`.
+ *
+ * `goTemplateName === null` (i.e. `STUDIO_SANDBOX_GO_TEMPLATE_NAME` unset) is
+ * the global kill switch — pointing a claim at a template that doesn't exist
+ * fails provisioning outright, so an unconfigured deploy must ignore the
+ * request rather than honor it.
+ */
+export function resolveClaimTemplate(
+  requested: SandboxDaemonImpl | undefined,
+  tsTemplateName: string,
+  goTemplateName: string | null,
+): { impl: SandboxDaemonImpl; templateName: string } {
+  if (requested === "go" && goTemplateName) {
+    return { impl: "go", templateName: goTemplateName };
+  }
+  return { impl: "ts", templateName: tsTemplateName };
+}
 
 // K8s annotation keys for human-readable ownership/provenance. Unlike labels,
 // annotation values aren't charset-limited, so these carry the identity that
@@ -2409,6 +2475,11 @@ function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
   if (opts.tenant) out.tenant = opts.tenant;
+  // Stickiness: `resurrectByHandle` re-provisions from these opts with no
+  // SANDBOX_START in the loop, so without this an autonomously recovered
+  // sandbox would silently come back on the other binary — which makes any
+  // incident on it unattributable. Callers persist the *resolved* impl.
+  if (opts.daemonImpl) out.daemonImpl = opts.daemonImpl;
   return Object.keys(out).length > 0 ? out : null;
 }
 
