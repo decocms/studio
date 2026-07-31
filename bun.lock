@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.139.18",
+      "version": "4.152.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -128,7 +128,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "0.0.0",
+      "version": "4.152.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -139,7 +139,7 @@
     },
     "apps/web": {
       "name": "@decocms/studio-web",
-      "version": "4.107.0",
+      "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/react": "^3.0.210",
         "@better-auth/sso": "1.4.1",
@@ -170,6 +170,7 @@
         "@tiptap/core": "3.20.2",
         "@tiptap/extension-placeholder": "3.20.2",
         "@tiptap/extension-text-align": "3.20.2",
+        "@tiptap/extension-text-style": "3.20.2",
         "@tiptap/pm": "3.20.2",
         "@tiptap/react": "3.20.2",
         "@tiptap/starter-kit": "3.20.2",
@@ -226,7 +227,7 @@
     },
     "packages/bindings": {
       "name": "@decocms/bindings",
-      "version": "1.5.0",
+      "version": "1.6.0",
       "dependencies": {
         "@decocms/mcp-utils": "^1.0.5",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -243,7 +244,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.24.1",
+      "version": "1.26.1",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -265,7 +266,7 @@
     },
     "packages/harness": {
       "name": "@decocms/harness",
-      "version": "2.7.1",
+      "version": "2.8.1",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.85",
         "@ai-sdk/google": "^3.0.83",
@@ -303,7 +304,7 @@
     },
     "packages/runtime": {
       "name": "@decocms/runtime",
-      "version": "2.3.8",
+      "version": "2.4.0",
       "dependencies": {
         "@cloudflare/workers-types": "^4.20250617.0",
         "@decocms/bindings": "^1.0.7",
@@ -324,7 +325,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.25.0",
+      "version": "1.28.6",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -343,7 +344,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.7.1",
+      "version": "0.10.1",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -354,7 +355,7 @@
     },
     "packages/tunnel": {
       "name": "@decocms/tunnel",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@nats-io/nats-core": "3.4.0",
         "zod": "4.3.6",
@@ -381,7 +382,7 @@
     },
     "packages/ui": {
       "name": "@deco/ui",
-      "version": "1.6.0",
+      "version": "1.8.2",
       "dependencies": {
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -1726,6 +1727,8 @@
     "@tiptap/extension-text": ["@tiptap/extension-text@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-I1rVt6JTi/itgsFqXp+JfxWn9fEewIxiIaaaMUmaCJ6HChQSvYlVWy1B/RixmbCCPaL/FxybEa/Tg9MugyOJYA=="],
 
     "@tiptap/extension-text-align": ["@tiptap/extension-text-align@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-ior4BAu+F0dn4ErqWlAmkyy/qTaIiaJ72VBwSvEUEuuXgX8Htyg9hfE38O8MXZw/KLpL2X7i0P6VbDHhaAWA4Q=="],
+
+    "@tiptap/extension-text-style": ["@tiptap/extension-text-style@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-jvVRtFdEJNjKgIL8wtMg3W4BJMlKyH9aF2jYNU2rf3jA9GJM0rtqtth3jjFnApZoyINtx6jr4o4Ot6+/5d0XYA=="],
 
     "@tiptap/extension-underline": ["@tiptap/extension-underline@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-oVszIGkRtg8NLhop/t5kco6suWlDUKW9cqhL6wwd19aLztr+tMU/u8+kPG2cjjYZ+XoMZOoKfkOt7he2iU5/0A=="],
 
