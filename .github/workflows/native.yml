@@ -140,18 +140,31 @@ jobs:
   # ---------------------------------------------------------------------
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
   #    workspace (crates/local-api, crates/harness, crates/upstream,
-  #    src-tauri). macOS-only (matches the other jobs and the app's actual
-  #    v1 target — the desktop migration contract's "v1 is macOS-only"); no ubuntu leg because
-  #    src-tauri's deps (tao/wry/muda/objc2/...) are macOS-framework-linked
-  #    and won't compile on Linux without a large extra apt-get surface
-  #    this phase doesn't need to carry.
+  #    src-tauri), on BOTH shipping targets. The macos leg gates the v1
+  #    desktop target; the ubuntu leg gates the Linux port (apps/native/
+  #    docs/linux-support-plan.md) — src-tauri's window/webview stack is
+  #    GTK + WebKitGTK there rather than the macOS system frameworks, so
+  #    that leg carries an apt surface the macOS leg gets for free:
+  #    libwebkit2gtk-4.1-dev (webview + webkit2gtk-sys pkg-config),
+  #    libxdo-dev, libayatana-appindicator3-dev, librsvg2-dev, patchelf,
+  #    libssl-dev, xdg-utils, plus the usual build-essential/curl/wget/file.
+  #    ubuntu-22.04 is PINNED, not ubuntu-latest: the AppImage this port
+  #    ships inherits the build host's glibc floor, so raising the runner
+  #    raises the floor for every Linux user — a deliberate decision, never
+  #    a drive-by bump.
   # ---------------------------------------------------------------------
   rust-checks:
     needs: changes
     if: >-
       needs.changes.outputs.rust == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      # Both legs always report: a red Linux leg must not hide the macOS
+      # result (or vice versa) on a PR where both are required checks.
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -161,6 +174,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
 
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
@@ -247,6 +267,11 @@ jobs:
   #    WS proxy" exclusion section for the full rationale and this crate's
   #    own substitute oracle coverage (`apps/native/e2e/git-sandbox.e2e.test.ts`,
   #    `real-ui-passthrough.e2e.test.ts`).
+  #
+  #    Stays macOS-only while its neighbours grew an ubuntu leg: the gate is
+  #    an EXACT pinned fail-set, and the daemon's own suite diverges per OS,
+  #    so a Linux leg needs a second allowlist to be meaningful rather than
+  #    a copy of this one. Deferred with the rest of the Linux port.
   # ---------------------------------------------------------------------
   daemon-e2e-vs-rust:
     needs: changes
@@ -331,6 +356,12 @@ jobs:
   #    parity oracle above, this suite is OWNED by this implementation
   #    (the native local-API contract is the spec it pins), so
   #    the bar is simply "all green" — no allowlist needed.
+  #
+  #    Runs on both shipping targets. The suite drives the local-api BINARY
+  #    over the wire (`LOCAL_API_E2E_CMD`), and that binary needs no system
+  #    libraries on Linux — rusqlite is `bundled`, reqwest is rustls-only —
+  #    so the ubuntu leg deliberately carries no apt step. Only src-tauri
+  #    (the `rust-checks` / `tauri-build` jobs) pulls in the GTK surface.
   # ---------------------------------------------------------------------
   contract-suite:
     needs: changes
@@ -338,7 +369,11 @@ jobs:
       (needs.changes.outputs.rust == 'true' ||
        needs.changes.outputs.contract == 'true') &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -372,12 +407,23 @@ jobs:
           bun test e2e
 
   # ---------------------------------------------------------------------
-  # 4. tauri-build — bundles the RELEASE .app (the same profile
-  #    release-native.yaml ships; a debug bundle used to be built here but
-  #    gated nothing the release profile doesn't, while leaving the shipped
-  #    profile untested until release day), boot-smokes it, and uploads the
-  #    exact tested bundle as an artifact. Unsigned always — signing and
-  #    notarization live in release-native.yaml, the secret-gated release job.
+  # 4. tauri-build — bundles the RELEASE artifact for each shipping target
+  #    (the same profile release-native.yaml ships; a debug bundle used to
+  #    be built here but gated nothing the release profile doesn't, while
+  #    leaving the shipped profile untested until release day), boot-smokes
+  #    it, and uploads the exact tested bundle as an artifact. macOS
+  #    produces `deco.app`; Linux produces an AppImage, with `--bundles`
+  #    left off so the target list comes from
+  #    src-tauri/tauri.linux.conf.json5 exactly as it does on release day.
+  #    Unsigned always — signing and notarization live in
+  #    release-native.yaml, the secret-gated release job.
+  #
+  #    LOAD-BEARING: the Linux legs of this workflow must NEVER declare an
+  #    `environment:` nor map any secret. That is precisely what makes this
+  #    job the `createUpdaterArtifacts` canary — tauri.linux.conf.json5
+  #    documents that the key belongs only in release-native.yaml's
+  #    --config overlay, and a secretless build is what goes red the moment
+  #    someone commits it into the platform config instead.
   # ---------------------------------------------------------------------
   tauri-build:
     needs: changes
@@ -385,7 +431,11 @@ jobs:
       (needs.changes.outputs.rust == 'true' ||
        needs.changes.outputs.frontend == 'true') &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     # (No job-level env: both signing families below are deliberately unwired
     # in this non-shipping job.)
@@ -427,6 +477,17 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Same surface as `rust-checks` plus xvfb: the boot smoke launches a
+      # real GTK/WebKitGTK process, and Linux runners are headless (macOS
+      # runners are logged-in GUI VMs, which is why that leg needs nothing).
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+            xvfb
+
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
         with:
@@ -456,24 +517,72 @@ jobs:
         working-directory: apps/native
         run: ./scripts/fetch-rclone.sh
 
+      # The AppImage's outer runtime is supplied by whichever
+      # `linuxdeploy-plugin-appimage` the CLI finds in its tools cache; a
+      # stale one emits a type-2 runtime dynamically linked against
+      # libfuse.so.2, which cannot even self-extract on a runner that has no
+      # libfuse2. Start from an empty cache so the pinned CLI fetches a
+      # current (statically linked) one, and let the assertion after the
+      # build turn any regression into a red leg.
+      - name: Clean the tauri tools cache
+        if: runner.os == 'Linux'
+        run: rm -rf "$HOME/.cache/tauri"
+
       # These verification builds are NEVER signed, whether or not the
       # secrets exist. Boot-smoke runs the binary directly and a Developer ID
       # buys it nothing, while attempting the import couples this job to the
       # health of six repo secrets. Signing belongs to release-native.yaml,
       # the secret-gated release job.
       #
-      # PRs build only the artifact this job smokes and uploads. Pushes to
-      # main and manual runs retain DMG bundler coverage without adding that
-      # packaging cost to every review cycle.
+      # Pinned to the version release-native.yaml ships with: the bundler
+      # decides the AppImage member name (`deco_<version>_amd64.AppImage`)
+      # that the updater's version-pairing check parses, so CI must not
+      # validate an artifact produced by a different bundler than release.
+      #
+      # macOS PRs build only the artifact this job smokes and uploads; pushes
+      # to main and manual runs retain DMG bundler coverage without adding
+      # that packaging cost to every review cycle. Linux never passes
+      # `--bundles`, so its target list comes from the
+      # tauri.linux.conf.json5 overlay exactly as it does on release day.
       - name: tauri build (.app only)
-        if: github.event_name == 'pull_request'
+        if: runner.os == 'macOS' && github.event_name == 'pull_request'
         working-directory: apps/native
         run: bunx @tauri-apps/cli@2.11.4 build --bundles app
 
       - name: tauri build (.app + DMG)
-        if: github.event_name != 'pull_request'
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
         working-directory: apps/native
         run: bunx @tauri-apps/cli@2.11.4 build
+
+      - name: tauri build (AppImage)
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: bunx @tauri-apps/cli@2.11.4 build
+
+      # Runs BEFORE anything extracts the AppImage (the boot smoke does,
+      # via --appimage-extract). Asserting after extraction would be
+      # self-defeating: a libfuse2-linked runtime cannot perform the extract
+      # at all, so the smoke would fail first and mask the real diagnosis.
+      # `ldd` exits non-zero on a static binary — that is the passing case
+      # here, hence the `|| true` around both probes.
+      - name: Assert the AppImage runtime is statically linked
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(find target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::no .AppImage produced under target/release/bundle/appimage"
+            exit 1
+          fi
+          echo "Inspecting $APPIMAGE"
+          { ldd "$APPIMAGE" || true; readelf -d "$APPIMAGE" || true; } \
+            > "$RUNNER_TEMP/appimage-runtime.txt" 2>&1
+          cat "$RUNNER_TEMP/appimage-runtime.txt"
+          if grep -q 'libfuse\.so\.2' "$RUNNER_TEMP/appimage-runtime.txt"; then
+            echo "::error::$APPIMAGE links libfuse.so.2 — the AppImage runtime is not static, so it cannot run or self-extract without libfuse2 installed. The tauri tools cache handed the build a stale linuxdeploy-plugin-appimage."
+            exit 1
+          fi
 
       # GitHub's macOS runners provide a GUI session, so no headless display
       # shim is needed. Self-test uses an isolated app-data directory and an
@@ -481,6 +590,7 @@ jobs:
       # orphaned child processes. Its window is briefly visible by default to
       # avoid macOS App Nap stalling the runtime probes.
       - name: Boot smoke (DESKTOP_SELFTEST=1)
+        if: runner.os == 'macOS'
         # DECOCMS_DISABLE_AUTO_UPDATE: this job builds the RELEASE profile at
         # the committed version 0.1.0 — without the kill-switch, a
         # plugin-registered updater would see the prod channel as "newer" and
@@ -494,10 +604,31 @@ jobs:
         run: bun run --cwd apps/native smoke:boot --require-existing-bundle
 
       - name: Upload smoked .app artifact
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: deco-app
           path: apps/native/target/release/bundle/macos/deco.app
+          if-no-files-found: error
+          retention-days: 14
+
+      # Same smoke, same kill-switch reasoning as the macOS step above; the
+      # only difference is the display. Linux runners are headless, so the
+      # webview needs an X server — `xvfb-run -a` picks a free display
+      # number. The smoke extracts the AppImage it just asserted on (no FUSE
+      # required) and launches the inner binary directly.
+      - name: Boot smoke under Xvfb (DESKTOP_SELFTEST=1, hidden window)
+        if: runner.os == 'Linux'
+        env:
+          DECOCMS_DISABLE_AUTO_UPDATE: "1"
+        run: xvfb-run -a bun run --cwd apps/native smoke:boot --require-existing-bundle
+
+      - name: Upload smoked AppImage artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deco-appimage
+          path: apps/native/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 14
 
