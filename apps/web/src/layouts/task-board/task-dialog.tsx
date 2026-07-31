@@ -334,11 +334,11 @@ export function TaskBoardItemDialog({
                   <button type="button" className={PROPERTY_BUTTON}>
                     <StatusIcon
                       size={16}
-                      className={
+                      className={cn(
                         item
                           ? statusIconClassName({ ...item, status })
-                          : STATUS_CONFIG[status].iconClassName
-                      }
+                          : STATUS_CONFIG[status].iconClassName,
+                      )}
                     />
                     {t(STATUS_CONFIG[status].labelKey)}
                   </button>
