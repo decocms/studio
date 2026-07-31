@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdir, mkdtemp, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -16,8 +10,17 @@ import {
   sameFilesystem,
 } from "./golden-cache";
 
-function tmp(): string {
-  return mkdtempSync(join(tmpdir(), "golden-test-"));
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tmp(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "golden-test-"));
 }
 
 describe("goldenNodeModulesPath", () => {
@@ -67,35 +70,35 @@ describe("goldenNodeModulesPath", () => {
 });
 
 describe("lockfileHash", () => {
-  it("returns null when no lockfile is present", () => {
-    expect(lockfileHash(tmp(), "bun")).toBeNull();
+  it("returns null when no lockfile is present", async () => {
+    expect(await lockfileHash(await tmp(), "bun")).toBeNull();
   });
 
-  it("returns null for a package manager with no known lockfile", () => {
-    const dir = tmp();
-    writeFileSync(join(dir, "bun.lock"), "x");
-    expect(lockfileHash(dir, "deno")).toBeNull();
+  it("returns null for a package manager with no known lockfile", async () => {
+    const dir = await tmp();
+    await writeFile(join(dir, "bun.lock"), "x");
+    expect(await lockfileHash(dir, "deno")).toBeNull();
   });
 
-  it("hashes lockfile content — same bytes, same hash; different bytes differ", () => {
-    const a = tmp();
-    const b = tmp();
-    const c = tmp();
-    writeFileSync(join(a, "bun.lock"), "lockfile-A");
-    writeFileSync(join(b, "bun.lock"), "lockfile-A");
-    writeFileSync(join(c, "bun.lock"), "lockfile-B");
-    const ha = lockfileHash(a, "bun");
+  it("hashes lockfile content — same bytes, same hash; different bytes differ", async () => {
+    const a = await tmp();
+    const b = await tmp();
+    const c = await tmp();
+    await writeFile(join(a, "bun.lock"), "lockfile-A");
+    await writeFile(join(b, "bun.lock"), "lockfile-A");
+    await writeFile(join(c, "bun.lock"), "lockfile-B");
+    const ha = await lockfileHash(a, "bun");
     expect(ha).toBeTruthy();
-    expect(lockfileHash(b, "bun")).toBe(ha);
-    expect(lockfileHash(c, "bun")).not.toBe(ha);
+    expect(await lockfileHash(b, "bun")).toBe(ha);
+    expect(await lockfileHash(c, "bun")).not.toBe(ha);
   });
 
-  it("picks the pm's lockfile (npm uses package-lock.json)", () => {
-    const dir = tmp();
-    writeFileSync(join(dir, "package-lock.json"), "{}");
-    expect(lockfileHash(dir, "npm")).toBeTruthy();
+  it("picks the pm's lockfile (npm uses package-lock.json)", async () => {
+    const dir = await tmp();
+    await writeFile(join(dir, "package-lock.json"), "{}");
+    expect(await lockfileHash(dir, "npm")).toBeTruthy();
     // bun ignores an npm lockfile
-    expect(lockfileHash(dir, "bun")).toBeNull();
+    expect(await lockfileHash(dir, "bun")).toBeNull();
   });
 });
 
@@ -127,75 +130,87 @@ describe("goldenEnabled (kill switch)", () => {
 });
 
 describe("sameFilesystem", () => {
-  it("true for a path against itself", () => {
-    const dir = tmp();
-    expect(sameFilesystem(dir, dir)).toBe(true);
+  it("true for a path against itself", async () => {
+    const dir = await tmp();
+    expect(await sameFilesystem(dir, dir)).toBe(true);
   });
 
-  it("false when a path does not exist", () => {
-    expect(sameFilesystem("/nonexistent/xyz", tmp())).toBe(false);
+  it("false when a path does not exist", async () => {
+    expect(await sameFilesystem("/nonexistent/xyz", await tmp())).toBe(false);
   });
 });
 
 describe("pruneGoldens", () => {
   // Make a golden dir <root>/golden/<repo>/<name> with a given mtime (ms).
-  function mkGolden(root: string, repo: string, name: string, mtimeMs: number) {
+  async function mkGolden(
+    root: string,
+    repo: string,
+    name: string,
+    mtimeMs: number,
+  ): Promise<string> {
     const dir = join(root, "golden", repo, name);
-    mkdirSync(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     const t = new Date(mtimeMs);
-    utimesSync(dir, t, t);
+    await utimes(dir, t, t);
     return dir;
   }
 
-  it("no-ops on a missing cache root / empty store", () => {
-    expect(() => pruneGoldens(undefined)).not.toThrow();
-    expect(() => pruneGoldens(tmp())).not.toThrow();
+  it("no-ops on a missing cache root / empty store", async () => {
+    await expect(pruneGoldens(undefined)).resolves.toBeUndefined();
+    await expect(pruneGoldens(await tmp())).resolves.toBeUndefined();
   });
 
-  it("drops goldens older than the TTL, keeps fresh ones", () => {
-    const root = tmp();
+  it("drops goldens older than the TTL, keeps fresh ones", async () => {
+    const root = await tmp();
     const now = 1_000_000_000_000;
-    const fresh = mkGolden(root, "repoA", "bun-fresh", now - 1000);
-    const stale = mkGolden(root, "repoA", "bun-stale", now - 10 * 86_400_000);
-    pruneGoldens(root, { now, ttlMs: 7 * 86_400_000, maxPerRepo: 99 });
-    expect(existsSync(fresh)).toBe(true);
-    expect(existsSync(stale)).toBe(false);
-  });
-
-  it("caps to the newest maxPerRepo per repo", () => {
-    const root = tmp();
-    const now = 1_000_000_000_000;
-    const dirs = [0, 1, 2, 3].map((i) =>
-      mkGolden(root, "repoB", `bun-${i}`, now - i * 1000),
+    const fresh = await mkGolden(root, "repoA", "bun-fresh", now - 1000);
+    const stale = await mkGolden(
+      root,
+      "repoA",
+      "bun-stale",
+      now - 10 * 86_400_000,
     );
-    pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 2 });
-    // Newest two (i=0,1) survive; older two (i=2,3) are pruned.
-    expect(existsSync(dirs[0])).toBe(true);
-    expect(existsSync(dirs[1])).toBe(true);
-    expect(existsSync(dirs[2])).toBe(false);
-    expect(existsSync(dirs[3])).toBe(false);
+    await pruneGoldens(root, { now, ttlMs: 7 * 86_400_000, maxPerRepo: 99 });
+    expect(await exists(fresh)).toBe(true);
+    expect(await exists(stale)).toBe(false);
   });
 
-  it("never reaps in-flight .tmp. publishes", () => {
-    const root = tmp();
+  it("caps to the newest maxPerRepo per repo", async () => {
+    const root = await tmp();
     const now = 1_000_000_000_000;
-    const tmpPublish = mkGolden(
+    const dirs = await Promise.all(
+      [0, 1, 2, 3].map((i) =>
+        mkGolden(root, "repoB", `bun-${i}`, now - i * 1000),
+      ),
+    );
+    await pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 2 });
+    // Newest two (i=0,1) survive; older two (i=2,3) are pruned.
+    expect(await exists(dirs[0])).toBe(true);
+    expect(await exists(dirs[1])).toBe(true);
+    expect(await exists(dirs[2])).toBe(false);
+    expect(await exists(dirs[3])).toBe(false);
+  });
+
+  it("never reaps in-flight .tmp. publishes", async () => {
+    const root = await tmp();
+    const now = 1_000_000_000_000;
+    const tmpPublish = await mkGolden(
       root,
       "repoC",
       ".tmp.123.node_modules",
       now - 999 * 86_400_000, // ancient, but must be skipped
     );
-    pruneGoldens(root, { now, ttlMs: 1, maxPerRepo: 0 });
-    expect(existsSync(tmpPublish)).toBe(true);
+    await pruneGoldens(root, { now, ttlMs: 1, maxPerRepo: 0 });
+    expect(await exists(tmpPublish)).toBe(true);
   });
 
-  it("prunes each repo independently", () => {
-    const root = tmp();
+  it("prunes each repo independently", async () => {
+    const root = await tmp();
     const now = 1_000_000_000_000;
-    const a = mkGolden(root, "repoA", "bun-1", now);
-    const b = mkGolden(root, "repoB", "bun-1", now);
-    pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 5 });
-    expect(existsSync(a)).toBe(true);
-    expect(existsSync(b)).toBe(true);
+    const a = await mkGolden(root, "repoA", "bun-1", now);
+    const b = await mkGolden(root, "repoB", "bun-1", now);
+    await pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 5 });
+    expect(await exists(a)).toBe(true);
+    expect(await exists(b)).toBe(true);
   });
 });
