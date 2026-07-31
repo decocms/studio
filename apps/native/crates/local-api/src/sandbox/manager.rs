@@ -1043,7 +1043,7 @@ impl SandboxManager {
             "sandbox ensure: repository ready"
         );
         if !clone_ok {
-            let message = "git clone/checkout failed; inspect the setup log";
+            let message = "git clone/checkout failed; inspect the setup log, then verify the repository exists and this machine's Git credentials can access it";
             let _ = self
                 .registry
                 .mark_state(&handle, "running", "failed", Some(message));
@@ -2078,6 +2078,10 @@ mod tests {
         assert!(
             error.contains("git clone/checkout failed"),
             "the caller must receive a checkout failure, got: {error}"
+        );
+        assert!(
+            error.contains("this machine's Git credentials"),
+            "the caller must receive actionable credential guidance, got: {error}"
         );
         assert_eq!(
             git_stdout(&sandbox.workdir, &["rev-parse", "--abbrev-ref", "HEAD"]),

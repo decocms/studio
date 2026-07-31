@@ -71,9 +71,13 @@ use crate::tasks::{
 /// the native Git-sandbox contract's "Desktop adaptation" section,
 /// the user is on their OWN machine with their OWN git auth, so cloning
 /// should use exactly what `git clone` would do run by hand: the user's
-/// configured credential helper (macOS Keychain, `gh`, SSH agent, ...).
+/// configured credential helper (for example macOS Keychain, or `gh` after
+/// `gh auth setup-git`). An SSH agent only participates when the configured
+/// `cloneUrl` itself uses SSH; Git does not switch an HTTPS URL to SSH based on
+/// the protocol selected in `gh auth login`.
 /// Clearing `credential.helper` here would silently break every private
-/// repo a desktop user can otherwise already clone from a terminal.
+/// repo a desktop user can otherwise already clone from a terminal with the
+/// same URL.
 /// `GIT_TERMINAL_PROMPT=0` (below, in [`run_git`]) still applies regardless,
 /// so a repo the user's credentials genuinely can't reach fails fast rather
 /// than hanging on an interactive prompt.
