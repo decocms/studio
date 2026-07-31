@@ -7,16 +7,29 @@ instead of `window.location.reload()`.
 
 Design summary (settled in design review + critique pass):
 
-- The Rust backend **auto-checks, auto-downloads, and auto-installs** updates
-  in the background. On macOS the install swaps the `.app` on disk while the
-  running process is untouched — install-eagerly is safe because nothing
-  re-reads the bundle path at runtime.
+- The Rust backend **auto-checks, auto-downloads, and auto-verifies** updates
+  in the background, then **defers the actual install to the exit path**.
+  AMENDMENT (2026-07-31, found by the live signed-in spike): the original
+  design installed eagerly on the theory that "nothing re-reads the bundle
+  path at runtime" — but macOS ITSELF does. Keychain access validates the
+  calling process's code identity against its binary ON DISK; the moment the
+  updater swapped the bundle, every Keychain operation failed
+  (`errSecErrnoBase+ENOENT`, surfaced as "keychain unavailable: Platform
+  failure: UNIX[No such file or directory]") — sign-in broke outright and
+  rotated-refresh-token saves would fail silently until restart, risking a
+  forced sign-out. Instead: download → signature + version-pairing verify →
+  stage the archive under `<app_root>/updates/` → install ONLY inside the
+  exit path, after local-api has drained (no Keychain writers left). Both
+  the card's restart and a plain quit funnel through `ExitRequested`, so one
+  apply point still gives install-on-quit, and the Keychain-broken window is
+  zero. Stale staged archives are cleaned at boot (crash = one re-download).
 - The **existing drift mechanism is the notification channel**: the proxy's
   `rewrite_config_version` (which today pins `/api/config`'s `config.version`
   to the embedded bundle version so the browser-refresh nag never fires in the
-  shell) gains one branch — once an update is *installed on disk*, it reports
-  the staged version instead. The untouched dialog polls, sees drift twice,
-  and shows the card. No new wire contract, no new poll, no new component.
+  shell) gains one branch — once an update is *staged, verified and ready*,
+  it reports the staged version instead. The untouched dialog polls, sees
+  drift twice, and shows the card. No new wire contract, no new poll, no new
+  component.
 - The card's button, under `useIsDesktopApp()`, POSTs a new local-api route
   that triggers a **graceful** restart via Tauri's `request_restart()` —
   documented to deliver `RunEvent::ExitRequested` reliably, so the repo's
@@ -579,6 +592,14 @@ symlink on a non-allowed platform") — run the app from a symlink-free path
 unaffected) — and use a throwaway `identifier` override
 (`com.decocms.studio.spike`) in BOTH builds so the spike gets its own app
 root/instance lock instead of colliding with a running dev or prod app.
+
+A second, SIGNED-IN spike round (2026-07-31) caught the eager-install
+Keychain regression described in the design summary: with the bundle swapped
+under the running process, every `auth_login` completed OAuth and then died
+at the Keychain write ("keychain unavailable … UNIX[No such file or
+directory]") — three times in a row, live. That finding produced the
+deferred-install amendment; the runbook's Keychain pass criterion below is
+exactly the regression test for it.
 
 On macOS 14+: install staging-N−1 via the real cask flow (quarantine-cleared),
 publish staging-N, then verify — pass criteria, go/no-go for first real
