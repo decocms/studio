@@ -457,6 +457,11 @@ func main() {
 		os.Setenv("DAEMON_BOOT_ID", bootId)
 	}
 
+	// Unconditional, first thing after the logger exists: while two daemons
+	// ship in the same image, every pod log has to name which one ran or the
+	// canary's panels are a guess. The TS daemon emits the same `impl=` key.
+	slog.Info("daemon boot", "impl", "go", "boot_id", bootId)
+
 	appRoot := os.Getenv("WORKDIR")
 	if appRoot == "" {
 		appRoot = os.Getenv("APP_ROOT")

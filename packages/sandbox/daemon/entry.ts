@@ -124,6 +124,10 @@ const bootConfig = {
     .filter((h) => h.length > 0),
   offloadAllowSameHostDev: process.env.OFFLOAD_ALLOW_SAME_HOST_DEV === "1",
 };
+// Unconditional: while two daemons ship in the same image, every pod log has to
+// name which one ran or the Go canary's panels are a guess. The Go daemon emits
+// the same `impl=` key.
+console.log(`[daemon] boot impl=ts boot_id=${bootConfig.daemonBootId}`);
 // Ensure repoDir exists so bash commands with the default cwd don't fail with
 // ENOENT when no repo has been cloned yet (tool-only sandboxes, no-repo agents).
 mkdirSync(bootConfig.repoDir, { recursive: true });
