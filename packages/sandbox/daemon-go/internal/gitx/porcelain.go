@@ -6,6 +6,9 @@ type PorcelainFile struct {
 	Path       string `json:"path"`
 	Index      string `json:"index"`
 	WorkingDir string `json:"working_dir"`
+	// OrigPath is the pre-rename path, present only for R/C entries (`-z`
+	// emits it as the next null-separated field).
+	OrigPath string `json:"origPath,omitempty"`
 }
 
 func parsePorcelainEntry(entry string) (PorcelainFile, bool) {
@@ -38,10 +41,13 @@ func ParsePorcelainFiles(out string) []PorcelainFile {
 		if !ok {
 			continue
 		}
-		files = append(files, parsed)
 		if parsed.Index == "R" || parsed.Index == "C" {
 			i++
+			if i < len(parts) && parts[i] != "" {
+				parsed.OrigPath = parts[i]
+			}
 		}
+		files = append(files, parsed)
 	}
 	return files
 }

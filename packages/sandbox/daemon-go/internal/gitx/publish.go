@@ -296,14 +296,42 @@ func Discard(repoDir string, relPaths []string) error {
 		}
 		return false
 	}
-	var toRestore, toDelete []string
+	filesByPath := map[string]PorcelainFile{}
+	for _, f := range status.Files {
+		filesByPath[f.Path] = f
+	}
+	// A renamed file's new path never existed at HEAD, so the isNew check
+	// below would treat it as untracked and remove it outright — losing the
+	// content entirely, since the original path is already gone from the
+	// working tree too. Discarding a rename must instead restore the
+	// original file from HEAD and unstage + drop the new path.
+	var toRestore, toDelete, toRestoreFromHead, renamedNewPaths []string
 	for _, fp := range relPaths {
+		if origPath := filesByPath[fp].OrigPath; origPath != "" {
+			toRestoreFromHead = append(toRestoreFromHead, origPath)
+			renamedNewPaths = append(renamedNewPaths, fp)
+			toDelete = append(toDelete, fp)
+			continue
+		}
 		isNew := inList(status.NotAdded, fp) || inList(status.Created, fp) ||
 			readRefFile(repoDir, "HEAD", fp) == nil
 		if isNew {
 			toDelete = append(toDelete, fp)
 		} else {
 			toRestore = append(toRestore, fp)
+		}
+	}
+	if len(toRestoreFromHead) > 0 {
+		// Unstage the rename's "new path added" side before restoring the
+		// original — otherwise it survives in the index even after the
+		// working tree file below is deleted.
+		resetArgs := append([]string{"reset", "--"}, renamedNewPaths...)
+		if _, err := runReadGit(repoDir, resetArgs); err != nil {
+			return err
+		}
+		headArgs := append([]string{"checkout", "HEAD", "--"}, toRestoreFromHead...)
+		if _, err := runReadGit(repoDir, headArgs); err != nil {
+			return err
 		}
 	}
 	if len(toRestore) > 0 {
