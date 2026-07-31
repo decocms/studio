@@ -74,10 +74,7 @@ import {
   useConnections,
   useProjectContext,
 } from "@/sdk";
-import {
-  getRepoScope,
-  isOrgSharedConnection,
-} from "@decocms/shared/github-repo-scope";
+import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
@@ -309,17 +306,17 @@ export function TaskBoardPage() {
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
-  // least one repo imported (a repo-scoped mcp-github connection; `load_repo`
-  // only offers those, never the bare org-level connection). Every path that
+  // least one repo imported (a repo-scoped mcp-github connection; the bare
+  // org-level connection has no `repoScope` and isn't loadable). Every path that
   // assigns to the Super Agent (Auto-fix, the lane assignee picker, the task
   // dialog) prompts to connect + pick a repo instead of enqueueing a run that
   // has nothing to load.
-  // Org-shared specifically: the virtual-MCP loader only injects `mcp-github`
-  // connections into an agent's toolset when `isOrgSharedConnection` holds, so a
-  // teammate's per-agent import child would satisfy a repoScope-only check
-  // while leaving the Super Agent with no repo at all.
-  const hasRepo = useConnections({ slug: "mcp-github" }).some(
-    (c) => getRepoScope(c) !== null && isOrgSharedConnection(c),
+  // Mirrors `load_repo`'s `selectLoadableRepos` (apps/api): the Super Agent's
+  // built-in loads ANY active repo-scoped `mcp-github` connection — org-shared
+  // OR per-agent (e.g. a repo imported by a Code Agent). So an existing
+  // per-agent connection already satisfies this; don't force a fresh connect.
+  const hasRepo = (useConnections({ slug: "mcp-github" }) ?? []).some(
+    (c) => c.status === "active" && getRepoScope(c) !== null,
   );
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
@@ -468,8 +465,15 @@ export function TaskBoardPage() {
   const openTask = openEdit;
 
   // The task the modal is editing — a locally-opened card, or the deep-linked
-  // one. The modal is open when either is set.
-  const activeItem = editingItem ?? deepLinkItem;
+  // one. Resolve the LIVE row from the SSE-patched list by id (falling back to
+  // the click-time snapshot if it's momentarily absent) so threads/status
+  // linked while the modal is open — e.g. the QA Agent session handed off
+  // mid-view — flow in without reopening. The snapshot alone would freeze the
+  // item at open time.
+  const activeItem =
+    (editingItem && items.find((i) => i.id === editingItem.id)) ??
+    editingItem ??
+    deepLinkItem;
   const modalOpen = dialogOpen || !!deepLinkItem;
 
   const closeDialog = () => {

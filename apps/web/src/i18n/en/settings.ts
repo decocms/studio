@@ -371,6 +371,19 @@ export const settings = {
   "settings.mainAgent.setToast": '"{title}" is now the main agent',
   "settings.mainAgent.resetToast": "Reset to the Super Agent",
   "settings.mainAgent.errorToast": "Couldn't update the main agent",
+  "settings.review.title": "Reviewers & merge",
+  "settings.review.description":
+    "Automated reviewers run on a task's pull request once it's In Review (checks passing or none). Both appear as sessions on the task card.",
+  "settings.review.qaAgentTitle": "Enable QA Agent",
+  "settings.review.qaAgentDescription":
+    "Verifies the task actually solved the problem — exercises the feature, not just the diff.",
+  "settings.review.codeReviewerTitle": "Enable Code Reviewer",
+  "settings.review.codeReviewerDescription":
+    "Reviews the code using the repository's stack-appropriate review skills.",
+  "settings.review.autoMergeTitle": "Enable Auto-merge",
+  "settings.review.autoMergeDescription":
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+  "settings.review.updateError": "Couldn't update the review setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

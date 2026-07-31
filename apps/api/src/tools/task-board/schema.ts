@@ -56,6 +56,26 @@ export const TaskBoardItemPrSchema = z.object({
   state: z.enum(["open", "closed"]).nullable(),
   draft: z.boolean().nullable(),
   merged: z.boolean().nullable(),
+  /** Combined CI check state for the PR's head commit, fetched live from GitHub.
+   *  `null` when the PR has no checks or the fetch failed. Best-effort — reads
+   *  the combined Status API, so a repo that only uses the Checks API may report
+   *  `null` even while check runs are in flight. */
+  checksStatus: z.enum(["pending", "passing", "failing"]).nullable(),
+  /** The PR's individual CI checks (name/conclusion/details link), for the
+   *  card's expandable checks footer. `summary` is the check's output markdown,
+   *  present only for failing checks. */
+  checks: z.array(
+    z.object({
+      name: z.string(),
+      status: z.string(),
+      conclusion: z.string().nullable(),
+      detailsUrl: z.string().nullable(),
+      summary: z.string().nullable(),
+    }),
+  ),
+  /** deco.cx deploy preview URL for the PR, lifted from a deploy status posted
+   *  on the head commit. `null` when the site posts no such status. */
+  previewUrl: z.string().nullable(),
 });
 
 export const TaskBoardItemSchema = z.object({
@@ -97,6 +117,9 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "title_changed",
   "description_changed",
   "tags_changed",
+  "review_requested",
+  "review_approved",
+  "review_changes_requested",
 ] as const;
 
 export type TaskBoardActivityAction =

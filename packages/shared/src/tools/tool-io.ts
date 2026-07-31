@@ -121,6 +121,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
             sandbox_go_daemon?: boolean | undefined;
           }
         | null
@@ -184,6 +187,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
             sandbox_go_daemon?: boolean | undefined;
           }
         | undefined;
@@ -247,6 +253,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
             sandbox_go_daemon?: boolean | undefined;
           }
         | null
@@ -435,7 +444,36 @@ export interface StudioToolIO {
         state: "open" | "closed" | null;
         draft: boolean | null;
         merged: boolean | null;
+        checksStatus: "pending" | "passing" | "failing" | null;
+        checks: {
+          name: string;
+          status: string;
+          conclusion: string | null;
+          detailsUrl: string | null;
+          summary: string | null;
+        }[];
+        previewUrl: string | null;
       }[];
+    };
+  };
+  TASK_BOARD_REVIEW_DECISION: {
+    input: {
+      taskBoardItemId: string;
+      reviewer: "qa" | "code_review";
+      decision: "approve" | "request_changes";
+      notes: string;
+      reviewToken?: string | undefined;
+    };
+    output: {
+      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      merged: boolean;
+    };
+  };
+  TASK_BOARD_PROMOTE_TO_PRODUCTION: {
+    input: { taskBoardItemId: string };
+    output: {
+      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      merged: boolean;
     };
   };
   TASK_BOARD_ACTIVITY_LIST: {
@@ -452,7 +490,10 @@ export interface StudioToolIO {
           | "due_date_changed"
           | "title_changed"
           | "description_changed"
-          | "tags_changed";
+          | "tags_changed"
+          | "review_requested"
+          | "review_approved"
+          | "review_changes_requested";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

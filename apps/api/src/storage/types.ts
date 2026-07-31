@@ -1667,6 +1667,17 @@ export interface TaskBoardItemPrTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** One review claim: a (task, reviewer, review-cycle) slot, minted at reviewer
+ *  dispatch. The primary key dedups concurrent enqueues; `token` binds the
+ *  reviewer's decision back to the run that was dispatched. */
+export interface TaskBoardReviewClaimTable {
+  task_board_item_id: string;
+  reviewer: string;
+  cycle_at: ColumnType<Date, Date | string, never>;
+  token: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** Join row: a task board item ↔ an org tag (many-to-many). `id` is the tag's
  *  id; both sides are org-scoped already, so the join carries no org column. */
 export interface TaskBoardItemTagTable {
@@ -1923,6 +1934,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
+  task_board_review_claims: TaskBoardReviewClaimTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
