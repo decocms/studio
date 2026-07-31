@@ -20,4 +20,5 @@ export const announcements = {
   "announcements.version.currentSession": "Sessão atual · {version}",
   "announcements.version.refresh": "Atualizar agora",
   "announcements.version.restart": "Reiniciar para atualizar",
+  "announcements.version.restarting": "Reiniciando…",
 } satisfies Record<keyof typeof announcementsEn, string>;

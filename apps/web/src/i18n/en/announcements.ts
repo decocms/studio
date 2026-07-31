@@ -18,4 +18,5 @@ export const announcements = {
   "announcements.version.currentSession": "Current session · {version}",
   "announcements.version.refresh": "Refresh now",
   "announcements.version.restart": "Restart to update",
+  "announcements.version.restarting": "Restarting…",
 } as const;

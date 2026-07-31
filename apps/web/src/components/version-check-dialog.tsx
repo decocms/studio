@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@decocms/shared/config";
 import { AnnouncementCard } from "@/components/announcement-card";
@@ -105,6 +106,21 @@ export function VersionCheckDialog() {
 
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
 
+  // Locked through SUCCESS, not just isPending: after the 202 the app drains,
+  // applies the staged update, and relaunches — a few seconds during which
+  // this page is already dying. Re-enabling on success would offer a second
+  // click to a doomed window. Only an error (409 staged-state race, network
+  // blip) re-enables, letting the next poll re-converge the card.
+  const restarting =
+    isDesktopApp && (restartMutation.isPending || restartMutation.isSuccess);
+  const handleAction = () =>
+    isDesktopApp ? restartMutation.mutate() : window.location.reload();
+  const actionLabelKey = isDesktopApp
+    ? restarting
+      ? "announcements.version.restarting"
+      : "announcements.version.restart"
+    : ("announcements.version.refresh" as const);
+
   if (!shouldShowVersionAnnouncement(drift, dismissedVersion)) return null;
 
   return (
@@ -125,19 +141,9 @@ export function VersionCheckDialog() {
         version: __STUDIO_VERSION__,
       })}
       actions={
-        <Button
-          size="sm"
-          disabled={restartMutation.isPending}
-          onClick={() =>
-            isDesktopApp ? restartMutation.mutate() : window.location.reload()
-          }
-        >
-          {t(
-            isDesktopApp
-              ? "announcements.version.restart"
-              : "announcements.version.refresh",
-          )}
-          <RefreshCw01 size={14} />
+        <Button size="sm" disabled={restarting} onClick={handleAction}>
+          {t(actionLabelKey)}
+          <RefreshCw01 size={14} className={cn(restarting && "animate-spin")} />
         </Button>
       }
     />
