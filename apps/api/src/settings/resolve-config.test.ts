@@ -239,6 +239,18 @@ describe("resolveConfig Studio environment aliases", () => {
     expect(result.settings.studioJwtSecret).toBe("legacy-secret");
     expect(result.settings.dispatchRole).toBe("worker");
   });
+
+  it("falls back to the legacy variables when the Studio ones are set to an empty string", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_JWT_SECRET: "",
+      MESH_JWT_SECRET: "legacy-secret",
+      STUDIO_DISPATCH_ROLE: "",
+      MESH_DISPATCH_ROLE: "worker",
+    });
+
+    expect(result.settings.studioJwtSecret).toBe("legacy-secret");
+    expect(result.settings.dispatchRole).toBe("worker");
+  });
 });
 
 describe("resolveConfig public URL", () => {
@@ -253,6 +265,15 @@ describe("resolveConfig public URL", () => {
 
   it("accepts the legacy MESH_PUBLIC_URL during the compatibility window", () => {
     const result = resolveConfig(flags, {
+      MESH_PUBLIC_URL: "https://legacy.example.com",
+    });
+
+    expect(result.settings.publicUrl).toBe("https://legacy.example.com");
+  });
+
+  it("falls back to MESH_PUBLIC_URL when STUDIO_PUBLIC_URL is an empty string", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_PUBLIC_URL: "",
       MESH_PUBLIC_URL: "https://legacy.example.com",
     });
 
@@ -382,6 +403,20 @@ describe("resolveConfig reports internal API env rename", () => {
 
   it("falls back to the legacy COMMERCE_DISCOVERY_INTERNAL_* names", () => {
     const result = resolveConfig(flags, {
+      COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
+      COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
+    });
+
+    expect(result.settings.reportsInternalApiUrl).toBe(
+      "https://reports-old.example.com",
+    );
+    expect(result.settings.reportsInternalApiKey).toBe("old-key");
+  });
+
+  it("falls back to the legacy CD names when the new ones are set to an empty string", () => {
+    const result = resolveConfig(flags, {
+      REPORTS_INTERNAL_API_URL: "",
+      REPORTS_INTERNAL_API_KEY: "",
       COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
       COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
     });
