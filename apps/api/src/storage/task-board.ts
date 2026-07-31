@@ -403,6 +403,20 @@ export class TaskBoardStorage {
           item.updatedBy,
         ),
       );
+      // Record the transition — the reviewer flow keys its "current review
+      // cycle" off the newest `status_changed→in_review` activity, and a
+      // re-review (Super Agent pushed a fix to the same PR, no new PR opened)
+      // re-enters In Review only through THIS path. Without the activity row
+      // the cycle boundary would stay stale and reviewers would never re-run.
+      // Machine-driven, hence a null actor. Best-effort.
+      await this.recordActivity({
+        taskBoardItemId: taskId,
+        action: "status_changed",
+        actorId: null,
+        data: { from: item.status, to: "in_review" },
+      }).catch((err) =>
+        console.error("[task-board] in_review activity write failed", err),
+      );
     }
     return moved;
   }

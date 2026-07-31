@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import {
   extractPreviewUrl,
   extractPreviewUrlFromComments,
+  isDecoPreviewHost,
   mergeChecksStatus,
   parseCheckRuns,
   toCheckRunsStatus,
@@ -191,6 +192,30 @@ describe("mergeChecksStatus", () => {
     expect(
       mergeChecksStatus(toChecksStatus({ total_count: 0 }), "failing"),
     ).toBe("failing");
+  });
+});
+
+describe("isDecoPreviewHost", () => {
+  it("accepts the real deco preview hosts", () => {
+    expect(
+      isDecoPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
+    ).toBe(true);
+    expect(
+      isDecoPreviewHost(
+        "https://fix-home-247-decocms-tanstack.deco-cx.workers.dev/",
+      ),
+    ).toBe(true);
+    expect(isDecoPreviewHost("https://acme.deco.site/")).toBe(true);
+    expect(isDecoPreviewHost("https://deco.site")).toBe(true);
+  });
+
+  it("rejects a decoy where the deco host is only in the path/query (injection)", () => {
+    expect(
+      isDecoPreviewHost("https://evil.example.com/login?x=.decocdn.com"),
+    ).toBe(false);
+    expect(isDecoPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
+    expect(isDecoPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
+    expect(isDecoPreviewHost("not a url")).toBe(false);
   });
 });
 

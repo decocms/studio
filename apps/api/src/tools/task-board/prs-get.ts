@@ -35,7 +35,10 @@ export async function resolveGithubConnection(
   repo?: { owner: string; name: string },
 ): Promise<ConnectionEntity | null> {
   if (connectionId) {
-    const conn = await ctx.storage.connections.findById(connectionId);
+    // Org-scope the lookup: this connection's GitHub installation is used to
+    // MERGE PRs, so never resolve one from another org (defense-in-depth against
+    // a foreign/colliding connectionId reaching a write path).
+    const conn = await ctx.storage.connections.findById(connectionId, orgId);
     if (conn && conn.status === "active") return conn;
   }
   const { items } = await ctx.storage.connections.list(orgId, {
@@ -114,12 +117,26 @@ const NO_LIVE_STATE: PrLiveState = {
   previewUrl: null,
 };
 
-/** Hosts a deco.cx PR deploy preview lands on. deco sites don't expose a
- *  PR-number-derivable URL (the host carries a per-deploy env id / branch +
- *  build id), so we can't build it — the deploy bot posts it in a PR comment,
- *  which we lift below. */
-const DECO_PREVIEW_HOST_RX =
-  /\.decocdn\.com|\.deco-cx\.workers\.dev|\.deco\.site/i;
+/** Whether `url`'s HOST is a deco.cx preview host — a strict hostname check,
+ *  NOT a substring match. The preview is lifted from PR comments, which
+ *  external contributors can write, and the result is shown as a trusted
+ *  "Open preview" button AND handed to the autonomous QA reviewer to navigate.
+ *  So a decoy like `https://evil.example.com/x?y=.decocdn.com` must be rejected.
+ *  Exported for the unit test. */
+export function isDecoPreviewHost(url: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return (
+    hostname === "deco.site" ||
+    hostname.endsWith(".decocdn.com") ||
+    hostname.endsWith(".deco-cx.workers.dev") ||
+    hostname.endsWith(".deco.site")
+  );
+}
 
 /** Pull the deco preview URL out of a combined-status response's `statuses[]`
  *  (a status whose `target_url` is a deco preview host). Kept as a cheap
@@ -139,7 +156,7 @@ export function extractPreviewUrl(
       (s): s is { target_url: string; state?: unknown } =>
         !!s &&
         typeof s.target_url === "string" &&
-        DECO_PREVIEW_HOST_RX.test(s.target_url),
+        isDecoPreviewHost(s.target_url),
     );
   if (previews.length === 0) return null;
   return (
@@ -174,9 +191,9 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
     // Cloudflare's comment carries both a per-commit and a per-branch preview —
     // prefer the branch URL, which stays valid as the PR gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
-    if (branch?.[1] && DECO_PREVIEW_HOST_RX.test(branch[1])) return branch[1];
+    if (branch?.[1] && isDecoPreviewHost(branch[1])) return branch[1];
     const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
-      DECO_PREVIEW_HOST_RX.test(u),
+      isDecoPreviewHost(u),
     );
     if (url) return url;
   }

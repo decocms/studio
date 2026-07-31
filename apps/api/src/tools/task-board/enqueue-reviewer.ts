@@ -126,8 +126,10 @@ export async function enqueueEnabledReviewers(
   }
 }
 
-/** True when a reviewer of `kind` already has a live or this-cycle thread. */
-function reviewerHandledThisCycle(
+/** True when a reviewer of `kind` already has a live or this-cycle thread — the
+ *  guard that stops a duplicate reviewer run on every poll / re-trigger.
+ *  Exported for the unit test. */
+export function reviewerHandledThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
