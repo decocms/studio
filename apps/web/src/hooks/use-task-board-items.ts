@@ -34,6 +34,12 @@ export function useTaskBoardItems() {
           ? next.map((t) => (t.id === patched.id ? patched : t))
           : [patched, ...next];
       });
+      // Every pushed item change also appends to its timeline — refetch the
+      // activity feed so a task dialog left open during a live transition
+      // (e.g. a Super Agent status/assignee change) doesn't show a stale one.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardActivity(locator, item.id),
+      });
     },
     // Live deletes: drop the removed card so it clears on every open board.
     onDelete: (id) => {
