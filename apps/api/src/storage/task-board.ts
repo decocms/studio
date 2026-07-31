@@ -602,6 +602,35 @@ export class TaskBoardStorage {
       .execute();
   }
 
+  /** Append several activity events in one insert — same semantics as
+   *  `recordActivity`, batched so a caller earning multiple timeline entries
+   *  from one change (e.g. a status+assignee+tags update) pays a single DB
+   *  round-trip instead of one per entry. */
+  async recordActivities(
+    entries: {
+      taskBoardItemId: string;
+      action: TaskBoardActivityAction;
+      actorId: string | null;
+      data?: Record<string, unknown>;
+    }[],
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("task_board_activity")
+      .values(
+        entries.map((params) => ({
+          id: generatePrefixedId("act"),
+          task_board_item_id: params.taskBoardItemId,
+          action: params.action,
+          actor_id: params.actorId,
+          data: params.data ? JSON.stringify(params.data) : null,
+          occurred_at: now,
+        })),
+      )
+      .execute();
+  }
+
   /** A task's activity, oldest first (timeline order). Tenant-scoped through
    *  the task, which is the only thing carrying an org. */
   async listActivity(

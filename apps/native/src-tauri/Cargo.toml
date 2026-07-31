@@ -44,6 +44,15 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tauri-plugin-mcp-bridge = { workspace = true }
 tauri-plugin-opener = { workspace = true }
+tauri-plugin-updater = { workspace = true }
+# Single-consumer deps for the updater's version-pairing check (inspecting
+# the downloaded .app.tar.gz's Info.plist before install — see
+# src/updater.rs::bundle_short_version). Declared here, not in the workspace
+# table, per the "single-consumer dep stays local" precedent
+# crates/harness/Cargo.toml set for portable-pty.
+flate2 = "1"
+tar = "0.4"
+plist = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

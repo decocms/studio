@@ -40,13 +40,44 @@ envName: ""
 # ── sandbox pod image (used by SandboxTemplate) ────────────────────────
 image:
   repository: ghcr.io/decocms/studio/studio-sandbox
+  # Same image with the Go daemon instead of the TS one, built from the same
+  # Dockerfile and released under the same version. Used when daemonImpl: go.
+  goRepository: ghcr.io/decocms/studio/studio-sandbox-go
   # Pinned to a specific version so chart upgrades pull a matching image
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.28.3"
+  tag: "1.31.2"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
+
+# Which daemon this template's sandboxes run: "ts" (default) or "go". Selects
+# the image (image.repository vs image.goRepository) — there is no in-image
+# switch, so a pod cannot disagree with the template that created it. Only
+# affects sandboxes created after the change.
+daemonImpl: ts
+
+# Opt-in SECOND SandboxTemplate (`studio-sandbox-<envName>-go`), identical to
+# the default one except that it always runs the Go image. This is how a
+# *single* sandbox lands on the Go daemon while every other sandbox in the env
+# stays on `daemonImpl`: the operator rejects per-claim `spec.env` whenever the
+# claim may bind a warm pod, so `spec.sandboxTemplateRef` is the only per-claim
+# lever.
+#
+# Wiring on the Studio side (chart-deco-studio configMap.meshConfig):
+#   STUDIO_SANDBOX_GO_TEMPLATE_NAME: "studio-sandbox-<envName>-go"
+# That env var is the global kill switch: unset, Studio ignores both the
+# `sandboxGoDaemon` org flag and SANDBOX_START's `daemonImpl` prop, because
+# there is nothing to point a claim at.
+#
+# Rendering this costs nothing until a claim references it (plus warmPoolSize
+# pods, if any) — deployed is not enabled.
+goTemplate:
+  enabled: false
+  # Warm pods for the Go template. 0 = template only, so a Go claim cold-starts
+  # its own pod. Size to the canary (1–2), never the fleet: every replica costs
+  # a full sandbox resource request, and these pods sit idle until claimed.
+  warmPoolSize: 0
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.

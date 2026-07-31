@@ -124,6 +124,11 @@ const bootConfig = {
     .filter((h) => h.length > 0),
   offloadAllowSameHostDev: process.env.OFFLOAD_ALLOW_SAME_HOST_DEV === "1",
 };
+// Unconditional: each daemon ships in its own image, so this line is what ties
+// a pod's logs to the implementation that produced them — the Go canary's panels
+// split on it, and CI asserts each image logs the impl it claims. The Go daemon
+// emits the same `impl=` key.
+console.log(`[daemon] boot impl=ts boot_id=${bootConfig.daemonBootId}`);
 // Ensure repoDir exists so bash commands with the default cwd don't fail with
 // ENOENT when no repo has been cloned yet (tool-only sandboxes, no-repo agents).
 mkdirSync(bootConfig.repoDir, { recursive: true });
@@ -364,6 +369,8 @@ const fsDeps = {
     branchStatus.refresh();
     emitFileChanged(filePath);
   },
+  offloadAllowedHosts: bootConfig.offloadAllowedHosts,
+  offloadAllowSameHostDev: bootConfig.offloadAllowSameHostDev,
 };
 const readH = makeReadHandler(fsDeps);
 const toolsSyncH = makeToolsSyncHandler(fsDeps);
@@ -941,7 +948,7 @@ async function shutdown(): Promise<void> {
       // shutdown sync — that would silently lose the user's other valid work when
       // the sandbox is torn down. Sync everything else; the bad block stays
       // uncommitted and is discarded on the next re-clone.
-      publish(
+      await publish(
         gitDeps,
         "chore(daemon): sync all local changes to remote on shutdown",
         { onInvalidBlock: "skip" },

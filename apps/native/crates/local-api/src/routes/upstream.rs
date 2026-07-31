@@ -191,8 +191,16 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     }
 
     if path == PUBLIC_NO_AUTH_PATH {
+        // Staged self-update version, if the Tauri shell has installed one on
+        // disk (see `UpdateHooks`). The borrow is dropped within the
+        // statement — never held across an await.
+        let staged = state
+            .update
+            .as_ref()
+            .and_then(|hooks| hooks.staged_version.borrow().clone());
         return proxy_public_config(
             &session,
+            staged,
             &parts.method,
             &path_and_query,
             &parts.headers,
@@ -742,6 +750,7 @@ async fn attach_persisted_cookie(
 /// but every branch of this proxy keeps the same invariant uniformly).
 async fn proxy_public_config(
     session: &upstream::UpstreamSession,
+    staged_version: Option<String>,
     method: &Method,
     path_and_query: &str,
     headers: &HeaderMap,
@@ -766,7 +775,7 @@ async fn proxy_public_config(
 
     let url = format!("{}{path_and_query}", session.target());
     match send_once_no_bearer(method, &url, &out_headers, body.clone()).await {
-        Ok(resp) => rewrite_config_version(resp).await,
+        Ok(resp) => rewrite_config_version(resp, staged_version.as_deref()).await,
         Err(ProxyError::Network(msg)) => {
             ApiError::bad_gateway(format!("upstream unreachable: {msg}")).into_response()
         }
@@ -782,7 +791,8 @@ async fn proxy_public_config(
 const STUDIO_WEB_VERSION: &str = env!("STUDIO_WEB_VERSION");
 
 /// Answers `GET /api/config` with the version of the bundle actually running
-/// inside this app, not the upstream deployment's.
+/// inside this app — or, when a self-update has been INSTALLED on disk, the
+/// staged version — never the upstream deployment's.
 ///
 /// `version-check-dialog.tsx` polls this route every 5 minutes and nags "A new
 /// version is ready" once the reported version differs from the bundle's own
@@ -790,15 +800,24 @@ const STUDIO_WEB_VERSION: &str = env!("STUDIO_WEB_VERSION");
 /// many times a day, so proxied unchanged that banner is guaranteed to fire in
 /// the desktop app — and its "Refresh" action cannot possibly help, because the
 /// webview loads a bundle packaged into the app, not whatever upstream now
-/// serves. Rewriting the field keeps the two in agreement, so the banner only
-/// ever appears in the browser, where reloading genuinely fetches new assets.
+/// serves. Rewriting the field keeps the two in agreement, so the banner
+/// appears only in the browser, where reloading genuinely fetches new assets —
+/// or in the shell when, and only when, a staged update makes its action real
+/// (there the desktop-gated button restarts into the new bundle via
+/// `/_local/update/restart` instead of reloading).
 ///
 /// Every other field is passed through untouched: this rewrites one string, it
 /// does not reimplement the payload. Non-2xx, non-JSON, unparseable, or
 /// unexpectedly-shaped bodies stream through unchanged, as does an empty
-/// `STUDIO_WEB_VERSION`.
-async fn rewrite_config_version(upstream: reqwest::Response) -> Response {
-    if STUDIO_WEB_VERSION.is_empty() || !upstream.status().is_success() {
+/// `STUDIO_WEB_VERSION` with nothing staged.
+async fn rewrite_config_version(
+    upstream: reqwest::Response,
+    staged_version: Option<&str>,
+) -> Response {
+    let Some(report) = reported_config_version(staged_version, STUDIO_WEB_VERSION) else {
+        return build_response(upstream).await;
+    };
+    if !upstream.status().is_success() {
         return build_response(upstream).await;
     }
 
@@ -811,7 +830,7 @@ async fn rewrite_config_version(upstream: reqwest::Response) -> Response {
         return ApiError::bad_gateway("upstream config body was unreadable").into_response();
     };
 
-    let patched = patch_config_version(&bytes, STUDIO_WEB_VERSION);
+    let patched = patch_config_version(&bytes, &report);
 
     let body = match patched {
         Some(json) => {
@@ -831,6 +850,24 @@ async fn rewrite_config_version(upstream: reqwest::Response) -> Response {
     *res.status_mut() = status;
     *res.headers_mut() = headers;
     res
+}
+
+/// Which version `/api/config` should report to the webview: a staged
+/// self-update wins (its restart action is real); otherwise pin to the
+/// embedded bundle's version; `None` (pass upstream through untouched) only
+/// when there is nothing meaningful to report at all. A staged version must
+/// win even when the baked constant is empty (unreadable manifest at build
+/// time) — the old `STUDIO_WEB_VERSION.is_empty()` early-return would have
+/// silently suppressed a ready update.
+///
+/// Pure (no I/O) so the contract is unit-testable without standing up a
+/// proxy, per TESTING.md.
+fn reported_config_version(staged: Option<&str>, baked: &str) -> Option<String> {
+    match staged {
+        Some(version) => Some(version.to_string()),
+        None if baked.is_empty() => None,
+        None => Some(baked.to_string()),
+    }
 }
 
 /// Replaces `config.version` in a `GET /api/config` body, or `None` when the
@@ -1403,6 +1440,28 @@ mod tests {
     }
 
     #[test]
+    fn reported_config_version_prefers_staged_and_survives_empty_baked() {
+        // Staged wins over the embedded bundle's version…
+        assert_eq!(
+            reported_config_version(Some("5.0.0"), "4.150.13").as_deref(),
+            Some("5.0.0")
+        );
+        // …including when the baked constant is empty (unreadable manifest at
+        // build time) — the old is_empty() early-return suppressed this.
+        assert_eq!(
+            reported_config_version(Some("5.0.0"), "").as_deref(),
+            Some("5.0.0")
+        );
+        // No staged update: pin to the embedded version as always.
+        assert_eq!(
+            reported_config_version(None, "4.150.13").as_deref(),
+            Some("4.150.13")
+        );
+        // Nothing meaningful to report: pass upstream through untouched.
+        assert_eq!(reported_config_version(None, ""), None);
+    }
+
+    #[test]
     fn patch_config_version_passes_through_unexpected_shapes() {
         // Not JSON at all (an HTML error page from a proxy in front of us).
         assert!(patch_config_version(b"<html>nope</html>", "4.125.3").is_none());
@@ -1733,8 +1792,64 @@ mod tests {
         let headers = HeaderMap::new();
         let body = axum::body::Bytes::new();
 
-        let res = proxy_public_config(&session, &Method::GET, "/api/config", &headers, &body).await;
+        let res =
+            proxy_public_config(&session, None, &Method::GET, "/api/config", &headers, &body).await;
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// The staged-self-update branch of the version rewrite, end to end
+    /// through the proxy against a real in-process upstream: with nothing
+    /// staged the upstream's version (a sentinel here — in production the
+    /// cloud deployment's, ~12x/day ahead) must be replaced by the embedded
+    /// bundle's; with a staged version, the staged one wins. This is what
+    /// makes the webview's drift card fire iff a restart can actually help.
+    #[tokio::test]
+    async fn proxy_public_config_reports_staged_version_over_upstream_sentinel() {
+        let app = Router::new().route(
+            "/api/config",
+            get(|| async { Json(json!({"config": {"version": "9.9.9", "other": true}})) }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let target = format!("http://{addr}");
+        let store = Arc::new(MemoryTokenStore::new());
+        let session = UpstreamSession::new(target, store);
+        let headers = HeaderMap::new();
+        let body = axum::body::Bytes::new();
+
+        let reported_version = |res: Response| async move {
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            value["config"]["version"].as_str().unwrap().to_string()
+        };
+
+        // Nothing staged: never the upstream sentinel — the embedded
+        // version (or passthrough only if STUDIO_WEB_VERSION were empty,
+        // which the build asserts against elsewhere).
+        let res =
+            proxy_public_config(&session, None, &Method::GET, "/api/config", &headers, &body).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let version = reported_version(res).await;
+        assert_ne!(version, "9.9.9");
+        assert_eq!(version, STUDIO_WEB_VERSION);
+
+        // Staged: the staged version wins over both.
+        let res = proxy_public_config(
+            &session,
+            Some("5.0.0-staged".to_string()),
+            &Method::GET,
+            "/api/config",
+            &headers,
+            &body,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(reported_version(res).await, "5.0.0-staged");
     }
 
     #[tokio::test]
@@ -1785,7 +1900,8 @@ mod tests {
         );
         let body = axum::body::Bytes::new();
 
-        let res = proxy_public_config(&session, &Method::GET, "/api/config", &headers, &body).await;
+        let res =
+            proxy_public_config(&session, None, &Method::GET, "/api/config", &headers, &body).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
             seen_auth.lock().unwrap().as_deref(),

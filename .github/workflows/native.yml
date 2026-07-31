@@ -4,16 +4,18 @@ name: Native
 # Gates the Rust/Tauri desktop app (apps/native/) — a separate cargo
 # workspace, independent of the Bun workspaces the other workflows cover.
 #
-# Path-filtered (not the `changes`-job PR-diff pattern test.yml/e2e.yml/
-# sandbox-daemon.yml use) because this workflow is NOT yet a required
-# branch-protection check — apps/native is still behind the migration flag
-# (the desktop migration contract's `desktopAppAvailable`, default off) and this branch hasn't
-# merged to main. A never-scheduled REQUIRED check blocks merges forever if
-# skipped via workflow-level `paths:` (see test.yml's comment on its
-# `changes` job) — but an opt-in, non-required check like this one is exactly
-# what daemon-e2e-windows.yml already does with plain `paths:`, so this
-# mirrors that convention. If/when this becomes a required check, switch to
-# the `changes`-job pattern first.
+# Uses the `changes`-job PR-diff pattern (like test.yml/e2e.yml/
+# sandbox-daemon.yml) so its jobs always REPORT on PRs — pass or skipped —
+# which is what lets them be required branch-protection checks. A required
+# check whose workflow never runs (workflow-level `paths:` filtering) blocks
+# the merge forever; a job skipped via `if:`, by contrast, reports as passed.
+# The `pull_request` trigger is therefore unfiltered and the `changes` job
+# skips the expensive macOS jobs when the PR touches nothing they consume.
+# That gate is PER JOB, not one workflow-wide "relevant" bit: a PR that
+# changes only the pinned parity fail-set has no reason to run cargo
+# clippy, and a web-only PR has no reason to build local-api twice.
+# Pushes to main keep the `paths:` filter — required checks gate PRs, not
+# pushes, so a never-run workflow is harmless there.
 on:
   push:
     branches:
@@ -27,12 +29,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "apps/native/**"
-      - "apps/web/**"
-      - "packages/sandbox/daemon/**"
-      - "packages/shared/**"
-      - ".github/workflows/native.yml"
   # stub-seam-nightly keeps the DAEMON_E2E_CMD swap seam (packages/sandbox/
   # daemon/e2e-stub/) from rotting even on weeks with no apps/native PRs —
   # see the desktop migration contract §5.1's "nightly job running the daemon-e2e stub-seam
@@ -44,14 +40,103 @@ on:
     - cron: "17 3 * * *" # nightly, arbitrary off-hour offset to dodge the top-of-hour stampede
   workflow_dispatch: {}
 
+# Cancel superseded runs on PR branches, but QUEUE on main: with
+# cancel-in-progress everywhere, every main push killed the previous
+# commit's in-flight jobs (tauri-build runs 10-20 min; merges land minutes
+# apart), so nearly every main commit ended with cancelled — rendered as a
+# red X — checks, and only the last commit of a burst ever completed
+# post-merge verification. GitHub holds at most one queued run per group,
+# so bursts still collapse to "in-progress finishes, newest waits".
+#
+# Relatedly, every job below also skips `[release]:` bump pushes (via the
+# `changes` gate): the bot's bump touches only package.json versions, seconds
+# after the merge commit that was already verified — building it doubled
+# main's native runs for zero extra signal. release-native.yaml, not this
+# workflow, owns the shipping build of the bumped version.
 concurrency:
   group: native-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   BUN_VERSION: "1.3.14"
 
 jobs:
+  # Gate: skip each macOS job when a PR touches none of ITS inputs.
+  # Required checks can't be skipped via workflow-level `paths` filters — a
+  # never-scheduled required check blocks the merge forever. A job skipped
+  # via `if`, by contrast, reports as passed (same pattern as test.yml).
+  #
+  # Four outputs, one per downstream job, because the four jobs consume
+  # different things:
+  #   rust     — the cargo workspace itself (+ build inputs). Every job below
+  #              compiles Rust, so this one implies all of them.
+  #   suite    — the curated daemon e2e suite and its pinned fail-set, the
+  #              only extra inputs to the parity oracle. The suite is fully
+  #              black-box (it imports no workspace package), so nothing else
+  #              in packages/ can move it.
+  #   contract — apps/native's own e2e suite.
+  #   frontend — the web bundle baked into the .app.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      suite: ${{ steps.filter.outputs.suite }}
+      contract: ${{ steps.filter.outputs.contract }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          all() { for k in rust suite contract frontend; do echo "$k=$1" >> "$GITHUB_OUTPUT"; done; }
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Pushes to main, schedule, and dispatch run everything — except
+            # the [release]: version-bump push, which only touches version
+            # strings (release-native.yaml owns the shipping build).
+            case "$HEAD_MSG" in
+              '[release]:'*) all false ;;
+              *) all true ;;
+            esac
+            exit 0
+          fi
+          set +e
+          if ! FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename'); then
+            echo "Could not list PR files — running to be safe."
+            all true
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          rust=false suite=false contract=false frontend=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            # First match wins, so order these most-specific-first. Editing
+            # THIS workflow matches nothing on purpose: most edits here are
+            # comments or gate wiring, and burning 4 macOS jobs (one of them a
+            # 45-minute bundle) to prove a YAML comment is why this gate got
+            # split in the first place. The `push:` trigger above includes this
+            # file and runs the full set on main, so a workflow change is
+            # verified the moment it merges.
+            case "$f" in
+              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
+                rust=true ;;
+              packages/sandbox/daemon/*|apps/native/scripts/ci/*) suite=true ;;
+              apps/native/e2e/*) contract=true ;;
+              apps/web/*|packages/shared/*) frontend=true ;;
+              # Everything else under apps/native — package.json, tsconfig,
+              # the other scripts — can move any of the three bun-side jobs.
+              # apps/native/{docs,README.md} intentionally match nothing.
+              apps/native/docs/*|apps/native/README.md) ;;
+              apps/native/*) suite=true contract=true frontend=true ;;
+            esac
+          done <<< "$FILES"
+          for k in rust suite contract frontend; do
+            eval "echo \"$k=\$$k\"" >> "$GITHUB_OUTPUT"
+          done
+
   # ---------------------------------------------------------------------
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
   #    workspace (crates/local-api, crates/harness, crates/upstream,
@@ -62,7 +147,10 @@ jobs:
   #    this phase doesn't need to carry.
   # ---------------------------------------------------------------------
   rust-checks:
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: >-
+      needs.changes.outputs.rust == 'true' &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -120,12 +208,28 @@ jobs:
   #    binary, point packages/sandbox's curated 5-file daemon e2e suite at
   #    it via DAEMON_E2E_CMD, and assert the EXACT pinned failing-test set
   #    in scripts/ci/daemon-parity-allowlist.json — not just the counts.
-  #    Each pinned name is an intentional divergence: auth/CORS tightening,
-  #    one harness self-check artifact, and the local app's deliberate
-  #    no-publish-on-close shutdown (worktrees are durable on a user's
-  #    machine, unlike a pod's — see local-api's routes/git.rs module doc).
   #    A NEW failure (regression) or a VANISHED one (allowlist gone stale)
   #    both fail this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
+  #
+  #    What the 27 pinned names are, and which are choices vs. gaps:
+  #      - auth/CORS tightening (6) — local-api is stricter on purpose.
+  #      - no-publish-on-close shutdown (2) — worktrees are durable on a
+  #        user's machine, unlike a pod's; see local-api's routes/git.rs.
+  #      - UNIMPLEMENTED in local-api, not a design decision (19). The
+  #        sandbox daemons grew these; the Rust crate has not been ported:
+  #          * url-transfer SSRF gate (11) — write_from_url / upload_to_url
+  #            in local-api have NO allowlist and follow redirects. That is
+  #            a real hole in the desktop app, pinned here only so this gate
+  #            stays a *set* match; it is not sanctioned. Port
+  #            packages/sandbox/daemon/routes/offload-fetch.ts and delete
+  #            these 11 lines.
+  #          * decofile block validation (4) — an invalid block written by
+  #            the agent reaches the user's branch and breaks site render.
+  #          * protected-branch publish guard (1) — local-api will push to
+  #            main.
+  #          * diverged-origin reconcile / fast-forward (2), fs watcher
+  #            file-changed (1) — missing features, benign.
+  #    Shrinking this file is the goal; growing it needs a reason on the line.
   #
   #    `daemon.proxy.e2e.test.ts` + `daemon.ws-proxy.e2e.test.ts` (12 tests,
   #    formerly "all pass") are DELIBERATELY excluded from this curated set
@@ -140,7 +244,11 @@ jobs:
   #    `real-ui-passthrough.e2e.test.ts`).
   # ---------------------------------------------------------------------
   daemon-e2e-vs-rust:
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: >-
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.suite == 'true') &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -176,7 +284,8 @@ jobs:
 
       - name: Run curated daemon e2e subset against local-api
         id: daemon-parity
-        # 7 documented failures are EXPECTED here (see the native parity contract) —
+        # The pinned documented failures are EXPECTED here (see the job header
+        # above for what they are) —
         # `|| true` keeps this step green so the next step (the actual
         # gate) can inspect the junit output and fail precisely on a SET
         # mismatch, not merely on bun test's own non-zero exit.
@@ -218,7 +327,11 @@ jobs:
   #    the bar is simply "all green" — no allowlist needed.
   # ---------------------------------------------------------------------
   contract-suite:
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: >-
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.contract == 'true') &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -260,11 +373,16 @@ jobs:
   #    release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: >-
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.frontend == 'true') &&
+      github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 45
-    env:
-      # --- macOS code signing + notarization (Apple Developer ID) ---------
+    # (No job-level env: both signing families below are deliberately unwired
+    # in this non-shipping job.)
+    # --- macOS code signing + notarization (Apple Developer ID) ---------
       # All optional. Human-required setup (cert enrollment, notarization
       # credentials) — see the native release contract (§5.3,
       # dormant scaffolding). Required secret names, each consumed only by
@@ -289,14 +407,12 @@ jobs:
       # application: failed to import keychain certificate", from a cert that
       # is present but not importable. Wiring them cost a green CI and bought
       # nothing. Signing belongs to the separate, secret-gated release job.
-      # --- Tauri updater artifact signing (separate keypair; unrelated to
-      #     Apple code signing above) — only takes effect once
-      #     tauri.conf.json5 configures the `updater` bundle target, which
-      #     is still dormant (the native release contract
-      #     §"Updater"). Wired here now so no further workflow edit is
-      #     needed once that config lands.
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # --- Tauri updater artifact signing: NOT wired here, by design.
+      #     createUpdaterArtifacts is enabled only by release-native.yaml's
+      #     --config overlay (never the committed tauri.conf.json5), so this
+      #     job can never produce updater artifacts and has no use for the
+      #     minisign key. The key is step-scoped onto the release build —
+      #     see release-native.yaml's "tauri build" step.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -379,6 +495,14 @@ jobs:
       # step immediately before this one rather than reverting it to
       # local-only.
       - name: Boot smoke (DESKTOP_SELFTEST=1, hidden window)
+        # DECOCMS_DISABLE_AUTO_UPDATE: this job builds the RELEASE profile at
+        # the committed version 0.1.0 — without the kill-switch, a
+        # plugin-registered updater would see the prod channel as "newer" and
+        # download ~80 MB over the CI bundle mid-smoke. Belt-and-braces: the
+        # updater task also refuses to spawn under DESKTOP_SELFTEST=1 and at
+        # the 0.1.0 placeholder version.
+        env:
+          DECOCMS_DISABLE_AUTO_UPDATE: "1"
         run: bun run --cwd apps/native smoke:boot
 
   # ---------------------------------------------------------------------

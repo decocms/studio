@@ -1,6 +1,7 @@
 export const common = {
+  "common.copy": "Copy",
+  "common.seeAll": "See all {count} {noun}",
   "common.accountPopover.account": "Account",
-  "common.accountPopover.addToHomeScreen": "Add to Home Screen",
   "common.accountPopover.adminDashboard": "Admin Dashboard",
   "common.accountPopover.community": "Community",
   "common.accountPopover.copyUserId": "Copy user ID",
@@ -30,6 +31,13 @@ export const common = {
   "common.archivedOrgScreen.orgUnavailable": "Organization unavailable",
   "common.authEntry.autoLoginFailed": "Auto-login failed",
   "common.authEntry.autoLoginFailedWithError": "Auto-login failed: {error}",
+  "common.authEntry.browserOnlyCta": "Continue in your browser",
+  "common.authEntry.browserOnlyDescription":
+    "This organization signs in with an emailed link, which can't be opened inside the app. Continue in your browser to finish signing in.",
+  "common.authEntry.browserOnlyTitle": "Welcome to deco",
+  "common.authEntry.finishSignInInBrowser":
+    "Finish signing in in your browser…",
+  "common.authEntry.finishingSignIn": "Finishing sign-in…",
   "common.authEntry.noLoginOptions": "No login options available",
   "common.authEntry.tryRestartingServer": "Try restarting the server.",
   "common.desktopKeychainUnavailable.description":
@@ -230,6 +238,8 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Request to join",
   "common.requestToJoinScreen.requesting": "Requesting…",
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
+  "common.signInScreen.configLoadFailed": "Couldn't load sign-in options.",
+  "common.signInScreen.tryAgain": "Try again",
   "common.simpleIconPicker.filterPlaceholder": "Filter...",
   "common.simpleIconPicker.noIconsFound": "No icons found",
   "common.ssoRequiredScreen.goBack": "Go back",
@@ -266,10 +276,6 @@ export const common = {
     "Failed to start chat. Please try again.",
   "common.useStartThreadFromPrompt.mcpClientNotAvailable":
     "MCP client not available",
-  "common.versionCheckDialog.available": "A new version is available",
-  "common.versionCheckDialog.outdatedVersion":
-    "You're viewing an outdated version of this page. Refresh to get the latest updates.",
-  "common.versionCheckDialog.refresh": "Refresh",
   "common.createAgentDropdown.createFromScratch": "Create from scratch",
   "common.createAgentDropdown.importFromGitHub": "Import from GitHub",
   "common.createAgentDropdown.importFromDeco": "Import from deco.cx",

@@ -28,18 +28,26 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  utimesSync,
-} from "node:fs";
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  utimes,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Config } from "../types";
 import { resolveCloneUrl } from "./install";
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * GC bounds for the golden store (a golden ≈ a full node_modules on the node
@@ -84,13 +92,16 @@ export function repoHash(cloneUrl: string): string {
  * Content hash of the first present lockfile for `pm` under `installRoot`.
  * Null when no lockfile exists (→ golden disabled for this install).
  */
-export function lockfileHash(installRoot: string, pm: string): string | null {
+export async function lockfileHash(
+  installRoot: string,
+  pm: string,
+): Promise<string | null> {
   const names = LOCKFILES[pm];
   if (!names) return null;
   for (const name of names) {
     const path = join(installRoot, name);
     try {
-      const buf = readFileSync(path);
+      const buf = await readFile(path);
       return createHash("sha256").update(buf).digest("hex").slice(0, 32);
     } catch {
       // not this one — try the next
@@ -129,9 +140,10 @@ export function goldenNodeModulesPath(opts: {
  * emptyDir both dev fe01, cp --reflink=always fails). The `cp` exit code is
  * the authoritative test; callers must handle its failure regardless.
  */
-export function sameFilesystem(a: string, b: string): boolean {
+export async function sameFilesystem(a: string, b: string): Promise<boolean> {
   try {
-    return statSync(a).dev === statSync(b).dev;
+    const [sa, sb] = await Promise.all([stat(a), stat(b)]);
+    return sa.dev === sb.dev;
   } catch {
     return false;
   }
@@ -173,17 +185,17 @@ interface GoldenOpts {
   log?: Log;
 }
 
-function resolveGolden(opts: GoldenOpts): {
+async function resolveGolden(opts: GoldenOpts): Promise<{
   golden: string;
   targetNodeModules: string;
-} | null {
+} | null> {
   if (!goldenEnabled()) return null;
   const cacheRoot = opts.cacheRoot ?? process.env.DEPS_CACHE_ROOT;
   const golden = goldenNodeModulesPath({
     cacheRoot,
     cloneUrl: resolveCloneUrl(opts.config),
     pm: opts.pm,
-    lockHash: lockfileHash(opts.installRoot, opts.pm),
+    lockHash: await lockfileHash(opts.installRoot, opts.pm),
   });
   if (!golden) return null;
   return { golden, targetNodeModules: join(opts.installRoot, "node_modules") };
@@ -195,32 +207,32 @@ function resolveGolden(opts: GoldenOpts): {
  */
 export async function tryRestoreGolden(opts: GoldenOpts): Promise<boolean> {
   const log = opts.log ?? (() => {});
-  const paths = resolveGolden(opts);
+  const paths = await resolveGolden(opts);
   if (!paths) return false;
   const { golden, targetNodeModules } = paths;
-  if (!existsSync(golden)) return false;
+  if (!(await exists(golden))) return false;
   // reflink needs golden and the destination parent on one filesystem.
-  if (!sameFilesystem(golden, opts.installRoot)) {
+  if (!(await sameFilesystem(golden, opts.installRoot))) {
     log("[golden] cache and workdir on different filesystems — skipping");
     return false;
   }
   try {
     // A partial node_modules (interrupted prior boot) would make cp nest the
     // clone inside it; start clean.
-    rmSync(targetNodeModules, { recursive: true, force: true });
+    await rm(targetNodeModules, { recursive: true, force: true });
   } catch {
     // best-effort
   }
   const code = await reflinkClone(golden, targetNodeModules);
   if (code !== 0) {
     log(`[golden] restore failed (cp exit ${code}) — falling back to install`);
-    rmSync(targetNodeModules, { recursive: true, force: true });
+    await rm(targetNodeModules, { recursive: true, force: true });
     return false;
   }
   // Mark recently-used so GC's TTL doesn't reap an actively-restored lockfile.
   try {
     const now = new Date();
-    utimesSync(golden, now, now);
+    await utimes(golden, now, now);
   } catch {
     // best-effort
   }
@@ -242,18 +254,18 @@ export async function tryRestoreGolden(opts: GoldenOpts): Promise<boolean> {
 export async function publishGolden(opts: GoldenOpts): Promise<void> {
   const log = opts.log ?? (() => {});
   try {
-    const paths = resolveGolden(opts);
+    const paths = await resolveGolden(opts);
     if (!paths) return;
     const { golden, targetNodeModules } = paths;
-    if (!existsSync(targetNodeModules)) return;
-    if (existsSync(golden)) return; // already published for this lockfile
+    if (!(await exists(targetNodeModules))) return;
+    if (await exists(golden)) return; // already published for this lockfile
 
     const goldenDir = dirname(golden);
-    mkdirSync(goldenDir, { recursive: true });
+    await mkdir(goldenDir, { recursive: true });
     // Now that goldenDir exists, confirm it shares a filesystem with the
     // source (reflink prerequisite) — skip the doomed cp otherwise. (Checked
-    // here, not before mkdir, since statSync on a not-yet-created dir fails.)
-    if (!sameFilesystem(opts.installRoot, goldenDir)) {
+    // here, not before mkdir, since stat on a not-yet-created dir fails.)
+    if (!(await sameFilesystem(opts.installRoot, goldenDir))) {
       log(
         "[golden] cache and workdir on different filesystems — not publishing",
       );
@@ -262,25 +274,25 @@ export async function publishGolden(opts: GoldenOpts): Promise<void> {
     // Unique temp within the same dir (→ same fs → atomic rename). PID keeps
     // concurrent publishers on one node from colliding.
     const tmp = join(goldenDir, `.tmp.${process.pid}.node_modules`);
-    rmSync(tmp, { recursive: true, force: true });
+    await rm(tmp, { recursive: true, force: true });
     const code = await reflinkClone(targetNodeModules, tmp);
     if (code !== 0) {
-      rmSync(tmp, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
       log(`[golden] publish reflink failed (cp exit ${code})`);
       return;
     }
     // Strip pod-local runtime caches from the snapshot (cheap — reflink is
     // CoW, so these were near-free to clone and near-free to drop).
     for (const d of RUNTIME_CACHE_DIRS) {
-      rmSync(join(tmp, d), { recursive: true, force: true });
+      await rm(join(tmp, d), { recursive: true, force: true });
     }
     try {
-      renameSync(tmp, golden);
+      await rename(tmp, golden);
       log("[golden] published node_modules to cache");
     } catch {
       // Lost the race (another publisher renamed first) or golden appeared —
       // both fine; drop our temp.
-      rmSync(tmp, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
     }
   } catch (e) {
     log(`[golden] publish skipped: ${(e as Error).message}`);
@@ -295,10 +307,10 @@ export async function publishGolden(opts: GoldenOpts): Promise<void> {
  * fails → that pod falls back to install, and already-completed CoW clones are
  * independent of the source.
  */
-export function pruneGoldens(
+export async function pruneGoldens(
   cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
   opts: { ttlMs?: number; maxPerRepo?: number; now?: number } = {},
-): void {
+): Promise<void> {
   if (!cacheRoot) return;
   const ttlMs = opts.ttlMs ?? GOLDEN_TTL_MS;
   const maxPerRepo = opts.maxPerRepo ?? GOLDEN_MAX_PER_REPO;
@@ -306,7 +318,7 @@ export function pruneGoldens(
   const root = join(cacheRoot, "golden");
   let repos: string[];
   try {
-    repos = readdirSync(root);
+    repos = await readdir(root);
   } catch {
     return; // no golden store yet
   }
@@ -314,12 +326,15 @@ export function pruneGoldens(
     const repoDir = join(root, repo);
     let entries: { path: string; mtime: number }[];
     try {
-      entries = readdirSync(repoDir)
-        .filter((name) => !name.startsWith(".tmp.")) // skip in-flight publishes
-        .map((name) => {
+      const names = (await readdir(repoDir)).filter(
+        (name) => !name.startsWith(".tmp."), // skip in-flight publishes
+      );
+      entries = await Promise.all(
+        names.map(async (name) => {
           const path = join(repoDir, name);
-          return { path, mtime: statSync(path).mtimeMs };
-        });
+          return { path, mtime: (await stat(path)).mtimeMs };
+        }),
+      );
     } catch {
       continue;
     }
@@ -328,7 +343,7 @@ export function pruneGoldens(
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       if (i >= maxPerRepo || now - e.mtime > ttlMs) {
-        rmSync(e.path, { recursive: true, force: true });
+        await rm(e.path, { recursive: true, force: true });
       }
     }
   }

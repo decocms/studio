@@ -97,7 +97,13 @@ pub async fn generate_title(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    let mut child = command.spawn().ok()?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            tracing::debug!(binary = %binary, %error, "title generation spawn failed");
+            return None;
+        }
+    };
     let mut stdout = child.stdout.take()?;
 
     let collected = tokio::time::timeout(timeout, async {

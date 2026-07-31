@@ -46,7 +46,7 @@ import type { HarnessId } from "@decocms/harness/types";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
-  preferredLocalAgentOption,
+  resolveNativeAgentOption,
   resolveOfflineAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
@@ -498,10 +498,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // used to mis-route to an offline link. A fresh org starts with no pick
   // (`null`), letting the server choose its default.
   //
-  // Everything else (`pendingHarnessId`, `pendingSandboxProviderKind`,
-  // the request body's harnessId/sandboxProviderKind) derives from this
-  // through `AGENT_OPTION_PINS`, so the pill display and the submit can
-  // never disagree.
+  // Web derives the pending harness/sandbox pair from this value. Native
+  // filters it through its local-only resolver below. Both surfaces still read
+  // the same effective pair, so the pill display and submit cannot disagree.
   const [pendingAgentOption, setPendingAgentOption] =
     useLocalStorage<AgentOption | null>(
       LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
@@ -526,44 +525,41 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Capability probes are advisory — we don't rewrite the harness for a missing
-  // CLI (cloud chat via the org router works even where the cloud *sandbox*
-  // doesn't). The one exception is a desktop pick whose link is *confirmed*
-  // offline: it can't run anywhere and nothing prompted the user to reconnect,
-  // so we auto-switch it to cloud. Derived (not persisted), so the desktop pick
-  // returns on its own once the link reconnects.
+  // Capability probes are advisory on web — we don't rewrite the harness for a
+  // missing CLI (cloud chat via the org router works even where the cloud
+  // *sandbox* doesn't). The one exception is a desktop pick whose link is
+  // *confirmed* offline: it can't run anywhere and nothing prompted the user to
+  // reconnect, so we auto-switch it to cloud. Derived (not persisted), so the
+  // desktop pick returns on its own once the link reconnects.
   const link = useCurrentLink();
 
-  // The desktop app has no cloud/Decopilot surface to fall back to, so an
-  // un-set pick must never resolve to `decopilot` the way it does on web —
-  // that pins the thread to `agent-sandbox` (see `AGENT_OPTION_PINS`) and the
-  // sandbox is provisioned in the cloud instead of on this machine. Defaulting
-  // to the locally-detected CLI keeps the pin on `user-desktop`, which is the
-  // kind local-api intercepts. Derived, not persisted, so it re-resolves on its
-  // own as `LINK_CURRENT_GET` reports CLIs; an explicit user pick always wins.
   const isDesktopApp = useIsDesktopApp();
   const availability = useAgentOptionAvailability();
-  const desktopDefaultOption = isDesktopApp
-    ? preferredLocalAgentOption(availability)
-    : null;
-
-  const selectedAgentOption = resolveOfflineAgentOption(
-    pendingAgentOption ?? desktopDefaultOption,
+  // Native has no cloud/Decopilot surface. Ignore stale cloud prefs there and
+  // recover early native threads that pinned a local harness without the
+  // expected sandbox tuple. While cold CLI detection is unresolved this stays
+  // null; TierTrigger renders that state as local-pending, never as cloud.
+  const nativeAgentOption = resolveNativeAgentOption({
+    pendingOption: pendingAgentOption,
+    lockedHarness: taskCtxForLock?.isThreadLocked
+      ? taskCtxForLock.lockedHarness
+      : null,
+    availability,
+  });
+  const webSelectedAgentOption = resolveOfflineAgentOption(
+    pendingAgentOption,
     link.ready && !link.online,
   );
 
-  // When the thread is locked, the agent option is dictated by the persisted
-  // (harness, sandbox) pair — period. Otherwise, fall through to the user's
-  // selected global picker.
-  //
-  // When the thread is locked but the (harness, sandbox) tuple doesn't map
-  // to a known AgentOption (legacy/trigger-created rows), we intentionally
-  // surface `null` here rather than falling through to the global picker.
-  // The submit path is server-enforced anyway; consumers (pills, etc.)
-  // should consult isThreadLocked for the "locked" affordance and avoid
-  // showing the global selection on a locked thread.
-  const effectiveAgentOption: AgentOption | null =
-    taskCtxForLock?.isThreadLocked ? lockedAgentOption : selectedAgentOption;
+  // On web, a locked thread is dictated by its persisted (harness, sandbox)
+  // pair; an unknown tuple surfaces null instead of falling through to the
+  // global picker. Native is different: every runnable harness is local, and
+  // `nativeAgentOption` recovers older rows by their local harness alone.
+  const effectiveAgentOption: AgentOption | null = isDesktopApp
+    ? nativeAgentOption
+    : taskCtxForLock?.isThreadLocked
+      ? lockedAgentOption
+      : webSelectedAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]

@@ -1,8 +1,10 @@
 /**
  * Desktop's overrides for the shared sign-in surface's injectable actions
  * (`apps/web/src/components/auth-form-actions.ts`), plus the one bit of
- * config-driven UI-mode logic the desktop sign-in screen needs
- * (`needsBrowserOnlyFallback`). Pure — no Tauri IPC happens in this file
+ * config-driven UI-mode logic desktop sign-in needs
+ * (`needsBrowserOnlyFallback`, consumed by `AuthEntry`'s desktop branch).
+ * Both are wired beneath every sign-in surface by
+ * `use-desktop-auth-form-defaults.ts`. Pure — no Tauri IPC happens in this file
  * itself; the actual `auth_login()`/`auth_complete_session()` calls are
  * injected as `deps` (see `use-desktop-auth.ts`), which is what keeps this
  * module unit-testable per TESTING.md ("if a test needs mock.module … it's
@@ -90,10 +92,11 @@ export interface DesktopAuthMethodConfig {
  * one auth method with genuinely no in-app UI. `UnifiedAuthForm` has no
  * magic-link view even on web: clicking a magic-link email opens a browser
  * tab, which can't hand a session back to a Tauri webview the way an
- * in-webview OTP/password submit can. When this is true, the desktop
- * sign-in screen skips the shared form entirely and shows a single
+ * in-webview OTP/password submit can. When this is true, `AuthEntry`'s
+ * desktop branch skips the shared form entirely and shows a single
  * "continue in your browser" affordance instead (reusing the same
- * `auth_login()` browser hop as social/SSO) — see `sign-in-screen.tsx`.
+ * `auth_login()` browser hop as social/SSO) — see
+ * `@/desktop/browser-only-column.tsx`.
  *
  * `sso.enabled` is excluded from the "in-app method" check on purpose: it
  * already gets its own auto-redirect branch inside `AuthEntry` (`RunSSO`)

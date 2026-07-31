@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.149.4",
+      "version": "4.155.3",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -128,7 +128,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.149.4",
+      "version": "4.155.3",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -173,6 +173,7 @@
         "@tiptap/extension-link": "3.20.2",
         "@tiptap/extension-placeholder": "3.20.2",
         "@tiptap/extension-text-align": "3.20.2",
+        "@tiptap/extension-text-style": "3.20.2",
         "@tiptap/markdown": "3.20.2",
         "@tiptap/pm": "3.20.2",
         "@tiptap/react": "3.20.2",
@@ -247,7 +248,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.26.0",
+      "version": "1.26.1",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -269,7 +270,7 @@
     },
     "packages/harness": {
       "name": "@decocms/harness",
-      "version": "2.8.0",
+      "version": "2.8.2",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.85",
         "@ai-sdk/google": "^3.0.83",
@@ -328,7 +329,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.28.3",
+      "version": "1.31.2",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -347,7 +348,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.10.0",
+      "version": "0.11.1",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -385,7 +386,7 @@
     },
     "packages/ui": {
       "name": "@deco/ui",
-      "version": "1.8.0",
+      "version": "1.8.2",
       "dependencies": {
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -1732,6 +1733,8 @@
     "@tiptap/extension-text": ["@tiptap/extension-text@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-I1rVt6JTi/itgsFqXp+JfxWn9fEewIxiIaaaMUmaCJ6HChQSvYlVWy1B/RixmbCCPaL/FxybEa/Tg9MugyOJYA=="],
 
     "@tiptap/extension-text-align": ["@tiptap/extension-text-align@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-ior4BAu+F0dn4ErqWlAmkyy/qTaIiaJ72VBwSvEUEuuXgX8Htyg9hfE38O8MXZw/KLpL2X7i0P6VbDHhaAWA4Q=="],
+
+    "@tiptap/extension-text-style": ["@tiptap/extension-text-style@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-jvVRtFdEJNjKgIL8wtMg3W4BJMlKyH9aF2jYNU2rf3jA9GJM0rtqtth3jjFnApZoyINtx6jr4o4Ot6+/5d0XYA=="],
 
     "@tiptap/extension-underline": ["@tiptap/extension-underline@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-oVszIGkRtg8NLhop/t5kco6suWlDUKW9cqhL6wwd19aLztr+tMU/u8+kPG2cjjYZ+XoMZOoKfkOt7he2iU5/0A=="],
 

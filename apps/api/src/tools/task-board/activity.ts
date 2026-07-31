@@ -30,6 +30,26 @@ export async function recordTaskActivity(
   }
 }
 
+/** Same as `recordTaskActivity`, batched into one DB round-trip for a caller
+ *  that earns several timeline entries from a single change (e.g. an update
+ *  touching status, assignee, and tags at once). */
+export async function recordTaskActivities(
+  ctx: StudioContext,
+  entries: {
+    taskBoardItemId: string;
+    action: TaskBoardActivityAction;
+    actorId: string | null;
+    data?: Record<string, unknown>;
+  }[],
+): Promise<void> {
+  if (entries.length === 0) return;
+  try {
+    await ctx.storage.taskBoard.recordActivities(entries);
+  } catch (err) {
+    console.error("[task-board] activity log write failed", err);
+  }
+}
+
 export const TASK_BOARD_ACTIVITY_LIST = defineTool({
   name: "TASK_BOARD_ACTIVITY_LIST",
   description:

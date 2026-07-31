@@ -93,13 +93,13 @@ export function remoteGoldenPath(opts: {
   );
 }
 
-function resolveRemote(opts: RemoteGoldenOpts): string | null {
+async function resolveRemote(opts: RemoteGoldenOpts): Promise<string | null> {
   if (!remoteEnabled()) return null;
   return remoteGoldenPath({
     remoteRoot: opts.remoteRoot ?? process.env.GOLDEN_CACHE_REMOTE,
     cloneUrl: resolveCloneUrl(opts.config),
     pm: opts.pm,
-    lockHash: lockfileHash(opts.installRoot, opts.pm),
+    lockHash: await lockfileHash(opts.installRoot, opts.pm),
   });
 }
 
@@ -201,7 +201,7 @@ export async function tryRestoreRemoteGolden(
   opts: RemoteGoldenOpts,
 ): Promise<boolean> {
   const log = opts.log ?? (() => {});
-  const archive = resolveRemote(opts);
+  const archive = await resolveRemote(opts);
   if (!archive) return false;
   if (!(await exists(archive))) return false;
 
@@ -260,7 +260,7 @@ export async function publishRemoteGolden(
 ): Promise<void> {
   const log = opts.log ?? (() => {});
   try {
-    const archive = resolveRemote(opts);
+    const archive = await resolveRemote(opts);
     if (!archive) return;
     const source = join(opts.installRoot, "node_modules");
     if (!(await exists(source))) return;

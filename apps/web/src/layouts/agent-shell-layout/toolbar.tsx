@@ -78,12 +78,6 @@ export function Toolbar({ children }: { children?: ReactNode }) {
   );
 }
 
-/**
- * The header occupies the WCO title-bar strip when the app is installed as a
- * PWA. `env(titlebar-area-*)` resolves to non-zero values only inside that
- * mode; in a regular browser tab the fallbacks (0 left/right, 3rem height)
- * give the standard h-12 toolbar.
- */
 function ToolbarHeader({
   children,
   className,
@@ -92,7 +86,7 @@ function ToolbarHeader({
   return (
     <div
       className={cn(
-        "app-titlebar wco-drag relative z-10 shrink-0 grid grid-cols-3 items-center pl-1 pr-2 h-12 bg-sidebar",
+        "relative z-10 shrink-0 grid grid-cols-3 items-center pl-1 pr-2 h-12 bg-sidebar",
         className,
       )}
       {...props}
@@ -125,7 +119,7 @@ function ToolbarLogoInner() {
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
   return (
-    <span className="wco-hide flex items-center shrink-0 px-2">
+    <span className="flex items-center shrink-0 px-2">
       <img
         src={lightSrc}
         alt={t("agentShellLayout.toolbar.logo")}
@@ -142,7 +136,7 @@ function ToolbarLogoInner() {
 
 function ToolbarLogo() {
   return (
-    <Suspense fallback={<span className="wco-hide shrink-0 size-6 mx-2" />}>
+    <Suspense fallback={<span className="shrink-0 size-6 mx-2" />}>
       <ToolbarLogoInner />
     </Suspense>
   );
@@ -161,7 +155,7 @@ function ToolbarLogoLink() {
       params={{ org }}
       aria-label={t("agentShellLayout.toolbar.backToHome")}
       title={t("agentShellLayout.toolbar.backToHome")}
-      className="wco-no-drag flex items-center shrink-0 cursor-pointer pl-1"
+      className="flex items-center shrink-0 cursor-pointer pl-1"
     >
       <ToolbarLogo />
     </Link>

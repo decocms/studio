@@ -5,6 +5,7 @@ import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
 import { useChatStream } from "./context";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useNeedsRuntimeSetup } from "./use-needs-runtime-setup";
 import { ChatContextPanel } from "./context-panel";
 import { AgentHome } from "./agent-home";
@@ -23,22 +24,29 @@ function ChatSidePanelContent() {
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
 
-  // Surface the provider-setup UI when there's no way to run a chat — no cloud
-  // AI provider AND no usable local runtime. The empty state itself offers the
-  // local Claude Code / Codex options as a one-click escape when a desktop is
-  // linked. Same signal gates the main-panel view tabs.
+  // Surface the runtime-setup UI when there's no way to run a chat. On web
+  // that's no cloud AI provider AND no usable local runtime; on native it's
+  // no resolved local coding agent. Each empty state offers the Claude Code /
+  // Codex options as a one-click escape. Same signal gates the main-panel
+  // view tabs.
   const showProviderEmptyState = useNeedsRuntimeSetup();
+  const isDesktopApp = useIsDesktopApp();
 
   if (showProviderEmptyState) {
     return (
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState
-              // Picking a local runtime is the same gesture as opening a new
-              // chat with this agent: open its Overview alongside the composer.
-              onLocalRuntimePicked={() => openTab("overview")}
-            />
+            {isDesktopApp ? (
+              // Native never offers cloud providers — only the local agents.
+              <Chat.NativeAgentEmptyState />
+            ) : (
+              <Chat.NoAiProviderEmptyState
+                // Picking a local runtime is the same gesture as opening a new
+                // chat with this agent: open its Overview alongside the composer.
+                onLocalRuntimePicked={() => openTab("overview")}
+              />
+            )}
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>
@@ -61,6 +69,8 @@ function ChatSidePanelContent() {
 
       {/* Chat view */}
       <div
+        inert={activePanel !== "chat" ? true : undefined}
+        aria-hidden={activePanel !== "chat"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel !== "chat"
@@ -92,6 +102,8 @@ function ChatSidePanelContent() {
 
       {/* Context view */}
       <div
+        inert={activePanel !== "context" ? true : undefined}
+        aria-hidden={activePanel !== "context"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel === "context"

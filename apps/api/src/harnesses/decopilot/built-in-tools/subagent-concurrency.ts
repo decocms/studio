@@ -9,11 +9,13 @@
  * everything else (pg pool acquires, even signal handlers). This caps how many
  * run at once per process — excess calls queue and start as slots free.
  *
- * DRAFT: limit is read from the environment with a conservative default. If we
- * keep this, move it into Settings (resolve-config.ts) so it's tunable per
- * deployment without an env redeploy, and consider a per-run (not per-process)
- * gate if cross-session head-of-line blocking becomes a concern.
+ * The limit comes from `Settings.decopilotMaxConcurrentSubagents`
+ * (DECOPILOT_MAX_CONCURRENT_SUBAGENTS), validated at startup — a malformed
+ * value fails boot instead of silently coercing here. Consider a per-run (not
+ * per-process) gate if cross-session head-of-line blocking becomes a concern.
  */
+
+import { getSettings } from "@/settings";
 
 export interface ConcurrencyGate {
   /**
@@ -68,7 +70,7 @@ export function createConcurrencyGate(max: number): ConcurrencyGate {
 }
 
 const gate = createConcurrencyGate(
-  Number(process.env.DECOPILOT_MAX_CONCURRENT_SUBAGENTS ?? 4),
+  getSettings().decopilotMaxConcurrentSubagents,
 );
 
 export const acquireSubagentSlot = (): Promise<() => void> => gate.acquire();

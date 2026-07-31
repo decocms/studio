@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { track } from "@/lib/posthog-client";
@@ -78,10 +78,12 @@ interface UnifiedAuthFormProps {
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
   /**
-   * Overrides for the underlying network/post-auth actions. Omitted (the web
-   * `/login` route never passes this) -> `defaultAuthFormActions`, i.e. the
-   * exact `authClient` calls + `window.location.href` navigate this form
-   * always used. See `apps/web/src/components/auth-form-actions.ts`.
+   * Overrides for the underlying network/post-auth actions. `AuthEntry`
+   * passes the platform-resolved overrides here (desktop browser-hop/
+   * Keychain-bridge actions in the desktop build, `undefined` on web).
+   * Omitted -> `defaultAuthFormActions`, i.e. the exact `authClient` calls +
+   * `window.location.href` navigate this form always used. See
+   * `apps/web/src/components/auth-form-actions.ts`.
    */
   actions?: Partial<AuthFormActions>;
 }
@@ -256,7 +258,17 @@ export function UnifiedAuthForm({
   });
   const [emailError, setEmailError] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  // Social sign-in has no mutation of its own — without this state a failed
+  // `socialSignIn` (misconfigured provider, network error) was tracked in
+  // analytics but INVISIBLE in the UI: the button just "did nothing".
+  const [socialError, setSocialError] = useState<Error | null>(null);
   const copy = { ...DEFAULT_AUTH_FORM_COPY, ...copyOverrides };
+  const formId = useId();
+  const emailFieldId = `${formId}-email`;
+  const emailErrorId = `${formId}-email-error`;
+  const nameFieldId = `${formId}-name`;
+  const passwordFieldId = `${formId}-password`;
+  const otpFieldId = `${formId}-otp`;
 
   const isSignUp = view === "signUp";
   const isForgotPassword = view === "forgotPassword";
@@ -488,6 +500,7 @@ export function UnifiedAuthForm({
     setOtpSent(false);
     setEmailError("");
     setResetEmailSent(false);
+    setSocialError(null);
     emailPasswordMutation.reset();
     forgotPasswordMutation.reset();
     sendOtpMutation.reset();
@@ -544,10 +557,11 @@ export function UnifiedAuthForm({
     return error.message || copy.genericError;
   };
 
-  const displayError = error || forgotPasswordError || otpError;
+  const displayError = error || forgotPasswordError || otpError || socialError;
 
   const handleSocialSignIn = async (provider: string) => {
     emitAuthEvent({ type: "started", method: "social", provider });
+    setSocialError(null);
     try {
       const result = await resolvedActions.socialSignIn({
         provider,
@@ -566,6 +580,7 @@ export function UnifiedAuthForm({
         error: message,
       });
       track("social_signin_failed", { provider, error: message });
+      setSocialError(error instanceof Error ? error : new Error(message));
     }
   };
 
@@ -625,14 +640,20 @@ export function UnifiedAuthForm({
 
       {/* Error message */}
       {displayError && (
-        <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+        <div
+          role="alert"
+          className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center"
+        >
           {getErrorMessage(displayError)}
         </div>
       )}
 
       {/* Success message for forgot password */}
       {resetEmailSent && (
-        <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
+        <div
+          role="status"
+          className="rounded-xl bg-success/10 p-3 text-sm text-success text-center"
+        >
           {copy.resetEmailSent}
         </div>
       )}
@@ -707,6 +728,7 @@ export function UnifiedAuthForm({
             >
               <div className="grid gap-2">
                 <label
+                  htmlFor={emailFieldId}
                   className={cn(
                     "text-sm font-medium text-foreground",
                     compact && "sr-only",
@@ -715,6 +737,7 @@ export function UnifiedAuthForm({
                   {copy.emailLabel}
                 </label>
                 <Input
+                  id={emailFieldId}
                   type="email"
                   placeholder={copy.emailPlaceholder}
                   value={email}
@@ -722,11 +745,19 @@ export function UnifiedAuthForm({
                   onBlur={handleEmailBlur}
                   required
                   disabled={isLoading}
+                  autoComplete="email"
                   aria-invalid={!!emailError}
+                  aria-describedby={emailError ? emailErrorId : undefined}
                   className="h-11 rounded-lg"
                 />
                 {emailError && (
-                  <p className="text-xs text-destructive">{emailError}</p>
+                  <p
+                    id={emailErrorId}
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {emailError}
+                  </p>
                 )}
               </div>
 
@@ -751,6 +782,7 @@ export function UnifiedAuthForm({
             >
               <div className="grid gap-2">
                 <label
+                  htmlFor={otpFieldId}
                   className={cn(
                     "text-sm font-medium text-foreground",
                     compact && "sr-only",
@@ -759,6 +791,7 @@ export function UnifiedAuthForm({
                   {copy.verificationCodeLabel}
                 </label>
                 <Input
+                  id={otpFieldId}
                   type="text"
                   placeholder={copy.enterCodePlaceholder}
                   value={otp}
@@ -808,10 +841,14 @@ export function UnifiedAuthForm({
       {isForgotPassword && emailAndPasswordEnabled && !resetEmailSent && (
         <form onSubmit={handleForgotPassword} className="grid gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label
+              htmlFor={emailFieldId}
+              className="block text-sm font-medium text-foreground mb-2"
+            >
               {copy.emailLabel}
             </label>
             <Input
+              id={emailFieldId}
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -819,11 +856,19 @@ export function UnifiedAuthForm({
               onBlur={handleEmailBlur}
               required
               disabled={isLoading}
+              autoComplete="email"
               aria-invalid={!!emailError}
+              aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
             />
             {emailError && (
-              <p className="text-xs text-destructive mt-1.5">{emailError}</p>
+              <p
+                id={emailErrorId}
+                role="alert"
+                className="text-xs text-destructive mt-1.5"
+              >
+                {emailError}
+              </p>
             )}
           </div>
 
@@ -843,25 +888,34 @@ export function UnifiedAuthForm({
         <form onSubmit={handleEmailPassword} className="grid gap-5">
           {isSignUp && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor={nameFieldId}
+                className="block text-sm font-medium text-foreground mb-2"
+              >
                 {copy.nameLabel}
               </label>
               <Input
+                id={nameFieldId}
                 type="text"
                 placeholder={copy.namePlaceholder}
                 value={name}
                 onChange={handleInputChange(setName)}
                 required
                 disabled={isLoading}
+                autoComplete="name"
                 className="h-11 rounded-lg"
               />
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label
+              htmlFor={emailFieldId}
+              className="block text-sm font-medium text-foreground mb-2"
+            >
               {copy.emailLabel}
             </label>
             <Input
+              id={emailFieldId}
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -869,16 +923,27 @@ export function UnifiedAuthForm({
               onBlur={handleEmailBlur}
               required
               disabled={isLoading}
+              autoComplete="email"
               aria-invalid={!!emailError}
+              aria-describedby={emailError ? emailErrorId : undefined}
               className="h-11 rounded-lg"
             />
             {emailError && (
-              <p className="text-xs text-destructive mt-1.5">{emailError}</p>
+              <p
+                id={emailErrorId}
+                role="alert"
+                className="text-xs text-destructive mt-1.5"
+              >
+                {emailError}
+              </p>
             )}
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-foreground">
+              <label
+                htmlFor={passwordFieldId}
+                className="block text-sm font-medium text-foreground"
+              >
                 {copy.passwordLabel}
               </label>
               {!isSignUp && resetPassword.enabled && (
@@ -892,12 +957,14 @@ export function UnifiedAuthForm({
               )}
             </div>
             <Input
+              id={passwordFieldId}
               type="password"
               placeholder="••••••••"
               value={password}
               onChange={handleInputChange(setPassword)}
               required
               disabled={isLoading}
+              autoComplete={isSignUp ? "new-password" : "current-password"}
               className="h-11 rounded-lg"
             />
           </div>

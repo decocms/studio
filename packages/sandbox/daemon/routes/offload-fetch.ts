@@ -51,6 +51,54 @@ export function assertAllowedRefUrl(
   return url;
 }
 
+/** Redirect hops a transfer may take before we give up. */
+const MAX_TRANSFER_REDIRECTS = 5;
+
+/**
+ * `fetch` that re-runs the allowlist on **every** redirect hop.
+ *
+ * Validating only the caller's URL is no defense: the default
+ * `redirect: "follow"` chases a 3xx wherever it points, so an allowed host that
+ * answers `302 → https://169.254.169.254/latest/meta-data/` walks the daemon
+ * straight into the cloud metadata endpoint. This mirrors what the Go daemon's
+ * `urlallow.Client` does with `CheckRedirect`.
+ *
+ * `maxRedirects: 0` refuses any 3xx outright — the right setting for a request
+ * carrying a one-shot stream body, which could not be replayed to a second URL
+ * even if that URL were allowed.
+ */
+export async function fetchAllowedUrl(
+  rawUrl: string,
+  init: RequestInit,
+  opts: {
+    allowedHosts: string[];
+    allowSameHostDev: boolean;
+    maxRedirects?: number;
+  },
+): Promise<Response> {
+  const max = opts.maxRedirects ?? MAX_TRANSFER_REDIRECTS;
+  const assertHop = (raw: string) =>
+    assertAllowedRefUrl(
+      raw,
+      opts.allowedHosts,
+      opts.allowSameHostDev,
+    ).toString();
+
+  let target = assertHop(rawUrl);
+  for (let hop = 0; ; hop++) {
+    const res = await fetch(target, { ...init, redirect: "manual" });
+    if (res.status < 300 || res.status >= 400) return res;
+    const location = res.headers.get("location");
+    await res.body?.cancel().catch(() => {});
+    if (hop >= max) {
+      throw new Error(`offload ref: too many redirects (max ${max})`);
+    }
+    if (!location) throw new Error("offload ref: redirect with no location");
+    // Resolve relative Locations against the hop we just made, then re-gate.
+    target = assertHop(new URL(location, target).toString());
+  }
+}
+
 /** Fetch the offloaded messages JSON with a deadline, size cap, manual redirect,
  *  and bounded retry. allowedHosts/allowSameHostDev come from daemon config
  *  (NEVER from the request frame; that's the SSRF guarantee). */

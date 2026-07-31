@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
@@ -431,8 +432,33 @@ export function SchemaForm({
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
 }) {
+  const t = useT();
   const properties = schema.properties;
-  if (!properties) return null;
+  // The resolved root can itself be a single union field — a discriminated
+  // block config whose props are a plain `A | B | C` union (e.g. the VTEX
+  // userSegment matcher). It has no wrapping `properties`, so render it as that
+  // field (a branch selector) instead of an empty form.
+  if (!properties) {
+    if (schema.type === "inline-union") {
+      return renderField({
+        schema,
+        value,
+        onChange,
+        path: basePath,
+        label: schema.title ?? "",
+        breadcrumbPath,
+        onBreadcrumbChange,
+        meta,
+        decofile,
+        onSaveReferencedBlock,
+        previewBaseUrl,
+        onAddSectionItem,
+        onRequestAddSection,
+        sandbox,
+      });
+    }
+    return null;
+  }
 
   // A section-level multivariate flag (`website/flags/multivariate/section.ts`)
   // opened directly — e.g. a saved/global block that wraps a section in
@@ -478,7 +504,7 @@ export function SchemaForm({
   if (keys.length === 0) {
     return (
       <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-        No editable fields on this section.
+        {t("sectionsEditor.sectionsEditor.noEditableFields")}
       </div>
     );
   }

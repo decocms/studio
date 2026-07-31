@@ -621,7 +621,8 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
-  "settings.secrets.secretsCount": "{count} segredo{plural} armazenado",
+  "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
+  "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
@@ -657,5 +658,6 @@ export const settings = {
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.moreProviders": "{count} provedor{plural} adicional",
+  "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
+  "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
 } satisfies Record<keyof typeof settingsEn, string>;

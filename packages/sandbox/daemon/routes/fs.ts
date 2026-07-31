@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { safePath } from "../paths";
 import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
+import { assertAllowedRefUrl, fetchAllowedUrl } from "./offload-fetch";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
@@ -41,6 +42,28 @@ export interface FsDeps {
    * without waiting for the `.git/` watcher poll.
    */
   onWorkingTreeWrite?: (path: string) => void;
+  /**
+   * SSRF allowlist for `/write_from_url` and `/upload_to_url`. Comes from boot
+   * env (`OFFLOAD_ALLOWED_HOSTS`), NEVER from the request body — that is the
+   * guarantee. Empty denies every transfer (fail closed).
+   */
+  offloadAllowedHosts?: string[];
+  /** Maps to `OFFLOAD_ALLOW_SAME_HOST_DEV=1` — http loopback in dev. */
+  offloadAllowSameHostDev?: boolean;
+}
+
+/** Fail-closed URL gate shared by the two transfer routes. */
+function assertTransferUrl(raw: string, deps: FsDeps): string | null {
+  try {
+    assertAllowedRefUrl(
+      raw,
+      deps.offloadAllowedHosts ?? [],
+      deps.offloadAllowSameHostDev ?? false,
+    );
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 function spawnOpts(
@@ -671,10 +694,12 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
 
-    // The URL here is studio-minted (presigned GET to S3/R2) — the model
-    // can't supply arbitrary URLs through copy_to_sandbox, so SSRF +
-    // DNS-rebinding defenses aren't needed. Plain fetch with a wall-
-    // clock deadline is enough.
+    // The URL is expected to be studio-minted (a presigned GET to S3/R2), but
+    // this route is reachable by anything holding the daemon token — so the
+    // allowlist is enforced here rather than assumed upstream.
+    const urlError = assertTransferUrl(body.url, deps);
+    if (urlError) return jsonResponse({ error: urlError }, 400);
+
     const abortController = new AbortController();
     const deadlineTimer = setTimeout(
       () => abortController.abort(),
@@ -682,7 +707,17 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     );
     let resp: Response;
     try {
-      resp = await fetch(body.url, { signal: abortController.signal });
+      // Not a plain fetch: the default redirect:"follow" would chase a 302 off
+      // the allowlist (a compliant-looking origin → 169.254.169.254 is the
+      // whole SSRF), so every hop is re-gated.
+      resp = await fetchAllowedUrl(
+        body.url,
+        { signal: abortController.signal },
+        {
+          allowedHosts: deps.offloadAllowedHosts ?? [],
+          allowSameHostDev: deps.offloadAllowSameHostDev ?? false,
+        },
+      );
     } catch (err) {
       clearTimeout(deadlineTimer);
       return jsonResponse(
@@ -781,6 +816,8 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
     if (!filePath) {
       return jsonResponse({ error: "Path escapes project root" }, 400);
     }
+    const urlError = assertTransferUrl(body.url, deps);
+    if (urlError) return jsonResponse({ error: urlError }, 400);
 
     let fileStat: fs.Stats;
     try {
@@ -816,15 +853,24 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
     );
     let resp: Response;
     try {
-      resp = await fetch(body.url, {
-        method: "PUT",
-        body: Bun.file(filePath).stream(),
-        headers,
-        signal: abortController.signal,
-        // No SSRF revalidation here — the URL is studio-minted (presigned
-        // PUT to S3/R2), so the model can't influence where bytes go.
-        // upload PUTs don't redirect under S3/R2 semantics anyway.
-      });
+      // maxRedirects: 0 — the body is a one-shot stream that could not be
+      // replayed to a second URL anyway, and S3/R2 presigned PUTs do not
+      // redirect. A 3xx here is either a misconfiguration or an attempt to walk
+      // the upload somewhere else; both are errors, not something to follow.
+      resp = await fetchAllowedUrl(
+        body.url,
+        {
+          method: "PUT",
+          body: Bun.file(filePath).stream(),
+          headers,
+          signal: abortController.signal,
+        },
+        {
+          allowedHosts: deps.offloadAllowedHosts ?? [],
+          allowSameHostDev: deps.offloadAllowSameHostDev ?? false,
+          maxRedirects: 0,
+        },
+      );
     } catch (err) {
       return jsonResponse(
         {
@@ -923,15 +969,15 @@ type GlobScanState = {
 };
 
 /** Depth-bounded directory walk — avoids scanning the full tree for maxDepth. */
-function walkRepoWithinMaxDepth(
+async function walkRepoWithinMaxDepth(
   absDir: string,
   repoRelDir: string,
   maxDepth: number,
   state: GlobScanState,
-): boolean {
+): Promise<boolean> {
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(absDir, { withFileTypes: true });
+    entries = await readdir(absDir, { withFileTypes: true });
   } catch {
     return false;
   }
@@ -956,7 +1002,7 @@ function walkRepoWithinMaxDepth(
       state.directoryPaths.add(childRel);
       if (depth < maxDepth) {
         const childAbs = path.join(absDir, entry.name);
-        if (walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
+        if (await walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
           return true;
         }
       }
@@ -1086,7 +1132,7 @@ export function makeGlobHandler(deps: FsDeps) {
           directoryPaths,
           resultLimit,
         };
-        truncated = walkRepoWithinMaxDepth(
+        truncated = await walkRepoWithinMaxDepth(
           searchPath,
           repoRelativePrefix(searchPath, deps.repoDir),
           maxDepth,
@@ -1104,7 +1150,7 @@ export function makeGlobHandler(deps: FsDeps) {
           const abs = path.join(searchPath, rel);
           let relPath: string;
           try {
-            const stat = fs.statSync(abs);
+            const fileStat = await stat(abs);
             relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
             const depth = pathSegmentDepth(relPath);
             if (maxDepth !== undefined && depth > maxDepth) {
@@ -1112,13 +1158,13 @@ export function makeGlobHandler(deps: FsDeps) {
                 relPath,
                 maxDepth,
                 directoryPaths,
-                stat.isFile(),
+                fileStat.isFile(),
               );
               continue;
             }
-            if (stat.isDirectory()) {
+            if (fileStat.isDirectory()) {
               directoryPaths.add(relPath);
-            } else if (stat.isFile()) {
+            } else if (fileStat.isFile()) {
               filePaths.push(relPath);
             }
           } catch {

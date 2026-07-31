@@ -135,20 +135,13 @@ export async function handleVirtualMcpRequest(
     // Note: virtualMcp.id can be null for Decopilot agent, but connectionId should be set for routing
     ctx.connectionId = virtualMcp.id ?? undefined;
 
-    // Set organization context
-    const organization = await ctx.db
-      .selectFrom("organization")
-      .select(["id", "slug", "name"])
-      .where("id", "=", virtualMcp.organization_id)
-      .executeTakeFirst();
-
-    if (organization) {
-      ctx.organization = {
-        id: organization.id,
-        slug: organization.slug,
-        name: organization.name,
-      };
-    }
+    // ctx.organization is already resolved by context-factory and was just
+    // verified above to match virtualMcp.organization_id — every path that
+    // reaches this point has organizationId truthy (see the 400s above), so
+    // re-fetching it here was a redundant DB round trip on every MCP
+    // tool-call request, and it also silently dropped ctx.organization.role
+    // (AuthTransport falls back to the session's active-org role when it's
+    // missing, which can be a different org's role).
 
     // Surface the dev sandbox's tools when the acting user has a running sandbox
     // for this agent. The cheap local pre-filter is just "does the user have a

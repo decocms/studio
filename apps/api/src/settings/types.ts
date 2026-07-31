@@ -23,6 +23,10 @@ export interface Settings {
   databaseUrl: string;
   databasePgSsl: boolean;
   databasePoolMax: number;
+  /** DBOS's own Postgres connection pool size (DBOS_POOL_SIZE), separate from
+   *  `databasePoolMax` (the app's pool). SDK default is 10; capped lower by
+   *  default so N replicas don't exhaust RDS slots. */
+  dbosPoolSize: number;
 
   // Auth & Secrets
   betterAuthSecret: string;
@@ -106,6 +110,14 @@ export interface Settings {
    *  (DISABLE_ORGFS_MOUNTS). org-fs is otherwise always mounted; this is
    *  for low-level mount debugging, not a supported org-fs-off mode. */
   orgFsMountsDisabled: boolean;
+  /** Process-wide cap on concurrent `subtask` subagent streams per pod
+   *  (DECOPILOT_MAX_CONCURRENT_SUBAGENTS). Excess calls queue and start as
+   *  slots free — see `subagent-concurrency.ts`. */
+  decopilotMaxConcurrentSubagents: number;
+  /** Process-wide cap on concurrent top-level hosted agent-loop runs per pod
+   *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Excess runs park and start as
+   *  slots free — see `hosted-run-concurrency.ts`. */
+  decopilotMaxConcurrentHostedRuns: number;
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;

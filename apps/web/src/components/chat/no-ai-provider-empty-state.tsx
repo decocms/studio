@@ -15,6 +15,11 @@ import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@decocms/shared/entities";
+import {
+  DownloadAppDialog,
+  isMacDesktopBrowser,
+} from "@/components/download-app-dialog";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { ConnectDesktopDialog } from "./connect-desktop-dialog";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import { useOptionalChatPrefs } from "./context";
@@ -95,6 +100,14 @@ export function NoAiProviderEmptyState({
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
   const [desktopDialogOpen, setDesktopDialogOpen] = useState(false);
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const isDesktopApp = useIsDesktopApp();
+  // The acquisition path for macOS browser users is the desktop app itself,
+  // not the `bunx decocms link` CLI — so while no desktop is linked, the
+  // monitor button offers the download instead of the connect dialog. Once a
+  // link is online (or inside the app, or off-mac) the connect/status dialog
+  // remains the right destination.
+  const offerDownload = isMacDesktopBrowser() && !isDesktopApp && !link.online;
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -172,11 +185,17 @@ export function NoAiProviderEmptyState({
         ) : (
           <button
             type="button"
-            onClick={() => setDesktopDialogOpen(true)}
+            onClick={() =>
+              offerDownload
+                ? setDownloadDialogOpen(true)
+                : setDesktopDialogOpen(true)
+            }
             aria-label={
-              link.online
-                ? t("chat.noAiProviderEmptyState.desktopLinkedLabel")
-                : t("chat.noAiProviderEmptyState.connectDesktopLabel")
+              offerDownload
+                ? t("downloadApp.openLabel")
+                : link.online
+                  ? t("chat.noAiProviderEmptyState.desktopLinkedLabel")
+                  : t("chat.noAiProviderEmptyState.connectDesktopLabel")
             }
             className={cn(
               badgeClass,
@@ -252,6 +271,11 @@ export function NoAiProviderEmptyState({
       <ConnectDesktopDialog
         open={desktopDialogOpen}
         onOpenChange={setDesktopDialogOpen}
+      />
+
+      <DownloadAppDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
       />
     </div>
   );

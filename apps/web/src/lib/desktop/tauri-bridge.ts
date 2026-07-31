@@ -135,7 +135,7 @@ export async function performAuthLogout(): Promise<AuthResult> {
  * afterward (see `use-desktop-auth.ts`'s `completeSession`), matching the
  * contract's "(5) after bridge success auth_status flips signedIn" design.
  * Only call this after a successful `submitEmailPassword`/OTP submit
- * through the shared auth form — see `sign-in-screen.tsx` /
+ * through the shared auth form — see `use-desktop-auth-form-defaults.ts` /
  * `auth-actions.ts`.
  */
 export async function performAuthCompleteSession(): Promise<void> {

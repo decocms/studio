@@ -44,6 +44,11 @@ import { track } from "@/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/lib/query-persist";
 import { usePreferences, type ThemeMode } from "@/hooks/use-preferences.ts";
 import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app.ts";
+import {
+  DownloadAppDialog,
+  isMacDesktopBrowser,
+} from "@/components/download-app-dialog";
 import { toast } from "@deco/ui/components/sonner.js";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -345,9 +350,9 @@ function AccountPopoverContent({
 export function AccountPopover() {
   const t = useT();
   const { data: session } = authClient.useSession();
-  // Org context is still read for the "Add to Home Screen" (per-org install) and
-  // Preferences deep-links — but org *switching* now lives in the toolbar
-  // breadcrumb, so this popover is account-only.
+  // Org context is still read for the "Connect to Agents" and Preferences
+  // deep-links — but org *switching* now lives in the toolbar breadcrumb, so
+  // this popover is account-only.
   const { org: currentOrg } = useProjectContext();
   const navigate = useNavigate();
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
@@ -355,8 +360,10 @@ export function AccountPopover() {
   const [preferences, setPreferences] = usePreferences();
   const isMobile = useIsMobile();
   const { isAdmin: isDeploymentAdmin } = useDeploymentAdmin();
+  const isDesktopApp = useIsDesktopApp();
 
   const [open, setOpen] = useState(false);
+  const [downloadAppOpen, setDownloadAppOpen] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
@@ -378,23 +385,8 @@ export function AccountPopover() {
         });
       },
     },
-    // Per-org install: opens the org install page, which swaps to an
-    // org-branded manifest so installing produces a home-screen app for this
-    // org. (Studio itself installs via the browser's native "Add to Home
-    // Screen".) Only shown while inside an org.
     ...(currentOrg
       ? [
-          {
-            key: "install-app",
-            label: t("common.accountPopover.addToHomeScreen"),
-            icon: <Download01 size={16} />,
-            onClick: () => {
-              navigate({
-                to: "/$org/install",
-                params: { org: currentOrg.slug },
-              });
-            },
-          } satisfies MenuItem,
           // Connect this org's unified MCP to Claude (Code/Desktop) and
           // other MCP clients. Always available inside an org so it's easy
           // to find from anywhere.
@@ -408,6 +400,19 @@ export function AccountPopover() {
                 params: { org: currentOrg.slug },
               });
             },
+          } satisfies MenuItem,
+        ]
+      : []),
+    // Same gate as the other DownloadAppDialog triggers: the terminal
+    // installer only works on Mac desktop browsers, and is pointless
+    // inside the desktop app itself.
+    ...(isMacDesktopBrowser() && !isDesktopApp
+      ? [
+          {
+            key: "install-on-mac",
+            label: t("downloadApp.installOnMac"),
+            icon: <Download01 size={16} />,
+            onClick: () => setDownloadAppOpen(true),
           } satisfies MenuItem,
         ]
       : []),
@@ -599,6 +604,10 @@ export function AccountPopover() {
           </PopoverContent>
         </Popover>
       )}
+      <DownloadAppDialog
+        open={downloadAppOpen}
+        onOpenChange={setDownloadAppOpen}
+      />
     </>
   );
 }

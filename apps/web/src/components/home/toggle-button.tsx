@@ -18,6 +18,7 @@ export function ToggleButton({
       onClick={onClick}
       disabled={submitting}
       aria-label={label}
+      aria-pressed={isPinned}
       title={label}
       className={cn(
         "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-xs transition-colors disabled:opacity-50 disabled:cursor-progress",

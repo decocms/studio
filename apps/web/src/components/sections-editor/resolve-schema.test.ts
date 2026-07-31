@@ -1592,3 +1592,146 @@ describe("inferSchemaFromValue – form from saved props", () => {
     expect(inferSchemaFromValue({ __resolveType: "x" })).toBeNull();
   });
 });
+
+describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
+  // The real deco shape (verified against a live /live/_meta): @deco/deco wraps
+  // the block config as
+  //   { type:object, allOf:[{$ref:Props}], properties:{__resolveType}, required:[__resolveType] }
+  // where `Props` is a `$ref` ALIAS ("…@Props" → "…@A|B|C") to the actual
+  // `{ anyOf: [<branch $refs>] }` def. The discriminant `segment` is a string
+  // `const` marked `@hide true` (emitted as the string "true"). Only the last
+  // branch adds a visible `months` field.
+  const rt = "vtex/matchers/userSegment.ts";
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: { matchers: { [rt]: { $ref: "#/definitions/Wrapper" } } },
+    },
+    schema: {
+      definitions: {
+        Wrapper: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/Props" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [rt], default: rt },
+          },
+        },
+        // `@Props` is a bare `$ref` alias to the union def — the layer that
+        // broke the first attempt (resolving one `$ref` level stopped here).
+        Props: { $ref: "#/definitions/Union", title: "…@Props" },
+        Union: {
+          // deco names an anonymous union def after its branches — this must
+          // NOT leak in as the field label.
+          title:
+            "AnonymousWithoutCart|AnonymousWithCart|LoggedIn|LoggedInWithRecentOrders",
+          anyOf: [
+            { $ref: "#/definitions/AnonymousWithoutCart" },
+            { $ref: "#/definitions/LoggedIn" },
+            { $ref: "#/definitions/LoggedInWithRecentOrders" },
+          ],
+        },
+        AnonymousWithoutCart: {
+          type: "object",
+          title: "Anonymous without cart",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "anonymous-without-cart",
+              default: "anonymous-without-cart",
+              hide: "true",
+            },
+          },
+        },
+        LoggedIn: {
+          type: "object",
+          title: "Logged in",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "logged-in",
+              default: "logged-in",
+              hide: "true",
+            },
+          },
+        },
+        LoggedInWithRecentOrders: {
+          type: "object",
+          title: "Logged in with recent orders",
+          required: ["segment"],
+          properties: {
+            segment: {
+              type: "string",
+              const: "logged-in-with-recent-orders",
+              default: "logged-in-with-recent-orders",
+              hide: "true",
+            },
+            months: { type: "number", title: "Months", default: 3 },
+          },
+        },
+      },
+    },
+  };
+
+  test("renders a branch selector titled by each interface", () => {
+    const resolved = resolveSchema(rt, meta);
+    expect(resolved?.type).toBe("inline-union");
+    expect(resolved?.properties).toBeUndefined();
+    expect(resolved?.inlineUnionBranches?.map((b) => b.title)).toEqual([
+      "Anonymous without cart",
+      "Logged in",
+      "Logged in with recent orders",
+    ]);
+    // The machine-generated union name must not leak in as the field label.
+    expect(resolved?.title).toBeUndefined();
+  });
+
+  test("carries __resolveType + segment as discriminators so both survive selection", () => {
+    const branches = resolveSchema(rt, meta)?.inlineUnionBranches;
+    expect(branches?.[0]?.discriminators).toEqual({
+      segment: "anonymous-without-cart",
+      __resolveType: rt,
+    });
+    expect(branches?.[2]?.discriminators).toEqual({
+      segment: "logged-in-with-recent-orders",
+      __resolveType: rt,
+    });
+    // `months` stays on its own branch, not merged onto every option.
+    expect(branches?.[2]?.schema?.properties?.months?.type).toBe("number");
+    expect(branches?.[1]?.schema?.properties?.months).toBeUndefined();
+  });
+
+  test("keeps a human-authored @title on the union (only machine names are dropped)", () => {
+    const humanMeta = structuredClone(meta) as LiveMeta;
+    const defs = humanMeta.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    // spaces around the pipe → human copy, not a machine name
+    defs.Union!.title = "Q&A | Help";
+    expect(resolveSchema(rt, humanMeta)?.title).toBe("Q&A | Help");
+  });
+
+  test("does NOT collapse a multi-member allOf (base object + union) into the union", () => {
+    // A `{ allOf: [Base, Union] }` wrapper must fall through to the merge rather
+    // than early-returning the union alone and silently dropping Base's fields.
+    const multiMeta = structuredClone(meta) as LiveMeta;
+    const defs = multiMeta.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    defs.Base = {
+      type: "object",
+      properties: { country: { type: "string", title: "Country" } },
+    };
+    defs.Wrapper!.allOf = [
+      { $ref: "#/definitions/Base" },
+      { $ref: "#/definitions/Props" },
+    ];
+    const resolved = resolveSchema(rt, multiMeta);
+    expect(resolved?.type).toBe("object");
+    expect(resolved?.properties?.country?.title).toBe("Country");
+    expect(resolved?.inlineUnionBranches).toBeUndefined();
+  });
+});

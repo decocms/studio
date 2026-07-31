@@ -60,7 +60,6 @@ function ThoughtSummaryShell({
   detail,
   state,
   detailVariant = "prose",
-  latency,
   trailing,
 }: {
   icon: ReactNode;
@@ -69,7 +68,6 @@ function ThoughtSummaryShell({
   detail?: string | null;
   state: "loading" | "error" | "idle";
   detailVariant?: "code" | "prose";
-  latency?: number;
   trailing?: ReactNode;
 }) {
   return (
@@ -80,7 +78,6 @@ function ThoughtSummaryShell({
       detail={detail}
       state={state}
       detailVariant={detailVariant}
-      latency={latency}
       trailing={trailing}
     />
   );
@@ -222,9 +219,6 @@ export function ThoughtSummary({
   const fullText = parts.map((p) => p.text ?? "").join("\n\n");
   const detail = !allPartsRedacted && fullText.trim() ? fullText : null;
 
-  const latency =
-    !isStreaming && duration != null ? duration / 1000 : undefined;
-
   return (
     <ThoughtSummaryShell
       icon={
@@ -241,7 +235,6 @@ export function ThoughtSummary({
       detail={detail}
       state={isStreaming ? "loading" : "idle"}
       detailVariant="prose"
-      latency={latency}
     />
   );
 }

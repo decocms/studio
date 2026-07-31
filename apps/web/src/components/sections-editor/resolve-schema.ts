@@ -1066,6 +1066,78 @@ export function resolveSchema(
     };
   };
 
+  // deco wraps a block's config as
+  //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
+  //     required:["__resolveType"] }
+  // (see @deco/deco engine/schema builder.ts). When `<Props>` is itself a
+  // discriminated / plain-data union (e.g. the VTEX `userSegment` matcher:
+  // AnonymousWithoutCart | … | LoggedInWithRecentOrders), `collectProps` would
+  // flatten every branch into a single object — dropping the variant selector
+  // and collapsing the hidden discriminant so only a stray field survives.
+  // Instead render the union as a branch selector (like the legacy admin),
+  // carrying the block's `__resolveType` as a constant discriminator on every
+  // branch so it is preserved when the editor picks a branch.
+  const ownProps = (schemaRoot.properties ?? {}) as Record<string, RawSchema>;
+  const onlyPlumbingProps = Object.keys(ownProps).every((k) =>
+    k.startsWith("__"),
+  );
+  // Restrict to deco's single-member wrapper (`allOf:[{$ref:Props}]`). A
+  // multi-member `allOf` (base object + union) must NOT early-return the union
+  // alone — that would silently drop the base object's fields; let it fall
+  // through to the merge instead.
+  if (
+    Array.isArray(schemaRoot.allOf) &&
+    schemaRoot.allOf.length === 1 &&
+    onlyPlumbingProps
+  ) {
+    const rtProp = ownProps.__resolveType as RawSchema | undefined;
+    const resolveTypeConst =
+      Array.isArray(rtProp?.enum) && typeof rtProp.enum[0] === "string"
+        ? (rtProp.enum[0] as string)
+        : typeof rtProp?.const === "string"
+          ? rtProp.const
+          : typeof rtProp?.default === "string"
+            ? rtProp.default
+            : undefined;
+    for (const part of schemaRoot.allOf as RawSchema[]) {
+      // deco emits the union `Props` as a `$ref` alias to the real
+      // `{ anyOf: [...] }` def (`…@Props` → `…@A|B|C`), so follow the alias
+      // chain — resolving a single `$ref` level would stop at the bare alias.
+      const def = unwrapRefAliases(part);
+      const isChoiceUnion =
+        Array.isArray(def.anyOf) || Array.isArray(def.oneOf);
+      // A choice union with no own object properties — a plain "A | B | C".
+      // (`allOf` intersections and base-object-plus-extension shapes fall
+      // through to the normal merge below.)
+      if (!isChoiceUnion || def.properties) continue;
+      const built = buildProperty(def, 0);
+      if (built.type === "inline-union" && built.inlineUnionBranches) {
+        // deco names an anonymous union def after its branches
+        // ("A|B|C" / a jsdelivr URL "…@Props"). That machine name leaks in as
+        // the field label — drop it unless the dev gave the type a real @title.
+        // Only treat as machine-generated a URL or pipe-joined identifiers with
+        // no spaces, so a human title like "Q&A | Help" is kept.
+        const t = built.title;
+        const machineTitle =
+          typeof t === "string" &&
+          (t.includes("://") || /^[^\s|]+(\|[^\s|]+)+$/.test(t));
+        return {
+          ...built,
+          title: machineTitle ? undefined : built.title,
+          inlineUnionBranches: resolveTypeConst
+            ? built.inlineUnionBranches.map((branch) => ({
+                ...branch,
+                discriminators: {
+                  ...(branch.discriminators ?? {}),
+                  __resolveType: resolveTypeConst,
+                },
+              }))
+            : built.inlineUnionBranches,
+        };
+      }
+    }
+  }
+
   // Collect top-level properties and build typed map
   const topRaw = collectProps(schemaRoot);
   const properties: Record<string, SchemaProperty> = {};

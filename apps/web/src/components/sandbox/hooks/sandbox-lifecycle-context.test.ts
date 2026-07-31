@@ -118,8 +118,11 @@ describe("shouldAutoStart", () => {
     expect(shouldAutoStart({ ...base, userId: null })).toBe(false);
   });
 
-  test("no branch → true (server generates branch on SANDBOX_START)", () => {
-    expect(shouldAutoStart({ ...base, branch: null })).toBe(true);
+  // Inverted from "no branch → true": letting the server mint the branch here
+  // raced COLLECTION_THREADS_CREATE's own mint and leaked an orphan sandbox
+  // (see shouldAutoStart). Only the user-driven start() may go branchless.
+  test("no branch → false (never let SANDBOX_START mint a branch)", () => {
+    expect(shouldAutoStart({ ...base, branch: null })).toBe(false);
   });
 
   test("vmEntry already present → false", () => {
