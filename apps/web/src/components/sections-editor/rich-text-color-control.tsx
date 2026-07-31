@@ -43,7 +43,16 @@ export function RichTextColorControl({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
-  const [custom, setCustom] = useState("#000000");
+  const [custom, setCustom] = useState(currentColor ?? "#000000");
+  // Resync the custom swatch to the actually-applied color whenever the
+  // popover opens, so canceling the native color dialog without picking a
+  // new value re-applies the same color instead of clobbering it with a
+  // stale "custom" state from a previous session (e.g. a preset pick).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setCustom(currentColor ?? "#000000");
+  }
 
   const applyColor = (color: string) => {
     editor.chain().focus().setColor(color).run();
