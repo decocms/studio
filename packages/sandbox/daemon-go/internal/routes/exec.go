@@ -2,8 +2,6 @@ package routes
 
 import (
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
@@ -25,18 +23,10 @@ type ExecDeps struct {
 
 func Exec(deps ExecDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		idx := strings.Index(r.URL.Path, "/exec/")
-		rawName := ""
-		if idx >= 0 {
-			rawName = r.URL.Path[idx+len("/exec/"):]
-		}
-		if rawName == "" {
+		// The router unescapes the {name} wildcard for us.
+		name := r.PathValue("name")
+		if name == "" {
 			httpx.Error(w, 400, "missing script name")
-			return
-		}
-		name, err := url.PathUnescape(rawName)
-		if err != nil {
-			httpx.Error(w, 400, "invalid script name")
 			return
 		}
 

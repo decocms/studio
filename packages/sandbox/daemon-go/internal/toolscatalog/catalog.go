@@ -71,12 +71,7 @@ func CatalogFiles(tools []Tool) ([]File, error) {
 	used := map[string]bool{}
 	out := make([]File, 0, len(tools))
 	for _, tool := range tools {
-		body := catalogEntry{
-			Name:         tool.Name,
-			Description:  tool.Description,
-			InputSchema:  tool.InputSchema,
-			OutputSchema: tool.OutputSchema,
-		}
+		body := catalogEntry(tool)
 		if len(body.InputSchema) == 0 {
 			body.InputSchema = json.RawMessage(`{"type":"object"}`)
 		}

@@ -47,8 +47,7 @@ func TestAssertFailsClosed(t *testing.T) {
 
 // A listed host must not be able to bounce the daemon onto an unlisted one.
 func TestClientRefusesRedirectToUnlistedHost(t *testing.T) {
-	var target *httptest.Server
-	target = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusFound)
 	}))
 	defer target.Close()

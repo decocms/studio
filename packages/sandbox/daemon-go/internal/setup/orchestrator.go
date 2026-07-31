@@ -148,13 +148,10 @@ func (o *Orchestrator) enqueue(step Step) {
 			return
 		}
 	}
-	kept := o.queue[:0]
-	for _, q := range o.queue {
-		if stepRank[q] >= rank {
-			kept = append(kept, q)
-		}
-	}
-	o.queue = append(kept, step)
+	// Nothing queued outranks this step (the loop above returned if it did), and
+	// a higher-rank step subsumes every lower one — runStep(clone) runs
+	// clone→install→start. So the queue never holds more than one step.
+	o.queue = append(o.queue[:0], step)
 	shouldDrain := !o.running
 	if shouldDrain {
 		o.running = true

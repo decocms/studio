@@ -54,7 +54,7 @@ func serveFakeRunner(mode string) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
 		if token == "" || r.Header.Get("Authorization") != "Bearer "+token {
-			http.Error(w, `{"error":"unauthorized"}`, 401)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 		var body struct {

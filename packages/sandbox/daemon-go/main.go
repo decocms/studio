@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +30,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/routes"
 	"github.com/decocms/studio/sandbox-daemon/internal/setup"
 	"github.com/decocms/studio/sandbox-daemon/internal/toolscatalog"
+	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
 
 const (
@@ -47,19 +47,15 @@ func randomUUID() string {
 	return fmt.Sprintf("%s-%s-%s-%s-%s", s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
 }
 
-// The workspace-touching routes, and the reason they are one map: they are also
-// the set that resolves relative `org/...` paths, so the org-fs link hook and
-// the handler lookup must never drift apart.
-var fsRoutes = map[string]string{
-	"/read": "read", "/write": "write", "/unlink": "unlink", "/mkdir": "mkdir",
-	"/rename": "rename", "/edit": "edit", "/grep": "grep", "/glob": "glob",
-	"/write_from_url": "write_from_url", "/upload_to_url": "upload_to_url",
-	"/bash": "bash",
-}
+var sandboxPrefixes = []string{sandboxPrefix, legacySandboxPrefix}
 
-func isFsRoute(vmPath string) bool {
-	_, ok := fsRoutes[vmPath]
-	return ok
+func isSandboxPath(pathname string) bool {
+	for _, p := range sandboxPrefixes {
+		if pathname == p || strings.HasPrefix(pathname, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 type daemon struct {
@@ -96,7 +92,23 @@ type daemon struct {
 
 	shuttingDown bool
 
-	handlers map[string]http.HandlerFunc
+	// treeLock serializes every mutation of the shared working tree. Shared
+	// sandboxes put every org member's writes through this one daemon.
+	treeLock worktree.Lock
+
+	health http.HandlerFunc
+	mux    *http.ServeMux
+}
+
+// sandboxHandlers is the daemon API's leaf handlers, built once and mounted
+// under each prefix by registerSandboxRoutes.
+type sandboxHandlers struct {
+	events, scripts                       http.HandlerFunc
+	configRead, configUpdate, orgfsConfig http.HandlerFunc
+	tasksList, tasksGet, tasksDelete      http.HandlerFunc
+	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
+	toolsSync, exec                       http.HandlerFunc
+	fs, git, setup                        map[string]http.HandlerFunc
 }
 
 func (d *daemon) getToken() string {
@@ -213,188 +225,173 @@ func (d *daemon) onProbeChange(s probe.State) {
 	}
 }
 
-func matchSandboxPrefix(pathname string) (prefix, suffix string, ok bool) {
-	for _, p := range []string{sandboxPrefix, legacySandboxPrefix} {
-		if pathname == p || pathname == p+"/" {
-			return p, "/", true
-		}
-		if strings.HasPrefix(pathname, p+"/") {
-			return p, pathname[len(p):], true
-		}
-	}
-	return "", "", false
-}
-
-var (
-	tasksStreamRe = regexp.MustCompile(`^/tasks/[^/]+/stream$`)
-	tasksKillRe   = regexp.MustCompile(`^/tasks/[^/]+/kill$`)
-	tasksIdRe     = regexp.MustCompile(`^/tasks/[^/]+$`)
-)
-
 var corsHeaders = map[string]string{
 	"Access-Control-Allow-Origin":  "*",
 	"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
 	"Access-Control-Allow-Headers": "Content-Type, Accept, Cache-Control, Authorization",
 }
 
-func (d *daemon) vmRoute(w http.ResponseWriter, r *http.Request, prefix, vmPath string) {
-	method := r.Method
+func corsPreflight(w http.ResponseWriter, _ *http.Request) {
+	h := w.Header()
+	for k, v := range corsHeaders {
+		h.Set(k, v)
+	}
+	w.WriteHeader(204)
+}
 
-	if method == "GET" && vmPath == "/idle" {
-		d.handlers["idle"](w, r)
-		return
-	}
-	if method == "GET" && vmPath == "/events" {
-		d.handlers["events"](w, r)
-		return
-	}
-	if method == "GET" && vmPath == "/scripts" {
-		d.handlers["scripts"](w, r)
-		return
-	}
-	if method == "OPTIONS" {
-		h := w.Header()
-		for k, v := range corsHeaders {
-			h.Set(k, v)
+// authed gates a handler on the daemon token. Also wraps the catch-all, so an
+// unauthenticated caller cannot enumerate routes.
+func (d *daemon) authed(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !auth.TokenOK(r, d.getToken()) {
+			httpx.Error(w, 401, "unauthorized")
+			return
 		}
-		w.WriteHeader(204)
-		return
+		fn(w, r)
 	}
+}
 
-	if method == "POST" && vmPath == "/dispatch" {
-		d.dispatchReg.HandleDispatch(w, r, d.dispatchDeps)
-		return
-	}
-	if method == "DELETE" && strings.HasPrefix(vmPath, "/runs/") {
-		d.dispatchReg.HandleCancel(w, r, d.getToken)
-		return
-	}
-
-	if !auth.TokenOK(r, d.getToken()) {
-		httpx.Error(w, 401, "unauthorized")
-		return
-	}
-
-	// Hosted harnesses drive the sandbox through fs/exec without a /dispatch
-	// envelope, so the org links must be ensured here too, keyed on x-thread-id.
-	// Only these routes: gating /orgfs-config would deadlock provisioning on
-	// mounts that appear only after that POST, and gating /setup/clone would
-	// create `repo/org` ahead of the clone.
-	if method == "POST" && (isFsRoute(vmPath) || strings.HasPrefix(vmPath, "/exec/")) {
+// linked ensures this run's org-fs links before the handler runs. Hosted
+// harnesses drive the sandbox through fs/exec without a /dispatch envelope, so
+// the links must be ensured here too, keyed on x-thread-id. Applied to the fs
+// and exec routes only: gating /orgfs-config would deadlock provisioning on
+// mounts that appear only after that POST, and gating /setup/clone would create
+// `repo/org` ahead of the clone.
+func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
+	return d.authed(func(w http.ResponseWriter, r *http.Request) {
 		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
 			d.orgFsLinks.RepointForRun(threadId)
 		} else {
 			d.orgFsLinks.EnsureRepoLink()
 		}
+		fn(w, r)
+	})
+}
+
+// The workspace-touching routes. One list because it is also the set that
+// resolves relative `org/...` paths: registration and the org-fs link hook are
+// the same loop below, so they cannot drift apart.
+var fsRouteNames = []string{
+	"read", "write", "unlink", "mkdir", "rename", "edit", "grep", "glob",
+	"write_from_url", "upload_to_url", "bash",
+}
+
+// The subset of the above that mutates the tree, and so runs under the worktree
+// lock. `bash` mutates too but cannot be held: it is long-running and taking the
+// lock around it would stall every other writer for the length of a command —
+// so a bash write can still interleave with a publish. Git routes that only read
+// (status, diff) are likewise unguarded; the UI polls them.
+var mutatingFsRoutes = map[string]bool{
+	"write": true, "edit": true, "unlink": true, "mkdir": true,
+	"rename": true, "write_from_url": true,
+}
+
+var mutatingGitRoutes = map[string]bool{
+	"publish": true, "discard": true, "rebase": true,
+}
+
+// treeGuarded serializes a handler against every other tree mutation.
+func (d *daemon) treeGuarded(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer d.treeLock.Acquire()()
+		fn(w, r)
+	}
+}
+
+// registerSandboxRoutes mounts the daemon's own API under one prefix. Called
+// once per prefix: /_sandbox is canonical, /_decopilot_vm is served for one
+// release window.
+func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandboxHandlers) {
+	// Unauthenticated: liveness, the event stream, script discovery, preflight.
+	mux.HandleFunc("GET "+pre+"/idle", routes.Idle())
+	mux.HandleFunc("GET "+pre+"/events", h.events)
+	mux.HandleFunc("GET "+pre+"/scripts", h.scripts)
+	mux.HandleFunc("OPTIONS "+pre, corsPreflight)
+	mux.HandleFunc("OPTIONS "+pre+"/", corsPreflight)
+
+	// Dispatch checks the token itself, so it can answer over SSE.
+	mux.HandleFunc("POST "+pre+"/dispatch", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleDispatch(w, r, d.dispatchDeps)
+	})
+	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
+		d.dispatchReg.HandleCancel(w, r, d.getToken)
+	})
+
+	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
+	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
+	mux.HandleFunc("POST "+pre+"/config", d.authed(h.configUpdate))
+	mux.HandleFunc("POST "+pre+"/orgfs-config", d.authed(h.orgfsConfig))
+
+	mux.HandleFunc("GET "+pre+"/tasks", d.authed(h.tasksList))
+	mux.HandleFunc("POST "+pre+"/tasks/kill-all", d.authed(h.tasksKillAll))
+	mux.HandleFunc("GET "+pre+"/tasks/{id}", d.authed(h.tasksGet))
+	mux.HandleFunc("DELETE "+pre+"/tasks/{id}", d.authed(h.tasksDelete))
+	mux.HandleFunc("GET "+pre+"/tasks/{id}/stream", d.authed(h.tasksStream))
+	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
+
+	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
+	for _, step := range []string{"clone", "install", "start"} {
+		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
 
-	if vmPath == "/config" {
-		switch method {
-		case "GET":
-			d.handlers["config-read"](w, r)
-		case "PUT", "POST":
-			d.handlers["config-update"](w, r)
-		default:
-			httpx.Error(w, 404, fmt.Sprintf("Not found: %s/config", prefix))
+	for name, fn := range h.git {
+		if mutatingGitRoutes[name] {
+			fn = d.treeGuarded(fn)
 		}
-		return
-	}
-	if method == "POST" && vmPath == "/orgfs-config" {
-		d.handlers["orgfs-config"](w, r)
-		return
-	}
-	if strings.HasPrefix(vmPath, "/tasks") {
-		switch {
-		case method == "GET" && vmPath == "/tasks":
-			d.handlers["tasks-list"](w, r)
-		case method == "POST" && vmPath == "/tasks/kill-all":
-			d.handlers["tasks-kill-all"](w, r)
-		case method == "GET" && tasksStreamRe.MatchString(vmPath):
-			d.handlers["tasks-stream"](w, r)
-		case method == "POST" && tasksKillRe.MatchString(vmPath):
-			d.handlers["tasks-kill"](w, r)
-		case method == "DELETE" && tasksIdRe.MatchString(vmPath):
-			d.handlers["tasks-delete"](w, r)
-		case method == "GET" && tasksIdRe.MatchString(vmPath):
-			d.handlers["tasks-get"](w, r)
-		default:
-			httpx.Error(w, 404, fmt.Sprintf("Not found: %s%s", prefix, vmPath))
-		}
-		return
-	}
-	if method == "POST" {
-		switch vmPath {
-		case "/tools/sync":
-			d.handlers["tools-sync"](w, r)
-			return
-		case "/setup/clone":
-			d.handlers["setup-clone"](w, r)
-			return
-		case "/setup/install":
-			d.handlers["setup-install"](w, r)
-			return
-		case "/setup/start":
-			d.handlers["setup-start"](w, r)
-			return
-		}
-	}
-	gitRoutes := map[string]string{
-		"/git/status": "git-status", "/git/diff": "git-diff", "/git/publish": "git-publish",
-		"/git/discard": "git-discard", "/git/rebase": "git-rebase",
-	}
-	if name, ok := gitRoutes[vmPath]; ok && (method == "GET" || method == "POST") {
-		d.handlers[name](w, r)
-		return
-	}
-	if name, ok := fsRoutes[vmPath]; ok && method == "POST" {
-		d.handlers[name](w, r)
-		return
-	}
-	if method == "POST" && strings.HasPrefix(vmPath, "/exec/") {
-		if strings.HasSuffix(vmPath, "/kill") {
-			rawName := vmPath[len("/exec/") : len(vmPath)-len("/kill")]
-			name := rawName
-			killed := d.tasks.KillByLogName(name, true, syscall.SIGTERM)
-			httpx.JSON(w, 200, map[string]any{"killed": killed})
-			return
-		}
-		d.handlers["exec"](w, r)
-		return
+		mux.HandleFunc("GET "+pre+"/git/"+name, d.authed(fn))
+		mux.HandleFunc("POST "+pre+"/git/"+name, d.authed(fn))
 	}
 
-	httpx.Error(w, 404, fmt.Sprintf("Not found: %s%s", prefix, vmPath))
+	for _, name := range fsRouteNames {
+		fn := h.fs[name]
+		if mutatingFsRoutes[name] {
+			fn = d.treeGuarded(fn)
+		}
+		mux.HandleFunc("POST "+pre+"/"+name, d.linked(fn))
+	}
+
+	mux.HandleFunc("POST "+pre+"/exec/{name}", d.linked(h.exec))
+	mux.HandleFunc("POST "+pre+"/exec/{name}/kill", d.linked(func(w http.ResponseWriter, r *http.Request) {
+		killed := d.tasks.KillByLogName(r.PathValue("name"), true, syscall.SIGTERM)
+		httpx.JSON(w, 200, map[string]any{"killed": killed})
+	}))
+
+	notFound := d.authed(func(w http.ResponseWriter, r *http.Request) {
+		httpx.Error(w, 404, "Not found: "+r.URL.Path)
+	})
+	mux.HandleFunc(pre, notFound)
+	mux.HandleFunc(pre+"/", notFound)
 }
 
 func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
-	method := r.Method
 
 	if p != "/health" && p != sandboxPrefix+"/idle" && p != legacySandboxPrefix+"/idle" {
 		activity.Bump()
 		d.mu.Lock()
 		if !d.firstWorkLogged {
 			d.firstWorkLogged = true
-			slog.Info("daemon first request", "boot_id", d.bootId, "method", method, "path", p)
+			slog.Info("daemon first request", "boot_id", d.bootId, "method", r.Method, "path", p)
 		}
 		d.mu.Unlock()
 	}
 
-	prefix, suffix, isSandbox := matchSandboxPrefix(p)
-
-	if proxy.IsWebSocketUpgrade(r) && !isSandbox {
+	if proxy.IsWebSocketUpgrade(r) && !isSandboxPath(p) {
 		proxy.ServeWs(w, r, proxy.WsDeps{
 			GetDevPort:   d.getDevPort,
 			OnClientData: func() { activity.Bump() },
 		})
 		return
 	}
-
-	if method == "GET" && p == "/health" {
-		d.handlers["health"](w, r)
+	if r.Method == "GET" && p == "/health" {
+		d.health(w, r)
 		return
 	}
-	if isSandbox {
-		d.vmRoute(w, r, prefix, suffix)
+	// Only the daemon's own API goes through the mux. The dev-server proxy stays
+	// off it: ServeMux cleans and 301-redirects paths, which is right for our
+	// routes and wrong for whatever the tenant's server serves.
+	if isSandboxPath(p) {
+		d.mux.ServeHTTP(w, r)
 		return
 	}
 	d.proxyHandler.ServeHTTP(w, r)
@@ -417,6 +414,7 @@ func (d *daemon) shutdown() {
 
 	cfg := d.store.Read()
 	if cfg != nil && cfg.Branch() != "" {
+		release := d.treeLock.Acquire()
 		err := gitx.Publish(gitx.PublishDeps{
 			RepoDir:     d.repoDir,
 			GetCloneUrl: func() string { return cfg.CloneUrl() },
@@ -425,6 +423,7 @@ func (d *daemon) shutdown() {
 			// shutdown sync and lose the user's other valid work.
 			OnInvalidBlock: gitx.InvalidBlockSkip,
 		}, "chore(daemon): sync all local changes to remote on shutdown")
+		release()
 		if err != nil {
 			slog.Error("shutdown publish failed", "err", err)
 		}
@@ -453,9 +452,11 @@ func main() {
 		os.Setenv("DAEMON_BOOT_ID", bootId)
 	}
 
-	// Unconditional, first thing after the logger exists: while two daemons
-	// ship in the same image, every pod log has to name which one ran or the
-	// canary's panels are a guess. The TS daemon emits the same `impl=` key.
+	// Unconditional, first thing after the logger exists: each daemon ships in
+	// its own image, so this line is what ties a pod's logs to the
+	// implementation that produced them — the canary's panels split on it, and
+	// CI asserts each image logs the impl it claims. The TS daemon emits the
+	// same `impl=` key.
 	slog.Info("daemon boot", "impl", "go", "boot_id", bootId)
 
 	appRoot := os.Getenv("WORKDIR")
@@ -654,15 +655,15 @@ func main() {
 	}
 	isReady := func() bool { return d.lifecycle.Current().Phase == events.PhaseRunning }
 
-	d.handlers = map[string]http.HandlerFunc{
-		"health": routes.Health(routes.HealthDeps{
-			DaemonBootId:    bootId,
-			GetReady:        isReady,
-			GetOrchestrator: getOrch,
-			GetConfigured:   func() bool { return d.store.Read() != nil },
-		}),
-		"idle": routes.Idle(),
-		"scripts": routes.Scripts(func() []string {
+	d.health = routes.Health(routes.HealthDeps{
+		DaemonBootId:    bootId,
+		GetReady:        isReady,
+		GetOrchestrator: getOrch,
+		GetConfigured:   func() bool { return d.store.Read() != nil },
+	})
+
+	h := sandboxHandlers{
+		scripts: routes.Scripts(func() []string {
 			if cached, ok := d.orchestrator.DiscoveredScripts(); ok {
 				return cached
 			}
@@ -678,7 +679,7 @@ func main() {
 			}
 			return proc.DiscoverScripts(cwd, cfg.PmName())
 		}),
-		"events": routes.EventsStream(routes.EventsDeps{
+		events: routes.EventsStream(routes.EventsDeps{
 			Broadcaster:          d.broadcaster,
 			GetLifecycle:         d.lifecycle.Current,
 			GetDiscoveredScripts: d.orchestrator.DiscoveredScripts,
@@ -686,7 +687,7 @@ func main() {
 			GetStatus:            d.getStatus,
 			GetBranchMeta:        d.branchStatus.GetLast,
 		}),
-		"config-read": routes.ConfigRead(routes.ConfigDeps{
+		configRead: routes.ConfigRead(routes.ConfigDeps{
 			DaemonBootId:    bootId,
 			Store:           d.store,
 			GetOrchestrator: getOrch,
@@ -694,37 +695,46 @@ func main() {
 			GetTasks:        func() []proc.Phase { return d.phases.Recent(20) },
 			RepoDir:         repoDir,
 		}),
-		"config-update": routes.ConfigUpdate(routes.ConfigDeps{
+		configUpdate: routes.ConfigUpdate(routes.ConfigDeps{
 			DaemonBootId:   bootId,
 			Store:          d.store,
 			SetDaemonToken: d.setToken,
 		}),
-		"orgfs-config": routes.OrgFsConfig(routes.OrgFsDeps{
+		orgfsConfig: routes.OrgFsConfig(routes.OrgFsDeps{
 			ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 		}),
-		"read":           routes.Read(fsDeps),
-		"write":          routes.Write(fsDeps),
-		"unlink":         routes.Unlink(fsDeps),
-		"mkdir":          routes.Mkdir(fsDeps),
-		"rename":         routes.Rename(fsDeps),
-		"edit":           routes.Edit(fsDeps),
-		"grep":           routes.Grep(fsDeps),
-		"glob":           routes.Glob(fsDeps),
-		"write_from_url": routes.WriteFromUrl(fsDeps),
-		"upload_to_url":  routes.UploadToUrl(fsDeps),
-		"bash":           routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
-		"git-status":     routes.GitStatus(gitDeps),
-		"git-diff":       routes.GitDiff(gitDeps),
-		"git-publish":    routes.GitPublish(gitDeps),
-		"git-discard":    routes.GitDiscard(gitDeps),
-		"git-rebase":     routes.GitRebase(gitDeps),
-		"tasks-list":     routes.TasksList(tasksDeps),
-		"tasks-get":      routes.TasksGet(tasksDeps),
-		"tasks-kill":     routes.TasksKill(tasksDeps),
-		"tasks-kill-all": routes.TasksKillAll(tasksDeps),
-		"tasks-delete":   routes.TasksDelete(tasksDeps),
-		"tasks-stream":   routes.TasksStream(tasksDeps),
-		"exec": routes.Exec(routes.ExecDeps{
+		fs: map[string]http.HandlerFunc{
+			"read":           routes.Read(fsDeps),
+			"write":          routes.Write(fsDeps),
+			"unlink":         routes.Unlink(fsDeps),
+			"mkdir":          routes.Mkdir(fsDeps),
+			"rename":         routes.Rename(fsDeps),
+			"edit":           routes.Edit(fsDeps),
+			"grep":           routes.Grep(fsDeps),
+			"glob":           routes.Glob(fsDeps),
+			"write_from_url": routes.WriteFromUrl(fsDeps),
+			"upload_to_url":  routes.UploadToUrl(fsDeps),
+			"bash":           routes.Bash(routes.BashDeps{RepoDir: repoDir, TaskManager: d.tasks}),
+		},
+		git: map[string]http.HandlerFunc{
+			"status":  routes.GitStatus(gitDeps),
+			"diff":    routes.GitDiff(gitDeps),
+			"publish": routes.GitPublish(gitDeps),
+			"discard": routes.GitDiscard(gitDeps),
+			"rebase":  routes.GitRebase(gitDeps),
+		},
+		setup: map[string]http.HandlerFunc{
+			"clone":   routes.Setup("clone", func(string) { d.orchestrator.ResumeFrom(setup.StepClone) }),
+			"install": routes.Setup("install", func(string) { d.orchestrator.ResumeFrom(setup.StepInstall) }),
+			"start":   routes.Setup("start", func(string) { d.orchestrator.ResumeFrom(setup.StepStart) }),
+		},
+		tasksList:    routes.TasksList(tasksDeps),
+		tasksGet:     routes.TasksGet(tasksDeps),
+		tasksKill:    routes.TasksKill(tasksDeps),
+		tasksKillAll: routes.TasksKillAll(tasksDeps),
+		tasksDelete:  routes.TasksDelete(tasksDeps),
+		tasksStream:  routes.TasksStream(tasksDeps),
+		exec: routes.Exec(routes.ExecDeps{
 			RepoDir:     repoDir,
 			Store:       d.store,
 			TaskManager: d.tasks,
@@ -732,10 +742,12 @@ func main() {
 			GetStatus:   d.getStatus,
 			SetStatus:   d.setStatus,
 		}),
-		"tools-sync":    routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
-		"setup-clone":   routes.Setup("clone", func(string) { d.orchestrator.ResumeFrom(setup.StepClone) }),
-		"setup-install": routes.Setup("install", func(string) { d.orchestrator.ResumeFrom(setup.StepInstall) }),
-		"setup-start":   routes.Setup("start", func(string) { d.orchestrator.ResumeFrom(setup.StepStart) }),
+		toolsSync: routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
+	}
+
+	d.mux = http.NewServeMux()
+	for _, pre := range sandboxPrefixes {
+		d.registerSandboxRoutes(d.mux, pre, h)
 	}
 
 	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {

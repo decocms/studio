@@ -14,21 +14,6 @@ type TasksDeps struct {
 	TaskManager *proc.TaskManager
 }
 
-func taskIdFrom(path, prefix, suffix string) string {
-	idx := strings.Index(path, prefix)
-	if idx < 0 {
-		return ""
-	}
-	id := path[idx+len(prefix):]
-	if suffix != "" && strings.HasSuffix(id, suffix) {
-		id = id[:len(id)-len(suffix)]
-	}
-	if id == "" || strings.Contains(id, "/") {
-		return ""
-	}
-	return id
-}
-
 func TasksList(deps TasksDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var statuses []string
@@ -45,7 +30,7 @@ func TasksList(deps TasksDeps) http.HandlerFunc {
 
 func TasksGet(deps TasksDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := taskIdFrom(r.URL.Path, "/tasks/", "")
+		id := r.PathValue("id")
 		if id == "" {
 			httpx.Error(w, 400, "missing task id")
 			return
@@ -75,7 +60,7 @@ func omitEmpty(s string) any {
 
 func TasksKill(deps TasksDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := taskIdFrom(r.URL.Path, "/tasks/", "/kill")
+		id := r.PathValue("id")
 		if id == "" {
 			httpx.Error(w, 400, "missing task id")
 			return
@@ -101,7 +86,7 @@ func TasksKillAll(deps TasksDeps) http.HandlerFunc {
 
 func TasksDelete(deps TasksDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := taskIdFrom(r.URL.Path, "/tasks/", "")
+		id := r.PathValue("id")
 		if id == "" {
 			httpx.Error(w, 400, "missing task id")
 			return
@@ -116,7 +101,7 @@ func TasksDelete(deps TasksDeps) http.HandlerFunc {
 
 func TasksStream(deps TasksDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := taskIdFrom(r.URL.Path, "/tasks/", "/stream")
+		id := r.PathValue("id")
 		if id == "" {
 			httpx.Error(w, 400, "missing task id")
 			return

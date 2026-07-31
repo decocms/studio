@@ -60,16 +60,13 @@ func resolveReadPath(appRoot, repoDir, userPath string) (string, bool) {
 	return paths.SafePath(appRoot, repoDir, userPath)
 }
 
+// sniffImageMediaType reports the media type only for the formats /read is
+// willing to return inline; anything else reads as text or binary.
 func sniffImageMediaType(probe []byte) string {
-	switch {
-	case len(probe) >= 3 && probe[0] == 0xff && probe[1] == 0xd8 && probe[2] == 0xff:
-		return "image/jpeg"
-	case len(probe) >= 8 && bytes.Equal(probe[:8], []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}):
-		return "image/png"
-	case len(probe) >= 6 && bytes.Equal(probe[:4], []byte{0x47, 0x49, 0x46, 0x38}):
-		return "image/gif"
-	case len(probe) >= 12 && bytes.Equal(probe[:4], []byte("RIFF")) && bytes.Equal(probe[8:12], []byte("WEBP")):
-		return "image/webp"
+	mediaType, _, _ := strings.Cut(http.DetectContentType(probe), ";")
+	switch mediaType {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return mediaType
 	}
 	return ""
 }
@@ -518,7 +515,6 @@ func Grep(deps FsDeps) http.HandlerFunc {
 			}
 			lines = append(lines, line)
 		}
-		_ = truncated
 		err = cmd.Wait()
 		code := 0
 		if err != nil {

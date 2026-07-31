@@ -2,6 +2,7 @@ package proc
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,10 +88,6 @@ type taskInternal struct {
 	result      TaskResult
 	intentional bool
 	timer       *time.Timer
-}
-
-type ChunkBroadcaster interface {
-	BroadcastChunk(source, data string, opts ...struct{ Tee bool })
 }
 
 type TaskManagerDeps struct {
@@ -260,7 +257,7 @@ func (m *TaskManager) startPipe(task *taskInternal) {
 	m.armTimeout(task)
 
 	var wg sync.WaitGroup
-	read := func(r interface{ Read([]byte) (int, error) }, stream string, ring *RingBuffer) {
+	read := func(r io.Reader, stream string, ring *RingBuffer) {
 		defer wg.Done()
 		buf := make([]byte, 8192)
 		for {
