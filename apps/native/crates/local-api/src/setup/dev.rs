@@ -105,11 +105,29 @@ use crate::config::get_str;
 /// (byte-parity with `diagnoseNoStartCommand`) and returns without spawning
 /// anything.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
+    // A Start-only resume (no-op config transition) skips Install, so a
+    // repository whose package manager was never configured arrives here
+    // undetected. Fill the absence from the checkout, and when that is what
+    // named the manager, run the skipped install before starting — the
+    // detected manager's dependencies were never fetched.
+    let had_pm = get_str(config, &["application", "packageManager", "name"])
+        .filter(|s| !s.is_empty())
+        .is_some();
+    let enriched = super::detect_runtime::ensure_package_manager(orch, config).await;
+    if !had_pm
+        && get_str(&enriched, &["application", "packageManager", "name"])
+            .filter(|s| !s.is_empty())
+            .is_some()
+        && !super::install::run(orch, &enriched).await
+    {
+        return;
+    }
+    let config = &enriched;
     let Some(pm) =
         get_str(config, &["application", "packageManager", "name"]).filter(|s| !s.is_empty())
     else {
         orch.transition_lifecycle(super::start_failed(
-            "no package manager configured — update the VM config to enable a dev server",
+            "no package manager configured and none detected in the repository — update the VM config to enable a dev server",
         ));
         return;
     };
@@ -819,6 +837,52 @@ mod tests {
         );
         assert!(msg.contains("build"));
         assert!(msg.contains("test"));
+    }
+
+    #[tokio::test]
+    async fn start_only_resume_detects_installs_then_diagnoses_the_missing_starter() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        // Detectable (package-lock -> npm) but with NO dev/start script: the
+        // Start-only path must detect, run the Install it skipped, and then
+        // fail with the missing-STARTER diagnostic — never the
+        // missing-package-manager one this change retires for detectable
+        // repos. No dev server spawns, so the test stays deterministic.
+        std::fs::write(repo.join("package.json"), r#"{"name":"x"}"#).unwrap();
+        std::fs::write(repo.join("package-lock.json"), "{}").unwrap();
+        let logs = Arc::new(crate::log_store::LogStore::new(dir.path().join("logs")));
+        let orch = SetupOrchestrator::new(
+            repo.clone(),
+            repo.clone(),
+            Arc::new(crate::config::ConfigStore::new()),
+            Arc::new(crate::tasks::TaskRegistry::new(logs)),
+            Arc::new(crate::events::Broadcaster::new()),
+        );
+        orch.config
+            .patch(serde_json::json!({
+                "git": { "repository": { "cloneUrl": "https://example.com/r.git" } }
+            }))
+            .unwrap();
+        let config = orch.current_config().unwrap();
+
+        run(&orch, &config).await;
+
+        let lifecycle = orch.lifecycle_snapshot();
+        assert_eq!(lifecycle["phase"], "start-failed", "{lifecycle:?}");
+        let error = lifecycle["error"].as_str().unwrap();
+        assert!(
+            !error.contains("no package manager configured"),
+            "a detectable repo must get past the package-manager gate: {error:?}"
+        );
+        assert_eq!(
+            get_str(
+                &orch.current_config().unwrap(),
+                &["application", "packageManager", "name"]
+            ),
+            Some("npm"),
+            "detection ran on the Start-only path"
+        );
     }
 
     #[test]

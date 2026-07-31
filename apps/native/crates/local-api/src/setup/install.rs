@@ -89,6 +89,10 @@ fn install_argv(pm: &str) -> Option<&'static [&'static str]> {
 /// itself exits non-zero, after transitioning `lifecycle` to
 /// `install-failed`.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
+    // A config that names no package manager may still be a detectable
+    // repository — the clone step just put its files on disk. Fill the
+    // absence before deciding to skip; see `setup/detect_runtime.rs`.
+    let config = &super::detect_runtime::ensure_package_manager(orch, config).await;
     let Some(pm) = crate::config::get_str(config, &["application", "packageManager", "name"])
         .filter(|s| !s.is_empty())
     else {
@@ -295,6 +299,36 @@ mod tests {
             Arc::new(TaskRegistry::new(logs)),
             Arc::new(Broadcaster::new()),
         )
+    }
+
+    #[tokio::test]
+    async fn a_detectable_repo_installs_without_a_configured_package_manager() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        // npm deliberately: it is the one detected manager whose binary the
+        // CI image (and any Node toolchain) reliably ships. An empty
+        // manifest keeps the real `npm install` offline and instant.
+        std::fs::write(repo.join("package.json"), "{}").unwrap();
+        std::fs::write(repo.join("package-lock.json"), "{}").unwrap();
+        let orch = test_orchestrator(repo.clone(), root.path());
+        orch.config
+            .patch(json!({ "git": { "repository": { "cloneUrl": "https://example.com/r.git" } } }))
+            .unwrap();
+        let config = orch.current_config().unwrap();
+
+        // The regression this whole module exists for: a fresh import ships
+        // no packageManager, and Install used to skip silently on it.
+        assert!(run(&orch, &config).await);
+
+        assert_eq!(
+            crate::config::get_str(
+                &orch.current_config().unwrap(),
+                &["application", "packageManager", "name"]
+            ),
+            Some("npm"),
+            "detection must land in the store the next step re-reads"
+        );
     }
 
     #[tokio::test]

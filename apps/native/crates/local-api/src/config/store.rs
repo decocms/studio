@@ -11,8 +11,9 @@
 //! Every OTHER family only ever calls the read-only accessors
 //! (`snapshot()`, `is_configured()`) — for `/health`'s `configured` field,
 //! the exec/scripts family's "409 when no package manager is configured
-//! yet" gate, and git's "409 not-ready" gate. Only `routes/config.rs` calls
-//! `patch()`.
+//! yet" gate, and git's "409 not-ready" gate. `patch()` has three callers:
+//! `routes/config.rs` (the wire), `SandboxManager::apply_config` (dispatch
+//! hints), and `setup/detect_runtime.rs` (workdir-detected workload).
 //!
 //! Byte-parity target: `packages/sandbox/daemon/config-store/` (`classify.ts`
 //! precedence, `merge.ts` deep-merge, `validate.ts` field validation,
