@@ -11,6 +11,10 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { getSettings } from "../../settings";
+import {
+  createNoRedirectFetch,
+  guardAgainstPrivateUrl,
+} from "../registry/discover-tools";
 import type {
   ConnectionParameters,
   HttpConnectionParameters,
@@ -107,6 +111,15 @@ async function fetchToolsFromHttpMCP(
     return null;
   }
 
+  // connection_url is user-supplied — without this guard a connection
+  // create/update call could reach a private/metadata address that the
+  // registry discovery flow already blocks for the same URL.
+  const guardError = await guardAgainstPrivateUrl(connection.connection_url);
+  if (guardError) {
+    console.error(`Blocked HTTP connection ${connection.id}: ${guardError}`);
+    return null;
+  }
+
   let client: Client | null = null;
 
   try {
@@ -127,7 +140,7 @@ async function fetchToolsFromHttpMCP(
 
     const transport = new StreamableHTTPClientTransport(
       new URL(connection.connection_url),
-      { requestInit: { headers } },
+      { requestInit: { headers }, fetch: createNoRedirectFetch() },
     );
 
     client = new Client(
@@ -192,6 +205,12 @@ async function fetchToolsFromSSEMCP(
     return null;
   }
 
+  const guardError = await guardAgainstPrivateUrl(connection.connection_url);
+  if (guardError) {
+    console.error(`Blocked SSE connection ${connection.id}: ${guardError}`);
+    return null;
+  }
+
   let client: Client | null = null;
 
   try {
@@ -211,7 +230,7 @@ async function fetchToolsFromSSEMCP(
 
     const transport = new SSEClientTransport(
       new URL(connection.connection_url),
-      { requestInit: { headers } },
+      { requestInit: { headers }, fetch: createNoRedirectFetch() },
     );
 
     client = new Client(
