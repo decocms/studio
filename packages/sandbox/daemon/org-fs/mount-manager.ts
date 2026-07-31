@@ -16,7 +16,7 @@
  * blocks mounts — desktop links are the target).
  */
 
-import { mkdirSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
 import { safePath } from "../paths";
@@ -195,7 +195,7 @@ export class MountManager {
         this.log(`skip ${m.volume}: mount path "${m.path}" escapes appRoot`);
         return;
       }
-      mkdirSync(mountPath, { recursive: true });
+      await mkdir(mountPath, { recursive: true });
 
       const client = new OrgFsClient({
         baseUrl: config.baseUrl,
