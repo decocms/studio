@@ -5,8 +5,6 @@ import {
   AlignLeft,
   AlignRight,
   Bold01,
-  Heading01,
-  Heading02,
   Italic01,
   List,
   Strikethrough01,
@@ -16,9 +14,20 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import { Label } from "@deco/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
+
+/** Heading levels the editor supports, in dropdown order. */
+const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 
 export function RichTextField({
   schema,
@@ -27,6 +36,7 @@ export function RichTextField({
   path,
   label,
 }: FieldProps) {
+  const t = useT();
   const strValue = typeof value === "string" ? value : "";
 
   const onChangeRef = useRef(onChange);
@@ -38,7 +48,7 @@ export function RichTextField({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
+        heading: { levels: [...HEADING_LEVELS] },
         // Clear the extension's default target/rel so each link's own
         // `target` attribute controls same-tab vs new-tab (see link control).
         link: { HTMLAttributes: {} },
@@ -71,8 +81,11 @@ export function RichTextField({
       italic: editor?.isActive("italic") ?? false,
       underline: editor?.isActive("underline") ?? false,
       strike: editor?.isActive("strike") ?? false,
-      h1: editor?.isActive("heading", { level: 1 }) ?? false,
-      h2: editor?.isActive("heading", { level: 2 }) ?? false,
+      // 0 = paragraph (no heading active), otherwise the active heading level.
+      headingLevel:
+        HEADING_LEVELS.find(
+          (level) => editor?.isActive("heading", { level }) ?? false,
+        ) ?? 0,
       bulletList: editor?.isActive("bulletList") ?? false,
       orderedList: editor?.isActive("orderedList") ?? false,
       link: editor?.isActive("link") ?? false,
@@ -84,6 +97,18 @@ export function RichTextField({
   });
 
   if (!editor) return null;
+
+  const styleValue =
+    marks.headingLevel > 0 ? `h${marks.headingLevel}` : "paragraph";
+  const applyStyle = (next: string) => {
+    const chain = editor.chain().focus();
+    if (next === "paragraph") {
+      chain.setParagraph().run();
+      return;
+    }
+    const level = HEADING_LEVELS.find((l) => `h${l}` === next);
+    if (level) chain.setHeading({ level }).run();
+  };
 
   return (
     <div className="space-y-2">
@@ -128,24 +153,29 @@ export function RichTextField({
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
-          <ToolbarButton
-            active={marks.h1}
-            label="Heading 1"
-            onClick={() =>
-              editor.chain().focus().toggleHeading({ level: 1 }).run()
-            }
-          >
-            <Heading01 size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.h2}
-            label="Heading 2"
-            onClick={() =>
-              editor.chain().focus().toggleHeading({ level: 2 }).run()
-            }
-          >
-            <Heading02 size={14} />
-          </ToolbarButton>
+          <Select value={styleValue} onValueChange={applyStyle}>
+            <SelectTrigger
+              size="sm"
+              aria-label={t("sectionsEditor.richTextField.styleLabel")}
+              // Keep the editor selection while opening the dropdown.
+              onMouseDown={(e) => e.preventDefault()}
+              // Flatten the design-system trigger so it blends with the
+              // ghost-style toolbar instead of reading as a raised card.
+              className="w-[116px] gap-1 bg-transparent px-2 text-muted-foreground shadow-none! hover:bg-muted hover:text-foreground"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="paragraph">
+                {t("sectionsEditor.richTextField.styleParagraph")}
+              </SelectItem>
+              {HEADING_LEVELS.map((level) => (
+                <SelectItem key={level} value={`h${level}`}>
+                  {t("sectionsEditor.richTextField.styleHeading", { level })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
