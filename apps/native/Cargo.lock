@@ -986,6 +986,7 @@ dependencies = [
  "upstream",
  "urlencoding",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]

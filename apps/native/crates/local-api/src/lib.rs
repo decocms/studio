@@ -125,7 +125,16 @@ pub struct TlsFiles {
     /// (`NODE_EXTRA_CA_CERTS`) whose runtimes read neither the macOS keychain
     /// nor Mozilla's roots, so they can verify this process's own listener.
     pub ca: PathBuf,
+    /// Every public root PLUS `ca`, in one file, for children that accept
+    /// only a whole REPLACEMENT store (`SSL_CERT_FILE`) rather than additional
+    /// roots. `None` where the platform's own trust store already carries
+    /// `ca` (macOS) or where no system store could be found to build the
+    /// superset from — see `src-tauri/src/local_tls.rs`.
+    pub child_ca_bundle: Option<PathBuf>,
 }
+
+/// See [`EmbeddedOptions::preview_host_observer`].
+pub type PreviewHostObserver = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Browser-facing authentication and optional bundled-UI configuration for an
 /// in-process Tauri server. `expected_host` and `control_origin` are explicit
@@ -149,6 +158,17 @@ pub struct EmbeddedOptions {
     /// real WKWebView boot smoke. Disabled by default and never controlled by
     /// an HTTP query parameter or other runtime request input.
     pub preview_cookie_selftest: bool,
+    /// Notified with each sandbox preview HOST (`<label>.<base>`, no scheme or
+    /// port) as its URL is handed out.
+    ///
+    /// Exists for the Linux shell, whose webview trusts the local leaf through
+    /// a per-host WebKitGTK exception: that API takes an exact host with no
+    /// wildcard, and its `load-failed-with-tls-errors` recovery signal does not
+    /// fire for subframes — so a preview iframe has no way to trust the
+    /// certificate unless the host was registered BEFORE it loads. `None`
+    /// everywhere else, which is why the observer is invoked per URL rather
+    /// than being a diff over some set: deduplication belongs to the observer.
+    pub preview_host_observer: Option<PreviewHostObserver>,
 }
 
 impl EmbeddedOptions {
@@ -160,6 +180,7 @@ impl EmbeddedOptions {
             additional_bootstrap_secrets: Vec::new(),
             ui_assets: None,
             preview_cookie_selftest: false,
+            preview_host_observer: None,
         }
     }
 }
@@ -617,6 +638,10 @@ pub async fn start_with_client_auth(
                 origin: control_origin,
                 mount_token,
                 ca_cert: opts.tls.as_ref().map(|tls| tls.ca.clone()),
+                ca_bundle: opts
+                    .tls
+                    .as_ref()
+                    .and_then(|tls| tls.child_ca_bundle.clone()),
             });
             // Previews are served per-sandbox at `<handle>.<control host>`:
             // the same registrable domain, so the iframe stays first-party and
@@ -624,6 +649,9 @@ pub async fn start_with_client_auth(
             // own cookie jar. See `src-tauri/src/control_origin.rs`.
             if let Some(host) = expected_host.split(':').next() {
                 routes::intercept::set_preview_host(host.to_string());
+            }
+            if let Some(observer) = embedded.preview_host_observer {
+                routes::intercept::set_preview_host_observer(observer);
             }
             (auth, embedded.ui_assets, preview_cookie_selftest_origin)
         }
