@@ -1,10 +1,35 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
+import type { TaskBoardItem } from "@/storage/types";
+import {
+  allReviewersApproved,
+  REVIEWER_FLAG,
+  REVIEWER_KINDS,
+  type ReviewCycleActivity,
+  type ReviewerKind,
+} from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { mergeLinkedPr } from "./merge-pr";
+
+/**
+ * The board only shows "Ship to production" once the task is In Review and
+ * every enabled reviewer approved (`reviewsSatisfiedForPromotion` on the web
+ * side) — but that's client-side gating only. Without this check here, any
+ * caller of this tool (a decopilot agent, a stale client, a direct MCP call)
+ * could merge ANY task's linked PR — todo, in_progress, unreviewed — bypassing
+ * the QA Agent / Code Reviewer gate entirely.
+ */
+export function isReadyToShip(
+  status: TaskBoardItem["status"],
+  activity: ReviewCycleActivity[],
+  enabled: ReviewerKind[],
+): boolean {
+  if (status !== "in_review") return false;
+  return enabled.length === 0 || allReviewersApproved(activity, enabled);
+}
 
 export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
   name: "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -42,6 +67,21 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     );
     if (!item) {
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
+    }
+
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    const flags = settings?.flags ?? {};
+    const enabled = REVIEWER_KINDS.filter(
+      (k) => flags[REVIEWER_FLAG[k]] === true,
+    );
+    const activity = await ctx.storage.taskBoard.listActivity(
+      taskBoardItemId,
+      organizationId,
+    );
+    if (!isReadyToShip(item.status, activity, enabled)) {
+      throw new Error(
+        "Task is not ready to ship: it must be In Review with every enabled reviewer approved",
+      );
     }
 
     const merged = await mergeLinkedPr(ctx, organizationId, taskBoardItemId);
