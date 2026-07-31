@@ -39,9 +39,11 @@ Debug app rebuilds talk to that unchanged helper over JSON stdin/stdout, so
 Keychain sees one stable executable; tokens never use argv, logs, or a
 filesystem fallback. The native dev runner still signs the app itself and
 fails closed if signing drifts, but the fixed helper—not the app's self-signed
-designated requirement—is what makes debug Keychain access stable. Debug
-sessions stay in the Keychain-only `com.decocms.studio.dev` namespace; release
-sessions stay in `com.decocms.studio`.
+designated requirement—is what makes debug Keychain access stable. On every OS
+debug sessions stay in the `com.decocms.studio.dev` namespace and release
+sessions in `com.decocms.studio`, always inside an OS credential store (macOS
+Keychain, Linux Secret Service) and never a file—only the fixed-helper detour
+is macOS-debug-specific.
 
 ### Testing & Quality
 ```bash
