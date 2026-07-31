@@ -941,7 +941,7 @@ async function shutdown(): Promise<void> {
       // shutdown sync — that would silently lose the user's other valid work when
       // the sandbox is torn down. Sync everything else; the bad block stays
       // uncommitted and is discarded on the next re-clone.
-      publish(
+      await publish(
         gitDeps,
         "chore(daemon): sync all local changes to remote on shutdown",
         { onInvalidBlock: "skip" },

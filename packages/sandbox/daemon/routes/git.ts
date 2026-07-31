@@ -1,5 +1,5 @@
 import fs, { mkdtempSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
@@ -636,11 +636,11 @@ class InvalidDecofileBlockError extends Error {
   }
 }
 
-export function publish(
+export async function publish(
   deps: GitDeps,
   message: string,
   opts: { onInvalidBlock?: "throw" | "skip"; reconcileRemote?: boolean } = {},
-): { pushed: boolean } {
+): Promise<{ pushed: boolean }> {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
   // directly, so a never-cloned/empty dir would throw 128 ("not a git
@@ -681,7 +681,7 @@ export function publish(
     if (!isDecofileBlockPath(rel)) continue;
     let content: string;
     try {
-      content = fs.readFileSync(path.join(repoDir, rel), "utf-8");
+      content = await readFile(path.join(repoDir, rel), "utf-8");
     } catch {
       continue; // deleted or unreadable — nothing to validate
     }
@@ -884,11 +884,15 @@ export function makeGitPublishHandler(deps: GitDeps) {
     }
     try {
       return jsonResponse(
-        publish(deps, typeof body.message === "string" ? body.message : "", {
-          // Interactive publish: reconcile a diverged origin/<branch> instead of
-          // failing with "fetch first". Shutdown sync (entry.ts) omits this.
-          reconcileRemote: true,
-        }),
+        await publish(
+          deps,
+          typeof body.message === "string" ? body.message : "",
+          {
+            // Interactive publish: reconcile a diverged origin/<branch> instead of
+            // failing with "fetch first". Shutdown sync (entry.ts) omits this.
+            reconcileRemote: true,
+          },
+        ),
       );
     } catch (err) {
       // An invalid-block refusal is a client/data condition, not a server fault.
