@@ -208,6 +208,8 @@ function makeCtx(overrides: {
   /** Row returned by `storage.threads.get` — set `created_by` to exercise the
    *  thread-owner keying (see resolveSandboxUserId). */
   thread?: { created_by: string; metadata: Record<string, unknown> } | null;
+  /** `organization_settings.flags` — drives the `sandboxGoDaemon` rollout flag. */
+  orgFlags?: Record<string, boolean> | null;
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -215,6 +217,7 @@ function makeCtx(overrides: {
     virtualMcp,
     updateSpy = mock(async () => {}),
     thread = null,
+    orgFlags = null,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -250,6 +253,11 @@ function makeCtx(overrides: {
       threads: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
+      },
+      // Read once per provision to resolve the `sandboxGoDaemon` rollout flag.
+      // Default: no flags set, so every sandbox lands on the TS daemon.
+      organizationSettings: {
+        get: mock(async (_id: string) => ({ flags: orgFlags })),
       },
     } as never,
     timings: {
@@ -846,6 +854,61 @@ describe("SANDBOX_START", () => {
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["agent-sandbox"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
+  });
+
+  // --- Go-daemon rollout gate (resolveDaemonImpl) ---------------------------
+  // What reaches `runner.ensure` is the contract; whether the pod honors it is
+  // the runner's call (it collapses `go` back to `ts` with no Go template).
+
+  it("sends daemonImpl=ts when the org flag is unset", async () => {
+    const ctx = makeCtx({ virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA) });
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH } as Parameters<
+        typeof SANDBOX_START.handler
+      >[0],
+      ctx,
+    );
+    const opts = (mockEnsure.mock.calls as unknown[][])[0]![1] as {
+      daemonImpl?: string;
+    };
+    // Explicit rather than omitted: the runner persists whatever it resolved
+    // into the state blob for autonomous recovery, so the value it stores must
+    // never be an inference.
+    expect(opts.daemonImpl).toBe("ts");
+  });
+
+  it("sends daemonImpl=go when the org flag is on", async () => {
+    const ctx = makeCtx({
+      virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
+      orgFlags: { sandboxGoDaemon: true },
+    });
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH } as Parameters<
+        typeof SANDBOX_START.handler
+      >[0],
+      ctx,
+    );
+    const opts = (mockEnsure.mock.calls as unknown[][])[0]![1] as {
+      daemonImpl?: string;
+    };
+    expect(opts.daemonImpl).toBe("go");
+  });
+
+  it("lets an explicit daemonImpl=ts pin one sandbox inside a flagged org", async () => {
+    const ctx = makeCtx({
+      virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
+      orgFlags: { sandboxGoDaemon: true },
+    });
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, daemonImpl: "ts" } as Parameters<
+        typeof SANDBOX_START.handler
+      >[0],
+      ctx,
+    );
+    const opts = (mockEnsure.mock.calls as unknown[][])[0]![1] as {
+      daemonImpl?: string;
+    };
+    expect(opts.daemonImpl).toBe("ts");
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {
