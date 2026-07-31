@@ -19,6 +19,13 @@ type PhaseManager struct {
 	mu      sync.Mutex
 	all     []*Phase
 	counter int
+
+	// OnFinish, when set, is called once per phase that reaches a terminal
+	// state, with its wall-clock duration. Optional and nil by default so this
+	// package keeps no dependency on the telemetry stack — main wires it up.
+	// Called while the manager lock is NOT held: an exporter that blocked here
+	// would stall every subsequent phase transition, i.e. the boot itself.
+	OnFinish func(name, status string, durationMs int64)
 }
 
 func NewPhaseManager() *PhaseManager {
@@ -48,8 +55,11 @@ func (p *PhaseManager) Fail(id, errMsg string) {
 }
 
 func (p *PhaseManager) finish(id, status, errMsg string) {
+	var name string
+	var durationMs int64
+	found := false
+
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	for _, t := range p.all {
 		if t.ID == id && t.Status == "running" {
 			t.Status = status
@@ -58,8 +68,16 @@ func (p *PhaseManager) finish(id, status, errMsg string) {
 			if errMsg != "" {
 				t.Error = errMsg
 			}
-			return
+			name, durationMs, found = t.Name, now-t.StartedAt, true
+			break
 		}
+	}
+	p.mu.Unlock()
+
+	// Outside the lock, and only for a transition that actually happened —
+	// finish() is idempotent by design (a double Done must not double-count).
+	if found && p.OnFinish != nil {
+		p.OnFinish(name, status, durationMs)
 	}
 }
 
