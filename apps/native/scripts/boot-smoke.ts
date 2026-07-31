@@ -152,7 +152,11 @@ function stagedBinary(launchRoot: string): string {
       );
     }
   }
-  return bin;
+  const entry = join(launchRoot, TARGET.launchEntryRelPath);
+  if (!existsSync(entry)) {
+    fail(`launch entry point ${entry} is missing`);
+  }
+  return entry;
 }
 
 /** Freshness stamp of an already-built artifact. The `.app` is a directory
@@ -171,8 +175,10 @@ async function extractAppImage(
   smokePaths: BootSmokePaths,
 ): Promise<string> {
   const { root } = resolveBootSmokePaths(smokePaths.root, tmpdir());
-  if (!join(root, TARGET.launchedBinaryRelPath).startsWith(root + sep)) {
-    fail(`refusing to launch outside ${root}`);
+  for (const rel of [TARGET.launchedBinaryRelPath, TARGET.launchEntryRelPath]) {
+    if (!join(root, rel).startsWith(root + sep)) {
+      fail(`refusing to launch outside ${root}`);
+    }
   }
   log(`extracting ${artifact} into ${root}`);
   const code = await run(artifact, ["--appimage-extract"], { cwd: root });
@@ -389,13 +395,11 @@ async function main(): Promise<void> {
         // production Keychain item; persistence itself is covered by the
         // isolated-Keychain fresh-process E2E suite.
         LOCAL_API_TOKEN_STORE: "memory",
-        // WebKitGTK's DMABUF renderer and accelerated compositing both want a
-        // real GPU; under Xvfb (no DRI device) initialization aborts, and glib
-        // turns a fatal error into SIGTRAP — the process dies before it can
-        // print anything the self-test would report. Software rendering is
-        // what a headless smoke wants anyway: it exercises the shell and IPC
-        // contract, not paint output. Overridable so a desktop Linux run can
-        // exercise the real renderer.
+        // Precautionary, not a fix for any observed crash: WebKitGTK's DMABUF
+        // renderer and accelerated compositing both want a real GPU, which
+        // Xvfb does not provide. A headless smoke exercises the shell and IPC
+        // contract, not paint output, so software rendering is what it wants.
+        // Overridable so a desktop Linux run exercises the real renderer.
         ...(process.platform === "linux"
           ? {
               WEBKIT_DISABLE_DMABUF_RENDERER:
