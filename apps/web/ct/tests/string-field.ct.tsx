@@ -97,7 +97,9 @@ test("rich-text format renders a rich editor and round-trips typed value as HTML
     .toEqual({ body: "<p>rich content</p>" });
 });
 
-test("rich-text-inline format renders a rich editor and round-trips typed value as HTML", async ({
+// rich-text-inline serializes WITHOUT a block wrapper: its value is injected
+// where a <p>/<div> can't legally nest, so the outer paragraph is unwrapped.
+test("rich-text-inline format renders a rich editor and round-trips typed value as inline HTML (no block wrapper)", async ({
   mount,
 }) => {
   const meta = sectionWithProps({
@@ -108,13 +110,15 @@ test("rich-text-inline format renders a rich editor and round-trips typed value 
   );
 
   await expect(component.getByText("Body")).toBeVisible();
+  // Block-structure controls are hidden in inline mode.
+  await expect(component.getByLabel("Text style")).toBeHidden();
   const editor = component.locator('[contenteditable="true"]');
   await expect(editor).toBeVisible();
   await editor.fill("inline content");
 
   await expect
     .poll(() => readFormValue(component))
-    .toEqual({ body: "<p>inline content</p>" });
+    .toEqual({ body: "inline content" });
 });
 
 test("markdown format renders a <textarea> and round-trips typed value", async ({
