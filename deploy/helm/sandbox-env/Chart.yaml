@@ -66,7 +66,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.61
+version: 0.9.62
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.31.3"
+appVersion: "1.32.0"
 kubeVersion: ">=1.30.0-0"
