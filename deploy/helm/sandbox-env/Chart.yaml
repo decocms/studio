@@ -9,6 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.57: opt-in `goTemplate` renders a second SandboxTemplate,
+# `studio-sandbox-<envName>-go`, pinned to the Go image. `daemonImpl` moves the
+# whole env; this moves ONE sandbox, because `spec.sandboxTemplateRef` is the
+# only per-claim lever the operator honors on a warm-poolable claim. Studio
+# points STUDIO_SANDBOX_GO_TEMPLATE_NAME at it; unset there, the org flag and
+# SANDBOX_START's `daemonImpl` prop are both inert. Default render unchanged
+# (enabled: false), and enabling it requires image.goRepository.
 # 0.9.55: the sandbox daemon implementation is now the IMAGE, not a runtime
 # switch. `daemonImpl` (default "ts") selects image.repository vs
 # image.goRepository (studio-sandbox vs studio-sandbox-go), and the pod no
@@ -59,7 +66,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.56
+version: 0.9.57
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.30.0"
 kubeVersion: ">=1.30.0-0"
