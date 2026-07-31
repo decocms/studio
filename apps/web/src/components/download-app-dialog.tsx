@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { toast } from "@deco/ui/components/sonner.js";
+import { toast } from "@deco/ui/components/sonner.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
