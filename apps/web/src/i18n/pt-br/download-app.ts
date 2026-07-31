@@ -11,4 +11,5 @@ export const downloadApp = {
   "downloadApp.appleSiliconNote":
     "Para Macs com Apple Silicon (M1 ou mais novo) — Windows em breve.",
   "downloadApp.openLabel": "Baixar o app do Studio",
+  "downloadApp.installOnMac": "Instalar no Mac",
 } satisfies Record<keyof typeof downloadAppEn, string>;
