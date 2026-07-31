@@ -49,6 +49,10 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // A task's comment threads
+  taskBoardComments: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-comments", itemId] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 

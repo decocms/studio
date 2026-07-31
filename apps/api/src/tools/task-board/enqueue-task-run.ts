@@ -16,7 +16,30 @@ import { getDecopilotId } from "@decocms/shared/sdk";
 export async function enqueueAgentRunForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
-  opts: { title: string; prompt: string; temperature: number },
+  opts: {
+    title: string;
+    prompt: string;
+    temperature: number;
+    /** Run-scoped keys on top of the task id (a comment mention pins the
+     *  comment it must answer, which also registers the `reply_comment`
+     *  built-in for that run). */
+    runMetadata?: Record<string, string>;
+    /**
+     * Whether to file this run as a work session on the card
+     * (`task_board_item_threads`). False for a comment run: the link is what
+     * drives "all threads finished → In Review" and "thread runs again → back
+     * to In Progress", and answering a question is neither. Its reply is the
+     * visible artifact, not a session row.
+     */
+    linkThread?: boolean;
+    /**
+     * Continue an existing thread instead of opening a fresh one — a follow-up
+     * comment is another turn in the same conversation. The thread gate (one run
+     * per thread) queues the turn behind whatever is still running, so a mention
+     * that arrives mid-run is answered rather than dropped.
+     */
+    threadId?: string;
+  },
 ): Promise<{ threadId: string }> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
@@ -24,19 +47,23 @@ export async function enqueueAgentRunForTask(
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
 
-  const thread = await ctx.storage.threads.create({
-    organization_id: organizationId,
-    title: opts.title,
-    status: "in_progress",
-    virtual_mcp_id: agentId,
-    // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
-    message_storage_version: 2,
-    created_by: userId,
-  });
+  const thread = opts.threadId
+    ? { id: opts.threadId }
+    : await ctx.storage.threads.create({
+        organization_id: organizationId,
+        title: opts.title,
+        status: "in_progress",
+        virtual_mcp_id: agentId,
+        // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
+        message_storage_version: 2,
+        created_by: userId,
+      });
 
   // Link the run thread to the task (many-to-many) so the board can render it
   // in the card and derive its live run state.
-  await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
+  if (opts.linkThread !== false && !opts.threadId) {
+    await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
+  }
 
   const requestMessage = {
     id: crypto.randomUUID(),
@@ -74,7 +101,7 @@ export async function enqueueAgentRunForTask(
       organizationId,
       userId,
       taskId: thread.id,
-      runMetadata: { taskBoardItemId: task.id },
+      runMetadata: { taskBoardItemId: task.id, ...opts.runMetadata },
     },
   });
 

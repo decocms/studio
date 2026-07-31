@@ -23,11 +23,17 @@ import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
+  TASK_BOARD_COMMENT_AGENT_TYPING_EVENT,
+  TASK_BOARD_COMMENT_CREATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
+import type {
+  TaskBoardComment,
+  TaskBoardItem,
+  TaskBoardItemStatus,
+} from "@/storage/types";
 
 /** Board lane order — a transition only moves a card forward, never back. */
 const RANK: Record<TaskBoardItemStatus, number> = {
@@ -60,6 +66,55 @@ export function emitTaskBoardDeleted(orgId: string, itemId: string): void {
     data: { id: itemId },
     time: new Date().toISOString(),
   });
+}
+
+/** Push a new comment to every SSE listener on its org — the task dialog
+ *  appends it instead of polling. */
+export function emitTaskCommentCreated(
+  orgId: string,
+  comment: TaskBoardComment,
+): void {
+  sseHub.emit(orgId, {
+    id: crypto.randomUUID(),
+    type: TASK_BOARD_COMMENT_CREATED_EVENT,
+    source: "task-board",
+    subject: comment.taskBoardItemId,
+    data: comment,
+    time: new Date().toISOString(),
+  });
+}
+
+/** Push the Super Agent's "typing…" state for a comment thread it was
+ *  mentioned in: true when its run is dispatched, false when the run ends. */
+export function emitTaskCommentAgentTyping(
+  orgId: string,
+  payload: { taskBoardItemId: string; threadRootId: string; typing: boolean },
+): void {
+  sseHub.emit(orgId, {
+    id: crypto.randomUUID(),
+    type: TASK_BOARD_COMMENT_AGENT_TYPING_EVENT,
+    source: "task-board",
+    subject: payload.taskBoardItemId,
+    data: payload,
+    time: new Date().toISOString(),
+  });
+}
+
+/**
+ * Whether a run is allowed to move its card to `status`.
+ *
+ * A comment run is a conversation, not a work session: someone asking a question
+ * must not drag the card into In Progress. It may still advance on a real
+ * artifact — a PR is work by definition — so only `in_progress` is withheld.
+ *
+ * Pure and metadata-only: the decision is a boolean already in memory (no query,
+ * no classifier), which is what keeps the loop-start hot path free.
+ */
+export function runMayAdvance(
+  status: TaskBoardItemStatus,
+  isCommentRun: boolean,
+): boolean {
+  return !(isCommentRun && status === "in_progress");
 }
 
 /**
@@ -114,6 +169,16 @@ export async function advanceTaskBoardForRun(
 ): Promise<void> {
   const orgId = ctx.organization?.id;
   if (!orgId) return;
+  // A comment run is a conversation, not a work session: someone asking a
+  // question must not drag the card into In Progress. Decided from run metadata
+  // already in memory — no query, no classifier, no judgement call. It can still
+  // advance on a real artifact (a PR), which is work by definition.
+  if (
+    ctx.metadata?.runMetadata?.taskBoardCommentId &&
+    status === "in_progress"
+  ) {
+    return;
+  }
   try {
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
@@ -204,6 +269,41 @@ export async function advanceTasksToReviewOnThreadFinish(
     for (const item of moved) emitTaskBoardUpdated(orgId, item);
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
+  }
+  await postAgentCommentReplyOnThreadFinish(taskBoard, threadId, orgId);
+}
+
+/**
+ * A run started by an `@`-mention in a comment finished — close the loop on
+ * every comment thread it owes an answer. The agent normally replies itself via
+ * `reply_comment` (possibly several times); this posts its final message into
+ * any thread whose mention it left unanswered, including mentions that arrived
+ * mid-run, so a mention is never simply ignored. No-op off a comment-started
+ * run, and idempotent: a posted reply makes the mention answered, so the hook
+ * firing twice (terminal + stall recovery) posts once. Best-effort — a failure
+ * here never disturbs the projector.
+ */
+async function postAgentCommentReplyOnThreadFinish(
+  taskBoard: TaskBoardStorage,
+  threadId: string,
+  orgId: string,
+): Promise<void> {
+  try {
+    const outcome = await taskBoard.finishCommentRun(threadId, orgId);
+    if (!outcome) return;
+    for (const comment of outcome.posted)
+      emitTaskCommentCreated(orgId, comment);
+    // Always clear the indicator, even where nothing was posted — a "typing…"
+    // row with no run behind it never goes away on its own.
+    for (const threadRootId of outcome.threadRootIds) {
+      emitTaskCommentAgentTyping(orgId, {
+        taskBoardItemId: outcome.taskBoardItemId,
+        threadRootId,
+        typing: false,
+      });
+    }
+  } catch (err) {
+    console.error("[task-board] comment agent reply failed", err);
   }
 }
 

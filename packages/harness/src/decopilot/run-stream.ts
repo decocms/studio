@@ -172,6 +172,8 @@ export interface RunDecopilotStreamExtras {
   /** Screenshot images captured by `take_screenshot`, shared by reference with
    *  the built-in tools and `prepareStep` (mutated in place). */
   pendingImages: import("./built-in-tools/vm-tools/types").PendingImage[];
+  /** External activity appended as a user turn at the next step boundary. */
+  pendingContext?: string[];
 
   /** UIMessageStreamWriter forwarded from the outer createUIMessageStream. */
   writer: UIMessageStreamWriter;
@@ -417,6 +419,7 @@ export async function* runDecopilotStream(
     enabledTools,
     toolAnnotations: tools.toolAnnotations,
     pendingImages: extras.pendingImages,
+    pendingContext: extras.pendingContext,
     hasEnableTool: tools.connectionsBlockTools.length > 0,
   });
 

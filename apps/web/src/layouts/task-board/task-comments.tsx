@@ -3,29 +3,16 @@
  * replies, an inline reply composer per thread, and @-mentions of members,
  * the Super Agent, and other tasks.
  *
- * ===========================================================================
- * NOT IMPLEMENTED YET — THIS IS UI ONLY.
- * ===========================================================================
- * There is no backend for comments: no table, no tools, no API routes (nothing
- * under `apps/api` was touched). Everything below runs on local component
- * state, so the feed starts empty and a comment or reply you post is lost on
- * reload. No mock data ships — the sample threads used to review this design
- * live in the CT harness (`apps/web/ct/harness/task-comments-harness.tsx`).
+ * This file is presentation plus the two mappings between it and the wire:
+ * `buildCommentThreads` nests the server's flat rows, and `detectMentions`
+ * resolves the `@labels` in a body back to ids at submit time. The data itself
+ * lives in `useTaskBoardComments` (query + mutations + SSE).
  *
- * Handoff — what the backend pass needs to add:
- *  1. `task_board_comments`: id, task_board_item_id, parent_id (NULL = thread
- *     root, one level only), author_id, body, mentions jsonb, created_at,
- *     updated_at. Cascade-delete with the task.
- *  2. Tools: TASK_BOARD_COMMENT_LIST / _CREATE / _UPDATE / _DELETE (create +
- *     update + delete together, per the first-pass checklist).
- *  3. Attachments, served behind a route rather than inlined in tool output.
- *     The composer has no attach control on purpose — add the paperclip with
- *     the storage that makes it work, not before.
- *  4. Mentions are the interesting part: mentioning a member should notify
- *     them, and mentioning the Super Agent should start a run on the task and
- *     post its answer back as a reply in the same thread.
- *  5. Swap `useTaskCommentsDraft` for the real query + mutations. Everything
- *     else in this file is presentation and stays.
+ * Mentioning the Super Agent starts a run on the task; its answer arrives as a
+ * reply over SSE, and the thread shows it typing until then. Mentioning a member
+ * is recorded but notifies nobody yet — there's no notification system to hand
+ * it to. Attachments are also still missing, which is why the composer has no
+ * paperclip: it lands with the storage that makes it work, not before.
  */
 
 import { Fragment, useRef, useState, type ReactNode } from "react";
@@ -132,77 +119,67 @@ export function buildMentionables({
 const SUPER_AGENT_MENTION_ID = "super-agent";
 
 /**
- * The comments of a task, held in local state and starting empty.
+ * Server rows → the nested threads this file renders. Replies hang off their
+ * root in the order they were written; a reply whose root is gone is dropped
+ * (the server cascades those, so it only ever happens mid-flight).
  *
- * NOT IMPLEMENTED: replace with `useTaskBoardComments(itemId)` + create
- * mutations once the tools exist. What you post here survives until reload,
- * which is enough to exercise the UI and nothing more.
+ * An author with no id is the Super Agent — that's how the server signs a run's
+ * answer, since it has no member row.
  */
-export function useTaskCommentsDraft(me: CommentAuthor) {
-  const [threads, setThreads] = useState<TaskComment[]>([]);
+export function buildCommentThreads(
+  rows: {
+    id: string;
+    parentId: string | null;
+    authorId: string | null;
+    body: string;
+    resolved: boolean;
+    createdAt: string;
+  }[],
+  {
+    authorFor,
+    superAgentLabel,
+  }: {
+    authorFor: (userId: string) => CommentAuthor;
+    superAgentLabel: string;
+  },
+): TaskComment[] {
+  const toComment = (row: (typeof rows)[number]): TaskComment => ({
+    id: row.id,
+    author: row.authorId
+      ? authorFor(row.authorId)
+      : { id: SUPER_AGENT_MENTION_ID, name: superAgentLabel, isAgent: true },
+    body: row.body,
+    createdAt: row.createdAt,
+    replies: [],
+    resolved: row.resolved,
+  });
 
-  const post = (body: string) =>
-    setThreads((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        author: me,
-        body,
-        createdAt: new Date().toISOString(),
-        replies: [],
-      },
-    ]);
+  const roots = new Map<string, TaskComment>();
+  for (const row of rows) {
+    if (!row.parentId) roots.set(row.id, toComment(row));
+  }
+  for (const row of rows) {
+    if (!row.parentId) continue;
+    roots.get(row.parentId)?.replies.push(toComment(row));
+  }
+  return [...roots.values()];
+}
 
-  const reply = (threadId: string, body: string) =>
-    setThreads((prev) =>
-      prev.map((thread) =>
-        thread.id === threadId
-          ? {
-              ...thread,
-              replies: [
-                ...thread.replies,
-                {
-                  id: crypto.randomUUID(),
-                  author: me,
-                  body,
-                  createdAt: new Date().toISOString(),
-                  replies: [],
-                },
-              ],
-            }
-          : thread,
-      ),
-    );
-
-  /**
-   * Deleting a thread root takes its replies with it — the replies answer that
-   * comment, so keeping them orphaned would leave a conversation with no
-   * opening line.
-   */
-  const remove = (threadId: string, commentId: string) =>
-    setThreads((prev) =>
-      threadId === commentId
-        ? prev.filter((thread) => thread.id !== threadId)
-        : prev.map((thread) =>
-            thread.id === threadId
-              ? {
-                  ...thread,
-                  replies: thread.replies.filter((r) => r.id !== commentId),
-                }
-              : thread,
-          ),
-    );
-
-  const toggleResolved = (threadId: string) =>
-    setThreads((prev) =>
-      prev.map((thread) =>
-        thread.id === threadId
-          ? { ...thread, resolved: !thread.resolved }
-          : thread,
-      ),
-    );
-
-  return { threads, post, reply, remove, toggleResolved };
+/**
+ * The `@` targets a comment body points at. A mention is written as its display
+ * label, so this is the same longest-label-first match `renderCommentBody` uses
+ * to chip them — resolved at submit time, since labels collide and the server
+ * can't re-derive ids from prose.
+ */
+export function detectMentions(
+  body: string,
+  mentionables: Mentionable[],
+): { kind: "user" | "task"; id: string }[] {
+  const byLabel = new Map(mentionables.map((m) => [m.label, m]));
+  return mentionLabelsIn(body, mentionables)
+    .map((label) => byLabel.get(label))
+    .filter((m): m is Mentionable => !!m)
+    .map((m) => ({ kind: m.kind, id: m.id }));
 }
 
 /**
@@ -216,6 +193,7 @@ export function CommentThreadCard({
   thread,
   me,
   mentionables,
+  agentTyping,
   onReply,
   onDelete,
   onToggleResolved,
@@ -223,6 +201,9 @@ export function CommentThreadCard({
   thread: TaskComment;
   me: CommentAuthor;
   mentionables: Mentionable[];
+  /** The Super Agent is working on a mention in this thread — its answer lands
+   *  as a reply when the run ends. */
+  agentTyping?: boolean;
   onReply: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
@@ -288,6 +269,12 @@ export function CommentThreadCard({
           />
         </Fragment>
       ))}
+      {agentTyping && (
+        <>
+          <Divider inset={thread.replies.length > 0} />
+          <AgentTypingRow />
+        </>
+      )}
       <Divider />
       <CommentComposer
         variant="reply"
@@ -296,6 +283,29 @@ export function CommentThreadCard({
         mentionables={mentionables}
         onSubmit={onReply}
       />
+    </div>
+  );
+}
+
+/** The Super Agent is drafting a reply to a mention in this thread. */
+function AgentTypingRow() {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2.5 px-4 py-3">
+      <SuperAgentIcon size={24} />
+      <span className="text-sm text-muted-foreground">
+        {t("taskBoard.taskDialog.commentAgentTyping")}
+      </span>
+      {/* Three dots on the same beat, offset so they read as a wave. */}
+      <span className="flex items-center gap-1" aria-hidden>
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            className="size-1 animate-pulse rounded-full bg-muted-foreground"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </span>
     </div>
   );
 }
@@ -759,18 +769,33 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Matches an `@` followed by any target's display label, longest label first
+ *  so "@Ana Paula" wins over "@Ana". Null when there's nothing to match. */
+function mentionPattern(mentionables: Mentionable[]): RegExp | null {
+  if (mentionables.length === 0) return null;
+  const labels = mentionables
+    .map((m) => m.label)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp);
+  return new RegExp(`@(?:${labels.join("|")})`, "g");
+}
+
+/** The labels a body mentions, in order, without repeats. */
+function mentionLabelsIn(body: string, mentionables: Mentionable[]): string[] {
+  const pattern = mentionPattern(mentionables);
+  if (!pattern) return [];
+  return [
+    ...new Set([...body.matchAll(pattern)].map((match) => match[0].slice(1))),
+  ];
+}
+
 /** A comment's text with its `@mentions` picked out of the prose. */
 function renderCommentBody(
   body: string,
   mentionables: Mentionable[],
 ): ReactNode {
-  if (mentionables.length === 0) return body;
-  // Longest label first so "@Ana Paula" wins over "@Ana".
-  const labels = mentionables
-    .map((m) => m.label)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegExp);
-  const pattern = new RegExp(`@(?:${labels.join("|")})`, "g");
+  const pattern = mentionPattern(mentionables);
+  if (!pattern) return body;
 
   const out: ReactNode[] = [];
   let last = 0;

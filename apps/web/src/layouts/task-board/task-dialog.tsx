@@ -81,6 +81,7 @@ import {
   enabledReviewers,
   reviewsSatisfiedForPromotion,
 } from "./review-status";
+import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -89,9 +90,10 @@ import { extractDescriptionLinks } from "./description-links";
 import { authClient } from "@/lib/auth-client";
 import {
   buildMentionables,
+  buildCommentThreads,
   CommentThreadCard,
+  detectMentions,
   NewCommentComposer,
-  useTaskCommentsDraft,
   type CommentAuthor,
   type TaskComment,
 } from "./task-comments";
@@ -1290,13 +1292,18 @@ function ActivitySection({
     currentTaskId: item.id,
     superAgentLabel,
   });
-  // NOT IMPLEMENTED: comments are local-only until the backend lands. See the
-  // handoff notes at the top of ./task-comments.tsx.
-  const comments = useTaskCommentsDraft(me);
-
-  // Watching a task is what turns comments into notifications, so the control
-  // belongs next to them. NOT IMPLEMENTED: no subscription is persisted.
-  const [subscribed, setSubscribed] = useState(true);
+  const comments = useTaskBoardComments(item.id);
+  const threads = buildCommentThreads(comments.comments, {
+    authorFor: (userId) => {
+      const member = memberByUserId.get(userId);
+      return {
+        id: userId,
+        name: member?.user?.name ?? userId,
+        image: member?.user?.image,
+      };
+    },
+    superAgentLabel,
+  });
 
   type Ev =
     | { kind: "activity"; at: number; activity: TaskBoardActivity }
@@ -1317,7 +1324,7 @@ function ActivitySection({
         thread,
       }),
     ),
-    ...comments.threads.map(
+    ...threads.map(
       (comment): Ev => ({
         kind: "comment",
         at: new Date(comment.createdAt).getTime(),
@@ -1352,25 +1359,6 @@ function ActivitySection({
         <span className="text-sm font-medium text-foreground">
           {t("taskBoard.taskDialog.activityLabel")}
         </span>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setSubscribed((prev) => !prev)}
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {subscribed
-              ? t("taskBoard.taskDialog.unsubscribeButton")
-              : t("taskBoard.taskDialog.subscribeButton")}
-          </button>
-          {subscribed && (
-            <Avatar
-              url={me.image ?? undefined}
-              fallback={getInitials(me.name)}
-              shape="circle"
-              size="xs"
-            />
-          )}
-        </div>
       </div>
 
       {blocks.map((block, i) => {
@@ -1392,11 +1380,18 @@ function ActivitySection({
               thread={block.comment}
               me={me}
               mentionables={mentionables}
-              onReply={(body) => comments.reply(block.comment.id, body)}
-              onDelete={(commentId) =>
-                comments.remove(block.comment.id, commentId)
+              agentTyping={comments.typingThreadIds.includes(block.comment.id)}
+              onReply={(body) =>
+                comments.reply(
+                  block.comment.id,
+                  body,
+                  detectMentions(body, mentionables),
+                )
               }
-              onToggleResolved={() => comments.toggleResolved(block.comment.id)}
+              onDelete={(commentId) => comments.remove(commentId)}
+              onToggleResolved={() =>
+                comments.setResolved(block.comment.id, !block.comment.resolved)
+              }
             />
           );
         }
@@ -1413,7 +1408,9 @@ function ActivitySection({
       <NewCommentComposer
         me={me}
         mentionables={mentionables}
-        onSubmit={comments.post}
+        onSubmit={(body) =>
+          comments.post(body, detectMentions(body, mentionables))
+        }
       />
     </div>
   );

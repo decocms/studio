@@ -37,6 +37,8 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   search_threads: { readOnly: true, destructive: false },
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
+  reply_comment: { readOnly: false, destructive: false },
+  set_task_status: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
@@ -65,6 +67,8 @@ import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/s
 import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
 import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
+import { createReplyCommentTool } from "./reply-comment";
+import { createSetTaskStatusTool } from "./set-task-status";
 import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
 import type { ModelsConfig } from "@decocms/harness/types";
 import type { StudioProvider } from "@/ai-providers/types";
@@ -221,6 +225,23 @@ async function buildAllTools(
   // Thread search built-ins — always available so the Super Agent can recall
   // past org conversations regardless of the passthrough MCP allowlist.
   Object.assign(tools, createThreadTools(ctx));
+  // Comment reply — only on a run started by an `@`-mention in a task comment,
+  // with that comment bound in the closure. Absent from every other run, so an
+  // ordinary chat has no comment tool to reach for.
+  const commentId = ctx.metadata?.runMetadata?.taskBoardCommentId;
+  const commentTaskId = ctx.metadata?.runMetadata?.taskBoardItemId;
+  if (commentId && commentTaskId) {
+    tools.reply_comment = createReplyCommentTool(ctx, {
+      threadId: taskId,
+      commentId,
+      taskBoardItemId: commentTaskId,
+    });
+    // A comment run doesn't advance the card automatically (talking about a task
+    // isn't working on it), so it gets to say when it starts.
+    tools.set_task_status = createSetTaskStatusTool(ctx, {
+      taskBoardItemId: commentTaskId,
+    });
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses

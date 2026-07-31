@@ -37,6 +37,7 @@ import type {
   RunEngineArgs,
 } from "@decocms/harness/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
+import { createTaskCommentFeed } from "./task-comment-feed";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
 import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
@@ -127,6 +128,10 @@ export function buildClusterEnvironmentTools(args: {
       const runContext = requireDecopilotRunContext(streamInput);
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
+      // New comments on the run's task, handed to the model at the next step
+      // boundary. Null when this run isn't working on a task.
+      const pendingContext: string[] = [];
+      const taskComments = createTaskCommentFeed(ctx);
       const { resolveArgs, onToolCalled, onPrOpened } =
         buildClusterMcpToolHooks(ctx, streamInput.threadId);
 
@@ -210,6 +215,7 @@ export function buildClusterEnvironmentTools(args: {
         toolOutputMap,
         writer: sideChannel.writer,
         pendingImages,
+        pendingContext,
         sideChunks: sideChannel.stream,
         closeSideChunks: sideChannel.close,
         onStepFinish: async () => {
@@ -219,6 +225,9 @@ export function buildClusterEnvironmentTools(args: {
           // step's sweep or the tab's stat poll.
           await htmlArtifactBuffer.flush();
           await htmlArtifactWatcher.sweep();
+          // Bounded (POLL_BUDGET_MS) and self-swallowing — a slow read lands on
+          // the following step instead of holding this one.
+          await taskComments?.pollInto(pendingContext);
         },
         close: assembled.close,
       };

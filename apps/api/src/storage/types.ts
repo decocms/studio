@@ -1780,6 +1780,47 @@ export interface TaskBoardActivity {
   occurredAt: string;
 }
 
+/** An `@` target inside a comment body, resolved by the client that wrote it. */
+export interface TaskBoardCommentMention {
+  kind: "user" | "task";
+  /** A member's userId, `SUPER_AGENT_ASSIGNEE_ID`, or another task's id. */
+  id: string;
+}
+
+/** A comment on a task. `parent_id` null = thread root; a reply's parent is
+ *  always a root (one level, enforced in storage). */
+export interface TaskBoardCommentTable {
+  id: string;
+  task_board_item_id: string;
+  parent_id: string | null;
+  /** Author; null when the Super Agent wrote it, or the account was deleted. */
+  author_id: string | null;
+  body: string;
+  mentions: ColumnType<
+    TaskBoardCommentMention[],
+    string | undefined,
+    string | undefined
+  >;
+  /** Thread roots only — a thread is settled or open as a whole. */
+  resolved: ColumnType<boolean, boolean | undefined, boolean>;
+  /** The Super Agent run this comment's mention started, if any. */
+  agent_thread_id: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface TaskBoardComment {
+  id: string;
+  taskBoardItemId: string;
+  parentId: string | null;
+  authorId: string | null;
+  body: string;
+  mentions: TaskBoardCommentMention[];
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -1933,6 +1974,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
+  task_board_comments: TaskBoardCommentTable;
   task_board_item_prs: TaskBoardItemPrTable;
   task_board_review_claims: TaskBoardReviewClaimTable;
   task_board_item_tags: TaskBoardItemTagTable;

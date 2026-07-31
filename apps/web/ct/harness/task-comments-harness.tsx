@@ -47,9 +47,10 @@ const THREAD: TaskComment = {
 /**
  * CT surface for task comments: one thread card (root + agent reply + inline
  * reply composer) and the new-comment composer, with a fixed mention list so
- * the `@` menu is deterministic. Mirrors the reply/delete/resolve semantics of
- * `useTaskCommentsDraft` on a single thread. Posted bodies are dumped into a
- * testid'd <pre> so specs can assert what the composer submitted.
+ * the `@` menu is deterministic. Local state stands in for the server's
+ * reply/delete/resolve round-trips — this is a view test, not a wiring one.
+ * Posted bodies are dumped into a testid'd <pre> so specs can assert what the
+ * composer submitted.
  */
 export function TaskCommentsHarness() {
   const [thread, setThread] = useState<TaskComment | null>(THREAD);

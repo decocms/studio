@@ -280,6 +280,7 @@ export async function* runDecopilotCore(
       threadId: input.threadId,
       currentThreadTitle: input.currentThreadTitle ?? "",
       pendingImages: tools.pendingImages,
+      pendingContext: tools.pendingContext,
       writer: tools.writer,
       sideChunks: tools.sideChunks,
       closeSideChunks: tools.closeSideChunks,

@@ -6,6 +6,8 @@
 
 import { ALL_DECOPILOT_EVENT_TYPES } from "@/sdk";
 import {
+  TASK_BOARD_COMMENT_AGENT_TYPING_EVENT,
+  TASK_BOARD_COMMENT_CREATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
@@ -20,6 +22,8 @@ const WATCH_TYPES = [
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_COMMENT_CREATED_EVENT,
+  TASK_BOARD_COMMENT_AGENT_TYPING_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -47,3 +51,9 @@ export const taskBoardWatchView: SSESubscription = filterEventTypes(watchSSE, [
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
 ]);
+
+/** Comment activity on a task (`task-board.comment.created` / `.agent-typing`). */
+export const taskCommentsWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [TASK_BOARD_COMMENT_CREATED_EVENT, TASK_BOARD_COMMENT_AGENT_TYPING_EVENT],
+);

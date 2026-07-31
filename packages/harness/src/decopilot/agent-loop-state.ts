@@ -57,6 +57,16 @@ export interface AgentPrepareStepOptions {
   enabledTools: Set<string>;
   toolAnnotations: Map<string, { readOnlyHint?: boolean }>;
   pendingImages: AgentLoopPendingImage[];
+  /**
+   * External activity that happened while the run was working (today: new
+   * comments on the linked task), appended as a USER message at the next step
+   * boundary. Shared by reference and drained in place, like `pendingImages`.
+   *
+   * User role, not system: a system message would sit inside the cached prefix
+   * and invalidate it on every arrival. As a trailing user turn it costs one
+   * uncached block and leaves the prefix intact.
+   */
+  pendingContext?: string[];
   hasEnableTool: boolean;
 }
 
@@ -76,6 +86,13 @@ export function createAgentPrepareStep(opts: AgentPrepareStepOptions) {
 
     // biome-ignore lint/suspicious/noExplicitAny: complex AI SDK message content generics
     let withImages: any = stepMessages;
+    if (opts.pendingContext?.length) {
+      const notes = opts.pendingContext.splice(0, opts.pendingContext.length);
+      withImages = [
+        ...withImages,
+        { role: "user", content: notes.join("\n\n") },
+      ];
+    }
     if (opts.pendingImages.length > 0) {
       const imageParts = opts.pendingImages.splice(
         0,
@@ -105,7 +122,7 @@ export function createAgentPrepareStep(opts: AgentPrepareStepOptions) {
           });
         }
       }
-      withImages = [...stepMessages, { role: "user", content }];
+      withImages = [...withImages, { role: "user", content }];
     }
 
     let activeToolNames = [

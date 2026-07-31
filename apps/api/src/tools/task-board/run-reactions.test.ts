@@ -4,6 +4,7 @@ import {
   isPrCreateBashCommand,
   isPrCreateMcpTool,
   resolveAdvanceTargets,
+  runMayAdvance,
 } from "./run-reactions";
 
 type LinkPrCall = {
@@ -188,5 +189,22 @@ describe("isPrCreateBashCommand", () => {
     expect(
       isPrCreateBashCommand("curl https://api.github.com/repos/o/r/pulls"),
     ).toBe(false);
+  });
+});
+
+describe("runMayAdvance", () => {
+  it("a comment run never moves the card to In Progress", () => {
+    expect(runMayAdvance("in_progress", true)).toBe(false);
+  });
+
+  it("a comment run still advances on a real artifact", () => {
+    // It opened a PR — that's work, whatever started the run.
+    expect(runMayAdvance("in_review", true)).toBe(true);
+    expect(runMayAdvance("done", true)).toBe(true);
+  });
+
+  it("a task run is unaffected", () => {
+    expect(runMayAdvance("in_progress", false)).toBe(true);
+    expect(runMayAdvance("in_review", false)).toBe(true);
   });
 });

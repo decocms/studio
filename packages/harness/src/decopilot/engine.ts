@@ -79,6 +79,9 @@ export interface HarnessAssembledTools {
   /** Screenshot images captured by `take_screenshot`, shared by reference with
    *  the built-in tools and `prepareStep` (mutated in place). */
   pendingImages: PendingImage[];
+  /** External activity to hand the model at the next step boundary (new task
+   *  comments). Shared by reference with the adapter's step-finish hook. */
+  pendingContext?: string[];
   /** Tool side-channel chunks merged into the main UI stream. */
   sideChunks?: AsyncIterable<UIMessageChunk>;
   closeSideChunks?: () => void;
