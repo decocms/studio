@@ -27,15 +27,19 @@ export function BulkDeleteDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {t("orgs.bulkDeleteDialog.deleteTitle", {
-              count,
-              plural: count !== 1 ? "s" : "",
-            })}
+            {t(
+              count === 1
+                ? "orgs.bulkDeleteDialog.deleteTitleSingular"
+                : "orgs.bulkDeleteDialog.deleteTitlePlural",
+              { count },
+            )}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {t("orgs.bulkDeleteDialog.deleteDescription", {
-              plural: count !== 1 ? "s" : "",
-            })}
+            {t(
+              count === 1
+                ? "orgs.bulkDeleteDialog.deleteDescriptionSingular"
+                : "orgs.bulkDeleteDialog.deleteDescriptionPlural",
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -46,10 +50,12 @@ export function BulkDeleteDialog({
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {t("orgs.bulkDeleteDialog.deleteButton", {
-              count,
-              plural: count !== 1 ? "s" : "",
-            })}
+            {t(
+              count === 1
+                ? "orgs.bulkDeleteDialog.deleteButtonSingular"
+                : "orgs.bulkDeleteDialog.deleteButtonPlural",
+              { count },
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
