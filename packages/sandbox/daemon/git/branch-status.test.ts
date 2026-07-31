@@ -39,8 +39,13 @@ describe("BranchStatusMonitor", () => {
     name: DaemonEventName;
     payload: DaemonEventPayload<DaemonEventName>;
   }>;
+  // refresh() starts fs.watchers + a 3s poll interval; anything left running
+  // keeps the reused `bun test --parallel` worker's event loop alive and
+  // wedges the whole suite (the job-level 10min timeout is what killed it).
+  let monitors: BranchStatusMonitor[];
 
   beforeEach(() => {
+    monitors = [];
     repo = makeRepo();
     broadcaster = new Broadcaster(1024);
     events = [];
@@ -54,7 +59,11 @@ describe("BranchStatusMonitor", () => {
     }) as Broadcaster["emit"];
   });
 
-  afterEach(() => repo.cleanup());
+  afterEach(() => {
+    // Stop watchers before deleting the watched temp dir.
+    for (const m of monitors) m.stop();
+    repo.cleanup();
+  });
 
   function newMonitor(): BranchStatusMonitor {
     const config = {
@@ -65,7 +74,9 @@ describe("BranchStatusMonitor", () => {
       proxyPort: 0,
       dropPrivileges: false,
     } as never;
-    return new BranchStatusMonitor(config, broadcaster);
+    const m = new BranchStatusMonitor(config, broadcaster);
+    monitors.push(m);
+    return m;
   }
 
   it("starts as 'unknown' on construction", () => {
@@ -212,6 +223,7 @@ describe("BranchStatusMonitor", () => {
         dropPrivileges: false,
       } as never;
       const monitor = new BranchStatusMonitor(config, broadcaster);
+      monitors.push(monitor);
       monitor.refresh();
 
       const last = monitor.getLast();
