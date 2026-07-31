@@ -323,9 +323,10 @@ export function resolveConfig(
     duckdbExtensionDirectory:
       envVars.DUCKDB_EXTENSION_DIRECTORY || "/opt/duckdb/extensions",
     duckdbMemoryLimit: envVars.DUCKDB_MEMORY_LIMIT || undefined,
-    duckdbThreads: envVars.DUCKDB_THREADS
-      ? Number(envVars.DUCKDB_THREADS)
-      : undefined,
+    duckdbThreads: toPositiveIntegerOrUndefined(
+      "DUCKDB_THREADS",
+      envVars.DUCKDB_THREADS,
+    ),
 
     // Runtime flags
     isCli: true,
