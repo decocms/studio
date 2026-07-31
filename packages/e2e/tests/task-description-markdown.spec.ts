@@ -16,6 +16,9 @@ import { expect, test } from "../fixtures/test";
 /** Cold-Vite first paint on a fresh sandbox is slow (SPA compile + auth). */
 const FIRST_PAINT_MS = 60_000;
 
+const DOC_NAME = "spec.txt";
+const DOC = Buffer.from("attachment body\n");
+
 const PNG_NAME = "shot.png";
 /** Smallest valid PNG — 1x1, so `naturalWidth === 1` proves it really loaded. */
 const PNG = Buffer.from(
@@ -166,6 +169,84 @@ test.describe("task description markdown editor", () => {
     await reopened.locator("img").hover();
     await page.getByRole("button", { name: "Remove image" }).click();
     await expect(reopened.locator("img")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect
+      .poll(async () => {
+        const { items } = await call<{ items: TaskBoardItem[] }>(
+          "TASK_BOARD_ITEM_LIST",
+          {},
+        );
+        return items.find((i) => i.id === item.id)?.description ?? null;
+      })
+      .toBe(null);
+  });
+
+  test("shows a non-image attachment as a download chip that survives a reopen", async ({
+    authedPage,
+  }) => {
+    test.setTimeout(180_000);
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+
+    const title = `File description ${Date.now()}`;
+    const { item } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title },
+    );
+
+    await openTask(page, orgSlug, title);
+    const dialog = page.getByRole("dialog");
+    const editor = editorOf(page);
+
+    await dialog.locator('input[type="file"]').setInputFiles({
+      name: DOC_NAME,
+      mimeType: "text/plain",
+      buffer: DOC,
+    });
+
+    // A named chip with a download control — no preview, no raw markdown, no URL.
+    const download = page.getByRole("link", { name: `Download ${DOC_NAME}` });
+    await expect(download).toBeVisible({ timeout: 30_000 });
+    await expect(editor).toContainText(DOC_NAME);
+    await expect(editor).not.toContainText("/fs/uploads/");
+    await expect(editor.locator("img")).toHaveCount(0);
+
+    // The download really points at the uploaded bytes, under the attachment
+    // dir (not the image one), and saves under the name it was uploaded with.
+    const href = await download.getAttribute("href");
+    expect(href).toContain("/fs/uploads/read?path=editor-files%2F");
+    await expect(download).toHaveAttribute("download", DOC_NAME);
+    const fetched = await request.get(href ?? "");
+    expect(fetched.status()).toBe(200);
+    expect(await fetched.text()).toBe(DOC.toString());
+
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // Persisted as a plain markdown link — legible to whatever reads the
+    // description next, including the agent it's fed to as context.
+    await expect
+      .poll(async () => {
+        const { items } = await call<{ items: TaskBoardItem[] }>(
+          "TASK_BOARD_ITEM_LIST",
+          {},
+        );
+        return items.find((i) => i.id === item.id)?.description ?? null;
+      })
+      .toMatch(
+        /^\[spec\.txt\]\(\/api\/[^/]+\/fs\/uploads\/read\?path=editor-files%2F[\w-]+\.txt\)$/,
+      );
+
+    // Reopen: that link parses back into a chip (not a bare link), and the X
+    // removes it.
+    await openTask(page, orgSlug, title);
+    const reopened = page.getByRole("link", { name: `Download ${DOC_NAME}` });
+    await expect(reopened).toBeVisible();
+
+    await page.getByRole("button", { name: "Remove attachment" }).click();
+    await expect(reopened).toHaveCount(0);
 
     await page.getByRole("button", { name: "Save" }).click();
     await expect

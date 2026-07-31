@@ -8,7 +8,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
-import { isImageFile, useEditorImageUpload } from "./use-image-upload";
+import { isImageFile, useEditorFileUpload } from "./use-file-upload";
 
 /**
  * Block styling for the editor surface. Explicit rather than `prose`:
@@ -47,19 +47,19 @@ const PLACEHOLDER_CLASS = [
 ].join(" ");
 
 /**
- * Insert an uploaded image as a block node and return the position after it,
- * so a batch of pasted files stacks in the order they were picked instead of
- * every insert landing on the same stale offset.
+ * Insert an uploaded file's node and return the position after it, so a batch
+ * of pasted files stacks in the order they were picked instead of every insert
+ * landing on the same stale offset.
  */
-function insertImage(
+function insertUpload(
   view: EditorView,
   pos: number,
-  src: string,
-  alt: string,
+  typeName: "image" | "attachment",
+  attrs: Record<string, string>,
 ): number {
-  const type = view.state.schema.nodes.image;
+  const type = view.state.schema.nodes[typeName];
   if (!type) return pos;
-  const tr = view.state.tr.replaceWith(pos, pos, type.create({ src, alt }));
+  const tr = view.state.tr.replaceWith(pos, pos, type.create(attrs));
   const after = tr.mapping.map(pos, 1);
   tr.setSelection(Selection.near(tr.doc.resolve(after)));
   view.dispatch(tr);
@@ -86,29 +86,34 @@ export function MarkdownEditor({
   placeholder?: string;
 }) {
   const t = useT();
-  const { uploadImage, pending } = useEditorImageUpload();
+  const { uploadFile, pending } = useEditorFileUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The editor is created once, so its handlers would close over the first
   // render's props. Refs keep them current without re-creating the editor.
   const onChangeRef = useRef(onChange);
-  const uploadRef = useRef(uploadImage);
+  const uploadRef = useRef(uploadFile);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
   onChangeRef.current = onChange;
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
-  uploadRef.current = uploadImage;
+  uploadRef.current = uploadFile;
 
   const uploadInto = (view: EditorView, files: File[], at: number) => {
-    const images = files.filter(isImageFile);
-    if (images.length === 0) return false;
+    if (files.length === 0) return false;
     void (async () => {
       let pos = at;
-      for (const file of images) {
-        const src = await uploadRef.current(file);
-        // The original file name becomes the alt text: it's the only
-        // description available, and it survives into the markdown that the
-        // agent reads as task context.
-        if (src) pos = insertImage(view, pos, src, file.name);
+      for (const file of files) {
+        const url = await uploadRef.current(file);
+        if (!url) continue;
+        // The original file name is the only description available, and it
+        // survives into the markdown the agent reads as task context — as an
+        // image's alt text, or as an attachment link's text.
+        pos = isImageFile(file)
+          ? insertUpload(view, pos, "image", { src: url, alt: file.name })
+          : insertUpload(view, pos, "attachment", {
+              href: url,
+              name: file.name,
+            });
       }
     })();
     return true;
@@ -162,7 +167,7 @@ export function MarkdownEditor({
           variant="ghost"
           size="icon-sm"
           // Icon-only, so the label has to live on the control itself.
-          aria-label={t("markdownEditor.addImage")}
+          aria-label={t("markdownEditor.attachFile")}
           onClick={() => fileInputRef.current?.click()}
         >
           <Attachment01 size={14} />
@@ -180,10 +185,11 @@ export function MarkdownEditor({
           </span>
         )}
       </div>
+      {/* No `accept`: images become previews, everything else a download chip,
+          so there's nothing to exclude. */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
         multiple
         className="hidden"
         onChange={(e) => {

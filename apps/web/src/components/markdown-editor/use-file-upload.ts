@@ -2,12 +2,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
+import { FILE_DIR, IMAGE_DIR, UPLOAD_VOLUME } from "./uploads";
 
-/** Same volume the Library writes user uploads to. */
-const VOLUME = "uploads";
-/** Kept out of the Library root so pasted screenshots don't clutter it. */
-const DIR = "editor-images";
-const MAX_BYTES = 10 * 1024 * 1024;
+/** Images are inlined as a preview, so an oversized one is also a huge render. */
+const MAX_IMAGE_MB = 10;
+/** Attachments are only ever downloaded — a deck or a spec can be bigger. */
+const MAX_FILE_MB = 25;
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": ".png",
@@ -20,9 +20,11 @@ const EXT_BY_MIME: Record<string, string> = {
 
 function fileExtension(file: File): string {
   return (
-    file.name.match(/\.[a-z0-9]{1,5}$/i)?.[0] ??
+    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
     EXT_BY_MIME[file.type] ??
-    ".png"
+    // Nothing to go on: an image still needs an extension for the read route to
+    // serve it back as one, while an attachment is only ever downloaded.
+    (isImageFile(file) ? ".png" : "")
   );
 }
 
@@ -31,35 +33,43 @@ export function isImageFile(file: File): boolean {
 }
 
 /**
- * Uploads editor images to the org filesystem and hands back a same-origin
+ * Uploads editor files to the org filesystem and hands back a same-origin
  * `/api/:org/fs/...` URL. That route is session-authenticated on the same
- * origin, so it renders straight into an `<img>` for org members while staying
- * private to the org — unlike a public bucket URL.
+ * origin, so it renders straight into an `<img>` (or downloads from an `<a>`)
+ * for org members while staying private to the org — unlike a public bucket URL.
  */
-export function useEditorImageUpload() {
+export function useEditorFileUpload() {
   const t = useT();
-  const { upload } = useOrgFsMutations(VOLUME);
-  const fileUrl = useOrgFsDownloadUrl(VOLUME);
+  const { upload } = useOrgFsMutations(UPLOAD_VOLUME);
+  const fileUrl = useOrgFsDownloadUrl(UPLOAD_VOLUME);
   // A count, not a boolean: pasting three screenshots at once must not clear
   // the indicator as soon as the first one lands.
   const [pending, setPending] = useState(0);
 
-  const uploadImage = async (file: File): Promise<string | null> => {
-    if (file.size > MAX_BYTES) {
-      toast.error(t("markdownEditor.imageTooLarge", { name: file.name }));
+  const uploadFile = async (file: File): Promise<string | null> => {
+    const isImage = isImageFile(file);
+    const maxMb = isImage ? MAX_IMAGE_MB : MAX_FILE_MB;
+    if (file.size > maxMb * 1024 * 1024) {
+      toast.error(
+        t("markdownEditor.fileTooLarge", {
+          name: file.name,
+          max: String(maxMb),
+        }),
+      );
       return null;
     }
     // Pasted screenshots are all named "image.png", and the upload path is
     // derived from the file name — reusing it would overwrite another task's
-    // image in place.
+    // file in place.
+    const dir = isImage ? IMAGE_DIR : FILE_DIR;
     const name = `${crypto.randomUUID()}${fileExtension(file)}`;
     setPending((n) => n + 1);
     try {
       await upload.mutateAsync({
-        dir: DIR,
+        dir,
         files: [new File([file], name, { type: file.type })],
       });
-      return fileUrl(`${DIR}/${name}`);
+      return fileUrl(`${dir}/${name}`);
     } catch {
       toast.error(t("markdownEditor.uploadFailed", { name: file.name }));
       return null;
@@ -68,5 +78,5 @@ export function useEditorImageUpload() {
     }
   };
 
-  return { uploadImage, pending };
+  return { uploadFile, pending };
 }
