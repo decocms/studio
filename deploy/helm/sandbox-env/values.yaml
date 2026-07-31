@@ -107,6 +107,35 @@ resources:
 # reclaim notice.
 terminationGracePeriodSeconds: 90
 
+# ── daemon telemetry (OTLP metrics) ───────────────────────────────────
+# Opens exactly ONE in-cluster destination in the sandbox egress boundary —
+# the OTel collector — and hands the daemon the matching
+# OTEL_EXPORTER_OTLP_ENDPOINT. Off by default: rendering costs nothing, and a
+# sandbox with no endpoint starts no exporter.
+#
+# `otlp.ip` MUST be the collector Service's ClusterIP, not a DNS name.
+# Sandboxes run `dnsPolicy: None` against public resolvers (see dnsConfig
+# below), so `gateway-otlp.opentelemetry-collector` is NXDOMAIN inside the pod.
+# Read it with:
+#   kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'
+#
+# KNOWN CEILING: a ClusterIP is stable for the life of a Service but not across
+# a delete/recreate. If the collector is recreated this value goes stale and
+# metrics stop — the daemon logs export failures and keeps serving, because
+# telemetry must never take a sandbox down. Re-read the IP and upgrade.
+#
+# Why a hole here is acceptable when the rest of the boundary is not: the
+# collector is a write-only ingest endpoint with no tenant data behind it. It
+# accepts unauthenticated OTLP, so there is no credential in the pod for user
+# code to steal. User code CAN write junk metrics to it — accepted knowingly;
+# turn `enabled` off to cut it. Do not widen this to a CIDR.
+telemetry:
+  enabled: false
+  otlp:
+    ip: ""
+    # 4318 = OTLP/HTTP. Use 4317 for gRPC (the collector serves both).
+    port: 4318
+
 # ── netinit / sandbox egress enforcement ──────────────────────────────
 # Sandbox pods run user code and must not reach in-cluster services.
 # Enforcement is via an iptables init container rather than a Kubernetes
