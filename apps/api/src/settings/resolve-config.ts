@@ -82,12 +82,16 @@ function toBoolOrUndefined(value: string | undefined): boolean | undefined {
 function toPositiveIntegerOrUndefined(
   name: string,
   value: string | undefined,
+  max?: number,
 ): number | undefined {
   if (value === undefined || value === "") return undefined;
 
   const numberValue = Number(value);
   if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
     throw new Error(`${name} must be a positive integer`);
+  }
+  if (max !== undefined && numberValue > max) {
+    throw new Error(`${name} must be at most ${max}`);
   }
   return numberValue;
 }
@@ -96,8 +100,9 @@ function toPositiveIntegerOrDefault(
   name: string,
   value: string | undefined,
   defaultValue: number,
+  max?: number,
 ): number {
-  return toPositiveIntegerOrUndefined(name, value) ?? defaultValue;
+  return toPositiveIntegerOrUndefined(name, value, max) ?? defaultValue;
 }
 
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
@@ -277,10 +282,15 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
+    // Capped at 100: a fee percent above that is a fat-fingered misconfig
+    // (e.g. "150" typed for "15"), and computeTopUpChargeCents() would
+    // otherwise silently charge customers more than double their top-up
+    // amount instead of failing fast at boot.
     topupFeePercent: toPositiveIntegerOrDefault(
       "STUDIO_TOPUP_FEE_PERCENT",
       envVars.STUDIO_TOPUP_FEE_PERCENT,
       15,
+      100,
     ),
 
     // Feature Flags
