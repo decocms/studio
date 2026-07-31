@@ -203,6 +203,11 @@ export function resolveConfig(
       envVars.DATABASE_POOL_MAX,
       5,
     ),
+    dbosPoolSize: toPositiveIntegerOrDefault(
+      "DBOS_POOL_SIZE",
+      envVars.DBOS_POOL_SIZE,
+      5,
+    ),
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",

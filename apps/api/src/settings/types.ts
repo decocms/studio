@@ -23,6 +23,10 @@ export interface Settings {
   databaseUrl: string;
   databasePgSsl: boolean;
   databasePoolMax: number;
+  /** DBOS's own Postgres connection pool size (DBOS_POOL_SIZE), separate from
+   *  `databasePoolMax` (the app's pool). SDK default is 10; capped lower by
+   *  default so N replicas don't exhaust RDS slots. */
+  dbosPoolSize: number;
 
   // Auth & Secrets
   betterAuthSecret: string;

@@ -121,6 +121,29 @@ describe("resolveConfig database pool max", () => {
   );
 });
 
+describe("resolveConfig DBOS pool size", () => {
+  it("defaults to 5 when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.dbosPoolSize).toBe(5);
+  });
+
+  it("uses DBOS_POOL_SIZE when set", () => {
+    const result = resolveConfig(flags, { DBOS_POOL_SIZE: "20" });
+
+    expect(result.settings.dbosPoolSize).toBe(20);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid pool size %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { DBOS_POOL_SIZE: value })).toThrow(
+        "DBOS_POOL_SIZE must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig port", () => {
   it("defaults to 3000 when unset", () => {
     const result = resolveConfig(flags, {});
