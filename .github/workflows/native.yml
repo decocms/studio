@@ -10,7 +10,10 @@ name: Native
 # check whose workflow never runs (workflow-level `paths:` filtering) blocks
 # the merge forever; a job skipped via `if:`, by contrast, reports as passed.
 # The `pull_request` trigger is therefore unfiltered and the `changes` job
-# skips the expensive macOS jobs when the PR touches nothing native-relevant.
+# skips the expensive macOS jobs when the PR touches nothing they consume.
+# That gate is PER JOB, not one workflow-wide "relevant" bit: a PR that
+# changes only the pinned parity fail-set has no reason to run cargo
+# clippy, and a web-only PR has no reason to build local-api twice.
 # Pushes to main keep the `paths:` filter — required checks gate PRs, not
 # pushes, so a never-run workflow is harmless there.
 on:
@@ -58,14 +61,28 @@ env:
   BUN_VERSION: "1.3.14"
 
 jobs:
-  # Gate: skip the macOS jobs when a PR touches nothing native-relevant.
+  # Gate: skip each macOS job when a PR touches none of ITS inputs.
   # Required checks can't be skipped via workflow-level `paths` filters — a
   # never-scheduled required check blocks the merge forever. A job skipped
   # via `if`, by contrast, reports as passed (same pattern as test.yml).
+  #
+  # Four outputs, one per downstream job, because the four jobs consume
+  # different things:
+  #   rust     — the cargo workspace itself (+ build inputs). Every job below
+  #              compiles Rust, so this one implies all of them.
+  #   suite    — the curated daemon e2e suite and its pinned fail-set, the
+  #              only extra inputs to the parity oracle. The suite is fully
+  #              black-box (it imports no workspace package), so nothing else
+  #              in packages/ can move it.
+  #   contract — apps/native's own e2e suite.
+  #   frontend — the web bundle baked into the .app.
   changes:
     runs-on: ubuntu-latest
     outputs:
-      relevant: ${{ steps.filter.outputs.relevant }}
+      rust: ${{ steps.filter.outputs.rust }}
+      suite: ${{ steps.filter.outputs.suite }}
+      contract: ${{ steps.filter.outputs.contract }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - name: Detect relevant changes
         id: filter
@@ -73,13 +90,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_MSG: ${{ github.event.head_commit.message }}
         run: |
+          all() { for k in rust suite contract frontend; do echo "$k=$1" >> "$GITHUB_OUTPUT"; done; }
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # Pushes to main, schedule, and dispatch run everything — except
             # the [release]: version-bump push, which only touches version
             # strings (release-native.yaml owns the shipping build).
             case "$HEAD_MSG" in
-              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
-              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+              '[release]:'*) all false ;;
+              *) all true ;;
             esac
             exit 0
           fi
@@ -88,19 +106,36 @@ jobs:
             "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '.[].filename'); then
             echo "Could not list PR files — running to be safe."
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            all true
             exit 0
           fi
           echo "Changed files:"; echo "$FILES"
-          relevant=false
+          rust=false suite=false contract=false frontend=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
+            # First match wins, so order these most-specific-first. Editing
+            # THIS workflow matches nothing on purpose: most edits here are
+            # comments or gate wiring, and burning 4 macOS jobs (one of them a
+            # 45-minute bundle) to prove a YAML comment is why this gate got
+            # split in the first place. The `push:` trigger above includes this
+            # file and runs the full set on main, so a workflow change is
+            # verified the moment it merges.
             case "$f" in
-              apps/native/*|apps/web/*|packages/sandbox/daemon/*|packages/shared/*|.github/workflows/native.yml)
-                relevant=true ;;
+              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
+                rust=true ;;
+              packages/sandbox/daemon/*|apps/native/scripts/ci/*) suite=true ;;
+              apps/native/e2e/*) contract=true ;;
+              apps/web/*|packages/shared/*) frontend=true ;;
+              # Everything else under apps/native — package.json, tsconfig,
+              # the other scripts — can move any of the three bun-side jobs.
+              # apps/native/{docs,README.md} intentionally match nothing.
+              apps/native/docs/*|apps/native/README.md) ;;
+              apps/native/*) suite=true contract=true frontend=true ;;
             esac
           done <<< "$FILES"
-          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          for k in rust suite contract frontend; do
+            eval "echo \"$k=\$$k\"" >> "$GITHUB_OUTPUT"
+          done
 
   # ---------------------------------------------------------------------
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
@@ -114,7 +149,7 @@ jobs:
   rust-checks:
     needs: changes
     if: >-
-      needs.changes.outputs.relevant == 'true' &&
+      needs.changes.outputs.rust == 'true' &&
       github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -211,7 +246,8 @@ jobs:
   daemon-e2e-vs-rust:
     needs: changes
     if: >-
-      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.suite == 'true') &&
       github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -293,7 +329,8 @@ jobs:
   contract-suite:
     needs: changes
     if: >-
-      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.contract == 'true') &&
       github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -338,7 +375,8 @@ jobs:
   tauri-build:
     needs: changes
     if: >-
-      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.frontend == 'true') &&
       github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 45
