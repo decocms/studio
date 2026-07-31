@@ -1,0 +1,30 @@
+// Linux-only overlay — merged over tauri.conf.json5 as a JSON Merge Patch
+// (RFC 7396): arrays are REPLACED wholesale. macOS/dev builds never read it.
+//
+// INVARIANT: `createUpdaterArtifacts` NEVER belongs here. Committed, it would
+// fail every secretless fork/PR build with a signing error — that is why it
+// lives only in release-native.yaml's --config overlay (see its comment at
+// release-native.yaml:272-274). native.yml's ubuntu tauri-build leg is the
+// canary: it builds unsigned and secretless and goes red the moment this
+// invariant is broken.
+//
+// No `linux.appimage.bundleMediaFramework` block: `false` is already the serde
+// default, and `true` is what would ADD the ~15-35 MB GStreamer payload.
+{
+  bundle: {
+    targets: ["appimage"],
+    category: "DeveloperTool",
+    // Linux bundlers derive their hicolor directory from each PNG's actual
+    // pixel dimensions, so the list must span the sizes desktop environments
+    // look for. `128x128@2x.png` is omitted deliberately: it is 256x256, so it
+    // resolves to the same hicolor directory as `256x256.png` and one would
+    // silently overwrite the other.
+    icon: [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/256x256.png",
+      "icons/512x512.png",
+    ],
+  },
+}
