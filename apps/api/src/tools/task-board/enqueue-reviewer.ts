@@ -1,27 +1,19 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import { resolveTier } from "@/core/resolve-tier";
-import { enqueueThreadRun } from "@/dispatch-queue";
-import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { getDecopilotId } from "@decocms/shared/sdk";
+import type { StudioContextFactory } from "@/automations/fire";
 import {
   isReviewerThreadTitle,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
+  reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-
-/** Builds a background (per-org) StudioContext — the projector's run-terminal
- *  hook has no request context of its own. Matches `automationContextFactory`. */
-type BackgroundContextFactory = (
-  orgId: string,
-  userId: string,
-) => Promise<StudioContext | null>;
+import { enqueueAgentRunForTask } from "./enqueue-task-run";
 
 /**
  * A Super Agent run finished — if it left a task In Review with an open PR,
@@ -34,7 +26,7 @@ type BackgroundContextFactory = (
  * storage) as the task's owner.
  */
 export async function enqueueReviewersOnThreadFinish(args: {
-  contextFactory: BackgroundContextFactory;
+  contextFactory: StudioContextFactory;
   taskBoard: TaskBoardStorage;
   threadId: string;
   orgId: string;
@@ -117,10 +109,29 @@ export async function enqueueEnabledReviewers(
   // A stale thread from a PRIOR cycle (before a Super Agent re-run bounced the
   // task back and forward) does NOT count, so reviewers re-run on re-review.
   const lastInReviewAt = await lastInReviewTime(ctx, task);
+  const cycleAt = new Date(lastInReviewAt);
 
   for (const kind of enabled) {
     if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) continue;
-    await enqueueReviewerForTask(ctx, task, kind).catch((err) => {
+    // Atomically claim the reviewer's slot for this cycle. The claim dedups the
+    // two triggers (projector run-finish + the modal poll) that can fire at the
+    // same instant — the loser's `claimed` is false, so it skips instead of
+    // spawning a duplicate run. The claim's token binds the reviewer's later
+    // decision back to this dispatch.
+    let claimed: boolean;
+    let token: string;
+    try {
+      ({ claimed, token } = await ctx.storage.taskBoard.claimReviewer(
+        task.id,
+        kind,
+        cycleAt,
+      ));
+    } catch (err) {
+      console.error(`[task-board] ${kind} reviewer claim failed`, err);
+      continue;
+    }
+    if (!claimed) continue;
+    await enqueueReviewerForTask(ctx, task, kind, token).catch((err) => {
       console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
     });
   }
@@ -144,7 +155,8 @@ export function reviewerHandledThisCycle(
 }
 
 /** When the task most recently entered In Review (ms), else 0. Drawn from the
- *  activity timeline so it survives across the many-to-many thread links. */
+ *  activity timeline (shared reducer) so it survives across the many-to-many
+ *  thread links and stays in lockstep with the merge gate + ship button. */
 async function lastInReviewTime(
   ctx: StudioContext,
   task: TaskBoardItem,
@@ -153,13 +165,7 @@ async function lastInReviewTime(
     task.id,
     task.organizationId,
   );
-  let latest = 0;
-  for (const a of activity) {
-    if (a.action !== "status_changed") continue;
-    if ((a.data as { to?: unknown })?.to !== "in_review") continue;
-    latest = Math.max(latest, new Date(a.occurredAt).getTime());
-  }
-  return latest;
+  return reviewCycleStart(activity);
 }
 
 /**
@@ -171,39 +177,9 @@ async function enqueueReviewerForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
   kind: ReviewerKind,
+  reviewToken: string,
 ): Promise<void> {
   const organizationId = task.organizationId;
-  const userId = task.assignedBy ?? task.createdBy;
-
-  const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
-
-  const thread = await ctx.storage.threads.create({
-    organization_id: organizationId,
-    title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
-    status: "in_progress",
-    virtual_mcp_id: agentId,
-    // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
-    message_storage_version: 2,
-    created_by: userId,
-  });
-
-  await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
-
-  // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null).
-  await recordTaskActivity(ctx, {
-    taskBoardItemId: task.id,
-    action: "review_requested",
-    actorId: null,
-    data: { reviewer: kind },
-  });
-
-  // Broadcast the newly-linked thread so the card shows the reviewer session
-  // live (running, clickable). Reviewer runs never advance the card's status —
-  // it stays In Review — so unlike the Super Agent no status-advance emit
-  // carries the fresh link; do it explicitly here.
-  const linked = await ctx.storage.taskBoard.getById(task.id, organizationId);
-  if (linked) emitTaskBoardUpdated(organizationId, linked);
 
   const prompt = [
     REVIEWER_FOCUS[kind],
@@ -223,43 +199,32 @@ async function enqueueReviewerForTask(
     "- Call `TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review, then load its repository to inspect / exercise the change.",
     "- Do NOT push commits or change the code yourself. You are reviewing, not implementing.",
     "- End the run by calling `TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
-      `reviewer "${kind}", and your decision:`,
+      `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — the task goes back to the Super Agent with your notes.",
+    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     "",
     `(task id: ${task.id})`,
+    `(reviewToken: ${reviewToken})`,
   ].join("\n");
 
-  const requestMessage = {
-    id: crypto.randomUUID(),
-    role: "user" as const,
-    parts: [{ type: "text" as const, text: prompt }],
-  };
-
-  await new PartEmitter({
-    storage: ctx.storage.threads.messageParts(),
-    orgId: organizationId,
-    threadId: thread.id,
-    runId: thread.id,
-  }).emitRequestMessage(requestMessage);
-
-  await enqueueThreadRun({
-    threadId: thread.id,
-    source: "background-tool",
-    request: {
-      messages: [requestMessage],
-      models: {
-        credentialId: model.credentialId,
-        thinking: { id: model.modelId, title: model.modelMeta.title },
-      },
-      agent: { id: agentId },
-      temperature: 0.3,
-      toolApprovalLevel: "auto",
-      mode: "default",
-      organizationId,
-      userId,
-      taskId: thread.id,
-      runMetadata: { taskBoardItemId: task.id },
-    },
+  // Create + link the reviewer thread and dispatch its run (shared plumbing).
+  await enqueueAgentRunForTask(ctx, task, {
+    title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
+    prompt,
+    temperature: 0.3,
   });
+
+  // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null), and
+  // broadcast the now-linked thread so the card shows the reviewer session live
+  // (reviewer runs never advance the card's status, so no status-advance emit
+  // carries the fresh link — do it explicitly).
+  await recordTaskActivity(ctx, {
+    taskBoardItemId: task.id,
+    action: "review_requested",
+    actorId: null,
+    data: { reviewer: kind },
+  });
+  const linked = await ctx.storage.taskBoard.getById(task.id, organizationId);
+  if (linked) emitTaskBoardUpdated(organizationId, linked);
 }

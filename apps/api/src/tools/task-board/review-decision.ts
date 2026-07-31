@@ -3,10 +3,10 @@ import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  allReviewersApproved,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
-  type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -15,12 +15,14 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { mergeLinkedPr } from "./merge-pr";
 
 /**
- * True when EVERY enabled reviewer has an `approve` as its latest decision in
- * the current review cycle (since the task last entered In Review), with none
- * outstanding. Reads the activity log — the single record of each reviewer's
- * verdict — so it's robust across the two reviewers finishing in any order.
+ * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
+ * decision in the current review cycle. `verifiedOnly` is the point: a
+ * self-asserted approval (missing/wrong reviewToken) must never trigger an
+ * automatic merge, otherwise one agent could forge the two-reviewer gate. Reads
+ * the activity log through the shared cycle reducer (same logic the ship button
+ * uses, minus the verification requirement).
  */
-async function allEnabledReviewersApproved(
+async function allEnabledReviewersVerifiedApproved(
   ctx: StudioContext,
   orgId: string,
   taskBoardItemId: string,
@@ -30,43 +32,11 @@ async function allEnabledReviewersApproved(
   const enabled = REVIEWER_KINDS.filter(
     (k) => flags[REVIEWER_FLAG[k]] === true,
   );
-  if (enabled.length === 0) return false;
-
   const activity = await ctx.storage.taskBoard.listActivity(
     taskBoardItemId,
     orgId,
   );
-  let lastInReviewAt = 0;
-  for (const a of activity) {
-    if (
-      a.action === "status_changed" &&
-      (a.data as { to?: unknown })?.to === "in_review"
-    ) {
-      lastInReviewAt = Math.max(
-        lastInReviewAt,
-        new Date(a.occurredAt).getTime(),
-      );
-    }
-  }
-
-  // Latest verdict per reviewer within this cycle.
-  const latest = new Map<ReviewerKind, "approved" | "changes_requested">();
-  for (const a of activity) {
-    if (
-      a.action !== "review_approved" &&
-      a.action !== "review_changes_requested"
-    )
-      continue;
-    if (new Date(a.occurredAt).getTime() < lastInReviewAt) continue;
-    const reviewer = (a.data as { reviewer?: unknown })?.reviewer;
-    if (reviewer !== "qa" && reviewer !== "code_review") continue;
-    latest.set(
-      reviewer,
-      a.action === "review_approved" ? "approved" : "changes_requested",
-    );
-  }
-
-  return enabled.every((k) => latest.get(k) === "approved");
+  return allReviewersApproved(activity, enabled, { verifiedOnly: true });
 }
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
@@ -92,6 +62,14 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       .describe(
         "Which reviewer you are: `qa` (QA Agent) or `code_review` (Code Reviewer).",
       ),
+    reviewToken: z
+      .string()
+      .optional()
+      .describe(
+        "The reviewToken from your prompt — proves you are this reviewer. " +
+          "Pass it through exactly; an approval without a valid token is " +
+          "recorded but does NOT count toward an automatic merge.",
+      ),
     decision: z.enum(["approve", "request_changes"]),
     notes: z
       .string()
@@ -110,7 +88,10 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         "True when this approval completed the review and merged the PR.",
       ),
   }),
-  handler: async ({ taskBoardItemId, reviewer, decision, notes }, ctx) => {
+  handler: async (
+    { taskBoardItemId, reviewer, reviewToken, decision, notes },
+    ctx,
+  ) => {
     requireAuth(ctx);
     await ctx.access.check();
 
@@ -129,6 +110,18 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
+    // Verify the caller is the reviewer it claims to be: the reviewToken must
+    // resolve to a claim for THIS task whose reviewer matches. An unverified
+    // decision is still recorded (so a dropped token never stalls the flow) but
+    // won't count toward an automatic merge (see the verified gate below).
+    const claim = reviewToken
+      ? await ctx.storage.taskBoard.resolveReviewClaimByToken(
+          taskBoardItemId,
+          reviewToken,
+        )
+      : null;
+    const verified = claim?.reviewer === reviewer;
+
     if (decision === "request_changes") {
       // Any reviewer requesting changes bounces the task straight back to the
       // Super Agent with the feedback in its re-run prompt — no need to wait on
@@ -143,7 +136,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         taskBoardItemId,
         action: "review_changes_requested",
         actorId: null,
-        data: { reviewer, notes },
+        data: { reviewer, notes, verified },
       });
       emitTaskBoardUpdated(organizationId, updated);
       // Pass the PR under review so the re-run updates it in place (checks out
@@ -165,12 +158,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       taskBoardItemId,
       action: "review_approved",
       actorId: null,
-      data: { reviewer, notes },
+      data: { reviewer, notes, verified },
     });
 
-    // Only the LAST enabled reviewer to approve completes the review. Until then
-    // the task waits In Review for the other reviewer.
-    const complete = await allEnabledReviewersApproved(
+    // Only the LAST enabled reviewer to (verifiably) approve completes the
+    // review. Until then the task waits In Review for the other reviewer.
+    const complete = await allEnabledReviewersVerifiedApproved(
       ctx,
       organizationId,
       taskBoardItemId,

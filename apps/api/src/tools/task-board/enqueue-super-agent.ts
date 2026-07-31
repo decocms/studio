@@ -1,10 +1,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { resolveTier } from "@/core/resolve-tier";
-import { enqueueThreadRun } from "@/dispatch-queue";
-import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { enqueueAgentRunForTask } from "./enqueue-task-run";
 
 /**
  * The shared post-write reaction for a task delegated to the Super Agent:
@@ -45,26 +42,6 @@ export async function enqueueSuperAgentForTask(
     pr?: { number: number; url: string };
   },
 ): Promise<void> {
-  const organizationId = task.organizationId;
-  const userId = task.assignedBy ?? task.createdBy;
-
-  const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
-
-  const thread = await ctx.storage.threads.create({
-    organization_id: organizationId,
-    title: `Super Agent: ${task.title}`,
-    status: "in_progress",
-    virtual_mcp_id: agentId,
-    // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
-    message_storage_version: 2,
-    created_by: userId,
-  });
-
-  // Link the run thread to the task (many-to-many) so the board can render it
-  // in the card and derive its live run state.
-  await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
-
   // Guidance tuned from observed runs. First: let the agent judge whether the
   // task even touches a repo — not every task does, and forcing a PR on a
   // research/answer task made it invent code changes. Only when it works on a
@@ -110,44 +87,9 @@ export async function enqueueSuperAgentForTask(
     `(task id: ${task.id})`,
   ].join("\n");
 
-  const requestMessage = {
-    id: crypto.randomUUID(),
-    role: "user" as const,
-    parts: [{ type: "text" as const, text: prompt }],
-  };
-
-  // Persist the user turn BEFORE dispatch (as POST /messages does) so it lands
-  // with an early created_at. The projector runs concurrently with the run's own
-  // prepareRun user-message emit; if it projects the assistant reply first, that
-  // reply gets base = Date.now() (no user parts yet) and the user message then
-  // persists with a LATER created_at — inverting their order in the UI (the
-  // request renders after the reply, trailed by "No response was generated").
-  // Writing it here first guarantees user-before-assistant ordering. Idempotent:
-  // the run's own emit reuses this same message id (ON CONFLICT keeps this row).
-  await new PartEmitter({
-    storage: ctx.storage.threads.messageParts(),
-    orgId: organizationId,
-    threadId: thread.id,
-    runId: thread.id,
-  }).emitRequestMessage(requestMessage);
-
-  await enqueueThreadRun({
-    threadId: thread.id,
-    source: "background-tool",
-    request: {
-      messages: [requestMessage],
-      models: {
-        credentialId: model.credentialId,
-        thinking: { id: model.modelId, title: model.modelMeta.title },
-      },
-      agent: { id: agentId },
-      temperature: 0.5,
-      toolApprovalLevel: "auto",
-      mode: "default",
-      organizationId,
-      userId,
-      taskId: thread.id,
-      runMetadata: { taskBoardItemId: task.id },
-    },
+  await enqueueAgentRunForTask(ctx, task, {
+    title: `Super Agent: ${task.title}`,
+    prompt,
+    temperature: 0.5,
   });
 }

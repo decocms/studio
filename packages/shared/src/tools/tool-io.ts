@@ -459,6 +459,7 @@ export interface StudioToolIO {
       reviewer: "qa" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
+      reviewToken?: string | undefined;
     };
     output: {
       status: "done" | "triage" | "todo" | "in_progress" | "in_review";
