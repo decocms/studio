@@ -19,7 +19,7 @@ env:
 jobs:
   release:
     name: Package & push ${{ matrix.chart }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Run sandbox-operator and sandbox-env in parallel — independent OCI
     # tags, no shared mutable state.
     strategy:

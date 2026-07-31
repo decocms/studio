@@ -63,7 +63,7 @@ jobs:
   # never-scheduled required check blocks the merge forever. A job skipped
   # via `if`, by contrast, reports as passed (same pattern as test.yml).
   changes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -116,7 +116,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -197,7 +197,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -278,7 +278,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -323,7 +323,7 @@ jobs:
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 45
     # (No job-level env: both signing families below are deliberately unwired
     # in this non-shipping job.)
@@ -466,7 +466,7 @@ jobs:
   # ---------------------------------------------------------------------
   stub-seam-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout repository

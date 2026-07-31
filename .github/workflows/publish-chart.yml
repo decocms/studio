@@ -9,7 +9,7 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -49,7 +49,7 @@ jobs:
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd chart bump
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Reuses DEPLOY_REPO_TOKEN (decobot PAT, admin on decocms/deco-apps-cd) —
     # same token/mechanism as the image bump. The bump is a convenience and must
     # never fail this workflow: no token → the step no-ops and the job passes.

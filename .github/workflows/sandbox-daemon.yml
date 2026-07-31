@@ -32,7 +32,7 @@ jobs:
   # the daemon e2e suite only exercises the sandbox daemon bundle, so it runs
   # only when the packages feeding that build change. Pushes to main always run.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
@@ -73,7 +73,7 @@ jobs:
   daemon-e2e:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -97,7 +97,7 @@ jobs:
   docker-smoke:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
