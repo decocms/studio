@@ -12,7 +12,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse } from "./helpers";
+import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
 import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
@@ -67,15 +67,8 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     if (data.branch === null && existing.virtual_mcp_id) {
       const vmcp = await ctx.storage.virtualMcps.findById(
         existing.virtual_mcp_id,
-        requireOrganization(ctx).id,
+        organization.id,
       );
-      type GithubRepoMeta = {
-        githubRepo?: {
-          owner: string;
-          name: string;
-          connectionId?: string;
-        } | null;
-      };
       const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
         ?.githubRepo;
       if (githubRepo) {

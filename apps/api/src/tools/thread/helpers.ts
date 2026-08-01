@@ -8,6 +8,15 @@
 import type { Thread, ThreadStatus } from "../../storage/types";
 import type { ThreadEntity } from "@decocms/shared/thread/schema";
 
+/** Shape of the `githubRepo` field on a virtual MCP's `metadata` column. */
+export type GithubRepoMeta = {
+  githubRepo?: {
+    owner: string;
+    name: string;
+    connectionId?: string;
+  } | null;
+};
+
 /**
  * Threads stuck in "in_progress" longer than this are surfaced as "expired".
  * This is a virtual status (never stored in the DB) so the thread can

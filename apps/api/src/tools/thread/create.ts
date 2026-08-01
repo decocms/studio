@@ -28,7 +28,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse } from "./helpers";
+import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
 import {
   ThreadCreateDataSchema,
   ThreadEntitySchema,
@@ -50,14 +50,6 @@ export type CreateThreadInput = z.infer<typeof CreateInputSchema>;
 const CreateOutputSchema = z.object({
   item: ThreadEntitySchema.describe("The created thread entity"),
 });
-
-type GithubRepoMeta = {
-  githubRepo?: {
-    owner: string;
-    name: string;
-    connectionId?: string;
-  } | null;
-};
 
 type SandboxMapMeta = {
   sandboxMap?: Record<
