@@ -195,14 +195,31 @@ jobs:
       # Debug info is the bulk of it and nothing in this job reads a backtrace,
       # so drop it rather than buy a bigger runner. macOS is left alone: it
       # finishes in three minutes and its artifacts are a fraction of the size.
-      - name: Shrink the Linux target dir
+      - name: Make room for the Linux target dir
         if: runner.os == 'Linux'
         run: |
+          # Two compounding problems, both invisible in the logs because the
+          # runner dies before they upload. (1) This is the only job that
+          # builds the workspace twice — clippy's dev profile, then test's —
+          # and on Linux each carries the GTK/WebKit tree macOS gets from
+          # system frameworks; with full debug info that target dir measured
+          # 13.5 GiB against ~14 GiB free. (2) rust-cache saves in a post
+          # step, so a job that never finishes never warms the cache, and
+          # every run starts cold — which is why the failure reproduced at a
+          # near-identical 49 min rather than varying with load.
+          #
+          # Dropping debug info removes the bulk of the artifacts (nothing
+          # here reads a backtrace) and evicting the preinstalled SDKs this
+          # repo never uses frees ~20 GiB more. macOS is untouched: it
+          # finishes in three minutes.
           {
             echo "CARGO_PROFILE_DEV_DEBUG=0"
             echo "CARGO_PROFILE_TEST_DEBUG=0"
           } >> "$GITHUB_ENV"
-          df -h / | tail -1
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          echo "after:"; df -h / | tail -1
 
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
