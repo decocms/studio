@@ -578,7 +578,7 @@ export class OrgFsEntryStorage {
   }): Promise<OrgFsEntry[]> {
     if (params.volumes && params.volumes.length === 0) return [];
     // Escape LIKE metacharacters so the query is a literal substring.
-    const escaped = params.query.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const escaped = escapeLike(params.query);
     let qb = this.db
       .selectFrom("org_fs_entry")
       .where("organization_id", "=", params.organizationId)
