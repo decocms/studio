@@ -186,6 +186,24 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
 
+      # This job is the only one that builds the workspace TWICE — clippy's dev
+      # profile, then test's — and on Linux each of those also carries the
+      # GTK/WebKit dependency tree that macOS gets from system frameworks. With
+      # full debug info that target dir measured 13.5 GiB locally, against a
+      # runner that has ~14 GiB free: the job died at 49 min mid-`cargo test`
+      # with no retained logs, which is what disk exhaustion looks like here.
+      # Debug info is the bulk of it and nothing in this job reads a backtrace,
+      # so drop it rather than buy a bigger runner. macOS is left alone: it
+      # finishes in three minutes and its artifacts are a fraction of the size.
+      - name: Shrink the Linux target dir
+        if: runner.os == 'Linux'
+        run: |
+          {
+            echo "CARGO_PROFILE_DEV_DEBUG=0"
+            echo "CARGO_PROFILE_TEST_DEBUG=0"
+          } >> "$GITHUB_ENV"
+          df -h / | tail -1
+
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
         with:
