@@ -598,6 +598,14 @@ pub fn spawn_anchor(
 /// nothing and returns `false`, leaving the watchdog's EOF path to fail
 /// closed. Blocking: callers on an async runtime wrap this in
 /// `spawn_blocking`.
+///
+/// Group id `0` is refused rather than passed through. procps documents
+/// `pgrep -g 0` as "pgrep's OWN process group", so on Linux a zero id makes
+/// this enumerate the caller's group and then signal every member of it —
+/// under `cargo test` that is the test runner and, on CI, the agent itself.
+/// BSD `pgrep` takes 0 literally and matches nothing, so the same call is a
+/// silent no-op on macOS: the sort of divergence that only ever surfaces as
+/// an unexplained dead machine.
 #[cfg(unix)]
 pub fn signal_non_anchor_members(group_id: u32, anchor_id: u32, signal: Signal) -> bool {
     signal_group_members(group_id, anchor_id, signal)
@@ -679,6 +687,11 @@ pub fn signal_terminal_members(terminal_owner_pid: u32, spared_pid: u32, signal:
 fn signal_group_members(group_id: u32, spared_pid: u32, signal: Signal) -> bool {
     use std::process::Stdio;
 
+    if group_id == 0 {
+        tracing::error!("refusing to signal process group 0 — that is this process's own group");
+        return false;
+    }
+
     let output = match std::process::Command::new("/usr/bin/pgrep")
         .args(["-g", &group_id.to_string(), "."])
         .stdin(Stdio::null())
@@ -717,7 +730,15 @@ fn signal_pids(pids: Vec<u32>, spared_pid: u32, signal: Signal) -> bool {
     use std::process::Stdio;
 
     let mut all_signaled = true;
-    for pid in pids.into_iter().filter(|pid| *pid != spared_pid) {
+    let own_pid = std::process::id();
+    for pid in pids
+        .into_iter()
+        .filter(|pid| *pid != spared_pid)
+        // Belt to the group-0 brace: whatever enumeration returned, signalling
+        // ourselves is never the intent, and a caller that has somehow been
+        // handed its own group should not die for it.
+        .filter(|pid| *pid != own_pid)
+    {
         let signaled = std::process::Command::new("/bin/kill")
             .arg(signal.flag())
             .arg(pid.to_string())
@@ -1026,6 +1047,18 @@ while :; do /bin/sleep 1; done
                 );
             }
         }
+    }
+
+    /// Signalling group 0 must be refused, not enumerated. procps expands
+    /// `pgrep -g 0` to the caller's own process group, so on Linux the old
+    /// code path would have signalled every sibling of the running test —
+    /// the runner agent included. This test is safe precisely because the
+    /// guard returns before any `pgrep`/`kill` runs; without it, running this
+    /// on Linux would kill the test process's own group.
+    #[test]
+    fn signalling_process_group_zero_is_refused() {
+        assert!(!signal_non_anchor_members(0, 0, Signal::Term));
+        assert!(!signal_non_anchor_members(0, 12345, Signal::Kill));
     }
 
     /// Pins the script's core contract: the anchor holds the shared lifetime
