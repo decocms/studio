@@ -44,7 +44,10 @@ import {
 } from "@/sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  generateBranchName,
+  branchUserLabel,
+} from "@decocms/shared/branch-name";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -190,13 +193,7 @@ function VmEventsBridge({
     if (!adoptBranchEligible || !activeTask) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
     adoptedBranchForThreadRef.current = activeTask.id;
-    setCurrentTaskBranch(
-      generateBranchName(
-        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
-        // would let Better Auth's empty display name through and slug to "user".
-        session?.user?.name || session?.user?.email?.split("@")[0],
-      ),
-    );
+    setCurrentTaskBranch(generateBranchName(branchUserLabel(session?.user)));
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
   // Open the events stream only when a sandbox actually exists or a start is
