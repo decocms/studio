@@ -1,3 +1,5 @@
+import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
+
 export const RUN_STATUS_STAGE_ORDER = [
   "sending",
   "received",
@@ -18,49 +20,60 @@ export interface RunStatusCopy {
   detail: string;
 }
 
-export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
+const RUN_STATUS_I18N_KEYS: Record<
+  RunStatusStage,
+  { label: TranslationKey; detail: TranslationKey }
+> = {
   sending: {
-    label: "Sending your message",
-    detail: "Adding your message to the chat",
+    label: "chat.runStatus.sendingLabel",
+    detail: "chat.runStatus.sendingDetail",
   },
   received: {
-    label: "Message received",
-    detail: "Your message is in line to be worked on",
+    label: "chat.runStatus.receivedLabel",
+    detail: "chat.runStatus.receivedDetail",
   },
   "waiting-runner": {
-    label: "Waiting to start",
-    detail: "Finishing up the previous message in this chat",
+    label: "chat.runStatus.waitingRunnerLabel",
+    detail: "chat.runStatus.waitingRunnerDetail",
   },
   "starting-run": {
-    label: "Getting started",
-    detail: "Setting up to work on your message",
+    label: "chat.runStatus.startingRunLabel",
+    detail: "chat.runStatus.startingRunDetail",
   },
   "waiting-capacity": {
-    label: "Waiting for a free runner",
-    detail:
-      "Other runs are using every slot — this one starts as soon as one frees up",
+    label: "chat.runStatus.waitingCapacityLabel",
+    detail: "chat.runStatus.waitingCapacityDetail",
   },
   "gathering-context": {
-    label: "Reading the chat",
-    detail: "Looking through the history, files, and notes",
+    label: "chat.runStatus.gatheringContextLabel",
+    detail: "chat.runStatus.gatheringContextDetail",
   },
   "preparing-tools": {
-    label: "Getting ready",
-    detail: "Setting up the tools it can use",
+    label: "chat.runStatus.preparingToolsLabel",
+    detail: "chat.runStatus.preparingToolsDetail",
   },
   "starting-assistant": {
-    label: "Warming up",
-    detail: "Almost ready to reply",
+    label: "chat.runStatus.startingAssistantLabel",
+    detail: "chat.runStatus.startingAssistantDetail",
   },
   "analyzing-scope": {
-    label: "Thinking",
-    detail: "Working out how to respond",
+    label: "chat.runStatus.analyzingScopeLabel",
+    detail: "chat.runStatus.analyzingScopeDetail",
   },
   "choosing-next-steps": {
-    label: "Thinking",
-    detail: "Deciding what to do next",
+    label: "chat.runStatus.choosingNextStepsLabel",
+    detail: "chat.runStatus.choosingNextStepsDetail",
   },
 };
+
+/** User-facing copy for a run-status stage, translated via `t`. */
+export function getRunStatusCopy(
+  t: TFunction,
+  stage: RunStatusStage,
+): RunStatusCopy {
+  const keys = RUN_STATUS_I18N_KEYS[stage];
+  return { label: t(keys.label), detail: t(keys.detail) };
+}
 
 const RUN_STATUS_STAGE_RANK = new Map<RunStatusStage, number>(
   RUN_STATUS_STAGE_ORDER.map((stage, index) => [stage, index]),
