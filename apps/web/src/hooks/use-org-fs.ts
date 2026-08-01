@@ -5,12 +5,7 @@
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  keepPreviousData,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 
@@ -92,8 +87,14 @@ export function useOrgFsList(volume: string, path: string) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsList(org.id, volume, path),
-    // Keep the previous listing on screen while navigating into a dir.
-    placeholderData: keepPreviousData,
+    // Keep the previous listing on screen while navigating into a dir —
+    // but only within the same org+volume, so switching orgs (which
+    // doesn't remount this hook) never flashes another org's file names.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === org.id &&
+      previousQuery.queryKey[2] === volume
+        ? previousData
+        : undefined,
     queryFn: async () => {
       const res = await fsFetch(fsUrl(org.slug, volume, "list", { path }));
       const body = (await res.json()) as { entries: OrgFsEntry[] };
@@ -176,7 +177,11 @@ export function useOrgFsSearch(query: string, limit = 50) {
   return useQuery({
     queryKey: KEYS.orgFsSearch(org.id, query),
     enabled: query.length > 0,
-    placeholderData: keepPreviousData,
+    // Keep previous results on screen between keystrokes, but only within
+    // the same org — switching orgs doesn't remount this hook, so without
+    // this guard the new org's search box would flash the old org's results.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === org.id ? previousData : undefined,
     queryFn: async () => {
       const res = await fsFetch(
         `/api/${encodeURIComponent(org.slug)}/fs/search?q=${encodeURIComponent(query)}&limit=${limit}`,
