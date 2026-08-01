@@ -173,7 +173,12 @@ function setStatus(next: DaemonStatus) {
 
 const store = new TenantConfigStore();
 const installState = new InstallState();
-const lifecycle = new LifecycleManager({ broadcaster, bootedAt: BOOTED_AT });
+const lifecycle = new LifecycleManager({
+  broadcaster,
+  bootedAt: BOOTED_AT,
+  onStartPhase: (status, durationMs) =>
+    recordPhase("start", status, durationMs),
+});
 let resetProbeState = (): void => {};
 // Drop the sniffed port whenever we leave `running` — the next dev start
 // may bind somewhere else and we need to re-sniff its announcement.

@@ -129,9 +129,10 @@ test("samples loop lag on its own timer", async () => {
 
     const shutdown = initTelemetry("boot-test", "ts");
     // Nothing records lag explicitly — the sampler is the only producer, so
-    // this also proves it was started and survives to the flush. One tick plus
-    // slack; the sampler's interval is 1s.
-    await sleep(1_200);
+    // this also proves it was started and survives to the flush. Two intervals,
+    // not one: a single delayed timer callback on a loaded CI host would leave
+    // zero samples and fail a run that is actually fine.
+    await sleep(2 * 1_000 + 400);
     await shutdown();
 
     const lag = JSON.parse(

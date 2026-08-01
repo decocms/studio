@@ -230,8 +230,33 @@ func (o *Orchestrator) stepInstall() bool {
 	return timedPhase("install", o.stepInstallInner)
 }
 
+// startOutcome is what a start attempt actually did. "skipped" is not a boot
+// phase — nothing was spawned — so it is deliberately not reported.
+type startOutcome string
+
+const (
+	startDone    startOutcome = "done"
+	startFailed  startOutcome = "failed"
+	startSkipped startOutcome = "skipped"
+)
+
+// start cannot use timedPhase, for two reasons.
+//
+// It has three outcomes rather than two: a skipped start spawned nothing, so
+// there is no phase to report.
+//
+// And it does not finish when this function returns. TaskManager.Spawn returns
+// once the process exists, not once it serves — timing that would measure fork
+// latency and would record every immediately-crashing dev script as a healthy
+// start. So the attempt is left open and closed by the lifecycle, which is
+// where both terminal states arrive: running (the probe reached the server) or
+// start-failed (no start command, or the script exited non-zero).
 func (o *Orchestrator) stepStart() {
-	timedPhase("start", func() bool { o.stepStartInner(); return true })
+	o.deps.Lifecycle.NoteStartAttempt()
+	// startFailed already transitioned to start-failed, which closed the attempt.
+	if o.stepStartInner() == startSkipped {
+		o.deps.Lifecycle.CancelStartAttempt()
+	}
 }
 
 // timedPhase times one setup step and reports it under the same instrument the
@@ -427,18 +452,18 @@ func (o *Orchestrator) stepInstallInner() bool {
 	return true
 }
 
-func (o *Orchestrator) stepStartInner() {
+func (o *Orchestrator) stepStartInner() startOutcome {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
-		return
+		return startSkipped
 	}
 	if status := o.deps.GetStatus(); status.State != "running" {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping start: status=%s (resume to retry)\r\n", status.State))
-		return
+		return startSkipped
 	}
 	if !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.chunk("\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n")
-		return
+		return startSkipped
 	}
 	command, ok := o.buildStartCommand(cfg)
 	if !ok {
@@ -446,7 +471,7 @@ func (o *Orchestrator) stepStartInner() {
 		o.chunk(reason)
 		flat := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(reason, "\r", " "), "\n", " "))
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStartFailed, Error: flat})
-		return
+		return startFailed
 	}
 
 	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); found &&
@@ -456,7 +481,7 @@ func (o *Orchestrator) stepStartInner() {
 		if cur != events.PhaseRunning && cur != events.PhaseStarting {
 			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
 		}
-		return
+		return startSkipped
 	}
 	o.stopDevTask()
 	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
@@ -476,6 +501,7 @@ func (o *Orchestrator) stepStartInner() {
 		LogName:          command.Source,
 		ReplaceByLogName: true,
 	})
+	return startDone
 }
 
 type startCommand struct {

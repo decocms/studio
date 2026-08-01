@@ -9,6 +9,14 @@ export interface LifecycleManagerDeps {
    * read from the module so a test can define "boot" without touching globals.
    */
   bootedAt?: number;
+  /**
+   * Reports a finished `start` phase. Spawning the dev script says nothing
+   * about whether it serves — the process is created and the call returns, so
+   * timing that would measure fork latency and never observe a failure. The
+   * phase ends where it becomes observable: the probe seeing the server
+   * (`running`) or the dev script dying (`start-failed`).
+   */
+  onStartPhase?: (status: "done" | "failed", durationMs: number) => void;
 }
 
 /**
@@ -23,11 +31,27 @@ export interface LifecycleManagerDeps {
 export class LifecycleManager {
   private state: LifecycleState = { phase: "idle" };
   private readySeen = false;
+  private startAttemptAt: number | null = null;
 
   constructor(private readonly deps: LifecycleManagerDeps) {}
 
   current(): LifecycleState {
     return this.state;
+  }
+
+  /**
+   * A dev script was just spawned. The phase it opens is closed by the next
+   * `running` / `start-failed` transition. A second attempt before the first
+   * resolves (branch change mid-boot) replaces it: the abandoned attempt has no
+   * terminal state to measure to.
+   */
+  noteStartAttempt(): void {
+    this.startAttemptAt = Date.now();
+  }
+
+  /** The step spawned nothing, so no phase was opened. */
+  cancelStartAttempt(): void {
+    this.startAttemptAt = null;
   }
 
   /** Idempotent — same-shape transitions don't re-broadcast. */
@@ -44,6 +68,17 @@ export class LifecycleManager {
       if (this.deps.bootedAt !== undefined) {
         recordReady(Date.now() - this.deps.bootedAt);
       }
+    }
+    if (
+      this.startAttemptAt !== null &&
+      (next.phase === "running" || next.phase === "start-failed")
+    ) {
+      const durationMs = Date.now() - this.startAttemptAt;
+      this.startAttemptAt = null;
+      this.deps.onStartPhase?.(
+        next.phase === "running" ? "done" : "failed",
+        durationMs,
+      );
     }
   }
 }

@@ -46,11 +46,12 @@ func TestInitExportsToEndpoint(t *testing.T) {
 	RecordDevServerExit(context.Background(), false)
 	RecordPublish(context.Background(), "done", 345)
 	// Loop lag has no Record* of its own — Init's sampler is the only producer,
-	// so waiting one tick is what proves the sampler runs. It has to be asserted
+	// so waiting is what proves the sampler runs. Two intervals, not one: a
+	// single delayed tick on a loaded CI host would fail a run that is fine. It has to be asserted
 	// here rather than in a test of its own: otel-go binds these package-level
 	// instruments to the FIRST provider installed in the process, so a second
 	// Init in the same binary would record into this test's dead exporter.
-	time.Sleep(lagSampleInterval + 200*time.Millisecond)
+	time.Sleep(2*lagSampleInterval + 400*time.Millisecond)
 
 	// Shutdown force-flushes, so this asserts on a real export rather than
 	// racing the periodic reader.
