@@ -5,24 +5,29 @@ import {
   type SandboxProviderKind,
 } from "@/sdk";
 
-export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
+export type AgentOption =
+  | "decopilot"
+  | "claude-code-desktop"
+  | "codex-desktop"
+  | "opencode-desktop";
 export type LocalAgentOption = Exclude<AgentOption, "decopilot">;
+export type NativeHarnessId = HarnessId | "opencode";
 
 export interface AgentPins {
-  harness: HarnessId;
+  harness: NativeHarnessId;
   sandbox: SandboxProviderKind | null;
 }
 
 /**
  * Canonical (harness, sandbox) pair for each `AgentOption`. The persisted
- * pending-agent value is the source of truth; everything else (chat
- * dispatch, VM start, model selector) reads through here so the pair can
- * not drift.
+ * pending-agent value is the source of truth; terminal launch and the native
+ * sandbox picker read through here so the pair cannot drift.
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
+  "opencode-desktop": { harness: "opencode", sandbox: "user-desktop" },
 };
 
 /**
@@ -35,7 +40,7 @@ export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
  * going through this picker).
  */
 export function agentOptionFor(
-  harness: HarnessId | null,
+  harness: NativeHarnessId | null,
   sandbox: LegacySandboxProviderKind | null,
 ): AgentOption | null {
   if (!harness) return null;
@@ -64,7 +69,7 @@ export function agentOptionFor(
  *
  * Native has no cloud runtime, so a stale persisted Decopilot pick must never
  * win. A locked local harness also wins by harness alone: early native builds
- * could pin a Claude Code/Codex thread before `sandbox_provider_kind` was
+ * could pin a coding-agent thread before `sandbox_provider_kind` was
  * available, and requiring the full tuple would misclassify that local thread
  * as cloud.
  *
@@ -76,11 +81,13 @@ export function resolveNativeAgentOption({
   lockedHarness,
 }: {
   pendingOption: AgentOption | null;
-  lockedHarness: HarnessId | null;
+  lockedHarness: NativeHarnessId | null;
 }): LocalAgentOption | null {
   if (lockedHarness === "claude-code") return "claude-code-desktop";
   if (lockedHarness === "codex") return "codex-desktop";
+  if (lockedHarness === "opencode") return "opencode-desktop";
   if (pendingOption === "claude-code-desktop") return pendingOption;
   if (pendingOption === "codex-desktop") return pendingOption;
+  if (pendingOption === "opencode-desktop") return pendingOption;
   return null;
 }

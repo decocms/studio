@@ -42,12 +42,12 @@ import {
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
   resolveNativeAgentOption,
   type AgentOption,
+  type NativeHarnessId,
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
@@ -202,7 +202,7 @@ export interface ChatTaskContextValue {
    *  message has been processed and the runtime is pinned for life. */
   isThreadLocked: boolean;
   /** Locked harness for the active thread (null when unlocked / no thread). */
-  lockedHarness: HarnessId | null;
+  lockedHarness: NativeHarnessId | null;
   /** Locked sandbox provider kind (null when unlocked, or harness has no sandbox). */
   lockedSandbox: SandboxProviderKind | null;
   /** Locked branch (null when unlocked or thread has no branch). */
@@ -255,7 +255,7 @@ export interface ChatPrefsContextValue {
   pendingAgentOption: AgentOption | null;
   setPendingAgentOption: (option: AgentOption | null) => void;
   /** Derived from `pendingAgentOption`. Read-only. */
-  pendingHarnessId: HarnessId | null;
+  pendingHarnessId: NativeHarnessId | null;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingSandboxProviderKind: SandboxProviderKind | null;
 }
@@ -665,7 +665,8 @@ export function ChatContextProvider({
   // navigation by only honoring the prop when ids match.
   const activeTask =
     effectiveTaskId && task?.id === effectiveTaskId ? task : null;
-  const lockedHarness = (activeTask?.harness_id ?? null) as HarnessId | null;
+  const lockedHarness = (activeTask?.harness_id ??
+    null) as NativeHarnessId | null;
   const lockedSandbox = (activeTask?.sandbox_provider_kind ??
     null) as SandboxProviderKind | null;
   const lockedBranch = activeTask?.branch ?? null;

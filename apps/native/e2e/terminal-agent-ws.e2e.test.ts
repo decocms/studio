@@ -1,8 +1,9 @@
 /**
  * Black-box WebSocket contract for Studio Native's persistent coding-agent
- * terminals. Deterministic CLI fixtures consume the managed Claude/Codex
- * launch configuration, invoke its real hook forwarder, and speak through a
- * real PTY. No local-api implementation modules are imported here.
+ * terminals. Deterministic CLI fixtures consume the managed Claude, Codex,
+ * and OpenCode launch configuration, invoke the authenticated lifecycle hook,
+ * and speak through a real PTY. No local-api implementation modules are
+ * imported here.
  */
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -34,8 +35,9 @@ const FIXTURE_PATH = fileURLToPath(
   new URL("./fixtures/interactive-agent.mjs", import.meta.url),
 );
 const FRAME_TIMEOUT_MS = 15_000;
+const PROVIDERS = ["claude-code", "codex", "opencode"] as const;
 
-type HarnessId = "claude-code" | "codex";
+type HarnessId = (typeof PROVIDERS)[number];
 
 interface ServerFrame {
   type: string;
@@ -225,6 +227,36 @@ async function waitForProviderCheckpoint(
   throw new Error("provider session checkpoint was not persisted");
 }
 
+async function waitForThreadTitle(
+  api: LocalApi,
+  threadId: string,
+  privateHeaders: Record<string, string>,
+  expected: string,
+): Promise<void> {
+  const deadline = Date.now() + FRAME_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const response = await fetch(
+      url(api, `/api/${ORG}/tools/COLLECTION_THREADS_GET`),
+      {
+        method: "POST",
+        headers: {
+          ...privateHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: threadId }),
+      },
+    );
+    if (response.status === 200) {
+      const body = (await response.json()) as {
+        item?: { title?: string };
+      };
+      if (body.item?.title === expected) return;
+    }
+    await sleep(20);
+  }
+  throw new Error(`thread title did not become ${JSON.stringify(expected)}`);
+}
+
 function launchRecords(path: string, provider: HarnessId): LaunchRecord[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
@@ -272,6 +304,18 @@ async function waitForTitleRecord(
   throw new Error(`did not observe isolated ${provider} title generation`);
 }
 
+function titleRecords(path: string, provider: HarnessId): TitleRecord[] {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as LaunchRecord | TitleRecord)
+    .filter(
+      (record): record is TitleRecord =>
+        record.kind === "title" && record.provider === provider,
+    );
+}
+
 describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
   let api: LocalApi | null = null;
   let upstream: ReturnType<typeof startAuthenticatedUpstream> | null = null;
@@ -304,6 +348,8 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
       DECOCMS_UPSTREAM_URL: upstream.url,
       LOCAL_API_CLAUDE_BIN: fixturePrefix("claude-code"),
       LOCAL_API_CODEX_BIN: fixturePrefix("codex"),
+      LOCAL_API_OPENCODE_BIN: fixturePrefix("opencode"),
+      STUDIO_OPENCODE_SESSION_ID: "ambient-stale-session",
       STUDIO_TERMINAL_E2E_LOG: launchLog,
     });
     const controlOrigin = `http://127.0.0.1:${api.port}`;
@@ -319,7 +365,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
     privateHeaders = { Cookie: cookie, Origin: controlOrigin };
     await signInAndCompleteSession(api, privateHeaders);
 
-    for (const provider of ["claude-code", "codex"] as const) {
+    for (const provider of PROVIDERS) {
       const created = await fetch(
         url(api, `/api/${ORG}/tools/COLLECTION_THREADS_CREATE`),
         {
@@ -347,7 +393,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
     rmSync(launchLog, { force: true });
   }, HOOK_TIMEOUT_MS);
 
-  for (const provider of ["claude-code", "codex"] as const) {
+  for (const provider of PROVIDERS) {
     it(
       `${provider} launches, checkpoints its lifecycle, and resumes after termination`,
       async () => {
@@ -388,7 +434,17 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             "correlated prompt acceptance",
           );
           await waitForOutput(first, `STUB_REPLY:${provider}:${prompt}`);
-          await waitForFrame(
+          const waitingForInput =
+            provider === "opencode"
+              ? await waitForFrame(
+                  first,
+                  (frame) =>
+                    frame.type === "state" &&
+                    frame.logicalState === "waiting_input",
+                  "OpenCode permission or question lifecycle state",
+                )
+              : null;
+          const completed = await waitForFrame(
             first,
             (frame) =>
               frame.type === "state" &&
@@ -396,14 +452,29 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               frame.threadStatus === "completed",
             "completed lifecycle state",
           );
+          if (waitingForInput) {
+            expect(first.frames.indexOf(completed)).toBeGreaterThan(
+              first.frames.indexOf(waitingForInput),
+            );
+          }
           await waitForProviderCheckpoint(api, threadId, privateHeaders);
-          expect(await waitForTitleRecord(launchLog, provider)).toEqual({
-            kind: "title",
-            provider,
-            promptViaStdin: true,
-            integrationsDisabled: true,
-            managedCodexHome: provider === "codex" ? true : null,
-          });
+          if (provider === "opencode") {
+            await waitForThreadTitle(
+              api,
+              threadId,
+              privateHeaders,
+              "Stub opencode chat",
+            );
+            expect(titleRecords(launchLog, provider)).toEqual([]);
+          } else {
+            expect(await waitForTitleRecord(launchLog, provider)).toEqual({
+              kind: "title",
+              provider,
+              promptViaStdin: true,
+              integrationsDisabled: true,
+              managedCodexHome: provider === "codex" ? true : null,
+            });
+          }
 
           const firstLaunches = await waitForLaunchRecords(
             launchLog,
@@ -417,6 +488,11 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             mcpServerNames: ["cms"],
             scopedMcpAuthorization: true,
           });
+          if (provider === "opencode") {
+            expect(firstLaunches[0]?.args[0]).toBe("--agent");
+            expect(firstLaunches[0]?.args[1]).toMatch(/^studio-native-.+/);
+            expect(firstLaunches[0]?.args).not.toContain("--model");
+          }
           expect(firstLaunches[0]?.cwd).toBe(
             realpathSync(join(api.workdir, "orgs", ORG)),
           );
@@ -465,8 +541,16 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           });
           if (provider === "claude-code") {
             expect(launches[1]?.args).toContain("--resume");
-          } else {
+          } else if (provider === "codex") {
             expect(launches[1]?.args).toContain("resume");
+          } else {
+            expect(launches[1]?.args[0]).toBe("--agent");
+            expect(launches[1]?.args[1]).toMatch(/^studio-native-.+/);
+            expect(launches[1]?.args.slice(2)).toEqual([
+              "--session",
+              `studio-e2e-${provider}-session`,
+            ]);
+            expect(launches[1]?.args).not.toContain("--model");
           }
 
           const resumedExit = await terminateAndWaitForExit(

@@ -8,6 +8,11 @@
 //! `claude-code/index.ts` and `codex/index.ts` pass to `genTitle`. Nothing
 //! here spends Studio credits or reaches the cluster.
 //!
+//! OpenCode is intentionally absent from this one-shot path: its TUI owns a
+//! hidden title agent and publishes the result through its native session/OSC
+//! title lifecycle. A competing subprocess would waste a model call and race
+//! the provider's authoritative title.
+//!
 //! The differences from the TypeScript are forced by the boundary, not chosen:
 //! it calls the model through the AI SDK's `generateObject` with a Zod schema,
 //! while this can only exec the CLI and read stdout. So the schema becomes an
@@ -76,10 +81,11 @@ impl TitleEnvironment {
 
 /// The cheapest model each CLI offers, by the same wire ids the TypeScript
 /// harnesses pass to `genTitle`.
-fn title_model(harness: HarnessId) -> &'static str {
+fn title_model(harness: HarnessId) -> Option<&'static str> {
     match harness {
-        HarnessId::ClaudeCode => "haiku",
-        HarnessId::Codex => "gpt-5.6-luna",
+        HarnessId::ClaudeCode => Some("haiku"),
+        HarnessId::Codex => Some("gpt-5.6-luna"),
+        HarnessId::OpenCode => None,
     }
 }
 
@@ -95,6 +101,10 @@ pub async fn generate_title(
     environment: &TitleEnvironment,
     timeout: Duration,
 ) -> Option<String> {
+    // Prefer the authoritative title emitted by OpenCode's live TUI. Keep this
+    // check before binary resolution so the fallback helper never even probes
+    // or spawns a competing OpenCode process.
+    title_model(harness)?;
     let mut argv = resolve_argv(harness).ok()?;
     let binary = argv.remove(0);
     let prompt = format!(
@@ -149,7 +159,9 @@ pub async fn generate_title(
 /// "readonly", isPlanMode: true` the TypeScript builds its title model with —
 /// a title call must never be able to touch the worktree it is named after.
 fn append_title_args(harness: HarnessId, argv: &mut Vec<String>) {
-    let model = title_model(harness).to_string();
+    let Some(model) = title_model(harness).map(str::to_string) else {
+        return;
+    };
     match harness {
         HarnessId::ClaudeCode => {
             argv.push("-p".to_string());
@@ -203,6 +215,7 @@ fn append_title_args(harness: HarnessId, argv: &mut Vec<String>) {
             // keeps user text out of argv/process listings.
             argv.push("-".to_string());
         }
+        HarnessId::OpenCode => unreachable!("OpenCode uses its provider-owned TUI title"),
     }
 }
 
@@ -228,6 +241,7 @@ fn assistant_text(harness: HarnessId, stdout: &str) -> Option<String> {
                 item.get("text").and_then(Value::as_str).map(str::to_string)
             })
             .next_back(),
+        HarnessId::OpenCode => None,
     }
 }
 
@@ -349,6 +363,15 @@ mod tests {
             append_title_args(harness, &mut argv);
             assert!(!argv.iter().any(|argument| argument == secret_prompt));
         }
+    }
+
+    #[test]
+    fn opencode_defers_to_its_provider_owned_tui_title() {
+        assert_eq!(title_model(HarnessId::OpenCode), None);
+        let mut argv = Vec::new();
+        append_title_args(HarnessId::OpenCode, &mut argv);
+        assert!(argv.is_empty());
+        assert_eq!(assistant_text(HarnessId::OpenCode, "anything"), None);
     }
 
     #[test]

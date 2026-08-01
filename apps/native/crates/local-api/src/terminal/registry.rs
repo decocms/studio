@@ -22,6 +22,13 @@ const TERM_GRACE: Duration = Duration::from_secs(2);
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const PROMPT_RECEIPT_CAPACITY: usize = 512;
 
+#[derive(Debug, Default)]
+struct OpenCodeTurnState {
+    active: Option<u64>,
+    busy_observed: bool,
+    completed: u64,
+}
+
 #[derive(Clone)]
 pub struct HookRegistration {
     token: Arc<str>,
@@ -33,6 +40,8 @@ pub struct HookRegistration {
     pub cwd: PathBuf,
     pub title_environment: harness::title::TitleEnvironment,
     title_started: Arc<AtomicBool>,
+    expected_provider_session_id: Option<Arc<str>>,
+    opencode_turn: Arc<Mutex<OpenCodeTurnState>>,
 }
 
 pub(crate) struct HookReservation {
@@ -44,6 +53,7 @@ pub(crate) struct HookReservation {
     pub mcp_token: String,
     pub mcp_path: String,
     pub title_environment: harness::title::TitleEnvironment,
+    pub expected_provider_session_id: Option<String>,
 }
 
 impl std::fmt::Debug for HookRegistration {
@@ -80,6 +90,89 @@ impl HookRegistration {
 
     pub fn release_title_claim(&self) {
         self.title_started.store(false, Ordering::Release);
+    }
+
+    pub fn expected_provider_session_id(&self) -> Option<&str> {
+        self.expected_provider_session_id.as_deref()
+    }
+
+    fn lock_opencode_turn(&self) -> MutexGuard<'_, OpenCodeTurnState> {
+        self.opencode_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Admit one provider busy event per stable plugin turn id. Re-delivery
+    /// after a lost HTTP response is idempotent, while a newer turn supersedes
+    /// an older one whose terminal event never arrived.
+    pub fn observe_opencode_busy(&self, turn_id: u64) -> bool {
+        if turn_id == 0 {
+            return false;
+        }
+        let mut state = self.lock_opencode_turn();
+        if turn_id <= state.completed || state.active.is_some_and(|active| active > turn_id) {
+            return false;
+        }
+        if state.active == Some(turn_id) && state.busy_observed {
+            return false;
+        }
+        state.active = Some(turn_id);
+        state.busy_observed = true;
+        true
+    }
+
+    /// Admit a permission/question event for the active turn. This can recover
+    /// state when its preceding busy delivery was lost.
+    pub fn observe_opencode_active(&self, turn_id: u64) -> bool {
+        if turn_id == 0 {
+            return false;
+        }
+        let mut state = self.lock_opencode_turn();
+        if turn_id <= state.completed || state.active.is_some_and(|active| active > turn_id) {
+            return false;
+        }
+        if state.active != Some(turn_id) {
+            state.active = Some(turn_id);
+            state.busy_observed = false;
+        }
+        true
+    }
+
+    /// Re-open a busy admission when its durable transition failed so the
+    /// plugin's identical delivery retry is not mistaken for a duplicate.
+    pub fn restore_opencode_busy(&self, turn_id: u64) {
+        let mut state = self.lock_opencode_turn();
+        if state.active == Some(turn_id) {
+            state.busy_observed = false;
+        }
+    }
+
+    /// Complete exactly one stable plugin turn. A terminal delivery can recover
+    /// a lost busy request, and retrying after an applied-but-lost response is a
+    /// no-op. A stale terminal cannot finish a newer active turn.
+    pub fn finish_opencode_turn(&self, turn_id: u64) -> bool {
+        if turn_id == 0 {
+            return false;
+        }
+        let mut state = self.lock_opencode_turn();
+        if turn_id <= state.completed || state.active.is_some_and(|active| active > turn_id) {
+            return false;
+        }
+        state.completed = turn_id;
+        state.active = None;
+        state.busy_observed = false;
+        true
+    }
+
+    /// Re-open a just-consumed terminal admission when its durable state
+    /// transition failed, so the plugin's identical retry can apply it.
+    pub fn restore_opencode_turn(&self, turn_id: u64) {
+        let mut state = self.lock_opencode_turn();
+        if turn_id > 0 && state.completed == turn_id {
+            state.completed = turn_id - 1;
+            state.active = Some(turn_id);
+            state.busy_observed = true;
+        }
     }
 }
 
@@ -326,6 +419,7 @@ impl AgentSessionRegistry {
             mcp_token,
             mcp_path,
             title_environment,
+            expected_provider_session_id,
         } = reservation;
         let hook = Arc::new(HookRegistration {
             token: token.into(),
@@ -337,6 +431,8 @@ impl AgentSessionRegistry {
             cwd,
             title_environment,
             title_started: Arc::new(AtomicBool::new(false)),
+            expected_provider_session_id: expected_provider_session_id.map(Arc::from),
+            opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
         });
         self.lock_hooks().insert(terminal_session_id, hook.clone());
         hook
@@ -503,6 +599,8 @@ mod tests {
             cwd: PathBuf::from("/tmp"),
             title_environment: harness::title::TitleEnvironment::default(),
             title_started: Arc::new(AtomicBool::new(false)),
+            expected_provider_session_id: None,
+            opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
         };
         assert!(hook.authorizes("0123456789abcdef"));
         assert!(!hook.authorizes("0123456789abcdee"));
@@ -511,6 +609,49 @@ mod tests {
         assert!(!hook.authorizes_mcp("/api/org/mcp/other", "fedcba9876543210"));
         assert!(!hook.authorizes_mcp("/api/org/mcp/selected", "0123456789abcdef"));
         assert!(!hook.authorizes("fedcba9876543210"));
+    }
+
+    #[test]
+    fn opencode_turn_ids_recover_lost_delivery_and_dedupe_retries() {
+        let hook = HookRegistration {
+            token: Arc::from("hook"),
+            mcp_token: Arc::from("mcp"),
+            mcp_path: Arc::from("/mcp"),
+            fence: RtThreadFence {
+                account_scope: "account".to_string(),
+                organization_id: "org".to_string(),
+                thread_id: "thread".to_string(),
+                generation: "generation".to_string(),
+            },
+            terminal_session_id: "session".to_string(),
+            harness: HarnessId::OpenCode,
+            cwd: PathBuf::from("/tmp"),
+            title_environment: harness::title::TitleEnvironment::default(),
+            title_started: Arc::new(AtomicBool::new(false)),
+            expected_provider_session_id: Some(Arc::from("ses_resume")),
+            opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
+        };
+
+        assert_eq!(hook.expected_provider_session_id(), Some("ses_resume"));
+        assert!(hook.observe_opencode_busy(1));
+        assert!(!hook.observe_opencode_busy(1));
+        hook.restore_opencode_busy(1);
+        assert!(hook.observe_opencode_busy(1));
+        assert!(hook.finish_opencode_turn(1));
+        assert!(!hook.finish_opencode_turn(1));
+        assert!(!hook.observe_opencode_busy(1));
+
+        // A terminal envelope can recover when both busy HTTP attempts were
+        // lost. If the terminal response itself is lost, restoring its claim
+        // lets the identical plugin retry apply exactly once.
+        assert!(hook.finish_opencode_turn(2));
+        hook.restore_opencode_turn(2);
+        assert!(hook.finish_opencode_turn(2));
+        assert!(!hook.finish_opencode_turn(2));
+
+        assert!(hook.observe_opencode_busy(4));
+        assert!(!hook.finish_opencode_turn(3));
+        assert!(hook.finish_opencode_turn(4));
     }
 
     #[test]

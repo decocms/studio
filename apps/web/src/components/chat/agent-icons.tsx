@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import type { NativeHarnessId } from "./pills/agent-options";
+
 /** Glyphs used by the native coding-agent picker. */
 
 export function ClaudeCodeIcon({ size = 16 }: { size?: number }) {
@@ -36,4 +39,53 @@ export function CodexIcon({ size = 16 }: { size?: number }) {
       />
     </svg>
   );
+}
+
+export function OpenCodeIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4l-3 16" />
+    </svg>
+  );
+}
+
+const LOCAL_HARNESS_BRAND_LABELS = {
+  "claude-code": "chat.agentIcons.claudeCode",
+  codex: "chat.agentIcons.codex",
+  opencode: "chat.agentIcons.opencode",
+} as const;
+
+type HarnessLabelKey =
+  (typeof LOCAL_HARNESS_BRAND_LABELS)[keyof typeof LOCAL_HARNESS_BRAND_LABELS];
+
+const LOCAL_HARNESS_BRAND: Partial<
+  Record<
+    NativeHarnessId,
+    { labelKey: HarnessLabelKey; Icon: (props: { size?: number }) => ReactNode }
+  >
+> = {
+  "claude-code": {
+    labelKey: "chat.agentIcons.claudeCode",
+    Icon: ClaudeCodeIcon,
+  },
+  codex: { labelKey: "chat.agentIcons.codex", Icon: CodexIcon },
+  opencode: { labelKey: "chat.agentIcons.opencode", Icon: OpenCodeIcon },
+};
+
+/** Native brand metadata for a coding-agent harness. */
+export function localHarnessBrand(
+  harness: NativeHarnessId | null | undefined,
+) {
+  return (harness && LOCAL_HARNESS_BRAND[harness]) ?? null;
 }

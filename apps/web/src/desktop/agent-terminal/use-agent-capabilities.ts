@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
 import { KEYS } from "@/lib/query-keys";
 
-export type LocalAgentCapability = "claude-code" | "codex";
+export type LocalAgentCapability = "claude-code" | "codex" | "opencode";
 
 export interface LocalAgentCapabilities {
   capabilities: LocalAgentCapability[];
@@ -18,7 +18,9 @@ export function parseAgentCapabilities(value: unknown): LocalAgentCapability[] {
   if (!Array.isArray(capabilities)) return [];
   return capabilities.filter(
     (capability): capability is LocalAgentCapability =>
-      capability === "claude-code" || capability === "codex",
+      capability === "claude-code" ||
+      capability === "codex" ||
+      capability === "opencode",
   );
 }
 

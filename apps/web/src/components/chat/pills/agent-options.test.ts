@@ -7,7 +7,6 @@ import {
   agentOptionFor,
   resolveNativeAgentOption,
 } from "./agent-options";
-
 describe("agentOptionFor", () => {
   test("maps decopilot harness with agent-sandbox sandbox to decopilot option", () => {
     expect(agentOptionFor("decopilot", "agent-sandbox")).toBe("decopilot");
@@ -33,6 +32,12 @@ describe("agentOptionFor", () => {
 
   test("maps codex + user-desktop to codex-desktop", () => {
     expect(agentOptionFor("codex", "user-desktop")).toBe("codex-desktop");
+  });
+
+  test("maps opencode + user-desktop to opencode-desktop", () => {
+    expect(agentOptionFor("opencode", "user-desktop")).toBe(
+      "opencode-desktop",
+    );
   });
 
   test("returns null for unknown harness", () => {
@@ -65,7 +70,6 @@ describe("resolveNativeAgentOption", () => {
       ).toBeNull();
     }
   });
-
   test("preserves an explicit local choice", () => {
     expect(
       resolveNativeAgentOption({
@@ -73,6 +77,13 @@ describe("resolveNativeAgentOption", () => {
         lockedHarness: null,
       }),
     ).toBe("codex-desktop");
+
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "opencode-desktop",
+        lockedHarness: null,
+      }),
+    ).toBe("opencode-desktop");
   });
 
   test("a locked local harness wins without requiring its sandbox tuple", () => {
@@ -82,5 +93,12 @@ describe("resolveNativeAgentOption", () => {
         lockedHarness: "claude-code",
       }),
     ).toBe("claude-code-desktop");
+
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "claude-code-desktop",
+        lockedHarness: "opencode",
+      }),
+    ).toBe("opencode-desktop");
   });
 });

@@ -10,13 +10,20 @@ import { useChatTask } from "@/components/chat/context";
 import type { LocalAgentOption } from "@/components/chat/pills/agent-options";
 import { useT } from "@/i18n/use-t";
 import { useNativeTerminalRuntime } from "./active-task-provider";
+import {
+  createTerminalParserCapabilityQueryAuthority,
+  createTerminalPixelSizeQueryResponder,
+  installTerminalCapabilityReplyHandlers,
+} from "./terminal-capability-replies";
 import type { TerminalControllerSnapshot } from "./terminal-controller";
+import type { TerminalReplayFrame } from "./protocol";
 
 function optionForHarness(
   harnessId: TerminalControllerSnapshot["harnessId"],
 ): LocalAgentOption | null {
   if (harnessId === "claude-code") return "claude-code-desktop";
   if (harnessId === "codex") return "codex-desktop";
+  if (harnessId === "opencode") return "opencode-desktop";
   return null;
 }
 
@@ -35,6 +42,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     const cssVar = (name: string) =>
       style.getPropertyValue(name).trim() || undefined;
     const terminal = new Terminal({
+      allowProposedApi: true,
       allowTransparency: false,
       cursorBlink: !readOnly,
       disableStdin: readOnly,
@@ -77,13 +85,79 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     terminal.open(element);
     terminal.textarea?.setAttribute("aria-label", terminalLabel);
 
-    const outputSubscription = controller.subscribeOutput((frame) => {
-      if (frame.kind === "reset") terminal.reset();
-      terminal.write(frame.data);
-    });
-    const inputSubscription = terminal.onData((data) => controller.input(data));
     const resizeSubscription = terminal.onResize(({ rows, cols }) =>
       controller.resize({ rows, cols }),
+    );
+    const fit = () => {
+      if (element.clientWidth === 0 || element.clientHeight === 0) return;
+      fitAddon.fit();
+    };
+    fit();
+
+    let disposed = false;
+    let writing = false;
+    let repliesAllowed = false;
+    const outputQueue: Array<{
+      frame: TerminalReplayFrame;
+      acknowledgeCapabilityReplies: () => void;
+    }> = [];
+    const parserCapabilityQueryAuthority =
+      createTerminalParserCapabilityQueryAuthority();
+    const capabilityHandlers = installTerminalCapabilityReplyHandlers({
+      terminal,
+      parser: terminal.parser,
+      sendInput: (data) => controller.input(data),
+      takeReplyAuthority: parserCapabilityQueryAuthority.takeReplyAuthority,
+    });
+    const pixelSizeResponder = createTerminalPixelSizeQueryResponder(
+      terminal,
+      (data) => controller.input(data),
+    );
+    const inputSubscription = terminal.onData((data) => {
+      // xterm can synthesize protocol replies through onData while parsing.
+      // A query may begin in replay and finish in a live frame, so the current
+      // frame alone cannot authorize the reply. The byte scanner carries the
+      // authority across that parser boundary and consumes it by reply family.
+      if (readOnly) return;
+      if (writing) {
+        const nativeReplyAuthority =
+          parserCapabilityQueryAuthority.takeNativeReplyAuthority(data);
+        if (nativeReplyAuthority === false) return;
+        if (nativeReplyAuthority === null && !repliesAllowed) return;
+      }
+      controller.input(data);
+    });
+    const drainOutput = () => {
+      if (disposed || writing) return;
+      const next = outputQueue.shift();
+      if (!next) return;
+      const { frame, acknowledgeCapabilityReplies } = next;
+      if (frame.kind === "reset") {
+        terminal.reset();
+        parserCapabilityQueryAuthority.reset();
+        pixelSizeResponder.reset();
+      }
+      if (frame.data.byteLength === 0) {
+        acknowledgeCapabilityReplies();
+        drainOutput();
+        return;
+      }
+      writing = true;
+      repliesAllowed = !readOnly && frame.allowCapabilityReplies;
+      parserCapabilityQueryAuthority.observe(frame.data, repliesAllowed);
+      pixelSizeResponder.observe(frame.data, repliesAllowed);
+      terminal.write(frame.data, () => {
+        if (!disposed) acknowledgeCapabilityReplies();
+        repliesAllowed = false;
+        writing = false;
+        drainOutput();
+      });
+    };
+    const outputSubscription = controller.subscribeOutput(
+      (frame, acknowledgeCapabilityReplies) => {
+        outputQueue.push({ frame, acknowledgeCapabilityReplies });
+        drainOutput();
+      },
     );
     const syncInputState = () => {
       const snapshot = controller.snapshot.get();
@@ -95,19 +169,18 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     };
     const stateSubscription = controller.snapshot.subscribe(syncInputState);
     syncInputState();
-    const fit = () => {
-      if (element.clientWidth === 0 || element.clientHeight === 0) return;
-      fitAddon.fit();
-    };
     const observer = new ResizeObserver(fit);
     observer.observe(element);
-    fit();
     if (!readOnly) terminal.focus();
 
     return () => {
+      disposed = true;
+      repliesAllowed = false;
+      outputQueue.length = 0;
       observer.disconnect();
       outputSubscription();
       stateSubscription();
+      capabilityHandlers.dispose();
       inputSubscription.dispose();
       resizeSubscription.dispose();
       terminal.dispose();

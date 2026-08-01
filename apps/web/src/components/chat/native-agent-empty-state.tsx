@@ -3,7 +3,7 @@ import { Monitor01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useAgentCapabilities } from "@/desktop/agent-terminal/use-agent-capabilities";
 import { useT } from "@/i18n/use-t.ts";
-import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
+import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "./agent-icons";
 import { useChatPrefs } from "./context";
 import type { LocalAgentOption } from "./pills/agent-options";
 
@@ -11,10 +11,9 @@ import type { LocalAgentOption } from "./pills/agent-options";
  * Native counterpart of `NoAiProviderEmptyState`. The desktop app has no
  * cloud runtime, so there is no provider grid to offer — the only way to run
  * a chat is a local coding agent. Shown by the chat side panel while the
- * native agent resolver has no option yet (CLI detection cold, or neither
- * CLI detected).
+ * native agent resolver has no option yet.
  *
- * Both options are always offered: availability is advisory in this codebase
+ * All options are always offered: availability is advisory in this codebase
  * and must not prevent selection. Picking one persists the pending agent
  * option, which resolves the gate and launches the terminal — the escape
  * hatch out of a stuck detection state.
@@ -36,15 +35,21 @@ export function NativeAgentEmptyState({
   }> = [
     {
       option: "claude-code-desktop",
-      label: "Claude Code",
+      label: t("chat.agentIcons.claudeCode"),
       icon: <ClaudeCodeIcon size={16} />,
       detected: availability.capabilities.includes("claude-code"),
     },
     {
       option: "codex-desktop",
-      label: "Codex",
+      label: t("chat.agentIcons.codex"),
       icon: <CodexIcon size={16} />,
       detected: availability.capabilities.includes("codex"),
+    },
+    {
+      option: "opencode-desktop",
+      label: t("chat.agentIcons.opencode"),
+      icon: <OpenCodeIcon size={16} />,
+      detected: availability.capabilities.includes("opencode"),
     },
   ];
 

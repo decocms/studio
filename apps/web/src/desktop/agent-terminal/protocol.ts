@@ -13,7 +13,7 @@ const MAX_PROMPT_BYTES = TERMINAL_INPUT_BYTES - BRACKETED_PASTE_OVERHEAD_BYTES;
 // below both limits even when every byte needs JSON's longest escape sequence.
 const MAX_INPUT_CHUNK_BYTES = 32 * 1024;
 
-export type TerminalHarnessId = "claude-code" | "codex";
+export type TerminalHarnessId = "claude-code" | "codex" | "opencode";
 export type TerminalPhysicalState = "starting" | "running" | "exited";
 export type TerminalLogicalState =
   | "idle"
@@ -83,6 +83,8 @@ export interface TerminalReplayFrame {
   kind: "output" | "reset";
   seq: number;
   data: Uint8Array;
+  /** One mounted xterm may answer capability queries carried by this frame. */
+  allowCapabilityReplies: boolean;
 }
 
 const PHYSICAL_STATES = new Set<TerminalPhysicalState>([
@@ -132,18 +134,20 @@ function logicalState(value: unknown): TerminalLogicalState | null {
 }
 
 export function toTerminalHarnessId(
-  harnessId: HarnessId | null | undefined,
+  harnessId: HarnessId | "opencode" | null | undefined,
 ): TerminalHarnessId | null {
   if (harnessId === "claude-code") return "claude-code";
   if (harnessId === "codex") return "codex";
+  if (harnessId === "opencode") return "opencode";
   return null;
 }
 
 export function fromTerminalHarnessId(
   harnessId: TerminalHarnessId | null | undefined,
-): Extract<HarnessId, "claude-code" | "codex"> | null {
+): Extract<HarnessId, "claude-code" | "codex"> | "opencode" | null {
   if (harnessId === "claude-code") return "claude-code";
   if (harnessId === "codex") return "codex";
+  if (harnessId === "opencode") return "opencode";
   return null;
 }
 
@@ -204,6 +208,7 @@ export function shouldResetTerminalReplay(
 function terminalHarnessId(value: unknown): TerminalHarnessId | undefined {
   if (value === "claude" || value === "claude-code") return "claude-code";
   if (value === "codex") return "codex";
+  if (value === "opencode") return "opencode";
   return undefined;
 }
 
@@ -432,11 +437,11 @@ export function terminalWebSocketUrl(
  * Reset frames replace the prior screen history; oversized single chunks keep
  * their tail because xterm can still render the most recent terminal state.
  */
-export function appendTerminalReplay(
-  replay: readonly TerminalReplayFrame[],
-  frame: TerminalReplayFrame,
+export function appendTerminalReplay<Frame extends TerminalReplayFrame>(
+  replay: readonly Frame[],
+  frame: Frame,
   maxBytes: number,
-): TerminalReplayFrame[] {
+): Frame[] {
   const next = frame.kind === "reset" ? [frame] : [...replay, frame];
   let size = next.reduce((total, item) => total + item.data.byteLength, 0);
   while (next.length > 1 && size > maxBytes) {

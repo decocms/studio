@@ -63,6 +63,15 @@ type ConnectionIntent =
       frame: Extract<TerminalClientFrame, { type: "start" }>;
     };
 
+type TerminalOutputListener = (
+  frame: TerminalReplayFrame,
+  acknowledgeCapabilityReplies: () => void,
+) => void;
+
+interface StoredTerminalReplayFrame extends TerminalReplayFrame {
+  capabilityReplyAuthorityId: number | null;
+}
+
 const DEFAULT_DIMENSIONS: TerminalDimensions = { rows: 30, cols: 100 };
 // Matches terminal-session's bounded replay capacity. Keeping the full reset
 // avoids requesting the same multi-megabyte snapshot on every panel remount.
@@ -115,10 +124,17 @@ export class TerminalController {
   private socket: WebSocket | null = null;
   private intent: ConnectionIntent | null = null;
   private dimensions = DEFAULT_DIMENSIONS;
-  private replay: TerminalReplayFrame[] = [];
+  private replay: StoredTerminalReplayFrame[] = [];
   private replayComplete = true;
   private lastOutputSequence = 0;
-  private outputListeners = new Set<(frame: TerminalReplayFrame) => void>();
+  private outputListeners = new Set<TerminalOutputListener>();
+  // null = available; a listener value = leased until its xterm write acks.
+  private capabilityReplyAuthorities = new Map<
+    number,
+    TerminalOutputListener | null
+  >();
+  private nextCapabilityReplyAuthorityId = 1;
+  private startupReplySocket: WebSocket | null = null;
   private pendingPrompts = new Map<string, PendingPrompt>();
   private startDeferred: Deferred | null = null;
   private reconnectAttempt = 0;
@@ -178,6 +194,7 @@ export class TerminalController {
       return this.startDeferred.promise;
     }
 
+    this.startupReplySocket = null;
     this.resetRendererReplay();
 
     const dimensions = normalizeTerminalDimensions(this.dimensions);
@@ -305,17 +322,19 @@ export class TerminalController {
     this.patch({ error, retryable });
   }
 
-  subscribeOutput(listener: (frame: TerminalReplayFrame) => void): () => void {
+  subscribeOutput(listener: TerminalOutputListener): () => void {
     this.outputListeners.add(listener);
     if (!this.replayComplete) {
       this.replay = [];
+      this.capabilityReplyAuthorities.clear();
       this.replayComplete = true;
       this.lastOutputSequence = 0;
     }
-    for (const frame of this.replay) listener(frame);
+    for (const frame of this.replay) this.deliverOutput(listener, frame);
     this.connect();
     return () => {
       this.outputListeners.delete(listener);
+      this.releaseCapabilityReplyLeases(listener);
       if (this.outputListeners.size === 0 && this.pendingPrompts.size === 0) {
         this.disconnectView();
       }
@@ -330,6 +349,8 @@ export class TerminalController {
     this.reconnectTimer = null;
     this.socket?.close(1000, "controller disposed");
     this.socket = null;
+    this.startupReplySocket = null;
+    this.capabilityReplyAuthorities.clear();
     const error = new Error("Terminal controller was disposed");
     this.startDeferred?.reject(error);
     this.startDeferred = null;
@@ -352,6 +373,9 @@ export class TerminalController {
       this.reconnectTimer = null;
     }
     if (this.socket) {
+      if (this.startupReplySocket === this.socket) {
+        this.startupReplySocket = null;
+      }
       this.rejectPromptsSentOn(this.socket);
       this.socket.close(1000, "reconnecting");
     }
@@ -382,7 +406,7 @@ export class TerminalController {
     socket.onmessage = (event) => {
       if (this.socket !== socket || typeof event.data !== "string") return;
       const frame = parseTerminalServerFrame(event.data);
-      if (frame) this.handleFrame(frame);
+      if (frame) this.handleFrame(frame, socket);
     };
 
     socket.onerror = () => {
@@ -396,6 +420,9 @@ export class TerminalController {
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      if (this.startupReplySocket === socket) {
+        this.startupReplySocket = null;
+      }
       this.rejectPromptsSentOn(socket);
       if (
         this.disposed ||
@@ -426,6 +453,9 @@ export class TerminalController {
     this.reconnectTimer = null;
     const socket = this.socket;
     this.socket = null;
+    if (this.startupReplySocket === socket) {
+      this.startupReplySocket = null;
+    }
     socket?.close(1000, "view detached");
     this.patch({ connection: "disconnected" });
   }
@@ -460,7 +490,10 @@ export class TerminalController {
         return;
       }
       const socket = this.send(this.intent.frame);
-      if (initial && socket) initial.sentSocket = socket;
+      if (socket) {
+        this.startupReplySocket = socket;
+        if (initial) initial.sentSocket = socket;
+      }
       return;
     }
     this.send({
@@ -510,7 +543,7 @@ export class TerminalController {
     }
   }
 
-  private handleFrame(frame: TerminalServerFrame): void {
+  private handleFrame(frame: TerminalServerFrame, socket: WebSocket): void {
     switch (frame.type) {
       case "ready": {
         const wasStarting = this.intent?.kind === "start";
@@ -552,18 +585,29 @@ export class TerminalController {
         this.detachIfUnused();
         return;
       }
-      case "output":
+      case "output": {
+        // Every connection receives a server-marked retained tail. Only the
+        // socket that issued `start` owns replies for that initial tail;
+        // ordinary attach/reconnect history must remain inert.
+        const startupReplay =
+          frame.replay && this.startupReplySocket === socket;
+        if (!frame.replay && this.startupReplySocket === socket) {
+          this.startupReplySocket = null;
+        }
         this.acceptOutput({
           kind: "output",
           seq: frame.seq,
           data: frame.data,
+          allowCapabilityReplies: !frame.replay || startupReplay,
         });
         return;
+      }
       case "reset":
         this.acceptOutput({
           kind: "reset",
           seq: frame.seq,
           data: frame.data,
+          allowCapabilityReplies: false,
         });
         return;
       case "state":
@@ -687,9 +731,20 @@ export class TerminalController {
     if (frame.kind === "reset" && frame.seq < currentSequence) return;
 
     const previousFirst = this.replay[0];
+    const capabilityReplyAuthorityId = frame.allowCapabilityReplies
+      ? this.nextCapabilityReplyAuthorityId++
+      : null;
+    if (capabilityReplyAuthorityId !== null) {
+      this.capabilityReplyAuthorities.set(capabilityReplyAuthorityId, null);
+    }
+    const retainedFrame: StoredTerminalReplayFrame = {
+      ...frame,
+      allowCapabilityReplies: false,
+      capabilityReplyAuthorityId,
+    };
     const nextReplay = appendTerminalReplay(
       this.replay,
-      frame,
+      retainedFrame,
       REPLAY_BYTE_LIMIT,
     );
     if (frame.kind === "reset") {
@@ -701,11 +756,77 @@ export class TerminalController {
       this.replayComplete = false;
     }
     this.replay = nextReplay;
+    this.pruneCapabilityReplyAuthorities();
     this.lastOutputSequence = frame.seq;
     if (this.snapshot.get().error) {
       this.patch({ error: null, retryable: false });
     }
-    for (const listener of this.outputListeners) listener(frame);
+    for (const listener of this.outputListeners) {
+      this.deliverOutput(listener, retainedFrame);
+    }
+  }
+
+  private deliverOutput(
+    listener: TerminalOutputListener,
+    frame: StoredTerminalReplayFrame,
+  ): void {
+    const authorityId = frame.capabilityReplyAuthorityId;
+    const allowCapabilityReplies =
+      authorityId !== null &&
+      this.capabilityReplyAuthorities.has(authorityId) &&
+      this.capabilityReplyAuthorities.get(authorityId) === null;
+    if (allowCapabilityReplies) {
+      this.capabilityReplyAuthorities.set(authorityId, listener);
+    }
+    listener(
+      {
+        kind: frame.kind,
+        seq: frame.seq,
+        data: frame.data,
+        allowCapabilityReplies,
+      },
+      () => {
+        if (
+          authorityId !== null &&
+          this.capabilityReplyAuthorities.get(authorityId) === listener
+        ) {
+          this.capabilityReplyAuthorities.delete(authorityId);
+        }
+      },
+    );
+  }
+
+  private releaseCapabilityReplyLeases(listener: TerminalOutputListener): void {
+    const retainedAuthorityIds = new Set(
+      this.replay.flatMap((frame) =>
+        frame.capabilityReplyAuthorityId === null
+          ? []
+          : [frame.capabilityReplyAuthorityId],
+      ),
+    );
+    for (const [authorityId, lease] of this.capabilityReplyAuthorities) {
+      if (lease !== listener) continue;
+      if (retainedAuthorityIds.has(authorityId)) {
+        this.capabilityReplyAuthorities.set(authorityId, null);
+      } else {
+        this.capabilityReplyAuthorities.delete(authorityId);
+      }
+    }
+  }
+
+  private pruneCapabilityReplyAuthorities(): void {
+    const retainedAuthorityIds = new Set(
+      this.replay.flatMap((frame) =>
+        frame.capabilityReplyAuthorityId === null
+          ? []
+          : [frame.capabilityReplyAuthorityId],
+      ),
+    );
+    for (const [authorityId, lease] of this.capabilityReplyAuthorities) {
+      if (lease === null && !retainedAuthorityIds.has(authorityId)) {
+        this.capabilityReplyAuthorities.delete(authorityId);
+      }
+    }
   }
 
   private rejectPendingPrompts(
@@ -763,6 +884,7 @@ export class TerminalController {
 
   private resetRendererReplay(): void {
     this.replay = [];
+    this.capabilityReplyAuthorities.clear();
     this.replayComplete = true;
     this.lastOutputSequence = 0;
     this.patch({
@@ -773,8 +895,9 @@ export class TerminalController {
       kind: "reset",
       seq: 0,
       data: new Uint8Array(),
+      allowCapabilityReplies: false,
     };
-    for (const listener of this.outputListeners) listener(reset);
+    for (const listener of this.outputListeners) listener(reset, () => {});
   }
 
   private patch(patch: Partial<TerminalControllerSnapshot>): void {
