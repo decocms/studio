@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/lifecycle"
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
 	"github.com/decocms/studio/sandbox-daemon/internal/proc"
+	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
 type Step string
@@ -68,6 +70,10 @@ func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
 		if s.LogName == "" || !proc.IsWellKnownStarter(s.LogName) {
 			return
 		}
+		// Counted before the intentional gate below: a restart the daemon asked
+		// for and a user app crashlooping are the same event from outside the
+		// pod, and telling them apart is the whole point of the attribute.
+		telemetry.RecordDevServerExit(context.Background(), s.Intentional)
 		if s.Intentional {
 			return
 		}
@@ -217,6 +223,37 @@ func (o *Orchestrator) rawChunk(data string) {
 }
 
 func (o *Orchestrator) stepClone() bool {
+	return timedPhase("clone", o.stepCloneInner)
+}
+
+func (o *Orchestrator) stepInstall() bool {
+	return timedPhase("install", o.stepInstallInner)
+}
+
+func (o *Orchestrator) stepStart() {
+	timedPhase("start", func() bool { o.stepStartInner(); return true })
+}
+
+// timedPhase times one setup step and reports it under the same instrument the
+// TaskManager phases use. Wrapping the three step methods here rather than
+// threading a timer through their many exit points is what makes `clone` and
+// `install` measurable at all — neither goes through the PhaseManager, so until
+// now sandbox.daemon.phase.duration covered only the dev-server spawn and user
+// commands, despite claiming otherwise.
+//
+// A step signals failure by returning false, which aborts the pipeline.
+func timedPhase(name string, run func() bool) bool {
+	startedAt := time.Now()
+	ok := run()
+	status := "done"
+	if !ok {
+		status = "failed"
+	}
+	telemetry.RecordPhase(context.Background(), name, status, time.Since(startedAt).Milliseconds())
+	return ok
+}
+
+func (o *Orchestrator) stepCloneInner() bool {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
 		return false
@@ -297,7 +334,7 @@ func (o *Orchestrator) maybeFastForwardToBase() {
 	))
 }
 
-func (o *Orchestrator) stepInstall() bool {
+func (o *Orchestrator) stepInstallInner() bool {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
 		return false
@@ -390,7 +427,7 @@ func (o *Orchestrator) stepInstall() bool {
 	return true
 }
 
-func (o *Orchestrator) stepStart() {
+func (o *Orchestrator) stepStartInner() {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
 		return

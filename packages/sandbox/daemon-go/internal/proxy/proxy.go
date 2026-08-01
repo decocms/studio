@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/probe"
+	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
 type Deps struct {
@@ -86,11 +87,22 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	outReq.Header.Del("Authorization")
 	outReq.Host = r.Host
 
+	// Measured to headers, not to the last body byte: SSE / NDJSON / long-poll
+	// responses stream for as long as the client keeps them open, and folding
+	// that into the same histogram would drown the number this exists to show
+	// (how long the dev server took to start answering).
+	upstreamStartedAt := time.Now()
 	upstream, err := p.transport.RoundTrip(outReq)
 	if err != nil {
+		telemetry.RecordProxy(r.Context(), time.Since(upstreamStartedAt).Milliseconds(), "error")
 		p.proxyError(w, r, port, err)
 		return
 	}
+	telemetry.RecordProxy(
+		r.Context(),
+		time.Since(upstreamStartedAt).Milliseconds(),
+		fmt.Sprintf("%dxx", upstream.StatusCode/100),
+	)
 	defer upstream.Body.Close()
 
 	if upstream.StatusCode >= 500 && p.deps.Log != nil {

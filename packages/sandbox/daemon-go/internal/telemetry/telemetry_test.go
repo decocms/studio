@@ -7,6 +7,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // The exporter is the whole point of this package and the one part that cannot
@@ -37,6 +41,16 @@ func TestInitExportsToEndpoint(t *testing.T) {
 
 	RecordPhase(context.Background(), "install", "done", 1234)
 	RecordDepsRestore(context.Background(), "no-install", 7)
+	RecordReady(context.Background(), 9876)
+	RecordProxy(context.Background(), 12, "2xx")
+	RecordDevServerExit(context.Background(), false)
+	RecordPublish(context.Background(), "done", 345)
+	// Loop lag has no Record* of its own — Init's sampler is the only producer,
+	// so waiting one tick is what proves the sampler runs. It has to be asserted
+	// here rather than in a test of its own: otel-go binds these package-level
+	// instruments to the FIRST provider installed in the process, so a second
+	// Init in the same binary would record into this test's dead exporter.
+	time.Sleep(lagSampleInterval + 200*time.Millisecond)
 
 	// Shutdown force-flushes, so this asserts on a real export rather than
 	// racing the periodic reader.
@@ -59,6 +73,11 @@ func TestInitExportsToEndpoint(t *testing.T) {
 	for _, want := range []string{
 		"sandbox.daemon.phase.duration",
 		"sandbox.daemon.deps.restore",
+		"sandbox.daemon.ready.duration",
+		"sandbox.daemon.proxy.duration",
+		"sandbox.daemon.devserver.exit",
+		"sandbox.daemon.publish.duration",
+		"sandbox.daemon.loop.lag",
 		"install",
 		"no-install",
 		// The rollout comparison dimension has to reach the wire, not just the
@@ -70,6 +89,57 @@ func TestInitExportsToEndpoint(t *testing.T) {
 			t.Errorf("export missing %q", want)
 		}
 	}
+}
+
+// Bounds are asserted off a manual reader rather than the wire: the OTLP
+// exporter speaks protobuf, so boundaries are binary there and a passing
+// string-match would prove nothing. Getting this wrong is silent — the SDK
+// falls back to a default set that stops at 10s, which buckets a 45s install
+// and a 5-minute one identically, and makes these panels incomparable to the TS
+// daemon's (which pins the same boundaries).
+func TestViewsPinSharedBuckets(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetric.WithView(views()...),
+	)
+	meter := provider.Meter(scopeName)
+	phase, _ := meter.Int64Histogram("sandbox.daemon.phase.duration")
+	lag, _ := meter.Int64Histogram("sandbox.daemon.loop.lag")
+	phase.Record(context.Background(), 45_000)
+	lag.Record(context.Background(), 2)
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	bounds := map[string][]float64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if h, ok := m.Data.(metricdata.Histogram[int64]); ok && len(h.DataPoints) > 0 {
+				bounds[m.Name] = h.DataPoints[0].Bounds
+			}
+		}
+	}
+
+	if got := bounds["sandbox.daemon.phase.duration"]; !contains(got, 300_000) {
+		t.Errorf("phase duration bounds missing 300000: %v", got)
+	}
+	// Lag must NOT inherit the duration set: on those bounds every healthy
+	// sample sits in the first bucket and the metric says nothing.
+	if got := bounds["sandbox.daemon.loop.lag"]; !contains(got, 1) || contains(got, 300_000) {
+		t.Errorf("loop lag should use the lag bounds, got: %v", got)
+	}
+}
+
+func contains(xs []float64, want float64) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestInitIsNoopWithoutEndpoint(t *testing.T) {

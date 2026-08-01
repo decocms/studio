@@ -24,11 +24,38 @@ import {
   resourceFromAttributes,
 } from "@opentelemetry/resources";
 import {
+  AggregationType,
   MeterProvider,
   PeriodicExportingMetricReader,
 } from "@opentelemetry/sdk-metrics";
 
 const SCOPE = "github.com/decocms/studio/sandbox-daemon";
+
+/**
+ * Explicit buckets for the boot-cost histograms, shared verbatim with
+ * daemon-go. Two panels can only be compared if their buckets agree, and the
+ * OTel default set stops at 10s — a clone or install routinely exceeds that, so
+ * on the default every interesting boot lands in `+Inf` and every percentile
+ * above p50 is a fabrication. Range chosen to cover a warm restore (~100ms) to
+ * a cold install on a starved node (minutes).
+ */
+const DURATION_BUCKETS_MS = [
+  50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 20_000, 30_000, 60_000,
+  120_000, 300_000,
+];
+
+/**
+ * Loop lag lives in a different range entirely — sub-millisecond when healthy,
+ * and the interesting question is "did it cross ~1s", not "was it 30s or 60s".
+ */
+const LAG_BUCKETS_MS = [1, 5, 10, 25, 50, 100, 250, 500, 1_000, 5_000, 30_000];
+
+/**
+ * How often the lag sampler ticks. Cheap enough to leave on always (one timer
+ * wake per second), fine-grained enough to catch the multi-second sync blocks
+ * that make the daemon miss its health probe.
+ */
+const LAG_SAMPLE_INTERVAL_MS = 1_000;
 
 // A sandbox's median life is minutes, so the SDK's 60s default would lose
 // short-lived pods entirely; faster buys nothing, since these instruments fire
@@ -39,6 +66,11 @@ const DEFAULT_EXPORT_INTERVAL_MS = 30_000;
 let phaseDuration: Histogram | undefined;
 let depsRestore: Counter | undefined;
 let depsRestoreDuration: Histogram | undefined;
+let readyDuration: Histogram | undefined;
+let loopLag: Histogram | undefined;
+let proxyDuration: Histogram | undefined;
+let devServerExit: Counter | undefined;
+let publishDuration: Histogram | undefined;
 
 const noopShutdown = async (): Promise<void> => {};
 
@@ -75,6 +107,25 @@ export function initTelemetry(
 
     const provider = new MeterProvider({
       resource,
+      views: [
+        {
+          instrumentName: "sandbox.daemon.loop.lag",
+          aggregation: {
+            type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+            options: { boundaries: LAG_BUCKETS_MS },
+          },
+        },
+        // Everything else measured in ms. Listed by wildcard so an instrument
+        // added later inherits the shared buckets instead of silently falling
+        // back to the 10s-capped default.
+        {
+          instrumentName: "sandbox.daemon.*.duration",
+          aggregation: {
+            type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+            options: { boundaries: DURATION_BUCKETS_MS },
+          },
+        },
+      ],
       readers: [
         new PeriodicExportingMetricReader({
           exporter: new OTLPMetricExporter(),
@@ -108,11 +159,46 @@ export function initTelemetry(
       },
     );
 
+    readyDuration = meter.createHistogram("sandbox.daemon.ready.duration", {
+      unit: "ms",
+      description:
+        "Daemon boot to the dev server answering, recorded once per boot. The in-pod half of cold start: Studio's own claim-to-answering number folds in scheduling and image pull, which no daemon change can move.",
+    });
+
+    loopLag = meter.createHistogram("sandbox.daemon.loop.lag", {
+      unit: "ms",
+      description:
+        "Scheduling delay of a fixed-interval timer. A blocked loop (TS) or a descheduled process (both) stops the daemon answering its health probe, and Studio tears the sandbox down on a single miss — this is the only signal that says why, while the pod is still alive to say it.",
+    });
+
+    proxyDuration = meter.createHistogram("sandbox.daemon.proxy.duration", {
+      unit: "ms",
+      description:
+        "Time to proxy one request to the user's dev server. Separates a slow sandbox from a slow app — nothing outside the pod can see this hop.",
+    });
+
+    devServerExit = meter.createCounter("sandbox.daemon.devserver.exit", {
+      unit: "{exit}",
+      description:
+        "Dev-server process exits, split by whether the daemon asked for it. Unintentional exits are a crashlooping user app, which reads identically to a broken sandbox from the outside.",
+    });
+
+    publishDuration = meter.createHistogram("sandbox.daemon.publish.duration", {
+      unit: "ms",
+      description:
+        "The SIGTERM git sync — the one irrecoverable step of a teardown, and the reason the pod grace period is 90s. How close this runs to the grace period is how much of the user's work is one slow push from being lost.",
+    });
+
+    startLoopLagSampler();
+
     console.log(
       `[daemon] otlp metrics enabled endpoint=${process.env.OTEL_EXPORTER_OTLP_ENDPOINT} impl=${impl} boot_id=${bootId}`,
     );
 
-    return () => provider.shutdown();
+    return async () => {
+      stopLoopLagSampler();
+      await provider.shutdown();
+    };
   } catch (err) {
     // Telemetry must never break a boot.
     console.warn("[daemon] otlp metrics init failed", err);
@@ -138,4 +224,52 @@ export function recordDepsRestore(source: string, durationMs: number): void {
   const attrs = { source };
   depsRestore?.add(1, attrs);
   depsRestoreDuration?.record(durationMs, attrs);
+}
+
+/**
+ * Reports the boot that produced a serving sandbox. Called once per boot — a
+ * dev server that crashes and comes back is a restart, not a second cold start,
+ * and counting it as one would flatter every average.
+ */
+export function recordReady(durationMs: number): void {
+  readyDuration?.record(durationMs);
+}
+
+/** Reports one proxied request to the user's dev server. */
+export function recordProxy(durationMs: number, statusClass: string): void {
+  proxyDuration?.record(durationMs, { status_class: statusClass });
+}
+
+/** Reports one dev-server process exit. */
+export function recordDevServerExit(intentional: boolean): void {
+  devServerExit?.add(1, { intentional: String(intentional) });
+}
+
+/** Reports the shutdown git sync. `status` is "done" or "failed". */
+export function recordPublish(status: string, durationMs: number): void {
+  publishDuration?.record(durationMs, { status });
+}
+
+let lagTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * Samples how late a fixed-interval timer actually fires. On the TS daemon that
+ * lateness IS the event-loop block (CONTRIBUTING rule #1); on a starved node it
+ * is the scheduler. Both are the same failure from the sandbox's point of view,
+ * which is why daemon-go samples the same way under the same instrument name.
+ */
+function startLoopLagSampler(): void {
+  let expected = Date.now() + LAG_SAMPLE_INTERVAL_MS;
+  lagTimer = setInterval(() => {
+    const now = Date.now();
+    loopLag?.record(Math.max(0, now - expected));
+    expected = now + LAG_SAMPLE_INTERVAL_MS;
+  }, LAG_SAMPLE_INTERVAL_MS);
+  // Never hold the process open for telemetry.
+  lagTimer.unref?.();
+}
+
+function stopLoopLagSampler(): void {
+  if (lagTimer) clearInterval(lagTimer);
+  lagTimer = undefined;
 }

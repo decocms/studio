@@ -1,8 +1,14 @@
 import type { Broadcaster } from "../events/broadcast";
 import type { LifecycleState } from "../events/types";
+import { recordReady } from "../telemetry";
 
 export interface LifecycleManagerDeps {
   broadcaster: Broadcaster;
+  /**
+   * Process start, for the boot-to-serving measurement. Injected rather than
+   * read from the module so a test can define "boot" without touching globals.
+   */
+  bootedAt?: number;
 }
 
 /**
@@ -16,6 +22,7 @@ export interface LifecycleManagerDeps {
  */
 export class LifecycleManager {
   private state: LifecycleState = { phase: "idle" };
+  private readySeen = false;
 
   constructor(private readonly deps: LifecycleManagerDeps) {}
 
@@ -28,6 +35,16 @@ export class LifecycleManager {
     if (equal(this.state, next)) return;
     this.state = next;
     this.deps.broadcaster.emit("lifecycle", { state: next });
+    // Every path to a serving sandbox ends here, so one hook covers cold boot,
+    // golden restore and resume alike. Once per process: a dev server that
+    // crashes and comes back re-enters `running`, and counting that as a second
+    // cold start would flatter every average it appears in.
+    if (next.phase === "running" && !this.readySeen) {
+      this.readySeen = true;
+      if (this.deps.bootedAt !== undefined) {
+        recordReady(Date.now() - this.deps.bootedAt);
+      }
+    }
   }
 }
 
