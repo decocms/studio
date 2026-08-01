@@ -418,22 +418,24 @@ function PickerContent({
       navigateToAgent(virtualMcpId);
     },
     onError: (error, repo) => {
+      console.error("GitHub import failed:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("common.githubRepoPicker.unknownError");
       // A fork the GitHub App wasn't granted shows up in public search but the
-      // token mint fails — point the user at the installation settings instead
-      // of a raw mint error.
-      if (repo.fork) {
+      // token mint fails (provisionRepoScopedGithubConnection throws a
+      // "…mint a repo-scoped GitHub token…" error) — point the user at the
+      // installation settings. Only do this for the mint failure; other fork
+      // import errors (agent create, rollback, network) keep the real message.
+      if (repo.fork && message.toLowerCase().includes("mint")) {
         toast.error(
           t("common.githubRepoPicker.failedImportFork", { name: repo.name }),
         );
         return;
       }
       toast.error(
-        t("common.githubRepoPicker.failedImport", {
-          error:
-            error instanceof Error
-              ? error.message
-              : t("common.githubRepoPicker.unknownError"),
-        }),
+        t("common.githubRepoPicker.failedImport", { error: message }),
       );
     },
   });
