@@ -105,44 +105,182 @@ export function shouldPromote({
 }
 
 /**
+ * Every platform the channel serves, keyed by the updater's own `{os}-{arch}`
+ * identifier (tauri-plugin-updater's `updater_os`/`updater_arch`) and mapped to
+ * the updater asset's name on the immutable `native-v<version>` release.
+ *
+ * The key vocabulary is NOT the bundler's: the AppImage the tarball wraps is
+ * `amd64`, the manifest key is `x86_64`. Never derive one from the other.
+ *
+ * Adding a key here makes that platform MANDATORY for every manifest — which
+ * is the point. `buildLatestJson` refuses to emit a partial document because
+ * the updater validates the whole file before reading `version`, so one
+ * missing or malformed entry bricks updates for ALL platforms, not just the
+ * absent one. A platform whose assets aren't ready yet must hold the whole
+ * promotion back, not ship a manifest without it.
+ */
+export const PLATFORM_ASSETS = {
+  "darwin-aarch64": (version) => `deco-${version}-aarch64.app.tar.gz`,
+  "linux-x86_64": (version) => `deco-${version}-linux-x86_64.AppImage.tar.gz`,
+};
+
+/**
  * Assemble latest.json for the Tauri updater. Structured construction, never
- * shell/string interpolation — the signature is base64 today but correctness
- * stays by-construction. The updater validates the WHOLE file before reading
- * `version`, so when platform keys are added later one malformed entry
- * bricks updates for all platforms — keep every entry complete.
+ * shell/string interpolation — signatures are base64 today but correctness
+ * stays by-construction.
  *
  * `url` points at the immutable native-v<version> release asset, so an old
- * manifest never dangles; `signature` is the CONTENTS of the .sig file (a
- * path or URL does not work, per the updater docs).
+ * manifest never dangles; each `signature` is the CONTENTS of that platform's
+ * .sig file (a path or URL does not work, per the updater docs).
+ *
+ * @param {object} args
+ * @param {string} args.version
+ * @param {Record<string, string>} args.signatures .sig CONTENTS keyed by
+ *   platform; must cover exactly PLATFORM_ASSETS
+ * @param {string} args.repo owner/repo
+ * @param {string} args.pubDate
  */
-export function buildLatestJson({ version, signature, repo, pubDate }) {
+export function buildLatestJson({ version, signatures, repo, pubDate }) {
   if (!parseSemver(version)) {
     throw new Error(
       `refusing to build manifest for unparseable version ${JSON.stringify(version)}`,
     );
   }
-  if (typeof signature !== "string" || signature.trim() === "") {
-    throw new Error("missing updater signature contents");
+  if (
+    signatures === null ||
+    typeof signatures !== "object" ||
+    Array.isArray(signatures)
+  ) {
+    throw new Error("signatures must be an object keyed by platform");
   }
+
+  const expected = Object.keys(PLATFORM_ASSETS);
+  const unknown = Object.keys(signatures).filter(
+    (key) => !(key in PLATFORM_ASSETS),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `unknown platform key(s) ${unknown.join(", ")}; expected ${expected.join(", ")}`,
+    );
+  }
+
+  const platforms = {};
+  const missing = [];
+  for (const [key, assetName] of Object.entries(PLATFORM_ASSETS)) {
+    const signature = signatures[key];
+    if (typeof signature !== "string" || signature.trim() === "") {
+      missing.push(key);
+      continue;
+    }
+    platforms[key] = {
+      url: `https://github.com/${repo}/releases/download/native-v${version}/${assetName(version)}`,
+      signature: signature.trim(),
+    };
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `missing updater signature contents for ${missing.join(", ")}`,
+    );
+  }
+
   return {
     version,
     pub_date: pubDate,
     notes: `https://github.com/${repo}/releases/tag/native-v${version}`,
-    platforms: {
-      "darwin-aarch64": {
-        url: `https://github.com/${repo}/releases/download/native-v${version}/deco-${version}-aarch64.app.tar.gz`,
-        signature: signature.trim(),
-      },
-    },
+    platforms,
   };
 }
+
+function platformKeysOf(manifest) {
+  const platforms =
+    manifest && typeof manifest === "object" ? manifest.platforms : null;
+  if (!platforms || typeof platforms !== "object" || Array.isArray(platforms)) {
+    return [];
+  }
+  return Object.keys(platforms);
+}
+
+/**
+ * Coverage-regression guard, run against the CURRENTLY-PUBLISHED manifest
+ * before uploading a new one.
+ *
+ * `shouldPromote` compares only `version`, so a repair dispatch from a ref
+ * predating a platform key — or a revert — can legitimately decide to promote
+ * a narrower manifest over a wider one. Nothing downstream would notice: the
+ * dropped platform's clients simply poll a manifest without their key and see
+ * "no update" forever, with no failed job and no dangling URL to grep for.
+ *
+ * Fail-open on an absent/unreadable current manifest, matching `shouldPromote`
+ * — there is nothing to regress from. Fail CLOSED on an empty next manifest:
+ * we just built it, so we know exactly what it should contain.
+ *
+ * @param {object} args
+ * @param {object} args.nextManifest the manifest about to be uploaded
+ * @param {object|null} args.currentManifest the published one, or null
+ */
+export function assertPlatformCoverage({ nextManifest, currentManifest }) {
+  const next = platformKeysOf(nextManifest);
+  if (next.length === 0) {
+    throw new Error("refusing to publish a manifest with no platforms");
+  }
+  const current = platformKeysOf(currentManifest);
+  const dropped = current.filter((key) => !next.includes(key));
+  if (dropped.length > 0) {
+    throw new Error(
+      `refusing to publish a manifest dropping platform(s) ${dropped.join(", ")}: ` +
+        `published channel serves ${current.join(", ")}, candidate serves ${next.join(", ")}`,
+    );
+  }
+}
+
+/**
+ * `<platformKey>=<path>` pairs from repeated `--sig-file` flags → a
+ * `{ [platformKey]: path }` map. Rejects anything malformed rather than
+ * silently dropping a platform, since a dropped platform is exactly the
+ * failure this whole module exists to prevent. Paths may contain `=`; the
+ * key ends at the FIRST one.
+ *
+ * @param {string[]} pairs
+ * @returns {Record<string, string>}
+ */
+export function parseSigFilePairs(pairs) {
+  const out = {};
+  for (const pair of pairs) {
+    const at = typeof pair === "string" ? pair.indexOf("=") : -1;
+    if (at < 1 || at === pair.length - 1) {
+      throw new Error(
+        `malformed --sig-file ${JSON.stringify(pair ?? null)}; expected <platform>=<path>`,
+      );
+    }
+    const key = pair.slice(0, at);
+    if (key in out) {
+      throw new Error(`duplicate --sig-file for platform ${key}`);
+    }
+    out[key] = pair.slice(at + 1);
+  }
+  return out;
+}
+
+// Flags that may appear more than once collect into an array; everything else
+// keeps last-writer-wins.
+const REPEATABLE_FLAGS = new Set(["sig-file"]);
 
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--force") args.force = true;
-    else if (a.startsWith("--")) args[a.slice(2)] = argv[++i];
+    if (a === "--force") {
+      args.force = true;
+      continue;
+    }
+    if (!a.startsWith("--")) continue;
+    const key = a.slice(2);
+    const value = argv[++i];
+    if (REPEATABLE_FLAGS.has(key)) {
+      args[key] = [...(args[key] ?? []), value];
+    } else {
+      args[key] = value;
+    }
   }
   return args;
 }
@@ -170,9 +308,15 @@ async function main() {
   }
 
   if (cmd === "build") {
+    const signatures = {};
+    for (const [platform, path] of Object.entries(
+      parseSigFilePairs(args["sig-file"] ?? []),
+    )) {
+      signatures[platform] = readFileSync(path, "utf8");
+    }
     const manifest = buildLatestJson({
       version: args.version,
-      signature: readFileSync(args["sig-file"], "utf8"),
+      signatures,
       repo: args.repo,
       pubDate: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     });
@@ -180,9 +324,25 @@ async function main() {
     return;
   }
 
+  if (cmd === "check-coverage") {
+    // The candidate must parse — it was just built by this run. The published
+    // one is read with the same fail-open convention as should-promote.
+    const nextManifest = JSON.parse(readFileSync(args["next-file"], "utf8"));
+    let currentManifest = null;
+    try {
+      currentManifest = JSON.parse(readFileSync(args["current-file"], "utf8"));
+    } catch {
+      // absent or unreadable published manifest → nothing to regress from
+    }
+    assertPlatformCoverage({ nextManifest, currentManifest });
+    return;
+  }
+
   process.stderr.write(
     "usage: native-update-channel.mjs should-promote --candidate <ver> --current-file <path> [--force]\n" +
-      "       native-update-channel.mjs build --version <ver> --sig-file <path> --repo <owner/repo>\n",
+      "       native-update-channel.mjs build --version <ver> --repo <owner/repo> --sig-file <platform>=<path> [--sig-file ...]\n" +
+      "       native-update-channel.mjs check-coverage --next-file <path> --current-file <path>\n" +
+      `       platforms: ${Object.keys(PLATFORM_ASSETS).join(", ")}\n`,
   );
   process.exit(2);
 }

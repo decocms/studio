@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertPlatformCoverage,
   buildLatestJson,
   compareSemver,
   parseSemver,
+  parseSigFilePairs,
+  PLATFORM_ASSETS,
   shouldPromote,
   THROTTLE_MS,
 } from "./native-update-channel.mjs";
@@ -107,42 +110,181 @@ describe("shouldPromote", () => {
 });
 
 describe("buildLatestJson", () => {
-  test("builds the exact updater contract shape", () => {
-    const out = buildLatestJson({
-      version: "4.151.0",
-      signature: "c2lnbmF0dXJl\n",
-      repo: "decocms/studio",
-      pubDate: "2026-07-30T12:00:00Z",
-    });
-    expect(out).toEqual({
+  const base = {
+    version: "4.151.0",
+    repo: "decocms/studio",
+    pubDate: "2026-07-30T12:00:00Z",
+  };
+  const bothSigs = {
+    "darwin-aarch64": "ZGFyd2lu\n",
+    "linux-x86_64": "  bGludXg=  ",
+  };
+
+  test("builds the exact updater contract shape for every platform", () => {
+    expect(buildLatestJson({ ...base, signatures: bothSigs })).toEqual({
       version: "4.151.0",
       pub_date: "2026-07-30T12:00:00Z",
       notes: "https://github.com/decocms/studio/releases/tag/native-v4.151.0",
       platforms: {
         "darwin-aarch64": {
           url: "https://github.com/decocms/studio/releases/download/native-v4.151.0/deco-4.151.0-aarch64.app.tar.gz",
-          signature: "c2lnbmF0dXJl",
+          signature: "ZGFyd2lu",
+        },
+        "linux-x86_64": {
+          url: "https://github.com/decocms/studio/releases/download/native-v4.151.0/deco-4.151.0-linux-x86_64.AppImage.tar.gz",
+          signature: "bGludXg=",
         },
       },
     });
   });
 
-  test("refuses unparseable versions and empty signatures", () => {
+  test("covers exactly the platforms the release ships", () => {
+    expect(Object.keys(PLATFORM_ASSETS)).toEqual([
+      "darwin-aarch64",
+      "linux-x86_64",
+    ]);
+  });
+
+  test("refuses unparseable versions", () => {
     expect(() =>
-      buildLatestJson({
-        version: "oops",
-        signature: "sig",
-        repo: "decocms/studio",
-        pubDate: "2026-07-30T12:00:00Z",
-      }),
+      buildLatestJson({ ...base, version: "oops", signatures: bothSigs }),
     ).toThrow(/unparseable version/);
+  });
+
+  test("refuses a manifest missing any platform's signature", () => {
     expect(() =>
       buildLatestJson({
-        version: "1.0.0",
-        signature: "  ",
-        repo: "decocms/studio",
-        pubDate: "2026-07-30T12:00:00Z",
+        ...base,
+        signatures: { "darwin-aarch64": bothSigs["darwin-aarch64"] },
       }),
-    ).toThrow(/signature/);
+    ).toThrow(/missing updater signature contents for linux-x86_64/);
+    expect(() =>
+      buildLatestJson({
+        ...base,
+        signatures: { "linux-x86_64": bothSigs["linux-x86_64"] },
+      }),
+    ).toThrow(/missing updater signature contents for darwin-aarch64/);
+    expect(() => buildLatestJson({ ...base, signatures: {} })).toThrow(
+      /darwin-aarch64, linux-x86_64/,
+    );
+  });
+
+  test("refuses empty and whitespace-only signatures", () => {
+    for (const empty of ["", "  ", "\n\t "]) {
+      expect(() =>
+        buildLatestJson({
+          ...base,
+          signatures: { ...bothSigs, "linux-x86_64": empty },
+        }),
+      ).toThrow(/missing updater signature contents for linux-x86_64/);
+    }
+  });
+
+  test("refuses unknown platform keys and non-object signatures", () => {
+    expect(() =>
+      buildLatestJson({
+        ...base,
+        signatures: { ...bothSigs, "linux-amd64": "c2ln" },
+      }),
+    ).toThrow(/unknown platform key\(s\) linux-amd64/);
+    expect(() =>
+      buildLatestJson({
+        ...base,
+        signatures: "c2ln" as unknown as Record<string, string>,
+      }),
+    ).toThrow(/must be an object/);
+  });
+});
+
+describe("parseSigFilePairs", () => {
+  test("accumulates one pair per repeated flag", () => {
+    expect(
+      parseSigFilePairs([
+        "darwin-aarch64=/tmp/mac.sig",
+        "linux-x86_64=/tmp/linux.sig",
+      ]),
+    ).toEqual({
+      "darwin-aarch64": "/tmp/mac.sig",
+      "linux-x86_64": "/tmp/linux.sig",
+    });
+    expect(parseSigFilePairs([])).toEqual({});
+  });
+
+  test("keeps `=` inside the path, splitting on the first one only", () => {
+    expect(parseSigFilePairs(["linux-x86_64=/tmp/a=b.sig"])).toEqual({
+      "linux-x86_64": "/tmp/a=b.sig",
+    });
+  });
+
+  test("rejects malformed pairs instead of dropping a platform", () => {
+    for (const bad of [
+      "/tmp/mac.sig",
+      "darwin-aarch64",
+      "darwin-aarch64=",
+      "=/tmp/mac.sig",
+      undefined as unknown as string,
+    ]) {
+      expect(() => parseSigFilePairs([bad])).toThrow(/malformed --sig-file/);
+    }
+  });
+
+  test("rejects a duplicated platform rather than silently overwriting", () => {
+    expect(() =>
+      parseSigFilePairs(["linux-x86_64=/tmp/a.sig", "linux-x86_64=/tmp/b.sig"]),
+    ).toThrow(/duplicate --sig-file for platform linux-x86_64/);
+  });
+});
+
+describe("assertPlatformCoverage", () => {
+  const withPlatforms = (...keys: string[]) => ({
+    platforms: Object.fromEntries(
+      keys.map((k) => [k, { url: "", signature: "" }]),
+    ),
+  });
+
+  test("accepts an equal or wider platform set", () => {
+    expect(() =>
+      assertPlatformCoverage({
+        nextManifest: withPlatforms("darwin-aarch64", "linux-x86_64"),
+        currentManifest: withPlatforms("darwin-aarch64", "linux-x86_64"),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPlatformCoverage({
+        nextManifest: withPlatforms("darwin-aarch64", "linux-x86_64"),
+        currentManifest: withPlatforms("darwin-aarch64"),
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects a strict subset — the silent-strand regression", () => {
+    expect(() =>
+      assertPlatformCoverage({
+        nextManifest: withPlatforms("darwin-aarch64"),
+        currentManifest: withPlatforms("darwin-aarch64", "linux-x86_64"),
+      }),
+    ).toThrow(/dropping platform\(s\) linux-x86_64/);
+  });
+
+  test("fails open on an absent or shapeless published manifest", () => {
+    for (const current of [null, {}, { platforms: null }, "garbage"]) {
+      expect(() =>
+        assertPlatformCoverage({
+          nextManifest: withPlatforms("darwin-aarch64"),
+          currentManifest: current as unknown as object,
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  test("fails closed on a candidate with no platforms at all", () => {
+    for (const next of [{}, { platforms: {} }, null]) {
+      expect(() =>
+        assertPlatformCoverage({
+          nextManifest: next as unknown as object,
+          currentManifest: withPlatforms("darwin-aarch64"),
+        }),
+      ).toThrow(/no platforms/);
+    }
   });
 });
