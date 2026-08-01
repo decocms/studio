@@ -316,13 +316,18 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: cargo test -p harness
 
+      # Single-threaded: these tests write a helper script and immediately
+      # exec it. On Linux any concurrent thread that forks inherits the still
+      # open write descriptor, and the exec then fails ETXTBSY ("Text file
+      # busy") — a race macOS does not enforce, so it only ever shows up here
+      # and only sometimes.
       - name: cargo test -p upstream
         if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
         timeout-minutes: 10
         env:
           CARGO_BUILD_JOBS: "2"
-        run: cargo test -p upstream
+        run: cargo test -p upstream -- --test-threads=1
 
       # Each of these runs under `setsid --wait`, i.e. in its own session and
       # process group. These tests deliberately create and kill process groups,
