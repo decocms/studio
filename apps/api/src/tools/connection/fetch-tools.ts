@@ -10,6 +10,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { getSettings } from "../../settings";
 import type {
   ConnectionParameters,
@@ -64,6 +65,26 @@ export async function fetchToolsFromMCP(
     default:
       return null;
   }
+}
+
+/**
+ * Maps MCP-listed tools to our stored ToolDefinition shape. `outputSchema` is
+ * relaxed with `additionalProperties: true` for every transport — a closed
+ * schema makes MCP clients (which re-validate structuredContent with Ajv)
+ * reject any tool response carrying a field this schema doesn't model.
+ */
+export function mapListedTools(tools: McpTool[]): ToolDefinition[] | null {
+  if (!tools.length) return null;
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? undefined,
+    inputSchema: tool.inputSchema ?? {},
+    outputSchema: tool.outputSchema
+      ? { ...tool.outputSchema, additionalProperties: true }
+      : undefined,
+    annotations: tool.annotations ?? undefined,
+    _meta: tool._meta ?? undefined,
+  }));
 }
 
 /**
@@ -146,20 +167,7 @@ async function fetchToolsFromHttpMCP(
     await Promise.race([client.connect(transport), timeoutPromise]);
     const result = await Promise.race([client.listTools(), timeoutPromise]);
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema
-              ? // We strive to have lenient output schemas, so allow additional properties
-                { ...tool.outputSchema, additionalProperties: true }
-              : undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? []);
 
     const scopes = await fetchScopesFromMCP(client);
 
@@ -226,19 +234,7 @@ async function fetchToolsFromSSEMCP(
     await Promise.race([client.connect(transport), timeoutPromise]);
     const result = await Promise.race([client.listTools(), timeoutPromise]);
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema
-              ? { ...tool.outputSchema, additionalProperties: true }
-              : undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? []);
 
     const scopes = await fetchScopesFromMCP(client);
 
@@ -310,17 +306,7 @@ async function fetchToolsFromStdioMCP(
     await Promise.race([client.connect(transport), timeoutPromise]);
     const result = await Promise.race([client.listTools(), timeoutPromise]);
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema ?? undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? []);
 
     const scopes = await fetchScopesFromMCP(client);
 
