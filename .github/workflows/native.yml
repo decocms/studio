@@ -163,7 +163,23 @@ jobs:
       # result (or vice versa) on a PR where both are required checks.
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-22.04]
+        # macOS does the lot in ~3 min. Linux gets one runner per half: five
+        # attempts at running both on one runner died in `cargo test` at an
+        # invariant ~49-50 min with the step incomplete, NO logs uploaded, and
+        # conclusion `failure` rather than the `cancelled` a timeout gives —
+        # i.e. the runner was killed. Capping debug info, freeing 20 GiB and
+        # capping link parallelism each changed nothing, and that invariance is
+        # the tell: the surviving variable is that one runner carried clippy's
+        # dev-profile build of the whole GTK/WebKit tree AND the test profile's.
+        # Two runners halve the peak, and each saves its own cache — which also
+        # breaks the spiral where a job that never finishes never warms one.
+        include:
+          - os: macos-latest
+            task: all
+          - os: ubuntu-22.04
+            task: lint
+          - os: ubuntu-22.04
+            task: test
     runs-on: ${{ matrix.os }}
     # The ubuntu leg builds the GTK/WebKit stack (webkit2gtk-sys, gtk-sys,
     # glib, soup) from source, once for clippy's dev profile and again for
@@ -227,6 +243,7 @@ jobs:
           workspaces: apps/native
 
       - name: cargo fmt --check
+        if: matrix.task != 'test'
         working-directory: apps/native
         run: cargo fmt --all -- --check
 
@@ -255,11 +272,12 @@ jobs:
         run: ./scripts/fetch-rclone.sh
 
       - name: cargo clippy -D warnings
+        if: matrix.task != 'test'
         working-directory: apps/native
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test --workspace
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
         run: cargo test --workspace
 
@@ -276,7 +294,7 @@ jobs:
       # Per crate so a future failure names the crate instead of the step, and
       # so each link peak stands alone.
       - name: cargo test (Linux, bounded)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
         env:
           CARGO_BUILD_JOBS: "2"
