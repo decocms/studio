@@ -153,6 +153,10 @@ export interface Settings {
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
   sandboxProviderKind: "agent-sandbox" | "user-desktop";
+  /** Sticky HEAD ref for thread-scoped sandboxes (SANDBOX_STICKY_HEAD_REF).
+   *  Off by default — see `sandbox/head-ref.ts` for the boot-path change this
+   *  gates and why it ships behind its own flag. */
+  sandboxStickyHeadRefEnabled: boolean;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

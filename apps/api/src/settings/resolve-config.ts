@@ -355,6 +355,7 @@ export function resolveConfig(
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
+    sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
