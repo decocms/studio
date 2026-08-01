@@ -7,6 +7,8 @@ import {
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
+  type ReviewerKind,
+  reviewCycleStart,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -15,13 +17,31 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { mergeLinkedPr } from "./merge-pr";
 
 /**
- * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
- * decision in the current review cycle. `verifiedOnly` is the point: a
- * self-asserted approval (missing/wrong reviewToken) must never trigger an
- * automatic merge, otherwise one agent could forge the two-reviewer gate. Reads
- * the activity log through the shared cycle reducer (same logic the ship button
- * uses, minus the verification requirement).
+ * True when a reviewToken's claim genuinely proves `reviewer` signed off within
+ * the review cycle this decision is being recorded for — both the identity
+ * (`claim.reviewer` matches) AND the cycle (`claim.cycleAt` matches the task's
+ * CURRENT cycle start). The cycle check matters: without it, a token from a
+ * PRIOR cycle (e.g. a reviewer's own earlier approval, replayed after a
+ * `request_changes` bounce reopened review for a fixed PR) would still verify
+ * an approval it was never minted for — the reviewer never actually looked at
+ * the new code, but the auto-merge gate would count it anyway. Pure —
+ * unit-tested.
  */
+export function isTokenVerified(
+  claim: { reviewer: string; cycleAt: number } | null,
+  reviewer: ReviewerKind,
+  currentCycleAt: number,
+): boolean {
+  return (
+    claim !== null &&
+    claim.reviewer === reviewer &&
+    claim.cycleAt === currentCycleAt
+  );
+}
+
+/** True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
+ *  decision in the current review cycle — reads the activity log through the
+ *  shared cycle reducer (same logic the ship button uses, minus verification). */
 async function allEnabledReviewersVerifiedApproved(
   ctx: StudioContext,
   orgId: string,
@@ -110,17 +130,29 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
-    // Verify the caller is the reviewer it claims to be: the reviewToken must
-    // resolve to a claim for THIS task whose reviewer matches. An unverified
-    // decision is still recorded (so a dropped token never stalls the flow) but
-    // won't count toward an automatic merge (see the verified gate below).
-    const claim = reviewToken
+    // Verify the caller is the reviewer it claims to be, FOR THIS REVIEW CYCLE:
+    // the reviewToken must resolve to a claim for THIS task whose reviewer
+    // matches AND whose cycle matches the task's current one — otherwise a
+    // token saved from a prior cycle could verify a fresh approval the reviewer
+    // never actually gave. An unverified decision is still recorded (so a
+    // dropped token never stalls the flow) but won't count toward an automatic
+    // merge (see the verified gate below).
+    const cycleAt = reviewCycleStart(
+      await ctx.storage.taskBoard.listActivity(taskBoardItemId, organizationId),
+    );
+    const rawClaim = reviewToken
       ? await ctx.storage.taskBoard.resolveReviewClaimByToken(
           taskBoardItemId,
           reviewToken,
         )
       : null;
-    const verified = claim?.reviewer === reviewer;
+    const verified = isTokenVerified(
+      rawClaim
+        ? { reviewer: rawClaim.reviewer, cycleAt: rawClaim.cycleAt.getTime() }
+        : null,
+      reviewer,
+      cycleAt,
+    );
 
     if (decision === "request_changes") {
       // Any reviewer requesting changes bounces the task straight back to the
