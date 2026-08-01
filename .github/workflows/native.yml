@@ -259,8 +259,33 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test --workspace
+        if: runner.os != 'Linux'
         working-directory: apps/native
         run: cargo test --workspace
+
+      # Same tests, one crate at a time, and with the build parallelism capped.
+      # Three runs died here at a near-identical ~50 min with the step
+      # incomplete and NO logs uploaded at all — and the job conclusion was
+      # `failure`, not the `cancelled` a timeout produces, so the runner itself
+      # was being killed rather than the job timed out. Dropping debug info and
+      # freeing 20 GiB of preinstalled SDKs changed nothing, which rules out
+      # disk and leaves memory: `cargo test` links a test binary per target,
+      # and linking these crates four-up (local-api alone carries ~850 tests
+      # plus the GTK/WebKit tree) is what exhausts a 16 GiB runner.
+      #
+      # Per crate so a future failure names the crate instead of the step, and
+      # so each link peak stands alone.
+      - name: cargo test (Linux, bounded)
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          for crate in harness upstream local-api deco; do
+            echo "::group::cargo test -p $crate"
+            cargo test -p "$crate"
+            echo "::endgroup::"
+          done
 
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
