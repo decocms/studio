@@ -153,7 +153,7 @@ jobs:
   #    raises the floor for every Linux user — a deliberate decision, never
   #    a drive-by bump.
   # ---------------------------------------------------------------------
-  rust-checks:
+  rust-checks-os:
     needs: changes
     if: >-
       needs.changes.outputs.rust == 'true' &&
@@ -402,7 +402,7 @@ jobs:
   #    so the ubuntu leg deliberately carries no apt step. Only src-tauri
   #    (the `rust-checks` / `tauri-build` jobs) pulls in the GTK surface.
   # ---------------------------------------------------------------------
-  contract-suite:
+  contract-suite-os:
     needs: changes
     if: >-
       (needs.changes.outputs.rust == 'true' ||
@@ -464,7 +464,7 @@ jobs:
   #    --config overlay, and a secretless build is what goes red the moment
   #    someone commits it into the platform config instead.
   # ---------------------------------------------------------------------
-  tauri-build:
+  tauri-build-os:
     needs: changes
     if: >-
       (needs.changes.outputs.rust == 'true' ||
@@ -727,3 +727,54 @@ jobs:
           path: ${{ runner.temp }}/stub-seam.xml
           if-no-files-found: warn
           retention-days: 7
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "rust-checks", and matrix jobs report as "rust-checks (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  rust-checks:
+    needs: [changes, rust-checks-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify rust-checks legs
+        run: |
+          case "${{ needs.rust-checks-os.result }}" in
+            success|skipped) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 0 ;;
+            *) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 1 ;;
+          esac
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "contract-suite", and matrix jobs report as "contract-suite (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  contract-suite:
+    needs: [changes, contract-suite-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify contract-suite legs
+        run: |
+          case "${{ needs.contract-suite-os.result }}" in
+            success|skipped) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 0 ;;
+            *) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 1 ;;
+          esac
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "tauri-build", and matrix jobs report as "tauri-build (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  tauri-build:
+    needs: [changes, tauri-build-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify tauri-build legs
+        run: |
+          case "${{ needs.tauri-build-os.result }}" in
+            success|skipped) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 0 ;;
+            *) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 1 ;;
+          esac
