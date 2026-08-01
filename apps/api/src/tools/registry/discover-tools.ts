@@ -138,6 +138,44 @@ export async function resolvesToPrivateAddress(
   }
 }
 
+/**
+ * Full SSRF guard for a remote MCP URL: rejects private/loopback/link-local
+ * IP literals synchronously via `isPrivateUrl`, then — for a plain hostname —
+ * resolves DNS and rejects if any resolved address is private. Shared by
+ * every code path that connects to a user-supplied MCP server URL, so a
+ * caller can't bypass the registry discovery guard by hitting a different
+ * entry point (e.g. connection create/update) with the same URL.
+ */
+export async function guardAgainstPrivateUrl(
+  url: string,
+): Promise<string | null> {
+  const blockedMessage = "URLs targeting private networks are not allowed";
+
+  if (isPrivateUrl(url)) {
+    return blockedMessage;
+  }
+
+  // isPrivateUrl already fully vets an IP-literal hostname; only a plain
+  // domain name needs a DNS lookup to catch a domain whose DNS record
+  // points at a private/metadata address.
+  const hostname = new URL(url).hostname;
+  const isIpLiteral =
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+    (hostname.startsWith("[") && hostname.endsWith("]"));
+  if (isIpLiteral) return null;
+
+  try {
+    const blocked = await withTimeout(
+      resolvesToPrivateAddress(hostname),
+      5_000,
+      "DNS resolution timeout",
+    );
+    return blocked ? blockedMessage : null;
+  } catch {
+    return blockedMessage; // can't verify in time — fail closed
+  }
+}
+
 const DiscoverToolsInputSchema = z.object({
   url: z.string().describe("Remote MCP server URL"),
   type: z
@@ -328,42 +366,12 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
       return { tools: [], error: "URL is required" };
     }
 
-    if (isPrivateUrl(url)) {
-      return {
-        tools: [],
-        error: "URLs targeting private networks are not allowed",
-      };
+    const guardError = await guardAgainstPrivateUrl(url);
+    if (guardError) {
+      return { tools: [], error: guardError };
     }
 
     const timeoutMs = 10_000;
-
-    // isPrivateUrl already fully vets an IP-literal hostname; only a plain
-    // domain name needs a DNS lookup to catch a domain whose DNS record
-    // points at a private/metadata address.
-    const hostname = new URL(url).hostname;
-    const isIpLiteral =
-      /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
-      (hostname.startsWith("[") && hostname.endsWith("]"));
-
-    let blockedByDns = false;
-    if (!isIpLiteral) {
-      try {
-        blockedByDns = await withTimeout(
-          resolvesToPrivateAddress(hostname),
-          5_000,
-          "DNS resolution timeout",
-        );
-      } catch {
-        blockedByDns = true; // can't verify in time — fail closed
-      }
-    }
-
-    if (blockedByDns) {
-      return {
-        tools: [],
-        error: "URLs targeting private networks are not allowed",
-      };
-    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
