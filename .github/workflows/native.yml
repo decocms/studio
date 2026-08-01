@@ -293,17 +293,52 @@ jobs:
       #
       # Per crate so a future failure names the crate instead of the step, and
       # so each link peak stands alone.
-      - name: cargo test (Linux, bounded)
+      # Deliberately one step per crate rather than a loop. This job has never
+      # uploaded a log — six runs, every one dying with the step incomplete —
+      # but per-step conclusions DO survive in the jobs API, so the step that
+      # stops at `null` names the crate. The build is warmed once first so a
+      # crate's own step measures its tests, not the shared dependency build,
+      # and each step is bounded so a hang fails in minutes instead of at the
+      # ~48 min the runner takes to die.
+      - name: Build the test binaries
         if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
+        timeout-minutes: 40
         env:
           CARGO_BUILD_JOBS: "2"
-        run: |
-          for crate in harness upstream local-api deco; do
-            echo "::group::cargo test -p $crate"
-            cargo test -p "$crate"
-            echo "::endgroup::"
-          done
+        run: cargo test --workspace --no-run
+
+      - name: cargo test -p harness
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 10
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test -p harness
+
+      - name: cargo test -p upstream
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 10
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test -p upstream
+
+      - name: cargo test -p local-api
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 10
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test -p local-api
+
+      - name: cargo test -p deco
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 10
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: cargo test -p deco
 
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
