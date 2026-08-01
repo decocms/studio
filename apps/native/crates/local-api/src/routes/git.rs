@@ -2226,9 +2226,13 @@ mod tests {
             .is_ok_and(|status| status.success())
     }
 
+    /// The budget has to clear the anchor's own escalation, not just "a
+    /// moment": it runs up to 20 TERM rounds at 50ms — a full second — before
+    /// it starts KILL rounds at all. A 1s deadline was therefore exactly the
+    /// escalation time, which macOS won and Linux lost.
     #[cfg(unix)]
     async fn assert_process_group_gone(pid: u32) {
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             while process_exists(format!("-{pid}")) {
                 tokio::task::yield_now().await;
             }
@@ -2239,7 +2243,7 @@ mod tests {
 
     #[cfg(unix)]
     async fn assert_process_gone(pid: u32) {
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             while process_exists(pid.to_string()) {
                 tokio::task::yield_now().await;
             }
