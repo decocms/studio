@@ -37,6 +37,7 @@ import { SignInScreen } from "@/desktop/sign-in-screen";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { StatusColumn } from "@/desktop/status-column";
 import { KeychainUnavailableScreen } from "@/desktop/keychain-unavailable-screen";
+import { NativeAgentRuntimeProvider } from "@/desktop/agent-terminal/runtime-provider";
 
 import "../index.css";
 
@@ -75,7 +76,9 @@ function DesktopEntry() {
   // inside the QueryClient too, exactly as `index.web.tsx` mounts it.
   return (
     <Providers>
-      <RouterProvider router={router} />
+      <NativeAgentRuntimeProvider>
+        <RouterProvider router={router} />
+      </NativeAgentRuntimeProvider>
     </Providers>
   );
 }

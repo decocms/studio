@@ -301,6 +301,20 @@ const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
 /** Internal context for passing TaskProvider internals to ActiveTaskProvider */
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
 
+/**
+ * Installs a stream-compatible value without constructing ThreadConnection.
+ * Native uses this bridge for shared preview/file actions while its actual
+ * transport is an interactive terminal session.
+ */
+export function ChatStreamValueProvider({
+  value,
+  children,
+}: PropsWithChildren<{ value: ChatStreamContextValue }>) {
+  return (
+    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
+  );
+}
+
 // ============================================================================
 // ChatPrefsProvider — standalone-mountable prefs context
 // ============================================================================

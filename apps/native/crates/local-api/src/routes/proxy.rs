@@ -1228,6 +1228,7 @@ mod tests {
             token: "test-token".into(),
             boot_id: "test-boot".into(),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

@@ -68,4 +68,7 @@ pub mod session;
 pub mod tokens;
 
 pub use cookie_jar::CookieJar;
-pub use session::{global, AuthStorageState, StatusResult, UpstreamSession};
+pub use session::{
+    global, AuthStorageState, PreparedSession, SessionIdentityEvent, SessionTransitionGuard,
+    StatusResult, UpstreamSession,
+};

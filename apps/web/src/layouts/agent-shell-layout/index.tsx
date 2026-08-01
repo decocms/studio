@@ -6,7 +6,7 @@
  *   • useVirtualMCP (suspends here)
  *   • Chat.Provider
  *     └── VmEventsBridge
- *         └── Chat.ActiveTaskProvider
+ *         └── ActiveTaskRuntimeProvider
  *             └── WorkspacePanelGroup
  *                 ├── Chat panel  (header: Chat toggle)
  *                 └── Main panel  (header: view tabs + toggles, Preview
@@ -16,7 +16,7 @@
  * Mobile layout (single shared header on top, owned by org-shell):
  *   Chat.Provider
  *   └── VmEventsBridge
- *       └── Chat.ActiveTaskProvider
+ *       └── ActiveTaskRuntimeProvider
  *           └── MainPanelWithDrawer OR ActiveTaskBoundary (sheet-based)
  */
 
@@ -73,6 +73,8 @@ import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { SidePanel } from "./side-panel";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -95,6 +97,15 @@ export function useInsetContext(): InsetContextValue | null {
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
   const t = useT();
+  const isDesktopApp = useIsDesktopApp();
+  const runtimeAdapter = useAgentRuntimeAdapter();
+  const defaultContent = isDesktopApp ? (
+    runtimeAdapter ? (
+      <runtimeAdapter.SidePanel />
+    ) : null
+  ) : (
+    <ChatSidePanel />
+  );
   return (
     <ErrorBoundary
       fallback={
@@ -107,9 +118,45 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
       }
     >
       <Suspense fallback={<Chat.Skeleton />}>
-        {children ?? <ChatSidePanel />}
+        {children ?? defaultContent}
       </Suspense>
     </ErrorBoundary>
+  );
+}
+
+function ActiveTaskRuntimeProvider({
+  taskId,
+  children,
+}: {
+  taskId: string;
+  children: ReactNode;
+}) {
+  const t = useT();
+  const isDesktopApp = useIsDesktopApp();
+  const runtimeAdapter = useAgentRuntimeAdapter();
+
+  if (isDesktopApp) {
+    if (!runtimeAdapter) {
+      return (
+        <div
+          role="alert"
+          className="flex flex-1 items-center justify-center p-8 text-sm text-destructive"
+        >
+          {t("agentShellLayout.agentShellLayout.nativeRuntimeUnavailable")}
+        </div>
+      );
+    }
+    return (
+      <runtimeAdapter.ActiveTaskProvider taskId={taskId}>
+        {children}
+      </runtimeAdapter.ActiveTaskProvider>
+    );
+  }
+
+  return (
+    <Chat.ActiveTaskProvider taskId={taskId}>
+      {children}
+    </Chat.ActiveTaskProvider>
   );
 }
 
@@ -250,11 +297,11 @@ function VmEventsBridge({
 
 // ---------------------------------------------------------------------------
 // Task workspace — the chat + main-panel region, rendered inside
-// Chat.ActiveTaskProvider.
+// the selected active-task runtime provider.
 //
 // The no-runtime state (no AI provider AND no usable local CLI) is handled
-// per-surface, not by unmounting the workspace: the Chat side-panel view shows
-// provider-setup empty state, the view tabs disable themselves
+// per-surface, not by unmounting the workspace: the active side-panel view
+// shows its runtime-setup empty state, the view tabs disable themselves
 // (main-panel-tabs-bar), and the Overview view swaps to the setup prompt
 // (overview-tab). Sandbox-backed views (Preview / Settings / Deck / …) stay
 // available without a cloud provider.
@@ -526,7 +573,7 @@ function AgentInsetProvider() {
               hasActiveGithubRepo={hasActiveGithubRepo}
               sandboxMap={entity?.metadata?.sandboxMap}
             >
-              <Chat.ActiveTaskProvider
+              <ActiveTaskRuntimeProvider
                 key={layout.taskId}
                 taskId={layout.taskId}
               >
@@ -537,7 +584,7 @@ function AgentInsetProvider() {
                     onNewTaskRef={onNewTask}
                   />
                 </Suspense>
-              </Chat.ActiveTaskProvider>
+              </ActiveTaskRuntimeProvider>
             </VmEventsBridge>
           </Chat.Provider>
         </div>
@@ -561,11 +608,14 @@ function AgentInsetProvider() {
             hasActiveGithubRepo={hasActiveGithubRepo}
             sandboxMap={entity?.metadata?.sandboxMap}
           >
-            {/* The toggles, tabs, header, and main panel all render inside
-                ActiveTaskProvider via DesktopTaskWorkspace. The runtime-setup
-                prompt lives only in the chat side panel; the tabs stay
-                navigable regardless. */}
-            <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
+            {/* The toggles, tabs, header, and main panel all render inside the
+                selected active-task runtime via DesktopTaskWorkspace. The
+                runtime-setup prompt lives only in the side panel; the tabs
+                stay navigable regardless. */}
+            <ActiveTaskRuntimeProvider
+              key={layout.taskId}
+              taskId={layout.taskId}
+            >
               <Suspense fallback={<Chat.Skeleton />}>
                 <DesktopTaskWorkspace
                   entity={entity}
@@ -574,7 +624,7 @@ function AgentInsetProvider() {
                   onNewTaskRef={onNewTask}
                 />
               </Suspense>
-            </Chat.ActiveTaskProvider>
+            </ActiveTaskRuntimeProvider>
           </VmEventsBridge>
         </Chat.Provider>
       </InsetContext>

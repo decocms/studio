@@ -49,7 +49,7 @@ pub async fn dispatch_scoped(
         "COLLECTION_THREADS_LIST" => Some(list(state, scope, org, body)),
         "COLLECTION_THREADS_GET" => Some(get(state, scope, org, body)),
         "COLLECTION_THREADS_CREATE" => Some(create(state, scope, org, body).await),
-        "COLLECTION_THREADS_UPDATE" => Some(update(state, scope, org, body)),
+        "COLLECTION_THREADS_UPDATE" => Some(update(state, scope, org, body).await),
         "COLLECTION_THREADS_DELETE" => Some(delete(state, scope, org, body).await),
         "COLLECTION_THREAD_MESSAGES_LIST" => Some(messages_list(state, scope, org, body)),
         _ => None,
@@ -622,23 +622,6 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
     };
     let user = &scope.user_id;
 
-    // An explicit id participates in the same create/delete lifecycle as a
-    // dispatch. DELETE drops its gate while it waits for the old harness to
-    // stop, but marks the id closing first; holding this gate through the
-    // insert and checking that marker prevents a concurrent create from
-    // returning the old incarnation. Once DELETE commits, schema-v5's durable
-    // tombstone rejects the id permanently in this account + org scope.
-    // Generated ids cannot collide with an in-flight delete and need no gate.
-    let lifecycle_gate = id.map(|id| super::decopilot::thread_lifecycle_gate(scope, org, id));
-    let _lifecycle_guard = if let Some(gate) = &lifecycle_gate {
-        Some(gate.lock().await)
-    } else {
-        None
-    };
-    if id.is_some_and(|id| super::decopilot::thread_is_closing(scope, org, id)) {
-        return ApiError::conflict("thread is being deleted").into_response();
-    }
-
     match db.rt_create_thread_scoped(
         scope,
         id,
@@ -665,7 +648,7 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
 
 // --- COLLECTION_THREADS_UPDATE -----------------------------------------------
 
-fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
+async fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
     let input = match parse_json(body) {
         Ok(v) => v,
         Err(r) => return r.into_response(),
@@ -738,6 +721,33 @@ fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> 
         branch,
         virtual_mcp_id,
     };
+    let archive_fence = if patch.hidden == Some(true) {
+        match db.rt_thread_fence_in_scope(scope, org, id) {
+            Ok(Some(fence)) => Some(fence),
+            Ok(None) => return ApiError::not_found("thread not found").into_response(),
+            Err(error) => {
+                return ApiError::internal(format!("thread database error: {error}"))
+                    .into_response()
+            }
+        }
+    } else {
+        None
+    };
+    let archive_lock = archive_fence
+        .as_ref()
+        .map(|fence| state.agent_sessions.start_lock(fence));
+    let _archive_guard = match archive_lock.as_ref() {
+        Some(lock) => Some(lock.lock().await),
+        None => None,
+    };
+    if let Some(fence) = archive_fence.as_ref() {
+        if let Err(error) = state.agent_sessions.terminate_fence(fence).await {
+            return ApiError::internal(format!(
+                "chat was not archived because its coding agent could not be stopped: {error}"
+            ))
+            .into_response();
+        }
+    }
     match db.rt_update_thread_in_scope(scope, org, id, &scope.user_id, &patch) {
         Ok(Some(item)) => Json(json!({ "item": item })).into_response(),
         Ok(None) => ApiError::not_found("thread not found").into_response(),
@@ -763,9 +773,6 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         return ApiError::bad_request("id is required").into_response();
     };
 
-    let lifecycle_gate = super::decopilot::thread_lifecycle_gate(scope, org, id);
-    let lifecycle_guard = lifecycle_gate.lock().await;
-
     // Read through the same organization predicate used by the delete. The
     // collection binding returns the deleted entity, while an id owned by a
     // different organization must be indistinguishable from an unknown id.
@@ -779,6 +786,8 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Ok(None) => return ApiError::not_found("thread not found").into_response(),
         Err(e) => return ApiError::internal(format!("thread database error: {e}")).into_response(),
     };
+    let start_lock = state.agent_sessions.start_lock(&fence);
+    let _start_guard = start_lock.lock().await;
     match db.rt_mark_thread_delete_pending(&fence) {
         Ok(true) => {}
         Ok(false) => return ApiError::not_found("thread not found").into_response(),
@@ -786,32 +795,28 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
             return ApiError::internal(format!("thread database error: {e}")).into_response();
         }
     }
-    super::decopilot::mark_thread_closing(scope, org, id);
-    drop(lifecycle_guard);
-
-    if let Err(error) = super::decopilot::quiesce_thread_for_delete(state, &fence).await {
-        // `delete_pending` and the process-local closing latch deliberately
-        // survive every failed quiesce. Accepted tails remain durable and a
-        // retry can resume DELETE, while send/claim paths stay closed.
-        return error.into_response();
+    if let Err(error) = state.agent_sessions.terminate_fence(&fence).await {
+        // `delete_pending` deliberately survives failed reaping. A retry can
+        // complete the same generation-fenced cascade, while new terminal
+        // starts remain closed by the durable marker.
+        return ApiError::internal(format!("could not stop coding agent: {error}")).into_response();
     }
 
-    // Reacquire the accept/delete gate for the final generation-fenced
-    // cascade. Sends observed `closing` while the active harness was reaped,
-    // so no accepted turn can fall into that interval.
-    let _lifecycle_guard = lifecycle_gate.lock().await;
     match db.rt_delete_thread_in_org_if_generation(&fence) {
         Ok(true) => {
-            super::decopilot::clear_thread_closing(scope, org, id);
+            state.agent_sessions.forget_fence(&fence);
+            if let Err(error) =
+                crate::terminal::launch_context::cleanup_managed_state(&state.app_root, &fence)
+                    .await
+            {
+                tracing::warn!(%error, thread_id = %fence.thread_id, "could not remove deleted chat agent state");
+            }
             Json(json!({ "item": item })).into_response()
         }
         // A concurrent deletion between the scoped read and delete is still a
         // not-found result; never return a success envelope for a row this call
         // did not remove.
-        Ok(false) => {
-            super::decopilot::clear_thread_closing(scope, org, id);
-            ApiError::not_found("thread not found").into_response()
-        }
+        Ok(false) => ApiError::not_found("thread not found").into_response(),
         Err(e) => {
             // Keep the live row durably closed. The queued tail was never
             // discarded and a later DELETE retries the same fenced cascade.
@@ -1088,42 +1093,6 @@ mod tests {
             .as_object()
             .unwrap()
             .contains_key("metadata"));
-    }
-
-    #[tokio::test]
-    async fn explicit_id_create_is_rejected_while_that_thread_is_closing() {
-        let state = persistent_test_state();
-        let org = "thread-tools-create-during-delete-org";
-        let id = "thread-tools-create-during-delete";
-        let body = Bytes::from(
-            json!({
-                "data": {
-                    "id": id,
-                    "title": "must not appear early",
-                    "virtual_mcp_id": "v",
-                },
-            })
-            .to_string(),
-        );
-
-        let scope = current_account_scope().await.unwrap();
-        super::super::decopilot::mark_thread_closing(&scope, org, id);
-        let blocked = dispatch(&state, org, "COLLECTION_THREADS_CREATE", &body)
-            .await
-            .unwrap();
-        super::super::decopilot::clear_thread_closing(&scope, org, id);
-
-        assert_eq!(blocked.status(), axum::http::StatusCode::CONFLICT);
-        assert!(shared_db(&state)
-            .unwrap()
-            .rt_get_thread_in_org(org, id)
-            .unwrap()
-            .is_none());
-
-        let created = dispatch(&state, org, "COLLECTION_THREADS_CREATE", &body)
-            .await
-            .unwrap();
-        assert_eq!(created.status(), axum::http::StatusCode::OK);
     }
 
     #[tokio::test]

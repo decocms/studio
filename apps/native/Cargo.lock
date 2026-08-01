@@ -2626,6 +2626,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-server",
+ "base64 0.22.1",
  "bytes",
  "futures",
  "futures-util",
@@ -2645,6 +2646,7 @@ dependencies = [
  "sha2",
  "subtle",
  "tempfile",
+ "terminal-session",
  "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite 0.23.1",
@@ -5347,6 +5349,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fed54709c5b3a53d09bb1c113ea4f5ceafd1e772ddcb0030a82e1d56c087b08"
 dependencies = [
  "new_debug_unreachable",
+]
+
+[[package]]
+name = "terminal-session"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "harness",
+ "portable-pty",
+ "serde",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

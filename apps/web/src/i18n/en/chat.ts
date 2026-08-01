@@ -300,6 +300,40 @@ export const chat = {
     "No coding agent was detected. Install Claude Code or Codex, then pick it here to start chatting.",
   "chat.nativeAgentEmptyState.subtitlePick":
     "Chats run on a coding agent installed on this computer. Pick one to start.",
+  "chat.nativeTerminal.chooseAgentFirst":
+    "Choose Claude Code or Codex before sending a prompt.",
+  "chat.nativeTerminal.connecting": "Connecting to terminal…",
+  "chat.nativeTerminal.connectionFailed": "Terminal connection failed.",
+  "chat.nativeTerminal.emptyPrompt": "The prompt is empty.",
+  "chat.nativeTerminal.exited": "Coding agent exited",
+  "chat.nativeTerminal.exitedBeforeReady":
+    "The coding agent exited before it was ready.",
+  "chat.nativeTerminal.exitCode": "Coding agent exited with code {code}.",
+  "chat.nativeTerminal.failed": "Terminal error",
+  "chat.nativeTerminal.interrupt": "Interrupt",
+  "chat.nativeTerminal.promptFailed": "Could not send the prompt.",
+  "chat.nativeTerminal.promptDeliveryUnknown":
+    "The connection closed after the prompt was sent. It may already be running; check the terminal before sending it again.",
+  "chat.nativeTerminal.promptTooLarge":
+    "This prompt is too large for the local coding agent terminal.",
+  "chat.nativeTerminal.attachmentsUnsupported":
+    "File and image attachments are not supported in local terminal chats yet.",
+  "chat.nativeTerminal.readOnly":
+    "Only the chat owner can open or control its terminal.",
+  "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
+  "chat.nativeTerminal.ready": "Ready for input",
+  "chat.nativeTerminal.reconnecting": "Reconnecting to terminal…",
+  "chat.nativeTerminal.restart": "Restart",
+  "chat.nativeTerminal.retry": "Retry",
+  "chat.nativeTerminal.starting": "Starting coding agent…",
+  "chat.nativeTerminal.structuredActionUnsupported":
+    "This action requires structured chat and is not available in the terminal.",
+  "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
+  "chat.nativeTerminal.unsupportedHarness":
+    "This chat is pinned to an agent that Studio Native cannot run.",
+  "chat.nativeTerminal.unexpectedExit": "Coding agent exited unexpectedly.",
+  "chat.nativeTerminal.waitingForInput": "Waiting for your input",
+  "chat.nativeTerminal.working": "Agent is working",
   "chat.noAiProviderEmptyState.connectDesktopLabel": "Connect your desktop",
   "chat.noAiProviderEmptyState.desktopLinkedLabel": "Desktop linked",
   "chat.noAiProviderEmptyState.headingDefault": "Your agents are almost ready",

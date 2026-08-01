@@ -16,11 +16,12 @@
 //! a failure here costs a nicer name, never a name.
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
 use serde_json::Value;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::resolve::{resolve_argv, HarnessId};
@@ -53,10 +54,25 @@ pub const TITLE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Longest title kept, matching the TypeScript's `.slice(0, 60)`.
 const MAX_TITLE_CHARS: usize = 60;
 
-/// How much of the message the title model is shown. The CLI takes its prompt
-/// on the command line, and a whole pasted file there is both a fork-time cost
-/// and useless to a 3-7 word title.
+/// How much of the message the title model is shown. A whole pasted file is
+/// useless to a 3-7 word title.
 const MAX_PROMPT_CHARS: usize = 2000;
+
+/// Provider state that a one-shot title process is allowed to inherit from
+/// its interactive terminal. Codex requires the managed account home so title
+/// generation cannot silently use another global account or configuration.
+#[derive(Clone, Debug, Default)]
+pub struct TitleEnvironment {
+    codex_home: Option<PathBuf>,
+}
+
+impl TitleEnvironment {
+    pub fn for_codex_home(codex_home: PathBuf) -> Self {
+        Self {
+            codex_home: Some(codex_home),
+        }
+    }
+}
 
 /// The cheapest model each CLI offers, by the same wire ids the TypeScript
 /// harnesses pass to `genTitle`.
@@ -76,6 +92,7 @@ pub async fn generate_title(
     harness: HarnessId,
     cwd: &Path,
     user_message: &str,
+    environment: &TitleEnvironment,
     timeout: Duration,
 ) -> Option<String> {
     let mut argv = resolve_argv(harness).ok()?;
@@ -87,16 +104,21 @@ pub async fn generate_title(
             .take(MAX_PROMPT_CHARS)
             .collect::<String>()
     );
-    append_title_args(harness, &mut argv, &prompt);
+    append_title_args(harness, &mut argv);
 
     let mut command = Command::new(&binary);
     command
         .args(&argv)
         .current_dir(cwd)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
+    if harness == HarnessId::Codex {
+        // Failing closed keeps a title helper from falling through to an
+        // unrelated ~/.codex account if launch context was not carried over.
+        command.env("CODEX_HOME", environment.codex_home.as_ref()?);
+    }
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -104,9 +126,13 @@ pub async fn generate_title(
             return None;
         }
     };
+    let mut stdin = child.stdin.take()?;
     let mut stdout = child.stdout.take()?;
 
     let collected = tokio::time::timeout(timeout, async {
+        stdin.write_all(prompt.as_bytes()).await.ok()?;
+        stdin.shutdown().await.ok()?;
+        drop(stdin);
         let mut buffer = String::new();
         stdout.read_to_string(&mut buffer).await.ok()?;
         let _ = child.wait().await;
@@ -122,12 +148,11 @@ pub async fn generate_title(
 /// One-shot, read-only, cheapest model. Mirrors the `toolApprovalLevel:
 /// "readonly", isPlanMode: true` the TypeScript builds its title model with —
 /// a title call must never be able to touch the worktree it is named after.
-fn append_title_args(harness: HarnessId, argv: &mut Vec<String>, prompt: &str) {
+fn append_title_args(harness: HarnessId, argv: &mut Vec<String>) {
     let model = title_model(harness).to_string();
     match harness {
         HarnessId::ClaudeCode => {
             argv.push("-p".to_string());
-            argv.push(prompt.to_string());
             argv.push("--output-format".to_string());
             argv.push("json".to_string());
             argv.push("--model".to_string());
@@ -135,6 +160,9 @@ fn append_title_args(harness: HarnessId, argv: &mut Vec<String>, prompt: &str) {
             // No MCP config, and the user's own servers stay out: a title call
             // needs no tools at all.
             argv.push("--strict-mcp-config".to_string());
+            argv.push("--safe-mode".to_string());
+            argv.push("--disable-slash-commands".to_string());
+            argv.push("--no-session-persistence".to_string());
             argv.push("--permission-mode".to_string());
             argv.push("bypassPermissions".to_string());
             argv.push("--disallowedTools".to_string());
@@ -154,14 +182,26 @@ fn append_title_args(harness: HarnessId, argv: &mut Vec<String>, prompt: &str) {
             );
         }
         HarnessId::Codex => {
+            // These are global flags and must precede the `exec` subcommand.
+            // The managed home supplies auth only; title generation does not
+            // load its profiles, hooks, apps, plugins, or project rules.
+            for feature in ["apps", "plugins", "hooks"] {
+                argv.push("--disable".to_string());
+                argv.push(feature.to_string());
+            }
             argv.push("exec".to_string());
             argv.push("--json".to_string());
             argv.push("--skip-git-repo-check".to_string());
+            argv.push("--ignore-user-config".to_string());
+            argv.push("--ignore-rules".to_string());
+            argv.push("--ephemeral".to_string());
             argv.push("--model".to_string());
             argv.push(model);
             argv.push("--sandbox".to_string());
             argv.push("read-only".to_string());
-            argv.push(prompt.to_string());
+            // Explicit `-` documents that the prompt arrives over stdin and
+            // keeps user text out of argv/process listings.
+            argv.push("-".to_string());
         }
     }
 }
@@ -299,5 +339,36 @@ mod tests {
         let stdout = serde_json::json!({ "result": format!("\"{long}\"") }).to_string();
         let title = extract_title(HarnessId::ClaudeCode, &stdout).unwrap();
         assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
+    }
+
+    #[test]
+    fn title_invocations_keep_prompt_text_out_of_argv() {
+        let secret_prompt = "customer secret that must stay off argv";
+        for harness in HarnessId::ALL {
+            let mut argv = Vec::new();
+            append_title_args(harness, &mut argv);
+            assert!(!argv.iter().any(|argument| argument == secret_prompt));
+        }
+    }
+
+    #[test]
+    fn codex_title_invocation_disables_integrations_before_exec() {
+        let mut argv = Vec::new();
+        append_title_args(HarnessId::Codex, &mut argv);
+        let exec = argv.iter().position(|argument| argument == "exec").unwrap();
+        assert_eq!(
+            &argv[..exec],
+            [
+                "--disable",
+                "apps",
+                "--disable",
+                "plugins",
+                "--disable",
+                "hooks"
+            ]
+        );
+        assert!(argv[exec..].contains(&"--ignore-user-config".to_string()));
+        assert!(argv[exec..].contains(&"--ignore-rules".to_string()));
+        assert_eq!(argv.last().map(String::as_str), Some("-"));
     }
 }
