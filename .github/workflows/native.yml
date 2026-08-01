@@ -121,7 +121,11 @@ jobs:
             # file and runs the full set on main, so a workflow change is
             # verified the moment it merges.
             case "$f" in
-              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
+              # fetch-appimage-tools.sh is in the `rust` bucket because
+              # `tauri-build`'s ubuntu leg is the ONLY thing that validates
+              # those pins — a bump must run the job that would go red on a
+              # bad one, not just the bun-side jobs.
+              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh|apps/native/scripts/fetch-appimage-tools.sh)
                 rust=true ;;
               packages/sandbox/daemon-e2e/*|apps/native/scripts/ci/*) suite=true ;;
               apps/native/e2e/*) contract=true ;;
@@ -620,12 +624,24 @@ jobs:
       # `linuxdeploy-plugin-appimage` the CLI finds in its tools cache; a
       # stale one emits a type-2 runtime dynamically linked against
       # libfuse.so.2, which cannot even self-extract on a runner that has no
-      # libfuse2. Start from an empty cache so the pinned CLI fetches a
-      # current (statically linked) one, and let the assertion after the
-      # build turn any regression into a red leg.
-      - name: Clean the tauri tools cache
+      # libfuse2.
+      #
+      # Seeded from apps/native/scripts/fetch-appimage-tools.sh — the SAME
+      # pinned, checksum-verified set release-native.yaml uses (it wipes the
+      # cache first, so no stale tool survives). Letting the CLI fetch rolling
+      # `continuous` builds here instead would mean the AppImage this job
+      # boot-smokes, extracts and asserts static is NOT produced by the
+      # toolchain that builds the shipped one: a stale or wrong pin could then
+      # only fail on release day, on a half-published version, with no way to
+      # go red on the PR that introduced it. That is precisely the canary
+      # framing this job claims below.
+      #
+      # No secret and no `environment:` is involved — the createUpdaterArtifacts
+      # canary property is untouched.
+      - name: Seed the pinned AppImage tooling
         if: runner.os == 'Linux'
-        run: rm -rf "$HOME/.cache/tauri"
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh
 
       # These verification builds are NEVER signed, whether or not the
       # secrets exist. Boot-smoke runs the binary directly and a Developer ID
@@ -664,6 +680,21 @@ jobs:
       # at all, so the smoke would fail first and mask the real diagnosis.
       # `ldd` exits non-zero on a static binary — that is the passing case
       # here, hence the `|| true` around both probes.
+      #
+      # Which is also why "no output at all" (missing binutils, wrong path,
+      # non-ELF input) must NOT be read as success: `grep -q` would find no
+      # match and the tripwire would report green having learned nothing. So
+      # the probe output has to carry a recognizable linkage verdict before
+      # "no libfuse" counts as evidence.
+      # A download can only ADD a name to that cache, so an exact set
+      # comparison after the build proves `tauri build` fetched nothing —
+      # closing the drift a CLI bump would otherwise open silently (the pin
+      # table is not keyed to the CLI version).
+      - name: Assert the build fetched no unpinned tooling
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh --verify-only
+
       - name: Assert the AppImage runtime is statically linked
         if: runner.os == 'Linux'
         working-directory: apps/native
@@ -675,11 +706,16 @@ jobs:
             exit 1
           fi
           echo "Inspecting $APPIMAGE"
+          PROBE="$RUNNER_TEMP/appimage-runtime.txt"
           { ldd "$APPIMAGE" || true; readelf -d "$APPIMAGE" || true; } \
-            > "$RUNNER_TEMP/appimage-runtime.txt" 2>&1
-          cat "$RUNNER_TEMP/appimage-runtime.txt"
-          if grep -q 'libfuse\.so\.2' "$RUNNER_TEMP/appimage-runtime.txt"; then
-            echo "::error::$APPIMAGE links libfuse.so.2 — the AppImage runtime is not static, so it cannot run or self-extract without libfuse2 installed. The tauri tools cache handed the build a stale linuxdeploy-plugin-appimage."
+            > "$PROBE" 2>&1
+          cat "$PROBE"
+          if ! grep -Eq 'statically linked|not a dynamic executable|Dynamic section|no dynamic section|NEEDED' "$PROBE"; then
+            echo "::error::neither ldd nor readelf reported a linkage verdict for $APPIMAGE (output above) — the libfuse.so.2 check would pass vacuously, so failing instead. Check that binutils is installed on this runner and that the path is the AppImage itself."
+            exit 1
+          fi
+          if grep -q 'libfuse\.so\.2' "$PROBE"; then
+            echo "::error::$APPIMAGE links libfuse.so.2 — the AppImage runtime is not static, so it cannot run or self-extract without libfuse2 installed. The pinned linuxdeploy-plugin-appimage in apps/native/scripts/fetch-appimage-tools.sh is stale; re-pin it there (both this workflow and release-native.yaml read that file)."
             exit 1
           fi
 
