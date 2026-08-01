@@ -341,6 +341,31 @@ export const chat = {
   "chat.queueTray.queuedMessages": "{count} mensagens na fila",
   "chat.queueTray.removeFromQueue": "Remover da fila",
   "chat.queueTray.sendNow": "Enviar agora",
+  "chat.runStatus.analyzingScopeDetail": "Descobrindo como responder",
+  "chat.runStatus.analyzingScopeLabel": "Pensando",
+  "chat.runStatus.choosingNextStepsDetail": "Decidindo o que fazer a seguir",
+  "chat.runStatus.choosingNextStepsLabel": "Pensando",
+  "chat.runStatus.gatheringContextDetail":
+    "Analisando o histórico, arquivos e notas",
+  "chat.runStatus.gatheringContextLabel": "Lendo o chat",
+  "chat.runStatus.preparingToolsDetail":
+    "Preparando as ferramentas que ele pode usar",
+  "chat.runStatus.preparingToolsLabel": "Se preparando",
+  "chat.runStatus.receivedDetail": "Sua mensagem está na fila para ser tratada",
+  "chat.runStatus.receivedLabel": "Mensagem recebida",
+  "chat.runStatus.sendingDetail": "Adicionando sua mensagem ao chat",
+  "chat.runStatus.sendingLabel": "Enviando sua mensagem",
+  "chat.runStatus.startingAssistantDetail": "Quase pronto para responder",
+  "chat.runStatus.startingAssistantLabel": "Se preparando",
+  "chat.runStatus.startingRunDetail":
+    "Configurando para trabalhar na sua mensagem",
+  "chat.runStatus.startingRunLabel": "Começando",
+  "chat.runStatus.waitingCapacityDetail":
+    "Todos os outros runners estão ocupados — este começa assim que um ficar livre",
+  "chat.runStatus.waitingCapacityLabel": "Aguardando um runner livre",
+  "chat.runStatus.waitingRunnerDetail":
+    "Finalizando a mensagem anterior neste chat",
+  "chat.runStatus.waitingRunnerLabel": "Aguardando para começar",
   "chat.selectModel.selectModel": "Selecionar modelo",
   "chat.selectVirtualMcp.chooseAgentTooltip":
     "Escolha um agente para conversar",

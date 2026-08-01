@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { translate } from "@/i18n/use-t.ts";
 import {
-  RUN_STATUS_COPY,
   advanceRunStatusStage,
+  getRunStatusCopy,
   isRunStatusControlChunk,
   parseRunStatusStageChunk,
   RUN_STATUS_STAGE_ORDER,
@@ -10,17 +11,18 @@ import {
 describe("run status copy", () => {
   test("has user-facing copy for every ordered stage", () => {
     for (const stage of RUN_STATUS_STAGE_ORDER) {
-      expect(RUN_STATUS_COPY[stage].label.length).toBeGreaterThan(0);
-      expect(RUN_STATUS_COPY[stage].detail.length).toBeGreaterThan(0);
+      const copy = getRunStatusCopy(translate, stage);
+      expect(copy.label.length).toBeGreaterThan(0);
+      expect(copy.detail.length).toBeGreaterThan(0);
     }
   });
 
   test("uses plain, user-friendly copy", () => {
-    expect(RUN_STATUS_COPY["waiting-runner"]).toEqual({
+    expect(getRunStatusCopy(translate, "waiting-runner")).toEqual({
       label: "Waiting to start",
       detail: "Finishing up the previous message in this chat",
     });
-    expect(RUN_STATUS_COPY["analyzing-scope"]).toEqual({
+    expect(getRunStatusCopy(translate, "analyzing-scope")).toEqual({
       label: "Thinking",
       detail: "Working out how to respond",
     });

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
-import { RUN_STATUS_COPY } from "../run-status.ts";
+import { getRunStatusCopy } from "../run-status.ts";
 import { useOptionalChatStream } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
@@ -101,7 +101,7 @@ function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
   }, [stage]);
 
   if (stage !== null) {
-    const copy = RUN_STATUS_COPY[stage];
+    const copy = getRunStatusCopy(t, stage);
     return (
       <ThoughtSummaryShell
         icon={<Stars01 className="size-4" />}
