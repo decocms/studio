@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { mkdtemp, readFile, unlink } from "node:fs/promises";
+import { mkdtemp, readFile, stat, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
@@ -506,12 +506,15 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
  * itself so .gitignore is honored; walking the dir here would stage ignored
  * files and make `git add` fail.
  */
-function expandUntrackedDirs(repoDir: string, paths: string[]): string[] {
+async function expandUntrackedDirs(
+  repoDir: string,
+  paths: string[],
+): Promise<string[]> {
   const out: string[] = [];
   for (const p of paths) {
     let isDir = false;
     try {
-      isDir = fs.statSync(path.join(repoDir, p)).isDirectory();
+      isDir = (await stat(path.join(repoDir, p))).isDirectory();
     } catch {
       isDir = false;
     }
@@ -703,7 +706,10 @@ export async function publish(
   }
 
   const status = computeWorkingTreeStatus(repoDir);
-  let paths = expandUntrackedDirs(repoDir, changedPathsFromStatus(status));
+  let paths = await expandUntrackedDirs(
+    repoDir,
+    changedPathsFromStatus(status),
+  );
   // Last-resort net: never let a syntactically invalid decofile block reach the
   // branch. The /write and /edit handlers already reject invalid blocks, but a
   // mutation that bypassed them (bash, a git merge, a future write path) would
