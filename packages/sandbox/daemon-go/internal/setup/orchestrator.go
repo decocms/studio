@@ -240,17 +240,23 @@ const (
 	startSkipped startOutcome = "skipped"
 )
 
-// start cannot use timedPhase: unlike clone/install it has three outcomes, not
-// two. A skipped start never spawned anything, so recording it would drag a
-// near-zero duration into the same series as real boots; and a failure arrives
-// as an outcome rather than a panic, so it must not be averaged in as healthy.
+// start cannot use timedPhase, for two reasons.
+//
+// It has three outcomes rather than two: a skipped start spawned nothing, so
+// there is no phase to report.
+//
+// And it does not finish when this function returns. TaskManager.Spawn returns
+// once the process exists, not once it serves — timing that would measure fork
+// latency and would record every immediately-crashing dev script as a healthy
+// start. So the attempt is left open and closed by the lifecycle, which is
+// where both terminal states arrive: running (the probe reached the server) or
+// start-failed (no start command, or the script exited non-zero).
 func (o *Orchestrator) stepStart() {
-	startedAt := time.Now()
-	outcome := o.stepStartInner()
-	if outcome == startSkipped {
-		return
+	o.deps.Lifecycle.NoteStartAttempt()
+	// startFailed already transitioned to start-failed, which closed the attempt.
+	if o.stepStartInner() == startSkipped {
+		o.deps.Lifecycle.CancelStartAttempt()
 	}
-	telemetry.RecordPhase(context.Background(), "start", string(outcome), time.Since(startedAt).Milliseconds())
 }
 
 // timedPhase times one setup step and reports it under the same instrument the

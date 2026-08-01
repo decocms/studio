@@ -553,6 +553,9 @@ func main() {
 	d.store = config.NewStore()
 	d.installState = setup.NewInstallState()
 	d.lifecycle = lifecycle.New(d.broadcaster)
+	d.lifecycle.OnStartPhase = func(status string, durationMs int64) {
+		telemetry.RecordPhase(context.Background(), "start", status, durationMs)
+	}
 	d.lifecycle.OnTransition = func(prev, next events.LifecycleState) {
 		if prev.Phase == events.PhaseRunning && next.Phase != events.PhaseRunning {
 			d.sniffer.Reset()

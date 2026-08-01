@@ -315,25 +315,27 @@ export class SetupOrchestrator {
   }
 
   /**
-   * `start` can't use `timedPhase`: unlike clone/install it has three outcomes,
-   * not two. A skipped start (no config, install fingerprint mismatch, dev
-   * server already up) never spawned anything, so recording it would drag a
-   * near-zero duration into the same series as real boots; and a failure
-   * reaches us as `failed`, not as an exception, so it must not be averaged in
-   * as a healthy boot.
+   * `start` can't use `timedPhase`, for two reasons.
+   *
+   * It has three outcomes rather than two: a skipped start (no config, install
+   * fingerprint mismatch, dev server already up) spawned nothing, so there is
+   * no phase to report.
+   *
+   * And it doesn't finish when this method returns. `taskManager.spawn` awaits
+   * process *creation*, not readiness — timing it would measure fork latency
+   * and would record every immediately-crashing dev script as a healthy start.
+   * So the attempt is left open and closed by the lifecycle, which is where
+   * both terminal states arrive: `running` (the probe reached the server) or
+   * `start-failed` (no start command, or the script exited non-zero).
    */
   private async stepStart(): Promise<void> {
-    const startedAt = Date.now();
-    let outcome: StartOutcome;
-    try {
-      outcome = await this.stepStartInner();
-    } catch (e) {
-      recordPhase("start", "failed", Date.now() - startedAt);
+    this.deps.lifecycle.noteStartAttempt();
+    const outcome = await this.stepStartInner().catch((e) => {
+      this.deps.lifecycle.cancelStartAttempt();
       throw e;
-    }
-    if (outcome !== "skipped") {
-      recordPhase("start", outcome, Date.now() - startedAt);
-    }
+    });
+    // "failed" already transitioned to start-failed, which closed the attempt.
+    if (outcome === "skipped") this.deps.lifecycle.cancelStartAttempt();
   }
 
   private async stepCloneInner(): Promise<boolean> {
