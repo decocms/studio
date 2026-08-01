@@ -293,112 +293,23 @@ jobs:
       #
       # Per crate so a future failure names the crate instead of the step, and
       # so each link peak stands alone.
-      # Deliberately one step per crate rather than a loop. This job has never
-      # uploaded a log — six runs, every one dying with the step incomplete —
-      # but per-step conclusions DO survive in the jobs API, so the step that
-      # stops at `null` names the crate. The build is warmed once first so a
-      # crate's own step measures its tests, not the shared dependency build,
-      # and each step is bounded so a hang fails in minutes instead of at the
-      # ~48 min the runner takes to die.
-      - name: Build the test binaries
+      # Linux runs single-threaded and per crate. Two tests here write or kill
+      # things the platform treats differently from BSD: `upstream` writes a
+      # helper script and execs it (a concurrent fork inherits the write
+      # descriptor and the exec fails ETXTBSY), and `local-api`'s process-group
+      # suite manipulates process groups, so it runs under `setsid` to keep any
+      # stray group signal inside its own session rather than the runner's.
+      - name: cargo test (Linux)
         if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
-        timeout-minutes: 40
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: cargo test --workspace --no-run
-
-      - name: cargo test -p harness
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 10
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: cargo test -p harness
-
-      # Single-threaded: these tests write a helper script and immediately
-      # exec it. On Linux any concurrent thread that forks inherits the still
-      # open write descriptor, and the exec then fails ETXTBSY ("Text file
-      # busy") — a race macOS does not enforce, so it only ever shows up here
-      # and only sometimes.
-      - name: cargo test -p upstream
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 10
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: cargo test -p upstream -- --test-threads=1
-
-      # Each of these runs under `setsid --wait`, i.e. in its own session and
-      # process group. These tests deliberately create and kill process groups,
-      # and the killer (`harness::watchdog::signal_non_anchor_members`) kills
-      # every pid `pgrep -g` returns. If any of them ever enumerates a group
-      # that contains the runner — procps and BSD `pgrep` differ here, which is
-      # why macOS never showed this — the agent dies with it, which is exactly
-      # what "50 minutes, step incomplete, no logs ever uploaded" looks like.
-      # A separate session bounds the blast radius to the test's own group, so
-      # a failure can report itself instead of taking the machine down.
-      # local-api is the crate that killed the runner — harness and upstream
-      # pass and the build succeeds — so bisect it the same way. The
-      # process-spawning modules go first and single-threaded: their
-      # `pgrep`/`ps`/process-group behaviour is exactly what differs between
-      # BSD and procps, and a reap that silently fails on Linux would strand
-      # children every run until the runner gives out, which is what "no logs,
-      # ever" looks like.
-      - name: local-api tests — process-group
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 12
+        timeout-minutes: 25
         env:
           CARGO_BUILD_JOBS: "2"
         run: |
-          setsid --wait cargo test -p local-api process_group:: -- --test-threads=1
-          setsid --wait cargo test -p local-api process_util:: -- --test-threads=1
-
-      - name: local-api tests — setup
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 12
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: |
-          setsid --wait cargo test -p local-api setup:: -- --test-threads=1
-
-      - name: local-api tests — sandbox
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 12
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: |
-          setsid --wait cargo test -p local-api sandbox:: -- --test-threads=1
-
-      - name: local-api tests — routes
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 12
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: |
-          setsid --wait cargo test -p local-api routes:: -- --test-threads=1
-
-      - name: local-api tests — whole crate
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 12
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: |
-          setsid --wait cargo test -p local-api
-
-
-      - name: cargo test -p deco
-        if: runner.os == 'Linux' && matrix.task != 'lint'
-        working-directory: apps/native
-        timeout-minutes: 10
-        env:
-          CARGO_BUILD_JOBS: "2"
-        run: cargo test -p deco
+          cargo test -p harness -- --test-threads=1
+          cargo test -p upstream -- --test-threads=1
+          setsid --wait cargo test -p local-api -- --test-threads=1
+          cargo test -p deco -- --test-threads=1
 
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
