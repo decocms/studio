@@ -324,13 +324,59 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: cargo test -p upstream
 
-      - name: cargo test -p local-api
+      # local-api is the crate that killed the runner — harness and upstream
+      # pass and the build succeeds — so bisect it the same way. The
+      # process-spawning modules go first and single-threaded: their
+      # `pgrep`/`ps`/process-group behaviour is exactly what differs between
+      # BSD and procps, and a reap that silently fails on Linux would strand
+      # children every run until the runner gives out, which is what "no logs,
+      # ever" looks like.
+      - name: local-api tests — process-group
         if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
-        timeout-minutes: 10
+        timeout-minutes: 12
         env:
           CARGO_BUILD_JOBS: "2"
-        run: cargo test -p local-api
+        run: |
+          cargo test -p local-api process_group:: -- --test-threads=1
+          cargo test -p local-api process_util:: -- --test-threads=1
+
+      - name: local-api tests — setup
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 12
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          cargo test -p local-api setup:: -- --test-threads=1
+
+      - name: local-api tests — sandbox
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 12
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          cargo test -p local-api sandbox:: -- --test-threads=1
+
+      - name: local-api tests — routes
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 12
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          cargo test -p local-api routes:: -- --test-threads=1
+
+      - name: local-api tests — whole crate
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 12
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          cargo test -p local-api
+
 
       - name: cargo test -p deco
         if: runner.os == 'Linux' && matrix.task != 'lint'
