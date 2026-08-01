@@ -581,7 +581,13 @@
     results.controlCookieHttpOnly,
     results.authStatusInvoke,
     results.domMountedEarly,
-    results.remoteImageLoads,
+    // remoteImageLoads is deliberately NOT gating: it fetches a real asset
+    // over the public internet, so a runner with no egress fails it for
+    // reasons that say nothing about this app. The property it exists to
+    // protect — that the packaged CSP does not block remote images — is
+    // still gated, by noCspViolations below: a CSP block raises a
+    // securitypolicyviolation, whereas an unreachable CDN does not. Its
+    // result is still reported, so a real regression is visible.
     results.previewIframeLoads,
     results.previewCookieRoundTrip,
     results.noCspViolations,
