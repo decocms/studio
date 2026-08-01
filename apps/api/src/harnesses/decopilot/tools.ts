@@ -292,9 +292,9 @@ export async function assembleDecopilotTools(
     const vmMetadata = runContext.virtualMcp.metadata as {
       githubRepo?: GithubRepo | null;
     };
-    // A thread-scoped repo (set by `load_repo`) wins: it's the only place a repo
-    // can persist for the synthetic Decopilot agent, and a per-conversation
-    // override for real repo-agents. When present it pins the thread to a
+    // A thread-scoped repo (set by `load_repo`, super-agent-only) wins: it's the
+    // only place a repo can persist for the synthetic Decopilot agent. Threads of
+    // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
     const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
     const effectiveRepo = threadRepo ?? vmMetadata.githubRepo;
