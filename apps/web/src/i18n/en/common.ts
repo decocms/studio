@@ -107,10 +107,13 @@ export const common = {
     "Your GitHub connection may have expired. Reconnect to restore access.",
   "common.githubRepoPicker.connectionFailed": "Connection failed",
   "common.githubRepoPicker.failedImport": "Failed to import repo: {error}",
+  "common.githubRepoPicker.failedImportFork":
+    "Couldn't import the fork {name}. If it isn't shared with the GitHub App, add it under GitHub → Settings → Installations, then try again.",
   "common.githubRepoPicker.failedLoadAccounts":
     "Failed to load GitHub accounts",
   "common.githubRepoPicker.failedReconnect":
     "Failed to reconnect GitHub: {error}",
+  "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub connected",
   "common.githubRepoPicker.importFromGitHub": "Import from GitHub",
   "common.githubRepoPicker.importedRepo": "Imported {name} from GitHub",

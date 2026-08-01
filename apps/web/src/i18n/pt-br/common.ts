@@ -111,10 +111,13 @@ export const common = {
   "common.githubRepoPicker.connectionFailed": "Conexão falhou",
   "common.githubRepoPicker.failedImport":
     "Falha ao importar repositório: {error}",
+  "common.githubRepoPicker.failedImportFork":
+    "Não foi possível importar o fork {name}. Se ele não estiver compartilhado com o aplicativo GitHub, adicione-o em GitHub → Settings → Installations e tente novamente.",
   "common.githubRepoPicker.failedLoadAccounts":
     "Falha ao carregar contas do GitHub",
   "common.githubRepoPicker.failedReconnect":
     "Falha ao reconectar GitHub: {error}",
+  "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub conectado",
   "common.githubRepoPicker.importFromGitHub": "Importar do GitHub",
   "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
