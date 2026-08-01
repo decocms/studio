@@ -111,30 +111,36 @@ export async function enqueueEnabledReviewers(
   const lastInReviewAt = await lastInReviewTime(ctx, task);
   const cycleAt = new Date(lastInReviewAt);
 
-  for (const kind of enabled) {
-    if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) continue;
-    // Atomically claim the reviewer's slot for this cycle. The claim dedups the
-    // two triggers (projector run-finish + the modal poll) that can fire at the
-    // same instant — the loser's `claimed` is false, so it skips instead of
-    // spawning a duplicate run. The claim's token binds the reviewer's later
-    // decision back to this dispatch.
-    let claimed: boolean;
-    let token: string;
-    try {
-      ({ claimed, token } = await ctx.storage.taskBoard.claimReviewer(
-        task.id,
-        kind,
-        cycleAt,
-      ));
-    } catch (err) {
-      console.error(`[task-board] ${kind} reviewer claim failed`, err);
-      continue;
-    }
-    if (!claimed) continue;
-    await enqueueReviewerForTask(ctx, task, kind, token).catch((err) => {
-      console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
-    });
-  }
+  // Each reviewer's claim + enqueue is independent (a separate DB row keyed by
+  // its own kind), so run them CONCURRENTLY — this is on TASK_BOARD_ITEM_PRS_GET's
+  // synchronous poll path, and serial awaits doubled its latency once both QA
+  // and Code Reviewer are enabled.
+  await Promise.all(
+    enabled.map(async (kind) => {
+      if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
+      // Atomically claim the reviewer's slot for this cycle. The claim dedups
+      // the two triggers (projector run-finish + the modal poll) that can fire
+      // at the same instant — the loser's `claimed` is false, so it skips
+      // instead of spawning a duplicate run. The claim's token binds the
+      // reviewer's later decision back to this dispatch.
+      let claimed: boolean;
+      let token: string;
+      try {
+        ({ claimed, token } = await ctx.storage.taskBoard.claimReviewer(
+          task.id,
+          kind,
+          cycleAt,
+        ));
+      } catch (err) {
+        console.error(`[task-board] ${kind} reviewer claim failed`, err);
+        return;
+      }
+      if (!claimed) return;
+      await enqueueReviewerForTask(ctx, task, kind, token).catch((err) => {
+        console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
+      });
+    }),
+  );
 }
 
 /** True when a reviewer of `kind` already has a live or this-cycle thread — the
