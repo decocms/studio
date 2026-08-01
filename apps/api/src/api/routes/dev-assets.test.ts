@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, test } from "bun:test";
-import { getSettings } from "../../settings";
+import { getDevAssetsSigningSecret } from "../../object-storage/dev-assets-secret";
 import { verifySignature } from "./dev-assets";
 
 function sign(
@@ -9,7 +9,7 @@ function sign(
   expires: number,
   method: "GET" | "PUT",
 ): string {
-  const secret = getSettings().encryptionKey || "dev-secret";
+  const secret = getDevAssetsSigningSecret();
   return createHmac("sha256", secret)
     .update(`${orgId}:${key}:${expires}:${method}`)
     .digest("hex");

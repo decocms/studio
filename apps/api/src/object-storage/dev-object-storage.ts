@@ -29,7 +29,7 @@ import type {
 } from "./s3-service";
 import type { BoundObjectStorage } from "./bound-object-storage";
 import { detectContentType, isTextContentType, sanitizeKey } from "./key-utils";
-import { getSettings } from "../settings";
+import { getDevAssetsSigningSecret } from "./dev-assets-secret";
 
 const DEV_ASSETS_BASE_DIR = "./data/assets";
 
@@ -220,7 +220,7 @@ export class DevObjectStorage implements BoundObjectStorage {
     }
     const sanitized = sanitizeKey(key);
     const expires = Math.floor(Date.now() / 1000) + expiresIn;
-    const secret = getSettings().encryptionKey || "dev-secret";
+    const secret = getDevAssetsSigningSecret();
     const data = `${this.orgId}:${sanitized}:${expires}:PUT`;
     const signature = createHmac("sha256", secret).update(data).digest("hex");
 

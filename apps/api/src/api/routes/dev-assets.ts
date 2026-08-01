@@ -16,7 +16,7 @@ import { createHmac } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { StudioContext } from "../../core/studio-context";
-import { getSettings } from "../../settings";
+import { getDevAssetsSigningSecret } from "../../object-storage/dev-assets-secret";
 import { safeEqual } from "./credential-vault";
 
 // Base directory for dev assets (relative to cwd)
@@ -63,7 +63,7 @@ export function verifySignature(
   method: "GET" | "PUT",
   signature: string,
 ): boolean {
-  const secret = getSettings().encryptionKey || "dev-secret";
+  const secret = getDevAssetsSigningSecret();
   const data = `${orgId}:${key}:${expires}:${method}`;
   const expectedSignature = createHmac("sha256", secret)
     .update(data)

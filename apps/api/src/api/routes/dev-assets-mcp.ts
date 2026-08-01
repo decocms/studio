@@ -10,7 +10,7 @@
  * Only mounted when DevObjectStorage is the active backend (no S3 configured)
  */
 
-import { getSettings } from "../../settings";
+import { getDevAssetsSigningSecret } from "../../object-storage/dev-assets-secret";
 import { serveMcpRequest } from "../utils/serve-mcp";
 import {
   type DeleteObjectInput,
@@ -112,7 +112,7 @@ function generateSignature(
   expires: number,
   method: "GET" | "PUT",
 ): string {
-  const secret = getSettings().encryptionKey || "dev-secret";
+  const secret = getDevAssetsSigningSecret();
   const data = `${orgId}:${key}:${expires}:${method}`;
   return createHmac("sha256", secret).update(data).digest("hex");
 }
