@@ -2130,24 +2130,6 @@ mod tests {
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
-    /// IGNORED ON LINUX — a real teardown difference, not flake, not timing.
-    ///
-    /// `assert_process_group_gone` probes `kill -0 -<git_pid>`, i.e. the
-    /// process GROUP whose id is the fake git's pid. Under the anchor design
-    /// git is NOT its own group leader — the watchdog is — so that group
-    /// should not exist and the probe should fail immediately, as it does on
-    /// macOS. On a Linux runner it keeps succeeding: something in this group
-    /// outlives the sweep, and a 15s budget (15x the anchor's own TERM-round
-    /// escalation) does not clear it.
-    ///
-    /// So either the workload is not joining the anchor's group as intended on
-    /// Linux, or a member survives the KILL round. Both are worth knowing and
-    /// neither is diagnosable from CI: reproducing needs a Linux box where the
-    /// group can be watched with `ps -o pid,pgid,comm` while the sweep runs.
-    /// The sibling assertions the test makes about the sweep itself
-    /// (`term_signaled`/`kill_signaled`/`remaining`) all PASS on Linux — it is
-    /// specifically the "group is gone" proof that does not hold.
-    #[cfg_attr(target_os = "linux", ignore)]
     #[cfg(unix)]
     #[tokio::test]
     async fn slow_git_group_is_term_kill_reaped_before_owner_finalizes() {
@@ -2233,6 +2215,19 @@ mod tests {
         .expect("fake git wrote its pid file")
     }
 
+    /// Any process still in the group led by `pgid`. `pgrep` exits 1 for "no
+    /// match", which is the empty-group answer on both platforms.
+    #[cfg(unix)]
+    fn process_group_exists(pgid: u32) -> bool {
+        Command::new("pgrep")
+            .args(["-g", &pgid.to_string(), "."])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
     #[cfg(unix)]
     fn process_exists(pid_arg: String) -> bool {
         Command::new("kill")
@@ -2248,10 +2243,17 @@ mod tests {
     /// moment": it runs up to 20 TERM rounds at 50ms — a full second — before
     /// it starts KILL rounds at all. A 1s deadline was therefore exactly the
     /// escalation time, which macOS won and Linux lost.
+    /// Group liveness goes through `pgrep -g`, NOT `kill -0 -<pgid>`.
+    /// procps-ng `kill(1)` issues the right syscall for a negative pid and
+    /// then reports the opposite answer: verified under strace, a live group
+    /// gives `kill(-N, 0) = 0` then `exit(1)`, and a dead one gives `ESRCH`
+    /// then `exit(0)`. Reading its status therefore inverts the test on Linux
+    /// — it waits forever on a group that is already gone. BSD `kill` reports
+    /// it correctly, which is why only Linux ever saw this.
     #[cfg(unix)]
     async fn assert_process_group_gone(pid: u32) {
         tokio::time::timeout(Duration::from_secs(15), async {
-            while process_exists(format!("-{pid}")) {
+            while process_group_exists(pid) {
                 tokio::task::yield_now().await;
             }
         })
