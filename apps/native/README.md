@@ -8,7 +8,7 @@ local Rust runtime.
 | Workspace | `@decocms/native` (`apps/native`) |
 | Kind | Tauri desktop application and local runtime |
 | Runtime | Rust, WebKit, and the bundled React application |
-| Distribution | Private workspace package; signed macOS application |
+| Distribution | Private workspace package; signed macOS application (Apple Silicon) and Linux x86_64 AppImage |
 
 ## Overview
 
@@ -18,9 +18,10 @@ stable loopback origin, proxies upstream Studio requests, and intercepts the
 local-only thread, harness, sandbox, filesystem, Git, task, and preview
 surfaces.
 
-The current release targets macOS. The Rust crates and browser contracts are
-kept portable so Windows can be added without redesigning the application
-boundary.
+Releases target macOS on Apple Silicon (`.app` and DMG) and Linux x86_64
+(AppImage), both served by one self-update channel. The Rust crates and
+browser contracts are kept portable so Windows can be added without
+redesigning the application boundary.
 
 ## Responsibilities
 
@@ -162,22 +163,80 @@ on the rolling `native-updates` GitHub prerelease, which
 `scripts/ci/native-update-channel.mjs`). Design and full rationale:
 [`docs/native-updater-plan.md`](./docs/native-updater-plan.md).
 
+One channel serves both shipping targets. `latest.json` carries one entry per
+platform key, each pointing at an asset of the immutable `native-v<version>`
+release:
+
+| Platform key | Updater asset (plus its `.sig`) |
+| --- | --- |
+| `darwin-aarch64` | `deco-<version>-aarch64.app.tar.gz` |
+| `linux-x86_64` | `deco-<version>-linux-x86_64.AppImage.tar.gz` |
+
+### Promotion is all-platforms-or-nothing; publication is not
+
+A manifest missing a platform key silently strands that platform's installed
+base, so the channel moves only when **every** key's assets are on the
+release. Three gates enforce that: `promote` runs only if the whole `build`
+matrix succeeded; it verifies each expected asset name against the release's
+asset list before building anything; and the manifest builder refuses to emit
+a manifest with a missing or empty signature, or one covering fewer platforms
+than the currently-published manifest.
+
+**Publication is deliberately not held back the same way.** `publish` runs
+even when a build leg failed and creates or updates the release from whatever
+assets arrived; the Homebrew cask bump is gated only on the macOS assets being
+present. So a red Linux leg means:
+
+- macOS distribution is unaffected: the release (zip, DMG, updater tarball)
+  publishes and the cask bumps, so `brew install --cask deco-studio` and
+  `install.sh` keep serving the new version.
+- The update channel freezes at the previous version **for every platform**,
+  macOS included. Installed apps keep running what they have, and version
+  drift is suppressed in the shell by design — the only signal is the issue
+  the `alert` job files.
+
+Repair: fix the leg, then re-run `release-native.yaml` via `workflow_dispatch`
+on the same version. A dispatch does not skip an existing tag; assets under a
+`native-v*` tag are write-once, so `publish` uploads only the ones the release
+is missing (builds are not reproducible — replacing bytes under an
+already-published signature would break both self-update and the cask's pinned
+`sha256`); `promote` then sees a complete set. Pass `force_promote` to bypass
+the ~daily throttle. Do not dispatch from a ref that predates a platform: the
+superset check fails the run rather than publishing a manifest that drops
+`linux-x86_64`.
+
 Operator notes:
 
 - **Signing key** (`TAURI_SIGNING_PRIVATE_KEY`/`_PASSWORD`, GitHub
-  environment `native-release`): the public key is pinned in
-  `src-tauri/tauri.conf.json5`. Losing the private key permanently strands
-  the installed base on the updater — the Homebrew cask is the break-glass
-  recovery channel (`brew upgrade --greedy --cask deco-studio`), so the CI
-  cask bump must keep working forever. A leaked key has no revocation:
-  rotation = new keypair + cask-forced reinstall.
+  environment `native-release`): one keypair signs every platform's updater
+  artifact, and the public key is pinned in `src-tauri/tauri.conf.json5`.
+  Losing the private key permanently strands the installed base on the
+  updater, and break-glass differs per platform:
+  - macOS: the Homebrew cask (`brew upgrade --greedy --cask deco-studio`), so
+    the CI cask bump must keep working forever.
+  - Linux: **there is no cask equivalent.** Recovery is users re-downloading
+    `deco-<version>-linux-x86_64.AppImage` from the `native-v<version>`
+    release page and `chmod +x`-ing it. Nothing can be pushed to a Linux
+    install — plan announcements accordingly.
+
+  A leaked key has no revocation: rotation = new keypair + a forced reinstall
+  on both platforms.
 - **Bad release**: the updater never downgrades. Ship a newer fixed release;
   use the `force_promote` dispatch input of `release-native.yaml` to bypass
-  the ~daily channel throttle.
+  the ~daily channel throttle. An install too broken to launch recovers by
+  cask reinstall on macOS and by re-downloading the AppImage on Linux.
 - **Kill switch**: `DECOCMS_DISABLE_AUTO_UPDATE=1` disables the updater task
-  (warn-logged every cycle). A Finder-launched app does not inherit shell
-  env — use `launchctl setenv DECOCMS_DISABLE_AUTO_UPDATE 1` or a terminal
-  launch when debugging.
+  on both platforms, unchanged (warn-logged every cycle). It has to reach the
+  process environment: a Finder-launched macOS app does not inherit shell env
+  — use `launchctl setenv DECOCMS_DISABLE_AUTO_UPDATE 1` or a terminal launch;
+  on Linux prefix the AppImage itself
+  (`DECOCMS_DISABLE_AUTO_UPDATE=1 ./deco-<version>-linux-x86_64.AppImage`),
+  since a desktop-launched app inherits only the graphical session's
+  environment.
+- **Linux self-updates only from an AppImage**: the updater plugin rewrites
+  the file `$APPIMAGE` points at, in place, so with that variable unset (dev
+  build, extracted AppDir, any future deb/rpm) the task never spawns and there
+  is no way to turn it on.
 
 ## Related documentation
 
