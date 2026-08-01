@@ -597,6 +597,22 @@ async function resolveAndCacheRole(
 }
 
 /**
+ * Does a forwarded on-behalf-of token's org scope match the API key's org?
+ *
+ * Exported for unit testing — the intent is "a cross-org token is never
+ * honored", so a token minted with no org scope at all must NOT be treated as
+ * a match against an org-scoped API key (an absent `tokenOrgId` is not "any
+ * org"; it fails closed like a genuine mismatch would).
+ */
+export function isOnBehalfOfTokenOrgAllowed(
+  apiKeyOrgId: string | undefined,
+  tokenOrgId: string | undefined,
+): boolean {
+  if (!apiKeyOrgId) return true;
+  return tokenOrgId === apiKeyOrgId;
+}
+
+/**
  * Resolve the on-behalf-of user for a self/loopback call.
  *
  * When studio calls its own management server (the `<org>_self` connection — e.g.
@@ -628,9 +644,11 @@ async function resolveOnBehalfOfUser(
   if (!payload?.sub) return undefined;
 
   // Defensive: only honor a forwarded user scoped to the SAME org the API key
-  // authorizes. A cross-org token (never expected for self calls) is ignored.
+  // authorizes. A cross-org token (never expected for self calls) is ignored —
+  // including one minted with no org scope at all, which is just as untrusted
+  // as a mismatched one here.
   const tokenOrgId = payload.metadata?.organizationId;
-  if (apiKeyOrgId && tokenOrgId && tokenOrgId !== apiKeyOrgId) {
+  if (!isOnBehalfOfTokenOrgAllowed(apiKeyOrgId, tokenOrgId)) {
     return undefined;
   }
 
