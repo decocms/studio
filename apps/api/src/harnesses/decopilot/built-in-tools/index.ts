@@ -262,7 +262,8 @@ async function buildAllTools(
     Object.assign(tools, vmTools);
     // Repo switcher — dynamic description lists the org's imported repos; calling
     // it binds the repo to the thread, eagerly clones its sandbox, and opens the
-    // Preview. Omitted when the org has no imported repos (nothing to switch).
+    // Preview. Returns null (tool omitted) for any agent but the super-agent, and
+    // when the org has no imported repos (nothing to switch).
     const loadRepo = await createLoadRepoTool({
       ctx,
       orgId: organization.id,

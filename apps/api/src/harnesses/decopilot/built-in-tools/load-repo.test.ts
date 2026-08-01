@@ -1,9 +1,28 @@
 import { expect, test } from "bun:test";
 import {
   buildDescription,
+  createLoadRepoTool,
   parseCloneProbe,
   selectLoadableRepos,
 } from "./load-repo";
+
+test("createLoadRepoTool is super-agent-only", async () => {
+  // A non-decopilot agent gets no tool — and the check happens before any
+  // storage access, so a bare ctx suffices.
+  const args = {
+    ctx: {} as never,
+    orgId: "org_1",
+    userId: "user_1",
+    threadId: "thread_1",
+    writer: {} as never,
+  };
+  expect(
+    await createLoadRepoTool({ ...args, virtualMcpId: "vm_regular_agent" }),
+  ).toBeNull();
+  await expect(
+    createLoadRepoTool({ ...args, virtualMcpId: "decopilot_org_1" }),
+  ).rejects.toThrow(); // got past the gate, then hit the empty ctx
+});
 
 test("buildDescription lists each repo with its connectionId", () => {
   const desc = buildDescription([
