@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { recordDepsRestore } from "../telemetry";
 import type { PackageManager } from "../types";
 import { repoHash } from "./golden-cache";
 
@@ -110,16 +111,18 @@ export interface DepsRestoreInput {
  * needs the pod to land on a node already warm for its repo, so the hit rate
  * is a property of fleet churn, not of the cache code.
  *
- * A log line rather than a metric, for three reasons:
- *  - it is the only channel that leaves a sandbox pod (see the note on
- *    `emitInstalledDeps` — egress is locked to 53/443, so no in-cluster OTLP
- *    collector is reachable);
+ * Kept as a log line even though the same event is now also a metric (see
+ * `emitDepsRestore`), for two reasons:
  *  - `bootId` is free here and unbounded cardinality as a metric attribute.
  *    Without it a counter cannot tell "one pod installed three times" from
  *    "three pods", and `stepInstall` does re-run within a boot (config change,
  *    reprovision);
  *  - raw durations beat pre-bucketed histograms when the range is unknown,
  *    which is the whole point of measuring.
+ *
+ * The third original reason — that stdout is the only channel out of a sandbox
+ * pod, egress being locked to 53/443 — no longer holds: sandbox-env's
+ * `telemetry.*` opens one ACCEPT to the in-cluster collector.
  *
  * Sized for the pipeline that drops big lines and samples bursts: ~150 bytes,
  * one per boot. Both limits are orders of magnitude away — no chunking, no
@@ -138,6 +141,11 @@ export function buildDepsRestoreLine(input: DepsRestoreInput): string {
 export function emitDepsRestore(input: DepsRestoreInput): void {
   try {
     console.log(buildDepsRestoreLine(input));
+    // Same event, second channel. The stdout line above keeps `bootId` and the
+    // raw duration and is what the existing panels read; the metric is what
+    // survives the log pipeline, which samples info-level lines at 1% and so
+    // cannot be counted on. No-op unless OTLP is configured.
+    recordDepsRestore(input.source, Math.round(input.durationMs));
   } catch {
     // never let telemetry break the install path
   }

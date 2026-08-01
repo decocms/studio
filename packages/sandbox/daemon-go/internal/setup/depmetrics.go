@@ -11,10 +11,11 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
-// Dependency telemetry leaves the pod as JSON lines on stdout, NOT OTLP: a
-// sandbox pod's egress is locked to 53/443, so no in-cluster collector is
-// reachable. Shapes here must stay byte-compatible with the TS daemon's
-// setup/dep-metrics.ts or the sandbox dashboard panels stop matching.
+// Dependency telemetry leaves the pod as JSON lines on stdout AND, where
+// sandbox-env's `telemetry.*` opens an ACCEPT to the in-cluster collector, as
+// OTLP metrics (see EmitDepsRestore). Shapes here must stay byte-compatible
+// with the TS daemon's setup/dep-metrics.ts or the sandbox dashboard panels
+// stop matching.
 
 const (
 	maxDeps        = 10_000

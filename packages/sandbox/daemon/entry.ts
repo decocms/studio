@@ -84,12 +84,17 @@ import {
 import { makeScriptsHandler } from "./routes/scripts";
 import { discoverScripts } from "./process/script-discovery";
 import { SetupOrchestrator } from "./setup/orchestrator";
+import { initTelemetry, recordPhase } from "./telemetry";
 import type { Config, TenantConfig } from "./types";
 import { makeWsUpgrader, type WsProxyData } from "./ws-proxy";
 
 if (!process.env.DAEMON_BOOT_ID) {
   process.env.DAEMON_BOOT_ID = randomUUID();
 }
+
+// Before anything that can finish a phase. No-op unless the deployment set
+// OTEL_EXPORTER_OTLP_ENDPOINT (sandbox-env's `telemetry.*`).
+const otelShutdown = initTelemetry(process.env.DAEMON_BOOT_ID, "ts");
 
 // Corepack walks UP from cwd to find the closest `packageManager` field and
 // rejects mismatched invocations. On host runners the daemon's workdir lives
@@ -184,7 +189,11 @@ lifecycle.transition = (next) => {
 };
 // Per-command history for LLM context (each bash/exec spawned via TaskManager
 // is tracked as a phase). Setup pipeline phases live on `lifecycle` instead.
-const phaseManager = new PhaseManager();
+//
+// One hook covers every phase, so per-phase boot cost needs no per-call-site
+// instrumentation and a phase added later is measured for free. Same wiring as
+// daemon-go's `d.phases.OnFinish` — the two must stay comparable.
+const phaseManager = new PhaseManager({ onFinish: recordPhase });
 const taskManager = new TaskManager({
   logsDir: TMP_DIR,
   phaseManager,
@@ -962,6 +971,12 @@ async function shutdown(): Promise<void> {
   if (mountManager) {
     await mountManager.stop().catch(() => {});
   }
+  // Flush the current export window: a sandbox torn down inside the 30s
+  // interval would otherwise report nothing, and short-lived pods are exactly
+  // the boots a cold-start comparison cares about. Raced, because an
+  // unreachable collector must not spend the SIGTERM grace period we just used
+  // to push the user's work.
+  await Promise.race([otelShutdown().catch(() => {}), sleep(2000)]);
   process.exit(0);
 }
 
