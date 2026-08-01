@@ -259,6 +259,10 @@ let lagTimer: ReturnType<typeof setInterval> | undefined;
  * which is why daemon-go samples the same way under the same instrument name.
  */
 function startLoopLagSampler(): void {
+  // A second init would otherwise orphan the first timer — its handle is
+  // overwritten before either shutdown closure runs, leaving a sampler feeding
+  // a dead provider forever. Production inits once; tests do not.
+  stopLoopLagSampler();
   let expected = Date.now() + LAG_SAMPLE_INTERVAL_MS;
   lagTimer = setInterval(() => {
     const now = Date.now();

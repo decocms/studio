@@ -51,6 +51,12 @@ export type Step = "clone" | "install" | "start";
 
 const STEP_RANK: Record<Step, number> = { clone: 3, install: 2, start: 1 };
 
+/**
+ * What a start attempt actually did. "skipped" is not a boot phase — nothing
+ * was spawned — so it is deliberately not reported as a duration.
+ */
+type StartOutcome = "done" | "failed" | "skipped";
+
 export interface SetupOrchestratorDeps {
   bootConfig: { appRoot: string; repoDir: string };
   store: TenantConfigStore;
@@ -308,8 +314,26 @@ export class SetupOrchestrator {
     return this.timedPhase("install", () => this.stepInstallInner());
   }
 
-  private stepStart(): Promise<void> {
-    return this.timedPhase("start", () => this.stepStartInner());
+  /**
+   * `start` can't use `timedPhase`: unlike clone/install it has three outcomes,
+   * not two. A skipped start (no config, install fingerprint mismatch, dev
+   * server already up) never spawned anything, so recording it would drag a
+   * near-zero duration into the same series as real boots; and a failure
+   * reaches us as `failed`, not as an exception, so it must not be averaged in
+   * as a healthy boot.
+   */
+  private async stepStart(): Promise<void> {
+    const startedAt = Date.now();
+    let outcome: StartOutcome;
+    try {
+      outcome = await this.stepStartInner();
+    } catch (e) {
+      recordPhase("start", "failed", Date.now() - startedAt);
+      throw e;
+    }
+    if (outcome !== "skipped") {
+      recordPhase("start", outcome, Date.now() - startedAt);
+    }
   }
 
   private async stepCloneInner(): Promise<boolean> {
@@ -578,14 +602,14 @@ export class SetupOrchestrator {
    * Spawn the dev script. Probe drives the transition from `starting` to
    * `running` once the dev server responds.
    */
-  private async stepStartInner(): Promise<void> {
+  private async stepStartInner(): Promise<StartOutcome> {
     const config = this.currentConfig();
-    if (!config) return;
+    if (!config) return "skipped";
     if (this.deps.getStatus().state !== "running") {
       this.chunk(
         `\r\n[orchestrator] skipping start: status=${this.deps.getStatus().state} (resume to retry)\r\n`,
       );
-      return;
+      return "skipped";
     }
     if (
       !this.deps.installState.isInstalledFor(config, this.currentBranchHead)
@@ -593,7 +617,7 @@ export class SetupOrchestrator {
       this.chunk(
         "\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n",
       );
-      return;
+      return "skipped";
     }
     const command = this.buildStartCommand(config);
     if (!command) {
@@ -603,7 +627,7 @@ export class SetupOrchestrator {
         phase: "start-failed",
         error: reason.replace(/\r?\n/g, " ").trim(),
       });
-      return;
+      return "failed";
     }
 
     const running = this.deps.taskManager.runningCommandByLogName(
@@ -623,7 +647,7 @@ export class SetupOrchestrator {
       if (cur !== "running" && cur !== "starting") {
         this.deps.lifecycle.transition({ phase: "starting" });
       }
-      return;
+      return "skipped";
     }
     await this.stopDevTask();
     this.deps.lifecycle.transition({ phase: "starting" });
@@ -652,6 +676,7 @@ export class SetupOrchestrator {
       logName: command.source,
       replaceByLogName: true,
     });
+    return "done";
   }
 
   /**

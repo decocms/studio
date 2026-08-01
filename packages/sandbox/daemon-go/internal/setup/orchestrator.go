@@ -230,8 +230,27 @@ func (o *Orchestrator) stepInstall() bool {
 	return timedPhase("install", o.stepInstallInner)
 }
 
+// startOutcome is what a start attempt actually did. "skipped" is not a boot
+// phase — nothing was spawned — so it is deliberately not reported.
+type startOutcome string
+
+const (
+	startDone    startOutcome = "done"
+	startFailed  startOutcome = "failed"
+	startSkipped startOutcome = "skipped"
+)
+
+// start cannot use timedPhase: unlike clone/install it has three outcomes, not
+// two. A skipped start never spawned anything, so recording it would drag a
+// near-zero duration into the same series as real boots; and a failure arrives
+// as an outcome rather than a panic, so it must not be averaged in as healthy.
 func (o *Orchestrator) stepStart() {
-	timedPhase("start", func() bool { o.stepStartInner(); return true })
+	startedAt := time.Now()
+	outcome := o.stepStartInner()
+	if outcome == startSkipped {
+		return
+	}
+	telemetry.RecordPhase(context.Background(), "start", string(outcome), time.Since(startedAt).Milliseconds())
 }
 
 // timedPhase times one setup step and reports it under the same instrument the
@@ -427,18 +446,18 @@ func (o *Orchestrator) stepInstallInner() bool {
 	return true
 }
 
-func (o *Orchestrator) stepStartInner() {
+func (o *Orchestrator) stepStartInner() startOutcome {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
-		return
+		return startSkipped
 	}
 	if status := o.deps.GetStatus(); status.State != "running" {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping start: status=%s (resume to retry)\r\n", status.State))
-		return
+		return startSkipped
 	}
 	if !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.chunk("\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n")
-		return
+		return startSkipped
 	}
 	command, ok := o.buildStartCommand(cfg)
 	if !ok {
@@ -446,7 +465,7 @@ func (o *Orchestrator) stepStartInner() {
 		o.chunk(reason)
 		flat := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(reason, "\r", " "), "\n", " "))
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStartFailed, Error: flat})
-		return
+		return startFailed
 	}
 
 	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); found &&
@@ -456,7 +475,7 @@ func (o *Orchestrator) stepStartInner() {
 		if cur != events.PhaseRunning && cur != events.PhaseStarting {
 			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
 		}
-		return
+		return startSkipped
 	}
 	o.stopDevTask()
 	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
@@ -476,6 +495,7 @@ func (o *Orchestrator) stepStartInner() {
 		LogName:          command.Source,
 		ReplaceByLogName: true,
 	})
+	return startDone
 }
 
 type startCommand struct {
