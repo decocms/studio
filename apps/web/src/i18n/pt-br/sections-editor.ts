@@ -113,6 +113,7 @@ export const sectionsEditor = {
   "sectionsEditor.mediaTransformControls.mutedLabel": "Mudo",
   "sectionsEditor.mediaTransformControls.qualityLabel": "Qualidade",
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Adicionar variante",
+  "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Regra",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variante {n}",
   "sectionsEditor.pageJsonDialog.copied": "Copiado",
   "sectionsEditor.pageJsonDialog.copy": "Copiar",
