@@ -308,7 +308,18 @@ jobs:
         run: |
           cargo test -p harness -- --test-threads=1
           cargo test -p upstream -- --test-threads=1
-          setsid --wait cargo test -p local-api -- --test-threads=1
+          # local-api's ~850 tests are chunked into separate processes, not
+          # because any one of them is slow but because running them all in a
+          # single long-lived process exhausts the runner: the kill point moved
+          # steadily later (past 1000 tests) as individual suspects were
+          # excluded, which is accumulation, not one bad test. A new process
+          # per chunk reclaims whatever is being held. `setsid` keeps the
+          # process-group suites' stray signals inside their own session.
+          for chunk in routes:: sandbox:: setup::; do
+            setsid --wait cargo test -p local-api "$chunk" -- --test-threads=1
+          done
+          setsid --wait cargo test -p local-api -- --test-threads=1 \
+            --skip routes:: --skip sandbox:: --skip setup::
           cargo test -p deco -- --test-threads=1
 
   # ---------------------------------------------------------------------
