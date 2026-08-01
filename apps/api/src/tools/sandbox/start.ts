@@ -67,7 +67,7 @@ import {
   syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "./thread-repo";
-import { isStickyHeadRefEnabled, pickGitBranch } from "../../sandbox/head-ref";
+import { pickGitBranch } from "../../sandbox/head-ref";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
@@ -461,7 +461,7 @@ async function provisionSandbox(
     // derived ref: the derived ref may never have been pushed, in which case
     // cloning it forks from the repo default and the preview serves pre-change
     // code while the work sits on the PR branch. Flagged off by default.
-    const stickyHeadRef = isStickyHeadRefEnabled();
+    const stickyHeadRef = getSettings().sandboxStickyHeadRefEnabled;
     const gitBranch = pickGitBranch({
       branch,
       derivedRef: syntheticBranchToGitRef(branch),

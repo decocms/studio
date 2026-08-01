@@ -45,6 +45,20 @@ describe("resolveConfig sandbox provider kind", () => {
   });
 });
 
+describe("resolveConfig sandbox sticky head ref", () => {
+  it("defaults to disabled when unset", () => {
+    const result = resolveConfig(flags, {});
+    expect(result.settings.sandboxStickyHeadRefEnabled).toBe(false);
+  });
+
+  it("enables via SANDBOX_STICKY_HEAD_REF=true", () => {
+    const result = resolveConfig(flags, {
+      SANDBOX_STICKY_HEAD_REF: "true",
+    });
+    expect(result.settings.sandboxStickyHeadRefEnabled).toBe(true);
+  });
+});
+
 describe("resolveConfig NATS tunnel settings", () => {
   it("enables public tunnel when NATS_PUBLIC_URL is set and flag is unset", () => {
     const result = resolveConfig(flags, {

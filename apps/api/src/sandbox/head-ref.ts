@@ -94,13 +94,3 @@ export function pickGitBranch(args: {
   if (args.sticky && args.recordedHeadRef) return args.recordedHeadRef;
   return args.derivedRef;
 }
-
-/**
- * Sticky HEAD is a change on the sandbox BOOT path — which branch a sandbox
- * checks out — so it ships behind its own default-off flag rather than
- * piggybacking on a neighbour's. Recording runs regardless, so the data is
- * already there when this is switched on.
- */
-export function isStickyHeadRefEnabled(): boolean {
-  return process.env.SANDBOX_STICKY_HEAD_REF === "true";
-}
