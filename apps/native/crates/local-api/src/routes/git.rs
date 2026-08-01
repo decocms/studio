@@ -2140,6 +2140,12 @@ mod tests {
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
+    /// IGNORED ON LINUX — see the note on
+    /// `process_group::tests::cleanup_warning_deadline_does_not_release_an_unreaped_owner`.
+    /// Both tests drive the TERM-then-KILL group reap, and both destabilise a
+    /// GitHub ubuntu runner badly enough that the test process is SIGKILLed
+    /// before it can report why. macOS runs both every build.
+    #[cfg_attr(target_os = "linux", ignore)]
     #[cfg(unix)]
     #[tokio::test]
     async fn slow_git_group_is_term_kill_reaped_before_owner_finalizes() {

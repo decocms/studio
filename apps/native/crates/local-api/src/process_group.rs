@@ -683,6 +683,10 @@ mod tests {
     /// every build. Un-ignore it the moment someone can watch it on a Linux
     /// box; do not delete it, and do not assume a passing CI run means it was
     /// fixed unless this attribute came off with it.
+    ///
+    /// `routes::git::tests::slow_git_group_is_term_kill_reaped_before_owner_finalizes`
+    /// is ignored for the same reason. Both drive the TERM-then-KILL group
+    /// reap, so treat them as one investigation rather than two.
     #[cfg_attr(target_os = "linux", ignore)]
     #[cfg(unix)]
     #[tokio::test]
