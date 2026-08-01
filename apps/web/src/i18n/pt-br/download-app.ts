@@ -12,4 +12,13 @@ export const downloadApp = {
     "Para Macs com Apple Silicon (M1 ou mais novo) — Windows em breve.",
   "downloadApp.openLabel": "Baixar o app do Studio",
   "downloadApp.installOnMac": "Instalar no Mac",
+  "downloadApp.linuxDescription":
+    "O app vem como um único AppImage — baixe, torne-o executável e execute. Sem instalador, sem root.",
+  "downloadApp.downloadAppImage": "Baixar o AppImage",
+  "downloadApp.linuxChmodHint":
+    "Antes torne-o executável: rode chmod +x no arquivo baixado ou marque “Permitir execução do arquivo como programa” nas propriedades dele.",
+  "downloadApp.linuxArchNote":
+    "Para Linux x86 de 64 bits (x86_64) — Arm e Windows em breve.",
+  "downloadApp.allReleases": "Ver todas as versões",
+  "downloadApp.installOnLinux": "Instalar no Linux",
 } satisfies Record<keyof typeof downloadAppEn, string>;

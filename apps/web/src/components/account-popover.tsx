@@ -47,6 +47,7 @@ import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app.ts";
 import {
   DownloadAppDialog,
+  isLinuxDesktopBrowser,
   isMacDesktopBrowser,
 } from "@/components/download-app-dialog";
 import { toast } from "@decocms/ui/components/sonner.tsx";
@@ -403,14 +404,16 @@ export function AccountPopover() {
           } satisfies MenuItem,
         ]
       : []),
-    // Same gate as the other DownloadAppDialog triggers: the terminal
-    // installer only works on Mac desktop browsers, and is pointless
+    // Same gate as the other DownloadAppDialog triggers: a desktop build only
+    // exists for Mac and Linux desktop browsers, and offering it is pointless
     // inside the desktop app itself.
-    ...(isMacDesktopBrowser() && !isDesktopApp
+    ...((isMacDesktopBrowser() || isLinuxDesktopBrowser()) && !isDesktopApp
       ? [
           {
-            key: "install-on-mac",
-            label: t("downloadApp.installOnMac"),
+            key: "install-desktop-app",
+            label: isLinuxDesktopBrowser()
+              ? t("downloadApp.installOnLinux")
+              : t("downloadApp.installOnMac"),
             icon: <Download01 size={16} />,
             onClick: () => setDownloadAppOpen(true),
           } satisfies MenuItem,

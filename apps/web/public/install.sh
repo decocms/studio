@@ -26,8 +26,10 @@ fail() {
   exit 1
 }
 
+# Linux ships a self-contained AppImage instead — no installer needed, so this
+# script stays macOS-only (it is a pure Homebrew cask wrapper).
 [ "$(uname -s)" = "Darwin" ] ||
-  fail "this installer is macOS-only. Downloads: $RELEASES"
+  fail "this installer is macOS-only. On Linux, download deco-<version>-linux-x86_64.AppImage from $RELEASES, chmod +x it and run it."
 
 [ "$(uname -m)" = "arm64" ] ||
   fail "only Apple Silicon builds exist so far. Watch $RELEASES for Intel."

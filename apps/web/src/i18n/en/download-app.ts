@@ -10,4 +10,13 @@ export const downloadApp = {
     "For Apple Silicon Macs (M1 and newer) — Windows coming soon.",
   "downloadApp.openLabel": "Download the Studio app",
   "downloadApp.installOnMac": "Install on Mac",
+  "downloadApp.linuxDescription":
+    "The app ships as a single AppImage — download it, make it executable, and run it. No installer, no root.",
+  "downloadApp.downloadAppImage": "Download the AppImage",
+  "downloadApp.linuxChmodHint":
+    "Make it executable first: run chmod +x on the downloaded file, or tick “Allow executing file as program” in its properties.",
+  "downloadApp.linuxArchNote":
+    "For 64-bit x86 Linux (x86_64) — Arm and Windows coming soon.",
+  "downloadApp.allReleases": "View all releases",
+  "downloadApp.installOnLinux": "Install on Linux",
 } as const;

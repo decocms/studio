@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@decocms/shared/entities";
 import {
   DownloadAppDialog,
+  isLinuxDesktopBrowser,
   isMacDesktopBrowser,
 } from "@/components/download-app-dialog";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
@@ -78,7 +79,11 @@ export function NoAiProviderEmptyState({
   const [gridOpen, setGridOpen] = useState(false);
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const isDesktopApp = useIsDesktopApp();
-  const offerDownload = isMacDesktopBrowser() && !isDesktopApp;
+  // The acquisition path for browser users on a platform we ship a desktop
+  // build for is the app itself, not the `bunx decocms link` CLI. On a
+  // platform with no build there is nothing to offer.
+  const offerDownload =
+    (isMacDesktopBrowser() || isLinuxDesktopBrowser()) && !isDesktopApp;
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
