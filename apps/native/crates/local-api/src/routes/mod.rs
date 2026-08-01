@@ -4,6 +4,7 @@
 //! handlers get wired to paths; adding/removing a route is a `router.rs`
 //! change, not a change here.
 
+pub mod agent_hooks;
 pub mod bash;
 pub mod config;
 pub mod dispatch;
@@ -20,6 +21,7 @@ pub mod repo_dir;
 pub mod scripts;
 pub mod setup;
 pub mod tasks;
+pub mod terminal;
 pub mod threads;
 pub mod update;
 pub mod upstream;

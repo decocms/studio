@@ -15,6 +15,7 @@ use crate::sandbox::SandboxManager;
 use crate::setup::SetupOrchestrator;
 use crate::shutdown::ShutdownCoordinator;
 use crate::tasks::TaskRegistry;
+use crate::terminal::AgentSessionRegistry;
 
 /// Desktop-app self-update integration, injected by the Tauri shell via
 /// `StartOptions::update`. `None` outside the packaged shell (the standalone
@@ -104,4 +105,8 @@ pub struct AppState {
     pub sandbox_manager: Arc<SandboxManager>,
     /// See [`UpdateHooks`]. `None` outside the packaged desktop shell.
     pub update: Option<UpdateHooks>,
+    /// Interactive Claude Code/Codex PTYs, keyed by the complete local thread
+    /// fence. View detach does not affect this owner; delete/logout/shutdown
+    /// explicitly reap through it.
+    pub agent_sessions: Arc<AgentSessionRegistry>,
 }

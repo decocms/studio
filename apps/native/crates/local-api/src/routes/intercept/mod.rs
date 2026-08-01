@@ -3,7 +3,7 @@
 //! the REAL production web shell (`apps/web/src`), and this module is
 //! where local-api answers, LOCALLY, the specific narrow set of routes that
 //! shell's thread/chat/model surfaces need served from local SQLite + the
-//! local harness CLI instead of the (unmodified, possibly-production)
+//! native runtime instead of the (unmodified, possibly-production)
 //! upstream mesh. Every route below cites
 //! the native interception contract (the wire-contract recon)
 //! for the exact shape it emulates — this module is that recon turned into
@@ -28,12 +28,7 @@
 //! | `POST /api/:org/tools/LINK_CURRENT_GET` | §3.4 | [`link_current`] |
 //! | `GET /api/:org/watch` | local thread lifecycle SSE | [`watch`] |
 //! | `POST /api/:org/sandbox/:virtualMcpId/:branch/{read,write,unlink,mkdir,rename,glob,grep}` | native sandbox filesystem bridge | [`sandbox_fs`] |
-//! | `POST /api/:org/decopilot/threads/:threadId/messages` | §3.2 | [`decopilot`] |
-//! | `GET /api/:org/decopilot/threads/:threadId/stream` | §3.2 | [`decopilot`] |
-//! | `POST /api/:org/decopilot/cancel/:threadId` | §3.2 | [`decopilot`] |
-//! | `GET /api/:org/decopilot/queue/:threadId` | §3.2 | [`decopilot`] |
-//! | `POST /api/:org/decopilot/queue/:threadId/cancel/:workflowId` | §3.2 | [`decopilot`] |
-//! | any other `/api/:org/decopilot/*` | §3.2 backstop | [`decopilot`] (local 404, never forwarded) |
+//! | any `/api/:org/decopilot/*` | retired native chat transport | local `410`, never forwarded |
 //! | any other `/api/:org/tools/:toolName` | — | not intercepted (`None`) |
 //!
 //! Native `GET /api/:org/watch` is intentionally local-only. It never opens,
@@ -48,15 +43,11 @@
 //! route family falls through to the ordinary upstream proxy, which is
 //! correct (org CRUD, connections, members, roles, settings, task board,
 //! etc. are genuinely meant to proxy unchanged — map §2.3). `/decopilot/*`
-//! is different: per map §3.2, its cloud implementation enqueues onto a
-//! DBOS workflow and tails NATS JetStream, neither reachable from this
-//! process, so ANY sub-path under it must be intercepted, never
-//! selectively forwarded by payload — this is the backstop for the
-//! frontend's own `pendingAgentOption` default risk (map §2.4): even if a
-//! request under this prefix somehow named `harnessId: "decopilot"` or
-//! omitted it, this module still answers locally (running the
-//! locally-preferred CLI, or a clear local error) rather than ever letting
-//! it reach the real upstream decopilot route.
+//! is different: native chats now own a persistent terminal session through
+//! the literal `/api/:org/threads/:threadId/terminal{,/ws}` routes. Every old
+//! Decopilot request/stream/queue path is therefore tombstoned locally with
+//! `410 native_chat_removed`. This prevents a stale bundle from splitting one
+//! chat between the local PTY and the hosted workflow service.
 //!
 //! ## `:org` is opaque
 //!
@@ -67,12 +58,10 @@
 //! local data, never round-tripped against upstream.
 
 mod agent_sessions;
-pub mod decopilot;
 mod dev_server;
 mod git_assist;
 pub mod link_current;
 mod preview_invoke;
-pub(crate) mod run_spool;
 mod sandbox_events;
 mod sandbox_fs;
 mod sandbox_lifecycle;
@@ -80,7 +69,8 @@ mod sandbox_ops;
 pub mod thread_tools;
 
 pub(crate) use sandbox_lifecycle::{
-    preview_host_base, set_preview_host, set_preview_port, set_preview_scheme,
+    config_from_virtual_mcp, preview_host_base, set_preview_host, set_preview_port,
+    set_preview_scheme,
 };
 pub(crate) mod watch;
 
@@ -180,10 +170,6 @@ pub async fn try_intercept(
                     ));
                 }
             };
-            if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
-                tracing::warn!(%error, "native watch queue recovery failed");
-                return Some(watch::retryable_refusal("chat queue recovery in progress"));
-            }
             Some(watch::get(&scope, org, query))
         }
         Some("tools") if rest.len() == 2 && *method == Method::POST => match rest[1] {
@@ -197,35 +183,23 @@ pub async fn try_intercept(
                 let Some(scope) = thread_tools::current_account_scope().await else {
                     return Some(ApiError::unauthorized().into_response());
                 };
-                if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
-                    return Some(
-                        ApiError::internal(format!("native chat queue recovery failed: {error}"))
-                            .into_response(),
-                    );
-                }
                 thread_tools::dispatch_scoped(state, &scope, org, tool_name, body).await
             }
             _ => None,
         },
         Some("decopilot") => {
-            let Some(scope) = thread_tools::current_account_scope().await else {
-                return Some(ApiError::unauthorized().into_response());
-            };
-            if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
-                return Some(
-                    ApiError::internal(format!("native chat queue recovery failed: {error}"))
-                        .into_response(),
-                );
-            }
-            Some(decopilot::dispatch(state, &scope, org, method, &rest[1..], body).await)
+            // A stale native bundle must fail locally. Falling through would
+            // enqueue work on hosted Decopilot and split one chat across two
+            // execution models.
+            Some(ApiError::gone("native_chat_removed").into_response())
         }
         _ => None,
     }
 }
 
 /// Test-only `AppState` fixture, shared by this module's own tests AND
-/// every sibling submodule's tests (`thread_tools`, `decopilot`,
-/// `link_current`) — one place to keep in sync with `AppState`'s fields
+/// every sibling submodule's tests (`thread_tools`, `link_current`, etc.) —
+/// one place to keep in sync with `AppState`'s fields
 /// rather than duplicating this boilerplate per file.
 #[cfg(test)]
 pub(crate) fn test_state(root: &std::path::Path) -> AppState {
@@ -248,6 +222,7 @@ pub(crate) fn test_state(root: &std::path::Path) -> AppState {
         token: Arc::from("test-token"),
         boot_id: Arc::from("boot-1"),
         sandbox_manager: crate::sandbox::SandboxManager::new(root.to_path_buf()),
+        agent_sessions: crate::terminal::AgentSessionRegistry::new(),
         app_root: root.to_path_buf(),
         repo_dir,
         mode: ApiMode::Strict,
@@ -331,9 +306,13 @@ mod tests {
             &Bytes::new(),
         )
         .await;
-        assert!(
-            res.is_some(),
-            "the entire /decopilot/* family must be intercepted, never forwarded upstream"
+        let res = res
+            .expect("the entire /decopilot/* family must be intercepted, never forwarded upstream");
+        assert_eq!(res.status(), axum::http::StatusCode::GONE);
+        let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({ "error": "native_chat_removed" })
         );
     }
 }

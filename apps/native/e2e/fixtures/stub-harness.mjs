@@ -176,7 +176,7 @@
  *
  * VERSION PROBE: `claude --version` / `claude -v` (checked before any
  * scenario logic, short-circuits everything else) prints
- * `<STUB_HARNESS_VERSION or "0.0.0-stub"> (Claude Code)` to stdout and
+ * `<STUB_HARNESS_VERSION or "2.1.218"> (Claude Code)` to stdout and
  * exits 0 — no ndjson, matching the real CLI's plain-text `--version`
  * output. Override the printed version via the `STUB_HARNESS_VERSION` env
  * var (useful for asserting `GET /models` reflects a specific detected
@@ -340,7 +340,10 @@ const { flags, positionals } = parseArgv(process.argv.slice(2));
 
 // --- version probe (short-circuits everything else) -------------------------
 if (flags["-v"] || flags["--version"]) {
-  const version = process.env.STUB_HARNESS_VERSION || "0.0.0-stub";
+  // Keep the deterministic CLI inside Studio Native's conservative tested
+  // baseline. Tests that exercise compatibility failures can still override
+  // this explicitly.
+  const version = process.env.STUB_HARNESS_VERSION || "2.1.218";
   process.stdout.write(`${version} (Claude Code)\n`);
   process.exit(0);
 }

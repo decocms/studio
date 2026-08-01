@@ -124,9 +124,10 @@ release signing identity; there is no filesystem token-store fallback.
 ### Verification matrix
 
 The native E2E suite can run against the built `local-api` binary through
-`LOCAL_API_E2E_CMD`. Provider-resume tests use deterministic Claude Code and
-Codex fixtures to prove that the persisted provider session ID is reused and
-only the newest user message is sent when a run resumes.
+`LOCAL_API_E2E_CMD`. Terminal-agent tests use deterministic interactive Claude
+Code and Codex fixtures to prove PTY behavior, scoped MCP and hook
+capabilities, persisted provider-session resume, and that an accepted prompt
+is never replayed after restart.
 
 Run `bun run fmt` after changes.
 

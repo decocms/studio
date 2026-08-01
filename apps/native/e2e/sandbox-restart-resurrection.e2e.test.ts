@@ -40,10 +40,6 @@ import {
 } from "./sandbox-handle";
 
 import {
-  signInAndCompleteSession,
-  startAuthenticatedUpstream,
-} from "./authenticated-upstream";
-import {
   authHeaders,
   describeLocalApi,
   jsonAuthHeaders,
@@ -106,50 +102,6 @@ function setupFixtureRepo(packageJson = PACKAGE_JSON): {
   git(workDir, ["push", "-q", "-u", "origin", "main"]);
   git(bareDir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
   return { root, bareDir };
-}
-
-/** Dispatches one turn, driving `SandboxManager::ensure` (clone + install +
- * start cascade) exactly like a real chat turn would — mirrors
- * `sandbox-resolution.e2e.test.ts`'s identically-named helper. */
-async function dispatchTurn(
-  a: LocalApi,
-  org: string,
-  threadId: string,
-  virtualMcpId: string,
-  cloneUrl: string,
-  branch: string,
-): Promise<void> {
-  const res = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/messages`),
-    {
-      method: "POST",
-      headers: jsonAuthHeaders(),
-      body: JSON.stringify({
-        messages: [
-          { role: "user", parts: [{ type: "text", text: "SCENARIO:simple" }] },
-        ],
-        tier: "smart",
-        mode: "default",
-        toolApprovalLevel: "auto",
-        agent: { id: virtualMcpId },
-        harnessId: "claude-code",
-        branch,
-        sandbox: {
-          virtualMcpId,
-          repo: { cloneUrl, branch },
-          workload: { runtime: "bun", packageManager: "bun" },
-        },
-      }),
-    },
-  );
-  expect(res.status).toBe(202);
-
-  const streamRes = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/stream`),
-    { headers: jsonAuthHeaders() },
-  );
-  expect(streamRes.status).toBe(200);
-  await streamRes.text();
 }
 
 interface TaskSummary {
@@ -328,27 +280,12 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
   bareDir: string;
   virtualMcpId: string;
   handle: string;
-  upstream: ReturnType<typeof startAuthenticatedUpstream>;
 }> {
   const fixture = setupFixtureRepo();
-  const upstream = startAuthenticatedUpstream();
   const virtualMcpId = `sandbox-restart-e2e-${vmcpSuffix}`;
   const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-  const a = await startLocalApi(
-    stubClaudeBinEnv({
-      DECOCMS_UPSTREAM_URL: upstream.url,
-      LOCAL_API_TOKEN_STORE: "memory",
-    }),
-  );
-  await signInAndCompleteSession(a);
-  await dispatchTurn(
-    a,
-    "sandbox-restart-org",
-    `thread-${vmcpSuffix}`,
-    virtualMcpId,
-    fixture.bareDir,
-    "main",
-  );
+  const a = await startLocalApi(stubClaudeBinEnv());
+  expect(await ensureSandbox(a, virtualMcpId, fixture.bareDir)).toBe(handle);
   // `ensure()` returns once clone/checkout are done but install+start
   // cascade asynchronously — wait for the REAL dev server before killing,
   // so this is provably "a sandbox that was actually running", not one
@@ -366,7 +303,6 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
     bareDir: fixture.bareDir,
     virtualMcpId,
     handle,
-    upstream,
   };
 }
 
@@ -375,13 +311,10 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
 // repeating rmSync-in-a-try/finally in every test body).
 let cleanupDirs: string[] = [];
 let liveApi: LocalApi | null = null;
-let liveUpstream: ReturnType<typeof startAuthenticatedUpstream> | null = null;
 
 afterEach(async () => {
   await stopLocalApi(liveApi, { keepWorkdir: true });
   liveApi = null;
-  liveUpstream?.server.stop(true);
-  liveUpstream = null;
   for (const dir of cleanupDirs) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -574,20 +507,13 @@ describeLocalApi(
     }, 60_000);
 
     it("owner's exact sequence: establish -> kill -9 local-api -> relaunch same workdir -> headerless setup/start resurrects THE sandbox and its output streams on /_sandbox/events", async () => {
-      const { workdir, fixtureRoot, handle, upstream } =
+      const { workdir, fixtureRoot, handle } =
         await establishThenKill("headerless");
       cleanupDirs = [fixtureRoot, workdir];
-      liveUpstream = upstream;
 
       // Relaunch against the SAME workdir — a fresh process, empty
       // in-memory `SandboxManager`, but the workdir/sidecar/logs survive.
-      const b = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-        { workdir },
-      );
+      const b = await startLocalApi(stubClaudeBinEnv(), { workdir });
       liveApi = b;
 
       // Confirm the in-memory state really was forgotten (this is the
@@ -648,18 +574,11 @@ describeLocalApi(
     }, 45_000);
 
     it("an EXPLICIT (stale, pre-restart) handle also resurrects on the first attempt — no frontend round-trip needed", async () => {
-      const { workdir, fixtureRoot, handle, upstream } =
+      const { workdir, fixtureRoot, handle } =
         await establishThenKill("explicit-handle");
       cleanupDirs = [fixtureRoot, workdir];
-      liveUpstream = upstream;
 
-      const b = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-        { workdir },
-      );
+      const b = await startLocalApi(stubClaudeBinEnv(), { workdir });
       liveApi = b;
 
       // This is exactly the frontend's FIRST attempt in `restart()`
@@ -712,27 +631,13 @@ describeLocalApi(
 
     it("setup/stop kills the running dev task without respawning it", async () => {
       const fixture = setupFixtureRepo();
-      const upstream = startAuthenticatedUpstream();
-      liveUpstream = upstream;
       const virtualMcpId = "sandbox-restart-e2e-stop";
       const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-      const a = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-      );
+      const a = await startLocalApi(stubClaudeBinEnv());
       liveApi = a;
       cleanupDirs = [fixture.root];
-      await signInAndCompleteSession(a);
-
-      await dispatchTurn(
-        a,
-        "sandbox-restart-org",
-        "thread-stop",
-        virtualMcpId,
-        fixture.bareDir,
-        "main",
+      expect(await ensureSandbox(a, virtualMcpId, fixture.bareDir)).toBe(
+        handle,
       );
       await waitForFreshRunningTask(a, handle, "dev", new Set());
       const runningCapture = await readSseUntil(
@@ -798,17 +703,10 @@ describeLocalApi(
     }, 30_000);
 
     it("setup/stop is idempotent for a durable sandbox after backend restart and never starts it", async () => {
-      const { workdir, fixtureRoot, handle, upstream } =
+      const { workdir, fixtureRoot, handle } =
         await establishThenKill("stop-no-resurrect");
       cleanupDirs = [fixtureRoot, workdir];
-      liveUpstream = upstream;
-      const b = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-        { workdir },
-      );
+      const b = await startLocalApi(stubClaudeBinEnv(), { workdir });
       liveApi = b;
 
       const res = await fetch(url(b, "/_sandbox/setup/stop"), {

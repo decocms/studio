@@ -748,6 +748,7 @@ mod tests {
             token: Arc::from("test-token"),
             boot_id: Arc::from("test-boot"),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

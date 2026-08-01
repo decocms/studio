@@ -6,6 +6,8 @@ export const agentShellLayout = {
     "Something went wrong loading the chat. Try refreshing.",
   "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",
   "agentShellLayout.agentShellLayout.goToOrgHome": "Go to organization home",
+  "agentShellLayout.agentShellLayout.nativeRuntimeUnavailable":
+    "The native terminal runtime is unavailable. Restart Studio and try again.",
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Something went wrong. Try refreshing.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",

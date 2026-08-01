@@ -97,6 +97,7 @@ mod tests {
             token: "test-token".into(),
             boot_id: "test-boot".into(),
             sandbox_manager,
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

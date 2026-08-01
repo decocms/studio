@@ -5,7 +5,7 @@ import { useCurrentLink } from "@/hooks/use-current-link";
 import { useT } from "@/i18n/use-t.ts";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import { useChatPrefs } from "./context";
-import type { AgentOption } from "./pills/agent-options";
+import type { LocalAgentOption } from "./pills/agent-options";
 
 /**
  * Native counterpart of `NoAiProviderEmptyState`. The desktop app has no
@@ -16,16 +16,20 @@ import type { AgentOption } from "./pills/agent-options";
  *
  * Both options are always offered: availability is advisory in this codebase
  * and must not prevent selection. Picking one persists the pending agent
- * option, which resolves the gate and hands over to the composer — the
- * escape hatch out of a stuck detection state.
+ * option, which resolves the gate and launches the terminal — the escape
+ * hatch out of a stuck detection state.
  */
-export function NativeAgentEmptyState() {
+export function NativeAgentEmptyState({
+  onSelect,
+}: {
+  onSelect?: (option: LocalAgentOption) => void;
+}) {
   const t = useT();
   const link = useCurrentLink();
   const { setPendingAgentOption } = useChatPrefs();
 
   const options: Array<{
-    option: AgentOption;
+    option: LocalAgentOption;
     label: string;
     icon: ReactNode;
     detected: boolean;
@@ -83,7 +87,10 @@ export function NativeAgentEmptyState() {
                   })
                 : undefined
             }
-            onClick={() => setPendingAgentOption(o.option)}
+            onClick={() => {
+              setPendingAgentOption(o.option);
+              onSelect?.(o.option);
+            }}
           >
             {o.icon}
             {t("chat.noAiProviderEmptyState.useLabel", { label: o.label })}

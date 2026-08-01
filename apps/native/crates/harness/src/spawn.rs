@@ -95,6 +95,7 @@ impl SpawnRequest {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
+    Interrupt,
     Term,
     Kill,
 }
@@ -103,6 +104,7 @@ impl Signal {
     /// The `kill(1)` flag spelling — the one place this mapping lives.
     pub(crate) fn flag(self) -> &'static str {
         match self {
+            Signal::Interrupt => "-INT",
             Signal::Term => "-TERM",
             Signal::Kill => "-KILL",
         }

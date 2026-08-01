@@ -6,7 +6,7 @@ import {
 } from "@/sdk";
 
 export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
-type LocalAgentOption = Exclude<AgentOption, "decopilot">;
+export type LocalAgentOption = Exclude<AgentOption, "decopilot">;
 
 export interface AgentPins {
   harness: HarnessId;

@@ -7,10 +7,11 @@
 //! same invariant to Rust: once a harness flips to `true`, no later probe
 //! — however it fails — can flip it back.
 //!
-//! "Detected" means the CLI is installed AND has a confirmed logged-in
-//! session — FAIL-CLOSED: an installed-but-not-logged-in CLI is not usable,
-//! so it does NOT count as detected. `probe()` requires BOTH a successful
-//! `--version` probe (installed) AND a passing auth probe (logged in):
+//! "Detected" means the CLI is installed, new enough for Studio Native's
+//! complete tested contract, AND has a confirmed logged-in session —
+//! FAIL-CLOSED: an installed-but-unsupported or installed-but-not-logged-in
+//! CLI is not usable, so it does NOT count as detected. `probe()` requires
+//! BOTH a supported parsed `--version` and a passing auth probe (logged in):
 //!   - claude via `<bin> auth status --json`'s `"loggedIn":true` (mirrors
 //!     `capabilities.ts::detectClaudeCode`'s account-email check, adapted
 //!     since this crate drives the CLI's own surface rather than the
@@ -38,7 +39,7 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use crate::resolve::{self, HarnessId};
+use crate::resolve::{self, CliVersion, HarnessId, ResolveError};
 
 /// Wall-clock cap on a single probe subprocess (version OR auth check).
 /// Generous for a binary that's actually installed and responsive, bounded
@@ -173,9 +174,8 @@ async fn probe_missing(current: Detection) -> Detection {
 }
 
 async fn probe(harness: HarnessId) -> bool {
-    // Fail-CLOSED: detected == installed AND logged in. Short-circuit the
-    // auth probe when `--version` already failed (nothing to be logged in
-    // to).
+    // Fail-CLOSED: detected == installed AND supported AND logged in.
+    // Short-circuit the auth probe when version compatibility already failed.
     if !version_ok(harness).await {
         return false;
     }
@@ -192,12 +192,62 @@ async fn probe(harness: HarnessId) -> bool {
 }
 
 async fn version_ok(harness: HarnessId) -> bool {
-    let Ok(argv) = resolve::resolve_argv(harness) else {
-        return false;
+    let argv = match resolve::resolve_argv(harness) {
+        Ok(argv) => argv,
+        Err(error) => {
+            tracing::warn!(
+                harness = harness.wire_id(),
+                %error,
+                "coding agent CLI could not be resolved and is unavailable"
+            );
+            return false;
+        }
     };
-    run_probe_capture(&argv, &["--version"], PROBE_TIMEOUT)
+    match require_supported_version(harness, &argv).await {
+        Ok(version) => {
+            tracing::debug!(
+                harness = harness.wire_id(),
+                %version,
+                "coding agent CLI version is supported"
+            );
+            true
+        }
+        Err(error) => {
+            // This warning is intentionally actionable: an unsupported CLI
+            // must not look identical to an absent binary in native logs.
+            tracing::warn!(
+                harness = harness.wire_id(),
+                %error,
+                "coding agent CLI is unavailable because its version is unsupported or unverifiable"
+            );
+            false
+        }
+    }
+}
+
+/// Probe the already-resolved argv prefix and require Studio Native's tested
+/// provider baseline. Availability detection and direct terminal launch both
+/// call this function, so a stale UI/request cannot bypass the version gate.
+pub async fn require_supported_version(
+    harness: HarnessId,
+    argv: &[String],
+) -> Result<CliVersion, ResolveError> {
+    let output = run_probe_capture(argv, &["--version"], PROBE_TIMEOUT)
         .await
-        .is_some()
+        .ok_or_else(|| {
+            ResolveError::VersionCheckFailed(format!(
+                "could not verify the installed {} version: `{} --version` did not complete \
+                 successfully within {} seconds; Studio Native requires {} {} or newer. \
+                 Upgrade with `{}` and try again",
+                harness.display_name(),
+                harness.default_binary_name(),
+                PROBE_TIMEOUT.as_secs(),
+                harness.display_name(),
+                harness.minimum_supported_version(),
+                harness.upgrade_command(),
+            ))
+        })?;
+    resolve::require_supported_version(harness, &output)
 }
 
 async fn auth_ok(harness: HarnessId) -> bool {
@@ -319,6 +369,24 @@ async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[cfg(unix)]
+    fn version_fixture(output: &str, exit_code: u8) -> (tempfile::TempDir, Vec<String>) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("version-fixture");
+        let output_path = directory.path().join("version-output");
+        std::fs::write(&output_path, format!("{output}\n")).unwrap();
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh").unwrap();
+        writeln!(file, "/bin/cat '{}'", output_path.display()).unwrap();
+        writeln!(file, "exit {exit_code}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let argv = vec![path.display().to_string()];
+        (directory, argv)
+    }
 
     #[test]
     fn detection_merge_is_grow_only() {
@@ -422,5 +490,46 @@ mod tests {
     fn codex_login_status_recognizes_not_logged_in() {
         assert!(!codex_login_status_indicates_logged_in("Not logged in"));
         assert!(!codex_login_status_indicates_logged_in(""));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn supported_version_probe_uses_the_resolved_argv_prefix() {
+        let (_directory, argv) = version_fixture("2.1.218 (Claude Code)", 0);
+        let version = require_supported_version(HarnessId::ClaudeCode, &argv)
+            .await
+            .unwrap();
+        assert_eq!(version.to_string(), "2.1.218");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn direct_version_probe_rejects_an_installed_but_old_cli() {
+        let (_directory, argv) = version_fixture("codex-cli 0.144.4", 0);
+        let error = require_supported_version(HarnessId::Codex, &argv)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            &error,
+            ResolveError::UnsupportedVersion {
+                harness: HarnessId::Codex,
+                ..
+            }
+        ));
+        assert!(error.to_string().contains("Codex CLI 0.144.4"));
+        assert!(error.to_string().contains("Codex CLI 0.144.5 or newer"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_version_process_returns_explicit_requirement_and_upgrade_guidance() {
+        let (_directory, argv) = version_fixture("broken", 12);
+        let error = require_supported_version(HarnessId::ClaudeCode, &argv)
+            .await
+            .unwrap_err();
+        assert!(matches!(&error, ResolveError::VersionCheckFailed(_)));
+        let message = error.to_string();
+        assert!(message.contains("Claude Code 2.1.218 or newer"));
+        assert!(message.contains("`claude update`"));
     }
 }

@@ -83,18 +83,30 @@ export function resolveLocalApiCmd(
   return parts;
 }
 
+/** Independent command seam for the feature-gated embedded E2E runner.
+ * Keeping this separate from `LOCAL_API_E2E_CMD` lets bearer-contract suites
+ * and embedded terminal suites coexist in the same CI invocation. */
+export function resolveEmbeddedLocalApiCmd(
+  ...args: [raw?: string | null]
+): string[] | null {
+  const raw =
+    args.length > 0 ? args[0] : process.env.LOCAL_API_EMBEDDED_E2E_CMD;
+  return resolveLocalApiCmd(raw);
+}
+
 // Module-private (not exported) — mirrors `DAEMON_CMD` in
 // `daemon.e2e.helpers.ts`, which is likewise internal-only. Only the pure
 // resolver function above is part of this module's public surface (and is
 // unit-tested directly in `helpers.test.ts`).
 const LOCAL_API_CMD = resolveLocalApiCmd();
+const LOCAL_API_EMBEDDED_CMD = resolveEmbeddedLocalApiCmd();
 
 /** True when no binary is configured. Every suite in this directory reads
  *  this once (via `describeLocalApi`) to skip cleanly, so `bun test` stays
  *  green repo-wide until Phase 1 lands the Rust `local-api` binary. */
 const SKIP_NO_BINARY = LOCAL_API_CMD === null;
 
-if (SKIP_NO_BINARY) {
+if (SKIP_NO_BINARY && LOCAL_API_EMBEDDED_CMD === null) {
   // Printed once at module load (bun:test imports this file once per worker),
   // loud enough to explain a silent "0 tests ran" without digging through the
   // repo. Kept as plain console output (not a test assertion) so it prints
@@ -126,6 +138,9 @@ or a plain whitespace-separated command string:
  * test`'s output entirely.
  */
 export const describeLocalApi = bunDescribe.skipIf(SKIP_NO_BINARY);
+export const describeEmbeddedLocalApi = bunDescribe.skipIf(
+  LOCAL_API_EMBEDDED_CMD === null,
+);
 
 export interface LocalApi {
   port: number;
@@ -265,21 +280,43 @@ async function waitForPreviewPort(
  * opt into a unique disposable Keychain service; callers cannot select a
  * credential store through `extraEnv`.
  */
+interface StartLocalApiOptions {
+  workdir?: string;
+  tokenStore?: { kind: "memory" } | { kind: "keychain"; service: string };
+}
+
 export async function startLocalApi(
   extraEnv: Record<string, string> = {},
-  opts: {
-    workdir?: string;
-    tokenStore?: { kind: "memory" } | { kind: "keychain"; service: string };
-  } = {},
+  opts: StartLocalApiOptions = {},
 ): Promise<LocalApi> {
   if (!LOCAL_API_CMD) {
     throw new Error(
       "startLocalApi() called without LOCAL_API_E2E_CMD set — this should be unreachable behind describeLocalApi/SKIP_NO_BINARY",
     );
   }
+  return startLocalApiCommand(LOCAL_API_CMD, extraEnv, opts);
+}
+
+export async function startEmbeddedLocalApi(
+  extraEnv: Record<string, string> = {},
+  opts: StartLocalApiOptions = {},
+): Promise<LocalApi> {
+  if (!LOCAL_API_EMBEDDED_CMD) {
+    throw new Error(
+      "startEmbeddedLocalApi() called without LOCAL_API_EMBEDDED_E2E_CMD set — this should be unreachable behind describeEmbeddedLocalApi",
+    );
+  }
+  return startLocalApiCommand(LOCAL_API_EMBEDDED_CMD, extraEnv, opts);
+}
+
+async function startLocalApiCommand(
+  command: string[],
+  extraEnv: Record<string, string>,
+  opts: StartLocalApiOptions,
+): Promise<LocalApi> {
   const workdir = opts.workdir ?? mkdtempSync(join(tmpdir(), "local-api-e2e-"));
   const port = await freePort();
-  const [cmd, ...args] = LOCAL_API_CMD;
+  const [cmd, ...args] = command;
   const tokenStore = opts.tokenStore ?? { kind: "memory" as const };
   const proc = spawn(cmd, args, {
     stdio: ["ignore", "pipe", "pipe"],

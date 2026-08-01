@@ -4,16 +4,26 @@ import { LOCALSTORAGE_KEYS } from "./localstorage-keys";
 
 export const AUTOSEND_TTL_MS = 10_000;
 export const AUTOSEND_QUERY_VALUE = "true";
+export const AUTOSEND_MAX_ATTEMPTS = 2;
 
 export interface AutosendPayload {
   message: SendMessageParams;
   createdAt: number;
 }
 
+export interface ClaimedAutosendPayload extends AutosendPayload {
+  /** One-based dispatch attempt, persisted before the caller starts I/O. */
+  attempt: number;
+}
+
 export type AutosendStatus = "pending" | "sending";
 
 export interface StoredAutosendPayload extends AutosendPayload {
   status: AutosendStatus;
+  /** Number of dispatch attempts already claimed. */
+  attempt: number;
+  /** Starts one fresh, bounded retry window after an explicit native rejection. */
+  retryAt?: number;
 }
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -39,16 +49,30 @@ function parseStoredAutosend(
   } catch {
     return null;
   }
+  if (!parsed || typeof parsed !== "object") return null;
+  const candidate = parsed as Record<string, unknown>;
+  let legacyAttempt = 0;
+  if (candidate.status === "sending") {
+    legacyAttempt = candidate.retryAt === undefined ? 1 : AUTOSEND_MAX_ATTEMPTS;
+  } else if (candidate.retryAt !== undefined) {
+    legacyAttempt = 1;
+  }
+  const attempt =
+    candidate.attempt === undefined ? legacyAttempt : candidate.attempt;
   if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    typeof (parsed as { createdAt?: unknown }).createdAt !== "number" ||
-    typeof (parsed as { message?: unknown }).message !== "object" ||
-    !isValidStatus((parsed as { status?: unknown }).status)
+    typeof candidate.createdAt !== "number" ||
+    typeof candidate.message !== "object" ||
+    !isValidStatus(candidate.status) ||
+    (candidate.retryAt !== undefined &&
+      typeof candidate.retryAt !== "number") ||
+    typeof attempt !== "number" ||
+    !Number.isInteger(attempt) ||
+    attempt < 0 ||
+    attempt > AUTOSEND_MAX_ATTEMPTS
   ) {
     return null;
   }
-  return parsed as StoredAutosendPayload;
+  return { ...(parsed as StoredAutosendPayload), attempt };
 }
 
 export function writeStoredAutosend(
@@ -62,6 +86,7 @@ export function writeStoredAutosend(
     message,
     createdAt,
     status: "pending",
+    attempt: 0,
   };
   storage.setItem(autosendStorageKey(locator, taskId), JSON.stringify(payload));
   return payload;
@@ -86,17 +111,31 @@ export function claimStoredAutosend(
   locator: ProjectLocator | string,
   taskId: string,
   now = Date.now(),
-): AutosendPayload | null {
+): ClaimedAutosendPayload | null {
   const key = autosendStorageKey(locator, taskId);
   const payload = readStoredAutosend(storage, locator, taskId);
   if (!payload) return null;
   if (payload.status !== "pending") return null;
-  if (now - payload.createdAt >= AUTOSEND_TTL_MS) {
+  if (payload.attempt >= AUTOSEND_MAX_ATTEMPTS) {
     storage.removeItem(key);
     return null;
   }
-  storage.setItem(key, JSON.stringify({ ...payload, status: "sending" }));
-  return { message: payload.message, createdAt: payload.createdAt };
+  const freshnessAnchor = payload.retryAt ?? payload.createdAt;
+  if (now - freshnessAnchor >= AUTOSEND_TTL_MS) {
+    storage.removeItem(key);
+    return null;
+  }
+  const claimed: StoredAutosendPayload = {
+    ...payload,
+    status: "sending",
+    attempt: payload.attempt + 1,
+  };
+  storage.setItem(key, JSON.stringify(claimed));
+  return {
+    message: claimed.message,
+    createdAt: claimed.createdAt,
+    attempt: claimed.attempt,
+  };
 }
 
 export function clearStoredAutosend(
@@ -105,4 +144,39 @@ export function clearStoredAutosend(
   taskId: string,
 ): void {
   storage.removeItem(autosendStorageKey(locator, taskId));
+}
+
+/**
+ * Return a claimed payload to pending after a native terminal launch/submit
+ * was explicitly rejected. The createdAt comparison prevents an older failed
+ * message from overwriting a newer one, while the attempt comparison prevents
+ * a late rejection from mutating a retry already claimed after a remount.
+ * The second rejected attempt exhausts the handoff and removes it.
+ */
+export function restoreStoredAutosend(
+  storage: StorageLike,
+  locator: ProjectLocator | string,
+  taskId: string,
+  createdAt: number,
+  attempt: number,
+  now = Date.now(),
+): void {
+  const key = autosendStorageKey(locator, taskId);
+  const payload = readStoredAutosend(storage, locator, taskId);
+  if (
+    !payload ||
+    payload.status !== "sending" ||
+    payload.createdAt !== createdAt ||
+    payload.attempt !== attempt
+  ) {
+    return;
+  }
+  if (payload.attempt >= AUTOSEND_MAX_ATTEMPTS) {
+    storage.removeItem(key);
+    return;
+  }
+  storage.setItem(
+    key,
+    JSON.stringify({ ...payload, status: "pending", retryAt: now }),
+  );
 }

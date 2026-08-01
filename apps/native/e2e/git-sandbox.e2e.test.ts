@@ -44,18 +44,15 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
-  signInAndCompleteSession,
-  startAuthenticatedUpstream,
-} from "./authenticated-upstream";
-import {
+  buildDispatchInput,
+  createThread,
   describeLocalApi,
   HOOK_TIMEOUT_MS,
-  jsonAuthHeaders,
   previewUrl,
+  runDispatchToCompletion,
   startLocalApi,
   stopLocalApi,
   stubClaudeBinEnv,
-  url,
   type LocalApi,
 } from "./helpers";
 
@@ -128,52 +125,39 @@ function setupFixtureRepo(): { root: string; bareDir: string } {
   return { root, bareDir };
 }
 
-async function dispatchWriteFileTurn(
+async function dispatchWriteFileRun(
   a: LocalApi,
-  org: string,
-  threadId: string,
   virtualMcpId: string,
   cloneUrl: string,
   branch: string,
 ): Promise<void> {
-  const res = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/messages`),
-    {
-      method: "POST",
-      headers: jsonAuthHeaders(),
-      body: JSON.stringify({
-        messages: [
-          {
-            role: "user",
-            parts: [{ type: "text", text: "SCENARIO:writefile" }],
-          },
-        ],
-        tier: "smart",
-        mode: "default",
-        toolApprovalLevel: "auto",
-        agent: { id: virtualMcpId },
-        harnessId: "claude-code",
-        branch,
-        sandbox: {
-          virtualMcpId,
-          repo: { cloneUrl, branch },
-          workload: { runtime: "bun", packageManager: "bun" },
-        },
-      }),
+  const thread = await createThread(a, `git sandbox ${branch}`);
+  const input = buildDispatchInput({
+    threadId: thread.id,
+    prompt: "SCENARIO:writefile",
+  });
+  input.agent = { id: virtualMcpId };
+  input.workspace = {
+    cwd: "/repo",
+    branch,
+    repo: {
+      owner: "local",
+      name: "fixture",
+      connectedGithub: false,
+      cloneUrl,
     },
+  };
+  const result = await runDispatchToCompletion(
+    a,
+    {
+      runId: `git-sandbox-${branch}-${crypto.randomUUID()}`,
+      harnessId: "claude-code",
+      input,
+    },
+    { deadlineMs: 30_000 },
   );
-  expect(res.status).toBe(202);
-
-  // Read the stream to its natural end (sender dropped by `run.finish()`),
-  // matching `real-ui-interception.e2e.test.ts`'s convention — by the time
-  // this resolves, the stub harness's file write has already happened
-  // (SCENARIO:writefile writes BEFORE emitting any ndjson).
-  const streamRes = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/stream`),
-    { headers: jsonAuthHeaders() },
-  );
-  expect(streamRes.status).toBe(200);
-  await streamRes.text();
+  expect(result.res.status).toBe(200);
+  expect(result.frames.some((frame) => frame.type === "error")).toBe(false);
 }
 
 /** Polls the PREVIEW listener's reverse-proxy fallback (its ONLY route,
@@ -211,43 +195,26 @@ describeLocalApi(
   () => {
     let a: LocalApi;
     let fixture: { root: string; bareDir: string };
-    let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     const virtualMcpId = "git-sandbox-e2e-vmcp";
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      upstream = startAuthenticatedUpstream();
-      a = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-      );
-      await signInAndCompleteSession(a);
+      a = await startLocalApi(stubClaudeBinEnv());
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {
       await stopLocalApi(a);
-      upstream.server.stop(true);
       rmSync(fixture.root, { recursive: true, force: true });
     }, HOOK_TIMEOUT_MS);
 
     it("isolates two branches of the same repo into two independent workdirs, each with its own running (sniffed-port) preview", async () => {
-      const org = "git-sandbox-org";
       const handleA = computeHandle(fixture.bareDir, "branch-a");
       const handleB = computeHandle(fixture.bareDir, "branch-b");
       const repoA = repoDirFor(a.workdir, handleA);
       const repoB = repoDirFor(a.workdir, handleB);
 
-      // (a) Dispatch on branch A.
-      await dispatchWriteFileTurn(
-        a,
-        org,
-        "thread-branch-a",
-        virtualMcpId,
-        fixture.bareDir,
-        "branch-a",
-      );
+      // (a) Dispatch the retained daemon-parity harness route on branch A.
+      await dispatchWriteFileRun(a, virtualMcpId, fixture.bareDir, "branch-a");
       expect(existsSync(join(repoA, ".git"))).toBe(true);
       expect(readFileSync(join(repoA, "BRANCH.txt"), "utf8").trim()).toBe("A");
       expect(existsSync(join(repoA, "harness-wrote.txt"))).toBe(true);
@@ -256,14 +223,7 @@ describeLocalApi(
       );
 
       // (b) Dispatch on branch B — same repo, a SECOND independent handle.
-      await dispatchWriteFileTurn(
-        a,
-        org,
-        "thread-branch-b",
-        virtualMcpId,
-        fixture.bareDir,
-        "branch-b",
-      );
+      await dispatchWriteFileRun(a, virtualMcpId, fixture.bareDir, "branch-b");
       expect(handleB).not.toBe(handleA);
       expect(existsSync(join(repoB, ".git"))).toBe(true);
       expect(readFileSync(join(repoB, "BRANCH.txt"), "utf8").trim()).toBe("B");

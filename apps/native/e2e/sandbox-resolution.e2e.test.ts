@@ -29,17 +29,12 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, normalizeBranch, repoDirFor } from "./sandbox-handle";
 
 import {
-  signInAndCompleteSession,
-  startAuthenticatedUpstream,
-} from "./authenticated-upstream";
-import {
   authHeaders,
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   startLocalApi,
   stopLocalApi,
-  stubClaudeBinEnv,
   url,
   type LocalApi,
 } from "./helpers";
@@ -91,50 +86,30 @@ function setupFixtureRepo(): { root: string; bareDir: string } {
   return { root, bareDir };
 }
 
-/** Dispatches one turn on `(virtualMcpId, branch)`, driving
- * `SandboxManager::ensure` (clone + install + start cascade) exactly like a
- * real chat turn would — the stub harness's `SCENARIO:simple` needs no
- * filesystem side effects, just a normal completed turn. */
-async function dispatchTurn(
+/** Drive the production sandbox control-plane entry used by the native UI. */
+async function ensureSandbox(
   a: LocalApi,
-  org: string,
-  threadId: string,
   virtualMcpId: string,
   cloneUrl: string,
   branch: string,
-  requestedHarnessId = "claude-code",
 ): Promise<string> {
-  const res = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/messages`),
-    {
-      method: "POST",
-      headers: jsonAuthHeaders(),
-      body: JSON.stringify({
-        messages: [
-          { role: "user", parts: [{ type: "text", text: "SCENARIO:simple" }] },
-        ],
-        tier: "smart",
-        mode: "default",
-        toolApprovalLevel: "auto",
-        agent: { id: virtualMcpId },
-        harnessId: requestedHarnessId,
-        branch,
-        sandbox: {
-          virtualMcpId,
-          repo: { cloneUrl, branch },
-          workload: { runtime: "bun", packageManager: "bun" },
-        },
-      }),
-    },
-  );
-  expect(res.status).toBe(202);
-
-  const streamRes = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/stream`),
-    { headers: jsonAuthHeaders() },
-  );
-  expect(streamRes.status).toBe(200);
-  return streamRes.text();
+  const response = await fetch(url(a, "/_sandbox/setup/ensure"), {
+    method: "POST",
+    headers: jsonAuthHeaders(),
+    body: JSON.stringify({
+      virtualMcpId,
+      repo: { cloneUrl, branch },
+      workload: { runtime: "bun", packageManager: "bun" },
+    }),
+  });
+  if (response.status !== 200) {
+    throw new Error(
+      `ensure ${virtualMcpId} @ ${branch} -> ${response.status}: ${await response.text()}`,
+    );
+  }
+  const body = (await response.json()) as { handle?: string };
+  expect(body.handle).toBeString();
+  return body.handle!;
 }
 
 interface TaskSummary {
@@ -142,17 +117,6 @@ interface TaskSummary {
   command: string;
   status: string;
   logName: string | null;
-}
-
-function parseUiChunks(raw: string): Record<string, unknown>[] {
-  return raw
-    .split("\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => JSON.parse(line.slice("data: ".length)) as unknown)
-    .filter(
-      (value): value is Record<string, unknown> =>
-        typeof value === "object" && value !== null,
-    );
 }
 
 /** `GET /_sandbox/tasks` scoped to `handle` via the header (or the
@@ -198,33 +162,16 @@ describeLocalApi(
   () => {
     let a: LocalApi;
     let fixture: { root: string; bareDir: string };
-    let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     const virtualMcpId = "sandbox-resolution-e2e-vmcp";
     let handle: string;
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
       handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-      upstream = startAuthenticatedUpstream();
-      a = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-          // The first turn pins Claude. A later request deliberately asks for
-          // Codex; the durable SQLite pin must win before binary resolution,
-          // so this nonexistent override must never be touched.
-          LOCAL_API_CODEX_BIN: join(fixture.root, "missing-codex"),
-        }),
-      );
-      await signInAndCompleteSession(a);
-      await dispatchTurn(
-        a,
-        "sandbox-resolution-org",
-        "thread-main",
-        virtualMcpId,
-        fixture.bareDir,
-        "main",
-      );
+      a = await startLocalApi();
+      expect(
+        await ensureSandbox(a, virtualMcpId, fixture.bareDir, "main"),
+      ).toBe(handle);
       // `ensure()` returns once clone/checkout are done but install+start
       // cascade asynchronously — wait for the dev server to actually be
       // registered as a running task before any test depends on it.
@@ -233,7 +180,6 @@ describeLocalApi(
 
     afterAll(async () => {
       await stopLocalApi(a);
-      upstream.server.stop(true);
       rmSync(fixture.root, { recursive: true, force: true });
     }, HOOK_TIMEOUT_MS);
 
@@ -246,38 +192,15 @@ describeLocalApi(
       expect(body.repoDir).toBe(repoDirFor(a.workdir, handle));
     });
 
-    it("reuses the durable harness and sandbox fast path while streaming native run status", async () => {
+    it("reuses the durable sandbox fast path without cloning again", async () => {
       const before = await listTasks(a, handle);
       const gitTasksBefore = before.filter((task) =>
         task.command.startsWith("git "),
       ).length;
 
-      const raw = await dispatchTurn(
-        a,
-        "sandbox-resolution-org",
-        "thread-main",
-        virtualMcpId,
-        fixture.bareDir,
-        "main",
-        "codex",
-      );
-      const chunks = parseUiChunks(raw);
       expect(
-        chunks
-          .filter((chunk) => chunk.type === "data-run-status")
-          .map((chunk) => (chunk.data as { stage?: unknown }).stage),
-      ).toEqual([
-        "starting-run",
-        "gathering-context",
-        "preparing-tools",
-        "starting-assistant",
-      ]);
-      expect(
-        chunks
-          .filter((chunk) => chunk.type === "text-delta")
-          .map((chunk) => chunk.delta)
-          .join(""),
-      ).toBe("Hello from stub-harness");
+        await ensureSandbox(a, virtualMcpId, fixture.bareDir, "main"),
+      ).toBe(handle);
 
       const after = await listTasks(a, handle);
       const gitTasksAfter = after.filter((task) =>
@@ -307,7 +230,7 @@ describeLocalApi(
     });
 
     it("GET /_sandbox/repo-dir headerless is a 404 when NO sandbox has ever been dispatched (never the unrelated global repo_dir)", async () => {
-      const fresh = await startLocalApi(stubClaudeBinEnv());
+      const fresh = await startLocalApi();
       try {
         const res = await fetch(url(fresh, "/_sandbox/repo-dir"), {
           headers: jsonAuthHeaders(),
@@ -352,7 +275,7 @@ describeLocalApi(
     });
 
     it('byte-parity guard: POST /_sandbox/setup/start headerless on a FRESH instance (nothing ever dispatched) is still 200 { enqueued: "start" } — never regress the pinned daemon.git.e2e.test.ts "setup routes" oracle', async () => {
-      const fresh = await startLocalApi(stubClaudeBinEnv());
+      const fresh = await startLocalApi();
       try {
         const res = await fetch(url(fresh, "/_sandbox/setup/start"), {
           method: "POST",
