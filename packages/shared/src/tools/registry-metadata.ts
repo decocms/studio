@@ -1615,12 +1615,14 @@ export function resolveCapabilities(
   const hasGlobalGrant =
     arrayBucket("*").includes("*") || arrayBucket("self").includes("*");
 
+  // Only "self" and "*" are GLOBAL tool buckets. Any other bucket key is a
+  // resource-scoped grant (e.g. a specific connection id) — its actions must
+  // NOT be counted toward unrelated management capabilities, even when they
+  // happen to share a name with a management tool.
   const grantedActions = new Set<string>();
   if (!hasGlobalGrant) {
-    for (const actions of Object.values(permission)) {
-      if (!Array.isArray(actions)) continue;
-      for (const action of actions) grantedActions.add(action);
-    }
+    for (const action of arrayBucket("self")) grantedActions.add(action);
+    for (const action of arrayBucket("*")) grantedActions.add(action);
   }
 
   const out: Record<string, boolean> = {};
