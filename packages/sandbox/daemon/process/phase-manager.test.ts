@@ -35,4 +35,30 @@ describe("PhaseManager", () => {
       "task-499",
     ]);
   });
+
+  test("onFinish reports name, terminal status and a duration per phase", () => {
+    const seen: Array<[string, string, number]> = [];
+    const pm = new PhaseManager({
+      onFinish: (name, status, durationMs) =>
+        seen.push([name, status, durationMs]),
+    });
+    pm.done(pm.begin("clone"));
+    pm.fail(pm.begin("install"), "exit 1");
+    expect(seen.map(([name, status]) => [name, status])).toEqual([
+      ["clone", "done"],
+      ["install", "failed"],
+    ]);
+    expect(seen.every(([, , ms]) => ms >= 0)).toBe(true);
+  });
+
+  test("onFinish fires once per phase — a double done must not double-count", () => {
+    let calls = 0;
+    const pm = new PhaseManager({ onFinish: () => calls++ });
+    const id = pm.begin("install");
+    pm.done(id);
+    pm.done(id);
+    pm.fail(id, "too late");
+    pm.done("never-existed");
+    expect(calls).toBe(1);
+  });
 });

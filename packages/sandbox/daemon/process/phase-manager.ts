@@ -11,6 +11,17 @@ export interface Phase {
 
 export interface PhaseManagerDeps {
   onChange?: (phases: Phase[]) => void;
+  /**
+   * Called once per phase that reaches a terminal state, with its wall-clock
+   * duration. Optional so this module keeps no dependency on the telemetry
+   * stack — entry.ts wires it up. Fires only on a real transition: `done`/`fail`
+   * are idempotent by design, and a double `done` must not double-count.
+   */
+  onFinish?: (
+    name: string,
+    status: Exclude<PhaseStatus, "running">,
+    durationMs: number,
+  ) => void;
 }
 
 // A long-lived daemon can run many thousands of tasks (every /exec call
@@ -55,6 +66,7 @@ export class PhaseManager {
     t.doneAt = Date.now();
     this.trim();
     this.emit();
+    this.deps.onFinish?.(t.name, "done", t.doneAt - t.startedAt);
   }
 
   fail(id: string, error?: string): void {
@@ -65,6 +77,7 @@ export class PhaseManager {
     if (error) t.error = error;
     this.trim();
     this.emit();
+    this.deps.onFinish?.(t.name, "failed", t.doneAt - t.startedAt);
   }
 
   list(filter?: { status?: ReadonlyArray<PhaseStatus> }): Phase[] {
