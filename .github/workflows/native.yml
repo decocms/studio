@@ -165,7 +165,11 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # The ubuntu leg builds the GTK/WebKit stack (webkit2gtk-sys, gtk-sys,
+    # glib, soup) from source, once for clippy's dev profile and again for
+    # test's — where macOS links system frameworks and finishes in ~3 min.
+    # A cold cache ran 25-35 min and was killed mid-`cargo test` at 30.
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
