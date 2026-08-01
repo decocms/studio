@@ -1,10 +1,19 @@
-import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PackageManager } from "../types";
 import { repoHash } from "./golden-cache";
 
 // Guard against a pathological node_modules blowing up the log line.
 const MAX_DEPS = 10_000;
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * True when a `package.json` (path relative to node_modules) is a real package
@@ -36,7 +45,7 @@ async function readInstalledDeps(
   // ENOENT into the catch below, which both swallows the countable zero-dep
   // line the denominator needs AND writes a spurious error to stderr on every
   // such boot. Return empty and let the caller emit the line.
-  if (!existsSync(nodeModulesDir)) return [];
+  if (!(await exists(nodeModulesDir))) return [];
   const glob = new Bun.Glob("**/package.json");
   for await (const rel of glob.scan({
     cwd: nodeModulesDir,
