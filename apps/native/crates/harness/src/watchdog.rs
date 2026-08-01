@@ -18,13 +18,19 @@
 //!   closed rather than unblocking durable recovery.
 //!
 //! `pgrep` note: the two implementations differ on what they omit from their
-//! own output. BSD `pgrep` (macOS) excludes its ancestors, so the anchor —
-//! `pgrep`'s parent shell — never appears; procps-ng `pgrep` (Linux) excludes
-//! only itself, so `pgrep -g $$ .` does list the anchor. The script's own
-//! `$$` skip is therefore the load-bearing exclusion on both platforms: it is
-//! what keeps the anchor from signalling itself, and it must survive any edit
-//! to the enumeration loops. The explicit `.` pattern is required by BSD
-//! `pgrep` and matches every process name under procps-ng.
+//! own output. BSD `pgrep` (macOS) excludes its ancestors, so neither the
+//! anchor nor any shell between it and `pgrep` appears; procps-ng `pgrep`
+//! (Linux) excludes only itself, so EVERY other member of the group is
+//! listed. Two consequences, both load-bearing:
+//! - the script's own `$$` skip is what keeps the anchor from signalling
+//!   itself, and it must survive any edit to the enumeration loops;
+//! - the enumeration must not run inside a command substitution. That forks a
+//!   subshell which inherits this group, and on Linux `pgrep` reports it —
+//!   so the group never looks empty, the loop never exits, and the anchor
+//!   spins forever spawning processes. It writes to a file instead.
+//!
+//! The explicit `.` pattern is required by BSD `pgrep` and matches every
+//! process name under procps-ng.
 //!
 //! PTY startup uses a watcher-first admission protocol. The PTY wrapper
 //! atomically publishes its pid and tty, checks its actual PPID while waiting,
@@ -233,45 +239,55 @@ exit 0
 #[cfg(unix)]
 const PARENT_LIVENESS_WATCHDOG: &str = r#"
 trap '' TERM
+
+# `pgrep` writes here instead of into a command substitution. Substitution
+# forks a subshell that INHERITS this anchor's process group, and procps-ng
+# `pgrep` omits only itself — so that subshell is reported as a group member
+# on Linux, on every pass, and the loops below would never see an empty group.
+# BSD `pgrep` omits its ancestors, which hides the subshell and is why macOS
+# never showed it. A file keeps the enumeration free of any process this
+# script creates to read it.
+members_file="${TMPDIR:-/tmp}/decocms-anchor-$$"
+trap '/bin/rm -f "$members_file"' EXIT
+
 while IFS= read -r _; do :; done
+
+signal_round() {
+  /usr/bin/pgrep -g "$$" . > "$members_file" 2>/dev/null
+  status=$?
+  if [ "$status" -eq 1 ]; then
+    return 2
+  fi
+  if [ "$status" -ne 0 ]; then
+    return 3
+  fi
+  found=0
+  while IFS= read -r pid; do
+    if [ -z "$pid" ]; then continue; fi
+    if [ "$pid" -eq "$$" ]; then continue; fi
+    found=1
+    /bin/kill "$1" "$pid" 2>/dev/null || true
+  done < "$members_file"
+  return "$found"
+}
 
 term_round=0
 while [ "$term_round" -lt 20 ]; do
-  members="$(/usr/bin/pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do /bin/sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    /bin/kill -TERM "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
+  signal_round -TERM
+  case $? in
+    0|2) exit 0 ;;
+    3) while :; do /bin/sleep 60; done ;;
+  esac
   term_round=$((term_round + 1))
   /bin/sleep 0.05
 done
 
 while :; do
-  members="$(/usr/bin/pgrep -g "$$" . 2>/dev/null)"
-  status=$?
-  if [ "$status" -eq 1 ]; then
-    exit 0
-  fi
-  if [ "$status" -ne 0 ]; then
-    while :; do /bin/sleep 60; done
-  fi
-  found=0
-  for pid in $members; do
-    if [ "$pid" -eq "$$" ]; then continue; fi
-    found=1
-    /bin/kill -KILL "$pid" 2>/dev/null || true
-  done
-  if [ "$found" -eq 0 ]; then exit 0; fi
+  signal_round -KILL
+  case $? in
+    0|2) exit 0 ;;
+    3) while :; do /bin/sleep 60; done ;;
+  esac
   /bin/sleep 0.05
 done
 "#;
