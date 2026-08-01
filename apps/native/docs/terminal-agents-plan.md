@@ -557,6 +557,11 @@ Fresh unlocked thread behavior:
 5. On missing CLI or launch failure, retain the picker and show a translated
    actionable error. Never fall back to hosted chat.
 
+After launch, the panel contains only xterm. Studio does not add a terminal
+toolbar, lifecycle label, error banner, or action buttons; lifecycle remains in
+the sidebar and terminal-native controls such as Ctrl-C remain available through
+xterm input.
+
 Locked threads skip the picker and ensure/attach their persisted harness.
 
 ### Compatibility command bridge
@@ -785,7 +790,8 @@ the installed production app.
   hardening landed, a rebuilt debug app repeated the fresh-chat picker flow.
   Claude Code 2.1.220 returned `HARDENED_CLAUDE_OK`, Codex CLI 0.146.0 returned
   `HARDENED_CODEX_OK`, and switching back to the Claude chat replayed its exact
-  result in xterm. Both final rows again settled at `Done` and `Ready for input`.
+  result in xterm. Both final rows again settled at `Done`, and each provider
+  returned to its own input prompt inside xterm.
 - Codex's first explicit prompt generated the title
   `Reply with workspace basename`. Switching between chats replayed each
   provider's output exactly once and kept one attached xterm.
@@ -816,7 +822,8 @@ the installed production app.
   allowed one persisted retry and exhausted it after the second definitive
   rejection, including across renderer remounts.
 - The accessibility snapshot reported both provider chats as `Status: Done`
-  and the terminal as `Ready for input`. A rendered-DOM scan found no bearer,
+  and one labeled terminal surface with no Studio terminal toolbar or actions.
+  A rendered-DOM scan found no bearer,
   API-token, or 64-hex credential pattern. Console capture contained no runtime
   error or secret; only the development MCP transport fallback and the existing
   router-context warning were present.
@@ -868,8 +875,8 @@ data roots were deleted after shutdown.
   spawned its real TUI, showed the launch-unique Studio agent, retained
   provider-owned model selection, and reported the selected `cms` MCP.
 - The real OpenCode TUI accepted a prompt and returned exactly
-  `OPENCODE_NATIVE_OK` through xterm. The sidebar reached `Done`, the terminal
-  returned to `Ready for input`, and OpenCode's provider title updated the chat
+  `OPENCODE_NATIVE_OK` through xterm. The sidebar reached `Done`, OpenCode
+  returned to its input prompt in xterm, and its provider title updated the chat
   to `Simple command response verification`.
 - After a full app shutdown and restart, reopening that chat spawned
   `opencode --agent <new-launch-id> --session <exact-stored-provider-id>`.
@@ -901,7 +908,8 @@ Required driven scenarios:
 1. Open a fresh thread and capture the Claude Code/Codex/OpenCode picker. Confirm no composer,
    message bubbles, queue tray, or cloud-provider picker exists.
 2. Choose Claude Code. Confirm exactly one process starts and xterm replaces the
-   picker. Repeat with Codex and OpenCode in separate threads.
+   picker, with no Studio toolbar, lifecycle label, error banner, or action
+   buttons around it. Repeat with Codex and OpenCode in separate threads.
 3. Type, paste multiline text, use arrows/backspace/Ctrl-C, and operate native
    permission/question prompts through real input events.
 4. Resize the side panel, main window, and narrow/mobile layout. Confirm cursor,
