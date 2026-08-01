@@ -667,22 +667,6 @@ mod tests {
             .expect("exclusive recovery fence becomes available only after reap");
     }
 
-    /// IGNORED ON LINUX — unresolved, not a known-bad behaviour.
-    ///
-    /// On a GitHub ubuntu runner this test's process is SIGKILLed part-way
-    /// through (`exit 137`, with the shell's `Killed` line — the OOM-killer's
-    /// signature), taking the whole test binary with it. It survives
-    /// `setsid`, so it is not this suite killing its own runner, and it
-    /// reproduces on a runner that has just built the workspace with ~20 GiB
-    /// free, so it is not simple disk pressure either. Diagnosing further
-    /// needs a Linux box to watch it on; every CI cycle here costs ~50 min and
-    /// the runner dies before it can report anything.
-    ///
-    /// The behaviour under test — a cleanup warning deadline must not release
-    /// an owner that was never reaped — is not Linux-specific, and macOS still
-    /// runs it every CI run. Un-ignore this the moment someone can reproduce
-    /// it locally on Linux; do not delete it.
-    #[cfg_attr(target_os = "linux", ignore)]
     #[cfg(unix)]
     #[tokio::test]
     async fn cleanup_warning_deadline_does_not_release_an_unreaped_owner() {
