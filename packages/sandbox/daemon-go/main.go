@@ -60,8 +60,13 @@ func isSandboxPath(pathname string) bool {
 	return false
 }
 
+// Zero for the boot-to-serving measurement. A package var so it is stamped at
+// process start — anything later would silently exclude whatever ran before it.
+var processStartedAt = time.Now()
+
 type daemon struct {
 	mu              sync.Mutex
+	readyOnce       sync.Once
 	token           string
 	bootId          string
 	appRoot         string
@@ -100,6 +105,9 @@ type daemon struct {
 
 	health http.HandlerFunc
 	mux    *http.ServeMux
+
+	// Bounded metric flush on the SIGTERM path; nil when metrics are off.
+	otelShutdown func(context.Context) error
 }
 
 // sandboxHandlers is the daemon API's leaf handlers, built once and mounted
@@ -416,6 +424,7 @@ func (d *daemon) shutdown() {
 
 	cfg := d.store.Read()
 	if cfg != nil && cfg.Branch() != "" {
+		publishStartedAt := time.Now()
 		release := d.treeLock.Acquire()
 		err := gitx.Publish(gitx.PublishDeps{
 			RepoDir:     d.repoDir,
@@ -426,9 +435,23 @@ func (d *daemon) shutdown() {
 			OnInvalidBlock: gitx.InvalidBlockSkip,
 		}, "chore(daemon): sync all local changes to remote on shutdown")
 		release()
+		status := "done"
 		if err != nil {
+			status = "failed"
 			slog.Error("shutdown publish failed", "err", err)
 		}
+		telemetry.RecordPublish(context.Background(), status, time.Since(publishStartedAt).Milliseconds())
+	}
+	// Flush the current export window. os.Exit below skips main's deferred
+	// shutdown, so without this a sandbox torn down inside the 30s interval
+	// reports nothing — and short-lived pods are exactly the boots a cold-start
+	// comparison cares about. Bounded at 2s, AFTER the publish: an unreachable
+	// collector must not spend the grace period that saves the user's work.
+	// The TS daemon races the same 2s budget at the same point.
+	if d.otelShutdown != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = d.otelShutdown(ctx)
+		cancel()
 	}
 	os.Exit(0)
 }
@@ -464,9 +487,9 @@ func main() {
 	// Metrics are opt-in via OTEL_EXPORTER_OTLP_ENDPOINT and best-effort: a
 	// collector that is unreachable, misconfigured or absent must never keep a
 	// sandbox from booting, so a failure here is logged and execution continues
-	// with the no-op provider. No shutdown flush on SIGTERM either — that path
-	// belongs to the git-sync that saves the user's work, and metrics do not get
-	// to spend its grace period.
+	// with the no-op provider. The SIGTERM path flushes too, but only after the
+	// git-sync that saves the user's work and only within a bounded budget — see
+	// daemon.shutdown().
 	otelShutdown, err := telemetry.Init(context.Background(), bootId, "go")
 	if err != nil {
 		slog.Warn("otlp metrics disabled: exporter init failed", "err", err)
@@ -518,6 +541,7 @@ func main() {
 		tmpDir:        tmpDir,
 		currentStatus: events.DaemonStatus{State: "running"},
 		pendingPaths:  map[string]struct{}{},
+		otelShutdown:  otelShutdown,
 	}
 
 	d.broadcaster = events.NewBroadcaster(routes.ReplayBytesCapacity)
@@ -538,6 +562,15 @@ func main() {
 		}
 		if prev.Phase != next.Phase {
 			slog.Info("lifecycle transition", "from", prev.Phase, "to", next.Phase)
+		}
+		// Every path to a serving sandbox ends here, so one hook covers cold
+		// boot, golden restore and resume alike. Once per process: a dev server
+		// that crashes and comes back re-enters `running`, and counting that as
+		// a second cold start would flatter every average it appears in.
+		if next.Phase == events.PhaseRunning {
+			d.readyOnce.Do(func() {
+				telemetry.RecordReady(context.Background(), time.Since(processStartedAt).Milliseconds())
+			})
 		}
 	}
 

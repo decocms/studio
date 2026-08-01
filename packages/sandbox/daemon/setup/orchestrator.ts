@@ -37,6 +37,7 @@ import { configureGitIdentity } from "./identity";
 import { denoCacheEnv, resolveCloneUrl, spawnInstall } from "./install";
 import { publishRemoteGolden, tryRestoreRemoteGolden } from "./remote-golden";
 import { spawnSetupStep } from "./spawn-step";
+import { recordDevServerExit, recordPhase } from "../telemetry";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
 const INSTALL_LOG_MAX_BYTES = 10 * 1024 * 1024;
@@ -89,6 +90,10 @@ export class SetupOrchestrator {
         )
       )
         return;
+      // Counted before the intentional gate below: a restart the daemon asked
+      // for and a user app crashlooping are the same event from outside the
+      // pod, and telling them apart is the whole point of the attribute.
+      recordDevServerExit(summary.intentional === true);
       if (summary.intentional) return;
       if (summary.exitCode === 0 || summary.exitCode === null) return;
       const reason = `dev script exited with code ${summary.exitCode}`;
@@ -268,7 +273,46 @@ export class SetupOrchestrator {
    * branch. Then runs idempotent post-source-acquisition steps (git
    * identity, protected-branch hook, fillDefaults).
    */
-  private async stepClone(): Promise<boolean> {
+  /**
+   * Times one setup step and reports it under the same instrument the
+   * TaskManager phases use. Wrapping the three step methods here rather than
+   * threading a timer through their many exit points is what makes `clone` and
+   * `install` measurable at all — neither goes through the PhaseManager, so
+   * until now `sandbox.daemon.phase.duration` covered only the dev-server
+   * spawn and user commands, despite claiming otherwise.
+   *
+   * A step signals failure by returning false, which aborts the pipeline — same
+   * meaning as a throw, so both report "failed".
+   */
+  private async timedPhase<T>(name: string, run: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    try {
+      const result = await run();
+      recordPhase(
+        name,
+        result === false ? "failed" : "done",
+        Date.now() - startedAt,
+      );
+      return result;
+    } catch (e) {
+      recordPhase(name, "failed", Date.now() - startedAt);
+      throw e;
+    }
+  }
+
+  private stepClone(): Promise<boolean> {
+    return this.timedPhase("clone", () => this.stepCloneInner());
+  }
+
+  private stepInstall(): Promise<boolean> {
+    return this.timedPhase("install", () => this.stepInstallInner());
+  }
+
+  private stepStart(): Promise<void> {
+    return this.timedPhase("start", () => this.stepStartInner());
+  }
+
+  private async stepCloneInner(): Promise<boolean> {
     const config = this.currentConfig();
     if (!config) return false;
     const cloneUrl = config.git?.repository?.cloneUrl;
@@ -392,7 +436,7 @@ export class SetupOrchestrator {
    * Run install. Skips when fingerprint matches (already installed for this
    * config + branch HEAD). Returns true on success/skip, false on failure.
    */
-  private async stepInstall(): Promise<boolean> {
+  private async stepInstallInner(): Promise<boolean> {
     const config = this.currentConfig();
     if (!config) return false;
     if (this.deps.installState.isInstalledFor(config, this.currentBranchHead)) {
@@ -534,7 +578,7 @@ export class SetupOrchestrator {
    * Spawn the dev script. Probe drives the transition from `starting` to
    * `running` once the dev server responds.
    */
-  private async stepStart(): Promise<void> {
+  private async stepStartInner(): Promise<void> {
     const config = this.currentConfig();
     if (!config) return;
     if (this.deps.getStatus().state !== "running") {

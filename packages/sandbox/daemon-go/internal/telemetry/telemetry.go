@@ -32,6 +32,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -76,7 +77,90 @@ var (
 			"Wall-clock duration of the dependency step, split by cache tier. A cache hit that is not meaningfully faster than a miss is the signal that the cache is not paying for itself.",
 		),
 	)
+
+	readyDuration, _ = meter.Int64Histogram(
+		"sandbox.daemon.ready.duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription(
+			"Daemon boot to the dev server answering, recorded once per boot. The in-pod half of cold start: Studio's own claim-to-answering number folds in scheduling and image pull, which no daemon change can move.",
+		),
+	)
+
+	loopLag, _ = meter.Int64Histogram(
+		"sandbox.daemon.loop.lag",
+		metric.WithUnit("ms"),
+		metric.WithDescription(
+			"Scheduling delay of a fixed-interval timer. A blocked loop (TS) or a descheduled process (both) stops the daemon answering its health probe, and Studio tears the sandbox down on a single miss — this is the only signal that says why, while the pod is still alive to say it.",
+		),
+	)
+
+	proxyDuration, _ = meter.Int64Histogram(
+		"sandbox.daemon.proxy.duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription(
+			"Time to proxy one request to the user's dev server. Separates a slow sandbox from a slow app — nothing outside the pod can see this hop.",
+		),
+	)
+
+	devServerExit, _ = meter.Int64Counter(
+		"sandbox.daemon.devserver.exit",
+		metric.WithUnit("{exit}"),
+		metric.WithDescription(
+			"Dev-server process exits, split by whether the daemon asked for it. Unintentional exits are a crashlooping user app, which reads identically to a broken sandbox from the outside.",
+		),
+	)
+
+	publishDuration, _ = meter.Int64Histogram(
+		"sandbox.daemon.publish.duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription(
+			"The SIGTERM git sync — the one irrecoverable step of a teardown, and the reason the pod grace period is 90s. How close this runs to the grace period is how much of the user's work is one slow push from being lost.",
+		),
+	)
 )
+
+// Explicit buckets for the boot-cost histograms, shared verbatim with the TS
+// daemon's telemetry.ts. Two panels can only be compared if their buckets
+// agree, and the OTel default set stops at 10s — a clone or install routinely
+// exceeds that, so on the default every interesting boot lands in +Inf and
+// every percentile above p50 is a fabrication.
+var durationBucketsMs = []float64{
+	50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 20_000, 30_000, 60_000,
+	120_000, 300_000,
+}
+
+// Loop lag lives in a different range entirely — sub-millisecond when healthy,
+// and the interesting question is "did it cross ~1s", not "was it 30s or 60s".
+var lagBucketsMs = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1_000, 5_000, 30_000}
+
+// How often the lag sampler ticks. Cheap enough to leave on always, fine-grained
+// enough to catch the multi-second stalls that make the daemon miss its probe.
+const lagSampleInterval = time.Second
+
+// views pins the histogram boundaries. Split out from Init so a test can assert
+// the bounds off a manual reader: the OTLP exporter here speaks protobuf, so
+// boundaries are binary on the wire and cannot be asserted by inspecting it.
+func views() []sdkmetric.View {
+	return []sdkmetric.View{
+		// Lag first: it must not also match the ms-duration view below, which
+		// would register the same instrument twice.
+		sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "sandbox.daemon.loop.lag"},
+			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: lagBucketsMs,
+			}},
+		),
+		// Everything else measured in ms. Matched by wildcard so an instrument
+		// added later inherits the shared buckets instead of silently falling
+		// back to the 10s-capped default.
+		sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "sandbox.daemon.*.duration"},
+			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: durationBucketsMs,
+			}},
+		),
+	}
+}
 
 // Init installs the OTLP metric pipeline. Returns a shutdown func that is safe
 // to call whether or not an exporter was started.
@@ -131,14 +215,47 @@ func Init(ctx context.Context, bootID, impl string) (func(context.Context) error
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter, readerOpts...)),
+		sdkmetric.WithView(views()...),
 	)
 	otel.SetMeterProvider(provider)
+
+	stopLag := startLoopLagSampler()
 
 	slog.Info("otlp metrics enabled",
 		"endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 		"impl", impl, "boot_id", bootID)
 
-	return provider.Shutdown, nil
+	return func(ctx context.Context) error {
+		stopLag()
+		return provider.Shutdown(ctx)
+	}, nil
+}
+
+// startLoopLagSampler samples how late a fixed-interval ticker actually fires.
+// On a starved node that lateness is the scheduler; on the TS daemon the same
+// instrument catches a blocked event loop. Same failure from the sandbox's
+// point of view, which is why both daemons sample it under one name.
+func startLoopLagSampler() func() {
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(lagSampleInterval)
+		defer ticker.Stop()
+		expected := time.Now().Add(lagSampleInterval)
+		for {
+			select {
+			case <-done:
+				return
+			case now := <-ticker.C:
+				lag := now.Sub(expected).Milliseconds()
+				if lag < 0 {
+					lag = 0
+				}
+				loopLag.Record(context.Background(), lag)
+				expected = now.Add(lagSampleInterval)
+			}
+		}
+	}()
+	return func() { close(done) }
 }
 
 // RecordPhase reports one finished setup phase. `status` is "done" or "failed"
@@ -156,4 +273,32 @@ func RecordDepsRestore(ctx context.Context, source string, durationMs int64) {
 	attrs := metric.WithAttributes(attribute.String("source", source))
 	depsRestore.Add(ctx, 1, attrs)
 	depsRestoreDuration.Record(ctx, durationMs, attrs)
+}
+
+// RecordReady reports the boot that produced a serving sandbox. Called once per
+// boot — a dev server that crashes and comes back is a restart, not a second
+// cold start, and counting it as one would flatter every average.
+func RecordReady(ctx context.Context, durationMs int64) {
+	readyDuration.Record(ctx, durationMs)
+}
+
+// RecordProxy reports one proxied request to the user's dev server.
+func RecordProxy(ctx context.Context, durationMs int64, statusClass string) {
+	proxyDuration.Record(ctx, durationMs, metric.WithAttributes(
+		attribute.String("status_class", statusClass),
+	))
+}
+
+// RecordDevServerExit reports one dev-server process exit.
+func RecordDevServerExit(ctx context.Context, intentional bool) {
+	devServerExit.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("intentional", strconv.FormatBool(intentional)),
+	))
+}
+
+// RecordPublish reports the shutdown git sync. `status` is "done" or "failed".
+func RecordPublish(ctx context.Context, status string, durationMs int64) {
+	publishDuration.Record(ctx, durationMs, metric.WithAttributes(
+		attribute.String("status", status),
+	))
 }

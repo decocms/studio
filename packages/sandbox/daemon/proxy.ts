@@ -1,6 +1,7 @@
 import { BOOTSTRAP_SCRIPT } from "./constants";
 import type { Broadcaster } from "./events/broadcast";
 import { fetchLoopback } from "../proxy/http";
+import { recordProxy } from "./telemetry";
 
 export interface ProxyDeps {
   broadcaster: Broadcaster;
@@ -56,6 +57,11 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
     const onClientAbort = () => upstreamAbort.abort();
     req.signal.addEventListener("abort", onClientAbort, { once: true });
 
+    // Measured to headers, not to the last body byte: SSE / NDJSON / long-poll
+    // responses stream for as long as the client keeps them open, and folding
+    // that into the same histogram would drown the number this exists to show
+    // (how long the dev server took to start answering).
+    const upstreamStartedAt = Date.now();
     let upstream: Response;
     try {
       const init: RequestInit = {
@@ -73,8 +79,13 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
         init,
       );
       clearTimeout(headersTimeout);
+      recordProxy(
+        Date.now() - upstreamStartedAt,
+        `${Math.floor(upstream.status / 100)}xx`,
+      );
     } catch (e) {
       clearTimeout(headersTimeout);
+      recordProxy(Date.now() - upstreamStartedAt, "error");
       req.signal.removeEventListener("abort", onClientAbort);
       const msg = (e as Error).message ?? String(e);
       log("proxy error", req.method, url.pathname, `port=${port}`, msg);

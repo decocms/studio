@@ -84,7 +84,7 @@ import {
 import { makeScriptsHandler } from "./routes/scripts";
 import { discoverScripts } from "./process/script-discovery";
 import { SetupOrchestrator } from "./setup/orchestrator";
-import { initTelemetry, recordPhase } from "./telemetry";
+import { initTelemetry, recordPhase, recordPublish } from "./telemetry";
 import type { Config, TenantConfig } from "./types";
 import { makeWsUpgrader, type WsProxyData } from "./ws-proxy";
 
@@ -95,6 +95,10 @@ if (!process.env.DAEMON_BOOT_ID) {
 // Before anything that can finish a phase. No-op unless the deployment set
 // OTEL_EXPORTER_OTLP_ENDPOINT (sandbox-env's `telemetry.*`).
 const otelShutdown = initTelemetry(process.env.DAEMON_BOOT_ID, "ts");
+
+// Zero for the boot-to-serving measurement. Taken here, at the top of the
+// module, because anything later would silently exclude whatever ran before it.
+const BOOTED_AT = Date.now();
 
 // Corepack walks UP from cwd to find the closest `packageManager` field and
 // rejects mismatched invocations. On host runners the daemon's workdir lives
@@ -169,7 +173,7 @@ function setStatus(next: DaemonStatus) {
 
 const store = new TenantConfigStore();
 const installState = new InstallState();
-const lifecycle = new LifecycleManager({ broadcaster });
+const lifecycle = new LifecycleManager({ broadcaster, bootedAt: BOOTED_AT });
 let resetProbeState = (): void => {};
 // Drop the sniffed port whenever we leave `running` — the next dev start
 // may bind somewhere else and we need to re-sniff its announcement.
@@ -952,6 +956,7 @@ async function shutdown(): Promise<void> {
   // could hang on a credential prompt until SIGKILL.
   const branch = store.read()?.git?.repository?.branch;
   if (branch) {
+    const publishStartedAt = Date.now();
     try {
       // "skip" (not "throw"): an invalid decofile block must not abort the whole
       // shutdown sync — that would silently lose the user's other valid work when
@@ -962,7 +967,9 @@ async function shutdown(): Promise<void> {
         "chore(daemon): sync all local changes to remote on shutdown",
         { onInvalidBlock: "skip" },
       );
+      recordPublish("done", Date.now() - publishStartedAt);
     } catch (err) {
+      recordPublish("failed", Date.now() - publishStartedAt);
       console.warn("[daemon] shutdown publish failed", err);
     }
   }
