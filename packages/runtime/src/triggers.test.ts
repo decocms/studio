@@ -413,6 +413,78 @@ describe("createTriggers with storage", () => {
     ]);
   });
 
+  it("concurrent enable() calls on an uncached connection don't drop each other's trigger type", async () => {
+    const data = new Map<string, unknown>();
+    data.set("conn-race", {
+      credentials: {
+        callbackUrl: "https://studio.example.com/api/trigger-callback",
+        callbackToken: "prior-token",
+      },
+      activeTriggerTypes: ["existing.type"],
+    });
+
+    // get() resolves only when explicitly triggered, so the test can control
+    // exactly when the (shared) in-flight read completes.
+    const getResolvers: Array<() => void> = [];
+    let getCalls = 0;
+    const storage: TriggerStorage = {
+      get: (id) => {
+        getCalls++;
+        const snapshot = (data.get(id) as any) ?? null;
+        return new Promise((resolve) => {
+          getResolvers.push(() => resolve(snapshot));
+        });
+      },
+      set: async (id, state) => {
+        data.set(id, state);
+      },
+      delete: async (id) => {
+        data.delete(id);
+      },
+    };
+
+    const t = createTriggers({
+      definitions: [
+        ...defs,
+        {
+          type: "github.pull_request.opened" as const,
+          description: "PR opened",
+          params: z.object({ repo: z.string().describe("Repo") }),
+        },
+      ],
+      storage,
+    });
+    const configureTool = t.tools()[1];
+
+    const pA = configureTool.execute({
+      context: { type: "github.push", params: {}, enabled: true },
+      runtimeContext: mockCtx("conn-race"),
+    });
+    const pB = configureTool.execute({
+      context: {
+        type: "github.pull_request.opened",
+        params: {},
+        enabled: true,
+      },
+      runtimeContext: mockCtx("conn-race"),
+    });
+
+    // Both calls share a single in-flight storage read instead of racing
+    // their own reads against each other's writes.
+    expect(getCalls).toBe(1);
+    expect(getResolvers.length).toBe(1);
+
+    getResolvers[0]();
+    await Promise.all([pA, pB]);
+
+    const stored = data.get("conn-race") as any;
+    expect(stored.activeTriggerTypes.sort()).toEqual([
+      "existing.type",
+      "github.pull_request.opened",
+      "github.push",
+    ]);
+  });
+
   it("disable after restart clears persisted credentials from storage", async () => {
     const storage = createMockStorage();
 
