@@ -698,8 +698,25 @@ mod tests {
         assert!(control.signal(KillSignal::Term).await);
         assert!(IGNORED_SIGNALS.load(Ordering::SeqCst) >= 2);
 
+        // `kill -KILL -<id>` means "the process group with that id". If the
+        // fixture's `process_group(0)` has not taken effect yet, no group owns
+        // `pid` and the signal lands wherever the kernel says that id belongs —
+        // on Linux this reaped the test binary itself while the fixture lived
+        // on as an orphan. Only address the group once the fixture is provably
+        // its own leader; otherwise fall back to the pid.
+        let leads_own_group = std::process::Command::new("ps")
+            .args(["-o", "pgid=", "-p", &pid.to_string()])
+            .output()
+            .ok()
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .is_some_and(|out| out.trim().parse::<u32>() == Ok(pid));
+        let target = if leads_own_group {
+            format!("-{pid}")
+        } else {
+            pid.to_string()
+        };
         let _ = std::process::Command::new("kill")
-            .args(["-KILL", &format!("-{pid}")])
+            .args(["-KILL", &target])
             .status();
         tokio::time::timeout(Duration::from_secs(2), cleanup)
             .await
