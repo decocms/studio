@@ -210,4 +210,19 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(captureSpy).toHaveBeenCalledTimes(1);
     captureSpy.mockRestore();
   });
+
+  it("rejects a virtual_mcp_id belonging to a different organization", async () => {
+    const foreignVmcp = await env.ctx.storage.virtualMcps.create(
+      "org_1",
+      env.userId,
+      { title: "foreign", connections: [], status: "active", pinned: false },
+    );
+
+    await expect(
+      COLLECTION_THREADS_CREATE.handler(
+        { data: { virtual_mcp_id: foreignVmcp.id, title: "t" } },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/Virtual MCP not found/i);
+  });
 });

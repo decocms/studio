@@ -95,4 +95,32 @@ describe("COLLECTION_THREADS_UPDATE", () => {
     );
     expect(updated.item.branch).toBe("deco/manual-pick");
   });
+
+  it("rejects re-pointing a thread at a virtual_mcp_id from a different organization", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "own", connections: [], status: "active", pinned: false },
+    );
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t" } },
+      env.ctx,
+    );
+
+    const foreignVmcp = await env.ctx.storage.virtualMcps.create(
+      "org_1",
+      env.userId,
+      { title: "foreign", connections: [], status: "active", pinned: false },
+    );
+
+    await expect(
+      COLLECTION_THREADS_UPDATE.handler(
+        {
+          id: created.item.id,
+          data: { virtual_mcp_id: foreignVmcp.id },
+        },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/Virtual MCP not found/i);
+  });
 });
