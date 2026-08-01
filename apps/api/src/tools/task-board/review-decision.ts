@@ -34,6 +34,8 @@ export function isTokenVerified(
 ): boolean {
   return (
     claim !== null &&
+    claim.cycleAt > 0 &&
+    currentCycleAt > 0 &&
     claim.reviewer === reviewer &&
     claim.cycleAt === currentCycleAt
   );
