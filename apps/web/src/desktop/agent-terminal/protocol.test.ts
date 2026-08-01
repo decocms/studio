@@ -44,7 +44,7 @@ describe("native terminal protocol", () => {
           physicalState: "running",
           logicalState: "waiting_input",
           threadStatus: "requires_action",
-          harnessId: "codex",
+          harnessId: "opencode",
         }),
       ),
     ).toEqual({
@@ -52,7 +52,7 @@ describe("native terminal protocol", () => {
       physicalState: "running",
       logicalState: "waiting_input",
       threadStatus: "requires_action",
-      harnessId: "codex",
+      harnessId: "opencode",
     });
 
     expect(
@@ -159,8 +159,10 @@ describe("native terminal protocol", () => {
   test("maps Studio and provider harness identifiers", () => {
     expect(toTerminalHarnessId("claude-code")).toBe("claude-code");
     expect(toTerminalHarnessId("codex")).toBe("codex");
+    expect(toTerminalHarnessId("opencode")).toBe("opencode");
     expect(toTerminalHarnessId("decopilot")).toBeNull();
     expect(fromTerminalHarnessId("claude-code")).toBe("claude-code");
+    expect(fromTerminalHarnessId("opencode")).toBe("opencode");
   });
 
   test("maps physical and logical lifecycle axes to sidebar status", () => {
@@ -236,24 +238,66 @@ describe("native terminal protocol", () => {
     expect(
       appendTerminalReplay(
         [
-          { kind: "output", seq: 1, data: new TextEncoder().encode("old") },
-          { kind: "output", seq: 2, data: new TextEncoder().encode("keep") },
+          {
+            kind: "output",
+            seq: 1,
+            data: new TextEncoder().encode("old"),
+            allowCapabilityReplies: false,
+          },
+          {
+            kind: "output",
+            seq: 2,
+            data: new TextEncoder().encode("keep"),
+            allowCapabilityReplies: false,
+          },
         ],
-        { kind: "output", seq: 3, data: new TextEncoder().encode("new") },
+        {
+          kind: "output",
+          seq: 3,
+          data: new TextEncoder().encode("new"),
+          allowCapabilityReplies: false,
+        },
         7,
       ),
     ).toEqual([
-      { kind: "output", seq: 2, data: new TextEncoder().encode("keep") },
-      { kind: "output", seq: 3, data: new TextEncoder().encode("new") },
+      {
+        kind: "output",
+        seq: 2,
+        data: new TextEncoder().encode("keep"),
+        allowCapabilityReplies: false,
+      },
+      {
+        kind: "output",
+        seq: 3,
+        data: new TextEncoder().encode("new"),
+        allowCapabilityReplies: false,
+      },
     ]);
     expect(
       appendTerminalReplay(
-        [{ kind: "output", seq: 3, data: new TextEncoder().encode("old") }],
-        { kind: "reset", seq: 4, data: new TextEncoder().encode("fresh") },
+        [
+          {
+            kind: "output",
+            seq: 3,
+            data: new TextEncoder().encode("old"),
+            allowCapabilityReplies: false,
+          },
+        ],
+        {
+          kind: "reset",
+          seq: 4,
+          data: new TextEncoder().encode("fresh"),
+          allowCapabilityReplies: false,
+        },
         20,
       ),
     ).toEqual([
-      { kind: "reset", seq: 4, data: new TextEncoder().encode("fresh") },
+      {
+        kind: "reset",
+        seq: 4,
+        data: new TextEncoder().encode("fresh"),
+        allowCapabilityReplies: false,
+      },
     ]);
   });
 
@@ -277,6 +321,9 @@ describe("native terminal protocol", () => {
   test("bounds prompts by raw and serialized local-api limits", () => {
     const maximumPromptBytes = 64 * 1024 - 13;
     expect(terminalPromptFitsWire("ship it", "request-1", "codex")).toBeTrue();
+    expect(
+      terminalPromptFitsWire("ship it", "request-1", "opencode"),
+    ).toBeTrue();
     expect(
       terminalPromptFitsWire(
         "a".repeat(maximumPromptBytes),

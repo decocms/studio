@@ -3,7 +3,8 @@
 //!
 //! Adapted from the cluster's `buildOrgFilesystemPrompt`
 //! (`apps/api/src/api/routes/decopilot/constants.ts`), which is consumed by the
-//! decopilot harness only — the desktop CLIs (`claude-code`, `codex`) receive
+//! decopilot harness only — the desktop CLIs (`claude-code`, `codex`,
+//! `opencode`) receive
 //! no system prompt at all without this.
 //!
 //! ## Why it cannot be reused verbatim

@@ -2,8 +2,9 @@
 // @ts-nocheck -- deterministic Node/Bun process fixture, no build step.
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const NATIVE_GUARDRAIL =
   "You are operating inside Studio Native as an interactive coding agent.";
@@ -17,8 +18,12 @@ function fail(message) {
 
 const providerFlag = process.argv.indexOf("--stub-provider");
 const provider = process.argv[providerFlag + 1];
-if (provider !== "claude-code" && provider !== "codex") {
-  fail("--stub-provider must be claude-code or codex");
+if (
+  provider !== "claude-code" &&
+  provider !== "codex" &&
+  provider !== "opencode"
+) {
+  fail("--stub-provider must be claude-code, codex, or opencode");
 }
 const providerArgs = process.argv.slice(providerFlag + 2);
 
@@ -29,10 +34,20 @@ if (providerArgs.includes("--version")) {
   if (provider === "claude-code") {
     const version = process.env.STUDIO_TERMINAL_E2E_CLAUDE_VERSION || "2.1.218";
     process.stdout.write(`${version} (Claude Code)\n`);
-  } else {
+  } else if (provider === "codex") {
     const version = process.env.STUDIO_TERMINAL_E2E_CODEX_VERSION || "0.144.5";
     process.stdout.write(`codex-cli ${version}\n`);
+  } else {
+    process.stdout.write("1.18.10\n");
   }
+  process.exit(0);
+}
+if (
+  provider === "opencode" &&
+  JSON.stringify(providerArgs) ===
+    JSON.stringify(["--pure", "db", "SELECT 1", "--format", "json"])
+) {
+  process.stdout.write('[{"1":1}]\n');
   process.exit(0);
 }
 if (
@@ -176,42 +191,128 @@ function loadHookConfig() {
     return JSON.parse(readFileSync(settingsPath, "utf8"));
   }
 
-  const codexHome = process.env.CODEX_HOME;
-  if (!codexHome || !providerArgs.includes("--dangerously-bypass-hook-trust")) {
-    fail("Codex launch is missing its managed home or hook trust flag");
+  if (provider === "codex") {
+    const codexHome = process.env.CODEX_HOME;
+    if (
+      !codexHome ||
+      !providerArgs.includes("--dangerously-bypass-hook-trust")
+    ) {
+      fail("Codex launch is missing its managed home or hook trust flag");
+    }
+    const profile = argValue("--profile");
+    if (!profile) fail("Codex launch is missing its managed profile");
+    const config = readFileSync(
+      join(codexHome, `${profile}.config.toml`),
+      "utf8",
+    );
+    const developerInstructions = config
+      .split("\n")
+      .find((line) => line.startsWith("developer_instructions = "))
+      ?.slice("developer_instructions = ".length);
+    if (!developerInstructions) {
+      fail("Codex managed profile is missing developer instructions");
+    }
+    const promptContract = validateSystemPrompt(
+      JSON.parse(developerInstructions),
+    );
+    const mcpSections = config
+      .split("\n")
+      .filter((line) => line.startsWith("[mcp_servers."));
+    if (
+      mcpSections.join(",") !==
+        "[mcp_servers.cms],[mcp_servers.cms.env_http_headers]" ||
+      !config.includes("hooks = true") ||
+      !config.includes(
+        `url = ${JSON.stringify(process.env.DECOCMS_MCP_URL)}`,
+      ) ||
+      !config.includes('Authorization = "DECOCMS_MCP_AUTHORIZATION"') ||
+      config.includes("Cookie =") ||
+      config.includes("Origin =")
+    ) {
+      fail("Codex launch must expose exactly the managed cms MCP config");
+    }
+    managedLaunch = { ...promptContract, mcpServerNames: ["cms"] };
+    return JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8"));
   }
-  const profile = argValue("--profile");
-  if (!profile) fail("Codex launch is missing its managed profile");
-  const config = readFileSync(
-    join(codexHome, `${profile}.config.toml`),
-    "utf8",
-  );
-  const developerInstructions = config
-    .split("\n")
-    .find((line) => line.startsWith("developer_instructions = "))
-    ?.slice("developer_instructions = ".length);
-  if (!developerInstructions) {
-    fail("Codex managed profile is missing developer instructions");
+
+  const rawConfig = process.env.OPENCODE_CONFIG_CONTENT;
+  if (!rawConfig) fail("OpenCode launch is missing OPENCODE_CONFIG_CONTENT");
+  const authorization = process.env.DECOCMS_MCP_AUTHORIZATION;
+  if (
+    authorization &&
+    (rawConfig.includes(authorization) ||
+      providerArgs.some((argument) => argument.includes(authorization)))
+  ) {
+    fail("OpenCode scoped bearer escaped its environment boundary");
+  }
+
+  const config = JSON.parse(rawConfig);
+  const managedAgentName = argValue("--agent");
+  if (
+    typeof managedAgentName !== "string" ||
+    !managedAgentName.startsWith("studio-native-") ||
+    Object.keys(config.agent ?? {}).join(",") !== managedAgentName ||
+    config.agent[managedAgentName]?.mode !== "primary" ||
+    config.agent[managedAgentName]?.disable !== false ||
+    providerArgs.filter((argument) => argument === "--agent").length !== 1
+  ) {
+    fail("OpenCode launch is missing its launch-unique managed primary agent");
+  }
+  if (providerArgs.includes("--model")) {
+    fail("OpenCode launch must leave provider/model selection to its TUI");
   }
   const promptContract = validateSystemPrompt(
-    JSON.parse(developerInstructions),
+    config.agent[managedAgentName].prompt,
   );
-  const mcpSections = config
-    .split("\n")
-    .filter((line) => line.startsWith("[mcp_servers."));
+
+  const pluginUrl = config.plugin?.[0];
   if (
-    mcpSections.join(",") !==
-      "[mcp_servers.cms],[mcp_servers.cms.env_http_headers]" ||
-    !config.includes("hooks = true") ||
-    !config.includes(`url = ${JSON.stringify(process.env.DECOCMS_MCP_URL)}`) ||
-    !config.includes('Authorization = "DECOCMS_MCP_AUTHORIZATION"') ||
-    config.includes("Cookie =") ||
-    config.includes("Origin =")
+    config.plugin?.length !== 1 ||
+    typeof pluginUrl !== "string" ||
+    !pluginUrl.startsWith("file:")
   ) {
-    fail("Codex launch must expose exactly the managed cms MCP config");
+    fail("OpenCode launch is missing its managed lifecycle plugin URL");
   }
+  let pluginPath;
+  try {
+    pluginPath = fileURLToPath(pluginUrl);
+  } catch {
+    fail("OpenCode lifecycle plugin URL is invalid");
+  }
+  if (!existsSync(pluginPath)) {
+    fail("OpenCode lifecycle plugin file does not exist");
+  }
+
+  if (
+    Object.keys(config.mcp ?? {}).join(",") !== "cms" ||
+    config.mcp.cms?.type !== "remote" ||
+    config.mcp.cms.url !== "{env:DECOCMS_MCP_URL}" ||
+    Object.keys(config.mcp.cms.headers ?? {}).join(",") !== "Authorization" ||
+    config.mcp.cms.headers.Authorization !==
+      "{env:DECOCMS_MCP_AUTHORIZATION}" ||
+    config.mcp.cms.oauth !== false
+  ) {
+    fail("OpenCode launch must expose exactly the managed cms MCP config");
+  }
+
+  const resumedSession = process.env.STUDIO_OPENCODE_SESSION_ID;
+  const sessionFlags = providerArgs.filter(
+    (argument) => argument === "--session",
+  );
+  if (resumedSession) {
+    if (
+      sessionFlags.length !== 1 ||
+      argValue("--session") !== resumedSession ||
+      providerArgs.includes("resume")
+    ) {
+      fail("OpenCode resume must use exactly --session <id>");
+    }
+  } else if (sessionFlags.length !== 0) {
+    fail("fresh OpenCode launch must not contain --session");
+  }
+
   managedLaunch = { ...promptContract, mcpServerNames: ["cms"] };
-  return JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8"));
+  return null;
 }
 
 const hookConfig = loadHookConfig();
@@ -299,13 +400,45 @@ function emitHook(eventName, extra = {}) {
   }
 }
 
+async function emitOpenCodeEvent(eventName, properties, turn = null) {
+  const hookUrl = process.env.STUDIO_AGENT_HOOK_URL;
+  const hookToken = process.env.STUDIO_AGENT_HOOK_TOKEN;
+  if (!hookUrl || !hookToken) {
+    fail("OpenCode launch is missing its authenticated lifecycle hook");
+  }
+  let response;
+  try {
+    response = await fetch(hookUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${hookToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "opencode",
+        rootSessionID: sessionId,
+        ...(turn ? { turn } : {}),
+        event: { type: eventName, properties },
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    fail(`${eventName} OpenCode hook request failed`);
+  }
+  if (response.status !== 204) {
+    fail(`${eventName} OpenCode hook returned ${response.status}`);
+  }
+}
+
 const resumeId =
   provider === "claude-code"
     ? argValue("--resume")
-    : (() => {
-        const resumeIndex = providerArgs.indexOf("resume");
-        return resumeIndex === -1 ? undefined : providerArgs[resumeIndex + 1];
-      })();
+    : provider === "codex"
+      ? (() => {
+          const resumeIndex = providerArgs.indexOf("resume");
+          return resumeIndex === -1 ? undefined : providerArgs[resumeIndex + 1];
+        })()
+      : argValue("--session");
 
 appendFileSync(
   launchLog,
@@ -321,7 +454,28 @@ appendFileSync(
   { encoding: "utf8", mode: 0o600 },
 );
 
-emitHook("SessionStart");
+if (provider === "opencode") {
+  await emitOpenCodeEvent("session.created", {
+    info: { id: sessionId, title: "New session - terminal fixture" },
+  });
+  await emitOpenCodeEvent("session.updated", {
+    info: { id: sessionId, title: "New session - terminal fixture" },
+  });
+  const childSessionId = `${sessionId}-child`;
+  await emitOpenCodeEvent("session.updated", {
+    info: {
+      id: childSessionId,
+      parentID: sessionId,
+      title: "Child session must not rename the chat",
+    },
+  });
+  await emitOpenCodeEvent("session.idle", {
+    sessionID: childSessionId,
+    info: { id: childSessionId, parentID: sessionId },
+  });
+} else {
+  emitHook("SessionStart");
+}
 process.stdout.write(`STUB_READY:${provider}:${sessionId}\r\n`);
 
 process.stdin.setRawMode?.(true);
@@ -330,6 +484,7 @@ process.stdin.setEncoding("utf8");
 
 let input = "";
 let handling = Promise.resolve();
+let opencodeTurnID = 0;
 
 function drainPrompts() {
   const startMarker = "\u001b[200~";
@@ -341,10 +496,59 @@ function drainPrompts() {
     if (end === -1) return;
     const prompt = input.slice(start + startMarker.length, end);
     input = input.slice(end + endMarker.length).replace(/^[\r\n]+/, "");
-    handling = handling.then(() => {
-      emitHook("UserPromptSubmit", { prompt });
-      process.stdout.write(`STUB_REPLY:${provider}:${prompt}\r\n`);
-      emitHook("Stop");
+    handling = handling.then(async () => {
+      if (provider === "opencode") {
+        const turnID = ++opencodeTurnID;
+        await emitOpenCodeEvent(
+          "session.status",
+          {
+            sessionID: sessionId,
+            status: { type: "busy" },
+          },
+          { id: turnID, phase: "busy" },
+        );
+        await emitOpenCodeEvent(
+          "permission.asked",
+          {
+            sessionID: sessionId,
+          },
+          { id: turnID, phase: "active" },
+        );
+        await emitOpenCodeEvent(
+          "permission.replied",
+          {
+            sessionID: sessionId,
+          },
+          { id: turnID, phase: "active" },
+        );
+        await emitOpenCodeEvent(
+          "question.asked",
+          {
+            sessionID: sessionId,
+          },
+          { id: turnID, phase: "active" },
+        );
+        await emitOpenCodeEvent(
+          "question.replied",
+          {
+            sessionID: sessionId,
+          },
+          { id: turnID, phase: "active" },
+        );
+        process.stdout.write(`STUB_REPLY:${provider}:${prompt}\r\n`);
+        await emitOpenCodeEvent("session.updated", {
+          info: { id: sessionId, title: "Stub opencode chat" },
+        });
+        await emitOpenCodeEvent(
+          "session.idle",
+          { sessionID: sessionId },
+          { id: turnID, phase: "terminal" },
+        );
+      } else {
+        emitHook("UserPromptSubmit", { prompt });
+        process.stdout.write(`STUB_REPLY:${provider}:${prompt}\r\n`);
+        emitHook("Stop");
+      }
       process.stdout.write(`STUB_COMPLETED:${provider}\r\n`);
     });
   }

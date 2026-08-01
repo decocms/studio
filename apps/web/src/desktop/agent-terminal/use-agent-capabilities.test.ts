@@ -4,8 +4,10 @@ import { parseAgentCapabilities } from "./use-agent-capabilities";
 describe("parseAgentCapabilities", () => {
   test("keeps known local terminal agents in server order", () => {
     expect(
-      parseAgentCapabilities({ capabilities: ["codex", "claude-code"] }),
-    ).toEqual(["codex", "claude-code"]);
+      parseAgentCapabilities({
+        capabilities: ["codex", "opencode", "claude-code"],
+      }),
+    ).toEqual(["codex", "opencode", "claude-code"]);
   });
 
   test("drops unknown and malformed capability values", () => {

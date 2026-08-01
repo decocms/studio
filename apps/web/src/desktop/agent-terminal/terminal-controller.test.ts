@@ -179,3 +179,188 @@ describe("native terminal prompt delivery", () => {
     controller.dispose();
   });
 });
+
+describe("native terminal capability reply authority", () => {
+  test("releases an unacknowledged live-frame lease across a StrictMode remount", async () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const started = controller.start("codex", {
+      initialPrompt: "start",
+      requestId: "strict-startup-request",
+    });
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({
+      type: "output",
+      seq: 5,
+      data: "\x1b[c",
+      replay: false,
+    });
+
+    let staleAcknowledge = () => {};
+    let firstAllowed = false;
+    const unsubscribeProbe = controller.subscribeOutput(
+      (frame, acknowledgeCapabilityReplies) => {
+        firstAllowed = frame.allowCapabilityReplies;
+        staleAcknowledge = acknowledgeCapabilityReplies;
+      },
+    );
+    expect(firstAllowed).toBeTrue();
+    unsubscribeProbe();
+
+    let remountAcknowledge = () => {};
+    let remountAllowed = false;
+    const unsubscribeRemount = controller.subscribeOutput(
+      (frame, acknowledgeCapabilityReplies) => {
+        remountAllowed = frame.allowCapabilityReplies;
+        remountAcknowledge = acknowledgeCapabilityReplies;
+      },
+    );
+    expect(remountAllowed).toBeTrue();
+    staleAcknowledge();
+    remountAcknowledge();
+    unsubscribeRemount();
+
+    let settledReplayAllowed = true;
+    const unsubscribeSettled = controller.subscribeOutput((frame) => {
+      settledReplayAllowed = frame.allowCapabilityReplies;
+    });
+    expect(settledReplayAllowed).toBeFalse();
+
+    socket.receive({
+      type: "prompt_accepted",
+      requestId: "strict-startup-request",
+    });
+    await started;
+    unsubscribeSettled();
+    controller.dispose();
+  });
+
+  test("allows fresh startup replay once and strips authority from remount replay", async () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const started = controller.start("codex", {
+      initialPrompt: "start",
+      requestId: "startup-request",
+    });
+
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({
+      type: "output",
+      seq: 5,
+      data: "\x1b]10;?\x1b\\",
+      replay: true,
+    });
+
+    const firstFrames: Array<{
+      seq: number;
+      allowCapabilityReplies: boolean;
+    }> = [];
+    let acknowledgeFirst = () => {};
+    const unsubscribeFirst = controller.subscribeOutput(
+      (frame, acknowledgeCapabilityReplies) => {
+        firstFrames.push({
+          seq: frame.seq,
+          allowCapabilityReplies: frame.allowCapabilityReplies,
+        });
+        acknowledgeFirst = acknowledgeCapabilityReplies;
+      },
+    );
+    expect(firstFrames).toEqual([{ seq: 5, allowCapabilityReplies: true }]);
+    acknowledgeFirst();
+
+    const remountedFrames: Array<{
+      seq: number;
+      allowCapabilityReplies: boolean;
+    }> = [];
+    const unsubscribeRemount = controller.subscribeOutput((frame) => {
+      remountedFrames.push({
+        seq: frame.seq,
+        allowCapabilityReplies: frame.allowCapabilityReplies,
+      });
+    });
+    expect(remountedFrames).toEqual([
+      { seq: 5, allowCapabilityReplies: false },
+    ]);
+
+    socket.receive({
+      type: "output",
+      seq: 10,
+      data: "\x1b[14t",
+      replay: false,
+    });
+    expect(firstFrames.at(-1)).toEqual({
+      seq: 10,
+      allowCapabilityReplies: true,
+    });
+    expect(remountedFrames.at(-1)).toEqual({
+      seq: 10,
+      allowCapabilityReplies: false,
+    });
+    acknowledgeFirst();
+    socket.receive({
+      type: "prompt_accepted",
+      requestId: "startup-request",
+    });
+    await started;
+
+    unsubscribeRemount();
+    unsubscribeFirst();
+    controller.dispose();
+  });
+
+  test("suppresses attach replay and does not re-authorize duplicate output after reconnect", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const received: Array<{
+      seq: number;
+      allowCapabilityReplies: boolean;
+    }> = [];
+    const unsubscribe = controller.subscribeOutput((frame) => {
+      received.push({
+        seq: frame.seq,
+        allowCapabilityReplies: frame.allowCapabilityReplies,
+      });
+    });
+    controller.ensureAttached("codex");
+
+    const first = TestWebSocket.instances[0]!;
+    first.open();
+    first.receive(runningReady("codex"));
+    first.receive({ type: "output", seq: 5, data: "history", replay: true });
+    first.receive({ type: "output", seq: 10, data: "live", replay: false });
+    expect(received).toEqual([
+      { seq: 5, allowCapabilityReplies: false },
+      { seq: 10, allowCapabilityReplies: true },
+    ]);
+
+    first.remoteClose();
+    controller.retry();
+    const replacement = TestWebSocket.instances[1]!;
+    replacement.open();
+    replacement.receive({ ...runningReady("codex"), lastSeq: 15 });
+    replacement.receive({
+      type: "output",
+      seq: 10,
+      data: "duplicate",
+      replay: true,
+    });
+    replacement.receive({
+      type: "output",
+      seq: 15,
+      data: "missed while disconnected",
+      replay: true,
+    });
+    expect(received).toEqual([
+      { seq: 5, allowCapabilityReplies: false },
+      { seq: 10, allowCapabilityReplies: true },
+      { seq: 15, allowCapabilityReplies: false },
+    ]);
+
+    unsubscribe();
+    controller.dispose();
+  });
+});

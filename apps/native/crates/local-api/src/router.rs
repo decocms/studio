@@ -1154,6 +1154,7 @@ mod tests {
                 mcp_token: "mcp-only-secret".to_string(),
                 mcp_path: selected_path.to_string(),
                 title_environment: harness::title::TitleEnvironment::default(),
+                expected_provider_session_id: None,
             });
         let guard = GuardState {
             auth: ClientAuth::embedded(

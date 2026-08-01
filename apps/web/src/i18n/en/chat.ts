@@ -9,6 +9,7 @@ export const chat = {
   "chat.agentCreate.seeAgentLabel": "See agent: {name}",
   "chat.agentIcons.claudeCode": "Claude Code",
   "chat.agentIcons.codex": "Codex",
+  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "agents",
   "chat.agentList.couldntLoad": "Couldn't load agents",
   "chat.agentList.listAgents": "List agents",
@@ -269,11 +270,11 @@ export const chat = {
   "chat.nativeAgentEmptyState.subtitleDetecting":
     "Looking for coding agents installed on this computer…",
   "chat.nativeAgentEmptyState.subtitleNoneDetected":
-    "No coding agent was detected. Install Claude Code or Codex, then pick it here to start chatting.",
+    "No coding agent was detected. Install Claude Code, Codex, or OpenCode, then pick it here to start chatting.",
   "chat.nativeAgentEmptyState.subtitlePick":
     "Chats run on a coding agent installed on this computer. Pick one to start.",
   "chat.nativeTerminal.chooseAgentFirst":
-    "Choose Claude Code or Codex before sending a prompt.",
+    "Choose Claude Code, Codex, or OpenCode before sending a prompt.",
   "chat.nativeTerminal.connecting": "Connecting to terminal…",
   "chat.nativeTerminal.connectionFailed": "Terminal connection failed.",
   "chat.nativeTerminal.emptyPrompt": "The prompt is empty.",

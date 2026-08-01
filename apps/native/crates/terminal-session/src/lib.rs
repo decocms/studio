@@ -1,7 +1,7 @@
 //! Interactive pseudo-terminal sessions for Studio Native.
 //!
 //! This crate deliberately knows nothing about HTTP, SQLite, organizations,
-//! Claude, or Codex. It owns the narrow process boundary needed by those
+//! Claude Code, Codex, or OpenCode. It owns the narrow process boundary needed by those
 //! layers: one controlling PTY per caller-defined [`SessionKey`], bounded
 //! input/control queues, byte-exact output with absolute replay offsets, and
 //! bounded process-group teardown.

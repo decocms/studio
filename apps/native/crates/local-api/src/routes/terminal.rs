@@ -466,7 +466,8 @@ async fn receive_handshake(
                             .map_err(|error| error.to_string())?
                             .ok_or_else(|| "thread is no longer available".to_string())?;
                         let harness_id = thread.harness_id.ok_or_else(|| {
-                            "choose Claude Code or Codex before opening this chat".to_string()
+                            "choose Claude Code, Codex, or OpenCode before opening this chat"
+                                .to_string()
                         })?;
                         return Ok(Handshake {
                             options: StartOptions {
@@ -648,6 +649,7 @@ async fn ensure_session(
             mcp_token,
             mcp_path: launch.mcp_path.clone(),
             title_environment: launch.title_environment.clone(),
+            expected_provider_session_id: provider_session_id.clone(),
         });
     let key = crate::terminal::AgentSessionRegistry::session_key(fence).map_err(terminal_error)?;
     // Linearize process creation with every sign-out/account replacement.
@@ -773,7 +775,7 @@ async fn require_supported_harness(harness_id: HarnessId) -> ApiResult<()> {
     let argv = harness::resolve_checked(harness_id).map_err(|error| {
         ApiError::bad_gateway(format!("the selected agent is unavailable: {error}"))
     })?;
-    harness::detect::require_supported_version(harness_id, &argv)
+    harness::detect::require_launch_ready(harness_id, &argv)
         .await
         .map_err(|error| {
             ApiError::bad_gateway(format!("the selected agent is unavailable: {error}"))
@@ -1129,8 +1131,9 @@ fn parse_harness(value: &str) -> ApiResult<HarnessId> {
     match value {
         "claude" | "claude-code" => Ok(HarnessId::ClaudeCode),
         "codex" => Ok(HarnessId::Codex),
+        "opencode" => Ok(HarnessId::OpenCode),
         _ => Err(ApiError::bad_request(
-            "harnessId must be claude-code or codex",
+            "harnessId must be claude-code, codex, or opencode",
         )),
     }
 }
@@ -1273,6 +1276,7 @@ mod tests {
         assert_eq!(parse_harness("claude-code").unwrap(), HarnessId::ClaudeCode);
         assert_eq!(parse_harness("claude").unwrap(), HarnessId::ClaudeCode);
         assert_eq!(parse_harness("codex").unwrap(), HarnessId::Codex);
+        assert_eq!(parse_harness("opencode").unwrap(), HarnessId::OpenCode);
         assert!(parse_harness("decopilot").is_err());
     }
 

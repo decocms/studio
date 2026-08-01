@@ -20,6 +20,9 @@ const MCP_URL_ENV: &str = "DECOCMS_MCP_URL";
 const MCP_AUTHORIZATION_ENV: &str = "DECOCMS_MCP_AUTHORIZATION";
 const HOOK_URL_ENV: &str = "STUDIO_AGENT_HOOK_URL";
 const HOOK_TOKEN_ENV: &str = "STUDIO_AGENT_HOOK_TOKEN";
+const OPENCODE_CONFIG_CONTENT_ENV: &str = "OPENCODE_CONFIG_CONTENT";
+const OPENCODE_RESUME_SESSION_ENV: &str = "STUDIO_OPENCODE_SESSION_ID";
+const OPENCODE_AGENT_NAME_PREFIX: &str = "studio-native";
 const NODE_EXTRA_CA_CERTS_ENV: &str = "NODE_EXTRA_CA_CERTS";
 const CODEX_HOME_INITIALIZED_MARKER: &str = ".studio-initialized-v1";
 const CODEX_PROFILE_PREFIX: &str = "studio-thread-";
@@ -39,6 +42,142 @@ fi
 } | /usr/bin/curl -q --noproxy '*' --proto '=http,https' --silent --show-error --fail --connect-timeout 1 --max-time 2 \
   --config - --data-binary "@$payload" "$STUDIO_AGENT_HOOK_URL" >/dev/null 2>&1 || true
 exit 0
+"#;
+
+// OpenCode loads this launch-scoped plugin from OPENCODE_CONFIG_CONTENT. It
+// forwards only lifecycle events for the root session selected by this PTY;
+// subagent sessions must never complete or fail the parent Studio chat. The
+// hook is deliberately fail-open and bounded so a local control-plane restart
+// cannot stall the coding agent.
+const OPENCODE_LIFECYCLE_PLUGIN: &str = r#"const forwardedEvents = new Set([
+  "session.created",
+  "session.updated",
+  "session.error",
+  "session.status",
+  "session.idle",
+  "permission.asked",
+  "permission.replied",
+  "question.asked",
+  "question.replied",
+  "question.rejected",
+]);
+
+let rootSessionID = process.env.STUDIO_OPENCODE_SESSION_ID || null;
+let activeTurnID = null;
+let nextTurnID = 0;
+let busyDelivered = false;
+let delivery = Promise.resolve();
+
+function eventSession(event) {
+  const properties = event && event.properties;
+  const info = properties && properties.info;
+  const sessionID =
+    (properties && properties.sessionID) || (info && info.id) || null;
+  const parentID = info && info.parentID;
+  return { sessionID, parentID };
+}
+
+function belongsToRoot(event) {
+  const { sessionID, parentID } = eventSession(event);
+  if (!sessionID || parentID) return false;
+  if (!rootSessionID) {
+    if (event.type !== "session.created") return false;
+    rootSessionID = sessionID;
+  }
+  return sessionID === rootSessionID;
+}
+
+async function post(body) {
+  const url = process.env.STUDIO_AGENT_HOOK_URL;
+  const token = process.env.STUDIO_AGENT_HOOK_TOKEN;
+  if (!url || !token) return false;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body,
+      signal: AbortSignal.timeout(1000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function forward(event, turn = null) {
+  const body = JSON.stringify({
+    provider: "opencode",
+    rootSessionID,
+    ...(turn ? { turn } : {}),
+    event,
+  });
+  if (await post(body)) return true;
+  // One immediate retry keeps delivery bounded by the original two-second
+  // hook budget. Stable root/turn identities make a lost response idempotent.
+  return post(body);
+}
+
+async function handle(event) {
+  if (!forwardedEvents.has(event && event.type) || !belongsToRoot(event)) return;
+  const status = event.properties && event.properties.status;
+  const isBusy =
+    event.type === "session.status" &&
+    (status && (status.type === "busy" || status.type === "retry"));
+  const isTerminal =
+    event.type === "session.idle" ||
+    event.type === "session.error" ||
+    (event.type === "session.status" && status && status.type === "idle");
+  const requiresBusy =
+    event.type === "permission.asked" ||
+    event.type === "permission.replied" ||
+    event.type === "question.asked" ||
+    event.type === "question.replied" ||
+    event.type === "question.rejected";
+
+  if (isBusy) {
+    if (activeTurnID === null) {
+      activeTurnID = ++nextTurnID;
+      busyDelivered = false;
+    }
+    if (busyDelivered) return;
+    busyDelivered = await forward(event, {
+      id: activeTurnID,
+      phase: "busy",
+    });
+    return;
+  } else if (isTerminal) {
+    if (activeTurnID === null) return;
+    const terminalTurnID = activeTurnID;
+    await forward(event, {
+      id: terminalTurnID,
+      phase: "terminal",
+    });
+    // The provider turn is over even if both bounded HTTP responses were lost.
+    // Retaining it would suppress the next turn's busy event and reuse a
+    // server-completed id. Delivery remains best-effort; a stable id is used
+    // for both attempts inside forward().
+    if (activeTurnID === terminalTurnID) {
+      activeTurnID = null;
+      busyDelivered = false;
+    }
+    return;
+  } else if (requiresBusy) {
+    if (activeTurnID === null) return;
+    await forward(event, { id: activeTurnID, phase: "active" });
+    return;
+  }
+  await forward(event);
+}
+
+export const StudioNativeLifecycle = async () => ({
+  event: ({ event } = {}) => {
+    delivery = delivery.then(() => handle(event), () => handle(event));
+    return delivery;
+  },
+});
 "#;
 
 const NATIVE_AGENT_INSTRUCTIONS: &str = r#"You are operating inside Studio Native as an interactive coding agent.
@@ -136,7 +275,7 @@ pub async fn prepare(
     // The picker consumes the same compatibility probe, but repeat it at the
     // process boundary so a stale renderer or direct WebSocket request cannot
     // launch an installed-yet-unsupported provider.
-    harness::detect::require_supported_version(request.harness, &argv).await?;
+    harness::detect::require_launch_ready(request.harness, &argv).await?;
     let virtual_mcp = load_virtual_mcp(request.fence, &thread).await?;
     let cwd = resolve_cwd(state, request.fence, &thread, &virtual_mcp).await?;
     let system_prompt =
@@ -212,6 +351,21 @@ pub async fn prepare(
             title_environment =
                 harness::title::TitleEnvironment::for_codex_home(codex_home.clone());
             env.push(("CODEX_HOME".to_string(), codex_home.display().to_string()));
+        }
+        HarnessId::OpenCode => {
+            let config = prepare_opencode(
+                &state_dir,
+                &system_prompt,
+                request,
+                &mut argv,
+                provider_session_id.as_deref(),
+            )
+            .await?;
+            env.push((OPENCODE_CONFIG_CONTENT_ENV.to_string(), config));
+            // Override ambient shell/dev-runner state on fresh launches too.
+            // Otherwise an inherited stale resume id would make the plugin
+            // reject every session event from the newly-created root.
+            env.push(opencode_resume_environment(provider_session_id.as_deref()));
         }
     }
 
@@ -399,6 +553,49 @@ async fn prepare_codex(
     Ok(codex_home)
 }
 
+async fn prepare_opencode(
+    state_dir: &Path,
+    system_prompt: &str,
+    request: LaunchRequest<'_>,
+    argv: &mut Vec<String>,
+    provider_session_id: Option<&str>,
+) -> Result<String, LaunchContextError> {
+    let plugin_path = state_dir.join("opencode-lifecycle.js");
+    write_private_file(&plugin_path, OPENCODE_LIFECYCLE_PLUGIN.as_bytes(), false).await?;
+    let plugin_url = reqwest::Url::from_file_path(&plugin_path).map_err(|()| {
+        LaunchContextError::Workspace(format!(
+            "could not encode OpenCode lifecycle plugin path: {}",
+            plugin_path.display()
+        ))
+    })?;
+    let readonly = request.plan_mode || request.approval_mode == "readonly";
+    // OpenCode deep-merges inline config with global/project config. A
+    // launch-unique name prevents a user-defined `studio-native` agent (and
+    // its disable/permission fields) from weakening this managed overlay.
+    let agent_name = opencode_agent_name(request.terminal_session_id);
+    let config = opencode_config(system_prompt, plugin_url.as_str(), &agent_name, readonly);
+
+    argv.extend(["--agent".to_string(), agent_name]);
+    if request.approval_mode == "auto" && !readonly {
+        argv.push("--auto".to_string());
+    }
+    if let Some(provider_session_id) = provider_session_id {
+        argv.extend(["--session".to_string(), provider_session_id.to_string()]);
+    }
+    Ok(config)
+}
+
+fn opencode_agent_name(terminal_session_id: &str) -> String {
+    format!("{OPENCODE_AGENT_NAME_PREFIX}-{terminal_session_id}")
+}
+
+fn opencode_resume_environment(provider_session_id: Option<&str>) -> (String, String) {
+    (
+        OPENCODE_RESUME_SESSION_ENV.to_string(),
+        provider_session_id.unwrap_or_default().to_string(),
+    )
+}
+
 fn local_mcp_url(base_url: &str, organization_id: &str, virtual_mcp_id: &str) -> String {
     format!(
         "{base_url}{}",
@@ -487,6 +684,47 @@ fn codex_config(system_prompt: &str, mcp_url: &str) -> String {
          [mcp_servers.{MCP_SERVER_NAME}.env_http_headers]\n\
          Authorization = \"{MCP_AUTHORIZATION_ENV}\"\n"
     )
+}
+
+fn opencode_config(
+    system_prompt: &str,
+    plugin_url: &str,
+    agent_name: &str,
+    readonly: bool,
+) -> String {
+    let mut agent = json!({
+        "disable": false,
+        "mode": "primary",
+        "prompt": system_prompt,
+    });
+    if readonly {
+        // Deny OpenCode's direct, shell, and delegated write paths.
+        agent["permission"] = json!({
+            "edit": "deny",
+            "bash": "deny",
+            "task": "deny",
+        });
+    }
+    json!({
+        "$schema": "https://opencode.ai/config.json",
+        "plugin": [plugin_url],
+        "agent": {
+            (agent_name): agent,
+        },
+        "mcp": {
+            MCP_SERVER_NAME: {
+                "type": "remote",
+                "url": format!("{{env:{MCP_URL_ENV}}}"),
+                "headers": {
+                    "Authorization": format!("{{env:{MCP_AUTHORIZATION_ENV}}}"),
+                },
+                "oauth": false,
+                "enabled": true,
+                "timeout": 5000,
+            },
+        },
+    })
+    .to_string()
 }
 
 async fn ensure_hook_forwarder(state_dir: &Path) -> Result<PathBuf, std::io::Error> {
@@ -803,6 +1041,106 @@ mod tests {
     }
 
     #[test]
+    fn opencode_config_is_additive_and_keeps_secrets_in_environment() {
+        let agent_name = opencode_agent_name("terminal-one");
+        let config: Value = serde_json::from_str(&opencode_config(
+            "line one\n\"line two\"",
+            "file:///private/opencode-lifecycle.js",
+            &agent_name,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            config["agent"][&agent_name]["prompt"],
+            "line one\n\"line two\""
+        );
+        assert_eq!(config["agent"][&agent_name]["disable"], false);
+        assert_eq!(
+            config["agent"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            [&agent_name]
+        );
+        assert_eq!(
+            config["plugin"],
+            json!(["file:///private/opencode-lifecycle.js"])
+        );
+        assert_eq!(config["mcp"]["cms"]["type"], "remote");
+        assert_eq!(config["mcp"]["cms"]["url"], "{env:DECOCMS_MCP_URL}");
+        assert_eq!(
+            config["mcp"]["cms"]["headers"]["Authorization"],
+            "{env:DECOCMS_MCP_AUTHORIZATION}"
+        );
+        assert_eq!(config["mcp"]["cms"]["oauth"], false);
+        assert!(!config.to_string().contains("Bearer "));
+    }
+
+    #[test]
+    fn opencode_readonly_agent_denies_all_current_write_paths() {
+        let agent_name = opencode_agent_name("terminal-two");
+        let config: Value = serde_json::from_str(&opencode_config(
+            "instructions",
+            "file:///private/opencode-lifecycle.js",
+            &agent_name,
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            config["agent"][&agent_name]["permission"],
+            json!({
+                "edit": "deny",
+                "bash": "deny",
+                "task": "deny",
+            })
+        );
+    }
+
+    #[test]
+    fn opencode_resume_environment_overrides_ambient_state_even_when_fresh() {
+        assert_eq!(
+            opencode_resume_environment(None),
+            (OPENCODE_RESUME_SESSION_ENV.to_string(), String::new())
+        );
+        assert_eq!(
+            opencode_resume_environment(Some("ses_exact")),
+            (
+                OPENCODE_RESUME_SESSION_ENV.to_string(),
+                "ses_exact".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_plugin_fences_root_and_turn_lifecycle_with_bounded_http() {
+        for event in [
+            "session.created",
+            "session.updated",
+            "session.error",
+            "session.status",
+            "session.idle",
+            "permission.asked",
+            "question.asked",
+        ] {
+            assert!(OPENCODE_LIFECYCLE_PLUGIN.contains(&format!("\"{event}\"")));
+        }
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("if (!sessionID || parentID) return false"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN
+            .contains("if (event.type !== \"session.created\") return false"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("rootSessionID,"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("phase: \"busy\""));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("phase: \"terminal\""));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("delivery = delivery.then"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("AbortSignal.timeout(1000)"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("return response.ok"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("if (await post(body)) return true"));
+        assert!(OPENCODE_LIFECYCLE_PLUGIN.contains("if (activeTurnID === terminalTurnID)"));
+        assert!(!OPENCODE_LIFECYCLE_PLUGIN.contains("if (delivered && activeTurnID"));
+        assert!(!OPENCODE_LIFECYCLE_PLUGIN.contains("console."));
+    }
+
+    #[test]
     fn claude_mcp_config_uses_only_the_scoped_bearer_environment() {
         let config: Value = serde_json::from_str(&claude_mcp_config()).unwrap();
         assert_eq!(
@@ -980,6 +1318,80 @@ mod tests {
         assert!(codex_profile_path(&second_home, &second_profile).is_file());
         assert!(managed_auth.is_file());
         assert!(history.is_file());
+    }
+
+    #[tokio::test]
+    async fn opencode_launch_uses_exact_session_resume_and_managed_plugin() {
+        let root = tempfile::tempdir().unwrap();
+        let fence = test_fence("account", "thread-one");
+        let request = LaunchRequest {
+            fence: &fence,
+            terminal_session_id: "terminal-one",
+            harness: HarnessId::OpenCode,
+            approval_mode: "auto",
+            plan_mode: false,
+            hook_token: "hook-token",
+            mcp_token: "mcp-token",
+            provider_session_id: Some("ses_exact"),
+        };
+        let mut argv = Vec::new();
+        let config = prepare_opencode(
+            root.path(),
+            "instructions",
+            request,
+            &mut argv,
+            Some("ses_exact"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            argv,
+            [
+                "--agent",
+                "studio-native-terminal-one",
+                "--auto",
+                "--session",
+                "ses_exact",
+            ]
+        );
+        let config: Value = serde_json::from_str(&config).unwrap();
+        let plugin = config["plugin"][0].as_str().unwrap();
+        assert!(plugin.starts_with("file://"));
+        assert!(root.path().join("opencode-lifecycle.js").is_file());
+    }
+
+    #[tokio::test]
+    async fn opencode_readonly_and_plan_launches_never_enable_auto() {
+        for (approval_mode, plan_mode) in [("readonly", false), ("auto", true)] {
+            let root = tempfile::tempdir().unwrap();
+            let fence = test_fence("account", "thread-one");
+            let request = LaunchRequest {
+                fence: &fence,
+                terminal_session_id: "terminal-one",
+                harness: HarnessId::OpenCode,
+                approval_mode,
+                plan_mode,
+                hook_token: "hook-token",
+                mcp_token: "mcp-token",
+                provider_session_id: None,
+            };
+            let mut argv = Vec::new();
+            let config = prepare_opencode(root.path(), "instructions", request, &mut argv, None)
+                .await
+                .unwrap();
+
+            assert_eq!(argv, ["--agent", "studio-native-terminal-one"]);
+            let config: Value = serde_json::from_str(&config).unwrap();
+            assert_eq!(
+                config["agent"]["studio-native-terminal-one"]["permission"],
+                json!({
+                    "edit": "deny",
+                    "bash": "deny",
+                    "task": "deny",
+                })
+            );
+        }
     }
 
     #[tokio::test]

@@ -2,13 +2,17 @@
 
 ## Status
 
-Implemented native cutover. The automated contract suite passes, and a core
-driven debug-app pass validates the picker, both real providers, prompt/title
-lifecycle, resume, selected-MCP connectivity, secret handling, and shutdown.
+Implemented native cutover. The automated contract suite and driven Tauri
+debug-app passes cover Claude Code, Codex, and OpenCode. The original manual
+pass validates Claude Code and Codex prompt/title lifecycle, resume,
+selected-MCP connectivity, secret handling, and shutdown. The stacked OpenCode
+pass validates its three-agent picker, real TUI, provider-owned model and title,
+hook-driven status, exact resume, runtime readiness gate, secret handling, and
+shutdown.
 This document records the intended architecture, the implementation choices,
 and the exact validation evidence for replacing Studio Native's structured
-chat and native Decopilot execution path with real interactive Claude Code and
-Codex TUIs running in PTYs. The exhaustive Tauri matrix remains below as a
+chat and native Decopilot execution path with real interactive Claude Code,
+Codex, and OpenCode TUIs running in PTYs. The exhaustive Tauri matrix remains below as a
 release-candidate regression checklist; scenarios not named in the validation
 record were not manually re-exercised in this change.
 
@@ -16,7 +20,7 @@ This is an atomic native cutover:
 
 - The hosted web build keeps its current chat UI, AI SDK transport, and backend
   contracts unchanged.
-- The native build renders either the existing Claude/Codex selection empty
+- The native build renders either the Claude Code/Codex/OpenCode selection empty
   state or an interactive xterm terminal. It never renders the message list,
   composer, queue tray, structured tool UI, or cloud-provider picker.
 - The native Rust Decopilot message/stream/queue implementation is removed.
@@ -27,7 +31,7 @@ This is an atomic native cutover:
 
 ## Product decisions
 
-1. A new, unlocked native thread shows the existing Claude Code/Codex empty
+1. A new, unlocked native thread shows the Claude Code/Codex/OpenCode empty
    state. Selecting an agent starts that CLI immediately in an idle interactive
    TUI.
 2. The selected harness is pinned transactionally to the thread. A locked
@@ -36,15 +40,42 @@ This is an atomic native cutover:
 3. Terminal input is the primary interaction model. Studio does not attempt to
    reconstruct AI SDK messages from ANSI output.
 4. Studio keeps its local thread catalog, sidebar statuses, branch/sandbox
-   pins, title generation, Virtual MCP, and organization filesystem behavior.
+   pins, title generation or provider-title ingestion, Virtual MCP, and
+   organization filesystem behavior.
 5. PTY lifetime and turn lifetime are separate. A completed turn leaves the
-   Claude/Codex process alive at its prompt.
+   coding-agent process alive at its prompt.
 6. Closing or hiding the panel detaches the webview only. Explicit stop, thread
    deletion/archive, logout/account change, or app shutdown reaps the full
    process tree.
-7. The first release injects only the selected Studio Virtual MCP. Personal MCP
-   coexistence is out of scope until its tenancy and audit behavior are
-   explicitly designed.
+7. Every provider receives the selected Studio Virtual MCP under the reserved
+   `cms` name with a launch-scoped bearer. Claude Code and Codex use isolated
+   MCP configuration; OpenCode receives a final inline overlay while retaining
+   its user/provider configuration, so user-managed OpenCode MCPs may coexist.
+
+### OpenCode stacked extension
+
+- OpenCode is a native terminal identity only. It is not added to the shared
+  hosted/headless `HarnessId` or the AI SDK dispatch schemas.
+- Studio qualifies OpenCode 1.18.10 or newer. Availability requires its
+  version plus a bounded, credential-free, plugin-free database query because
+  a working `--version` alone does not prove the TUI runtime can initialize.
+  Provider readiness remains visible and actionable in its real TUI.
+- A launch-scoped `OPENCODE_CONFIG_CONTENT` adds a launch-unique
+  `studio-native-*` primary agent, Studio instructions, the selected `cms` MCP,
+  and a local lifecycle plugin without mutating global or project
+  configuration. The unique identity keeps the managed agent authoritative
+  under OpenCode's deep config merge.
+- Fresh sessions use the ordinary TUI; exact resume is
+  `opencode --session <provider-session-id>`. Studio never uses ambiguous
+  `--continue`.
+- Root-session plugin events drive busy/retry/idle/error and
+  permission/question states. Child-session events are filtered both in the
+  plugin and at the hook normalization boundary.
+- OpenCode's `session.updated.info.title` is authoritative. Studio accepts a
+  validated generated title only while the chat is still `New chat`, so a
+  manual rename always wins and no second title model process is spawned.
+- OpenCode owns arbitrary provider/model selection; `/models` advertises it
+  with an empty tier list instead of inventing fixed Studio model IDs.
 
 ## Non-goals
 
@@ -71,7 +102,7 @@ Native entry
   -> authenticated same-origin WebSocket
   -> local-api AgentSessionRegistry
   -> terminal-session PTY actor
-  -> interactive Claude Code or Codex
+  -> interactive Claude Code, Codex, or OpenCode
 
 Provider hooks
   -> token-authenticated loopback receiver
@@ -275,7 +306,7 @@ work formerly embedded in native Decopilot execution:
 It returns a `PreparedLaunch`; debug output includes environment keys but never
 their values.
 
-## Claude Code and Codex launch behavior
+## Provider launch behavior
 
 ### Shared policy
 
@@ -325,6 +356,22 @@ symlink/non-regular auth files, and never silently reseed a credential deleted
 after initialization. Never bypass trust globally or blindly mutate
 `~/.codex`.
 
+### OpenCode
+
+Interactive argv selects the launch-unique `studio-native-*` primary agent and
+uses `--session <providerSessionId>` for exact resume. It does not use
+`--continue` or `--pure`. Studio passes `--auto` only when the user explicitly
+chooses auto mode outside read-only/plan mode. Read-only and plan launches deny
+OpenCode's `edit`, `bash`, and `task` permissions so writes cannot be performed
+directly, through a shell, or through a delegated subagent. Provider/model
+selection remains owned by the user's OpenCode configuration.
+
+`OPENCODE_CONFIG_CONTENT` supplies the Studio agent prompt, an environment-
+referenced remote `cms` MCP, and a file-URL lifecycle plugin from the private
+per-thread state directory. The overlay is process-local and leaves global and
+project files untouched. OpenCode emits its own root-session title; Studio does
+not launch a competing title subprocess.
+
 ## System instructions and Virtual MCP
 
 Server-side prompt composition is explicit and versioned:
@@ -337,7 +384,7 @@ Server-side prompt composition is explicit and versioned:
 The CLI still discovers repository and user instruction files through its
 ordinary behavior. Avoid duplicating those files into the appended prompt.
 
-Both providers receive the same selected, org-scoped local `cms` MCP endpoint.
+All providers receive the same selected, org-scoped local `cms` MCP endpoint.
 Their managed configuration references `DECOCMS_MCP_AUTHORIZATION`; the random
 value exists only in the child environment. The browser control cookie and
 Origin are never given to the CLI. No secret is interpolated into argv or
@@ -353,8 +400,10 @@ Each session receives:
 - the loopback hook URL;
 - provider-specific managed hook configuration.
 
-Hook scripts read provider JSON from stdin, POST it quickly, and fail open. A
-broken Studio status integration must not block the coding agent.
+Claude and Codex hook scripts read provider JSON from stdin and POST it
+quickly. OpenCode's launch-scoped plugin POSTs its structured events directly.
+Both paths fail open: a broken Studio status integration must not block the
+coding agent.
 
 Normalize provider/version-specific payloads into:
 
@@ -387,7 +436,7 @@ existence separate from the outcome of the last turn or ownership transition.
 
 ## Titles and provider resume
 
-On the first `PromptSubmitted` event:
+For Claude Code and Codex, on the first `PromptSubmitted` event:
 
 1. CAS `New chat` to the existing deterministic fallback title.
 2. Start the existing low-cost, no-tools title subprocess asynchronously.
@@ -400,6 +449,11 @@ The title helper receives the prompt over stdin, never argv. Claude runs in
 safe mode with no MCP; Codex uses the same managed account home as the terminal
 but ignores profiles/rules and disables hooks, apps, and plugins. Failure is
 silent after the deterministic fallback has been stored.
+
+OpenCode does not use that title subprocess. Its root session emits the
+provider-generated title in `session.updated`; Studio validates it and CASes
+`New chat` directly to that title. Child-session titles are ignored and a
+manual rename always wins.
 
 Checkpoint the provider session ID as soon as a structured hook reports it.
 On app restart, mark old physical sessions interrupted. Reopening a locked
@@ -494,7 +548,7 @@ detection display and preference update.
 
 Fresh unlocked thread behavior:
 
-1. Render the current Claude Code/Codex options; do not auto-spawn the first
+1. Render the current Claude Code/Codex/OpenCode options; do not auto-spawn the first
    detected CLI.
 2. Selection calls the start endpoint with the corresponding harness.
 3. The backend authoritatively detects, pins, and starts it.
@@ -561,7 +615,7 @@ Retain:
 - `/api/:org/watch` and the `decopilot.thread.status` event name used by shared
   sidebar code
 - historical message rows initially
-- CLI detection, resolution, terminal launch builders, and the title runner
+- CLI detection, resolution, terminal launch builders, and title runners
 - sandbox, org filesystem, preview, git, task, and setup machinery
 
 Continue intercepting every old `/api/:org/decopilot/*` request, but return:
@@ -581,7 +635,7 @@ hosted Decopilot.
 
 Prove with the installed real CLIs before designing around assumptions:
 
-- interactive Claude and Codex argv/resume ordering;
+- interactive Claude Code, Codex, and OpenCode argv/resume ordering;
 - PTY detection, alternate-screen behavior, resize, Ctrl-C, and clean exit;
 - provider hook event names and payloads, including first provider session ID;
 - Claude per-session settings merge behavior;
@@ -590,7 +644,7 @@ Prove with the installed real CLIs before designing around assumptions:
 - Studio system instruction behavior on fresh and resumed sessions.
 
 Record supported CLI versions and fail clearly below them. This phase is a hard
-gate, especially for Codex hooks.
+gate, especially for Codex hooks and OpenCode plugin events.
 
 ### Phase 1: interactive PTY foundation
 
@@ -602,7 +656,7 @@ gate, especially for Codex hooks.
   ANSI and split Unicode, reports resize, forks descendants, hangs, and crashes.
 
 Gate: black-box tests prove input/output/resize/reconnect/kill behavior without
-Claude or Codex.
+a real provider.
 
 ### Phase 2: local API, persistence, and lifecycle
 
@@ -619,7 +673,7 @@ tests pass using the PTY fixture.
 ### Phase 3: provider launch context and hooks
 
 - Extract server-owned launch context from native Decopilot.
-- Add interactive Claude/Codex builders.
+- Add interactive Claude Code/Codex/OpenCode builders.
 - Add hook overlays/receiver/normalizers.
 - Inject system instructions and the selected Virtual MCP.
 - Add title and provider-session checkpoints.
@@ -656,7 +710,7 @@ requests.
   repeated resize, Unicode, paste, and focus.
 - Test app/webview reload, app quit, external CLI death, delete, archive, logout,
   and account switch.
-- Run both providers against a real Studio Virtual MCP and real sandbox.
+- Run all providers against a real Studio Virtual MCP and real sandbox.
 - Validate every required UI state through the Tauri DevTools MCP bridge.
 - Run dead-code analysis and remove newly orphaned native exports/helpers.
 
@@ -688,7 +742,8 @@ requests.
 - Correct cwd for branch sandbox and gitless org filesystem.
 - Selected MCP and system instructions reach only the selected provider.
 - Control cookies, tokens, and prompts appear in neither argv, replay, errors,
-  nor JS frames; title prompts are delivered through stdin.
+  nor JS frames; Claude/Codex title prompts are delivered through stdin, while
+  OpenCode uses its provider-owned session title without a title subprocess.
 - Ctrl-C, provider exit, crash, explicit stop, thread delete, archive, logout,
   app shutdown, and descendant reaping.
 - Restart resumes from provider ID without resending input.
@@ -712,6 +767,10 @@ interface truly changes.
 - Existing hosted Playwright chat tests pass without changed expectations.
 
 ## Validation record (2026-07-31)
+
+The manual evidence in this record predates the OpenCode extension and
+deliberately preserves the Claude Code/Codex results from that pass. The
+OpenCode extension has its own driven record below.
 
 The final debug-app pass used the Tauri DevTools MCP bridge against an isolated
 `com.decocms.studio.terminaltest` app-data namespace. It did not reuse or stop
@@ -746,9 +805,10 @@ the installed production app.
   `CERT_SIGNATURE_FAILURE`. Native leaf certificates now include an Authority
   Key Identifier, making issuer selection deterministic; the local-TLS unit
   suite and a second real Claude `/mcp` pass verified the fix.
-- Provider availability and direct launch now require the lowest real versions
-  validated by this cutover: Claude Code 2.1.218 and Codex CLI 0.144.5. A
-  black-box stale-request case proved an older CLI fails with upgrade guidance
+- At the time of this two-provider pass, provider availability and direct
+  launch required Claude Code 2.1.218 and Codex CLI 0.144.5. The subsequent
+  OpenCode extension additionally requires OpenCode 1.18.10. Black-box stale-
+  request coverage proves an unsupported CLI fails with upgrade guidance
   before the harness is pinned, leaving the fresh-chat picker intact.
 - Terminal metadata returned the persisted opaque thread-generation fence.
   The final schema contained no executable queue table or queue API; v10 queue
@@ -781,12 +841,52 @@ Automated validation completed with no failures:
 
 - `cargo test --workspace --all-features`
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- the native cutover and embedded terminal E2E suites (6 scenarios, 50
-  expectations)
-- 31 focused terminal/autosend frontend tests (78 assertions)
+- the native cutover and embedded terminal E2E suites (6 scenarios, 86
+  assertions), including Claude Code, Codex, and OpenCode terminal lifecycle
+  scenarios
+- 85 focused agent-selection and terminal frontend tests (274 assertions)
+- the isolated repository unit suite (6,607 tests across 730 files)
 - `bun run check`, `bun run lint`, `bun run knip`, and `bun run fmt:check`
 - hosted and native production builds, including the terminal-marker boundary
   check that keeps native protocol code out of the hosted bundle
+
+## OpenCode stacked validation record (2026-08-01)
+
+The OpenCode pass used the Tauri DevTools MCP bridge against the isolated
+`com.decocms.studio.opencodetest2` debug namespace. OpenCode used a temporary,
+owner-only XDG data root with a symlink to the existing auth file; Studio never
+opened or modified the user's existing OpenCode database, and the temporary
+data roots were deleted after shutdown.
+
+- The availability gate rejected the installed OpenCode 1.18.10 runtime when
+  its existing database could not complete the bounded plugin-free
+  `--pure db 'SELECT 1'` check. The same binary became available against a
+  healthy isolated database, proving the picker does not launch a known-broken
+  runtime into a blank terminal.
+- A fresh chat rendered Claude Code, Codex, and OpenCode choices with no legacy
+  composer, message list, queue tray, or cloud model picker. Selecting OpenCode
+  spawned its real TUI, showed the launch-unique Studio agent, retained
+  provider-owned model selection, and reported the selected `cms` MCP.
+- The real OpenCode TUI accepted a prompt and returned exactly
+  `OPENCODE_NATIVE_OK` through xterm. The sidebar reached `Done`, the terminal
+  returned to `Ready for input`, and OpenCode's provider title updated the chat
+  to `Simple command response verification`.
+- After a full app shutdown and restart, reopening that chat spawned
+  `opencode --agent <new-launch-id> --session <exact-stored-provider-id>`.
+  The transcript replayed `OPENCODE_NATIVE_OK` without resending the prompt,
+  the generated title remained, and the terminal was ready for new input.
+- The final rendered DOM contained no bearer, 64-hex credential, hook-token
+  variable, or MCP authorization variable. Console capture contained no
+  runtime error or secret; only the known development Tauri IPC fallback
+  warning appeared.
+- Graceful shutdown reaped both the active and detached OpenCode process trees.
+  No OpenCode process, native listener, or isolated org mount remained.
+
+Captured OpenCode UI evidence:
+
+- `/tmp/studio-native-opencode-picker-final.png`
+- `/tmp/studio-native-opencode-result.png`
+- `/tmp/studio-native-opencode-resumed.png`
 
 ## Tauri DevTools MCP release gate
 
@@ -798,10 +898,10 @@ Playwright.
 
 Required driven scenarios:
 
-1. Open a fresh thread and capture the Claude/Codex picker. Confirm no composer,
+1. Open a fresh thread and capture the Claude Code/Codex/OpenCode picker. Confirm no composer,
    message bubbles, queue tray, or cloud-provider picker exists.
-2. Choose Claude. Confirm exactly one process starts and xterm replaces the
-   picker. Repeat with Codex in another thread.
+2. Choose Claude Code. Confirm exactly one process starts and xterm replaces the
+   picker. Repeat with Codex and OpenCode in separate threads.
 3. Type, paste multiline text, use arrows/backspace/Ctrl-C, and operate native
    permission/question prompts through real input events.
 4. Resize the side panel, main window, and narrow/mobile layout. Confirm cursor,
@@ -816,7 +916,7 @@ Required driven scenarios:
    same live process reattaches without duplicate or missing output.
 9. Exercise two thread/branch sessions and confirm isolated cwd, output,
    sidebar state, and process identity.
-10. Invoke a real Virtual MCP tool from both providers and confirm the correct
+10. Invoke a real Virtual MCP tool from every provider and confirm the correct
     org/sandbox effect.
 11. Create/edit a file from the TUI and confirm file explorer, git diff, branch,
     and preview integration update.
@@ -856,14 +956,14 @@ automated checks pass.
 
 ## Definition of done
 
-- Fresh native threads use the existing Claude/Codex picker and start the chosen
+- Fresh native threads use the Claude Code/Codex/OpenCode picker and start the chosen
   real interactive CLI.
 - Native shows xterm only; no legacy native chat UI or AI SDK transport runs.
 - Hosted web chat behavior and test expectations are unchanged.
-- System instructions, org filesystem context, and exactly one selected Virtual
-  MCP are injected without leaking secrets.
-- Hook-driven sidebar status, titles, and provider resume work for both
-  providers.
+- System instructions, org filesystem context, and the selected Virtual MCP are
+  injected without leaking secrets.
+- Hook-driven sidebar status, titles, and provider resume work for every
+  provider.
 - PTYs survive view detach/reconnect but are reaped on every ownership-ending
   lifecycle.
 - Legacy queued prompts are preserved but never executed; stale native chat

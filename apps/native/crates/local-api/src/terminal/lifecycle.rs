@@ -52,12 +52,16 @@ const HARNESS_INJECTED_TURN_PREFIXES: &[&str] = &[
 pub struct HookObservation {
     pub event_name: String,
     pub provider_session_id: Option<String>,
+    pub provider_title: Option<String>,
     pub logical_state: Option<RtTerminalLogicalState>,
     pub prompt: Option<String>,
     pub is_explicit_user_prompt: bool,
 }
 
 pub fn normalize_hook(payload: &Value) -> Result<HookObservation, &'static str> {
+    if payload.get("provider").and_then(Value::as_str) == Some("opencode") {
+        return normalize_opencode_hook(payload);
+    }
     let event_name = payload
         .get("hook_event_name")
         .or_else(|| payload.get("hookEventName"))
@@ -102,9 +106,94 @@ pub fn normalize_hook(payload: &Value) -> Result<HookObservation, &'static str> 
     Ok(HookObservation {
         event_name: event_name.to_string(),
         provider_session_id,
+        provider_title: None,
         logical_state,
         prompt,
         is_explicit_user_prompt,
+    })
+}
+
+fn normalize_opencode_hook(payload: &Value) -> Result<HookObservation, &'static str> {
+    let event = payload
+        .get("event")
+        .and_then(Value::as_object)
+        .ok_or("OpenCode hook event is required")?;
+    let event_name = event
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("OpenCode hook event type is required")?;
+    let properties = event.get("properties").and_then(Value::as_object);
+    let info = properties
+        .and_then(|properties| properties.get("info"))
+        .and_then(Value::as_object);
+
+    // Defense in depth for the generated plugin's root-session filter. A
+    // subagent session can emit the same busy/idle/title events as its parent,
+    // but it must never mutate the Studio chat that owns the root PTY.
+    let is_child_session = info
+        .and_then(|info| info.get("parentID"))
+        .and_then(Value::as_str)
+        .is_some_and(|parent_id| !parent_id.trim().is_empty());
+    if is_child_session {
+        return Ok(HookObservation {
+            event_name: event_name.to_string(),
+            provider_session_id: None,
+            provider_title: None,
+            logical_state: None,
+            prompt: None,
+            is_explicit_user_prompt: false,
+        });
+    }
+
+    let provider_session_id = properties
+        .and_then(|properties| properties.get("sessionID"))
+        .or_else(|| info.and_then(|info| info.get("id")))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let provider_title = matches!(event_name, "session.created" | "session.updated")
+        .then(|| {
+            info.and_then(|info| info.get("title"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .flatten();
+    let status = properties
+        .and_then(|properties| properties.get("status"))
+        .and_then(Value::as_object)
+        .and_then(|status| status.get("type"))
+        .and_then(Value::as_str);
+    // OpenCode's session.error schema permits a missing sessionID. Such an
+    // event is global/ambiguous and must never fail whichever Studio chat
+    // happens to own the hook endpoint. The receiver independently validates
+    // every observed id against its root checkpoint.
+    let logical_state = provider_session_id.as_ref().and_then(|_| match event_name {
+        "session.created" => Some(RtTerminalLogicalState::Idle),
+        "session.status" if matches!(status, Some("busy" | "retry")) => {
+            Some(RtTerminalLogicalState::Working)
+        }
+        "session.status" if status == Some("idle") => Some(RtTerminalLogicalState::Completed),
+        "session.idle" => Some(RtTerminalLogicalState::Completed),
+        "session.error" => Some(RtTerminalLogicalState::Failed),
+        "permission.asked" | "question.asked" => Some(RtTerminalLogicalState::WaitingInput),
+        "permission.replied" | "question.replied" | "question.rejected" => {
+            Some(RtTerminalLogicalState::Working)
+        }
+        _ => None,
+    });
+
+    Ok(HookObservation {
+        event_name: event_name.to_string(),
+        provider_session_id,
+        provider_title,
+        logical_state,
+        prompt: None,
+        is_explicit_user_prompt: false,
     })
 }
 
@@ -557,5 +646,116 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(observation.logical_state, None);
+    }
+
+    fn opencode_event(event_type: &str, properties: Value) -> HookObservation {
+        normalize_hook(&json!({
+            "provider": "opencode",
+            "event": {
+                "type": event_type,
+                "properties": properties,
+            },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn opencode_session_events_checkpoint_root_identity_and_title() {
+        let observation = opencode_event(
+            "session.updated",
+            json!({
+                "sessionID": "ses_root",
+                "info": {
+                    "id": "ses_root",
+                    "title": "Fix terminal resume",
+                },
+            }),
+        );
+        assert_eq!(observation.provider_session_id.as_deref(), Some("ses_root"));
+        assert_eq!(
+            observation.provider_title.as_deref(),
+            Some("Fix terminal resume")
+        );
+        assert_eq!(observation.logical_state, None);
+    }
+
+    #[test]
+    fn opencode_lifecycle_maps_busy_retry_idle_waiting_and_errors() {
+        for status in ["busy", "retry"] {
+            assert_eq!(
+                opencode_event(
+                    "session.status",
+                    json!({ "sessionID": "ses_root", "status": { "type": status } }),
+                )
+                .logical_state,
+                Some(RtTerminalLogicalState::Working)
+            );
+        }
+        assert_eq!(
+            opencode_event("session.idle", json!({ "sessionID": "ses_root" })).logical_state,
+            Some(RtTerminalLogicalState::Completed)
+        );
+        for event in ["permission.asked", "question.asked"] {
+            assert_eq!(
+                opencode_event(event, json!({ "sessionID": "ses_root" })).logical_state,
+                Some(RtTerminalLogicalState::WaitingInput)
+            );
+        }
+        assert_eq!(
+            opencode_event("session.error", json!({ "sessionID": "ses_root" })).logical_state,
+            Some(RtTerminalLogicalState::Failed)
+        );
+    }
+
+    #[test]
+    fn opencode_child_sessions_cannot_mutate_parent_lifecycle_or_title() {
+        let child = opencode_event(
+            "session.updated",
+            json!({
+                "sessionID": "ses_child",
+                "info": {
+                    "id": "ses_child",
+                    "parentID": "ses_root",
+                    "title": "Child title",
+                },
+            }),
+        );
+        assert_eq!(child.provider_session_id, None);
+        assert_eq!(child.provider_title, None);
+        assert_eq!(child.logical_state, None);
+    }
+
+    #[test]
+    fn opencode_unknown_status_is_ignored_without_rejecting_the_hook() {
+        let observation = opencode_event(
+            "session.status",
+            json!({ "sessionID": "ses_root", "status": { "type": "future" } }),
+        );
+        assert_eq!(observation.provider_session_id.as_deref(), Some("ses_root"));
+        assert_eq!(observation.logical_state, None);
+    }
+
+    #[test]
+    fn opencode_identity_less_errors_are_ambiguous_and_cannot_fail_a_chat() {
+        let observation = opencode_event(
+            "session.error",
+            json!({ "error": { "name": "UnknownError", "message": "global" } }),
+        );
+        assert_eq!(observation.provider_session_id, None);
+        assert_eq!(observation.logical_state, None);
+        assert_eq!(observation.provider_title, None);
+    }
+
+    #[test]
+    fn opencode_only_accepts_titles_from_session_identity_events() {
+        let observation = opencode_event(
+            "session.status",
+            json!({
+                "sessionID": "ses_root",
+                "status": { "type": "busy" },
+                "info": { "id": "ses_root", "title": "Wrong event title" },
+            }),
+        );
+        assert_eq!(observation.provider_title, None);
     }
 }

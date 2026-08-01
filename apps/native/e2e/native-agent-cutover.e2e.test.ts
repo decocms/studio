@@ -96,7 +96,7 @@ describeLocalApi("native terminal-agent cutover", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "harnessId must be claude-code or codex",
+      error: "harnessId must be claude-code, codex, or opencode",
     });
   });
 
