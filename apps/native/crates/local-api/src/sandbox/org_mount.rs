@@ -1298,7 +1298,7 @@ mod tests {
 
     #[test]
     fn sweeps_every_nfs_mount_under_the_orgs_root() {
-        let found = stale_mountpoints(TABLE, Path::new("/app"));
+        let found = stale_mountpoints_for(false, TABLE, Path::new("/app"));
         assert_eq!(
             found,
             vec![
@@ -1336,7 +1336,18 @@ mod tests {
     fn handles_mountpoints_containing_spaces() {
         let table = "localhost:/wd{z} on /app/orgs/my org/home (nfs, nodev)\n";
         assert_eq!(
-            stale_mountpoints(table, Path::new("/app")),
+            stale_mountpoints_for(false, table, Path::new("/app")),
+            vec![PathBuf::from("/app/orgs/my org/home")]
+        );
+        // The same path, spaces and all, through the Linux dialect: /proc
+        // escapes them as \040, so the parser has to unescape rather than
+        // split on whitespace.
+        assert_eq!(
+            stale_mountpoints_for(
+                true,
+                "wd: /app/orgs/my\\040org/home fuse.rclone rw 0 0\n",
+                Path::new("/app")
+            ),
             vec![PathBuf::from("/app/orgs/my org/home")]
         );
     }
