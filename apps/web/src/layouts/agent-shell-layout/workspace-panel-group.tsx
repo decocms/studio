@@ -12,17 +12,15 @@
 import {
   useEffect,
   useRef,
-  useTransition,
   type PropsWithChildren,
   type ReactNode,
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { cn } from "@deco/ui/lib/utils.js";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  type ImperativePanelGroupHandle,
+  type GroupImperativeHandle,
 } from "@/components/resizable";
 import { useSidePanelWidth } from "@/hooks/use-side-panel-width";
 import { useElementWidth } from "@/hooks/use-element-width";
@@ -51,6 +49,9 @@ import {
   MainPanelHeaderSlot,
   PanelHeader,
 } from "./panel-header";
+
+const SIDE_PANEL_ID = "workspace-side-panel";
+const MAIN_PANEL_ID = "workspace-main-panel";
 
 function PanelCard({
   children,
@@ -118,9 +119,8 @@ export function WorkspacePanelGroup({
   toggleSidePanel,
   chatContent,
 }: WorkspacePanelGroupProps) {
-  const [_isPending, startTransition] = useTransition();
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
-  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+  const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
   const sizes = computeWorkspacePanelSizes(visibility);
   const sideSize = sidePanel !== null && mainOpen ? sidePanelWidth : sizes.side;
@@ -164,7 +164,10 @@ export function WorkspacePanelGroup({
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs URL-derived visibility with the resizable panels' imperative layout API
   useEffect(() => {
-    panelGroupRef.current?.setLayout([sideSize, mainSize]);
+    panelGroupRef.current?.setLayout({
+      [SIDE_PANEL_ID]: sideSize,
+      [MAIN_PANEL_ID]: mainSize,
+    });
   }, [sideSize, mainSize]);
 
   const chatHeader = (
@@ -264,27 +267,31 @@ export function WorkspacePanelGroup({
       <ResizablePanelGroup
         ref={panelGroupRef}
         key={`${virtualMcpId}-${taskId}`}
-        direction="horizontal"
-        className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
+        orientation="horizontal"
+        className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0 [&>[data-workspace-panel-open]]:!min-w-[320px]"
         style={{ overflow: "visible" }}
+        onLayoutChanged={(layout, { isUserInteraction }) => {
+          const percentage = layout[SIDE_PANEL_ID];
+          if (
+            isUserInteraction &&
+            sidePanel !== null &&
+            mainOpen &&
+            typeof percentage === "number" &&
+            percentage > 0 &&
+            percentage < 100
+          ) {
+            setSidePanelWidth(percentage);
+          }
+        }}
       >
         <ResizablePanel
-          order={1}
-          defaultSize={sizes.side}
-          minSize={20}
+          id={SIDE_PANEL_ID}
+          defaultSize={`${sizes.side}%`}
+          minSize="20%"
           collapsible
-          collapsedSize={0}
-          className={cn(
-            "overflow-hidden bg-sidebar",
-            sidePanel !== null ? "min-w-[320px]" : "min-w-0",
-          )}
-          onResize={(size) =>
-            startTransition(() => {
-              if (sidePanel !== null && mainOpen && size > 0 && size < 100) {
-                setSidePanelWidth(size);
-              }
-            })
-          }
+          collapsedSize="0%"
+          data-workspace-panel-open={sidePanel !== null ? "" : undefined}
+          className="min-w-0 overflow-hidden bg-sidebar"
         >
           <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
             {chatOpen && <SidePanel chatContent={chatContent} />}
@@ -294,15 +301,13 @@ export function WorkspacePanelGroup({
         <ResizableHandle className="bg-sidebar" />
 
         <ResizablePanel
-          order={2}
-          defaultSize={sizes.main}
-          minSize={20}
+          id={MAIN_PANEL_ID}
+          defaultSize={`${sizes.main}%`}
+          minSize="20%"
           collapsible
-          collapsedSize={0}
-          className={cn(
-            "min-w-0 overflow-hidden bg-sidebar",
-            mainOpen ? "min-w-[320px]" : "min-w-0",
-          )}
+          collapsedSize="0%"
+          data-workspace-panel-open={mainOpen ? "" : undefined}
+          className="min-w-0 overflow-hidden bg-sidebar"
         >
           <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
             <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
