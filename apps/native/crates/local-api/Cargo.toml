@@ -76,6 +76,13 @@ tokio-tungstenite = { workspace = true }
 # `<branchSlug>-<hash16>` sandbox directory name (prod-parity shape).
 sha2 = "0.10"
 base64 = "0.22"
+# Claude Code coordinates writes to its user state through a directory lock
+# whose mtime is refreshed while held. Match that protocol across desktop
+# platforms so Claude cannot reap Studio's live pre-launch trust merge.
+filetime = "0.2"
+# Keeps an open, comparable OS file handle for Claude's directory lock. On
+# Windows this supplies the volume + file-index identity that Metadata lacks.
+same-file = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

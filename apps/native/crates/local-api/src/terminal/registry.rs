@@ -310,6 +310,7 @@ pub struct AgentSessionRegistry {
     hooks: Mutex<HashMap<String, Arc<HookRegistration>>>,
     start_locks: Mutex<HashMap<RtThreadFence, Arc<AsyncMutex<()>>>>,
     codex_home_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    claude_state_locks: Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>,
     lifecycle: tokio::sync::broadcast::Sender<RtThreadFence>,
 }
 
@@ -332,6 +333,7 @@ impl AgentSessionRegistry {
             hooks: Mutex::new(HashMap::new()),
             start_locks: Mutex::new(HashMap::new()),
             codex_home_locks: Mutex::new(HashMap::new()),
+            claude_state_locks: Mutex::new(HashMap::new()),
             lifecycle,
         })
     }
@@ -368,6 +370,17 @@ impl AgentSessionRegistry {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .entry(account_scope.to_string())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    }
+
+    /// Serializes read-merge-replace updates to the Claude state file shared
+    /// by otherwise independent chats and Studio accounts.
+    pub fn claude_state_lock(&self, state_path: &std::path::Path) -> Arc<AsyncMutex<()>> {
+        self.claude_state_locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry(state_path.to_path_buf())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))
             .clone()
     }

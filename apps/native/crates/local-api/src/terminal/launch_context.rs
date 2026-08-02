@@ -7,6 +7,10 @@
 //! session.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant, SystemTime};
 
 use harness::HarnessId;
 use serde_json::{json, Value};
@@ -27,6 +31,14 @@ const NODE_EXTRA_CA_CERTS_ENV: &str = "NODE_EXTRA_CA_CERTS";
 const CODEX_HOME_INITIALIZED_MARKER: &str = ".studio-initialized-v1";
 const CODEX_PROFILE_PREFIX: &str = "studio-thread-";
 const MAX_CODEX_AUTH_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_CLAUDE_STATE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_GIT_METADATA_BYTES: u64 = 64 * 1024;
+const MAX_CLAUDE_STATE_SYMLINKS: usize = 16;
+const CLAUDE_STATE_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(20);
+const CLAUDE_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const CLAUDE_STATE_LOCK_STALE_AFTER: Duration = Duration::from_secs(10);
+const CLAUDE_STATE_LOCK_UPDATE_INTERVAL: Duration = Duration::from_secs(2);
+const CLAUDE_STATE_WRITE_ATTEMPTS: usize = 8;
 const HOOK_FORWARDER_SCRIPT: &str = r#"#!/bin/sh
 set +e
 umask 077
@@ -212,6 +224,19 @@ pub struct PreparedLaunch {
     /// reach. Keeping it beside the prepared URL prevents the provider
     /// configuration and registry guard from drifting.
     pub mcp_path: String,
+    claude_workspace_trust: Option<ClaudeWorkspaceTrust>,
+}
+
+#[derive(Clone, Debug)]
+struct ClaudeWorkspaceTrust {
+    state_path: PathBuf,
+    project_key: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct WorkspaceTrustRoots {
+    claude: PathBuf,
+    codex: PathBuf,
 }
 
 impl std::fmt::Debug for PreparedLaunch {
@@ -227,7 +252,27 @@ impl std::fmt::Debug for PreparedLaunch {
                 &self.env.iter().map(|(key, _)| key).collect::<Vec<_>>(),
             )
             .field("has_provider_session", &self.provider_session_id.is_some())
+            .field(
+                "has_managed_workspace_trust",
+                &self.claude_workspace_trust.is_some(),
+            )
             .finish()
+    }
+}
+
+impl PreparedLaunch {
+    pub(crate) fn claude_state_path(&self) -> Option<&Path> {
+        self.claude_workspace_trust
+            .as_ref()
+            .map(|trust| trust.state_path.as_path())
+    }
+
+    pub(crate) fn ensure_workspace_trusted_blocking(&self) -> Result<(), LaunchContextError> {
+        let Some(trust) = &self.claude_workspace_trust else {
+            return Ok(());
+        };
+        ensure_claude_workspace_trusted(&trust.state_path, &trust.project_key)?;
+        Ok(())
     }
 }
 
@@ -284,6 +329,7 @@ pub async fn prepare(
         .cloned()
         .ok_or(LaunchContextError::LocalEndpointUnavailable)?;
     let provider_session_id = request.provider_session_id.map(str::to_string);
+    let mut claude_workspace_trust = None;
 
     let state_dir = managed_state_dir(&state.app_root, request.fence);
     create_private_dir(&state_dir).await?;
@@ -317,6 +363,20 @@ pub async fn prepare(
     let mut title_environment = harness::title::TitleEnvironment::default();
     match request.harness {
         HarnessId::ClaudeCode => {
+            let trust_roots = workspace_trust_roots(&cwd).await?;
+            let project_key = trust_roots
+                .claude
+                .to_str()
+                .ok_or_else(|| {
+                    LaunchContextError::Workspace(
+                        "Claude workspace trust path is not valid UTF-8".to_string(),
+                    )
+                })?
+                .to_string();
+            claude_workspace_trust = Some(ClaudeWorkspaceTrust {
+                state_path: claude_state_path(&cwd).await?,
+                project_key,
+            });
             // Claude settings are thread-owned, so deletion removes the
             // complete overlay without affecting another chat.
             let hook_script = ensure_hook_forwarder(&state_dir).await?;
@@ -331,6 +391,7 @@ pub async fn prepare(
             .await?;
         }
         HarnessId::Codex => {
+            let trust_roots = workspace_trust_roots(&cwd).await?;
             // Codex refreshes auth.json by replacing it. All chats for one
             // Studio account therefore share a regular, account-owned home;
             // a per-thread symlink/copy would strand refreshed credentials in
@@ -346,6 +407,7 @@ pub async fn prepare(
                 &mut argv,
                 provider_session_id.as_deref(),
                 &mcp_url,
+                &trust_roots.codex,
             )
             .await?;
             title_environment =
@@ -378,6 +440,7 @@ pub async fn prepare(
         title_environment,
         provider_session_id,
         mcp_path,
+        claude_workspace_trust,
     })
 }
 
@@ -518,6 +581,7 @@ async fn prepare_codex(
     argv: &mut Vec<String>,
     provider_session_id: Option<&str>,
     mcp_url: &str,
+    trust_root: &Path,
 ) -> Result<PathBuf, LaunchContextError> {
     let config = codex_config(system_prompt, mcp_url);
     let (codex_home, profile_name) = prepare_codex_managed_files(
@@ -528,7 +592,20 @@ async fn prepare_codex(
     )
     .await?;
 
+    append_codex_launch_args(request, argv, provider_session_id, trust_root, profile_name)?;
+    Ok(codex_home)
+}
+
+fn append_codex_launch_args(
+    request: LaunchRequest<'_>,
+    argv: &mut Vec<String>,
+    provider_session_id: Option<&str>,
+    trust_root: &Path,
+    profile_name: String,
+) -> Result<(), LaunchContextError> {
     argv.extend([
+        "-c".to_string(),
+        codex_workspace_trust_override(trust_root)?,
         "--no-alt-screen".to_string(),
         "--dangerously-bypass-hook-trust".to_string(),
         "--profile".to_string(),
@@ -550,7 +627,7 @@ async fn prepare_codex(
     if let Some(provider_session_id) = provider_session_id {
         argv.extend(["resume".to_string(), provider_session_id.to_string()]);
     }
-    Ok(codex_home)
+    Ok(())
 }
 
 async fn prepare_opencode(
@@ -684,6 +761,711 @@ fn codex_config(system_prompt: &str, mcp_url: &str) -> String {
          [mcp_servers.{MCP_SERVER_NAME}.env_http_headers]\n\
          Authorization = \"{MCP_AUTHORIZATION_ENV}\"\n"
     )
+}
+
+fn codex_workspace_trust_override(trust_root: &Path) -> Result<String, LaunchContextError> {
+    let trust_root = trust_root.to_str().ok_or_else(|| {
+        LaunchContextError::Workspace("Codex workspace trust path is not valid UTF-8".to_string())
+    })?;
+    let quoted = serde_json::to_string(trust_root)
+        .expect("serializing an in-memory path string to JSON cannot fail");
+    // Codex's CLI override parser splits dotted keys literally rather than as
+    // TOML. Put the path in an inline-table value so quoting is parsed by TOML
+    // and the exact project key reaches the trust lookup.
+    Ok(format!(
+        "projects={{ {quoted} = {{ trust_level = \"trusted\" }} }}"
+    ))
+}
+
+async fn claude_state_path(cwd: &Path) -> Result<PathBuf, std::io::Error> {
+    let explicit_config_dir = std::env::var_os("CLAUDE_CONFIG_DIR");
+    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "HOME is unavailable while resolving Claude state",
+        )
+    })?;
+    let config_dir = claude_config_dir(cwd, explicit_config_dir.as_deref(), &home);
+    let legacy_state = config_dir.join(".config.json");
+    let legacy_exists = match tokio::fs::symlink_metadata(&legacy_state).await {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+    let custom_oauth = std::env::var_os("CLAUDE_CODE_CUSTOM_OAUTH_URL")
+        .filter(|value| !value.is_empty())
+        .is_some();
+    let path = claude_state_path_from(
+        cwd,
+        explicit_config_dir.as_deref(),
+        &home,
+        legacy_exists,
+        custom_oauth,
+    );
+    Ok(canonicalize_parent(&path).await)
+}
+
+fn claude_config_dir(
+    cwd: &Path,
+    explicit_config_dir: Option<&std::ffi::OsStr>,
+    home: &Path,
+) -> PathBuf {
+    explicit_config_dir
+        .map(|path| absolute_from(cwd, Path::new(path)))
+        .unwrap_or_else(|| home.join(".claude"))
+}
+
+fn claude_state_path_from(
+    cwd: &Path,
+    explicit_config_dir: Option<&std::ffi::OsStr>,
+    home: &Path,
+    legacy_exists: bool,
+    custom_oauth: bool,
+) -> PathBuf {
+    if legacy_exists {
+        return claude_config_dir(cwd, explicit_config_dir, home).join(".config.json");
+    }
+    let state_parent = explicit_config_dir
+        .filter(|path| !path.is_empty())
+        .map(|path| absolute_from(cwd, Path::new(path)))
+        .unwrap_or_else(|| home.to_path_buf());
+    let suffix = if custom_oauth { "-custom-oauth" } else { "" };
+    state_parent.join(format!(".claude{suffix}.json"))
+}
+
+fn absolute_from(base: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    }
+}
+
+async fn canonicalize_parent(path: &Path) -> PathBuf {
+    let Some(parent) = path.parent() else {
+        return path.to_path_buf();
+    };
+    match tokio::fs::canonicalize(parent).await {
+        Ok(parent) => parent.join(path.file_name().unwrap_or_default()),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+async fn workspace_trust_roots(cwd: &Path) -> Result<WorkspaceTrustRoots, std::io::Error> {
+    let cwd = tokio::fs::canonicalize(cwd).await?;
+    let mut ancestor = cwd.as_path();
+    let (repository_root, dot_git) = loop {
+        let dot_git = ancestor.join(".git");
+        match tokio::fs::symlink_metadata(&dot_git).await {
+            Ok(metadata) if metadata.is_dir() => {
+                let repository_root = tokio::fs::canonicalize(ancestor).await?;
+                return Ok(WorkspaceTrustRoots {
+                    claude: repository_root.clone(),
+                    codex: repository_root,
+                });
+            }
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                break (tokio::fs::canonicalize(ancestor).await?, dot_git);
+            }
+            Ok(_) => {
+                return Ok(WorkspaceTrustRoots {
+                    claude: cwd.clone(),
+                    codex: cwd,
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                return Ok(WorkspaceTrustRoots {
+                    claude: cwd.clone(),
+                    codex: cwd,
+                });
+            }
+        }
+        let Some(parent) = ancestor.parent() else {
+            return Ok(WorkspaceTrustRoots {
+                claude: cwd.clone(),
+                codex: cwd,
+            });
+        };
+        ancestor = parent;
+    };
+
+    let fallback = || WorkspaceTrustRoots {
+        claude: repository_root.clone(),
+        codex: cwd.clone(),
+    };
+    let Some(dot_git_contents) = read_small_regular_utf8(&dot_git).await else {
+        return Ok(fallback());
+    };
+    let Some(git_dir_reference) = dot_git_contents.trim().strip_prefix("gitdir:") else {
+        return Ok(fallback());
+    };
+    let git_dir_reference = git_dir_reference.trim();
+    if git_dir_reference.is_empty() {
+        return Ok(fallback());
+    }
+    let Ok(git_dir) = tokio::fs::canonicalize(absolute_from(
+        &repository_root,
+        Path::new(git_dir_reference),
+    ))
+    .await
+    else {
+        return Ok(fallback());
+    };
+    let Some(worktrees_dir) = git_dir.parent() else {
+        return Ok(fallback());
+    };
+    if worktrees_dir.file_name() != Some(std::ffi::OsStr::new("worktrees")) {
+        return Ok(fallback());
+    }
+
+    let Some(backlink_contents) = read_small_regular_utf8(&git_dir.join("gitdir")).await else {
+        return Ok(fallback());
+    };
+    let backlink_reference = backlink_contents.trim();
+    if backlink_reference.is_empty() {
+        return Ok(fallback());
+    }
+    let Ok(backlink) =
+        tokio::fs::canonicalize(absolute_from(&git_dir, Path::new(backlink_reference))).await
+    else {
+        return Ok(fallback());
+    };
+    let Ok(dot_git_canonical) = tokio::fs::canonicalize(&dot_git).await else {
+        return Ok(fallback());
+    };
+    if backlink != dot_git_canonical {
+        return Ok(fallback());
+    }
+
+    let Some(common_dir_contents) = read_small_regular_utf8(&git_dir.join("commondir")).await
+    else {
+        return Ok(fallback());
+    };
+    let common_dir_reference = common_dir_contents.trim();
+    if common_dir_reference.is_empty() {
+        return Ok(fallback());
+    }
+    let Ok(common_dir) =
+        tokio::fs::canonicalize(absolute_from(&git_dir, Path::new(common_dir_reference))).await
+    else {
+        return Ok(fallback());
+    };
+    if worktrees_dir.parent() != Some(common_dir.as_path()) {
+        return Ok(fallback());
+    }
+
+    let Some(codex_root) = common_dir.parent() else {
+        return Ok(fallback());
+    };
+    let codex_root = tokio::fs::canonicalize(codex_root).await?;
+    let claude_root = if common_dir.file_name() == Some(std::ffi::OsStr::new(".git")) {
+        let Some(repository) = common_dir.parent() else {
+            return Ok(fallback());
+        };
+        tokio::fs::canonicalize(repository).await?
+    } else {
+        common_dir
+    };
+    Ok(WorkspaceTrustRoots {
+        claude: claude_root,
+        codex: codex_root,
+    })
+}
+
+async fn read_small_regular_utf8(path: &Path) -> Option<String> {
+    let metadata = tokio::fs::symlink_metadata(path).await.ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_GIT_METADATA_BYTES
+    {
+        return None;
+    }
+    let contents = tokio::fs::read(path).await.ok()?;
+    if contents.len() as u64 > MAX_GIT_METADATA_BYTES {
+        return None;
+    }
+    String::from_utf8(contents).ok()
+}
+
+fn ensure_claude_workspace_trusted(
+    state_path: &Path,
+    project_key: &str,
+) -> Result<(), std::io::Error> {
+    ensure_claude_workspace_trusted_with_options(
+        state_path,
+        project_key,
+        CLAUDE_STATE_LOCK_TIMEOUT,
+        CLAUDE_STATE_LOCK_STALE_AFTER,
+        CLAUDE_STATE_LOCK_UPDATE_INTERVAL,
+        |_, _| Ok(()),
+    )
+}
+
+#[cfg(test)]
+fn ensure_claude_workspace_trusted_with_timeout(
+    state_path: &Path,
+    project_key: &str,
+    lock_timeout: Duration,
+) -> Result<(), std::io::Error> {
+    ensure_claude_workspace_trusted_with_options(
+        state_path,
+        project_key,
+        lock_timeout,
+        CLAUDE_STATE_LOCK_STALE_AFTER,
+        CLAUDE_STATE_LOCK_UPDATE_INTERVAL,
+        |_, _| Ok(()),
+    )
+}
+
+fn ensure_claude_workspace_trusted_with_options<F>(
+    state_path: &Path,
+    project_key: &str,
+    lock_timeout: Duration,
+    stale_after: Duration,
+    update_interval: Duration,
+    mut before_rename: F,
+) -> Result<(), std::io::Error>
+where
+    F: FnMut(usize, &Path) -> Result<(), std::io::Error>,
+{
+    // Claude serializes this same read/merge/replace operation with
+    // `<state>.lock`. Claude can fall back to an unlocked write when the lock
+    // is busy, so the lock is paired with compare-before-replace and bounded
+    // post-write verification rather than treated as strict mutual exclusion.
+    let state_lock =
+        ClaudeStateLock::acquire(state_path, lock_timeout, stale_after, update_interval)?;
+    let destination = resolve_claude_state_destination(state_path)?;
+    let update_result = (|| {
+        for attempt in 0..CLAUDE_STATE_WRITE_ATTEMPTS {
+            state_lock.ensure_owned()?;
+            let original = read_claude_state_snapshot(&destination)?;
+            let replacement = claude_state_with_workspace_trust(&original, project_key)?;
+
+            let Some(replacement) = replacement else {
+                before_rename(attempt, &destination)?;
+                state_lock.ensure_owned()?;
+                if read_claude_state_snapshot(&destination)? != original {
+                    continue;
+                }
+                return Ok(());
+            };
+            let mut snapshot_changed = false;
+            let replace_result =
+                crate::fs_util::atomic_replace_with_hook(&destination, &replacement, |_| {
+                    before_rename(attempt, &destination)?;
+                    state_lock.ensure_owned()?;
+                    if read_claude_state_snapshot(&destination)? != original {
+                        snapshot_changed = true;
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "Claude state changed before the trust merge could be committed",
+                        ));
+                    }
+                    Ok(())
+                });
+            if snapshot_changed {
+                continue;
+            }
+            replace_result?;
+            state_lock.ensure_owned()?;
+            if read_claude_state_snapshot(&destination)?.as_deref() == Some(replacement.as_slice())
+            {
+                return Ok(());
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            format!(
+                "Claude state kept changing while adding workspace trust: {}",
+                state_path.display()
+            ),
+        ))
+    })();
+    let release_result = state_lock.release();
+    match update_result {
+        Err(error) => Err(error),
+        Ok(()) => release_result,
+    }
+}
+
+fn claude_state_with_workspace_trust(
+    original: &Option<Vec<u8>>,
+    project_key: &str,
+) -> Result<Option<Vec<u8>>, std::io::Error> {
+    let mut state = match original {
+        Some(contents) => serde_json::from_slice::<Value>(contents).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Claude state is not valid JSON: {error}"),
+            )
+        })?,
+        None => json!({}),
+    };
+    let root = state.as_object_mut().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Claude state root must be a JSON object",
+        )
+    })?;
+    let projects = root.entry("projects").or_insert_with(|| json!({}));
+    let projects = projects.as_object_mut().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Claude state projects must be a JSON object",
+        )
+    })?;
+    let project = projects
+        .entry(project_key.to_string())
+        .or_insert_with(|| json!({}));
+    let project = project.as_object_mut().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Claude project state must be a JSON object",
+        )
+    })?;
+    if project
+        .get("hasTrustDialogAccepted")
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return Ok(None);
+    }
+    project.insert("hasTrustDialogAccepted".to_string(), Value::Bool(true));
+    let mut replacement = serde_json::to_vec(&state).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("could not encode Claude state: {error}"),
+        )
+    })?;
+    replacement.push(b'\n');
+    if replacement.len() as u64 > MAX_CLAUDE_STATE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Claude state would exceed {MAX_CLAUDE_STATE_BYTES} bytes after adding workspace trust"
+            ),
+        ));
+    }
+    Ok(Some(replacement))
+}
+
+#[derive(Debug)]
+struct ClaudeStateLock {
+    path: PathBuf,
+    identity: Arc<same_file::Handle>,
+    compromised: Arc<AtomicBool>,
+    heartbeat_stop: Option<mpsc::Sender<()>>,
+    heartbeat: Option<JoinHandle<()>>,
+    released: bool,
+}
+
+impl ClaudeStateLock {
+    fn acquire(
+        state_path: &Path,
+        timeout: Duration,
+        stale_after: Duration,
+        update_interval: Duration,
+    ) -> Result<Self, std::io::Error> {
+        if stale_after.is_zero() || update_interval.is_zero() || update_interval >= stale_after {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Claude state lock heartbeat must be positive and shorter than its stale interval",
+            ));
+        }
+        let mut lock_name = state_path.as_os_str().to_os_string();
+        lock_name.push(".lock");
+        let lock_path = PathBuf::from(lock_name);
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let deadline = Instant::now() + timeout;
+        loop {
+            match std::fs::create_dir(&lock_path) {
+                Ok(()) => {
+                    let identity = Arc::new(claude_state_lock_handle(&lock_path)?);
+                    let compromised = Arc::new(AtomicBool::new(false));
+                    let (heartbeat_stop, stop_receiver) = mpsc::channel();
+                    let heartbeat_path = lock_path.clone();
+                    let heartbeat_identity = Arc::clone(&identity);
+                    let heartbeat_compromised = Arc::clone(&compromised);
+                    let heartbeat = match std::thread::Builder::new()
+                        .name("claude-state-lock-heartbeat".to_string())
+                        .spawn(move || loop {
+                            match stop_receiver.recv_timeout(update_interval) {
+                                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                                Err(mpsc::RecvTimeoutError::Timeout) => {
+                                    if refresh_claude_state_lock(
+                                        &heartbeat_path,
+                                        heartbeat_identity.as_ref(),
+                                    )
+                                    .is_err()
+                                    {
+                                        heartbeat_compromised.store(true, Ordering::Release);
+                                        break;
+                                    }
+                                }
+                            }
+                        }) {
+                        Ok(heartbeat) => heartbeat,
+                        Err(error) => {
+                            if claude_state_lock_is_owned(&lock_path, identity.as_ref())
+                                .unwrap_or(false)
+                            {
+                                let _ = std::fs::remove_dir(&lock_path);
+                            }
+                            return Err(error);
+                        }
+                    };
+                    return Ok(Self {
+                        path: lock_path,
+                        identity,
+                        compromised,
+                        heartbeat_stop: Some(heartbeat_stop),
+                        heartbeat: Some(heartbeat),
+                        released: false,
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let metadata = match claude_state_lock_metadata(&lock_path) {
+                        Ok(metadata) => metadata,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => return Err(error),
+                    };
+                    let identity = claude_state_lock_handle(&lock_path)?;
+                    let modified = metadata.modified().ok();
+                    let stale = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+                        .is_some_and(|age| age >= stale_after);
+                    if stale {
+                        let current = match claude_state_lock_metadata(&lock_path) {
+                            Ok(current) => current,
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(error) => return Err(error),
+                        };
+                        if !claude_state_lock_is_owned(&lock_path, &identity)?
+                            || current.modified().ok() != modified
+                        {
+                            continue;
+                        }
+                        match std::fs::remove_dir(&lock_path) {
+                            Ok(()) => continue,
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            format!(
+                                "Claude state is busy in another process: {}",
+                                state_path.display()
+                            ),
+                        ));
+                    }
+                    std::thread::sleep(CLAUDE_STATE_LOCK_RETRY_INTERVAL);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    fn ensure_owned(&self) -> Result<(), std::io::Error> {
+        if self.compromised.load(Ordering::Acquire) {
+            return Err(claude_state_lock_compromised(&self.path));
+        }
+        claude_state_lock_metadata(&self.path)
+            .map_err(|_| claude_state_lock_compromised(&self.path))?;
+        if !claude_state_lock_is_owned(&self.path, self.identity.as_ref())
+            .map_err(|_| claude_state_lock_compromised(&self.path))?
+        {
+            self.compromised.store(true, Ordering::Release);
+            return Err(claude_state_lock_compromised(&self.path));
+        }
+        Ok(())
+    }
+
+    fn stop_heartbeat(&mut self) {
+        if let Some(stop) = self.heartbeat_stop.take() {
+            let _ = stop.send(());
+        }
+        if self
+            .heartbeat
+            .take()
+            .is_some_and(|heartbeat| heartbeat.join().is_err())
+        {
+            self.compromised.store(true, Ordering::Release);
+        }
+    }
+
+    fn release(mut self) -> Result<(), std::io::Error> {
+        self.stop_heartbeat();
+        let ownership = self.ensure_owned();
+        self.released = true;
+        ownership?;
+        std::fs::remove_dir(&self.path)
+    }
+}
+
+impl Drop for ClaudeStateLock {
+    fn drop(&mut self) {
+        if !self.released {
+            self.stop_heartbeat();
+            if self.ensure_owned().is_ok() {
+                let _ = std::fs::remove_dir(&self.path);
+            }
+            self.released = true;
+        }
+    }
+}
+
+fn claude_state_lock_metadata(path: &Path) -> Result<std::fs::Metadata, std::io::Error> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Claude state lock is not a directory: {}", path.display()),
+        ));
+    }
+    Ok(metadata)
+}
+
+fn claude_state_lock_handle(path: &Path) -> Result<same_file::Handle, std::io::Error> {
+    claude_state_lock_metadata(path)?;
+    let handle = same_file::Handle::from_path(path)?;
+    claude_state_lock_metadata(path)?;
+    let current = same_file::Handle::from_path(path)?;
+    if current != handle {
+        return Err(claude_state_lock_compromised(path));
+    }
+    Ok(handle)
+}
+
+fn claude_state_lock_is_owned(
+    path: &Path,
+    identity: &same_file::Handle,
+) -> Result<bool, std::io::Error> {
+    Ok(claude_state_lock_handle(path)? == *identity)
+}
+
+fn refresh_claude_state_lock(
+    path: &Path,
+    identity: &same_file::Handle,
+) -> Result<(), std::io::Error> {
+    let metadata = claude_state_lock_metadata(path)?;
+    if !claude_state_lock_is_owned(path, identity)? {
+        return Err(claude_state_lock_compromised(path));
+    }
+    filetime::set_symlink_file_times(
+        path,
+        filetime::FileTime::from_last_access_time(&metadata),
+        filetime::FileTime::now(),
+    )?;
+    if !claude_state_lock_is_owned(path, identity)? {
+        return Err(claude_state_lock_compromised(path));
+    }
+    Ok(())
+}
+
+fn claude_state_lock_compromised(path: &Path) -> std::io::Error {
+    std::io::Error::other(format!(
+        "Claude state lock ownership changed while held: {}",
+        path.display()
+    ))
+}
+
+fn resolve_claude_state_destination(path: &Path) -> Result<PathBuf, std::io::Error> {
+    let mut destination = path.to_path_buf();
+    for _ in 0..MAX_CLAUDE_STATE_SYMLINKS {
+        let metadata = match std::fs::symlink_metadata(&destination) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return canonicalize_parent_blocking(&destination);
+            }
+            Err(error) => return Err(error),
+        };
+        if metadata.file_type().is_symlink() {
+            let target = std::fs::read_link(&destination)?;
+            let parent = destination.parent().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Claude state symlink has no parent",
+                )
+            })?;
+            destination = absolute_from(parent, &target);
+            continue;
+        }
+        if !metadata.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Claude state is not a regular file: {}",
+                    destination.display()
+                ),
+            ));
+        }
+        return std::fs::canonicalize(destination);
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!(
+            "Claude state symlink chain exceeds {MAX_CLAUDE_STATE_SYMLINKS} entries: {}",
+            path.display()
+        ),
+    ))
+}
+
+fn canonicalize_parent_blocking(path: &Path) -> Result<PathBuf, std::io::Error> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Claude state path has no parent",
+        )
+    })?;
+    Ok(
+        std::fs::canonicalize(parent)?.join(path.file_name().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Claude state path has no file name",
+            )
+        })?),
+    )
+}
+
+fn read_claude_state_snapshot(path: &Path) -> Result<Option<Vec<u8>>, std::io::Error> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Claude state is not a regular file: {}", path.display()),
+        ));
+    }
+    if metadata.len() > MAX_CLAUDE_STATE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Claude state exceeds {MAX_CLAUDE_STATE_BYTES} bytes: {}",
+                path.display()
+            ),
+        ));
+    }
+    let contents = std::fs::read(path)?;
+    if contents.len() as u64 > MAX_CLAUDE_STATE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Claude state exceeds {MAX_CLAUDE_STATE_BYTES} bytes: {}",
+                path.display()
+            ),
+        ));
+    }
+    Ok(Some(contents))
 }
 
 fn opencode_config(
@@ -1014,6 +1796,23 @@ fn shell_quote_path(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    async fn linked_worktree_metadata(common_dir: &Path, worktree: &Path) -> PathBuf {
+        let git_dir = common_dir.join("worktrees/thread");
+        tokio::fs::create_dir_all(&git_dir).await.unwrap();
+        tokio::fs::create_dir_all(worktree).await.unwrap();
+        let dot_git = worktree.join(".git");
+        tokio::fs::write(&dot_git, format!("gitdir: {}\n", git_dir.display()))
+            .await
+            .unwrap();
+        tokio::fs::write(git_dir.join("gitdir"), format!("{}\n", dot_git.display()))
+            .await
+            .unwrap();
+        tokio::fs::write(git_dir.join("commondir"), "../..\n")
+            .await
+            .unwrap();
+        git_dir
+    }
+
     #[test]
     fn launch_debug_redacts_environment_values() {
         let launch = PreparedLaunch {
@@ -1025,6 +1824,7 @@ mod tests {
             title_environment: harness::title::TitleEnvironment::default(),
             provider_session_id: None,
             mcp_path: "/api/org/mcp/agent".to_string(),
+            claude_workspace_trust: None,
         };
         let debug = format!("{launch:?}");
         assert!(debug.contains("SECRET"));
@@ -1038,6 +1838,411 @@ mod tests {
         assert!(config.contains("Authorization = \"DECOCMS_MCP_AUTHORIZATION\""));
         assert!(!config.contains("Cookie"));
         assert!(!config.contains("Origin"));
+    }
+
+    #[test]
+    fn claude_state_path_matches_default_explicit_legacy_and_oauth_layouts() {
+        let cwd = Path::new("/workspace/repo");
+        let home = Path::new("/users/alice");
+        assert_eq!(
+            claude_state_path_from(cwd, None, home, false, false),
+            home.join(".claude.json")
+        );
+        assert_eq!(
+            claude_state_path_from(
+                cwd,
+                Some(std::ffi::OsStr::new("/managed/claude")),
+                home,
+                false,
+                false,
+            ),
+            Path::new("/managed/claude/.claude.json")
+        );
+        assert_eq!(
+            claude_state_path_from(
+                cwd,
+                Some(std::ffi::OsStr::new("relative-claude")),
+                home,
+                false,
+                true,
+            ),
+            cwd.join("relative-claude/.claude-custom-oauth.json")
+        );
+        assert_eq!(
+            claude_state_path_from(cwd, Some(std::ffi::OsStr::new("")), home, true, false,),
+            cwd.join(".config.json")
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_trust_roots_match_provider_git_worktree_semantics() {
+        let root = tempfile::tempdir().unwrap();
+
+        let checkout = root.path().join("checkout");
+        tokio::fs::create_dir_all(checkout.join(".git"))
+            .await
+            .unwrap();
+        let nested_checkout = checkout.join("packages/app");
+        tokio::fs::create_dir_all(&nested_checkout).await.unwrap();
+        let checkout_roots = workspace_trust_roots(&nested_checkout).await.unwrap();
+        let canonical_checkout = tokio::fs::canonicalize(&checkout).await.unwrap();
+        assert_eq!(
+            checkout_roots,
+            WorkspaceTrustRoots {
+                claude: canonical_checkout.clone(),
+                codex: canonical_checkout,
+            }
+        );
+
+        let main_checkout = root.path().join("main-checkout");
+        let main_git = main_checkout.join(".git");
+        let linked = root.path().join("linked-checkout");
+        linked_worktree_metadata(&main_git, &linked).await;
+        let linked_roots = workspace_trust_roots(&linked).await.unwrap();
+        let canonical_main = tokio::fs::canonicalize(&main_checkout).await.unwrap();
+        assert_eq!(
+            linked_roots,
+            WorkspaceTrustRoots {
+                claude: canonical_main.clone(),
+                codex: canonical_main,
+            }
+        );
+
+        let bare_repo = root.path().join("repos/acme/site");
+        let studio_worktree = root.path().join("worktrees/acme/site/thread/repo");
+        linked_worktree_metadata(&bare_repo, &studio_worktree).await;
+        let studio_roots = workspace_trust_roots(&studio_worktree).await.unwrap();
+        assert_eq!(
+            studio_roots,
+            WorkspaceTrustRoots {
+                claude: tokio::fs::canonicalize(&bare_repo).await.unwrap(),
+                codex: tokio::fs::canonicalize(bare_repo.parent().unwrap())
+                    .await
+                    .unwrap(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn forged_worktree_backlink_never_broadens_workspace_trust() {
+        let root = tempfile::tempdir().unwrap();
+        let bare_repo = root.path().join("repos/acme/site");
+        let worktree = root.path().join("worktrees/acme/site/thread/repo");
+        let git_dir = linked_worktree_metadata(&bare_repo, &worktree).await;
+        let unrelated = root.path().join("unrelated/.git");
+        tokio::fs::create_dir_all(unrelated.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&unrelated, "not a git pointer\n")
+            .await
+            .unwrap();
+        tokio::fs::write(git_dir.join("gitdir"), unrelated.display().to_string())
+            .await
+            .unwrap();
+        let nested = worktree.join("nested");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+
+        let roots = workspace_trust_roots(&nested).await.unwrap();
+        assert_eq!(
+            roots,
+            WorkspaceTrustRoots {
+                claude: tokio::fs::canonicalize(&worktree).await.unwrap(),
+                codex: tokio::fs::canonicalize(&nested).await.unwrap(),
+            }
+        );
+    }
+
+    #[test]
+    fn claude_workspace_trust_merge_preserves_unrelated_state_and_is_idempotent() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join(".claude.json");
+        std::fs::write(
+            &state_path,
+            br#"{
+              "sentinel": {"keep": true},
+              "projects": {
+                "/unrelated": {"allowedTools": ["Read"], "custom": "keep"},
+                "/workspace": {"hasTrustDialogAccepted": false, "history": [1, 2]}
+              }
+            }"#,
+        )
+        .unwrap();
+
+        ensure_claude_workspace_trusted(&state_path, "/workspace").unwrap();
+        let first = std::fs::read(&state_path).unwrap();
+        let state: Value = serde_json::from_slice(&first).unwrap();
+        assert_eq!(state["sentinel"], json!({ "keep": true }));
+        assert_eq!(
+            state["projects"]["/unrelated"],
+            json!({ "allowedTools": ["Read"], "custom": "keep" })
+        );
+        assert_eq!(state["projects"]["/workspace"]["history"], json!([1, 2]));
+        assert_eq!(
+            state["projects"]["/workspace"]["hasTrustDialogAccepted"],
+            true
+        );
+        ensure_claude_workspace_trusted(&state_path, "/workspace").unwrap();
+        assert_eq!(std::fs::read(&state_path).unwrap(), first);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&state_path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[test]
+    fn claude_workspace_trust_creates_only_the_exact_project_entry() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join("nested/.claude.json");
+        ensure_claude_workspace_trusted(&state_path, "/workspace/repo").unwrap();
+        let state: Value = serde_json::from_slice(&std::fs::read(&state_path).unwrap()).unwrap();
+        assert_eq!(
+            state,
+            json!({
+                "projects": {
+                    "/workspace/repo": { "hasTrustDialogAccepted": true }
+                }
+            })
+        );
+        assert!(state["projects"].get("/workspace").is_none());
+    }
+
+    #[test]
+    fn claude_workspace_trust_refuses_invalid_or_oversized_state() {
+        let root = tempfile::tempdir().unwrap();
+        let malformed = root.path().join("malformed.json");
+        std::fs::write(&malformed, b"{not-json").unwrap();
+        let malformed_before = std::fs::read(&malformed).unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted(&malformed, "/workspace")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        assert_eq!(std::fs::read(&malformed).unwrap(), malformed_before);
+
+        let wrong_shape = root.path().join("wrong-shape.json");
+        std::fs::write(&wrong_shape, br#"{"projects":[]}"#).unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted(&wrong_shape, "/workspace")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+
+        let oversized = root.path().join("oversized.json");
+        std::fs::write(&oversized, vec![b' '; MAX_CLAUDE_STATE_BYTES as usize + 1]).unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted(&oversized, "/workspace")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+
+        let expansion = root.path().join("expansion.json");
+        let empty = serde_json::to_vec(&json!({ "padding": "" })).unwrap();
+        let padding = "x".repeat(MAX_CLAUDE_STATE_BYTES as usize - empty.len());
+        let expansion_before = serde_json::to_vec(&json!({ "padding": padding })).unwrap();
+        assert_eq!(expansion_before.len() as u64, MAX_CLAUDE_STATE_BYTES);
+        std::fs::write(&expansion, &expansion_before).unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted(&expansion, "/workspace")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        assert_eq!(std::fs::read(&expansion).unwrap(), expansion_before);
+    }
+
+    #[test]
+    fn claude_workspace_trust_retries_around_an_unlocked_provider_write() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join("state.json");
+        std::fs::write(&state_path, br#"{"initial":true}"#).unwrap();
+        let mut injected = false;
+
+        ensure_claude_workspace_trusted_with_options(
+            &state_path,
+            "/workspace",
+            CLAUDE_STATE_LOCK_TIMEOUT,
+            CLAUDE_STATE_LOCK_STALE_AFTER,
+            CLAUDE_STATE_LOCK_UPDATE_INTERVAL,
+            |_, destination| {
+                if !injected {
+                    injected = true;
+                    crate::fs_util::atomic_replace(
+                        destination,
+                        br#"{"provider":{"preserve":true}}"#,
+                    )?;
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        let state: Value = serde_json::from_slice(&std::fs::read(state_path).unwrap()).unwrap();
+        assert_eq!(state["provider"], json!({ "preserve": true }));
+        assert_eq!(
+            state["projects"]["/workspace"]["hasTrustDialogAccepted"],
+            true
+        );
+    }
+
+    #[test]
+    fn claude_state_lock_heartbeat_prevents_reaping_and_detects_takeover() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join("state.json");
+        let stale_after = Duration::from_millis(250);
+        let update_interval = Duration::from_millis(25);
+        let lock =
+            ClaudeStateLock::acquire(&state_path, Duration::ZERO, stale_after, update_interval)
+                .unwrap();
+        let lock_path = lock.path.clone();
+
+        std::thread::sleep(Duration::from_millis(600));
+        assert_eq!(
+            ClaudeStateLock::acquire(&state_path, Duration::ZERO, stale_after, update_interval,)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+
+        std::fs::remove_dir(&lock_path).unwrap();
+        std::fs::create_dir(root.path().join("inode-decoy")).unwrap();
+        std::fs::create_dir(&lock_path).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            lock.release().unwrap_err().kind(),
+            std::io::ErrorKind::Other
+        );
+        assert!(lock_path.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_workspace_trust_updates_symlink_target_without_replacing_link() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, br#"{"sentinel":true}"#).unwrap();
+        let state_path = root.path().join("state.json");
+        symlink("target.json", &state_path).unwrap();
+
+        ensure_claude_workspace_trusted(&state_path, "/workspace").unwrap();
+
+        assert!(std::fs::symlink_metadata(&state_path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let state: Value = serde_json::from_slice(&std::fs::read(&target).unwrap()).unwrap();
+        assert_eq!(state["sentinel"], true);
+        assert_eq!(
+            state["projects"]["/workspace"]["hasTrustDialogAccepted"],
+            true
+        );
+        assert!(!root.path().join("state.json.lock").exists());
+    }
+
+    #[test]
+    fn claude_workspace_trust_waits_for_provider_lock_and_cleans_its_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join("state.json");
+        std::fs::write(&state_path, b"{}").unwrap();
+        let lock_path = root.path().join("state.json.lock");
+        std::fs::create_dir(&lock_path).unwrap();
+        let release = lock_path.clone();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            std::fs::remove_dir(release).unwrap();
+        });
+
+        ensure_claude_workspace_trusted(&state_path, "/workspace").unwrap();
+
+        releaser.join().unwrap();
+        assert!(!lock_path.exists());
+        let state: Value = serde_json::from_slice(&std::fs::read(state_path).unwrap()).unwrap();
+        assert_eq!(
+            state["projects"]["/workspace"]["hasTrustDialogAccepted"],
+            true
+        );
+    }
+
+    #[test]
+    fn claude_workspace_trust_refuses_non_directory_or_busy_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let state_path = root.path().join("state.json");
+        std::fs::write(&state_path, b"{}").unwrap();
+        let lock_path = root.path().join("state.json.lock");
+        std::fs::write(&lock_path, b"not-a-lock-directory").unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted_with_timeout(
+                &state_path,
+                "/workspace",
+                Duration::ZERO,
+            )
+            .unwrap_err()
+            .kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        std::fs::remove_file(&lock_path).unwrap();
+        std::fs::create_dir(&lock_path).unwrap();
+        assert_eq!(
+            ensure_claude_workspace_trusted_with_timeout(
+                &state_path,
+                "/workspace",
+                Duration::ZERO,
+            )
+            .unwrap_err()
+            .kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        assert_eq!(std::fs::read(&state_path).unwrap(), b"{}");
+    }
+
+    #[test]
+    fn codex_workspace_trust_override_is_launch_scoped_and_precedes_resume() {
+        let fence = test_fence("account", "thread");
+        let request = LaunchRequest {
+            fence: &fence,
+            terminal_session_id: "terminal",
+            harness: HarnessId::Codex,
+            model_id: None,
+            approval_mode: "default",
+            plan_mode: false,
+            hook_token: "hook",
+            mcp_token: "mcp",
+            provider_session_id: Some("session"),
+        };
+        let trust_root = Path::new("/tmp/quote-\"-backslash-\\-café");
+        let mut argv = Vec::new();
+        append_codex_launch_args(
+            request,
+            &mut argv,
+            Some("session"),
+            trust_root,
+            "studio-profile".to_string(),
+        )
+        .unwrap();
+        assert_eq!(argv[0], "-c");
+        assert_eq!(
+            argv[1],
+            format!(
+                "projects={{ {} = {{ trust_level = \"trusted\" }} }}",
+                serde_json::to_string(trust_root.to_str().unwrap()).unwrap()
+            )
+        );
+        assert!(
+            argv.iter().position(|arg| arg == "-c").unwrap()
+                < argv.iter().position(|arg| arg == "resume").unwrap()
+        );
+        assert!(!argv
+            .iter()
+            .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"));
     }
 
     #[test]
