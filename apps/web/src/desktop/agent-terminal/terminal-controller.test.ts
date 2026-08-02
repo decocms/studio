@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   TerminalController,
   TerminalPromptDeliveryUnknownError,
+  terminalReplayRequiresAuthorityPrune,
 } from "./terminal-controller";
+import { createTerminalParserCapabilityQueryAuthority } from "./terminal-capability-replies";
 
 class TestWebSocket {
   static readonly CONNECTING = 0;
@@ -181,6 +183,85 @@ describe("native terminal prompt delivery", () => {
 });
 
 describe("native terminal capability reply authority", () => {
+  test("prunes retained authorities only after reset or replay eviction", () => {
+    const retained = {};
+    expect(
+      terminalReplayRequiresAuthorityPrune("output", retained, retained),
+    ).toBeFalse();
+    expect(
+      terminalReplayRequiresAuthorityPrune("output", retained, {}),
+    ).toBeTrue();
+    expect(
+      terminalReplayRequiresAuthorityPrune("reset", retained, retained),
+    ).toBeTrue();
+  });
+
+  test("restores only an incomplete query authority across remount", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const initialAuthority = createTerminalParserCapabilityQueryAuthority();
+    const unsubscribeInitial = controller.subscribeOutput((frame, ack) => {
+      initialAuthority.observe(frame.data, frame.allowCapabilityReplies);
+      if (frame.restorePendingCapabilityReplies) {
+        initialAuthority.restorePendingReplyAuthority();
+      }
+      ack();
+    });
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({ type: "output", seq: 5, data: "\x1b[", replay: false });
+    unsubscribeInitial();
+
+    const remountAuthority = createTerminalParserCapabilityQueryAuthority();
+    const remountedFrames: Array<{
+      allow: boolean;
+      restorePending: boolean;
+      sequence: number;
+    }> = [];
+    const unsubscribeRemount = controller.subscribeOutput((frame, ack) => {
+      remountedFrames.push({
+        allow: frame.allowCapabilityReplies,
+        restorePending: frame.restorePendingCapabilityReplies,
+        sequence: frame.seq,
+      });
+      remountAuthority.observe(frame.data, frame.allowCapabilityReplies);
+      if (frame.restorePendingCapabilityReplies) {
+        remountAuthority.restorePendingReplyAuthority();
+      }
+      ack();
+    });
+    expect(remountedFrames).toEqual([
+      { allow: false, restorePending: true, sequence: 5 },
+    ]);
+
+    const replacement = TestWebSocket.instances[1]!;
+    replacement.open();
+    replacement.receive({ ...runningReady("codex"), lastSeq: 5 });
+    replacement.receive({
+      type: "output",
+      seq: 10,
+      data: "c",
+      replay: false,
+    });
+    expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeTrue();
+    unsubscribeRemount();
+
+    const settledAuthority = createTerminalParserCapabilityQueryAuthority();
+    const unsubscribeSettled = controller.subscribeOutput((frame, ack) => {
+      settledAuthority.observe(frame.data, frame.allowCapabilityReplies);
+      if (frame.restorePendingCapabilityReplies) {
+        settledAuthority.restorePendingReplyAuthority();
+      }
+      ack();
+    });
+    expect(settledAuthority.takeReplyAuthority({ kind: "da1" })).toBeFalse();
+
+    unsubscribeSettled();
+    controller.dispose();
+  });
+
   test("releases an unacknowledged live-frame lease across a StrictMode remount", async () => {
     const controller = new TerminalController("org", "thread");
     controller.retain();

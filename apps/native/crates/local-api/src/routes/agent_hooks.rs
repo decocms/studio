@@ -178,7 +178,7 @@ pub async fn receive(
         state.agent_sessions.notify_lifecycle(&hook.fence);
     }
 
-    if hook.harness == harness::HarnessId::OpenCode {
+    if hook.harness == harness::HarnessId::OpenCode && observation.event_name == "session.updated" {
         if let Some(title) = observation
             .provider_title
             .as_deref()

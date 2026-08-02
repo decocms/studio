@@ -36,6 +36,7 @@ import {
   url,
 } from "./helpers";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
+import { hasCliFlag } from "./fixtures/cli-flags.mjs";
 
 const ORG = "terminal-ws-org";
 const VIRTUAL_MCP_ID = "terminal-ws-agent";
@@ -44,6 +45,7 @@ const FIXTURE_PATH = fileURLToPath(
 );
 const FRAME_TIMEOUT_MS = 15_000;
 const PROVIDERS = ["claude-code", "codex", "opencode"] as const;
+const FIXTURE_DEFAULT_BRANCH = "main";
 const FIXTURE_BRANCH = "terminal-e2e";
 const CLAUDE_RECOVERY_BRANCH = "terminal-e2e-claude-recovery";
 const CLAUDE_RECOVERY_THREAD_ID = "terminal-claude-recovery";
@@ -189,33 +191,35 @@ interface TerminalClient {
   failure: { value: string | null };
 }
 
-function git(cwd: string, args: string[]): void {
+function git(cwd: string, args: string[]): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(
       `git ${args.join(" ")} failed: ${result.stderr || result.stdout}`,
     );
   }
+  return result.stdout.trim();
 }
 
 function setupFixtureRepo(): { root: string; bareDir: string } {
   const root = mkdtempSync(join(tmpdir(), "terminal-agent-git-"));
   const bareDir = join(root, "origin.git");
   const workDir = join(root, "author");
-  git(root, ["init", "--bare", "-q", bareDir]);
-  git(root, ["init", "-q", "-b", FIXTURE_BRANCH, workDir]);
+  git(root, ["init", "--bare", "-q", "-b", FIXTURE_DEFAULT_BRANCH, bareDir]);
+  git(root, ["init", "-q", "-b", FIXTURE_DEFAULT_BRANCH, workDir]);
   git(workDir, ["config", "user.name", "Test User"]);
   git(workDir, ["config", "user.email", "test@example.com"]);
   writeFileSync(join(workDir, "README.md"), "terminal agent fixture\n");
   git(workDir, ["add", "README.md"]);
   git(workDir, ["commit", "-q", "-m", "initial"]);
   git(workDir, ["remote", "add", "origin", bareDir]);
+  git(workDir, ["push", "-q", "-u", "origin", FIXTURE_DEFAULT_BRANCH]);
+  git(workDir, ["branch", FIXTURE_BRANCH]);
   git(workDir, ["push", "-q", "-u", "origin", FIXTURE_BRANCH]);
   git(workDir, ["branch", CLAUDE_RECOVERY_BRANCH]);
   git(workDir, ["push", "-q", "origin", CLAUDE_RECOVERY_BRANCH]);
   git(workDir, ["branch", CODEX_RESTART_BRANCH]);
   git(workDir, ["push", "-q", "origin", CODEX_RESTART_BRANCH]);
-  git(bareDir, ["symbolic-ref", "HEAD", `refs/heads/${FIXTURE_BRANCH}`]);
   return { root, bareDir };
 }
 
@@ -781,6 +785,10 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
 
   beforeAll(async () => {
     gitFixture = setupFixtureRepo();
+    expect(git(gitFixture.bareDir, ["symbolic-ref", "--short", "HEAD"])).toBe(
+      FIXTURE_DEFAULT_BRANCH,
+    );
+    expect(FIXTURE_DEFAULT_BRANCH).not.toBe(FIXTURE_BRANCH);
     claudeConfigDir = mkdtempSync(join(tmpdir(), "studio-terminal-claude-"));
     writeFileSync(
       join(claudeConfigDir, ".claude.json"),
@@ -1001,6 +1009,9 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               computeHandle(gitFixture.bareDir, FIXTURE_BRANCH),
             ),
           );
+          expect(git(expectedCwd, ["branch", "--show-current"])).toBe(
+            FIXTURE_BRANCH,
+          );
 
           const firstLaunches = await waitForLaunchRecords(
             launchLog,
@@ -1027,7 +1038,9 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           if (provider === "opencode") {
             expect(firstLaunches[0]?.args[0]).toBe("--agent");
             expect(firstLaunches[0]?.args[1]).toMatch(/^studio-native-.+/);
-            expect(firstLaunches[0]?.args).not.toContain("--model");
+            expect(
+              hasCliFlag(firstLaunches[0]?.args ?? [], "--model"),
+            ).toBeFalse();
           } else if (provider === "codex") {
             expectCodexInteractiveLaunch(firstLaunches[0]!, 1);
             const preflights = await waitForCodexHookTrustPreflightRecords(
@@ -1128,7 +1141,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               "--session",
               `studio-e2e-${provider}-session`,
             ]);
-            expect(launches[1]?.args).not.toContain("--model");
+            expect(hasCliFlag(launches[1]?.args ?? [], "--model")).toBeFalse();
           }
 
           const resumedExit = await terminateAndWaitForExit(

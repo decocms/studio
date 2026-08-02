@@ -18,6 +18,7 @@ import {
   type TerminalReplayFrame,
   type TerminalServerFrame,
 } from "./protocol";
+import { createTerminalCapabilityQueryBoundaryScanner } from "./terminal-capability-replies";
 
 export type TerminalConnectionState =
   | "disconnected"
@@ -63,13 +64,19 @@ type ConnectionIntent =
       frame: Extract<TerminalClientFrame, { type: "start" }>;
     };
 
+export interface TerminalControllerOutputFrame extends TerminalReplayFrame {
+  restorePendingCapabilityReplies: boolean;
+}
+
 type TerminalOutputListener = (
-  frame: TerminalReplayFrame,
+  frame: TerminalControllerOutputFrame,
   acknowledgeCapabilityReplies: () => void,
 ) => void;
 
 interface StoredTerminalReplayFrame extends TerminalReplayFrame {
   capabilityReplyAuthorityId: number | null;
+  pendingCapabilityReplyAuthorityId: number | null;
+  pendingCapabilityReplyAuthorityIdsToClear: number[];
 }
 
 const DEFAULT_DIMENSIONS: TerminalDimensions = { rows: 30, cols: 100 };
@@ -78,6 +85,17 @@ const DEFAULT_DIMENSIONS: TerminalDimensions = { rows: 30, cols: 100 };
 const REPLAY_BYTE_LIMIT = 4 * 1024 * 1024;
 const BASE_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
+
+export function terminalReplayRequiresAuthorityPrune(
+  frameKind: TerminalReplayFrame["kind"],
+  previousFirst: object | undefined,
+  nextFirst: object | undefined,
+): boolean {
+  return (
+    frameKind === "reset" ||
+    (previousFirst !== undefined && nextFirst !== previousFirst)
+  );
+}
 
 /**
  * The server may have written this prompt to the PTY before the socket closed.
@@ -134,6 +152,12 @@ export class TerminalController {
     TerminalOutputListener | null
   >();
   private nextCapabilityReplyAuthorityId = 1;
+  private readonly capabilityQueryBoundaryScanner =
+    createTerminalCapabilityQueryBoundaryScanner();
+  private pendingCapabilityReplyAuthority: {
+    generation: number;
+    id: number;
+  } | null = null;
   private startupReplySocket: WebSocket | null = null;
   private pendingPrompts = new Map<string, PendingPrompt>();
   private startDeferred: Deferred | null = null;
@@ -327,6 +351,8 @@ export class TerminalController {
     if (!this.replayComplete) {
       this.replay = [];
       this.capabilityReplyAuthorities.clear();
+      this.capabilityQueryBoundaryScanner.reset();
+      this.pendingCapabilityReplyAuthority = null;
       this.replayComplete = true;
       this.lastOutputSequence = 0;
     }
@@ -731,6 +757,45 @@ export class TerminalController {
     if (frame.kind === "reset" && frame.seq < currentSequence) return;
 
     const previousFirst = this.replay[0];
+    const pendingCapabilityReplyAuthorityIdsToClear: number[] = [];
+    if (frame.kind === "reset") {
+      this.capabilityQueryBoundaryScanner.reset();
+      if (this.pendingCapabilityReplyAuthority) {
+        pendingCapabilityReplyAuthorityIdsToClear.push(
+          this.pendingCapabilityReplyAuthority.id,
+        );
+        this.pendingCapabilityReplyAuthority = null;
+      }
+    }
+    this.capabilityQueryBoundaryScanner.observe(
+      frame.data,
+      frame.allowCapabilityReplies,
+    );
+    const pendingQuery =
+      this.capabilityQueryBoundaryScanner.pendingReplyAuthority();
+    if (
+      this.pendingCapabilityReplyAuthority &&
+      (pendingQuery?.generation !==
+        this.pendingCapabilityReplyAuthority.generation ||
+        !pendingQuery.repliesAllowed)
+    ) {
+      pendingCapabilityReplyAuthorityIdsToClear.push(
+        this.pendingCapabilityReplyAuthority.id,
+      );
+      this.pendingCapabilityReplyAuthority = null;
+    }
+    let pendingCapabilityReplyAuthorityId: number | null = null;
+    if (pendingQuery?.repliesAllowed && !this.pendingCapabilityReplyAuthority) {
+      pendingCapabilityReplyAuthorityId = this.nextCapabilityReplyAuthorityId++;
+      this.capabilityReplyAuthorities.set(
+        pendingCapabilityReplyAuthorityId,
+        null,
+      );
+      this.pendingCapabilityReplyAuthority = {
+        generation: pendingQuery.generation,
+        id: pendingCapabilityReplyAuthorityId,
+      };
+    }
     const capabilityReplyAuthorityId = frame.allowCapabilityReplies
       ? this.nextCapabilityReplyAuthorityId++
       : null;
@@ -741,6 +806,8 @@ export class TerminalController {
       ...frame,
       allowCapabilityReplies: false,
       capabilityReplyAuthorityId,
+      pendingCapabilityReplyAuthorityId,
+      pendingCapabilityReplyAuthorityIdsToClear,
     };
     const nextReplay = appendTerminalReplay(
       this.replay,
@@ -756,7 +823,15 @@ export class TerminalController {
       this.replayComplete = false;
     }
     this.replay = nextReplay;
-    this.pruneCapabilityReplyAuthorities();
+    if (
+      terminalReplayRequiresAuthorityPrune(
+        frame.kind,
+        previousFirst,
+        nextReplay[0],
+      )
+    ) {
+      this.pruneCapabilityReplyAuthorities();
+    }
     this.lastOutputSequence = frame.seq;
     if (this.snapshot.get().error) {
       this.patch({ error: null, retryable: false });
@@ -778,12 +853,21 @@ export class TerminalController {
     if (allowCapabilityReplies) {
       this.capabilityReplyAuthorities.set(authorityId, listener);
     }
+    const pendingAuthorityId = frame.pendingCapabilityReplyAuthorityId;
+    const restorePendingCapabilityReplies =
+      pendingAuthorityId !== null &&
+      this.capabilityReplyAuthorities.has(pendingAuthorityId) &&
+      this.capabilityReplyAuthorities.get(pendingAuthorityId) === null;
+    if (restorePendingCapabilityReplies) {
+      this.capabilityReplyAuthorities.set(pendingAuthorityId, listener);
+    }
     listener(
       {
         kind: frame.kind,
         seq: frame.seq,
         data: frame.data,
         allowCapabilityReplies,
+        restorePendingCapabilityReplies,
       },
       () => {
         if (
@@ -792,18 +876,17 @@ export class TerminalController {
         ) {
           this.capabilityReplyAuthorities.delete(authorityId);
         }
+        for (const pendingId of frame.pendingCapabilityReplyAuthorityIdsToClear) {
+          if (this.capabilityReplyAuthorities.get(pendingId) === listener) {
+            this.capabilityReplyAuthorities.delete(pendingId);
+          }
+        }
       },
     );
   }
 
   private releaseCapabilityReplyLeases(listener: TerminalOutputListener): void {
-    const retainedAuthorityIds = new Set(
-      this.replay.flatMap((frame) =>
-        frame.capabilityReplyAuthorityId === null
-          ? []
-          : [frame.capabilityReplyAuthorityId],
-      ),
-    );
+    const retainedAuthorityIds = this.retainedCapabilityReplyAuthorityIds();
     for (const [authorityId, lease] of this.capabilityReplyAuthorities) {
       if (lease !== listener) continue;
       if (retainedAuthorityIds.has(authorityId)) {
@@ -815,18 +898,33 @@ export class TerminalController {
   }
 
   private pruneCapabilityReplyAuthorities(): void {
-    const retainedAuthorityIds = new Set(
-      this.replay.flatMap((frame) =>
-        frame.capabilityReplyAuthorityId === null
-          ? []
-          : [frame.capabilityReplyAuthorityId],
-      ),
-    );
+    const retainedAuthorityIds = this.retainedCapabilityReplyAuthorityIds();
     for (const [authorityId, lease] of this.capabilityReplyAuthorities) {
       if (lease === null && !retainedAuthorityIds.has(authorityId)) {
         this.capabilityReplyAuthorities.delete(authorityId);
       }
     }
+    if (
+      this.pendingCapabilityReplyAuthority &&
+      !this.capabilityReplyAuthorities.has(
+        this.pendingCapabilityReplyAuthority.id,
+      )
+    ) {
+      this.pendingCapabilityReplyAuthority = null;
+    }
+  }
+
+  private retainedCapabilityReplyAuthorityIds(): Set<number> {
+    const retained = new Set<number>();
+    for (const frame of this.replay) {
+      if (frame.capabilityReplyAuthorityId !== null) {
+        retained.add(frame.capabilityReplyAuthorityId);
+      }
+      if (frame.pendingCapabilityReplyAuthorityId !== null) {
+        retained.add(frame.pendingCapabilityReplyAuthorityId);
+      }
+    }
+    return retained;
   }
 
   private rejectPendingPrompts(
@@ -885,17 +983,20 @@ export class TerminalController {
   private resetRendererReplay(): void {
     this.replay = [];
     this.capabilityReplyAuthorities.clear();
+    this.capabilityQueryBoundaryScanner.reset();
+    this.pendingCapabilityReplyAuthority = null;
     this.replayComplete = true;
     this.lastOutputSequence = 0;
     this.patch({
       sessionId: null,
       generation: null,
     });
-    const reset: TerminalReplayFrame = {
+    const reset: TerminalControllerOutputFrame = {
       kind: "reset",
       seq: 0,
       data: new Uint8Array(),
       allowCapabilityReplies: false,
+      restorePendingCapabilityReplies: false,
     };
     for (const listener of this.outputListeners) listener(reset, () => {});
   }

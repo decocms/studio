@@ -250,7 +250,6 @@ describe("native terminal capability replies", () => {
     const emitted: string[] = [];
     const forwarded: string[] = [];
     let writing = false;
-    let currentFrameRepliesAllowed = false;
     const inputSubscription = terminal.onData((data) => {
       emitted.push(data);
       if (!writing) {
@@ -259,15 +258,12 @@ describe("native terminal capability replies", () => {
       }
       const replyAuthority = authority.takeNativeReplyAuthority(data);
       if (replyAuthority === false) return;
-      if (replyAuthority === null && !currentFrameRepliesAllowed) return;
       forwarded.push(data);
     });
     const write = async (data: string, repliesAllowed: boolean) => {
       writing = true;
-      currentFrameRepliesAllowed = repliesAllowed;
       authority.observe(bytes(data), repliesAllowed);
       await writeTerminal(terminal, data);
-      currentFrameRepliesAllowed = false;
       writing = false;
     };
     const queryFamilies = [
@@ -337,8 +333,8 @@ describe("native terminal capability replies", () => {
   });
 
   test("reports window and cell pixel sizes from renderer geometry", () => {
-    const geometry = { cols: 100, rows: 40, width: 900, height: 720 };
-    expect(terminalPixelSizeReply(14, geometry)).toBe("\x1b[4;720;900t");
+    const geometry = { cols: 100, rows: 40, width: 903.6, height: 718.4 };
+    expect(terminalPixelSizeReply(14, geometry)).toBe("\x1b[4;718;904t");
     expect(terminalPixelSizeReply(16, geometry)).toBe("\x1b[6;18;9t");
     expect(terminalPixelSizeReply(14, { ...geometry, width: 0 })).toBeNull();
   });
@@ -378,5 +374,10 @@ describe("native terminal capability replies", () => {
       [14, false],
       [16, true],
     ]);
+
+    scanner.observe(bytes("\x1b[1"), false);
+    scanner.restorePendingReplyAuthority();
+    scanner.observe(bytes("4t"), true);
+    expect(observed.at(-1)).toEqual([14, true]);
   });
 });
