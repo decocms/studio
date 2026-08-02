@@ -264,6 +264,8 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
+  "chat.input.codingAgentRequiresDesktop":
+    "Continue este chat do agente de código no aplicativo Studio para desktop.",
   "chat.input.readOnlyOthersChat":
     "Apenas leitura - você está visualizando um chat de outra pessoa",
   "chat.input.sendMessage": "Enviar mensagem",

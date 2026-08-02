@@ -1,4 +1,5 @@
 import { useCurrentLink } from "@/hooks/use-current-link";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import type { AgentOptionAvailability } from "./pills/agent-options";
 
@@ -10,11 +11,14 @@ import type { AgentOptionAvailability } from "./pills/agent-options";
  */
 export function useAgentOptionAvailability(): AgentOptionAvailability {
   const link = useCurrentLink();
+  const isDesktopApp = useIsDesktopApp();
   const publicConfig = usePublicConfig();
+  const localMachineAvailable = isDesktopApp && link.online;
   return {
     agentSandbox: publicConfig.runtime.agentSandbox,
-    userDesktop: link.online,
-    claudeCode: link.online && link.capabilities.includes("claude-code"),
-    codex: link.online && link.capabilities.includes("codex"),
+    userDesktop: localMachineAvailable,
+    claudeCode:
+      localMachineAvailable && link.capabilities.includes("claude-code"),
+    codex: localMachineAvailable && link.capabilities.includes("codex"),
   };
 }

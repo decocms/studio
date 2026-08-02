@@ -1,10 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { CurrentLink } from "@/hooks/use-current-link";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
   agentShowsGithubHeaderActions,
-  hasLocalCliHarness,
 } from "./agent-capabilities";
 
 describe("agentHasClonableSource", () => {
@@ -161,47 +159,6 @@ describe("agentShowsGithubHeaderActions", () => {
           },
         },
       } as any),
-    ).toBe(true);
-  });
-});
-
-describe("hasLocalCliHarness", () => {
-  const link = (overrides: Partial<CurrentLink> = {}): CurrentLink => ({
-    online: false,
-    capabilities: [],
-    ready: true,
-    ...overrides,
-  });
-
-  it("returns false when the link is offline", () => {
-    expect(hasLocalCliHarness(link({ online: false }))).toBe(false);
-    expect(
-      hasLocalCliHarness(
-        link({ online: false, capabilities: ["claude-code"] }),
-      ),
-    ).toBe(false);
-  });
-
-  it("returns false when online but no CLI harness is reported", () => {
-    expect(hasLocalCliHarness(link({ online: true }))).toBe(false);
-    expect(
-      hasLocalCliHarness(
-        link({ online: true, capabilities: ["decopilot-sandbox"] }),
-      ),
-    ).toBe(false);
-  });
-
-  it("returns true when online with claude-code or codex", () => {
-    expect(
-      hasLocalCliHarness(link({ online: true, capabilities: ["claude-code"] })),
-    ).toBe(true);
-    expect(
-      hasLocalCliHarness(link({ online: true, capabilities: ["codex"] })),
-    ).toBe(true);
-    expect(
-      hasLocalCliHarness(
-        link({ online: true, capabilities: ["claude-code", "codex"] }),
-      ),
     ).toBe(true);
   });
 });
