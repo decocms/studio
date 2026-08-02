@@ -106,6 +106,8 @@ export const library = {
   "library.library.folderCreateFailed": "Failed to create folder",
   "library.library.folderCreated": 'Folder "{name}" created',
   "library.library.folderNamePlaceholder": "folder-name",
+  "library.library.folderNameReserved":
+    '"{name}" is a system folder here — pick another name.',
   "library.library.newFolder": "New folder",
   "library.library.newFolderDescription": "Create a folder in {path}.",
   "library.library.newFolderTitle": "New folder",

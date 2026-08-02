@@ -112,6 +112,8 @@ export const library = {
   "library.library.folderCreateFailed": "Falha ao criar pasta",
   "library.library.folderCreated": 'Pasta "{name}" criada',
   "library.library.folderNamePlaceholder": "nome-da-pasta",
+  "library.library.folderNameReserved":
+    '"{name}" é uma pasta do sistema aqui — escolha outro nome.',
   "library.library.newFolder": "Nova pasta",
   "library.library.newFolderDescription": "Criar uma pasta em {path}.",
   "library.library.newFolderTitle": "Nova pasta",

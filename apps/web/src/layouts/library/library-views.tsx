@@ -79,6 +79,15 @@ const SYSTEM_FOLDERS = [
   },
 ] as const;
 
+/** The names the home listing already occupies with system-folder cards. A
+ *  hand-made folder with one of these names would sit in the same grid under
+ *  the same label but point somewhere else, so the writers reject it at the
+ *  home root. Lowercased — "Uploads" reads as the same folder to a human. */
+export const SYSTEM_FOLDER_NAMES: ReadonlySet<string> = new Set([
+  ...SYSTEM_FOLDERS.map((f) => f.volume),
+  segmentLabel("public"),
+]);
+
 const RECENTLY_ADDED_COUNT = 6;
 
 /** "volume/dir" a cross-volume entry lives in — home shows the org slug,
@@ -200,9 +209,10 @@ function VolumeFolderCard({
  * volumes under the hood (mounted elsewhere in the sandbox) but a member has no
  * reason to know that — here they're just the folders chat and agents fill.
  *
- * `public` presents as "skills". A hand-made `home/skills/` folder can therefore
- * sit next to it; the two stay distinguishable by tone, the read-only eye badge,
- * the subtitle, and this card coming first.
+ * Their labels (`uploads`, `outputs`, and `public` presenting as "skills") are
+ * therefore reserved at the home root: a hand-made folder with one of those
+ * names would land in this same grid under the same label but point at a
+ * different volume. `SYSTEM_FOLDER_NAMES` is what the writers check.
  */
 function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
   const t = useT();

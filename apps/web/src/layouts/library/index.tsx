@@ -67,6 +67,7 @@ import {
   type PendingDelete,
   PublicSetsView,
   SearchResultsView,
+  SYSTEM_FOLDER_NAMES,
   VolumeView,
 } from "./library-views";
 
@@ -169,29 +170,22 @@ export function LibraryPage({
   // Depth counter so dragenter/leave bubbling from child cards doesn't flicker.
   const dragDepth = useRef(0);
 
-  // Uploads made from the landing view land in the uploads volume root —
-  // visible org-wide, outside any thread folder (those belong to
-  // chat-attachment flows). Inside any other folder they land in that folder.
-  const uploadVolume = location.readOnly
-    ? null
-    : location.isHomeRoot
-      ? "uploads"
-      : (location.volume ?? "uploads");
-  const uploadDir = location.isHomeRoot ? "" : location.dirPath;
-  const { upload } = useOrgFsMutations(uploadVolume ?? "uploads");
-  // New folders and drag-moves act on the folder being browsed — which at the
-  // landing view is the home volume, NOT the uploads volume that receives
-  // uploads. Read-only locations (public sets) allow neither.
+  // Every writer — upload, new folder, drag-move — acts on the folder being
+  // browsed, so what you drop always shows up in the listing you're looking at.
+  // (The `uploads` volume still receives chat attachments; that's a different
+  // flow.) Read-only locations (public sets) allow none of it.
   const browseVolume = location.readOnly ? null : location.volume;
-  const { mkdir, move } = useOrgFsMutations(browseVolume ?? HOME_MOUNT_PATH);
+  const { upload, mkdir, move } = useOrgFsMutations(
+    browseVolume ?? HOME_MOUNT_PATH,
+  );
   // Deletes can target any volume (the recent feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
 
   async function handleUpload(files: FileList | null) {
-    if (!uploadVolume || !files || files.length === 0) return;
+    if (!browseVolume || !files || files.length === 0) return;
     try {
-      await upload.mutateAsync({ dir: uploadDir, files: [...files] });
+      await upload.mutateAsync({ dir: location.dirPath, files: [...files] });
       toast.success(
         files.length === 1
           ? t("library.library.uploadedSingle", {
@@ -208,12 +202,9 @@ export function LibraryPage({
     }
   }
 
-  // Drag-and-drop upload — same destination as the Upload button: the current
-  // folder, or the uploads volume at root. Off in read-only locations.
-  const canDrop = uploadVolume !== null;
-  const dropLabel = location.isHomeRoot
-    ? "uploads"
-    : segmentLabel(location.segments.at(-1) ?? "this folder");
+  // Drag-and-drop upload — same destination as the Upload button: the folder
+  // being browsed. Off in read-only locations.
+  const canDrop = browseVolume !== null;
 
   function dragHasFiles(e: React.DragEvent) {
     return e.dataTransfer.types.includes("Files");
@@ -246,6 +237,10 @@ export function LibraryPage({
   async function handleCreateFolder() {
     const name = newFolderName.trim();
     if (!browseVolume || !name) return;
+    if (location.isHomeRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())) {
+      toast.error(t("library.library.folderNameReserved", { name }));
+      return;
+    }
     try {
       const dir = location.dirPath;
       await mkdir.mutateAsync(dir ? `${dir}/${name}` : name);
@@ -290,6 +285,16 @@ export function LibraryPage({
       setRenameOpen(false);
       setRenameTarget(null);
       setRenameName("");
+      return;
+    }
+    // Same reserved names as folder creation — a rename is the other way to
+    // land a hand-made folder on top of a system-folder card.
+    if (
+      renameTarget.kind === "dir" &&
+      location.isHomeRoot &&
+      SYSTEM_FOLDER_NAMES.has(newName.toLowerCase())
+    ) {
+      toast.error(t("library.library.folderNameReserved", { name: newName }));
       return;
     }
     try {
@@ -345,11 +350,20 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
-  // Right-clicking empty space creates a folder here. Entry cards preventDefault
-  // on their own context menu (they open rename), so `defaultPrevented` is what
-  // separates "empty space" from "on a card" as the event bubbles up.
+  // Right-clicking empty space creates a folder here. This listens on the whole
+  // page, so anything interactive has to opt out first: entry cards that own a
+  // rename menu call preventDefault, and everything else (the search box, the
+  // toolbar, the cards with no menu of their own) keeps its native menu — a
+  // right-click meant for "paste" must never become "new folder".
   function handleContextMenuEmpty(e: React.MouseEvent) {
     if (e.defaultPrevented || !browseVolume) return;
+    if (
+      (e.target as HTMLElement).closest(
+        "input, textarea, button, a, [role='button']",
+      )
+    ) {
+      return;
+    }
     e.preventDefault();
     setNewFolderOpen(true);
   }
@@ -368,7 +382,7 @@ export function LibraryPage({
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary px-10 py-8 text-center">
             <Upload01 size={28} className="text-primary" />
             <p className="text-sm font-medium text-foreground">
-              {t("library.library.dropToUpload", { location: dropLabel })}
+              {t("library.library.dropToUpload", { location: locationLabel })}
             </p>
           </div>
         </div>
