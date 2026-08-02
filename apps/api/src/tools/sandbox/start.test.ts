@@ -208,7 +208,7 @@ function makeCtx(overrides: {
   /** Row returned by `storage.threads.get` — set `created_by` to exercise the
    *  thread-owner keying (see resolveSandboxUserId). */
   thread?: { created_by: string; metadata: Record<string, unknown> } | null;
-  /** `organization_settings.flags` — drives the `sandbox_go_daemon` rollout flag. */
+  /** `organization_settings.flags` — drives the `sandbox_go_daemon` opt-out. */
   orgFlags?: Record<string, boolean> | null;
 }): StudioContext {
   const {
@@ -254,8 +254,8 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => thread),
         update: mock(async () => {}),
       },
-      // Read once per provision to resolve the `sandbox_go_daemon` rollout flag.
-      // Default: no flags set, so every sandbox lands on the TS daemon.
+      // Read once per provision to resolve the `sandbox_go_daemon` opt-out.
+      // Default: no flags set, so every sandbox lands on the Go daemon.
       organizationSettings: {
         get: mock(async (_id: string) => ({ flags: orgFlags })),
       },
@@ -860,7 +860,7 @@ describe("SANDBOX_START", () => {
   // What reaches `runner.ensure` is the contract; whether the pod honors it is
   // the runner's call (it collapses `go` back to `ts` with no Go template).
 
-  it("sends daemonImpl=ts when the org flag is unset", async () => {
+  it("sends daemonImpl=go when the org flag is unset", async () => {
     const ctx = makeCtx({ virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA) });
     await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH } as Parameters<
@@ -874,13 +874,13 @@ describe("SANDBOX_START", () => {
     // Explicit rather than omitted: the runner persists whatever it resolved
     // into the state blob for autonomous recovery, so the value it stores must
     // never be an inference.
-    expect(opts.daemonImpl).toBe("ts");
+    expect(opts.daemonImpl).toBe("go");
   });
 
-  it("sends daemonImpl=go when the org flag is on", async () => {
+  it("sends daemonImpl=ts when the org flag opts out", async () => {
     const ctx = makeCtx({
       virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
-      orgFlags: { sandbox_go_daemon: true },
+      orgFlags: { sandbox_go_daemon: false },
     });
     await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH } as Parameters<
@@ -891,13 +891,12 @@ describe("SANDBOX_START", () => {
     const opts = (mockEnsure.mock.calls as unknown[][])[0]![1] as {
       daemonImpl?: string;
     };
-    expect(opts.daemonImpl).toBe("go");
+    expect(opts.daemonImpl).toBe("ts");
   });
 
-  it("lets an explicit daemonImpl=ts pin one sandbox inside a flagged org", async () => {
+  it("lets an explicit daemonImpl=ts pin one sandbox without opting the org out", async () => {
     const ctx = makeCtx({
       virtualMcp: makeVirtualMcp(ORG_ID, BASE_METADATA),
-      orgFlags: { sandbox_go_daemon: true },
     });
     await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH, daemonImpl: "ts" } as Parameters<
