@@ -120,7 +120,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_THREADS_DELETE",
   "COLLECTION_THREAD_MESSAGES_LIST",
   "THREAD_BACKGROUND_TOOL_START",
-  "THREAD_SUBTASK_DELIVER",
   // Tag tools
   "TAGS_LIST",
   "TAGS_CREATE",
@@ -632,11 +631,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "THREAD_BACKGROUND_TOOL_START",
     description: "Enqueue a slow built-in tool as a background job",
-    category: "Threads",
-  },
-  {
-    name: "THREAD_SUBTASK_DELIVER",
-    description: "Deliver a backgrounded subtask's result to its thread",
     category: "Threads",
   },
   // Tag tools
@@ -1195,7 +1189,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Background a slow built-in on your own thread — gated per-handler by
       // the run fence token, same trust boundary as the chat turn itself.
       "THREAD_BACKGROUND_TOOL_START",
-      "THREAD_SUBTASK_DELIVER",
       // Task board — org-scoped, usable by every member, same basic-usage
       // tier as chat threads.
       "TASK_BOARD_ITEM_CREATE",

@@ -70,8 +70,9 @@ export function assertHarnessRunsInCluster(harnessId?: string | null): void {
 
 /**
  * Serializable subset of `DispatchRunInput`. The abort signal is the only
- * non-serializable field; the workflow step constructs its own from a
- * timeout when one is provided.
+ * non-serializable field, and it is dropped: the gate hands the run to a
+ * hosted child workflow that owns its own lifetime (cancellation flows
+ * through `cancelHostedHarness`, staleness through the idle timeout).
  */
 export type SerializableDispatchRunInput =
   | Omit<DispatchRunInput, "abortSignal">
@@ -82,14 +83,6 @@ export interface ThreadGateContext {
   threadId: string;
   /** Dispatch input minus the non-serializable abort signal. */
   request: SerializableDispatchRunInput;
-  /**
-   * Optional per-call timeout (ms). When set, the workflow aborts dispatch
-   * after this duration. Automations pass an explicit value; user messages
-   * leave this unset because tool-using agent loops (Claude Code, deep
-   * research, multi-step assistants) routinely run longer than any fixed
-   * cap, and were not bounded by the legacy fire-and-forget HTTP path.
-   */
-  timeoutMs?: number;
   /**
    * Where the enqueue came from. Drives whether `chat_message_started`
    * fires: only user-initiated POSTs count as messages — automation fires
@@ -112,12 +105,6 @@ export interface ThreadGateRuntime {
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
   >;
-  /**
-   * Default per-run timeout (ms). Overridable per-enqueue via
-   * `ThreadGateContext.timeoutMs`. When neither is set, no abort timer is
-   * installed.
-   */
-  runTimeoutMs?: number;
 }
 
 let runtime: ThreadGateRuntime | null = null;

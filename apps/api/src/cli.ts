@@ -58,14 +58,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "local-sandbox-provider": {
-      type: "boolean",
-      default: false,
-    },
-    hot: {
-      type: "boolean",
-      default: false,
-    },
     prune: {
       type: "boolean",
       default: false,
@@ -109,7 +101,6 @@ Server Options:
 Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
-  --hot                         Hot-reload the managed sandbox daemon in dev
 
 Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
@@ -294,7 +285,6 @@ if (command === "dev") {
     skipMigrations: values["skip-migrations"] === true,
     noTui,
     localMode: values["no-local-mode"] !== true,
-    hotReload: values.hot === true,
   };
 
   if (noTui) {
@@ -313,7 +303,7 @@ if (command === "dev") {
     const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode({});
+    setDevMode();
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });

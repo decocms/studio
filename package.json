@@ -23,7 +23,7 @@
     "dev:api": "bun run --cwd=apps/api dev",
     "dev:web": "bun run --cwd=apps/web dev",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
-    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree -- --local-sandbox-provider --hot",
+    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "dev:native": "bun run --cwd=apps/native dev",
     "fmt": "biome format --write",
     "lint": "oxlint",

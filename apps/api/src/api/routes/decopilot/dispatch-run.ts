@@ -54,7 +54,6 @@ import type {
   DecopilotObjectStorageSource,
   HarnessWorkspace,
 } from "@decocms/harness/types";
-import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import { stringifyError } from "@decocms/harness/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
@@ -256,37 +255,6 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   if (providerId === "claude-code") return "claude-code";
   if (providerId === "codex") return "codex";
   return "decopilot";
-}
-
-function buildHarnessWorkspaceInput(input: {
-  virtualMcp: { metadata?: unknown } | null;
-  branch?: string | null;
-  cwd?: "/repo" | null;
-}): HarnessWorkspace {
-  const githubRepo = (
-    input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
-  )?.githubRepo;
-  const repo =
-    githubRepo &&
-    typeof (githubRepo as { owner?: unknown }).owner === "string" &&
-    typeof (githubRepo as { name?: unknown }).name === "string"
-      ? {
-          owner: (githubRepo as { owner: string }).owner,
-          name: (githubRepo as { name: string }).name,
-          connectedGithub: Boolean(
-            (githubRepo as { connectionId?: unknown }).connectionId,
-          ),
-        }
-      : undefined;
-
-  if (!repo) return { cwd: null };
-  if (input.cwd !== WORKSPACE_CWD_REPO) return { cwd: null };
-
-  return {
-    cwd: WORKSPACE_CWD_REPO,
-    repo,
-    branch: input.branch ?? null,
-  };
 }
 
 async function resolveSecretModelSource(
@@ -1326,11 +1294,9 @@ async function prepareRun(
     // HTTP endpoint so they can offload large artifacts.
     const objectStorageSource: DecopilotObjectStorageSource | undefined =
       undefined;
-    const workspace = buildHarnessWorkspaceInput({
-      virtualMcp: effectiveVirtualMcp,
-      branch: input.branch,
-      cwd: null,
-    });
+    // Hosted runs mount no repo working directory: `/repo` only ever came from
+    // a desktop sandbox, which is gone. The harness resolves its own workspace.
+    const workspace: HarnessWorkspace = { cwd: null };
     const agentInstructions =
       typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
         ?.instructions === "string"

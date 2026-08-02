@@ -186,7 +186,8 @@ describe("resolveSandboxProvider", () => {
     // Background fires (cron/webhook/event automations) get
     // `sandboxPreference: "cluster-default"`, and a local dev env may still be
     // pinned to the legacy `user-desktop`. It resolves to hosted rather than
-    // throwing on a provider that no longer exists.
+    // throwing on a provider that no longer exists — and reports the hosted
+    // kind, so nothing new is persisted under a kind with no runner.
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
@@ -196,7 +197,7 @@ describe("resolveSandboxProvider", () => {
         branch: "deco/foo",
         virtualMcpMetadata: null,
       });
-      expect(kind).toBe("user-desktop");
+      expect(kind).toBe("agent-sandbox");
       expect(provider).toBe(stubAgentSandbox);
     } finally {
       process.env.STUDIO_SANDBOX_PROVIDER = prev;
@@ -223,7 +224,8 @@ describe("resolveSandboxProvider", () => {
   test("a recorded user-desktop sandboxMap entry still resolves, on hosted", async () => {
     // Old rows persist `user-desktop` (migration 092 normalized `desktop` /
     // `remote-user` into it). Reading one must not throw now that the desktop
-    // provider is gone — the kind is reported verbatim, served by hosted.
+    // provider is gone — it is served by hosted AND reported as `agent-sandbox`,
+    // so a caller that re-persists this kind writes the runner it actually got.
     const metadata = {
       sandboxMap: {
         "u-1": {
@@ -246,7 +248,7 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
     });
-    expect(kind).toBe("user-desktop");
+    expect(kind).toBe("agent-sandbox");
     expect(provider).toBe(stubAgentSandbox);
   });
 });

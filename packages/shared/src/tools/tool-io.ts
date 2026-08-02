@@ -3740,19 +3740,6 @@ export interface StudioToolIO {
     };
     output: { jobId: string };
   };
-  THREAD_SUBTASK_DELIVER: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      jobId: string;
-      report: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { ok: true };
-  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {

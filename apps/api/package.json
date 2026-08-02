@@ -30,7 +30,6 @@
     "migrate": "bun run src/database/migrate.ts",
     "test": "bun test src",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
-    "smoke:link": "bun run scripts/smoke-link.ts",
     "prepublishOnly": "bun run --cwd=../.. build:studio"
   },
   "optionalDependencies": {
@@ -111,7 +110,6 @@
     "pg": "^8.16.3",
     "typescript": "^7.0.2",
     "typescript5": "npm:typescript@^5.9.3",
-    "vite": "^7.2.1",
     "zod": "4.3.6"
   },
   "homepage": "https://github.com/decocms/studio",

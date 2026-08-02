@@ -95,8 +95,8 @@ fi
 
 # Run the RAW dev servers (Vite client + the real server src/index.ts), NOT
 # `bun run dev` / scripts/dev.ts — that one is the embedded orchestrator
-# (`deco dev --local-sandbox-provider`) which spins up its OWN Postgres/NATS and
-# a LOCAL sandbox, ignoring these targets. src/index.ts instead honors
+# (`deco dev`) which spins up its OWN Postgres/NATS, ignoring these targets.
+# src/index.ts instead honors
 # DATABASE_URL / NATS_URL / STUDIO_SANDBOX_* from the environment, so it connects
 # to the cluster (via the port-forwards) and the agent-sandbox provider.
 # We export ${ENV_FILE} into the environment; there's no apps/api/.env, so the

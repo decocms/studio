@@ -25,8 +25,6 @@ export interface DevOptions {
   skipMigrations: boolean;
   noTui?: boolean;
   localMode: boolean;
-  /** When true, hot-reload the managed sandbox daemon. */
-  hotReload?: boolean;
 }
 
 /**

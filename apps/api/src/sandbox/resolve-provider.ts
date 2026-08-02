@@ -70,8 +70,7 @@ export async function resolveSandboxProvider(
 
   // 1. Caller override.
   if (explicitKind) {
-    const provider = await bindProviderForKind(ctx, explicitKind);
-    return { provider, kind: explicitKind };
+    return bindProviderForKind(ctx, explicitKind);
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
@@ -79,39 +78,33 @@ export async function resolveSandboxProvider(
   //    execution; `cluster-default` means "use the provider the env/default
   //    policy points to" (legacy automation/default behavior).
   if (ctx.sandboxPreference === "agent-sandbox") {
-    const provider = await bindProviderForKind(ctx, "agent-sandbox");
-    return { provider, kind: "agent-sandbox" };
+    return bindProviderForKind(ctx, "agent-sandbox");
   }
   if (ctx.sandboxPreference === "cluster-default") {
-    const kind = resolveSandboxProviderKindFromEnv();
-    const provider = await bindProviderForKind(ctx, kind);
-    return { provider, kind };
+    return bindProviderForKind(ctx, resolveSandboxProviderKindFromEnv());
   }
 
   // 3. Recorded sandboxMap kind. Tiebreak against the default policy so that when
   //    multiple sibling kinds were persisted (e.g. the user ran SANDBOX_START
   //    twice with different `sandboxProviderKind` values), the events/proxy
-  //    path consistently picks the one matching current intent
-  //    (link online → `desktop`, else env kind) instead of whatever
-  //    `Object.keys` happens to enumerate first.
+  //    path consistently picks the one matching current intent (the env kind)
+  //    instead of whatever `Object.keys` happens to enumerate first.
   const [firstRecorded, ...restRecorded] = readRecordedKinds(
     virtualMcpMetadata,
     userId,
     branch,
   );
   if (firstRecorded) {
-    const preferred =
+    return bindProviderForKind(
+      ctx,
       restRecorded.length === 0
         ? firstRecorded
-        : pickRecordedKind(firstRecorded, restRecorded);
-    const provider = await bindProviderForKind(ctx, preferred);
-    return { provider, kind: preferred };
+        : pickRecordedKind(firstRecorded, restRecorded),
+    );
   }
 
   // 4. Default policy.
-  const kind = resolveDefaultKind();
-  const provider = await bindProviderForKind(ctx, kind);
-  return { provider, kind };
+  return bindProviderForKind(ctx, resolveDefaultKind());
 }
 
 /**
@@ -151,14 +144,22 @@ function resolveDefaultKind(): SandboxProviderKind {
   return resolveSandboxProviderKindFromEnv();
 }
 
+/**
+ * Binds the provider AND reports the kind it was bound for. `user-desktop` has
+ * no implementation since the link daemon was removed, but it is still readable
+ * off old sandboxMap rows — serve those from the hosted provider rather than
+ * throwing (the alternative is a 500 on any org that ever ran a desktop
+ * sandbox). The returned kind is normalized alongside the provider so callers
+ * persisting sandboxMap rows never record a kind that has no runner.
+ */
 async function bindProviderForKind(
   ctx: StudioContext,
   kind: SandboxProviderKind,
-): Promise<SandboxProvider> {
-  // `user-desktop` has no implementation since the link daemon was removed, but
-  // it is still readable off old sandboxMap rows. Serve those from the hosted
-  // provider rather than throwing — the alternative is a 500 on any org that
-  // ever ran a desktop sandbox.
-  const resolved = kind === "user-desktop" ? "agent-sandbox" : kind;
-  return getSandboxProviderByKind(ctx, resolved);
+): Promise<ResolvedSandboxProvider> {
+  const resolved: SandboxProviderKind =
+    kind === "user-desktop" ? "agent-sandbox" : kind;
+  return {
+    provider: await getSandboxProviderByKind(ctx, resolved),
+    kind: resolved,
+  };
 }
