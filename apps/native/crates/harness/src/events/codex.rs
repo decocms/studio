@@ -297,11 +297,11 @@ mod tests {
 
         let finish = events
             .iter()
-            .find(|e| matches!(e, MappedEvent::Chunk(v) if v["type"] == "finish"))
+            .find_map(|e| match e {
+                MappedEvent::Chunk(v) if v["type"] == "finish" => Some(v),
+                _ => None,
+            })
             .expect("a finish chunk");
-        let MappedEvent::Chunk(finish) = finish else {
-            unreachable!()
-        };
         assert_eq!(finish["messageMetadata"]["codingAgentProvider"], "codex");
         assert_eq!(finish["messageMetadata"]["usage"]["output_tokens"], 106);
 
@@ -334,11 +334,11 @@ mod tests {
 
         let tool_call = events
             .iter()
-            .find(|e| matches!(e, MappedEvent::Chunk(v) if v["toolCallId"] == "item_1"))
+            .find_map(|e| match e {
+                MappedEvent::Chunk(v) if v["toolCallId"] == "item_1" => Some(v),
+                _ => None,
+            })
             .expect("a generic tool-input-available chunk for command_execution");
-        let MappedEvent::Chunk(tool_call) = tool_call else {
-            unreachable!()
-        };
         assert_eq!(tool_call["type"], "tool-input-available");
         assert_eq!(tool_call["toolName"], "command_execution");
         assert_eq!(tool_call["input"]["command"], "echo hi");

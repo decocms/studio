@@ -235,7 +235,9 @@ async fn run_install_cmd(
                 match res {
                     Ok(0) | Err(_) => stdout_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&so_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(so_chunk.get(..n).unwrap_or(&so_chunk))
+                                .into_owned();
                         orch.tasks
                             .append_log(&task_id, "setup", OutputStream::Stdout, &text, &orch.broadcaster)
                             .await;
@@ -246,7 +248,9 @@ async fn run_install_cmd(
                 match res {
                     Ok(0) | Err(_) => stderr_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&se_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(se_chunk.get(..n).unwrap_or(&se_chunk))
+                                .into_owned();
                         orch.tasks
                             .append_log(&task_id, "setup", OutputStream::Stderr, &text, &orch.broadcaster)
                             .await;

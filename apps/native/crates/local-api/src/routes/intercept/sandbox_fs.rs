@@ -121,7 +121,11 @@ pub(super) async fn try_dispatch(
         "rename" => crate::routes::fs::rename(State(target_state), body).await,
         "glob" => crate::routes::fs::glob(State(target_state), body).await,
         "grep" => crate::routes::fs::grep(State(target_state), body).await,
-        _ => unreachable!("operation was checked against OPERATIONS"),
+        // The caller already matched `operation` against `OPERATIONS`, so
+        // this arm is dead — but `None` ("not ours, fall through") is
+        // already this function's word for that, and it costs a 404 instead
+        // of killing the request path if the two lists ever drift.
+        _ => return None,
     })
 }
 

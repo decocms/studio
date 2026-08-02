@@ -54,7 +54,11 @@ fn encode_app_source(source: &str) -> String {
         return source.to_string();
     }
 
-    let mut encoded = String::with_capacity(APP_SOURCE_ESCAPE_PREFIX.len() + source.len() * 2);
+    let mut encoded = String::with_capacity(
+        APP_SOURCE_ESCAPE_PREFIX
+            .len()
+            .saturating_add(source.len().saturating_mul(2)),
+    );
     encoded.push_str(APP_SOURCE_ESCAPE_PREFIX);
     for byte in source.as_bytes() {
         use std::fmt::Write as _;
@@ -167,7 +171,11 @@ impl LogStore {
         }
         let would_exceed = guard
             .get(key)
-            .map(|w| w.written + bytes.len() as u64 > self.cap_bytes)
+            .map(|w| {
+                w.written
+                    .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+                    > self.cap_bytes
+            })
             .unwrap_or(false);
         if would_exceed {
             self.rotate(&mut guard, key).await;
@@ -224,7 +232,7 @@ impl LogStore {
             return String::new();
         };
         let len = metadata.len();
-        let start = len.saturating_sub(max_bytes as u64);
+        let start = len.saturating_sub(u64::try_from(max_bytes).unwrap_or(u64::MAX));
         if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
             return String::new();
         }
@@ -387,7 +395,9 @@ impl LogStore {
         if writer.file.flush().await.is_err() {
             return;
         }
-        writer.written += bytes.len() as u64;
+        writer.written = writer
+            .written
+            .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
     }
 }
 

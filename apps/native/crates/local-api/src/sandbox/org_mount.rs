@@ -192,6 +192,13 @@ fn claim(org_slug: &str) -> Option<()> {
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 fn settle(org_slug: &str, ok: bool) {
     let state = if ok {
         MountState::Ready
@@ -228,6 +235,13 @@ pub fn warm(app_root: &Path, org_slug: &str) {
 /// sandbox can be ensured without any org-scoped request having preceded it
 /// (a resurrect on boot, a test), and such a caller must not wait out the
 /// timeout for something nobody started.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 pub async fn wait_ready(app_root: &Path, org_slug: &str) -> bool {
     warm(app_root, org_slug);
     let deadline = Instant::now() + READY_TIMEOUT;
@@ -737,7 +751,9 @@ mod tests {
         lock_states().insert(
             "cooldown-org".to_string(),
             MountState::Failed {
-                until: Instant::now() - Duration::from_secs(1),
+                until: Instant::now()
+                    .checked_sub(Duration::from_secs(1))
+                    .expect("process has been up at least a second"),
             },
         );
         assert!(

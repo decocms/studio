@@ -17,6 +17,11 @@ mod ui_assets;
 mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[expect(
+    clippy::exit,
+    reason = "not ours: the `exit` is inside `tauri::generate_context!`'s \
+              expansion, which we cannot annotate at the call site."
+)]
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -51,6 +56,13 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "there is no app to show an error in yet: this IS the \
+                  construction of the Tauri application, and it fails only on a \
+                  malformed bundle (bad tauri.conf.json5 / missing context), \
+                  which `tauri-build` already rejects at compile time."
+    )]
     let app = builder
         .invoke_handler(tauri::generate_handler![
             commands::local_api_info,

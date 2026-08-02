@@ -19,6 +19,31 @@ unsafe_code = "deny"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
+# --- Panic family: no production path may abort the desktop app. -----------
+# `clippy.toml` next to this file exempts `#[cfg(test)]` blocks, where an
+# unwrap IS the assertion.
+#
+# A site that genuinely cannot be expressed without one of these takes a
+# local `#[expect(clippy::<lint>, reason = "...")]` — never a blanket
+# `allow` and never a widening of this list.
+#
+# (`clippy::pedantic` + `clippy::nursery` are deliberately NOT enabled:
+# 1228 sites, overwhelmingly style — doc_markdown, use_self,
+# must_use_candidate — for no crash-safety gain.)
+todo = "warn"
+unimplemented = "warn"
+panic = "warn"
+panic_in_result_fn = "warn"
+unreachable = "warn"
+exit = "warn"
+unchecked_time_subtraction = "warn"
+string_slice = "warn"
+expect_used = "warn"
+unwrap_used = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+as_conversions = "warn"
+
 # --- Dependency versions, pinned once here and inherited via `.workspace = true`
 # in crates/local-api/Cargo.toml. Over-provisioned on purpose (bootstrap
 # directive): every family implementer building on this skeleton pulls from

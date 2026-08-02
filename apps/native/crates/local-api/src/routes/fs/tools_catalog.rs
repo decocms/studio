@@ -39,6 +39,12 @@ pub struct CatalogFile {
     pub content: String,
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 fn sanitize_re() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| Regex::new(r"[^A-Za-z0-9_.\-]").unwrap())
@@ -76,10 +82,10 @@ pub fn tool_catalog_files(tools: &[CatalogTool]) -> Vec<CatalogFile> {
                 sanitized
             };
             let mut filename = format!("{base}.json");
-            let mut i = 2;
+            let mut i = 2_u32;
             while used.contains(&filename) {
                 filename = format!("{base}-{i}.json");
-                i += 1;
+                i = i.saturating_add(1);
             }
             used.insert(filename.clone());
             let content = format!(

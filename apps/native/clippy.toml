@@ -1,0 +1,14 @@
+# Clippy configuration for the apps/native cargo workspace.
+# Lint LEVELS live in Cargo.toml's [workspace.lints.clippy]; this file only
+# tunes how individual lints behave.
+#
+# The panic-family lints exist to keep production paths from aborting the
+# desktop app. A test that unwraps is *supposed* to abort — that's the
+# assertion. Without these, the family costs ~2900 annotations inside
+# `#[cfg(test)]` blocks against ~380 in real code; with them, only the ~380
+# that actually matter get reported.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+

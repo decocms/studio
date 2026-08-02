@@ -186,27 +186,31 @@ pub async fn try_intercept(
             }
             Some(watch::get(&scope, org, query))
         }
-        Some("tools") if rest.len() == 2 && *method == Method::POST => match rest[1] {
-            "LINK_CURRENT_GET" => Some(link_current::get().await),
-            tool_name @ ("COLLECTION_THREADS_LIST"
-            | "COLLECTION_THREADS_GET"
-            | "COLLECTION_THREADS_CREATE"
-            | "COLLECTION_THREADS_UPDATE"
-            | "COLLECTION_THREADS_DELETE"
-            | "COLLECTION_THREAD_MESSAGES_LIST") => {
-                let Some(scope) = thread_tools::current_account_scope().await else {
-                    return Some(ApiError::unauthorized().into_response());
-                };
-                if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
-                    return Some(
-                        ApiError::internal(format!("native chat queue recovery failed: {error}"))
+        Some("tools") if *method == Method::POST && rest.len() == 2 => {
+            match rest.get(1).copied().unwrap_or_default() {
+                "LINK_CURRENT_GET" => Some(link_current::get().await),
+                tool_name @ ("COLLECTION_THREADS_LIST"
+                | "COLLECTION_THREADS_GET"
+                | "COLLECTION_THREADS_CREATE"
+                | "COLLECTION_THREADS_UPDATE"
+                | "COLLECTION_THREADS_DELETE"
+                | "COLLECTION_THREAD_MESSAGES_LIST") => {
+                    let Some(scope) = thread_tools::current_account_scope().await else {
+                        return Some(ApiError::unauthorized().into_response());
+                    };
+                    if let Err(error) = decopilot::ensure_account_recovered(state, &scope).await {
+                        return Some(
+                            ApiError::internal(format!(
+                                "native chat queue recovery failed: {error}"
+                            ))
                             .into_response(),
-                    );
+                        );
+                    }
+                    thread_tools::dispatch_scoped(state, &scope, org, tool_name, body).await
                 }
-                thread_tools::dispatch_scoped(state, &scope, org, tool_name, body).await
+                _ => None,
             }
-            _ => None,
-        },
+        }
         Some("decopilot") => {
             let Some(scope) = thread_tools::current_account_scope().await else {
                 return Some(ApiError::unauthorized().into_response());
@@ -217,7 +221,17 @@ pub async fn try_intercept(
                         .into_response(),
                 );
             }
-            Some(decopilot::dispatch(state, &scope, org, method, &rest[1..], body).await)
+            Some(
+                decopilot::dispatch(
+                    state,
+                    &scope,
+                    org,
+                    method,
+                    rest.get(1..).unwrap_or_default(),
+                    body,
+                )
+                .await,
+            )
         }
         _ => None,
     }
@@ -247,7 +261,8 @@ pub(crate) fn test_state(root: &std::path::Path) -> AppState {
     AppState {
         token: Arc::from("test-token"),
         boot_id: Arc::from("boot-1"),
-        sandbox_manager: crate::sandbox::SandboxManager::new(root.to_path_buf()),
+        sandbox_manager: crate::sandbox::SandboxManager::new(root.to_path_buf())
+            .expect("registry opens in a fresh temp app root"),
         app_root: root.to_path_buf(),
         repo_dir,
         mode: ApiMode::Strict,

@@ -747,7 +747,8 @@ mod tests {
             update: None,
             token: Arc::from("test-token"),
             boot_id: Arc::from("test-boot"),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone())
+                .expect("registry opens in a fresh temp app root"),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

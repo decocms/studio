@@ -282,7 +282,9 @@ mod tests {
     fn an_expired_callback_is_not_handed_out() {
         let mut slot = Slot::default();
         slot.park(&params(&[("code", "abc")]));
-        slot.0.as_mut().expect("parked").at = Instant::now() - TTL - Duration::from_secs(1);
+        slot.0.as_mut().expect("parked").at = Instant::now()
+            .checked_sub(TTL + Duration::from_secs(1))
+            .expect("process has been up longer than the TTL");
 
         assert!(slot.take().is_none());
     }

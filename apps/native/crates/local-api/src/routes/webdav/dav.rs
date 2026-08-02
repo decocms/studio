@@ -83,10 +83,9 @@ pub fn parse_target(
     relative_path: &str,
 ) -> Result<RequestTarget, TargetError> {
     let rel: Vec<&str> = relative_path.split('/').filter(|s| !s.is_empty()).collect();
-    if rel.len() < 2 {
+    let Some(([org, volume], rest)) = rel.split_first_chunk::<2>() else {
         return Err(TargetError::NotAVolume);
-    }
-    let rest = &rel[2..];
+    };
     let mut segments = Vec::with_capacity(rest.len());
     for raw in rest {
         let decoded = decode(raw);
@@ -98,11 +97,14 @@ pub fn parse_target(
 
     let original: Vec<&str> = original_path.split('/').filter(|s| !s.is_empty()).collect();
     let prefix_len = original.len().saturating_sub(rest.len());
-    let mount_prefix = format!("/{}", original[..prefix_len].join("/"));
+    let mount_prefix = format!(
+        "/{}",
+        original.get(..prefix_len).unwrap_or_default().join("/")
+    );
 
     Ok(RequestTarget {
-        org: decode(rel[0]),
-        volume: decode(rel[1]),
+        org: decode(org),
+        volume: decode(volume),
         path: segments.join("/"),
         mount_prefix,
     })
@@ -110,7 +112,9 @@ pub fn parse_target(
 
 pub fn basename(path: &str) -> &str {
     match path.rfind('/') {
-        Some(i) => &path[i + 1..],
+        // `/` is one byte, so the boundary always holds; `get` avoids the
+        // panic branch on a path this crate does not control.
+        Some(i) => i.checked_add(1).and_then(|at| path.get(at..)).unwrap_or(""),
         None => path,
     }
 }
@@ -219,12 +223,18 @@ pub fn http_date(epoch_secs: i64) -> String {
     let days = epoch_secs.div_euclid(86_400);
     let secs = epoch_secs.rem_euclid(86_400);
     let (year, month, day) = crate::time_util::civil_from_days(days);
-    // 1970-01-01 was a Thursday (index 4 in WEEKDAYS).
-    let weekday = (days + 4).rem_euclid(7) as usize;
+    // 1970-01-01 was a Thursday (index 4 in WEEKDAYS). `rem_euclid` is
+    // non-negative, and `civil_from_days` returns `month` in 1..=12, so both
+    // lookups resolve — but an out-of-range date should render oddly, never
+    // panic a WebDAV response.
+    let weekday = usize::try_from(days.wrapping_add(4).rem_euclid(7)).unwrap_or(0);
     format!(
         "{wd}, {day:02} {mon} {year:04} {h:02}:{m:02}:{s:02} GMT",
-        wd = WEEKDAYS[weekday],
-        mon = MONTHS[(month - 1) as usize],
+        wd = WEEKDAYS.get(weekday).copied().unwrap_or("Thu"),
+        mon = MONTHS
+            .get(usize::try_from(month.saturating_sub(1)).unwrap_or(0))
+            .copied()
+            .unwrap_or("Jan"),
         h = secs / 3600,
         m = (secs % 3600) / 60,
         s = secs % 60,
@@ -249,21 +259,31 @@ pub fn iso_to_epoch_secs(iso: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    let mut secs = crate::time_util::days_from_civil(year, month, day) * 86_400
-        + hour * 3600
-        + minute * 60
-        + second;
+    let mut secs = crate::time_util::days_from_civil(year, month, day)
+        .saturating_mul(86_400)
+        .saturating_add(hour.saturating_mul(3600))
+        .saturating_add(minute.saturating_mul(60))
+        .saturating_add(second);
 
-    let tail = &iso[19..];
-    let offset_at = tail.rfind(['+', '-']);
-    if let Some(i) = offset_at {
-        let offset = &tail[i..];
-        let sign = if offset.starts_with('-') { -1 } else { 1 };
-        let digits: String = offset[1..].chars().filter(char::is_ascii_digit).collect();
-        if digits.len() >= 4 {
-            let hours: i64 = digits[0..2].parse().ok()?;
-            let minutes: i64 = digits[2..4].parse().ok()?;
-            secs -= sign * (hours * 3600 + minutes * 60);
+    // `iso` is untrusted request input, so every slice below goes through
+    // `get`: a byte index landing mid-character would otherwise panic the
+    // request instead of rejecting the timestamp.
+    let tail = iso.get(19..)?;
+    if let Some(i) = tail.rfind(['+', '-']) {
+        let offset = tail.get(i..)?;
+        let sign: i64 = if offset.starts_with('-') { -1 } else { 1 };
+        let digits: String = offset
+            .get(1..)?
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        if let (Some(hh), Some(mm)) = (digits.get(0..2), digits.get(2..4)) {
+            let hours: i64 = hh.parse().ok()?;
+            let minutes: i64 = mm.parse().ok()?;
+            let offset_secs = hours
+                .saturating_mul(3600)
+                .saturating_add(minutes.saturating_mul(60));
+            secs = secs.saturating_sub(sign.saturating_mul(offset_secs));
         }
     }
     Some(secs)
@@ -285,7 +305,12 @@ pub fn parse_destination(
     {
         Some(rest) => {
             let (authority, path) = match rest.find('/') {
-                Some(i) => (&rest[..i], &rest[i..]),
+                Some(i) => match (rest.get(..i), rest.get(i..)) {
+                    (Some(authority), Some(path)) => (authority, path),
+                    // `find` returns a char boundary; reject rather than
+                    // panic if that ever stops holding.
+                    _ => return Err(400),
+                },
                 None => (rest, "/"),
             };
             if let Some(expected) = host {

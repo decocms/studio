@@ -258,17 +258,19 @@ fn part_to_json(id: &str, part: &OpenPart) -> Value {
                 "toolCallId": id,
                 "state": state,
             });
-            if let Some(input) = input {
-                v["input"] = input.clone();
-            }
-            if let Some(raw_input) = raw_input {
-                v["rawInput"] = raw_input.clone();
-            }
-            if let Some(o) = output {
-                v["output"] = o.clone();
-            }
-            if let Some(e) = error_text {
-                v["errorText"] = json!(e);
+            if let Some(fields) = v.as_object_mut() {
+                if let Some(input) = input {
+                    fields.insert("input".to_string(), input.clone());
+                }
+                if let Some(raw_input) = raw_input {
+                    fields.insert("rawInput".to_string(), raw_input.clone());
+                }
+                if let Some(o) = output {
+                    fields.insert("output".to_string(), o.clone());
+                }
+                if let Some(e) = error_text {
+                    fields.insert("errorText".to_string(), json!(e));
+                }
             }
             v
         }

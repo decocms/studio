@@ -46,6 +46,7 @@
 //! engineering for a jar whose entire lifetime is "this process, this
 //! host, until the next bridge attempt or sign-out."
 
+use crate::poison::RwLockExt;
 use std::collections::BTreeMap;
 use std::sync::RwLock;
 
@@ -69,7 +70,7 @@ impl CookieJar {
     /// matching how a real browser jar treats a repeated `Set-Cookie` for
     /// the same name/path/domain.
     pub fn capture<'a>(&self, host: &str, set_cookie_values: impl Iterator<Item = &'a str>) {
-        let mut map = self.entries.write().unwrap();
+        let mut map = self.entries.write_ok();
         let entry = map.entry(host.to_string()).or_default();
         for raw in set_cookie_values {
             if let Some((name, value)) = parse_set_cookie(raw) {
@@ -83,7 +84,7 @@ impl CookieJar {
     /// `None` if nothing has been captured for that host yet — callers
     /// must never send an empty `Cookie:` header.
     pub fn header_value(&self, host: &str) -> Option<String> {
-        let map = self.entries.read().unwrap();
+        let map = self.entries.read_ok();
         let entry = map.get(host)?;
         if entry.is_empty() {
             return None;
@@ -100,7 +101,7 @@ impl CookieJar {
     /// Idempotent — clearing an already-empty host is a no-op, matching
     /// this crate's other idempotent-clear conventions (`TokenStore::clear`).
     pub fn clear(&self, host: &str) {
-        self.entries.write().unwrap().remove(host);
+        self.entries.write_ok().remove(host);
     }
 
     /// `true` when nothing is captured for `host` (including "never
@@ -108,8 +109,7 @@ impl CookieJar {
     /// [`crate::bridge::complete_via_cookie_jar`]'s precondition check.
     pub fn is_empty(&self, host: &str) -> bool {
         self.entries
-            .read()
-            .unwrap()
+            .read_ok()
             .get(host)
             .is_none_or(|m| m.is_empty())
     }

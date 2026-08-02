@@ -200,13 +200,17 @@ fn validate_datetime(value: &str, path: &str) -> Result<(), ApiError> {
     let fraction_ok = match bytes.len() {
         20 => true,
         length if length > 21 => {
-            bytes.get(19) == Some(&b'.') && bytes[20..length - 1].iter().all(u8::is_ascii_digit)
+            bytes.get(19) == Some(&b'.')
+                && bytes
+                    .get(20..length.saturating_sub(1))
+                    .is_some_and(|digits| digits.iter().all(u8::is_ascii_digit))
         }
         _ => false,
     };
     let parse = |range: std::ops::Range<usize>| {
-        std::str::from_utf8(&bytes[range])
-            .ok()
+        bytes
+            .get(range)
+            .and_then(|part| std::str::from_utf8(part).ok())
             .and_then(|part| part.parse::<u32>().ok())
     };
     let year = parse(0..4);
@@ -540,7 +544,7 @@ fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Re
         },
     ) {
         Ok((items, total_count)) => {
-            let has_more = offset + limit < total_count;
+            let has_more = offset.saturating_add(limit) < total_count;
             Json(json!({
                 "items": items,
                 "totalCount": total_count,
@@ -872,7 +876,7 @@ fn messages_list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byt
     // page, not an error" behavior (see that file's handler).
     match db.rt_list_messages_in_scope(scope, org, &thread_id, limit, offset, desc) {
         Ok((items, total_count)) => {
-            let has_more = offset + limit < total_count;
+            let has_more = offset.saturating_add(limit) < total_count;
             Json(json!({
                 "items": items,
                 "totalCount": total_count,

@@ -154,6 +154,13 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
     Ok(paths)
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 fn ca_params() -> Result<CertificateParams, rcgen::Error> {
     let mut params = CertificateParams::default();
     let mut dn = DistinguishedName::new();
@@ -187,6 +194,13 @@ fn ca_params() -> Result<CertificateParams, rcgen::Error> {
     Ok(params)
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 fn leaf_params() -> Result<CertificateParams, rcgen::Error> {
     let mut params = CertificateParams::default();
     let mut dn = DistinguishedName::new();

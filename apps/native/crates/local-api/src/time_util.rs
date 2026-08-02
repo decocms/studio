@@ -20,14 +20,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) fn now_unix_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Howard Hinnant's `civil_from_days` — days since the Unix epoch to
 /// `(year, month, day)`, proleptic Gregorian, no leap seconds. The same
 /// algorithm libc++'s `<chrono>` uses, valid across the whole `SystemTime`
 /// range.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    reason = "Hinnant's kernel verbatim: every intermediate is proven in \
+              range for any `days` a `SystemTime` can produce (the epoch-second \
+              domain is ~2^38, eight orders below the i64 headroom these \
+              multiplies need), and `doe`/`yoe`/`doy`/`mp` are bounded by \
+              construction. Rewriting the ops as `checked_*` would obscure the \
+              published algorithm without adding a reachable check; \
+              `civil_and_days_invert_each_other` pins the result instead."
+)]
 pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -44,6 +54,11 @@ pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
 
 /// The inverse of [`civil_from_days`] — `(year, month, day)` to days since
 /// the Unix epoch.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "inverse of `civil_from_days`; same in-range proof and same \
+              round-trip test."
+)]
 pub(crate) fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -65,7 +80,11 @@ mod tests {
     fn civil_and_days_invert_each_other() {
         for days in [-719_468, -1, 0, 1, 19_000, 20_500, 2_932_896] {
             let (y, m, d) = civil_from_days(days);
-            assert_eq!(days_from_civil(y, m as i64, d as i64), days, "{days}");
+            assert_eq!(
+                days_from_civil(y, i64::from(m), i64::from(d)),
+                days,
+                "{days}"
+            );
         }
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         // 2026-07-29 is day 20663.

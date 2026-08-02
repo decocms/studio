@@ -15,6 +15,11 @@
 
 use std::path::Path;
 
+#[expect(
+    clippy::expect_used,
+    reason = "build script: cargo always sets `CARGO_MANIFEST_DIR`, and a build \
+              script that cannot find its own manifest SHOULD fail the build."
+)]
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     // apps/native/crates/local-api -> apps/api/package.json
@@ -38,11 +43,11 @@ fn main() {
 /// Pulls the top-level `"version": "…"` string out of a package.json.
 fn parse_version(contents: &str) -> Option<String> {
     let start = contents.find("\"version\"")?;
-    let rest = &contents[start + "\"version\"".len()..];
+    let rest = contents.get(start.checked_add("\"version\"".len())?..)?;
     let colon = rest.find(':')?;
-    let after_colon = &rest[colon + 1..];
+    let after_colon = rest.get(colon.checked_add(1)?..)?;
     let open = after_colon.find('"')?;
-    let value = &after_colon[open + 1..];
+    let value = after_colon.get(open.checked_add(1)?..)?;
     let close = value.find('"')?;
-    Some(value[..close].to_string())
+    Some(value.get(..close)?.to_string())
 }

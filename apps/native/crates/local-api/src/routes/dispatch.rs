@@ -645,7 +645,7 @@ pub async fn dispatch(State(state): State<AppState>, body: Bytes) -> Response {
     let mut response = Response::new(Body::from_stream(body_stream));
     *response.status_mut() = StatusCode::OK;
     for (name, value) in crate::http_util::dispatch_sse_headers() {
-        response.headers_mut().insert(name, value.parse().unwrap());
+        response.headers_mut().insert(name, value);
     }
     response
 }
@@ -773,6 +773,13 @@ fn git_sandbox_config_from_workspace(input: &Value) -> Option<crate::sandbox::Gi
     })
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 pub async fn cancel_run(State(_state): State<AppState>, Path(run_id): Path<String>) -> StatusCode {
     // Idempotent by construction: unconditionally (re-)writes the
     // tombstone and returns 204 whether or not `run_id` was ever an active

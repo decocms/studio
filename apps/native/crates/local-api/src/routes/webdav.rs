@@ -263,9 +263,21 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
                 Ok(bytes) => bytes,
                 Err(err) => return error_response(err),
             };
-            match dav::parse_range(range.as_deref(), bytes.len() as u64) {
+            match dav::parse_range(
+                range.as_deref(),
+                u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+            ) {
                 Some((start, end)) => {
-                    let slice = bytes[start as usize..=end as usize].to_vec();
+                    let range = usize::try_from(start)
+                        .ok()
+                        .zip(usize::try_from(end).ok())
+                        .and_then(|(start, end)| bytes.get(start..=end));
+                    // `parse_range` already validated the bounds against
+                    // `bytes.len()`, so this only fires if that ever drifts —
+                    // in which case 416 is the honest answer, not a panic.
+                    let Some(slice) = range.map(<[u8]>::to_vec) else {
+                        return empty(StatusCode::RANGE_NOT_SATISFIABLE);
+                    };
                     base_headers(Response::builder(), &last_modified)
                         .status(StatusCode::PARTIAL_CONTENT)
                         .header(header::CONTENT_LENGTH, slice.len())
@@ -442,7 +454,7 @@ mod tests {
                 return Some(OrgFsNode {
                     path: path.to_string(),
                     is_dir: false,
-                    size: body.len() as u64,
+                    size: u64::try_from(body.len()).unwrap_or(u64::MAX),
                     updated_at_secs: 1_700_000_000,
                 });
             }

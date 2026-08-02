@@ -215,6 +215,8 @@ pub enum StartError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to open the native sandbox registry: {message}")]
+    SandboxRegistry { message: String },
     #[error("failed to recover the local chat store: {message}")]
     LocalStore { message: String },
     #[error("invalid embedded client-auth configuration: {message}")]
@@ -383,6 +385,13 @@ impl ServerHandle {
 
     /// Graceful shutdown. Consumes `self` because each listener task and the
     /// app-root lock have one lifecycle owner.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+                  constant. `checked_add` has no honest fallback here — there \
+                  is no `Instant::MAX` to saturate to, so the call site would \
+                  have to invent a deadline. Overflow is ~584 years out."
+    )]
     pub async fn shutdown(self) {
         let ServerHandle {
             state,
@@ -566,8 +575,12 @@ pub async fn start_with_client_auth(
             let preview_cookie_selftest_origin = embedded
                 .preview_cookie_selftest
                 .then(|| Arc::<str>::from(embedded.control_origin.clone()));
-            let mut bootstrap_secrets =
-                Vec::with_capacity(embedded.additional_bootstrap_secrets.len() + 1);
+            let mut bootstrap_secrets = Vec::with_capacity(
+                embedded
+                    .additional_bootstrap_secrets
+                    .len()
+                    .saturating_add(1),
+            );
             bootstrap_secrets.push(opts.token.clone());
             bootstrap_secrets.extend(embedded.additional_bootstrap_secrets);
             let expected_host = embedded.expected_host.clone();
@@ -591,7 +604,7 @@ pub async fn start_with_client_auth(
                 .unwrap_or_else(|| expected_host.clone());
             let mut expected_hosts = vec![embedded.expected_host];
             if let Some(listener_host) = embedded.listener_host {
-                if listener_host != expected_hosts[0] {
+                if expected_hosts.first() != Some(&listener_host) {
                     expected_hosts.push(listener_host);
                 }
             }
@@ -702,7 +715,8 @@ pub async fn start_with_client_auth(
     // `<app_root>/sandboxes/<handle>/repo` — created lazily per handle by
     // `SandboxManager::ensure`, not eagerly here (unlike `repo_dir` above,
     // which every plain-path request needs immediately).
-    let sandbox_manager = SandboxManager::new(opts.app_root.clone());
+    let sandbox_manager = SandboxManager::new(opts.app_root.clone())
+        .map_err(|message| StartError::SandboxRegistry { message })?;
 
     let state = AppState {
         token: opts.token.into(),
@@ -875,6 +889,13 @@ async fn acquire_child_recovery_fence(path: &Path, budget: Duration) -> std::io:
     acquire_exclusive_with_budget(file, path, budget).await
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 async fn acquire_exclusive_with_budget(
     file: File,
     path: &Path,
@@ -906,6 +927,13 @@ async fn acquire_exclusive_with_budget(
 /// serves until SIGTERM/Ctrl+C, then runs shutdown hooks. Exits the
 /// process (`std::process::exit(1)`) on any boot failure, matching the old
 /// `main()` body's behavior exactly.
+#[expect(
+    clippy::exit,
+    reason = "this IS the binary's entry point (see the doc comment above): \
+              `main.rs` does nothing but await it, so a boot failure here has \
+              no caller left to return an error to. The other `exit` sites in \
+              this file are its two env resolvers, called only from here."
+)]
 pub async fn boot_from_env() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -1012,6 +1040,12 @@ fn resolve_boot_id() -> String {
 /// falls back to `"/"`), local-api refuses to boot without an explicit
 /// workdir: a silent `/` clamp on a user's laptop is a much scarier
 /// default than it is inside a disposable sandbox container.
+#[expect(
+    clippy::exit,
+    reason = "boot-only: called exclusively from `boot_from_env`, before the \
+              server exists. A missing required env var is unrecoverable and \
+              there is no request to fail."
+)]
 fn resolve_app_root() -> PathBuf {
     let raw = std::env::var("LOCAL_API_WORKDIR")
         .or_else(|_| std::env::var("APP_ROOT"))
@@ -1027,6 +1061,12 @@ fn resolve_app_root() -> PathBuf {
 /// `LOCAL_API_PORT` / `PROXY_PORT` — required. `0` picks an ephemeral port
 /// (see `resolve_token`'s sibling stdout contract for how a caller
 /// discovers it).
+#[expect(
+    clippy::exit,
+    reason = "boot-only: called exclusively from `boot_from_env`, before the \
+              server exists. A missing required env var is unrecoverable and \
+              there is no request to fail."
+)]
 fn resolve_port() -> u16 {
     let raw = std::env::var("LOCAL_API_PORT")
         .or_else(|_| std::env::var("PROXY_PORT"))
@@ -1060,10 +1100,19 @@ impl InstalledTerminationSignal {
             // `signal(...)` installs Tokio's process-wide handlers
             // synchronously here—before the startup/recovery future is first
             // polled. The spawned task only waits on already-installed streams.
-            let mut terminate =
-                signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
-            let mut interrupt =
-                signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+            // A local-api that cannot hear SIGTERM would never run its
+            // shutdown hooks, so failing the boot beats booting deaf. This
+            // whole function already exits(1) on any boot failure.
+            #[expect(
+                clippy::expect_used,
+                reason = "boot-only: `signal()` fails only when the process cannot \
+                          register a handler at all, which leaves no shutdown path \
+                          worth continuing into."
+            )]
+            let (mut terminate, mut interrupt) = (
+                signal(SignalKind::terminate()).expect("failed to install SIGTERM handler"),
+                signal(SignalKind::interrupt()).expect("failed to install SIGINT handler"),
+            );
             tokio::spawn(async move {
                 let first_name = tokio::select! {
                     _ = terminate.recv() => "SIGTERM",

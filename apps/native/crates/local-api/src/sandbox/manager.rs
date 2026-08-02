@@ -143,11 +143,14 @@ pub struct SandboxShutdownResult {
 }
 
 impl SandboxManager {
-    pub fn new(app_root: PathBuf) -> Arc<Self> {
-        let registry = super::registry::SandboxRegistry::open(app_root.clone())
-            .unwrap_or_else(|error| panic!("native sandbox registry failed to open: {error}"));
+    /// Fallible because the registry is a SQLite file on the USER's disk:
+    /// a bad permission or a wedged volume is an operational failure the
+    /// caller can report (`StartError::SandboxRegistry` surfaces it through
+    /// the shell's boot-failure dialog), not a reason to abort the process.
+    pub fn new(app_root: PathBuf) -> Result<Arc<Self>, String> {
+        let registry = super::registry::SandboxRegistry::open(app_root.clone())?;
         let persisted_active = registry.active_handle().ok().flatten();
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             app_root,
             registry,
             closing: AtomicBool::new(false),
@@ -157,7 +160,7 @@ impl SandboxManager {
             active_handle: Mutex::new(persisted_active.clone()),
             active_watch: tokio::sync::watch::channel(persisted_active).0,
             generation_watches: Mutex::new(HashMap::new()),
-        })
+        }))
     }
 
     /// The sandbox the reverse proxy serves for a headerless preview request:
@@ -1333,7 +1336,7 @@ async fn terminate_task_ids_with_timings(
     let mut killed = 0usize;
     for task_id in ids {
         if tasks.kill(task_id, KillSignal::Term) == Some(true) {
-            killed += 1;
+            killed = killed.saturating_add(1);
         }
     }
     if tokio::time::timeout(term_grace, wait_tasks_terminal(tasks, ids))
@@ -1767,7 +1770,8 @@ mod tests {
     #[test]
     fn workdir_for_is_per_handle_and_never_the_shared_repo_dir() {
         let root = tempfile::tempdir().expect("tempdir");
-        let manager = SandboxManager::new(root.path().to_path_buf());
+        let manager = SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let config = |branch: Option<&str>| GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
             clone_url: "https://github.com/acme/site.git".to_string(),
@@ -1819,7 +1823,8 @@ mod tests {
     #[tokio::test]
     async fn generation_watch_is_scoped_to_one_handle_and_survives_replacement() {
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let mut watched = manager.watch_generation("sandbox-a");
 
         let first = {
@@ -1871,7 +1876,8 @@ mod tests {
     async fn ensure_clones_two_branches_into_independent_directories() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
 
         let sandbox_main = manager
             .ensure(&GitSandboxConfig {
@@ -1918,7 +1924,8 @@ mod tests {
     async fn ensure_is_idempotent_for_the_same_handle() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
 
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
@@ -1974,7 +1981,8 @@ mod tests {
     async fn branch_monitor_emits_working_tree_changes_for_an_observed_sandbox() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = manager
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-live-branch".to_string(),
@@ -2018,7 +2026,8 @@ mod tests {
     async fn ensure_repairs_a_drifted_branch_before_returning() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-drift".to_string(),
             clone_url,
@@ -2048,7 +2057,8 @@ mod tests {
     async fn ensure_rejects_a_failed_drift_repair_instead_of_returning_wrong_branch() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-dirty-drift".to_string(),
             clone_url,
@@ -2094,7 +2104,8 @@ mod tests {
     async fn ensure_coalesces_concurrent_callers_for_a_brand_new_handle() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
 
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
@@ -2174,7 +2185,8 @@ mod tests {
     async fn concurrent_provision_calls_coalesce_one_setup_generation() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-concurrent-provision".to_string(),
             clone_url,
@@ -2213,7 +2225,8 @@ mod tests {
     async fn provision_discards_partial_git_directory_before_clone_retry() {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-partial-git".to_string(),
             clone_url,
@@ -2258,7 +2271,8 @@ mod tests {
     async fn stale_generation_lifecycle_cannot_overwrite_resumed_generation() {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stale-monitor".to_string(),
             clone_url,
@@ -2336,7 +2350,8 @@ mod tests {
     #[tokio::test]
     async fn resurrect_returns_none_for_a_handle_with_no_sidecar() {
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let result = manager
             .resurrect("never-ensured-handle")
             .await
@@ -2348,7 +2363,8 @@ mod tests {
     async fn resurrect_returns_the_in_memory_sandbox_without_touching_disk_when_already_known() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = manager
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-known".to_string(),
@@ -2380,7 +2396,8 @@ mod tests {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
 
-        let manager_a = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_a = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let original = manager_a
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-forgotten".to_string(),
@@ -2394,7 +2411,8 @@ mod tests {
         let workdir = original.workdir.clone();
         drop(manager_a);
 
-        let manager_b = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_b = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         assert!(
             manager_b.get(&handle).is_none(),
             "a fresh manager must start with an empty in-memory map"
@@ -2423,7 +2441,8 @@ mod tests {
     async fn adopt_rebuilds_routing_metadata_without_starting_setup() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager_a = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_a = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let original = manager_a
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-adopt-only".to_string(),
@@ -2436,7 +2455,8 @@ mod tests {
         let handle = original.handle.clone();
         drop(manager_a);
 
-        let manager_b = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_b = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let adopted = manager_b
             .adopt(&handle)
             .await
@@ -2453,7 +2473,8 @@ mod tests {
     async fn stop_during_install_fences_old_cascade_and_preserves_install_checkpoint() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stop-install-fence".to_string(),
             clone_url,
@@ -2558,7 +2579,8 @@ mod tests {
     #[tokio::test]
     async fn resurrect_active_returns_none_when_nothing_was_ever_active() {
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let result = manager
             .resurrect_active()
             .await
@@ -2571,7 +2593,8 @@ mod tests {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
 
-        let manager_a = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_a = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let original = manager_a
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-active".to_string(),
@@ -2586,7 +2609,8 @@ mod tests {
 
         // Fresh manager, same app_root — `active_handle` is `None` in memory,
         // but the persisted `.active-handle` pointer file survives.
-        let manager_b = SandboxManager::new(app_root.path().to_path_buf());
+        let manager_b = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         assert!(manager_b.active().is_none());
 
         let resurrected = manager_b
@@ -2603,7 +2627,8 @@ mod tests {
     async fn resurrect_active_prefers_the_in_memory_active_sandbox_over_disk() {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = manager
             .ensure(&GitSandboxConfig {
                 virtual_mcp_id: "vmcp-resurrect-prefers-memory".to_string(),
@@ -2628,7 +2653,8 @@ mod tests {
     #[tokio::test]
     async fn shutdown_all_closes_and_reaps_every_sandbox_concurrently() {
         let app_root = tempfile::tempdir().unwrap();
-        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let manager = SandboxManager::new(app_root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let mut sandboxes = Vec::new();
         for handle in ["one", "two"] {
             let lock = manager.handle_lock(handle);

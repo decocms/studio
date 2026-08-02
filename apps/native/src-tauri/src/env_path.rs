@@ -61,6 +61,13 @@ mod unix {
     /// Login (`-l`) but NOT interactive: `-i` can block on prompt frameworks
     /// or tty access, and login config is where PATH exports belong anyway.
     /// Delimiters keep profile chatter on stdout from corrupting the value.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+                  constant. `checked_add` has no honest fallback here — there \
+                  is no `Instant::MAX` to saturate to, so the call site would \
+                  have to invent a deadline. Overflow is ~584 years out."
+    )]
     fn probe_login_shell_path(timeout: Duration) -> Option<String> {
         let shell = std::env::var("SHELL")
             .ok()
@@ -114,9 +121,10 @@ mod unix {
     /// Pulls the PATH value out from between the probe delimiters, rejecting
     /// anything that doesn't contain at least one absolute directory.
     fn extract_delimited(output: &str) -> Option<&str> {
-        let start = output.find(DELIM_START)? + DELIM_START.len();
-        let end = output[start..].find(DELIM_END)? + start;
-        let path = &output[start..end];
+        let start = output.find(DELIM_START)?.saturating_add(DELIM_START.len());
+        let tail = output.get(start..)?;
+        let end = tail.find(DELIM_END)?;
+        let path = tail.get(..end)?;
         path.split(':')
             .any(|entry| entry.starts_with('/'))
             .then_some(path)

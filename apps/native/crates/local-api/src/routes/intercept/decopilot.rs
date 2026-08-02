@@ -54,6 +54,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use upstream::poison::MutexExt;
 
 use axum::body::{Body, Bytes};
 use axum::http::{Method, StatusCode};
@@ -441,13 +442,13 @@ impl TurnCancellation {
     }
 
     fn install(&self, handle: harness::run::CancelHandle) -> bool {
-        *self.handle.lock().unwrap() = Some(handle);
+        *self.handle.lock_ok() = Some(handle);
         self.is_requested()
     }
 
     async fn request(&self) {
         self.requested.store(true, Ordering::SeqCst);
-        let handle = self.handle.lock().unwrap().clone();
+        let handle = self.handle.lock_ok().clone();
         if let Some(handle) = handle {
             handle.cancel().await;
         }
@@ -588,7 +589,7 @@ impl ThreadQueue {
     /// returned `first` is an ownership token: exactly its recipient may start
     /// a drain worker, so two concurrent POSTs can never both launch a harness.
     fn enqueue(&self, turn: QueuedTurn) -> EnqueueOutcome {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if inner
             .items
             .iter()
@@ -614,7 +615,7 @@ impl ThreadQueue {
     /// payload into this RAM mirror: the worker claims and parses one raw FIFO
     /// head at a time, so a malformed tail cannot fail account recovery.
     fn start_worker_if_idle(&self) -> bool {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if inner.worker_running {
             return false;
         }
@@ -630,7 +631,7 @@ impl ThreadQueue {
     /// then receives a fresh `first` token and starts the next worker.
     #[cfg(test)]
     fn complete_and_next(&self, workflow_id: &str) -> Option<QueuedTurn> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if inner.items.front().map(|item| item.workflow_id.as_str()) != Some(workflow_id) {
             tracing::error!(
                 workflow_id,
@@ -655,7 +656,7 @@ impl ThreadQueue {
 
     #[cfg(test)]
     fn list(&self) -> Vec<Value> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner
             .items
             .iter()
@@ -676,7 +677,7 @@ impl ThreadQueue {
 
     #[cfg(test)]
     fn cancel_workflow(&self, workflow_id: &str) -> QueueCancelOutcome {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         let Some(index) = inner
             .items
             .iter()
@@ -737,7 +738,7 @@ impl ThreadQueue {
         db: &ThreadsDb,
         fence: &RtThreadFence,
     ) -> Option<DurableClaimAdmission> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if inner.stop_after_current {
             inner.items.clear();
             inner.worker_running = false;
@@ -759,7 +760,7 @@ impl ThreadQueue {
     /// relinquishing ownership merely because the RAM mirror is momentarily
     /// empty would let a concurrent sender start a second worker.
     fn complete_claimed(&self, workflow_id: &str) -> bool {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(index) = inner
             .items
             .iter()
@@ -776,7 +777,7 @@ impl ThreadQueue {
     }
 
     fn stop_worker(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.worker_running = false;
         self.changed.notify_waiters();
     }
@@ -786,20 +787,19 @@ impl ThreadQueue {
     /// later in-process enqueue/reap cannot prove the failed transaction was
     /// recovered, while the next process boot owns durable recovery.
     fn stop_worker_after_durable_terminal_failure(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.durable_terminal_failed = true;
         inner.worker_running = false;
         self.changed.notify_waiters();
     }
 
     fn durable_terminal_failed(&self) -> bool {
-        self.inner.lock().unwrap().durable_terminal_failed
+        self.inner.lock_ok().durable_terminal_failed
     }
 
     fn cancellation_for(&self, workflow_id: &str) -> Option<Arc<TurnCancellation>> {
         self.inner
-            .lock()
-            .unwrap()
+            .lock_ok()
             .items
             .iter()
             .find(|turn| turn.workflow_id == workflow_id)
@@ -807,7 +807,7 @@ impl ThreadQueue {
     }
 
     fn remove_mirror(&self, workflow_id: &str) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(index) = inner
             .items
             .iter()
@@ -823,7 +823,7 @@ impl ThreadQueue {
     /// handle plus the removed workflow ids. Durable queue rows are mutated by
     /// the caller while holding the same thread lifecycle gate.
     fn stop_and_drain_tail(&self) -> (Option<Arc<TurnCancellation>>, Vec<String>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.stop_after_current = true;
         let active = inner
             .worker_running
@@ -847,7 +847,7 @@ impl ThreadQueue {
             let changed = self.changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            if !self.inner.lock().unwrap().worker_running {
+            if !self.inner.lock_ok().worker_running {
                 return;
             }
             changed.await;
@@ -855,7 +855,7 @@ impl ThreadQueue {
     }
 
     fn is_idle(&self) -> bool {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         !inner.worker_running && inner.items.is_empty() && !inner.durable_terminal_failed
     }
 }
@@ -892,22 +892,19 @@ fn closing_threads() -> &'static Mutex<HashSet<ThreadKey>> {
 
 pub(crate) fn mark_thread_closing(scope: &RtAccountScope, org: &str, thread_id: &str) {
     closing_threads()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .insert(ThreadKey::scoped(scope, org, thread_id));
 }
 
 pub(crate) fn clear_thread_closing(scope: &RtAccountScope, org: &str, thread_id: &str) {
     closing_threads()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .remove(&ThreadKey::scoped(scope, org, thread_id));
 }
 
 pub(crate) fn thread_is_closing(scope: &RtAccountScope, org: &str, thread_id: &str) -> bool {
     closing_threads()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .contains(&ThreadKey::scoped(scope, org, thread_id))
 }
 
@@ -924,8 +921,7 @@ pub(crate) fn thread_lifecycle_gate(
 
 fn thread_lifecycle_gate_for_key(key: &ThreadKey) -> Arc<AsyncMutex<()>> {
     lifecycle_gates()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .entry(key.clone())
         .or_insert_with(|| Arc::new(AsyncMutex::new(())))
         .clone()
@@ -935,7 +931,7 @@ fn enqueue_thread_turn(key: &ThreadKey, turn: QueuedTurn) -> (Arc<ThreadQueue>, 
     // Keep the registry lock through `enqueue`: this pairs with
     // `remove_queue_if_idle` and prevents a sender from retaining an idle queue
     // just as cleanup removes it, then enqueueing onto an orphan Arc.
-    let mut queues = thread_queues().lock().unwrap();
+    let mut queues = thread_queues().lock_ok();
     let queue = queues
         .entry(key.clone())
         .or_insert_with(ThreadQueue::new)
@@ -945,7 +941,7 @@ fn enqueue_thread_turn(key: &ThreadKey, turn: QueuedTurn) -> (Arc<ThreadQueue>, 
 }
 
 fn start_recovered_thread_queue(key: &ThreadKey) -> (Arc<ThreadQueue>, bool) {
-    let mut queues = thread_queues().lock().unwrap();
+    let mut queues = thread_queues().lock_ok();
     let queue = queues
         .entry(key.clone())
         .or_insert_with(ThreadQueue::new)
@@ -955,7 +951,7 @@ fn start_recovered_thread_queue(key: &ThreadKey) -> (Arc<ThreadQueue>, bool) {
 }
 
 fn remove_queue_if_idle(key: &ThreadKey, expected: &Arc<ThreadQueue>) -> bool {
-    let mut queues = thread_queues().lock().unwrap();
+    let mut queues = thread_queues().lock_ok();
     let is_current = queues
         .get(key)
         .is_some_and(|current| Arc::ptr_eq(current, expected));
@@ -969,7 +965,7 @@ fn remove_queue_if_idle(key: &ThreadKey, expected: &Arc<ThreadQueue>) -> bool {
 fn epoch_millis() -> u64 {
     // The registry's canonical clock; clamped because this caller's wire
     // shape is unsigned.
-    crate::tasks::now_ms().max(0) as u64
+    u64::try_from(crate::tasks::now_ms()).unwrap_or(0)
 }
 
 fn queue_text(user_message: &Value) -> String {
@@ -1248,21 +1244,20 @@ pub(crate) async fn ensure_account_recovered(
     scope: &RtAccountScope,
 ) -> Result<(), String> {
     let recovery_key = format!("{}\0{}", state.app_root.display(), scope.storage_key());
-    if recovered_accounts().lock().unwrap().contains(&recovery_key) {
+    if recovered_accounts().lock_ok().contains(&recovery_key) {
         return Ok(());
     }
     let gate = recovery_gates()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .entry(recovery_key.clone())
         .or_insert_with(|| Arc::new(AsyncMutex::new(())))
         .clone();
     let _guard = gate.lock().await;
-    if recovered_accounts().lock().unwrap().contains(&recovery_key) {
+    if recovered_accounts().lock_ok().contains(&recovery_key) {
         return Ok(());
     }
     recover_durable_queue_for_scope(state, scope).await?;
-    recovered_accounts().lock().unwrap().insert(recovery_key);
+    recovered_accounts().lock_ok().insert(recovery_key);
     Ok(())
 }
 
@@ -1371,7 +1366,7 @@ async fn cleanup_stale_run_spools(state: &AppState) -> Result<(), String> {
 /// concurrently and every queue worker is joined before setup/git shutdown
 /// advances. Repeated calls simply observe already-stopped queues.
 pub(crate) async fn shutdown_all(budget: Duration) -> bool {
-    let queues: Vec<Arc<ThreadQueue>> = thread_queues().lock().unwrap().values().cloned().collect();
+    let queues: Vec<Arc<ThreadQueue>> = thread_queues().lock_ok().values().cloned().collect();
     stop_thread_queues(queues, budget).await
 }
 
@@ -1429,7 +1424,7 @@ async fn quiesce_thread_for_delete_with_timeout(
     db.rt_cancel_all_turns_in_org(fence)
         .map_err(|error| ApiError::internal(format!("thread queue database error: {error}")))?;
     let key = ThreadKey::from_fence(fence);
-    let queue = thread_queues().lock().unwrap().get(&key).cloned();
+    let queue = thread_queues().lock_ok().get(&key).cloned();
     if let Some(queue) = &queue {
         let (active, _) = queue.stop_and_drain_tail();
         if let Some(active) = active {
@@ -1440,7 +1435,7 @@ async fn quiesce_thread_for_delete_with_timeout(
             .map_err(|_| ApiError::conflict("thread agent is still stopping"))?;
     }
 
-    let run = registry().lock().unwrap().remove(&key);
+    let run = registry().lock_ok().remove(&key);
     if let Some(run) = run {
         run.finish().await;
         // Deletion has no reconnect grace period: the parent thread and all of
@@ -1453,7 +1448,7 @@ async fn quiesce_thread_for_delete_with_timeout(
             tracing::warn!(%error, "failed to remove deleted thread run spool");
         }
     }
-    thread_queues().lock().unwrap().remove(&key);
+    thread_queues().lock_ok().remove(&key);
     Ok(())
 }
 
@@ -1552,7 +1547,7 @@ async fn queue_cancel(
         Ok(db) => db,
         Err(error) => return error.into_response(),
     };
-    let queue = thread_queues().lock().unwrap().get(&key).cloned();
+    let queue = thread_queues().lock_ok().get(&key).cloned();
     match db.rt_cancel_turn_scoped(scope, org, thread_id, workflow_id) {
         Ok(RtTurnCancelOutcome::QueuedDeleted(_)) => {
             if let Some(queue) = queue {
@@ -1598,8 +1593,7 @@ async fn cancel(state: &AppState, scope: &RtAccountScope, org: &str, thread_id: 
                 .into_response();
         }
         let cancellation = thread_queues()
-            .lock()
-            .unwrap()
+            .lock_ok()
             .get(&key)
             .and_then(|queue| queue.cancellation_for(&active.workflow_id));
         if let Some(cancellation) = cancellation {
@@ -1678,19 +1672,19 @@ async fn stream(state: &AppState, scope: &RtAccountScope, org: &str, thread_id: 
 
     let mut response = Response::new(Body::from_stream(body_stream));
     for (name, value) in crate::http_util::dispatch_sse_headers() {
-        response.headers_mut().insert(name, value.parse().unwrap());
+        response.headers_mut().insert(name, value);
     }
     response
 }
 
 async fn run_for_stream(state: &AppState, key: &ThreadKey) -> Result<Arc<DecopilotRun>, String> {
-    if let Some(existing) = registry().lock().unwrap().get(key).cloned() {
+    if let Some(existing) = registry().lock_ok().get(key).cloned() {
         return Ok(existing);
     }
 
     let candidate = DecopilotRun::open(state, key.clone()).await?;
     let (selected, inserted) = {
-        let mut runs = registry().lock().unwrap();
+        let mut runs = registry().lock_ok();
         match runs.get(key) {
             Some(existing) => (existing.clone(), false),
             None => {
@@ -1712,7 +1706,7 @@ async fn run_for_stream(state: &AppState, key: &ThreadKey) -> Result<Arc<Decopil
 /// the registry slot may clear it; blindly removing by key loses the new run's
 /// replay and was the source of intermittent missing/duplicated turns.
 fn remove_run_if_current(key: &ThreadKey, expected: &Arc<DecopilotRun>) -> bool {
-    let mut runs = registry().lock().unwrap();
+    let mut runs = registry().lock_ok();
     let is_current = runs
         .get(key)
         .is_some_and(|current| Arc::ptr_eq(current, expected));
@@ -2037,7 +2031,21 @@ async fn drain_durable_thread_queue(
                 return;
             }
         };
-        let turn = activated.expect("ready durable claim installs its cancellation mirror");
+        // `claim_durable_head` builds `activated` from the same `Ready` arm
+        // `claimed` came from, so this is dead — but the two travel as
+        // separate tuple fields, so nothing but that convention enforces it.
+        // Stop the worker like the sibling claim-failure arms above rather
+        // than taking the process down: the row stays claimed and is
+        // recovered on the next boot.
+        let Some(turn) = activated else {
+            tracing::error!(
+                org = key.org,
+                thread_id = key.thread_id,
+                "durable claim reported Ready without its cancellation mirror"
+            );
+            queue.stop_worker();
+            return;
+        };
         let begin = db.rt_begin_claimed_turn(&claimed);
         drop(lifecycle_guard);
 
@@ -2117,8 +2125,7 @@ where
 
 async fn run_for_turn(state: &AppState, key: &ThreadKey) -> Result<Arc<DecopilotRun>, String> {
     if let Some(placeholder) = registry()
-        .lock()
-        .unwrap()
+        .lock_ok()
         .get(key)
         .filter(|existing| existing.is_idle_placeholder())
         .cloned()
@@ -2128,7 +2135,7 @@ async fn run_for_turn(state: &AppState, key: &ThreadKey) -> Result<Arc<Decopilot
 
     let candidate = DecopilotRun::open(state, key.clone()).await?;
     let (selected, installed) = {
-        let mut runs = registry().lock().unwrap();
+        let mut runs = registry().lock_ok();
         if let Some(placeholder) = runs
             .get(key)
             .filter(|existing| existing.is_idle_placeholder())
@@ -2369,6 +2376,12 @@ fn terminal_finish_reason(terminal_chunks: &[Value]) -> Option<&str> {
     })
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 fn response_url_pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     PATTERN.get_or_init(|| {
@@ -2905,7 +2918,14 @@ fn model_id_for(harness_id: harness::HarnessId, tier: Option<&str>) -> String {
         Some("thinking") => 2,
         _ => 1,
     };
-    harness::tiers::tiers_for(harness_id)[idx].id.to_string()
+    let tiers = harness::tiers::tiers_for(harness_id);
+    // Fall back to the default tier rather than panicking on a harness whose
+    // tier table is shorter than the index — same passthrough-on-unknown
+    // philosophy as `tiers.rs` itself.
+    tiers
+        .get(idx)
+        .or_else(|| tiers.first())
+        .map_or_else(String::new, |tier| tier.id.to_string())
 }
 
 struct HarnessRunRequest {
@@ -3736,7 +3756,7 @@ mod tests {
         // Models the exact production branch after the harness has been reaped
         // but `rt_finalize_claimed_turn` did not commit.
         queue.stop_worker_after_durable_terminal_failure();
-        assert!(!queue.inner.lock().unwrap().worker_running);
+        assert!(!queue.inner.lock_ok().worker_running);
         assert!(queue.durable_terminal_failed());
         assert!(
             !stop_thread_queues(vec![queue], Duration::from_secs(1)).await,
@@ -3811,7 +3831,7 @@ mod tests {
         assert!(active.is_none(), "no durable claim has been mirrored yet");
         assert!(removed.is_empty(), "the recovered RAM mirror starts empty");
         assert!(
-            queue.inner.lock().unwrap().worker_running,
+            queue.inner.lock_ok().worker_running,
             "empty RAM must not falsely mark a recovered worker stopped"
         );
         let waiter = {
@@ -3852,7 +3872,7 @@ mod tests {
         };
 
         assert!(
-            !thread_queues().lock().unwrap().contains_key(&other),
+            !thread_queues().lock_ok().contains_key(&other),
             "another organization must not resolve the same thread id's runtime queue"
         );
         assert_eq!(
@@ -3863,7 +3883,7 @@ mod tests {
 
         drain_thread_queue(queue, *first, |_| async {}).await;
         assert!(
-            !thread_queues().lock().unwrap().contains_key(&acme),
+            !thread_queues().lock_ok().contains_key(&acme),
             "empty per-thread queue entries must be evicted"
         );
     }
@@ -3887,7 +3907,7 @@ mod tests {
         }));
 
         assert!(result.is_err());
-        assert!(!queue.inner.lock().unwrap().worker_running);
+        assert!(!queue.inner.lock_ok().worker_running);
         assert!(queue.durable_terminal_failed());
         assert!(
             !stop_thread_queues(vec![queue], Duration::from_secs(1)).await,
@@ -3914,7 +3934,7 @@ mod tests {
             "text/event-stream"
         );
         drop(res);
-        let run = registry().lock().unwrap().remove(&key).unwrap();
+        let run = registry().lock_ok().remove(&key).unwrap();
         cleanup_run(&run).await;
     }
 
@@ -3926,7 +3946,7 @@ mod tests {
         let state = test_state(dir.path());
         // Simulates the GET .../stream call that arrives before any dispatch.
         let _res = stream(&state, &test_scope(), "acme", thread_id).await;
-        let placeholder = registry().lock().unwrap().get(&key).cloned().unwrap();
+        let placeholder = registry().lock_ok().get(&key).cloned().unwrap();
         assert!(placeholder.is_idle_placeholder());
 
         // Simulates `send_message`'s run-selection logic directly rather
@@ -3939,7 +3959,7 @@ mod tests {
             Arc::ptr_eq(&placeholder, &selected),
             "expected the same Arc so the GET .../stream subscriber sees this turn's frames live"
         );
-        registry().lock().unwrap().remove(&key);
+        registry().lock_ok().remove(&key);
         cleanup_run(&placeholder).await;
     }
 
@@ -3958,7 +3978,7 @@ mod tests {
             finished: AtomicBool::new(false),
             finish_lock: AsyncMutex::new(()),
         });
-        registry().lock().unwrap().insert(key.clone(), run.clone());
+        registry().lock_ok().insert(key.clone(), run.clone());
 
         // `stream` subscribes synchronously before returning its body. Do not
         // poll that body until two frames have crossed a capacity-one channel:
@@ -3972,10 +3992,7 @@ mod tests {
             .await
             .unwrap();
         assert!(lagged_body.is_empty());
-        assert!(Arc::ptr_eq(
-            registry().lock().unwrap().get(&key).unwrap(),
-            &run
-        ));
+        assert!(Arc::ptr_eq(registry().lock_ok().get(&key).unwrap(), &run));
 
         run.finish().await;
         let replayed = stream(&state, &test_scope(), &key.org, &key.thread_id).await;
@@ -3985,7 +4002,7 @@ mod tests {
         let mut expected = first.to_vec();
         expected.extend_from_slice(&second);
         assert_eq!(replayed_body.as_ref(), expected);
-        assert!(!registry().lock().unwrap().contains_key(&key));
+        assert!(!registry().lock_ok().contains_key(&key));
     }
 
     #[tokio::test]
@@ -4007,7 +4024,7 @@ mod tests {
         let other_run = DecopilotRun::open(&state, other.clone()).await.unwrap();
         let old_path = old.spool.path().to_path_buf();
         {
-            let mut runs = registry().lock().unwrap();
+            let mut runs = registry().lock_ok();
             runs.insert(acme.clone(), current.clone());
             runs.insert(other.clone(), other_run.clone());
         }
@@ -4018,12 +4035,12 @@ mod tests {
             std::io::ErrorKind::NotFound
         );
         assert!(Arc::ptr_eq(
-            registry().lock().unwrap().get(&acme).unwrap(),
+            registry().lock_ok().get(&acme).unwrap(),
             &current
         ));
         cleanup_run(&current).await;
         assert!(Arc::ptr_eq(
-            registry().lock().unwrap().get(&other).unwrap(),
+            registry().lock_ok().get(&other).unwrap(),
             &other_run
         ));
         cleanup_run(&other_run).await;
@@ -4343,7 +4360,7 @@ mod tests {
             .unwrap()
             .is_none());
 
-        if let Some(queue) = thread_queues().lock().unwrap().remove(&key) {
+        if let Some(queue) = thread_queues().lock_ok().remove(&key) {
             queue.stop_worker();
         }
         clear_thread_closing(&scope, org, &thread_id);
@@ -4444,11 +4461,10 @@ mod tests {
         let first = ensure_account_recovered(&state, &scope).await.unwrap_err();
         assert!(first.contains("left 1 orphaned turn(s) retryable"));
         let recovery_key = format!("{}\0{}", state.app_root.display(), scope.storage_key());
-        assert!(!recovered_accounts().lock().unwrap().contains(&recovery_key));
+        assert!(!recovered_accounts().lock_ok().contains(&recovery_key));
         assert!(
             !thread_queues()
-                .lock()
-                .unwrap()
+                .lock_ok()
                 .contains_key(&ThreadKey::from_fence(&untouched_fence)),
             "failed recovery must not launch an unrelated queued harness"
         );

@@ -132,7 +132,8 @@ mod tests {
             update: None,
             token: "test-token".into(),
             boot_id: "test-boot".into(),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone())
+                .expect("registry opens in a fresh temp app root"),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

@@ -11,6 +11,7 @@
 //! a specific mesh-hosted failure page existing). Like the CLI, a fresh
 //! client is registered per login — see [`crate::register`]'s module doc.
 
+use crate::poison::MutexExt;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -194,7 +195,7 @@ pub async fn perform_interactive_login(
         },
         access_token: token.access_token,
         refresh_token: token.refresh_token,
-        expires_at: token.expires_in.map(|s| now_unix() + s),
+        expires_at: token.expires_in.map(|s| now_unix().saturating_add(s)),
         created_at: now_rfc3339(),
         // Real-UI course-correction: this used to be unconditionally `None`
         // (the system-browser PKCE flow itself never yields a capturable
@@ -480,7 +481,7 @@ impl LoopbackServer {
     async fn wait_for_callback(self, timeout: Duration) -> Result<String, LoginError> {
         let outcome = tokio::time::timeout(timeout, self.result_rx).await;
         // Always tear down the listener before returning, on every path.
-        if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
+        if let Some(tx) = self.shutdown_tx.lock_ok().take() {
             let _ = tx.send(());
         }
         match outcome {
@@ -498,7 +499,7 @@ async fn handle_callback(
     state: Arc<CallbackState>,
     Query(query): Query<CallbackQuery>,
 ) -> Response {
-    let Some(tx) = state.result_tx.lock().unwrap().take() else {
+    let Some(tx) = state.result_tx.lock_ok().take() else {
         // A second request after the first already resolved (e.g. a
         // stray browser prefetch/retry) — harmless no-op response.
         return (StatusCode::NO_CONTENT, "").into_response();
@@ -614,7 +615,7 @@ mod tests {
             axum::routing::post(move |headers: HeaderMap| {
                 let seen = seen_for_route.clone();
                 async move {
-                    *seen.lock().unwrap() = headers
+                    *seen.lock_ok() = headers
                         .get(axum::http::header::AUTHORIZATION)
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
@@ -631,7 +632,7 @@ mod tests {
 
         assert_eq!(value, "raw-token.signature");
         assert_eq!(
-            seen_bearer.lock().unwrap().as_deref(),
+            seen_bearer.lock_ok().as_deref(),
             Some("Bearer the-access-token")
         );
     }

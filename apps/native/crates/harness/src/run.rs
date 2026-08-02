@@ -658,7 +658,7 @@ async fn drive_attempt(
                 tail.push_str(&String::from_utf8_lossy(&chunk));
                 let len = tail.len();
                 if len > STDERR_TAIL_CAP {
-                    let excess = len - STDERR_TAIL_CAP;
+                    let excess = len.saturating_sub(STDERR_TAIL_CAP);
                     tail.drain(0..excess);
                 }
             }
@@ -680,8 +680,10 @@ async fn drive_attempt(
         linebuf.extend_from_slice(&bytes);
         while let Some(pos) = linebuf.iter().position(|&b| b == b'\n') {
             let line_bytes: Vec<u8> = linebuf.drain(..=pos).collect();
-            let line = String::from_utf8_lossy(&line_bytes[..line_bytes.len().saturating_sub(1)])
-                .into_owned();
+            // Drop the trailing '\n' the drain included.
+            let line =
+                String::from_utf8_lossy(line_bytes.split_last().map_or(&[][..], |(_, head)| head))
+                    .into_owned();
             let mut events = mapper.feed_line(&line);
             mapper_reported_fatal |= flush_before_mapped_fatal(&mut *mapper, &mut events);
             trace_first_meaningful_chunk(

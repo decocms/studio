@@ -11,8 +11,7 @@
 pub fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// A minimal, dependency-free RFC3339 (UTC, second precision) formatter —
@@ -35,6 +34,16 @@ pub fn now_rfc3339() -> String {
 /// Howard Hinnant's `civil_from_days` algorithm (public domain) — converts
 /// a day count since the Unix epoch into a proleptic-Gregorian
 /// (year, month, day). Small, well-known, dependency-free.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    reason = "Hinnant's kernel verbatim: `z` comes from `now_unix()/86_400`, so \
+              every intermediate is proven in range, and `doe`/`yoe`/`doy`/`mp` \
+              are bounded by construction. Rewriting the ops as `checked_*` \
+              would obscure the published algorithm without adding a reachable \
+              check. Mirrors `local_api::time_util::civil_from_days`, which \
+              carries the round-trip test."
+)]
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;

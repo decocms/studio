@@ -130,6 +130,11 @@ pub enum SpawnError {
     /// The spawned child never reported a pid (should not happen in
     /// practice; guarded defensively rather than unwrapped).
     NoPid,
+    /// The spawned child exposed no handle for a stream this code configured
+    /// as `Stdio::piped()`. Same defensive posture as [`SpawnError::NoPid`]:
+    /// a harness that cannot read its child's output should fail the spawn,
+    /// not abort the app.
+    NoPipe(&'static str),
 }
 
 impl std::fmt::Display for SpawnError {
@@ -138,6 +143,9 @@ impl std::fmt::Display for SpawnError {
             SpawnError::Io(e) => write!(f, "spawn failed: {e}"),
             SpawnError::Pty(msg) => write!(f, "PTY spawn failed: {msg}"),
             SpawnError::NoPid => write!(f, "spawned child reported no pid"),
+            SpawnError::NoPipe(stream) => {
+                write!(f, "spawned child exposed no {stream} pipe")
+            }
         }
     }
 }
@@ -501,8 +509,8 @@ mod plain {
             }
         };
         let pid = child.id().ok_or(SpawnError::NoPid)?;
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
+        let stdout = child.stdout.take().ok_or(SpawnError::NoPipe("stdout"))?;
+        let stderr = child.stderr.take().ok_or(SpawnError::NoPipe("stderr"))?;
 
         let (stdout_tx, stdout_rx) = mpsc::channel(256);
         let (stderr_tx, stderr_rx) = mpsc::channel(256);
@@ -561,7 +569,11 @@ mod plain {
             match reader.read(&mut buf).await {
                 Ok(0) => return,
                 Ok(n) => {
-                    if tx.send(Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                    if tx
+                        .send(Bytes::copy_from_slice(buf.get(..n).unwrap_or(&buf)))
+                        .await
+                        .is_err()
+                    {
                         return;
                     }
                 }
@@ -581,7 +593,9 @@ mod plain {
     fn shell_exit_code(status: std::process::ExitStatus) -> ExitInfo {
         use std::os::unix::process::ExitStatusExt;
         if let Some(sig) = status.signal() {
-            return ExitInfo { code: 128 + sig };
+            return ExitInfo {
+                code: 128_i32.saturating_add(sig),
+            };
         }
         ExitInfo {
             code: status.code().unwrap_or(1),
@@ -630,7 +644,9 @@ mod pty {
                 Ok(built) => return Ok(built),
                 Err(e) => {
                     last_err = Some(e);
-                    std::thread::sleep(Duration::from_millis(50 * u64::from(attempt + 1)));
+                    std::thread::sleep(Duration::from_millis(
+                        50_u64.saturating_mul(u64::from(attempt).saturating_add(1)),
+                    ));
                 }
             }
         }
@@ -704,7 +720,7 @@ mod pty {
                     Ok(0) => return,
                     Ok(n) => {
                         if stdout_tx
-                            .blocking_send(Bytes::copy_from_slice(&buf[..n]))
+                            .blocking_send(Bytes::copy_from_slice(buf.get(..n).unwrap_or(&buf)))
                             .is_err()
                         {
                             return;
@@ -767,8 +783,8 @@ mod pty {
         match status {
             Ok(s) => ExitInfo {
                 code: signal_number_from_description(s.signal())
-                    .map(|sig| 128 + sig)
-                    .unwrap_or(s.exit_code() as i32),
+                    .map(|sig| 128_i32.saturating_add(sig))
+                    .unwrap_or_else(|| i32::try_from(s.exit_code()).unwrap_or(1)),
             },
             Err(_) => ExitInfo { code: 1 },
         }

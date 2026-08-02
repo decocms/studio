@@ -78,7 +78,7 @@ fn key(org: &str, volume: &str, path: &str) -> String {
 pub fn put(org: &str, volume: &str, path: &str, body: Bytes, is_dir: bool) {
     let mut store = lock();
     let seq = store.next_seq;
-    store.next_seq += 1;
+    store.next_seq = store.next_seq.saturating_add(1);
     store.entries.insert(
         key(org, volume, path),
         Entry {
@@ -118,7 +118,7 @@ pub fn stat(org: &str, volume: &str, path: &str) -> Option<OrgFsNode> {
     Some(OrgFsNode {
         path: path.to_string(),
         is_dir: entry.is_dir,
-        size: entry.body.len() as u64,
+        size: u64::try_from(entry.body.len()).unwrap_or(u64::MAX),
         updated_at_secs: entry.updated_at_secs,
     })
 }

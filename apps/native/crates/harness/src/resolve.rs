@@ -148,17 +148,21 @@ pub fn resolve_checked_from(
     override_raw: Option<&str>,
 ) -> Result<Vec<String>, ResolveError> {
     let argv = resolve_argv_from(harness, override_raw)?;
-    let program = Path::new(&argv[0]);
-    if is_executable_path(program) {
+    let Some(program_arg) = argv.first().cloned() else {
+        return Err(ResolveError::NotFound(format!(
+            "{} CLI not found: resolved to an empty argv",
+            harness.wire_id()
+        )));
+    };
+    if is_executable_path(Path::new(&program_arg)) {
         return Ok(argv);
     }
-    if !argv[0].contains(std::path::MAIN_SEPARATOR) && which(&argv[0]).is_some() {
+    if !program_arg.contains(std::path::MAIN_SEPARATOR) && which(&program_arg).is_some() {
         return Ok(argv);
     }
     Err(ResolveError::NotFound(format!(
-        "{} CLI not found: {:?} is neither an executable path nor on PATH",
+        "{} CLI not found: {program_arg:?} is neither an executable path nor on PATH",
         harness.wire_id(),
-        argv[0],
     )))
 }
 

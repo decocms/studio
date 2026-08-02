@@ -194,11 +194,13 @@ pub fn preview_label(handle: &str) -> String {
     let slug = slug.trim_matches('-');
 
     // `-<hash>` is always kept; the slug yields whatever room is left.
-    let room = MAX_PREVIEW_LABEL - hash.len() - 1;
+    let room = MAX_PREVIEW_LABEL
+        .saturating_sub(hash.len())
+        .saturating_sub(1);
     let kept = if slug.len() > room {
         slug.char_indices()
-            .nth(slug.chars().count() - room)
-            .map(|(index, _)| &slug[index..])
+            .nth(slug.chars().count().saturating_sub(room))
+            .and_then(|(index, _)| slug.get(index..))
             .unwrap_or(slug)
     } else {
         slug

@@ -152,7 +152,8 @@ mod tests {
     #[test]
     fn headerless_with_no_active_sandbox_is_a_404() {
         let root = tempfile::tempdir().unwrap();
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let state = fresh_state(manager);
         // `Arc<Sandbox>` (the `Ok` side) isn't `Debug`, so `expect_err` isn't
         // available here — match explicitly instead.
@@ -165,7 +166,8 @@ mod tests {
     #[test]
     fn an_unknown_explicit_handle_is_a_404() {
         let root = tempfile::tempdir().unwrap();
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let state = fresh_state(manager);
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -181,7 +183,8 @@ mod tests {
     #[tokio::test]
     async fn an_explicit_known_handle_resolves_to_that_sandbox() {
         let root = tempfile::tempdir().unwrap();
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = ensure_one_sandbox(&manager, "repo-dir-known").await;
 
         let mut headers = HeaderMap::new();
@@ -197,7 +200,8 @@ mod tests {
     #[tokio::test]
     async fn headerless_falls_back_to_the_active_sandbox() {
         let root = tempfile::tempdir().unwrap();
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = ensure_one_sandbox(&manager, "repo-dir-active").await;
 
         let state = fresh_state(manager);
@@ -208,7 +212,8 @@ mod tests {
     #[tokio::test]
     async fn get_returns_404_when_the_resolved_workdir_no_longer_exists_on_disk() {
         let root = tempfile::tempdir().unwrap();
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         let sandbox = ensure_one_sandbox(&manager, "repo-dir-vanished").await;
         std::fs::remove_dir_all(&sandbox.workdir).unwrap();
 

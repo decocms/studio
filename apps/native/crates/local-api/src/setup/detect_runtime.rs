@@ -130,7 +130,9 @@ pub(super) async fn ensure_package_manager(orch: &Arc<SetupOrchestrator>, config
         .is_some();
     if !runtime_pinned {
         if let Some(runtime) = runtime_for_package_manager(pm) {
-            application["runtime"] = json!(runtime);
+            if let Some(fields) = application.as_object_mut() {
+                fields.insert("runtime".to_string(), json!(runtime));
+            }
         }
     }
     if let Err(error) = orch.config.patch(json!({ "application": application })) {

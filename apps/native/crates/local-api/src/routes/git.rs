@@ -390,6 +390,13 @@ async fn run_git_raw<S: AsRef<str>>(
     run_git_raw_with_timeout(repo_dir, args, env, GIT_TIMEOUT).await
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 async fn run_git_raw_with_timeout<S: AsRef<str>>(
     repo_dir: &Path,
     args: &[S],
@@ -485,11 +492,14 @@ async fn run_git_raw_with_timeout<S: AsRef<str>>(
                     }
                 }
                 signal = async {
-                    controller
-                        .as_ref()
-                        .expect("controller branch is guarded")
-                        .wait_for_change(observed_signal)
-                        .await
+                    match controller.as_ref() {
+                        Some(controller) => controller.wait_for_change(observed_signal).await,
+                        // Unreachable: the `if` precondition below disables
+                        // this branch, and `select!` does not evaluate a
+                        // disabled branch's future. A future that never
+                        // resolves says that without a panic path.
+                        None => std::future::pending().await,
+                    }
                 }, if controller.is_some() => {
                     observed_signal = Some(signal);
                     timeout_active = false;
@@ -769,13 +779,17 @@ fn parse_porcelain_entry(entry: &str) -> Option<(char, char, String)> {
         return None;
     }
     let bytes = entry.as_bytes();
-    let index = bytes[0] as char;
-    let working = bytes[1] as char;
-    let path = if entry.len() >= 4 && bytes[2] == b' ' {
-        &entry[3..]
+    let index = bytes.first().copied().map_or(' ', char::from);
+    let working = bytes.get(1).copied().map_or(' ', char::from);
+    let split_at = if entry.len() >= 4 && bytes.get(2) == Some(&b' ') {
+        3
     } else {
-        &entry[2..]
+        2
     };
+    // `get` rather than `[..]`: the first three bytes are ASCII status
+    // characters, so this always succeeds, but a slice index that is not a
+    // char boundary panics and porcelain output is untrusted git stdout.
+    let path = entry.get(split_at..).unwrap_or_default();
     if path.is_empty() {
         return None;
     }
@@ -789,14 +803,13 @@ fn parse_porcelain_files(out: &str) -> Vec<GitStatusFile> {
     let parts: Vec<&str> = out.split('\0').collect();
     let mut files = Vec::new();
     let mut i = 0;
-    while i < parts.len() {
-        let entry = parts[i];
+    while let Some(entry) = parts.get(i).copied() {
         if !entry.is_empty() {
             if let Some((index, working, path)) = parse_porcelain_entry(entry) {
                 let is_rename_or_copy = index == 'R' || index == 'C';
                 let mut orig_path = None;
                 if is_rename_or_copy {
-                    i += 1;
+                    i = i.saturating_add(1);
                     orig_path = parts
                         .get(i)
                         .filter(|s| !s.is_empty())
@@ -810,7 +823,7 @@ fn parse_porcelain_files(out: &str) -> Vec<GitStatusFile> {
                 });
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     files
 }
@@ -892,9 +905,9 @@ async fn compute_working_tree_status(repo_dir: &Path) -> Result<WorkingTreeStatu
                 .split_whitespace()
                 .filter_map(|s| s.parse().ok())
                 .collect();
-            if nums.len() == 2 {
-                behind = nums[0];
-                ahead = nums[1];
+            if let [b, a] = nums[..] {
+                behind = b;
+                ahead = a;
             }
         }
     }
@@ -1000,9 +1013,9 @@ async fn compute_branch_divergence(repo_dir: &Path) -> Divergence {
                 .split_whitespace()
                 .filter_map(|s| s.parse().ok())
                 .collect();
-            if nums.len() == 2 {
-                behind_base = nums[0];
-                ahead_of_base = nums[1];
+            if let [behind, ahead] = nums[..] {
+                behind_base = behind;
+                ahead_of_base = ahead;
             }
         }
     }
@@ -1176,7 +1189,10 @@ async fn compute_diff_against_base(
 
     let upstream = format!("origin/{base}");
     let remote_head = format!("origin/{branch}");
-    let has_valid_head_sha = head_sha.map(is_full_sha).unwrap_or(false);
+    // Narrowed once, into an `Option` rather than a bool beside the original:
+    // "usable head sha" means present AND a full 40-char sha, and every use
+    // below wants the value, not the predicate.
+    let valid_head_sha = head_sha.filter(|sha| is_full_sha(sha));
 
     async fn resolve_locally(repo_dir: &Path, env: &[(String, String)], r: &str) -> bool {
         try_git(repo_dir, &["rev-parse", "--verify", r], env)
@@ -1184,19 +1200,22 @@ async fn compute_diff_against_base(
             .is_some()
     }
 
-    let can_skip_fetch = has_valid_head_sha
-        && resolve_locally(repo_dir, &env, &upstream).await
-        && resolve_locally(repo_dir, &env, &format!("{}^{{commit}}", head_sha.unwrap())).await
-        && try_git(
-            repo_dir,
-            &["merge-base", &upstream, head_sha.unwrap()],
-            &env,
-        )
-        .await
-        .is_some();
+    // `Some(sha)` = the sha we can diff against without talking to origin.
+    let mut skip_fetch_sha: Option<&str> = None;
+    if let Some(sha) = valid_head_sha {
+        if resolve_locally(repo_dir, &env, &upstream).await
+            && resolve_locally(repo_dir, &env, &format!("{sha}^{{commit}}")).await
+            && try_git(repo_dir, &["merge-base", &upstream, sha], &env)
+                .await
+                .is_some()
+        {
+            skip_fetch_sha = Some(sha);
+        }
+    }
+    let can_skip_fetch = skip_fetch_sha.is_some();
 
-    let head_ref = if can_skip_fetch {
-        head_sha.unwrap().to_string()
+    let head_ref = if let Some(sha) = skip_fetch_sha {
+        sha.to_string()
     } else {
         let _ = run_git(
             repo_dir,
@@ -1204,27 +1223,24 @@ async fn compute_diff_against_base(
             &env,
         )
         .await;
-        if has_valid_head_sha {
-            let _ = run_git(
-                repo_dir,
-                &["fetch", "--depth", "100", "origin", head_sha.unwrap()],
-                &env,
-            )
-            .await;
+        if let Some(sha) = valid_head_sha {
+            let _ = run_git(repo_dir, &["fetch", "--depth", "100", "origin", sha], &env).await;
         }
         if !resolve_locally(repo_dir, &env, &upstream).await {
             return Err(RouteError::Generic(format!(
                 "Base branch '{base}' not found on origin"
             )));
         }
-        if has_valid_head_sha
-            && resolve_locally(repo_dir, &env, &format!("{}^{{commit}}", head_sha.unwrap())).await
-        {
-            head_sha.unwrap().to_string()
-        } else if resolve_locally(repo_dir, &env, &remote_head).await {
-            remote_head.clone()
-        } else {
-            "HEAD".to_string()
+        let mut fetched_head_sha: Option<String> = None;
+        if let Some(sha) = valid_head_sha {
+            if resolve_locally(repo_dir, &env, &format!("{sha}^{{commit}}")).await {
+                fetched_head_sha = Some(sha.to_string());
+            }
+        }
+        match fetched_head_sha {
+            Some(sha) => sha,
+            None if resolve_locally(repo_dir, &env, &remote_head).await => remote_head.clone(),
+            None => "HEAD".to_string(),
         }
     };
 
@@ -1757,7 +1773,7 @@ async fn resolve_conflicts(repo_dir: &Path, env: &[(String, String)]) -> Result<
                     abort_rebase(repo_dir, env).await;
                     return Err(e);
                 }
-                attempts_left -= 1;
+                attempts_left = attempts_left.saturating_sub(1);
             }
         }
     }
@@ -2334,7 +2350,8 @@ mod tests {
             update: None,
             token: "test-token".into(),
             boot_id: "test-boot".into(),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.to_path_buf()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.to_path_buf())
+                .expect("registry opens in a fresh temp app root"),
             app_root: app_root.to_path_buf(),
             repo_dir: repo_dir.to_path_buf(),
             mode: crate::state::ApiMode::Strict,

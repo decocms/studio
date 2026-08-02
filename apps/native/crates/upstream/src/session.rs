@@ -40,6 +40,7 @@
 //! problem, not a missing plugin — and why a genuine mesh-side
 //! bearer-to-session bridge was the actual fix).
 
+use crate::poison::RwLockExt;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
@@ -631,18 +632,18 @@ impl UpstreamSession {
     }
 
     async fn load_result(&self) -> Result<Option<StoredSession>, TokenStoreError> {
-        if let Some(cached) = self.0.session_cache.read().unwrap().clone() {
+        if let Some(cached) = self.0.session_cache.read_ok().clone() {
             return Ok(cached);
         }
         // Single-flight the cache miss: concurrent callers wait for ONE
         // Keychain read instead of each spawning their own (and their own
         // potential ACL prompt).
         let _guard = self.0.session_load_lock.lock().await;
-        if let Some(cached) = self.0.session_cache.read().unwrap().clone() {
+        if let Some(cached) = self.0.session_cache.read_ok().clone() {
             return Ok(cached);
         }
         let loaded = self.0.store.load(&self.0.host).await?;
-        *self.0.session_cache.write().unwrap() = Some(loaded.clone());
+        *self.0.session_cache.write_ok() = Some(loaded.clone());
         Ok(loaded)
     }
 
@@ -661,7 +662,7 @@ impl UpstreamSession {
     }
 
     fn cache_session(&self, value: Option<StoredSession>) {
-        *self.0.session_cache.write().unwrap() = Some(value);
+        *self.0.session_cache.write_ok() = Some(value);
     }
 
     fn signed_out(&self) -> StatusResult {
@@ -687,14 +688,13 @@ impl UpstreamSession {
     fn recently_validated(&self) -> bool {
         self.0
             .status_cache
-            .read()
-            .unwrap()
+            .read_ok()
             .as_ref()
             .is_some_and(|c| c.signed_in && c.checked_at.elapsed() < STATUS_CACHE_TTL)
     }
 
     fn mark_validated(&self, signed_in: bool) {
-        *self.0.status_cache.write().unwrap() = Some(StatusCache {
+        *self.0.status_cache.write_ok() = Some(StatusCache {
             checked_at: Instant::now(),
             signed_in,
         });
@@ -1004,7 +1004,7 @@ mod tests {
             },
             access_token: "access-good".to_string(),
             refresh_token: Some("refresh-good".to_string()),
-            expires_at: Some(now_unix() + 3600),
+            expires_at: Some(now_unix().saturating_add(3600)),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             cookie: Some("better-auth.session_token=test".to_string()),
         }
@@ -1014,7 +1014,9 @@ mod tests {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64
+            .as_secs()
+            .try_into()
+            .unwrap_or(i64::MAX)
     }
 
     async fn spawn_probe_server(behavior: ProbeBehavior) -> (String, Arc<AtomicUsize>) {
@@ -1819,7 +1821,8 @@ mod tests {
                 post(move |headers: axum::http::HeaderMap| {
                     let calls = calls_for_route.clone();
                     async move {
-                        *calls.lock().unwrap() += 1;
+                        let mut calls = calls.lock().unwrap();
+                        *calls = calls.saturating_add(1);
                         let bearer = headers
                             .get(axum::http::header::AUTHORIZATION)
                             .and_then(|v| v.to_str().ok())

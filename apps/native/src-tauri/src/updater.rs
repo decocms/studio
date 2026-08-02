@@ -386,10 +386,11 @@ fn bundle_short_version(targz: &[u8]) -> Result<String, String> {
             .components()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect();
-        let is_bundle_plist = components.len() == 3
-            && components[0].ends_with(".app")
-            && components[1] == "Contents"
-            && components[2] == "Info.plist";
+        let is_bundle_plist = matches!(
+            components.as_slice(),
+            [bundle, contents, plist]
+                if bundle.ends_with(".app") && contents == "Contents" && plist == "Info.plist"
+        );
         if !is_bundle_plist {
             continue;
         }
@@ -451,9 +452,16 @@ fn decide(
     Decision::Attempt
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 fn record_failure(memo: Option<FailureMemo>, version: &str, now: Instant) -> FailureMemo {
     let attempts = match &memo {
-        Some(memo) if memo.version == version => memo.attempts + 1,
+        Some(memo) if memo.version == version => memo.attempts.saturating_add(1),
         _ => 1,
     };
     FailureMemo {
@@ -466,7 +474,7 @@ fn record_failure(memo: Option<FailureMemo>, version: &str, now: Instant) -> Fai
 /// 1h, 2h, 4h, 8h, 16h, 24h cap.
 fn backoff_after(attempts: u32) -> Duration {
     let hours = 1u64 << attempts.saturating_sub(1).min(5);
-    Duration::from_secs(hours.min(24) * 3600)
+    Duration::from_secs(hours.min(24).saturating_mul(3600))
 }
 
 #[cfg(test)]
@@ -551,7 +559,7 @@ mod tests {
         let mut builder = tar::Builder::new(Vec::new());
         let mut add = |path: &str, contents: &str| {
             let mut header = tar::Header::new_gnu();
-            header.set_size(contents.len() as u64);
+            header.set_size(u64::try_from(contents.len()).unwrap_or(u64::MAX));
             header.set_mode(0o644);
             header.set_cksum();
             builder

@@ -59,7 +59,7 @@ const STREAM_CHANNEL_CAPACITY: usize = 1024;
 pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or(0)
 }
 
@@ -340,13 +340,13 @@ impl RingBuffer {
         self.buf.push_str(data);
         if self.buf.len() > self.capacity {
             self.truncated = true;
-            let overflow = self.buf.len() - self.capacity;
+            let overflow = self.buf.len().saturating_sub(self.capacity);
             let mut cut = overflow.min(self.buf.len());
             // `overflow` is a byte offset that may land mid-codepoint;
             // walk forward to the next char boundary so we never split a
             // multi-byte UTF-8 sequence.
             while cut < self.buf.len() && !self.buf.is_char_boundary(cut) {
-                cut += 1;
+                cut = cut.saturating_add(1);
             }
             self.buf.drain(..cut);
         }
@@ -450,7 +450,10 @@ impl TaskRegistry {
     /// spawns into this registry. IDs restart at `task1` each process boot;
     /// retained files remain collision-free through [`Self::storage_namespace`].
     pub fn next_id(&self) -> String {
-        let n = self.id_counter.fetch_add(1, Ordering::Relaxed) + 1;
+        let n = self
+            .id_counter
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
         format!("task{n}")
     }
 
@@ -542,10 +545,10 @@ impl TaskRegistry {
     /// the live send.
     pub async fn append_output(&self, id: &str, stream: OutputStream, data: &str) -> bool {
         if data.is_empty()
-            || !self
+            || self
                 .lock()
                 .get(id)
-                .is_some_and(|entry| !entry.summary.status.is_terminal())
+                .is_none_or(|entry| entry.summary.status.is_terminal())
         {
             return false;
         }
@@ -714,7 +717,7 @@ impl TaskRegistry {
     /// [`Self::kill_all_and_wait`] during process shutdown.
     pub fn kill_all(&self, signal: KillSignal) -> usize {
         let mut guard = self.lock();
-        let mut count = 0;
+        let mut count = 0_usize;
         for entry in guard.values_mut() {
             if !entry.exposed || entry.summary.status.is_terminal() {
                 continue;
@@ -725,7 +728,7 @@ impl TaskRegistry {
             };
             if signaled {
                 entry.summary.intentional = Some(true);
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
         count
@@ -791,7 +794,7 @@ impl TaskRegistry {
 
     fn kill_ids(&self, ids: &[String], signal: KillSignal) -> usize {
         let mut guard = self.lock();
-        let mut count = 0;
+        let mut count = 0_usize;
         for id in ids {
             let Some(entry) = guard.get_mut(id) else {
                 continue;
@@ -802,7 +805,7 @@ impl TaskRegistry {
             let signaled = entry.kill.as_ref().is_some_and(|kill| kill(signal));
             if signaled {
                 entry.summary.intentional = Some(true);
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
         count
