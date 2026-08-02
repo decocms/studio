@@ -278,9 +278,9 @@ jobs:
       - name: Install ripgrep
         run: brew install ripgrep
 
-      - name: Build release local-api binary
+      - name: Build release local-api binaries
         working-directory: apps/native
-        run: cargo build --release --bin local-api
+        run: cargo build --release --features e2e-runner --bin local-api --bin local-api-e2e-embedded
 
       - name: Run curated daemon e2e subset against local-api
         id: daemon-parity
@@ -364,6 +364,7 @@ jobs:
         working-directory: apps/native
         run: |
           export LOCAL_API_E2E_CMD="[\"$GITHUB_WORKSPACE/apps/native/target/release/local-api\"]"
+          export LOCAL_API_EMBEDDED_E2E_CMD="[\"$GITHUB_WORKSPACE/apps/native/target/release/local-api-e2e-embedded\"]"
           bun test e2e
 
   # ---------------------------------------------------------------------
