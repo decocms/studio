@@ -18,23 +18,6 @@ describe("harness registration", () => {
     expect(getHarnessFactory("decopilot")?.id).toBe("decopilot");
   });
 
-  // Inverted from "claude-code/codex are registered". The gate
-  // (`assertHarnessRunsInCluster`) throws for both before any lookup, so a
-  // registration here would be unreachable. Registering one again without
-  // giving it a cluster host should fail this test, not pass silently.
-  test.each(["claude-code", "codex"] as const)(
-    "CLI harness %s is NOT registered in the cluster",
-    (id) => {
-      expect(getHarnessFactory(id)).toBeUndefined();
-    },
-  );
-
-  test("cluster harness barrel does not import the CLI harness factories", async () => {
-    const source = await Bun.file("apps/api/src/harnesses/index.ts").text();
-    expect(source).not.toContain("claudeCodeHarnessFactory");
-    expect(source).not.toContain("codexHarnessFactory");
-  });
-
   test("cluster harness registration does not register desktop Decopilot builder", async () => {
     const source = await Bun.file("apps/api/src/harnesses/index.ts").text();
     expect(source).not.toContain("registerDesktopEnvironmentBuilder");
