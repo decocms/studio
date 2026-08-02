@@ -1,6 +1,6 @@
 //! `POST /_sandbox/orgfs-config` — config-relay FILE WRITE ONLY.
 //!
-//! The full daemon feature (`packages/sandbox/daemon/routes/orgfs-config.ts`
+//! The full daemon feature (`packages/sandbox/daemon-go/internal/routes/misc.go`
 //! plus `org-fs/config.ts`) is a two-part story. The first part validates
 //! and relays the config to a shared-volume file a privileged sidecar
 //! watches; the second part is that sidecar actually performing the rclone

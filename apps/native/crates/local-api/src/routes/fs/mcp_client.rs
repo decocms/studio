@@ -1,6 +1,6 @@
 //! A minimal MCP Streamable HTTP client — just enough to run the
 //! `initialize` -> `notifications/initialized` -> `tools/list` (paginated)
-//! sequence that `packages/sandbox/daemon/tools-catalog.ts::fetchToolCatalog`
+//! sequence that `packages/sandbox/daemon-go/internal/toolscatalog/catalog.go::fetchToolCatalog`
 //! runs via `@modelcontextprotocol/sdk`'s `StreamableHTTPClientTransport` /
 //! `Client`. There's no MCP SDK crate in this workspace's dependency table
 //! (`apps/native/Cargo.toml` is a shared file — adding one is an interface

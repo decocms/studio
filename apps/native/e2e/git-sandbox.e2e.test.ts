@@ -9,7 +9,7 @@
  * port and prints a `Local: http://localhost:PORT` line — the exact
  * announcement `setup/dev.rs`'s port-sniffer regex matches — mirroring the
  * daemon e2e suite's own git fixture conventions
- * (`packages/sandbox/daemon/daemon.e2e.git.test.ts`).
+ * (`packages/sandbox/daemon-e2e/daemon.git.e2e.test.ts`).
  *
  * Proves, over HTTP only (no Rust-internal access):
  *   (a) dispatching on branch A clones the fixture repo into

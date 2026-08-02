@@ -1,7 +1,7 @@
 /**
  * Unit tier (pure logic, no spawn/network) for `helpers.ts`'s env-resolution
  * function. Mirrors the daemon's own "swappable spawn target" coverage in
- * `packages/sandbox/daemon/daemon.e2e.test.ts` for `resolveDaemonCmd` — same
+ * `packages/sandbox/daemon-e2e/daemon.e2e.test.ts` for `resolveDaemonCmd` — same
  * JSON-array-or-whitespace-split contract, applied to `LOCAL_API_E2E_CMD`.
  * Always runs (not gated by `describeLocalApi`/`LOCAL_API_E2E_CMD`): this
  * tests the resolver itself, not a running binary.

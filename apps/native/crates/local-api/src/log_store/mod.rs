@@ -15,9 +15,9 @@
 //!   buffers a backlog anymore. A subscriber that connects late gets
 //!   caught up by reading [`store::LogStore`] instead.
 //!
-//! Byte-parity target: `packages/sandbox/daemon/process/log-tee.ts`
+//! Byte-parity target: `packages/sandbox/daemon-go/internal/proc/logtee.go`
 //! (`LogTee`, the at-cap rotation behavior — see [`store::WRITE_CAP_BYTES`])
-//! and `packages/sandbox/daemon/events/replay.ts` (`ReplayBuffer`, the
+//! and `packages/sandbox/daemon-go/internal/events/replay.go` (`ReplayBuffer`, the
 //! tail-read size — see [`store::DEFAULT_TAIL_BYTES`]). The old daemon kept
 //! these as TWO separate mechanisms (an in-RAM 256KB replay buffer feeding
 //! SSE, a 10MB on-disk tee purely for audit) that happened to duplicate the

@@ -608,7 +608,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       // Fall back to the "ephemeral" synthetic branch when neither the
       // thread row nor the request body pins one. Synthetic branches
-      // (see packages/sandbox/daemon/constants.ts:isSyntheticBranch) are
+      // (see packages/sandbox/daemon-go/internal/gitx/refname.go:isSyntheticBranch) are
       // accepted by the daemon as sandboxMap routing keys but never checked
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an

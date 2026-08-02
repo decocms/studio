@@ -15,7 +15,7 @@
 //! `routes/config.rs` (the wire), `SandboxManager::apply_config` (dispatch
 //! hints), and `setup/detect_runtime.rs` (workdir-detected workload).
 //!
-//! Byte-parity target: `packages/sandbox/daemon/config-store/` (`classify.ts`
+//! Byte-parity target: `packages/sandbox/daemon-go/internal/config/` (`classify.ts`
 //! precedence, `merge.ts` deep-merge, `validate.ts` field validation,
 //! `store.ts`'s reject/apply/no-op branching). See `config/classify.rs`,
 //! `config/merge.rs`, `config/validate.rs` for the ported pieces.

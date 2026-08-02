@@ -141,7 +141,7 @@ pub const PROTECTED_BRANCHES: [&str; 2] = ["main", "master"];
 /// keys, not real git refs — they must never be checked out or shown to a
 /// user as a branch. Byte-parity with
 /// `packages/shared/src/is-synthetic-branch.ts` (itself mirroring
-/// `packages/sandbox/daemon/constants.ts`): this predicate is a
+/// `packages/sandbox/daemon-go/internal/gitx/refname.go`): this predicate is a
 /// cross-language wire contract, and a second Rust copy is how one side ends
 /// up checking out a routing key the other side still treats as synthetic.
 pub(crate) fn is_synthetic_branch(branch: &str) -> bool {

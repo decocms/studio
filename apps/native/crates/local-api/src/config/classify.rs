@@ -1,5 +1,5 @@
 //! Pure: derive the single highest-impact transition between two configs.
-//! Byte-parity port of `packages/sandbox/daemon/config-store/classify.ts`.
+//! Byte-parity port of `packages/sandbox/daemon-go/internal/config/classify.go`.
 //!
 //! Precedence (highest first): identity-conflict, then bootstrap,
 //! branch-change, runtime-change, pm-change, port-change, env-change,

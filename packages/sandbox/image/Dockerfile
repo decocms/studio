@@ -1,16 +1,6 @@
-# Two images, one shared base. The daemon implementation is the image, not a
-# runtime switch: one SandboxTemplate per image, and a claim picks the template.
+# The sandbox image. One daemon, written in Go (`daemon-go/`):
 #
-#   TS  (default): docker build -t studio-sandbox:local              -f packages/sandbox/image/Dockerfile packages/sandbox
-#   Go:            docker build -t studio-sandbox-go:local --target go -f packages/sandbox/image/Dockerfile packages/sandbox
-#
-# `ts` is deliberately the LAST stage so it stays the implicit `--target`, and
-# every existing build command keeps producing the TS image.
-#
-# Everything expensive (LibreOffice, Python, Node, Deno, corepack, node-pty)
-# lives in `runtime-base`, so the two images are byte-identical below their
-# daemon layer and the second build is nearly free from cache. Do not move a
-# shared dependency into a leaf stage — that is how the two drift.
+#   docker build -t studio-sandbox-go:local -f packages/sandbox/image/Dockerfile packages/sandbox
 #
 # Published multi-arch (linux/amd64 + linux/arm64) by
 # .github/workflows/release-studio-sandbox.yaml so sandboxes run natively on
@@ -23,9 +13,8 @@ ARG NODE_MAJOR=26
 # digest cache the base image already depends on. Multi-arch like the rest.
 FROM node:${NODE_MAJOR}-slim AS node-dist
 
-# The Go daemon. Only the `go` target consumes this stage, so a `--target ts`
-# build skips it entirely. Every dep is pure Go, so CGO_ENABLED=0
-# cross-compiles without emulation.
+# The daemon. Every dep is pure Go, so CGO_ENABLED=0 cross-compiles without
+# emulation.
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS daemon-go
 ARG TARGETARCH
 WORKDIR /src
@@ -111,30 +100,18 @@ RUN userdel --remove bun \
 
 WORKDIR /app
 
-# node-pty is a native addon. The daemon bundle marks it `--external`, so it
-# must be installed inside the image. `bun init -y` creates a minimal
-# package.json; `bun add` triggers node-pty's prebuilt-binary download (or
-# builds from source for archs without prebuilts). build-essential + python3 +
-# node-gyp are required for the node-gyp fallback on architectures (e.g.
-# linux-arm64) that have no pre-built binary. They are kept in the final
-# image so user repos in /app/repo that depend on node-pty (or any native
-# addon) can rebuild during their own `bun install`. The `find … chmod +x`
-# step ensures the spawn-helper binary is executable (relevant on
-# macOS-targeted prebuilds; no-op on Linux).
+# build-essential + python3 + node-gyp for user repos in /app/repo that depend
+# on a native addon and rebuild it during their own `bun install`. The daemon
+# itself is a static Go binary and needs none of this.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/* \
-  && npm install -g node-gyp \
-  && cd /opt/sandbox-daemon \
-  && bun init -y \
-  && bun add node-pty@^1.0.0 \
-  && find /opt/sandbox-daemon/node_modules/node-pty -name "spawn-helper" -exec chmod +x {} \; \
-  && chown -R sandbox:sandbox /opt/sandbox-daemon
+  && npm install -g node-gyp
 
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
-COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
+COPY --chown=sandbox:sandbox dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
 RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
@@ -149,19 +126,7 @@ ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000
 
-# ── Go daemon image ─────────────────────────────────────────────────────────
-# `studio-sandbox-go`. No daemon.js: nothing in this image can start the TS
-# daemon, which is the point — the running implementation is a property of the
-# image, provable by inspection rather than by reading an env var.
-FROM runtime-base AS go
 COPY --from=daemon-go --chown=sandbox:sandbox /out/daemon-go /opt/sandbox-daemon/daemon-go
 # exec form, so the daemon is PID 1 and gets SIGTERM directly — that is what
 # triggers the shutdown git publish.
 CMD ["/opt/sandbox-daemon/daemon-go"]
-
-# ── TS daemon image (default target) ────────────────────────────────────────
-# `studio-sandbox`. Last stage on purpose: this is what a bare `docker build`
-# produces, so no existing build command changes meaning.
-FROM runtime-base AS ts
-COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
-CMD ["bun", "/opt/sandbox-daemon/daemon.js"]

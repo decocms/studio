@@ -4,10 +4,10 @@ export {
   type OrgFsChangePage,
   OrgFsClient,
   type OrgFsClientOptions,
-} from "./daemon/org-fs/client";
+} from "./orgfs/client";
 export {
   type OrgFsApi,
   OrgFsApiError,
   type OrgFsNode,
-} from "./daemon/org-fs/api";
-export { createWebdavHandler } from "./daemon/org-fs/webdav";
+} from "./orgfs/api";
+export { createWebdavHandler } from "./orgfs/webdav";

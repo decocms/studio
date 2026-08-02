@@ -3,8 +3,8 @@
  *
  * Every assertion in `*.e2e.test.ts` next to this file is a BLACK-BOX HTTP/SSE
  * contract against the native local-API contract. There is no
- * bundled fallback binary — unlike `packages/sandbox/daemon/daemon.e2e.helpers.ts`
- * (which defaults to running the TS daemon under Bun when `DAEMON_E2E_CMD` is
+ * bundled fallback binary — unlike `packages/sandbox/daemon-e2e/daemon.e2e.helpers.ts`
+ * (which defaults to the built Go daemon binary when `DAEMON_E2E_CMD` is
  * unset), Phase 0 ships no Rust implementation. `LOCAL_API_E2E_CMD` unset means
  * "skip this suite" — see `SKIP_NO_BINARY` / `describeLocalApi` below.
  *
@@ -40,7 +40,7 @@ const PORT_POLL_INTERVAL_MS = 50;
  * Resolve the command used to spawn the local-api binary under test.
  *
  * Same resolution semantics as `resolveDaemonCmd` in
- * `packages/sandbox/daemon/daemon.e2e.helpers.ts`: `LOCAL_API_E2E_CMD` is
+ * `packages/sandbox/daemon-e2e/daemon.e2e.helpers.ts`: `LOCAL_API_E2E_CMD` is
  * either a JSON array (`'["./target/release/local-api"]'`, required when args
  * contain spaces) or a plain whitespace-separated string
  * (`"/abs/path/local-api --flag"`). Unlike the daemon resolver, there is no

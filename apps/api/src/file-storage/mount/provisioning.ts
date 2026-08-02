@@ -1,7 +1,7 @@
 /**
  * Builds the `ORGFS_CONFIG` payload the studio pushes to a sandbox daemon (as a
  * boot env var) to turn on org-fs mounting. The daemon's `parseOrgFsConfig`
- * (packages/sandbox/daemon/org-fs/config.ts) validates this shape.
+ * (packages/sandbox/orgfs/config.ts) validates this shape.
  *
  * The mounted set is hardcoded for now (per the team decision); later this
  * becomes per-agent configurable. Three volumes (org skills are deliberately

@@ -1,6 +1,6 @@
 //! The one process-spawn abstraction — PTY (via `portable-pty`) OR plain
 //! pipes behind a single [`spawn`] entry point, mirroring
-//! `packages/sandbox/daemon/process/pty-spawn.ts`'s two-tier contract
+//! `packages/sandbox/daemon-go/internal/proc/scripts.go`'s two-tier contract
 //! (`spawnPty` + its `spawnFallback`) in intent: `TERM=xterm-256color`,
 //! 128+signal shell-convention exit codes, 3× `openpty`/`forkpty` retry
 //! with backoff before falling back to plain pipes on PTY-allocation

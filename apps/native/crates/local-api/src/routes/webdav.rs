@@ -5,7 +5,7 @@
 //! so macOS can mount `org/home`, `org/public/<set>`, `org/uploads` and
 //! `org/outputs` kext-free.
 //!
-//! Port of `packages/sandbox/daemon/org-fs/webdav.ts`. The PROPFIND XML
+//! Port of `packages/sandbox/orgfs/webdav.ts`. The PROPFIND XML
 //! shape, the status codes and the `Depth` handling are what rclone actually
 //! depends on, so they are reproduced verbatim; see `dav.rs` for the pure
 //! translation half (and the one deliberate divergence: hrefs carry this

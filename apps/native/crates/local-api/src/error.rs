@@ -1,6 +1,6 @@
 //! The daemon-parity JSON error envelope.
 //!
-//! Every route in `packages/sandbox/daemon/routes/*.ts` responds to a
+//! Every route in `packages/sandbox/daemon-go/internal/routes/*.go` responds to a
 //! rejected request with `{ "error": "<message>" }`, sometimes with extra
 //! fields (`detail`, `notReady`, `available`) — see
 //! the native local-API contract. `ApiError` is

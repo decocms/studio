@@ -4,7 +4,7 @@
  * checks them out. UI surfaces that show branch names to users should hide
  * synthetic values — they have no meaning outside the sandbox layer.
  *
- * Source of truth: `packages/sandbox/daemon/constants.ts`. Mirrored here
+ * Source of truth: `packages/sandbox/daemon-go/internal/gitx/refname.go`. Mirrored here
  * because that file lives behind a server-only package boundary and we don't
  * want to pull daemon code into the web bundle for a two-line check.
  */

@@ -337,7 +337,7 @@ spec:
         # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
         # under the shared /app/org, and Bidirectional propagation surfaces
         # them in the (unprivileged) sandbox container. See
-        # packages/sandbox/daemon/org-fs/sidecar.ts.
+        # packages/sandbox/orgfs/sidecar.ts.
         - name: orgfs-sidecar
           image: "{{ .Values.orgFs.image.repository }}:{{ .Values.orgFs.image.tag }}"
           imagePullPolicy: {{ .Values.orgFs.image.pullPolicy }}

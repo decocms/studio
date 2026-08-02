@@ -1,4 +1,4 @@
-//! Port of `packages/sandbox/daemon/paths.ts::safePath` — pure, no
+//! Port of `packages/sandbox/daemon-go/internal/paths/paths.go::safePath` — pure, no
 //! filesystem access (deliberately: it must NOT resolve symlinks, since
 //! `state.app_root`/`state.repo_dir` themselves are often symlinked
 //! temp-dir paths on macOS, e.g. `/var/folders/...` -> `/private/var/folders/...`.

@@ -1,10 +1,10 @@
 name: Sandbox
 
-# packages/sandbox/daemon/daemon.e2e.test.ts spawns the built daemon binary
-# and exercises real HTTP/SSE endpoints — it's an integration test that
-# runs under `bun test` purely because of where it lives in the tree.
+# packages/sandbox/daemon-e2e/ spawns the built daemon binary and exercises real
+# HTTP/SSE endpoints — it's an integration test that runs under `bun test`
+# purely because of the language its assertions are written in.
 # Split into its own workflow so the unit-test job stays infrastructure-free
-# (no daemon-bundle build, no per-test process spawning) per TESTING.md.
+# (no daemon build, no per-test process spawning) per TESTING.md.
 
 on:
   push:
@@ -81,32 +81,6 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      # The fs `grep` route shells out to ripgrep; install it so that test can
-      # assert results strictly instead of tolerating "grep unavailable".
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-
-      - name: Build daemon bundle
-        run: bun run --cwd=packages/sandbox build
-
-      - name: Run daemon e2e tests
-        # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
-        # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
-        run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
-
-  # The Go daemon drives the SAME suite through DAEMON_E2E_CMD — that is what
-  # keeps the two implementations at parity.
-  daemon-e2e-go:
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Bun and install dependencies
-        uses: ./.github/actions/setup-bun
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: packages/sandbox/daemon-go/go.mod
@@ -121,15 +95,17 @@ jobs:
           go vet ./...
           go test -race ./...
 
-      - name: Build both daemons
-        run: |
-          bun run --cwd=packages/sandbox build
-          (cd packages/sandbox/daemon-go && go build -o bin/daemon .)
+      - name: Build the daemon
+        run: cd packages/sandbox/daemon-go && go build -o bin/daemon .
 
-      - name: Run daemon e2e tests against the Go daemon
+      - name: Run daemon e2e tests
+        # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
+        # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
+        # DAEMON_E2E_CMD is what makes the suite implementation-agnostic; the
+        # default it falls back to is this same binary.
         env:
           DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
-        run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
+        run: bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
 
   docker-smoke:
     needs: changes
@@ -142,26 +118,19 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Build daemon bundle
+      - name: Build typegen package
         run: bun run --cwd=packages/sandbox build
 
-      # Both targets. The bare (no --target) build must still produce the TS
-      # image — `ts` is the last stage precisely so that stays true.
-      - name: Build both sandbox images
+      - name: Build the sandbox image
         run: |
           docker build \
-            -t studio-sandbox:ci \
-            -f packages/sandbox/image/Dockerfile \
-            packages/sandbox
-          docker build \
-            --target go \
             -t studio-sandbox-go:ci \
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
 
-      # Each image must boot its own daemon with no env telling it which — the
+      # The image must boot the daemon with no env telling it which — the
       # `impl=` boot line is the assertion, so an image that shipped the wrong
-      # daemon fails here rather than in a canary panel.
+      # binary fails here rather than in a canary panel.
       - name: Smoke test
         run: |
           smoke() {
@@ -190,9 +159,8 @@ jobs:
             docker logs "$name"
             return 1
           }
-          smoke studio-sandbox:ci    ts 19999
           smoke studio-sandbox-go:ci go 19998
 
       - name: Tear down
         if: always()
-        run: docker rm -f sandbox-smoke-ts sandbox-smoke-go || true
+        run: docker rm -f sandbox-smoke-go || true

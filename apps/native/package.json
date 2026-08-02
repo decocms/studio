@@ -13,7 +13,7 @@
     "smoke:boot": "bun run scripts/boot-smoke.ts",
     "check:junit-allowlist": "node scripts/ci/check-junit-allowlist.mjs",
     "selftest:bundle:check": "node --check src-tauri/selftest/bundle.js",
-    "e2e-stub:run": "node ../../packages/sandbox/daemon/e2e-stub/stub-daemon.mjs"
+    "e2e-stub:run": "node ../../packages/sandbox/daemon-e2e/stub-daemon.mjs"
   },
   "dependencies": {
     "@decocms/shared": "workspace:*"

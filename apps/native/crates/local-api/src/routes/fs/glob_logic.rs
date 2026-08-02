@@ -1,5 +1,5 @@
 //! Port of the pure helper functions from
-//! `packages/sandbox/daemon/routes/fs.ts`'s glob section (everything from
+//! `packages/sandbox/daemon-go/internal/routes/fs.go`'s glob section (everything from
 //! `GLOB_EXCLUDE_DIRS` down through `collectEmptyDirectories`), plus a
 //! from-scratch directory walk that reproduces `Bun.Glob(...).scan({
 //! onlyFiles:false, followSymlinks:false, dot:true })`'s observable output

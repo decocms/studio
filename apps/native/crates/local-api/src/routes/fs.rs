@@ -3,7 +3,7 @@
 //! because the daemon's own `fsH` dispatch table does the same, see
 //! `entry.ts`).
 //!
-//! Byte-parity target: `packages/sandbox/daemon/routes/fs.ts` +
+//! Byte-parity target: `packages/sandbox/daemon-go/internal/routes/fs.go` +
 //! `paths.ts::safePath` + `routes/tools.ts` + `tools-catalog.ts`. Oracle:
 //! `daemon.e2e.test.ts`'s `fs` describe block + `daemon.tools.e2e.test.ts`.
 //!

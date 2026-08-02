@@ -4,7 +4,7 @@
  *
  * WHY GOLDEN TRANSCRIPTS INSTEAD OF A LIVE TS-DAEMON DIFFERENTIAL: see
  * the native parity contract's Phase 2 section for the full
- * investigation. Summary: `packages/sandbox/daemon/entry.ts` registers the
+ * investigation. Summary: `packages/sandbox/daemon-go/main.go` registers the
  * REAL `claudeCodeHarnessFactory`/`codexHarnessFactory`
  * (`@decocms/harness/claude-code`, `/codex`) into a hardcoded
  * module-singleton registry at import time — there is no env var or DI seam
