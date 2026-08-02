@@ -16,6 +16,7 @@ import {
   installTerminalCapabilityReplyHandlers,
 } from "./terminal-capability-replies";
 import type { TerminalReplayFrame } from "./protocol";
+import type { TerminalControllerSnapshot } from "./terminal-controller";
 
 const TERMINAL_REVEAL_FALLBACK_MS = 1_750;
 
@@ -38,6 +39,24 @@ export function shouldRevealTerminal(
   return receivedOutput && (hasVisibleContent || fallbackElapsed);
 }
 
+export type TerminalPulsePhase = "starting" | "reconnecting" | "waiting-output";
+
+export function terminalPulsePhase(
+  connection: TerminalControllerSnapshot["connection"],
+  physicalState: TerminalControllerSnapshot["physicalState"],
+): TerminalPulsePhase {
+  if (
+    connection === "reconnecting" ||
+    (connection !== "connected" && physicalState === "running")
+  ) {
+    return "reconnecting";
+  }
+  if (connection === "connected" && physicalState === "running") {
+    return "waiting-output";
+  }
+  return "starting";
+}
+
 function NativeXterm({ readOnly }: { readOnly: boolean }) {
   const t = useT();
   const { controller, snapshot } = useNativeTerminalRuntime();
@@ -49,15 +68,28 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
   const agentLabel = brand
     ? t(brand.labelKey)
     : t("chat.nativeTerminal.agentLabel");
+  const pulsePhase = terminalPulsePhase(
+    snapshot.connection,
+    snapshot.physicalState,
+  );
   const unavailableBeforeOutput =
     snapshot.physicalState === "failed" ||
     snapshot.physicalState === "exited" ||
     (snapshot.error !== null && !snapshot.retryable);
   const loadingLabel = t(
-    snapshot.connection === "reconnecting"
+    pulsePhase === "reconnecting"
       ? "chat.nativeTerminal.reconnectingAgent"
-      : "chat.nativeTerminal.startingAgent",
+      : pulsePhase === "waiting-output"
+        ? "chat.nativeTerminal.waitingForAgentOutput"
+        : "chat.nativeTerminal.startingAgent",
     { agent: agentLabel },
+  );
+  const pulseContext = t(
+    pulsePhase === "reconnecting"
+      ? "chat.nativeTerminal.pulseReconnecting"
+      : pulsePhase === "waiting-output"
+        ? "chat.nativeTerminal.pulseConnected"
+        : "chat.nativeTerminal.pulseInitializing",
   );
   const unavailableLabel =
     snapshot.error?.message ?? t("chat.nativeTerminal.exitedBeforeReady");
@@ -69,9 +101,65 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
 
     setIsTerminalRevealed(false);
 
-    const style = getComputedStyle(document.documentElement);
     const cssVar = (name: string) =>
-      style.getPropertyValue(name).trim() || undefined;
+      getComputedStyle(document.documentElement)
+        .getPropertyValue(name)
+        .trim() || undefined;
+    const colorCanvas = document.createElement("canvas");
+    colorCanvas.width = 1;
+    colorCanvas.height = 1;
+    const colorContext = colorCanvas.getContext("2d", {
+      willReadFrequently: true,
+    });
+    const terminalColor = (names: string[], fallback: string): string => {
+      const raw = names.map(cssVar).find(Boolean) ?? fallback;
+      if (!colorContext) return raw;
+
+      colorContext.clearRect(0, 0, 1, 1);
+      colorContext.fillStyle = fallback;
+      colorContext.fillStyle = raw;
+      colorContext.fillRect(0, 0, 1, 1);
+      const pixel = colorContext.getImageData(0, 0, 1, 1).data;
+      const red = pixel[0] ?? 0;
+      const green = pixel[1] ?? 0;
+      const blue = pixel[2] ?? 0;
+      const alpha = pixel[3] ?? 255;
+      return alpha === 255
+        ? `rgb(${red}, ${green}, ${blue})`
+        : `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+    };
+    const createTerminalTheme = () => ({
+      background: terminalColor(
+        ["--background", "--card", "--sidebar"],
+        "#1e1e1e",
+      ),
+      cursor: terminalColor(["--foreground"], "#d4d4d4"),
+      foreground: terminalColor(["--foreground"], "#d4d4d4"),
+      selectionBackground: terminalColor(
+        ["--accent"],
+        "rgba(255, 255, 255, 0.2)",
+      ),
+      selectionForeground: terminalColor(
+        ["--accent-foreground", "--foreground"],
+        "#d4d4d4",
+      ),
+      black: terminalColor(["--muted"], "#666666"),
+      red: terminalColor(["--destructive"], "#ef4444"),
+      green: terminalColor(["--success"], "#22c55e"),
+      yellow: terminalColor(["--warning"], "#eab308"),
+      blue: terminalColor(["--chart-1"], "#3b82f6"),
+      magenta: terminalColor(["--chart-3"], "#d946ef"),
+      cyan: terminalColor(["--chart-5"], "#06b6d4"),
+      white: terminalColor(["--foreground"], "#d4d4d4"),
+      brightBlack: terminalColor(["--muted-foreground"], "#737373"),
+      brightRed: terminalColor(["--destructive"], "#ef4444"),
+      brightGreen: terminalColor(["--success"], "#22c55e"),
+      brightYellow: terminalColor(["--warning"], "#eab308"),
+      brightBlue: terminalColor(["--chart-1"], "#3b82f6"),
+      brightMagenta: terminalColor(["--chart-3"], "#d946ef"),
+      brightCyan: terminalColor(["--chart-5"], "#06b6d4"),
+      brightWhite: terminalColor(["--foreground"], "#d4d4d4"),
+    });
     const terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: false,
@@ -83,38 +171,25 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       fontSize: 13,
       lineHeight: 1.35,
       scrollback: 10_000,
-      theme: {
-        background:
-          cssVar("--sidebar") ||
-          cssVar("--card") ||
-          cssVar("--background") ||
-          "#1e1e1e",
-        cursor: cssVar("--foreground") || "#d4d4d4",
-        foreground: cssVar("--foreground") || "#d4d4d4",
-        selectionBackground: cssVar("--accent"),
-        selectionForeground: cssVar("--accent-foreground"),
-        black: cssVar("--muted"),
-        red: cssVar("--destructive"),
-        green: cssVar("--success"),
-        yellow: cssVar("--warning"),
-        blue: cssVar("--chart-1"),
-        magenta: cssVar("--chart-3"),
-        cyan: cssVar("--chart-5"),
-        white: cssVar("--foreground"),
-        brightBlack: cssVar("--muted-foreground"),
-        brightRed: cssVar("--destructive"),
-        brightGreen: cssVar("--success"),
-        brightYellow: cssVar("--warning"),
-        brightBlue: cssVar("--chart-1"),
-        brightMagenta: cssVar("--chart-3"),
-        brightCyan: cssVar("--chart-5"),
-        brightWhite: cssVar("--foreground"),
-      },
+      theme: createTerminalTheme(),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(element);
     terminal.textarea?.setAttribute("aria-label", terminalLabel);
+    const syncTerminalTheme = () => {
+      const theme = createTerminalTheme();
+      terminal.options.theme = theme;
+      const viewport =
+        terminal.element?.querySelector<HTMLElement>(".xterm-viewport");
+      if (viewport) viewport.style.backgroundColor = theme.background;
+    };
+    syncTerminalTheme();
+    const themeObserver = new MutationObserver(syncTerminalTheme);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "style"],
+    });
 
     const resizeSubscription = terminal.onResize(({ rows, cols }) =>
       controller.resize({ rows, cols }),
@@ -264,6 +339,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       repliesAllowed = false;
       outputQueue.length = 0;
       observer.disconnect();
+      themeObserver.disconnect();
       outputSubscription();
       stateSubscription();
       capabilityHandlers.dispose();
@@ -276,14 +352,14 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
 
   return (
     <div
-      className="relative h-full min-h-0 bg-sidebar p-3"
+      className="relative h-full min-h-0 bg-background p-3"
       aria-busy={!isTerminalRevealed && !unavailableBeforeOutput}
     >
-      <div ref={containerRef} className="h-full" />
+      <div ref={containerRef} className="h-full bg-background" />
       <div
         aria-hidden={isTerminalRevealed}
         className={cn(
-          "absolute inset-0 z-10 flex items-center justify-center bg-sidebar transition-opacity duration-200 motion-reduce:transition-none",
+          "absolute inset-0 z-10 flex items-center justify-center bg-background transition-opacity duration-200 motion-reduce:transition-none",
           isTerminalRevealed ? "pointer-events-none opacity-0" : "opacity-100",
         )}
       >
@@ -299,16 +375,44 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2.5 rounded-full border border-border bg-background px-3.5 py-2 shadow-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:[&_*]:animate-none"
+            className="relative flex h-full w-full flex-col overflow-hidden bg-background px-5 py-5 font-mono animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:[&_*]:animate-none"
           >
-            {AgentIcon && (
-              <span className="flex size-5 items-center justify-center text-foreground">
-                <AgentIcon size={15} />
+            <div
+              aria-hidden="true"
+              className="flex items-center justify-between gap-4 text-[10px] text-muted-foreground"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                {AgentIcon && (
+                  <span className="flex size-4 shrink-0 items-center justify-center text-foreground">
+                    <AgentIcon size={13} />
+                  </span>
+                )}
+                <span className="truncate">{agentLabel}</span>
               </span>
-            )}
-            <GridLoader />
-            <span className="text-sm font-medium text-foreground">
-              {loadingLabel}
+              <span className="shrink-0">{pulseContext}</span>
+            </div>
+
+            <div className="flex flex-1 flex-col justify-center pb-6">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <span aria-hidden="true" className="text-success">
+                  ›
+                </span>
+                <span className="lowercase">{loadingLabel}</span>
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-4 w-1.5 animate-pulse bg-foreground motion-reduce:animate-none"
+                />
+              </div>
+              <p className="ml-4 mt-2 text-[10px] text-muted-foreground">
+                {t("chat.nativeTerminal.waitingForTerminalDraw")}
+              </p>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="absolute bottom-6 right-6 opacity-60"
+            >
+              <GridLoader />
             </span>
           </div>
         )}

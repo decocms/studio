@@ -264,15 +264,14 @@ export const chat = {
     "Failed to load prompt. Please try again.",
   "chat.nextActionChip.mcpClientNotAvailable": "MCP client not available",
   "chat.nextActionChip.next": "Next:",
-  "chat.nativeAgentEmptyState.heading": "Choose your coding agent",
+  "chat.nativeAgentEmptyState.agentListLabel": "Coding agents",
+  "chat.nativeAgentEmptyState.detected": "detected",
+  "chat.nativeAgentEmptyState.detecting": "detecting",
+  "chat.nativeAgentEmptyState.heading": "Choose a coding agent",
+  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ select · ↵ launch",
   "chat.nativeAgentEmptyState.notDetected":
     "{label} was not detected on this computer",
-  "chat.nativeAgentEmptyState.subtitleDetecting":
-    "Looking for coding agents installed on this computer…",
-  "chat.nativeAgentEmptyState.subtitleNoneDetected":
-    "No coding agent was detected. Install Claude Code, Codex, or OpenCode, then pick it here to start chatting.",
-  "chat.nativeAgentEmptyState.subtitlePick":
-    "Chats run on a coding agent installed on this computer. Pick one to start.",
+  "chat.nativeAgentEmptyState.tryAnyway": "try anyway",
   "chat.nativeTerminal.chooseAgentFirst":
     "Choose Claude Code, Codex, or OpenCode before sending a prompt.",
   "chat.nativeTerminal.agentLabel": "coding agent",
@@ -295,6 +294,9 @@ export const chat = {
     "Only the chat owner can open or control its terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
   "chat.nativeTerminal.reconnectingAgent": "Reconnecting to {agent}…",
+  "chat.nativeTerminal.pulseConnected": "connected",
+  "chat.nativeTerminal.pulseInitializing": "initializing",
+  "chat.nativeTerminal.pulseReconnecting": "reconnecting",
   "chat.nativeTerminal.startingAgent": "Starting {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
     "This action requires structured chat and is not available in the terminal.",
@@ -302,8 +304,9 @@ export const chat = {
   "chat.nativeTerminal.unsupportedHarness":
     "This chat is pinned to an agent that Studio Native cannot run.",
   "chat.nativeTerminal.unexpectedExit": "Coding agent exited unexpectedly.",
-  "chat.nativeTerminal.waitingForInput": "Waiting for your input",
-  "chat.nativeTerminal.working": "Agent is working",
+  "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",
+  "chat.nativeTerminal.waitingForTerminalDraw":
+    "waiting for the terminal to draw",
   "chat.noAiProviderEmptyState.headingDefault": "Your agents are almost ready",
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for agents",
   "chat.noAiProviderEmptyState.subtitleDefault":

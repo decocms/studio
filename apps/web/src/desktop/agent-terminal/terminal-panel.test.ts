@@ -6,12 +6,21 @@ import { Terminal } from "@xterm/xterm";
 import {
   hasVisibleTerminalContent,
   shouldRevealTerminal,
+  terminalPulsePhase,
 } from "./terminal-panel";
 
 const writeTerminal = (terminal: Terminal, data: string) =>
   new Promise<void>((resolve) => terminal.write(data, resolve));
 
 describe("native terminal loading visibility", () => {
+  test("derives the terminal pulse from authoritative lifecycle state", () => {
+    expect(terminalPulsePhase("connecting", "starting")).toBe("starting");
+    expect(terminalPulsePhase("connected", "running")).toBe("waiting-output");
+    expect(terminalPulsePhase("connecting", "running")).toBe("reconnecting");
+    expect(terminalPulsePhase("disconnected", "running")).toBe("reconnecting");
+    expect(terminalPulsePhase("reconnecting", "running")).toBe("reconnecting");
+  });
+
   test("reveals on meaningful paint or the bounded post-output fallback", () => {
     expect(shouldRevealTerminal(false, false, false)).toBeFalse();
     expect(shouldRevealTerminal(false, false, true)).toBeFalse();
