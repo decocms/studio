@@ -30,6 +30,7 @@ const OPENCODE_AGENT_NAME_PREFIX: &str = "studio-native";
 const NODE_EXTRA_CA_CERTS_ENV: &str = "NODE_EXTRA_CA_CERTS";
 const CODEX_HOME_INITIALIZED_MARKER: &str = ".studio-initialized-v1";
 const CODEX_PROFILE_PREFIX: &str = "studio-thread-";
+const HOOK_FORWARDER_FILENAME: &str = "forward-hook.sh";
 const MAX_CODEX_AUTH_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_CLAUDE_STATE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_GIT_METADATA_BYTES: u64 = 64 * 1024;
@@ -225,12 +226,20 @@ pub struct PreparedLaunch {
     /// configuration and registry guard from drifting.
     pub mcp_path: String,
     claude_workspace_trust: Option<ClaudeWorkspaceTrust>,
+    codex_hook_trust: Option<CodexHookTrust>,
 }
 
 #[derive(Clone, Debug)]
 struct ClaudeWorkspaceTrust {
     state_path: PathBuf,
     project_key: String,
+}
+
+#[derive(Clone, Debug)]
+struct CodexHookTrust {
+    prefix_argv: Vec<String>,
+    codex_home: PathBuf,
+    managed_command: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -256,6 +265,7 @@ impl std::fmt::Debug for PreparedLaunch {
                 "has_managed_workspace_trust",
                 &self.claude_workspace_trust.is_some(),
             )
+            .field("has_managed_hook_trust", &self.codex_hook_trust.is_some())
             .finish()
     }
 }
@@ -273,6 +283,36 @@ impl PreparedLaunch {
         };
         ensure_claude_workspace_trusted(&trust.state_path, &trust.project_key)?;
         Ok(())
+    }
+
+    pub(crate) async fn establish_managed_codex_hook_trust(
+        &self,
+        state: &AppState,
+        account_scope: &str,
+        account_guard: upstream::SessionTransitionGuard,
+    ) -> Result<upstream::SessionTransitionGuard, LaunchContextError> {
+        let Some(trust) = &self.codex_hook_trust else {
+            return Ok(account_guard);
+        };
+        let home_guard = state
+            .agent_sessions
+            .codex_home_lock(account_scope)
+            .lock_owned()
+            .await;
+        super::codex_hook_trust::establish_managed_hook_trust(
+            super::codex_hook_trust::ManagedHookTrustRequest {
+                program: &self.program,
+                prefix_argv: &trust.prefix_argv,
+                codex_home: &trust.codex_home,
+                cwd: &self.cwd,
+                managed_command: &trust.managed_command,
+                child_lifetime_lock_path: state.tasks.child_lifetime_lock_path(),
+                home_guard,
+                account_guard,
+            },
+        )
+        .await
+        .map_err(|error| LaunchContextError::Workspace(error.to_string()))
     }
 }
 
@@ -330,6 +370,7 @@ pub async fn prepare(
         .ok_or(LaunchContextError::LocalEndpointUnavailable)?;
     let provider_session_id = request.provider_session_id.map(str::to_string);
     let mut claude_workspace_trust = None;
+    let mut codex_hook_trust = None;
 
     let state_dir = managed_state_dir(&state.app_root, request.fence);
     create_private_dir(&state_dir).await?;
@@ -392,6 +433,7 @@ pub async fn prepare(
         }
         HarnessId::Codex => {
             let trust_roots = workspace_trust_roots(&cwd).await?;
+            let codex_prefix_argv = argv.clone();
             // Codex refreshes auth.json by replacing it. All chats for one
             // Studio account therefore share a regular, account-owned home;
             // a per-thread symlink/copy would strand refreshed credentials in
@@ -399,7 +441,7 @@ pub async fn prepare(
             let home_lock = state
                 .agent_sessions
                 .codex_home_lock(&request.fence.account_scope);
-            let _home_guard = home_lock.lock().await;
+            let home_guard = home_lock.lock_owned().await;
             let codex_home = prepare_codex(
                 &state.app_root,
                 &system_prompt,
@@ -410,6 +452,17 @@ pub async fn prepare(
                 &trust_roots.codex,
             )
             .await?;
+            let managed_hook_command = shell_quote_path(
+                &codex_home
+                    .join("studio-runtime")
+                    .join(HOOK_FORWARDER_FILENAME),
+            );
+            codex_hook_trust = Some(CodexHookTrust {
+                prefix_argv: codex_prefix_argv,
+                codex_home: codex_home.clone(),
+                managed_command: managed_hook_command,
+            });
+            drop(home_guard);
             title_environment =
                 harness::title::TitleEnvironment::for_codex_home(codex_home.clone());
             env.push(("CODEX_HOME".to_string(), codex_home.display().to_string()));
@@ -441,6 +494,7 @@ pub async fn prepare(
         provider_session_id,
         mcp_path,
         claude_workspace_trust,
+        codex_hook_trust,
     })
 }
 
@@ -607,22 +661,17 @@ fn append_codex_launch_args(
         "-c".to_string(),
         codex_workspace_trust_override(trust_root)?,
         "--no-alt-screen".to_string(),
-        "--dangerously-bypass-hook-trust".to_string(),
         "--profile".to_string(),
         profile_name,
         "--disable".to_string(),
         "apps".to_string(),
         "--disable".to_string(),
         "plugins".to_string(),
-        "--sandbox".to_string(),
-        if request.plan_mode || request.approval_mode == "readonly" {
-            "read-only".to_string()
-        } else {
-            "workspace-write".to_string()
-        },
     ]);
-    if request.approval_mode == "auto" {
-        argv.extend(["--ask-for-approval".to_string(), "on-request".to_string()]);
+    if request.plan_mode || request.approval_mode == "readonly" {
+        argv.extend(["--sandbox".to_string(), "read-only".to_string()]);
+    } else {
+        argv.push("--dangerously-bypass-approvals-and-sandbox".to_string());
     }
     if let Some(provider_session_id) = provider_session_id {
         argv.extend(["resume".to_string(), provider_session_id.to_string()]);
@@ -724,23 +773,14 @@ fn claude_hook_settings(hook_script: &Path) -> Value {
 fn codex_hook_settings(hook_script: &Path) -> Value {
     let command = shell_quote_path(hook_script);
     let mut hooks = serde_json::Map::new();
-    for event in [
-        "SessionStart",
-        "UserPromptSubmit",
-        "PreToolUse",
-        "PermissionRequest",
-        "PostToolUse",
-        "SubagentStart",
-        "SubagentStop",
-        "Stop",
-    ] {
+    for event in super::codex_hook_trust::CODEX_HOOK_EVENTS {
         hooks.insert(
-            event.to_string(),
+            event.config_name.to_string(),
             json!([{
                 "hooks": [{
                     "type": "command",
                     "command": command.clone(),
-                    "timeout": 3,
+                    "timeout": super::codex_hook_trust::MANAGED_HOOK_TIMEOUT_SECS,
                 }]
             }]),
         );
@@ -756,6 +796,8 @@ fn codex_config(system_prompt: &str, mcp_url: &str) -> String {
         "developer_instructions = {instructions}\n\
          [features]\n\
          hooks = true\n\
+         [tui]\n\
+         show_tooltips = false\n\
          [mcp_servers.{MCP_SERVER_NAME}]\n\
          url = {mcp_url}\n\
          [mcp_servers.{MCP_SERVER_NAME}.env_http_headers]\n\
@@ -1232,7 +1274,11 @@ impl ClaudeStateLock {
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                         Err(error) => return Err(error),
                     };
-                    let identity = claude_state_lock_handle(&lock_path)?;
+                    let identity = match claude_state_lock_handle(&lock_path) {
+                        Ok(identity) => identity,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => return Err(error),
+                    };
                     let modified = metadata.modified().ok();
                     let stale = metadata
                         .modified()
@@ -1245,9 +1291,12 @@ impl ClaudeStateLock {
                             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                             Err(error) => return Err(error),
                         };
-                        if !claude_state_lock_is_owned(&lock_path, &identity)?
-                            || current.modified().ok() != modified
-                        {
+                        let still_owned = match claude_state_lock_is_owned(&lock_path, &identity) {
+                            Ok(still_owned) => still_owned,
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(error) => return Err(error),
+                        };
+                        if !still_owned || current.modified().ok() != modified {
                             continue;
                         }
                         match std::fs::remove_dir(&lock_path) {
@@ -1511,7 +1560,7 @@ fn opencode_config(
 
 async fn ensure_hook_forwarder(state_dir: &Path) -> Result<PathBuf, std::io::Error> {
     create_private_dir(state_dir).await?;
-    let path = state_dir.join("forward-hook.sh");
+    let path = state_dir.join(HOOK_FORWARDER_FILENAME);
     write_private_file(&path, HOOK_FORWARDER_SCRIPT.as_bytes(), true).await?;
     Ok(path)
 }
@@ -1825,6 +1874,7 @@ mod tests {
             provider_session_id: None,
             mcp_path: "/api/org/mcp/agent".to_string(),
             claude_workspace_trust: None,
+            codex_hook_trust: None,
         };
         let debug = format!("{launch:?}");
         assert!(debug.contains("SECRET"));
@@ -1836,6 +1886,7 @@ mod tests {
         let config = codex_config("line one\n\"line two\"", "https://studio.local/api/o/mcp/a");
         assert!(config.contains("developer_instructions = \"line one\\n\\\"line two\\\"\""));
         assert!(config.contains("Authorization = \"DECOCMS_MCP_AUTHORIZATION\""));
+        assert!(config.contains("[tui]\nshow_tooltips = false"));
         assert!(!config.contains("Cookie"));
         assert!(!config.contains("Origin"));
     }
@@ -2240,9 +2291,79 @@ mod tests {
             argv.iter().position(|arg| arg == "-c").unwrap()
                 < argv.iter().position(|arg| arg == "resume").unwrap()
         );
-        assert!(!argv
+        assert!(argv
             .iter()
             .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"));
+        assert!(!argv.iter().any(|arg| arg == "--sandbox"));
+        assert!(!argv.iter().any(|arg| arg == "--ask-for-approval"));
+        assert!(!argv
+            .iter()
+            .any(|arg| arg == "--dangerously-bypass-hook-trust"));
+    }
+
+    #[test]
+    fn codex_plan_and_readonly_launches_remain_sandboxed_read_only() {
+        let fence = test_fence("account", "thread");
+        for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
+            let request = LaunchRequest {
+                fence: &fence,
+                terminal_session_id: "terminal",
+                harness: HarnessId::Codex,
+                model_id: None,
+                approval_mode,
+                plan_mode,
+                hook_token: "hook",
+                mcp_token: "mcp",
+                provider_session_id: None,
+            };
+            let mut argv = Vec::new();
+            append_codex_launch_args(
+                request,
+                &mut argv,
+                None,
+                Path::new("/tmp/workspace"),
+                "studio-profile".to_string(),
+            )
+            .unwrap();
+
+            let sandbox = argv.iter().position(|arg| arg == "--sandbox").unwrap();
+            assert_eq!(argv.get(sandbox + 1).map(String::as_str), Some("read-only"));
+            assert!(!argv
+                .iter()
+                .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"));
+            assert!(!argv.iter().any(|arg| arg == "--ask-for-approval"));
+        }
+    }
+
+    #[test]
+    fn codex_auto_launch_is_yolo_without_separate_approval_or_sandbox_flags() {
+        let fence = test_fence("account", "thread");
+        let request = LaunchRequest {
+            fence: &fence,
+            terminal_session_id: "terminal",
+            harness: HarnessId::Codex,
+            model_id: None,
+            approval_mode: "auto",
+            plan_mode: false,
+            hook_token: "hook",
+            mcp_token: "mcp",
+            provider_session_id: None,
+        };
+        let mut argv = Vec::new();
+        append_codex_launch_args(
+            request,
+            &mut argv,
+            None,
+            Path::new("/tmp/workspace"),
+            "studio-profile".to_string(),
+        )
+        .unwrap();
+
+        assert!(argv
+            .iter()
+            .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"));
+        assert!(!argv.iter().any(|arg| arg == "--sandbox"));
+        assert!(!argv.iter().any(|arg| arg == "--ask-for-approval"));
     }
 
     #[test]

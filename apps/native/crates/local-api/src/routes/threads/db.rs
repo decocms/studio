@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 /// Native owns this schema independently from Studio's Postgres migrations.
 /// The two stores intentionally share wire entities, not physical tables.
-const CURRENT_SCHEMA_VERSION: u32 = 11;
+const CURRENT_SCHEMA_VERSION: u32 = 12;
 
 const NATIVE_TERMINAL_SESSION_ID_PREFIX: &str = "native-terminal:";
 
@@ -652,6 +652,37 @@ WHERE EXISTS (
 );
 "#,
     },
+    Migration {
+        version: 12,
+        // v11 used blocks_prior_provider_resume as a provisional "spawned a
+        // resume" marker. An app restart could therefore strand a perfectly
+        // valid older checkpoint behind a row that never received provider
+        // evidence. From v12 onward a barrier is durable only after an exact
+        // provider rejection and records the rejected checkpoint identity so
+        // a late hook for that same id cannot undo the proof. Every legacy
+        // null-checkpoint barrier is ambiguous; retrying its older checkpoint
+        // is safer than silently abandoning provider-owned history. Rows that
+        // already carry a checkpoint remain untouched.
+        sql: r#"
+ALTER TABLE native_terminal_sessions
+ADD COLUMN rejected_provider_session_id TEXT
+CHECK (
+    rejected_provider_session_id IS NULL OR
+    (
+        trim(rejected_provider_session_id) <> '' AND
+        provider_session_id IS NULL AND
+        blocks_prior_provider_resume = 1
+    )
+);
+
+UPDATE native_terminal_sessions
+SET blocks_prior_provider_resume = 0,
+    revision = revision + 1,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE provider_session_id IS NULL
+  AND blocks_prior_provider_resume = 1;
+"#,
+    },
 ];
 
 #[derive(Debug)]
@@ -986,10 +1017,11 @@ pub struct RtTerminalSession {
     pub physical_state: RtTerminalPhysicalState,
     pub logical_state: RtTerminalLogicalState,
     pub provider_session_id: Option<String>,
-    /// A provider process was successfully spawned with an older checkpoint.
-    /// If this attempt never records its own checkpoint, later starts cross
-    /// this row as a barrier and recover fresh instead of retrying forever.
+    /// Exact provider evidence proved that the older checkpoint named by
+    /// `rejected_provider_session_id` cannot be resumed. Generic exits and
+    /// app-controlled interruptions never create this barrier.
     pub blocks_prior_provider_resume: bool,
+    pub rejected_provider_session_id: Option<String>,
     pub revision: i64,
     pub exit_code: Option<i32>,
     pub last_error: Option<String>,
@@ -2100,22 +2132,25 @@ impl ThreadsDb {
     }
 
     /// Newest meaningful resume record for this harness. Ordinary launch
-    /// failures do not hide older checkpoints. A spawned resume that exits
-    /// without checkpointing becomes a barrier, so the next launch recovers
-    /// fresh instead of retrying one corrupt/deleted provider session forever.
+    /// failures and interrupted resume attempts do not hide older checkpoints.
+    /// Only an identity-bearing, provider-confirmed rejection is a barrier.
     pub fn rt_terminal_resume_decision_fenced(
         &self,
         fence: &RtThreadFence,
         harness_id: &str,
     ) -> DbResult<RtTerminalResumeDecision> {
         let conn = self.lock();
-        let candidate: Option<(Option<String>, bool)> = conn
+        let candidate: Option<(Option<String>, bool, Option<String>)> = conn
             .query_row(
-                "SELECT provider_session_id, blocks_prior_provider_resume \
+                "SELECT provider_session_id, blocks_prior_provider_resume, \
+                        rejected_provider_session_id \
              FROM native_terminal_sessions \
              WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
                AND thread_generation = ?4 AND harness_id = ?5 \
-               AND (provider_session_id IS NOT NULL OR blocks_prior_provider_resume = 1) \
+               AND (provider_session_id IS NOT NULL OR (\
+                    blocks_prior_provider_resume = 1 AND \
+                    rejected_provider_session_id IS NOT NULL\
+               )) \
              ORDER BY created_at DESC, rowid DESC LIMIT 1",
                 params![
                     fence.account_scope,
@@ -2124,49 +2159,84 @@ impl ThreadsDb {
                     fence.generation,
                     harness_id,
                 ],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(DbError::from)?;
         Ok(match candidate {
-            Some((Some(provider_session_id), _)) => {
+            Some((Some(provider_session_id), _, _)) => {
                 RtTerminalResumeDecision::Resume(provider_session_id)
             }
-            Some((None, true)) | None => RtTerminalResumeDecision::Fresh,
-            Some((None, false)) => {
-                debug_assert!(false, "resume candidate must contain an id or barrier");
+            Some((None, true, Some(_))) | None => RtTerminalResumeDecision::Fresh,
+            Some((None, _, _)) => {
+                debug_assert!(
+                    false,
+                    "resume candidate must contain an id or exact barrier"
+                );
                 RtTerminalResumeDecision::Fresh
             }
         })
     }
 
-    /// Persist that this process was actually spawned with an older provider
-    /// checkpoint. This marker is written only after PTY spawn succeeds, so a
-    /// missing CLI or launch-context failure remains safely retryable.
-    pub fn rt_mark_terminal_resume_attempted_fenced(
+    /// Persist exact provider evidence that one older checkpoint cannot be
+    /// resumed. The rejected identity closes the late-hook race: that same id
+    /// cannot clear the barrier, while a new checkpoint from the fresh
+    /// fallback may replace it. Repeating the same proof is idempotent.
+    pub fn rt_confirm_terminal_resume_rejected_fenced(
         &self,
         fence: &RtThreadFence,
         session_id: &str,
+        rejected_provider_session_id: &str,
     ) -> DbResult<bool> {
+        let rejected_provider_session_id = rejected_provider_session_id.trim();
+        if rejected_provider_session_id.is_empty() {
+            return Err(DbError::InvalidTerminalSessionData(
+                "rejected provider session id must be non-empty".to_string(),
+            ));
+        }
         let ts = now_rfc3339();
-        let conn = self.lock();
-        Ok(conn.execute(
+        let mut conn = self.lock();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let Some(current) = rt_terminal_session_by_id_fenced(&tx, fence, session_id)? else {
+            tx.commit()?;
+            return Ok(false);
+        };
+        if !current.physical_state.is_live() || current.provider_session_id.is_some() {
+            tx.commit()?;
+            return Ok(false);
+        }
+        if current.blocks_prior_provider_resume {
+            let same_rejection = current.rejected_provider_session_id.as_deref()
+                == Some(rejected_provider_session_id);
+            tx.commit()?;
+            return Ok(same_rejection);
+        }
+        if current.rejected_provider_session_id.is_some() {
+            tx.commit()?;
+            return Ok(false);
+        }
+        let changed = tx.execute(
             "UPDATE native_terminal_sessions SET \
-                 blocks_prior_provider_resume = CASE \
-                     WHEN provider_session_id IS NULL THEN 1 ELSE 0 END, \
-                 revision = revision + 1, updated_at = ?1 \
-             WHERE id = ?2 AND account_scope = ?3 AND organization_id = ?4 \
-               AND thread_id = ?5 AND thread_generation = ?6 \
+                 blocks_prior_provider_resume = 1, rejected_provider_session_id = ?1, \
+                 revision = revision + 1, updated_at = ?2 \
+             WHERE id = ?3 AND account_scope = ?4 AND organization_id = ?5 \
+               AND thread_id = ?6 AND thread_generation = ?7 AND revision = ?8 \
+               AND provider_session_id IS NULL AND blocks_prior_provider_resume = 0 \
+               AND rejected_provider_session_id IS NULL \
                AND physical_state IN ('starting', 'running')",
             params![
+                rejected_provider_session_id,
                 ts,
                 session_id,
                 fence.account_scope,
                 fence.organization_id,
                 fence.thread_id,
                 fence.generation,
+                current.revision,
             ],
-        )? == 1)
+        )?;
+        tx.commit()?;
+        Ok(changed == 1)
     }
 
     /// Revision-CAS for provider-neutral terminal lifecycle. Session state
@@ -2331,16 +2401,22 @@ impl ThreadsDb {
                 tx.commit()?;
                 return Ok(RtTerminalProviderCheckpointOutcome::Conflict(current));
             }
-            if !current.blocks_prior_provider_resume || !current.physical_state.is_live() {
+            if (!current.blocks_prior_provider_resume
+                && current.rejected_provider_session_id.is_none())
+                || !current.physical_state.is_live()
+            {
                 tx.commit()?;
                 return Ok(RtTerminalProviderCheckpointOutcome::Unchanged(current));
             }
             let changed = tx.execute(
                 "UPDATE native_terminal_sessions SET \
-                     blocks_prior_provider_resume = 0, revision = revision + 1, updated_at = ?1 \
+                     blocks_prior_provider_resume = 0, rejected_provider_session_id = NULL, \
+                     revision = revision + 1, updated_at = ?1 \
                  WHERE id = ?2 AND account_scope = ?3 AND organization_id = ?4 \
                    AND thread_id = ?5 AND thread_generation = ?6 \
-                   AND provider_session_id = ?7 AND blocks_prior_provider_resume = 1 \
+                   AND provider_session_id = ?7 \
+                   AND (blocks_prior_provider_resume = 1 OR \
+                        rejected_provider_session_id IS NOT NULL) \
                    AND physical_state IN ('starting', 'running')",
                 params![
                     ts,
@@ -2365,13 +2441,19 @@ impl ThreadsDb {
                 None => RtTerminalProviderCheckpointOutcome::Missing,
             });
         }
+        if current.blocks_prior_provider_resume
+            && current.rejected_provider_session_id.as_deref() == Some(provider_session_id)
+        {
+            tx.commit()?;
+            return Ok(RtTerminalProviderCheckpointOutcome::Conflict(current));
+        }
         if !current.physical_state.is_live() {
             tx.commit()?;
             return Ok(RtTerminalProviderCheckpointOutcome::NotLive(current));
         }
         let changed = tx.execute(
             "UPDATE native_terminal_sessions SET provider_session_id = ?1, \
-                 blocks_prior_provider_resume = 0, \
+                 blocks_prior_provider_resume = 0, rejected_provider_session_id = NULL, \
                  revision = revision + 1, updated_at = ?2 \
              WHERE id = ?3 AND account_scope = ?4 AND organization_id = ?5 \
                AND thread_id = ?6 AND thread_generation = ?7 \
@@ -2935,7 +3017,7 @@ fn row_to_rt_thread(row: &rusqlite::Row) -> rusqlite::Result<RtThread> {
 const RT_TERMINAL_SESSION_COLUMNS: &str = "id, account_scope, organization_id, thread_id, \
      thread_generation, harness_id, physical_state, logical_state, provider_session_id, \
      revision, exit_code, last_error, started_at, ended_at, created_at, updated_at, \
-     blocks_prior_provider_resume";
+     blocks_prior_provider_resume, rejected_provider_session_id";
 
 fn invalid_terminal_state_column(column: usize, value: &str) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
@@ -2968,6 +3050,7 @@ fn row_to_rt_terminal_session(row: &rusqlite::Row) -> rusqlite::Result<RtTermina
         logical_state,
         provider_session_id: row.get(8)?,
         blocks_prior_provider_resume: row.get::<_, i64>(16)? != 0,
+        rejected_provider_session_id: row.get(17)?,
         revision: row.get(9)?,
         exit_code: row.get(10)?,
         last_error: row.get(11)?,
@@ -3800,13 +3883,13 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                      'thread_generation', 'harness_id', 'physical_state', 'logical_state', \
                      'provider_session_id', 'revision', 'exit_code', 'last_error', \
                      'started_at', 'ended_at', 'created_at', 'updated_at', \
-                     'blocks_prior_provider_resume'\
+                     'blocks_prior_provider_resume', 'rejected_provider_session_id'\
                  )",
                 [],
                 |row| row.get::<_, i64>(0),
             )
             .unwrap(),
-            17
+            18
         );
         assert!(index_shape(&conn, "native_terminal_sessions").iter().any(
             |(name, unique, _, partial)| {
@@ -5988,29 +6071,58 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         );
 
         created_terminal(
+            db.rt_create_terminal_session_fenced(&first_fence, "app-interrupted-resume", "codex")
+                .unwrap(),
+        );
+        let interrupted_resume = db.rt_interrupt_live_terminal_sessions_on_boot().unwrap();
+        assert_eq!(interrupted_resume.len(), 1);
+        assert!(!interrupted_resume[0].session.blocks_prior_provider_resume);
+        assert!(interrupted_resume[0]
+            .session
+            .rejected_provider_session_id
+            .is_none());
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&first_fence, "codex")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("provider-session".to_string()),
+            "an app-interrupted resume without provider evidence must retry its older checkpoint"
+        );
+
+        created_terminal(
             db.rt_create_terminal_session_fenced(&first_fence, "invalid-resume", "codex")
                 .unwrap(),
         );
         assert!(db
-            .rt_mark_terminal_resume_attempted_fenced(&first_fence, "invalid-resume")
-            .unwrap());
-        updated_terminal(
-            db.rt_compare_and_set_terminal_session_state(
+            .rt_confirm_terminal_resume_rejected_fenced(
                 &first_fence,
                 "invalid-resume",
-                1,
-                RtTerminalPhysicalState::Exited,
-                RtTerminalLogicalState::Failed,
-                Some(1),
-                Some("provider checkpoint was invalid"),
+                "provider-session",
             )
-            .unwrap(),
+            .unwrap());
+        let rejected = db
+            .rt_get_terminal_session_fenced(&first_fence, "invalid-resume")
+            .unwrap()
+            .unwrap();
+        assert!(rejected.blocks_prior_provider_resume);
+        assert_eq!(
+            rejected.rejected_provider_session_id.as_deref(),
+            Some("provider-session")
+        );
+        let interrupted_recovery = db.rt_interrupt_live_terminal_sessions_on_boot().unwrap();
+        assert_eq!(interrupted_recovery.len(), 1);
+        assert!(interrupted_recovery[0].session.blocks_prior_provider_resume);
+        assert_eq!(
+            interrupted_recovery[0]
+                .session
+                .rejected_provider_session_id
+                .as_deref(),
+            Some("provider-session")
         );
         assert_eq!(
             db.rt_terminal_resume_decision_fenced(&first_fence, "codex")
                 .unwrap(),
             RtTerminalResumeDecision::Fresh,
-            "a spawned resume that never checkpoints must fall back to fresh"
+            "an exact provider rejection must survive interruption of fresh recovery"
         );
 
         created_terminal(
@@ -6067,7 +6179,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
     }
 
     #[test]
-    fn resume_barrier_and_checkpoint_converge_without_discarding_legacy_ids() {
+    fn exact_resume_rejection_and_checkpoint_races_converge() {
         let db = ThreadsDb::open_in_memory().unwrap();
         create_rt_thread(&db, "org", "resume-race-thread");
         let fence = terminal_fence(&db, "org", "resume-race-thread");
@@ -6103,14 +6215,19 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             .unwrap(),
             RtTerminalProviderCheckpointOutcome::Stored(_)
         ));
-        assert!(db
-            .rt_mark_terminal_resume_attempted_fenced(&fence, "checkpoint-first")
+        assert!(!db
+            .rt_confirm_terminal_resume_rejected_fenced(
+                &fence,
+                "checkpoint-first",
+                "provider-checkpoint-first",
+            )
             .unwrap());
         let checkpoint_first = db
             .rt_get_terminal_session_fenced(&fence, "checkpoint-first")
             .unwrap()
             .unwrap();
         assert!(!checkpoint_first.blocks_prior_provider_resume);
+        assert!(checkpoint_first.rejected_provider_session_id.is_none());
         exit("checkpoint-first");
         assert_eq!(
             db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
@@ -6119,56 +6236,76 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         );
 
         created_terminal(
-            db.rt_create_terminal_session_fenced(&fence, "marker-first", "claude-code")
+            db.rt_create_terminal_session_fenced(&fence, "rejection-first", "claude-code")
                 .unwrap(),
         );
         assert!(db
-            .rt_mark_terminal_resume_attempted_fenced(&fence, "marker-first")
-            .unwrap());
-        assert!(
-            db.rt_get_terminal_session_fenced(&fence, "marker-first")
-                .unwrap()
-                .unwrap()
-                .blocks_prior_provider_resume
-        );
-        let checkpointed = db
-            .rt_checkpoint_terminal_provider_session(
+            .rt_confirm_terminal_resume_rejected_fenced(
                 &fence,
-                "marker-first",
-                "provider-marker-first",
+                "rejection-first",
+                "provider-rejected",
             )
+            .unwrap());
+        let rejection = db
+            .rt_get_terminal_session_fenced(&fence, "rejection-first")
+            .unwrap()
             .unwrap();
-        assert!(matches!(
-            checkpointed,
-            RtTerminalProviderCheckpointOutcome::Stored(ref session)
-                if !session.blocks_prior_provider_resume
-        ));
+        assert!(rejection.blocks_prior_provider_resume);
+        assert_eq!(rejection.revision, 1);
         assert_eq!(
-            db.lock()
-                .execute(
-                    "UPDATE native_terminal_sessions SET \
-                         blocks_prior_provider_resume = 1, revision = revision + 1 \
-                     WHERE id = 'marker-first'",
-                    [],
-                )
-                .unwrap(),
-            1
+            rejection.rejected_provider_session_id.as_deref(),
+            Some("provider-rejected")
         );
+        assert!(db
+            .rt_confirm_terminal_resume_rejected_fenced(
+                &fence,
+                "rejection-first",
+                "provider-rejected",
+            )
+            .unwrap());
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, "rejection-first")
+                .unwrap()
+                .unwrap()
+                .revision,
+            1,
+            "repeating the same exact rejection must be idempotent"
+        );
+        assert!(!db
+            .rt_confirm_terminal_resume_rejected_fenced(
+                &fence,
+                "rejection-first",
+                "different-rejection",
+            )
+            .unwrap());
         assert!(matches!(
             db.rt_checkpoint_terminal_provider_session(
                 &fence,
-                "marker-first",
-                "provider-marker-first",
+                "rejection-first",
+                "provider-rejected",
+            )
+            .unwrap(),
+            RtTerminalProviderCheckpointOutcome::Conflict(ref session)
+                if session.blocks_prior_provider_resume
+                    && session.rejected_provider_session_id.as_deref()
+                        == Some("provider-rejected")
+        ));
+        assert!(matches!(
+            db.rt_checkpoint_terminal_provider_session(
+                &fence,
+                "rejection-first",
+                "provider-fresh-after-rejection",
             )
             .unwrap(),
             RtTerminalProviderCheckpointOutcome::Stored(ref session)
                 if !session.blocks_prior_provider_resume
+                    && session.rejected_provider_session_id.is_none()
         ));
-        exit("marker-first");
+        exit("rejection-first");
         assert_eq!(
             db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
                 .unwrap(),
-            RtTerminalResumeDecision::Resume("provider-marker-first".to_string())
+            RtTerminalResumeDecision::Resume("provider-fresh-after-rejection".to_string())
         );
 
         created_terminal(
@@ -6270,6 +6407,157 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
     }
 
     #[test]
+    fn version_twelve_clears_ambiguous_null_barriers_and_preserves_checkpoint_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = RtAccountScope::new("studio.decocms.com", "v12-user").unwrap();
+        create_v7_fixture(dir.path(), &scope, "v12-org", "v12-thread");
+        {
+            let conn = Connection::open(local_db_path(dir.path())).unwrap();
+            conn.pragma_update(None, "foreign_keys", 1).unwrap();
+            for migration in MIGRATIONS
+                .iter()
+                .filter(|migration| (8..=11).contains(&migration.version))
+            {
+                conn.execute_batch(migration.sql).unwrap();
+                conn.pragma_update(None, "user_version", migration.version)
+                    .unwrap();
+            }
+            conn.execute(
+                "UPDATE native_scoped_threads SET harness_id = 'claude-code' \
+                 WHERE account_scope = ?1 AND organization_id = 'v12-org' \
+                   AND id = 'v12-thread'",
+                [scope.storage_key()],
+            )
+            .unwrap();
+            let generation: String = conn
+                .query_row(
+                    "SELECT generation FROM native_scoped_threads \
+                     WHERE account_scope = ?1 AND organization_id = 'v12-org' \
+                       AND id = 'v12-thread'",
+                    [scope.storage_key()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            for (id, physical, logical, provider, blocks, created) in [
+                (
+                    "legacy-checkpoint",
+                    "exited",
+                    "completed",
+                    Some("provider-a"),
+                    0,
+                    "2026-01-01T00:00:01Z",
+                ),
+                (
+                    "legacy-id-barrier",
+                    "exited",
+                    "failed",
+                    Some("provider-b"),
+                    1,
+                    "2026-01-01T00:00:02Z",
+                ),
+                (
+                    "legacy-null-failed",
+                    "exited",
+                    "failed",
+                    None,
+                    1,
+                    "2026-01-01T00:00:03Z",
+                ),
+                (
+                    "legacy-null-interrupted",
+                    "exited",
+                    "interrupted",
+                    None,
+                    1,
+                    "2026-01-01T00:00:04Z",
+                ),
+                (
+                    "legacy-null-live",
+                    "starting",
+                    "idle",
+                    None,
+                    1,
+                    "2026-01-01T00:00:05Z",
+                ),
+            ] {
+                conn.execute(
+                    "INSERT INTO native_terminal_sessions (\
+                         id, account_scope, organization_id, thread_id, thread_generation, \
+                         harness_id, physical_state, logical_state, provider_session_id, \
+                         revision, exit_code, last_error, started_at, ended_at, created_at, \
+                         updated_at, blocks_prior_provider_resume\
+                     ) VALUES (?1, ?2, 'v12-org', 'v12-thread', ?3, 'claude-code', \
+                         ?4, ?5, ?6, 0, NULL, NULL, NULL, \
+                         CASE WHEN ?4 = 'exited' THEN ?8 ELSE NULL END, ?8, ?8, ?7)",
+                    params![
+                        id,
+                        scope.storage_key(),
+                        generation,
+                        physical,
+                        logical,
+                        provider,
+                        blocks,
+                        created,
+                    ],
+                )
+                .unwrap();
+            }
+            conn.pragma_update(None, "user_version", 11).unwrap();
+            validate_foreign_keys(&conn).unwrap();
+        }
+
+        let db = ThreadsDb::open(dir.path()).unwrap();
+        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
+        let fence = db
+            .rt_thread_fence_in_scope(&scope, "v12-org", "v12-thread")
+            .unwrap()
+            .unwrap();
+        for id in [
+            "legacy-null-failed",
+            "legacy-null-interrupted",
+            "legacy-null-live",
+        ] {
+            let migrated = db
+                .rt_get_terminal_session_fenced(&fence, id)
+                .unwrap()
+                .unwrap();
+            assert!(!migrated.blocks_prior_provider_resume, "row {id}");
+            assert!(migrated.rejected_provider_session_id.is_none(), "row {id}");
+        }
+        let legacy_id_barrier = db
+            .rt_get_terminal_session_fenced(&fence, "legacy-id-barrier")
+            .unwrap()
+            .unwrap();
+        assert!(legacy_id_barrier.blocks_prior_provider_resume);
+        assert!(legacy_id_barrier.rejected_provider_session_id.is_none());
+        assert_eq!(
+            db.lock()
+                .execute(
+                    "UPDATE native_terminal_sessions \
+                     SET blocks_prior_provider_resume = 1, revision = revision + 1 \
+                     WHERE id = 'legacy-null-failed'",
+                    [],
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("provider-b".to_string()),
+            "a null-provider flag without a rejected identity is not a barrier"
+        );
+        let interrupted = db.rt_interrupt_live_terminal_sessions_on_boot().unwrap();
+        assert_eq!(interrupted.len(), 1);
+        assert_eq!(interrupted[0].session.id, "legacy-null-live");
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("provider-b".to_string())
+        );
+    }
+
+    #[test]
     fn version_ten_queue_rows_are_archived_never_recovered_and_cascade_on_delete() {
         let dir = tempfile::tempdir().unwrap();
         let scope = RtAccountScope::new("studio.decocms.com", "v10-user").unwrap();
@@ -6319,7 +6607,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         }
 
         let db = ThreadsDb::open(dir.path()).unwrap();
-        assert_eq!(schema_version(&local_db_path(dir.path())), 11);
+        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
         let fence = db
             .rt_thread_fence_in_scope(&scope, "v10-org", "v10-thread")
             .unwrap()

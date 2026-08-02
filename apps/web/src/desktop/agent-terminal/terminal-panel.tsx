@@ -1,10 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { NativeAgentEmptyState } from "@/components/chat/native-agent-empty-state";
+import { localHarnessBrand } from "@/components/chat/agent-icons";
 import { useChatTask } from "@/components/chat/context";
+import { GridLoader } from "@/components/grid-loader";
 import { useT } from "@/i18n/use-t";
 import { useNativeTerminalRuntime } from "./active-task-provider";
 import {
@@ -14,16 +17,57 @@ import {
 } from "./terminal-capability-replies";
 import type { TerminalReplayFrame } from "./protocol";
 
+const TERMINAL_REVEAL_FALLBACK_MS = 1_750;
+
+export function hasVisibleTerminalContent(terminal: Terminal): boolean {
+  const buffer = terminal.buffer.active;
+  const firstLine = Math.max(0, buffer.viewportY);
+  const lastLine = Math.min(buffer.length, firstLine + terminal.rows);
+
+  for (let lineIndex = firstLine; lineIndex < lastLine; lineIndex++) {
+    if (buffer.getLine(lineIndex)?.translateToString(true).trim()) return true;
+  }
+  return false;
+}
+
+export function shouldRevealTerminal(
+  receivedOutput: boolean,
+  hasVisibleContent: boolean,
+  fallbackElapsed: boolean,
+): boolean {
+  return receivedOutput && (hasVisibleContent || fallbackElapsed);
+}
+
 function NativeXterm({ readOnly }: { readOnly: boolean }) {
   const t = useT();
-  const { controller } = useNativeTerminalRuntime();
+  const { controller, snapshot } = useNativeTerminalRuntime();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isTerminalRevealed, setIsTerminalRevealed] = useState(false);
   const terminalLabel = t("chat.nativeTerminal.terminalLabel");
+  const brand = localHarnessBrand(snapshot.harnessId);
+  const AgentIcon = brand?.Icon;
+  const agentLabel = brand
+    ? t(brand.labelKey)
+    : t("chat.nativeTerminal.agentLabel");
+  const unavailableBeforeOutput =
+    snapshot.physicalState === "failed" ||
+    snapshot.physicalState === "exited" ||
+    (snapshot.error !== null && !snapshot.retryable);
+  const loadingLabel = t(
+    snapshot.connection === "reconnecting"
+      ? "chat.nativeTerminal.reconnectingAgent"
+      : "chat.nativeTerminal.startingAgent",
+    { agent: agentLabel },
+  );
+  const unavailableLabel =
+    snapshot.error?.message ?? t("chat.nativeTerminal.exitedBeforeReady");
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- xterm, ResizeObserver, and PTY subscriptions have explicit mount/dispose lifecycles
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
+
+    setIsTerminalRevealed(false);
 
     const style = getComputedStyle(document.documentElement);
     const cssVar = (name: string) =>
@@ -31,7 +75,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     const terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: false,
-      cursorBlink: !readOnly,
+      cursorBlink: false,
       disableStdin: readOnly,
       fontFamily:
         cssVar("--font-mono") ||
@@ -84,6 +128,9 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     let disposed = false;
     let writing = false;
     let repliesAllowed = false;
+    let receivedOutput = false;
+    let revealed = false;
+    let revealFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const outputQueue: Array<{
       frame: TerminalReplayFrame;
       acknowledgeCapabilityReplies: () => void;
@@ -100,6 +147,47 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       terminal,
       (data) => controller.input(data),
     );
+    const cancelRevealFallback = () => {
+      if (revealFallbackTimer === null) return;
+      clearTimeout(revealFallbackTimer);
+      revealFallbackTimer = null;
+    };
+    const terminalUnavailable = () => {
+      const current = controller.snapshot.get();
+      return (
+        current.physicalState === "failed" ||
+        current.physicalState === "exited" ||
+        (current.error !== null && !current.retryable)
+      );
+    };
+    const revealTerminal = (fallbackElapsed = false) => {
+      const visibleContent = hasVisibleTerminalContent(terminal);
+      if (
+        disposed ||
+        revealed ||
+        !shouldRevealTerminal(
+          receivedOutput,
+          visibleContent,
+          fallbackElapsed,
+        ) ||
+        (fallbackElapsed && terminalUnavailable())
+      ) {
+        return;
+      }
+      revealed = true;
+      cancelRevealFallback();
+      terminal.options.cursorBlink = !readOnly;
+      setIsTerminalRevealed(true);
+      if (!readOnly) terminal.focus();
+    };
+    const scheduleRevealFallback = () => {
+      if (disposed || revealed || revealFallbackTimer !== null) return;
+      revealFallbackTimer = setTimeout(() => {
+        revealFallbackTimer = null;
+        revealTerminal(true);
+      }, TERMINAL_REVEAL_FALLBACK_MS);
+    };
+    const renderSubscription = terminal.onRender(() => revealTerminal());
     const inputSubscription = terminal.onData((data) => {
       // xterm can synthesize protocol replies through onData while parsing.
       // A query may begin in replay and finish in a live frame, so the current
@@ -120,6 +208,12 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       if (!next) return;
       const { frame, acknowledgeCapabilityReplies } = next;
       if (frame.kind === "reset") {
+        cancelRevealFallback();
+        receivedOutput = false;
+        revealed = false;
+        terminal.options.cursorBlink = false;
+        terminal.blur();
+        setIsTerminalRevealed(false);
         terminal.reset();
         parserCapabilityQueryAuthority.reset();
         pixelSizeResponder.reset();
@@ -130,11 +224,16 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
         return;
       }
       writing = true;
+      receivedOutput = true;
       repliesAllowed = !readOnly && frame.allowCapabilityReplies;
       parserCapabilityQueryAuthority.observe(frame.data, repliesAllowed);
       pixelSizeResponder.observe(frame.data, repliesAllowed);
       terminal.write(frame.data, () => {
-        if (!disposed) acknowledgeCapabilityReplies();
+        if (!disposed) {
+          acknowledgeCapabilityReplies();
+          revealTerminal();
+          scheduleRevealFallback();
+        }
         repliesAllowed = false;
         writing = false;
         drainOutput();
@@ -158,16 +257,17 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     syncInputState();
     const observer = new ResizeObserver(fit);
     observer.observe(element);
-    if (!readOnly) terminal.focus();
 
     return () => {
       disposed = true;
+      cancelRevealFallback();
       repliesAllowed = false;
       outputQueue.length = 0;
       observer.disconnect();
       outputSubscription();
       stateSubscription();
       capabilityHandlers.dispose();
+      renderSubscription.dispose();
       inputSubscription.dispose();
       resizeSubscription.dispose();
       terminal.dispose();
@@ -175,8 +275,44 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
   }, [controller, readOnly, terminalLabel]);
 
   return (
-    <div className="h-full min-h-0 bg-sidebar p-3">
+    <div
+      className="relative h-full min-h-0 bg-sidebar p-3"
+      aria-busy={!isTerminalRevealed && !unavailableBeforeOutput}
+    >
       <div ref={containerRef} className="h-full" />
+      <div
+        aria-hidden={isTerminalRevealed}
+        className={cn(
+          "absolute inset-0 z-10 flex items-center justify-center bg-sidebar transition-opacity duration-200 motion-reduce:transition-none",
+          isTerminalRevealed ? "pointer-events-none opacity-0" : "opacity-100",
+        )}
+      >
+        {unavailableBeforeOutput ? (
+          <div
+            role="alert"
+            className="flex max-w-sm flex-col items-center gap-3 px-6 text-center"
+          >
+            <AlertCircle size={24} className="text-destructive" />
+            <p className="text-sm text-muted-foreground">{unavailableLabel}</p>
+          </div>
+        ) : (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2.5 rounded-full border border-border bg-background px-3.5 py-2 shadow-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:[&_*]:animate-none"
+          >
+            {AgentIcon && (
+              <span className="flex size-5 items-center justify-center text-foreground">
+                <AgentIcon size={15} />
+              </span>
+            )}
+            <GridLoader />
+            <span className="text-sm font-medium text-foreground">
+              {loadingLabel}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -220,7 +356,7 @@ function Picker() {
 
 export function NativeAgentTerminalPanel() {
   const task = useChatTask();
-  const { snapshot, isReadOnly } = useNativeTerminalRuntime();
+  const { controller, snapshot, isReadOnly } = useNativeTerminalRuntime();
   const shouldRenderTerminal =
     task.isThreadLocked ||
     snapshot.hasSession ||
@@ -229,5 +365,5 @@ export function NativeAgentTerminalPanel() {
   if (isReadOnly) return <Picker />;
   if (!shouldRenderTerminal) return <Picker />;
 
-  return <NativeXterm readOnly={isReadOnly} />;
+  return <NativeXterm key={controller.threadId} readOnly={isReadOnly} />;
 }

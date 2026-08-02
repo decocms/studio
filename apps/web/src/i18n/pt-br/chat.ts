@@ -283,7 +283,7 @@ export const chat = {
     "Os chats rodam em um agente de codificação instalado neste computador. Escolha um para começar.",
   "chat.nativeTerminal.chooseAgentFirst":
     "Escolha Claude Code, Codex ou OpenCode antes de enviar uma mensagem.",
-  "chat.nativeTerminal.connecting": "Conectando ao terminal…",
+  "chat.nativeTerminal.agentLabel": "agente de codificação",
   "chat.nativeTerminal.connectionFailed": "Falha na conexão com o terminal.",
   "chat.nativeTerminal.emptyPrompt": "A mensagem está vazia.",
   "chat.nativeTerminal.exited": "O agente de codificação foi encerrado",
@@ -303,11 +303,8 @@ export const chat = {
   "chat.nativeTerminal.readOnly":
     "Somente o proprietário do chat pode abrir ou controlar o terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Chat somente leitura",
-  "chat.nativeTerminal.ready": "Pronto para receber comandos",
-  "chat.nativeTerminal.reconnecting": "Reconectando ao terminal…",
-  "chat.nativeTerminal.restart": "Reiniciar",
-  "chat.nativeTerminal.retry": "Tentar novamente",
-  "chat.nativeTerminal.starting": "Iniciando o agente de codificação…",
+  "chat.nativeTerminal.reconnectingAgent": "Reconectando ao {agent}…",
+  "chat.nativeTerminal.startingAgent": "Iniciando {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
     "Esta ação exige o chat estruturado e não está disponível no terminal.",
   "chat.nativeTerminal.terminalLabel": "Terminal do agente de codificação",

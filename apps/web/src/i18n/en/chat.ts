@@ -275,7 +275,7 @@ export const chat = {
     "Chats run on a coding agent installed on this computer. Pick one to start.",
   "chat.nativeTerminal.chooseAgentFirst":
     "Choose Claude Code, Codex, or OpenCode before sending a prompt.",
-  "chat.nativeTerminal.connecting": "Connecting to terminal…",
+  "chat.nativeTerminal.agentLabel": "coding agent",
   "chat.nativeTerminal.connectionFailed": "Terminal connection failed.",
   "chat.nativeTerminal.emptyPrompt": "The prompt is empty.",
   "chat.nativeTerminal.exited": "Coding agent exited",
@@ -294,11 +294,8 @@ export const chat = {
   "chat.nativeTerminal.readOnly":
     "Only the chat owner can open or control its terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
-  "chat.nativeTerminal.ready": "Ready for input",
-  "chat.nativeTerminal.reconnecting": "Reconnecting to terminal…",
-  "chat.nativeTerminal.restart": "Restart",
-  "chat.nativeTerminal.retry": "Retry",
-  "chat.nativeTerminal.starting": "Starting coding agent…",
+  "chat.nativeTerminal.reconnectingAgent": "Reconnecting to {agent}…",
+  "chat.nativeTerminal.startingAgent": "Starting {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
     "This action requires structured chat and is not available in the terminal.",
   "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
