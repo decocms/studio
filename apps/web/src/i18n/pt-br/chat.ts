@@ -272,15 +272,14 @@ export const chat = {
     "Falha ao carregar prompt. Tente novamente.",
   "chat.nextActionChip.mcpClientNotAvailable": "Cliente MCP não disponível",
   "chat.nextActionChip.next": "Próximo:",
-  "chat.nativeAgentEmptyState.heading": "Escolha seu agente de codificação",
+  "chat.nativeAgentEmptyState.agentListLabel": "Agentes de codificação",
+  "chat.nativeAgentEmptyState.detected": "detectado",
+  "chat.nativeAgentEmptyState.detecting": "detectando",
+  "chat.nativeAgentEmptyState.heading": "Escolha um agente de codificação",
+  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ selecionar · ↵ iniciar",
   "chat.nativeAgentEmptyState.notDetected":
     "{label} não foi detectado neste computador",
-  "chat.nativeAgentEmptyState.subtitleDetecting":
-    "Procurando agentes de codificação instalados neste computador…",
-  "chat.nativeAgentEmptyState.subtitleNoneDetected":
-    "Nenhum agente de codificação foi detectado. Instale o Claude Code, o Codex ou o OpenCode e selecione-o aqui para começar a conversar.",
-  "chat.nativeAgentEmptyState.subtitlePick":
-    "Os chats rodam em um agente de codificação instalado neste computador. Escolha um para começar.",
+  "chat.nativeAgentEmptyState.tryAnyway": "tentar mesmo assim",
   "chat.nativeTerminal.chooseAgentFirst":
     "Escolha Claude Code, Codex ou OpenCode antes de enviar uma mensagem.",
   "chat.nativeTerminal.agentLabel": "agente de codificação",
@@ -304,6 +303,9 @@ export const chat = {
     "Somente o proprietário do chat pode abrir ou controlar o terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Chat somente leitura",
   "chat.nativeTerminal.reconnectingAgent": "Reconectando ao {agent}…",
+  "chat.nativeTerminal.pulseConnected": "conectado",
+  "chat.nativeTerminal.pulseInitializing": "inicializando",
+  "chat.nativeTerminal.pulseReconnecting": "reconectando",
   "chat.nativeTerminal.startingAgent": "Iniciando {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
     "Esta ação exige o chat estruturado e não está disponível no terminal.",
@@ -312,8 +314,9 @@ export const chat = {
     "Este chat está vinculado a um agente que o Studio Native não pode executar.",
   "chat.nativeTerminal.unexpectedExit":
     "O agente de codificação foi encerrado inesperadamente.",
-  "chat.nativeTerminal.waitingForInput": "Aguardando sua resposta",
-  "chat.nativeTerminal.working": "O agente está trabalhando",
+  "chat.nativeTerminal.waitingForAgentOutput": "Aguardando saída do {agent}…",
+  "chat.nativeTerminal.waitingForTerminalDraw":
+    "aguardando a exibição do terminal",
   "chat.noAiProviderEmptyState.headingDefault":
     "Seus agentes estão quase prontos",
   "chat.noAiProviderEmptyState.headingWithOrg":
