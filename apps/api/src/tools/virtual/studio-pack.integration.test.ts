@@ -125,7 +125,7 @@ describe("installStudioPack", () => {
     expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
   });
 
-  test("API Key Manager exposes only key management and read-only discovery tools", async () => {
+  test("API Key Manager exposes key/secret management and read-only discovery tools", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
     const managerId = StudioPackAgentId.API_KEY_MANAGER(orgId);
     const manager = await virtualMcpStorage.findById(managerId, orgId);
@@ -139,6 +139,8 @@ describe("installStudioPack", () => {
       "API_KEY_LIST",
       "API_KEY_UPDATE",
       "API_KEY_DELETE",
+      "SECRET_CREATE",
+      "SECRET_LIST",
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "COLLECTION_CONNECTIONS_LIST",
@@ -191,13 +193,15 @@ describe("installStudioPack", () => {
       "API_KEY_LIST",
       "API_KEY_UPDATE",
       "API_KEY_DELETE",
+      "SECRET_CREATE",
+      "SECRET_LIST",
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
     ]);
     expect(manager?.metadata?.instructions).toContain(
-      "Print that value once in a fenced plain-text code block",
+      "NEVER print the key value yourself, under any circumstance",
     );
   });
 });

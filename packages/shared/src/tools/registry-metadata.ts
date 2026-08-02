@@ -1514,6 +1514,9 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
 const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
+  // Every member can vault a token from chat (the paste-to-secret flow).
+  // SECRET_LIST/CREATE never return values; user-scoped secrets stay private.
+  "secrets:manage",
 ];
 
 /**

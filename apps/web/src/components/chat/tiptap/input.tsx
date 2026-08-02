@@ -15,7 +15,9 @@ import { FileNode, FileUploader, type UnsupportedFileInfo } from "./file";
 import { MentionNode } from "./mention";
 import { AtMention } from "./mention-at.tsx";
 import { SlashMention } from "./mention-slash.tsx";
+import { SecretRefNode } from "./secret-ref/node.tsx";
 import { AiProviderModel } from "@/hooks/collections/use-ai-providers.ts";
+import { detectSecret, type DetectedSecret } from "@/utils/secret-detect.ts";
 
 function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
   return [
@@ -34,6 +36,7 @@ function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
     }),
     MentionNode,
     FileNode,
+    SecretRefNode,
   ];
 }
 
@@ -59,6 +62,9 @@ interface TiptapProviderProps {
    * would also submit the still-unresolved draft first.
    */
   suggestionOpenRef?: { current: boolean };
+  /** Fired when pasted text looks like an API key/token — the paste still
+   *  lands in the draft; the handler offers to vault it (see ChatInput). */
+  onSecretPasted?: (detected: DetectedSecret) => void;
   children: React.ReactNode;
 }
 
@@ -74,10 +80,12 @@ export function TiptapProvider({
   placeholder,
   onSubmit,
   suggestionOpenRef,
+  onSecretPasted,
   children,
 }: TiptapProviderProps) {
   // Store callbacks and config in refs to avoid recreating the editor on every render
   const onSubmitRef = useRef(onSubmit);
+  const onSecretPastedRef = useRef(onSecretPasted);
   const setTiptapDocRef = useRef(setTiptapDoc);
   const enterToSubmitRef = useRef(enterToSubmit);
   const placeholderRef = useRef(placeholder);
@@ -105,6 +113,16 @@ export function TiptapProvider({
         }
         return false;
       },
+      handlePaste: (_view: EditorView, event: ClipboardEvent) => {
+        const pasted = event.clipboardData?.getData("text");
+        if (!pasted) return false;
+        const detected = detectSecret(pasted);
+        if (detected) {
+          // Let the paste land in the draft, then offer to vault it.
+          onSecretPastedRef.current?.(detected);
+        }
+        return false;
+      },
     },
     onUpdate: ({ editor }: { editor: ReturnType<typeof useEditor> }) => {
       setTiptapDocRef.current(editor?.getJSON());
@@ -122,6 +140,11 @@ export function TiptapProvider({
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    onSecretPastedRef.current = onSecretPasted;
+  }, [onSecretPasted]);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {

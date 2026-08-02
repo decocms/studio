@@ -9,6 +9,7 @@ import type {
   ReadResourceResult,
   EmbeddedResource,
 } from "@modelcontextprotocol/sdk/types.js";
+import { secretRef } from "@/utils/secret-detect.ts";
 import type { FileAttrs } from "./tiptap/file/node.tsx";
 import type { ChatMessage, Metadata } from "./types.ts";
 
@@ -329,6 +330,10 @@ export function derivePartsFromTiptapDoc(
           );
         }
       }
+    } else if (node.type === "secretRef" && node.attrs) {
+      // Vaulted secret chip — the wire format is the reference, never the
+      // value. Agents resolve it by name (SECRET_LIST) at point of use.
+      inlineText += secretRef(String(node.attrs.name ?? ""));
     } else if (node.type === "file" && node.attrs) {
       const fileAttrs = node.attrs as unknown as FileAttrs;
       const mentionName = `[file:://${encodeURIComponent(fileAttrs.name)}]`;

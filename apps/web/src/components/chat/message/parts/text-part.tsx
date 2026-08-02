@@ -6,6 +6,7 @@ import { Check, Copy01 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import { hasSensitiveContent, SensitiveText } from "./sensitive-text.tsx";
 
 interface MessageTextPartProps {
   id: string;
@@ -16,6 +17,8 @@ interface MessageTextPartProps {
   alwaysShowActions?: boolean;
   /** Fade newly streamed words in — true only while the last message streams. */
   animate?: boolean;
+  /** Redact raw detected tokens too (user messages), not just vault refs. */
+  redactRaw?: boolean;
 }
 
 export function MessageTextPart({
@@ -25,6 +28,7 @@ export function MessageTextPart({
   extraActions,
   alwaysShowActions = false,
   animate = false,
+  redactRaw = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
   const t = useT();
@@ -44,9 +48,15 @@ export function MessageTextPart({
   const showCopyButton = copyable && extraActions;
   const showActions = showCopyButton || extraActions;
 
+  const sensitive = hasSensitiveContent(part.text, redactRaw);
+
   return (
     <div className="group/part relative">
-      <MemoizedMarkdown id={id} text={part.text} animate={animate} />
+      {sensitive ? (
+        <SensitiveText text={part.text} redactRaw={redactRaw} />
+      ) : (
+        <MemoizedMarkdown id={id} text={part.text} animate={animate} />
+      )}
       {showActions && (
         <div
           className={cn(

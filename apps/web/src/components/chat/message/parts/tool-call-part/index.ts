@@ -12,4 +12,5 @@ export {
 } from "./brand-context.tsx";
 export { AgentCreatePart } from "./agent-create.tsx";
 export { AgentListPart } from "./agent-list.tsx";
+export { ApiKeyCreatePart } from "./api-key-create.tsx";
 export { ConnectionListPart } from "./connection-list.tsx";

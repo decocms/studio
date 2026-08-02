@@ -65,6 +65,16 @@ import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { resolveComposerAction } from "./composer-action";
+import {
+  StoreSecretDialog,
+  type StoreSecretMode,
+  type StoreSecretResult,
+} from "./store-secret-dialog";
+import {
+  extractPlainTextFromTiptapDoc,
+  replaceSecretInTiptapDoc,
+} from "./tiptap/secret-ref/replace";
+import { detectSecret, type DetectedSecret } from "@/utils/secret-detect";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -476,6 +486,13 @@ export function ChatInput({
   // suggestion's own, see tiptap/input.tsx).
   const suggestionOpenRef = useRef(false);
 
+  // A token detected in the composer (pasted, or caught on submit) awaiting the
+  // user's vault-or-keep-raw decision.
+  const [pendingSecret, setPendingSecret] = useState<{
+    detected: DetectedSecret;
+    mode: StoreSecretMode;
+  } | null>(null);
+
   const isPlanMode = chatMode === "plan";
 
   const dismissChatMode = (fromMode: string) => {
@@ -527,35 +544,82 @@ export function ChatInput({
   });
   const canSubmit = composerAction === "send";
   const showStopOrCancel = composerAction === "stop";
+  // Actually dispatch a doc: probe the send latch, send/home-submit, clear the
+  // draft. Split out so both the composer submit and the secret-swap "send"
+  // path share one code path.
+  const dispatchDoc = (
+    doc: Metadata["tiptapDoc"],
+    viaButtonOrEnter: boolean,
+  ) => {
+    if (!doc) return;
+    track("chat_message_sent", {
+      thread_id: taskId || null,
+      mode: chatMode,
+      model_id: selectedModel?.modelId ?? null,
+      model_provider: selectedModel?.providerId ?? null,
+      virtual_mcp_id: selectedVirtualMcp?.id ?? null,
+      submission: viaButtonOrEnter ? "button_or_enter" : "programmatic",
+    });
+    if (stream) {
+      // The per-thread send latch drops a re-entrant send synchronously
+      // (see `sendInFlight` in chat-context.tsx). Probe it BEFORE firing
+      // so a draft typed while the previous send's POST is still in
+      // flight isn't cleared for a send that was silently dropped.
+      if (stream.isSendInFlight()) {
+        toast.info(t("chat.input.stillSendingPreviousMessage"));
+        return;
+      }
+      void stream.sendMessage(doc);
+    } else {
+      homeSubmit({ tiptapDoc: doc, virtualMcp: selectedVirtualMcp });
+    }
+    clearChatDraft(sessionStorage, locator, draftKey);
+    setTiptapDoc(undefined);
+  };
+
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (composerAction === "send" && tiptapDoc) {
-      track("chat_message_sent", {
-        thread_id: taskId || null,
-        mode: chatMode,
-        model_id: selectedModel?.modelId ?? null,
-        model_provider: selectedModel?.providerId ?? null,
-        virtual_mcp_id: selectedVirtualMcp?.id ?? null,
-        submission: e ? "button_or_enter" : "programmatic",
-      });
-      if (stream) {
-        // The per-thread send latch drops a re-entrant send synchronously
-        // (see `sendInFlight` in chat-context.tsx). Probe it BEFORE firing
-        // so a draft typed while the previous send's POST is still in
-        // flight isn't cleared for a send that was silently dropped.
-        if (stream.isSendInFlight()) {
-          toast.info(t("chat.input.stillSendingPreviousMessage"));
-          return;
-        }
-        void stream.sendMessage(tiptapDoc);
-      } else {
-        homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });
+      // Safety net for a typed (not pasted) token: offer to vault before
+      // sending. Skips text already inside chips (mentions/secret refs).
+      const detected = detectSecret(extractPlainTextFromTiptapDoc(tiptapDoc));
+      if (detected) {
+        setPendingSecret({ detected, mode: "send" });
+        return;
       }
-      clearChatDraft(sessionStorage, locator, draftKey);
-      setTiptapDoc(undefined);
+      dispatchDoc(tiptapDoc, !!e);
     } else if (composerAction === "stop") {
       track("chat_message_stopped", { thread_id: taskId });
       stop();
+    }
+  };
+
+  // Vaulted: swap the raw token for a reference chip. On "send" mode, dispatch
+  // the swapped doc immediately; on "paste" mode, keep editing.
+  const handleSecretSaved = (result: StoreSecretResult) => {
+    const ps = pendingSecret;
+    setPendingSecret(null);
+    if (!ps) return;
+    const swapped = tiptapDoc
+      ? replaceSecretInTiptapDoc(tiptapDoc, ps.detected.value, {
+          name: result.name,
+          secretId: result.secretId,
+        })
+      : null;
+    if (!swapped) return;
+    if (ps.mode === "send") {
+      dispatchDoc(swapped, false);
+    } else {
+      setTiptapDoc(swapped);
+    }
+  };
+
+  // "Keep raw": paste → leave the draft as-is; send → send the original doc.
+  const handleSecretKeepRaw = () => {
+    const ps = pendingSecret;
+    setPendingSecret(null);
+    if (ps?.mode === "send" && tiptapDoc) {
+      dispatchDoc(tiptapDoc, false);
     }
   };
 
@@ -590,6 +654,9 @@ export function ChatInput({
             placeholder={t("chat.input.placeholder")}
             onSubmit={handleSubmit}
             suggestionOpenRef={suggestionOpenRef}
+            onSecretPasted={(detected) =>
+              setPendingSecret({ detected, mode: "paste" })
+            }
           >
             <form
               onSubmit={handleSubmit}
@@ -819,6 +886,16 @@ export function ChatInput({
         info={unsupportedFile}
         onClose={clearUnsupportedFile}
       />
+
+      {pendingSecret ? (
+        <StoreSecretDialog
+          detected={pendingSecret.detected}
+          mode={pendingSecret.mode}
+          onSaved={handleSecretSaved}
+          onKeepRaw={handleSecretKeepRaw}
+          onCancel={() => setPendingSecret(null)}
+        />
+      ) : null}
     </>
   );
 }
