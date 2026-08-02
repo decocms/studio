@@ -331,10 +331,17 @@ Estes padrões vêm de `deploy/helm/studio/values.yaml`:
 
 ## Valores principais do sandbox
 
+<Callout type="tip">
+  O daemon Go é a única implementação de sandbox — a própria imagem
+  determina o daemon, então não há mais um switch de runtime ou uma flag no
+  nível da organização para escolher entre um daemon TypeScript e um Go.
+  `image.repository` aponta diretamente para a imagem `studio-sandbox-go`.
+</Callout>
+
 | Parâmetro | Descrição | Padrão |
 | --- | --- | --- |
 | `envName` | Sufixo DNS-label dos recursos do ambiente | Obrigatório |
-| `image.repository` / `image.tag` | Imagem do daemon do sandbox | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `image.repository` / `image.tag` | Imagem do daemon do sandbox | `ghcr.io/decocms/studio/studio-sandbox-go` / `1.17.8` |
 | `resources.requests` | Request por sandbox | `500m` CPU / `1Gi` memória |
 | `resources.limits` | Limite por sandbox | `2` CPU / `4Gi` memória / `10Gi` armazenamento efêmero |
 | `terminationGracePeriodSeconds` | Tempo para sync final do git e unmount | `90` |
