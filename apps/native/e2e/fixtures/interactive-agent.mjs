@@ -4,7 +4,9 @@
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  closeSync,
   existsSync,
+  openSync,
   readFileSync,
   realpathSync,
 } from "node:fs";
@@ -140,8 +142,6 @@ if (isTitleInvocation) {
   }
   process.exit(0);
 }
-
-const sessionId = `studio-e2e-${provider}-session`;
 
 function argValue(name) {
   const index = providerArgs.indexOf(name);
@@ -511,6 +511,50 @@ const resumeId =
         })()
       : argValue("--session");
 
+function isClaudeRecoveryFixture() {
+  const targetBranch =
+    process.env.STUDIO_TERMINAL_E2E_CLAUDE_MISSING_RESUME_BRANCH;
+  const sentinel =
+    process.env.STUDIO_TERMINAL_E2E_CLAUDE_MISSING_RESUME_SENTINEL;
+  if (provider !== "claude-code" || !targetBranch || !sentinel) {
+    return false;
+  }
+
+  const branch = spawnSync(
+    "git",
+    ["-C", process.cwd(), "branch", "--show-current"],
+    { encoding: "utf8" },
+  );
+  if (branch.status !== 0) {
+    fail("could not resolve the Claude recovery fixture branch");
+  }
+  return branch.stdout.trim() === targetBranch;
+}
+
+const claudeRecoveryFixture = isClaudeRecoveryFixture();
+
+function claimMissingClaudeResume() {
+  const sentinel =
+    process.env.STUDIO_TERMINAL_E2E_CLAUDE_MISSING_RESUME_SENTINEL;
+  if (!claudeRecoveryFixture || !resumeId || !sentinel) return false;
+
+  try {
+    closeSync(openSync(sentinel, "wx", 0o600));
+    return true;
+  } catch (error) {
+    if (error?.code === "EEXIST") return false;
+    fail(`could not claim the Claude missing-resume fixture: ${String(error)}`);
+  }
+}
+
+const simulatedMissingResume = claimMissingClaudeResume();
+const sessionId =
+  resumeId ??
+  (claudeRecoveryFixture &&
+  existsSync(process.env.STUDIO_TERMINAL_E2E_CLAUDE_MISSING_RESUME_SENTINEL)
+    ? "studio-e2e-claude-code-recovered-session"
+    : `studio-e2e-${provider}-session`);
+
 appendFileSync(
   launchLog,
   `${JSON.stringify({
@@ -521,9 +565,20 @@ appendFileSync(
     managedLaunch,
     cwd: process.cwd(),
     pid: process.pid,
+    ...(simulatedMissingResume ? { simulatedMissingResume: true } : {}),
   })}\n`,
   { encoding: "utf8", mode: 0o600 },
 );
+
+if (simulatedMissingResume) {
+  // Claude can still deliver SessionEnd for an explicit resume id that has no
+  // transcript. It must not make that missing conversation resumable again.
+  emitHook("SessionEnd", { session_id: resumeId });
+  process.stderr.write(
+    `\u001b7\u001b[r\u001b8\u001b(B\u001b[?25h\u001b[?25l\u001b[?2004h\u001b[?1004h\u001b[?2031h\u001b[<u\u001b[>1u\u001b[>4;2m\u001b[>0q\u001b[c\u001b[>4m\u001b[<u\u001b[?1004l\u001b[?2031l\u001b[?2004l\u001b[?2026hNo\u001b[4Gconversation\u001b[17Gfound\u001b[23Gwith\u001b[28Gsession\u001b[36GID:\u001b[40G${resumeId}\r\r\n\u001b[?2026l`,
+  );
+  process.exit(1);
+}
 
 if (provider === "opencode") {
   await emitOpenCodeEvent("session.created", {
