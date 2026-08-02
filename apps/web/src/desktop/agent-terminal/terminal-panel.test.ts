@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { Terminal } from "@xterm/xterm";
 import {
   hasVisibleTerminalContent,
+  shouldForwardTerminalData,
   shouldRevealTerminal,
   terminalPulsePhase,
 } from "./terminal-panel";
@@ -13,6 +14,12 @@ const writeTerminal = (terminal: Terminal, data: string) =>
   new Promise<void>((resolve) => terminal.write(data, resolve));
 
 describe("native terminal loading visibility", () => {
+  test("forwards user input while rejecting recognized replay replies", () => {
+    expect(shouldForwardTerminalData(null)).toBeTrue();
+    expect(shouldForwardTerminalData(true)).toBeTrue();
+    expect(shouldForwardTerminalData(false)).toBeFalse();
+  });
+
   test("derives the terminal pulse from authoritative lifecycle state", () => {
     expect(terminalPulsePhase("connecting", "starting")).toBe("starting");
     expect(terminalPulsePhase("connected", "running")).toBe("waiting-output");

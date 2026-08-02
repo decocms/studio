@@ -534,23 +534,22 @@ mod tests {
     }
 
     #[test]
-    fn completed_initial_probe_is_cache_only_when_a_cli_is_absent() {
+    fn completed_initial_probe_is_cache_only_when_an_agent_is_absent() {
         let mut cache = DetectionCache::default();
         assert!(cache.should_probe_synchronously());
 
         let detected = cache.complete_initial_probe(Detection {
             claude_code: true,
-            codex: false,
+            codex: true,
+            opencode: false,
         });
 
-        assert_eq!(
-            detected,
-            Detection {
-                claude_code: true,
-                codex: false,
-            }
+        assert_eq!(cache.detection, detected);
+        assert!(!detected.all_detected());
+        assert!(
+            !cache.should_probe_synchronously(),
+            "missing agents are retried by the background refresher, not each request"
         );
-        assert!(!cache.should_probe_synchronously());
     }
 
     #[test]

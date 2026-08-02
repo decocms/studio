@@ -15,8 +15,10 @@ import {
   createTerminalPixelSizeQueryResponder,
   installTerminalCapabilityReplyHandlers,
 } from "./terminal-capability-replies";
-import type { TerminalReplayFrame } from "./protocol";
-import type { TerminalControllerSnapshot } from "./terminal-controller";
+import type {
+  TerminalControllerOutputFrame,
+  TerminalControllerSnapshot,
+} from "./terminal-controller";
 
 const TERMINAL_REVEAL_FALLBACK_MS = 1_750;
 
@@ -37,6 +39,12 @@ export function shouldRevealTerminal(
   fallbackElapsed: boolean,
 ): boolean {
   return receivedOutput && (hasVisibleContent || fallbackElapsed);
+}
+
+export function shouldForwardTerminalData(
+  nativeReplyAuthority: boolean | null,
+): boolean {
+  return nativeReplyAuthority !== false;
 }
 
 export type TerminalPulsePhase = "starting" | "reconnecting" | "waiting-output";
@@ -207,7 +215,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     let revealed = false;
     let revealFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const outputQueue: Array<{
-      frame: TerminalReplayFrame;
+      frame: TerminalControllerOutputFrame;
       acknowledgeCapabilityReplies: () => void;
     }> = [];
     const parserCapabilityQueryAuthority =
@@ -272,8 +280,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       if (writing) {
         const nativeReplyAuthority =
           parserCapabilityQueryAuthority.takeNativeReplyAuthority(data);
-        if (nativeReplyAuthority === false) return;
-        if (nativeReplyAuthority === null && !repliesAllowed) return;
+        if (!shouldForwardTerminalData(nativeReplyAuthority)) return;
       }
       controller.input(data);
     });
@@ -303,6 +310,10 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       repliesAllowed = !readOnly && frame.allowCapabilityReplies;
       parserCapabilityQueryAuthority.observe(frame.data, repliesAllowed);
       pixelSizeResponder.observe(frame.data, repliesAllowed);
+      if (frame.restorePendingCapabilityReplies) {
+        parserCapabilityQueryAuthority.restorePendingReplyAuthority();
+        pixelSizeResponder.restorePendingReplyAuthority();
+      }
       terminal.write(frame.data, () => {
         if (!disposed) {
           acknowledgeCapabilityReplies();

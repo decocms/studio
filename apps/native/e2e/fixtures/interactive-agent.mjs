@@ -16,6 +16,7 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { cliFlagValues, hasCliFlag } from "./cli-flags.mjs";
 
 const NATIVE_GUARDRAIL =
   "You are operating inside Studio Native as an interactive coding agent.";
@@ -694,8 +695,8 @@ if (isTitleInvocation) {
 }
 
 function argValue(name) {
-  const index = providerArgs.indexOf(name);
-  return index === -1 ? undefined : providerArgs[index + 1];
+  const values = cliFlagValues(providerArgs, name);
+  return values.length === 1 ? values[0] : undefined;
 }
 
 function validateSystemPrompt(systemPrompt) {
@@ -876,18 +877,19 @@ function loadHookConfig() {
   }
 
   const config = JSON.parse(rawConfig);
-  const managedAgentName = argValue("--agent");
+  const agentFlags = cliFlagValues(providerArgs, "--agent");
+  const managedAgentName = agentFlags.length === 1 ? agentFlags[0] : undefined;
   if (
     typeof managedAgentName !== "string" ||
     !managedAgentName.startsWith("studio-native-") ||
     Object.keys(config.agent ?? {}).join(",") !== managedAgentName ||
     config.agent[managedAgentName]?.mode !== "primary" ||
     config.agent[managedAgentName]?.disable !== false ||
-    providerArgs.filter((argument) => argument === "--agent").length !== 1
+    agentFlags.length !== 1
   ) {
     fail("OpenCode launch is missing its launch-unique managed primary agent");
   }
-  if (providerArgs.includes("--model")) {
+  if (hasCliFlag(providerArgs, "--model")) {
     fail("OpenCode launch must leave provider/model selection to its TUI");
   }
   const promptContract = validateSystemPrompt(
@@ -925,13 +927,11 @@ function loadHookConfig() {
   }
 
   const resumedSession = process.env.STUDIO_OPENCODE_SESSION_ID;
-  const sessionFlags = providerArgs.filter(
-    (argument) => argument === "--session",
-  );
+  const sessionFlags = cliFlagValues(providerArgs, "--session");
   if (resumedSession) {
     if (
       sessionFlags.length !== 1 ||
-      argValue("--session") !== resumedSession ||
+      sessionFlags[0] !== resumedSession ||
       providerArgs.includes("resume")
     ) {
       fail("OpenCode resume must use exactly --session <id>");

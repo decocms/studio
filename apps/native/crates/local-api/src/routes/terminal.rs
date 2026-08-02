@@ -1839,7 +1839,7 @@ mod tests {
         impl Drop for DropProbe {
             fn drop(&mut self) {
                 self.dropped.fetch_add(1, Ordering::SeqCst);
-                self.changed.notify_waiters();
+                self.changed.notify_one();
             }
         }
 

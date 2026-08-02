@@ -21,6 +21,7 @@ type TerminalCapabilityReplyHandlerDeps = {
 
 type TerminalParserCapabilityQueryAuthority = {
   observe: (data: Uint8Array, repliesAllowed: boolean) => void;
+  restorePendingReplyAuthority: () => void;
   reset: () => void;
   takeNativeReplyAuthority: (reply: string) => boolean | null;
   takeReplyAuthority: (query: TerminalParserCapabilityQuery) => boolean;
@@ -28,11 +29,24 @@ type TerminalParserCapabilityQueryAuthority = {
 
 type TerminalPixelSizeResponder = {
   observe: (data: Uint8Array, repliesAllowed: boolean) => void;
+  restorePendingReplyAuthority: () => void;
   reset: () => void;
 };
 
 type TerminalPixelSizeQueryScanner = {
   observe: (data: Uint8Array, repliesAllowed: boolean) => void;
+  restorePendingReplyAuthority: () => void;
+  reset: () => void;
+};
+
+export type TerminalPendingReplyAuthority = {
+  generation: number;
+  repliesAllowed: boolean;
+};
+
+export type TerminalCapabilityQueryBoundaryScanner = {
+  observe: (data: Uint8Array, repliesAllowed: boolean) => void;
+  pendingReplyAuthority: () => TerminalPendingReplyAuthority | null;
   reset: () => void;
 };
 
@@ -327,8 +341,8 @@ export function terminalPixelSizeReply(
   }
   const cellWidth = Math.max(1, Math.round(geometry.width / geometry.cols));
   const cellHeight = Math.max(1, Math.round(geometry.height / geometry.rows));
-  const width = query === 14 ? cellWidth * geometry.cols : cellWidth;
-  const height = query === 14 ? cellHeight * geometry.rows : cellHeight;
+  const width = query === 14 ? Math.round(geometry.width) : cellWidth;
+  const height = query === 14 ? Math.round(geometry.height) : cellHeight;
   return `\x1b[${query === 14 ? 4 : 6};${height};${width}t`;
 }
 
@@ -620,6 +634,7 @@ function createTerminalReplyQueryScanner(
 ) {
   let pending = "";
   let pendingRepliesAllowed = false;
+  let pendingGeneration = 0;
 
   const resetPending = () => {
     pending = "";
@@ -628,6 +643,7 @@ function createTerminalReplyQueryScanner(
   const startEscape = (repliesAllowed: boolean) => {
     pending = "\x1b";
     pendingRepliesAllowed = repliesAllowed;
+    pendingGeneration++;
   };
   const complete = () => {
     const query = terminalReplyQueryForSequence(pending);
@@ -685,7 +701,26 @@ function createTerminalReplyQueryScanner(
         if (pending.length > MAX_PENDING_QUERY_CHARS) resetPending();
       }
     },
+    pendingReplyAuthority: (): TerminalPendingReplyAuthority | null =>
+      pending
+        ? {
+            generation: pendingGeneration,
+            repliesAllowed: pendingRepliesAllowed,
+          }
+        : null,
+    restorePendingReplyAuthority: () => {
+      if (pending) pendingRepliesAllowed = true;
+    },
     reset: resetPending,
+  };
+}
+
+export function createTerminalCapabilityQueryBoundaryScanner(): TerminalCapabilityQueryBoundaryScanner {
+  const scanner = createTerminalReplyQueryScanner(() => {});
+  return {
+    observe: scanner.observe,
+    pendingReplyAuthority: scanner.pendingReplyAuthority,
+    reset: scanner.reset,
   };
 }
 
@@ -740,6 +775,7 @@ export function createTerminalParserCapabilityQueryAuthority(): TerminalParserCa
 
   return {
     observe: scanner.observe,
+    restorePendingReplyAuthority: scanner.restorePendingReplyAuthority,
     reset,
     takeNativeReplyAuthority: (reply) => {
       const family = terminalNativeReplyFamily(reply);
@@ -806,6 +842,9 @@ export function createTerminalPixelSizeQueryScanner(
         onQuery(complete.query, pendingRepliesAllowed);
         reset();
       }
+    },
+    restorePendingReplyAuthority: () => {
+      if (pending) pendingRepliesAllowed = true;
     },
     reset,
   };

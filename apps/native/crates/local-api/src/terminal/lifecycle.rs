@@ -154,7 +154,9 @@ fn normalize_opencode_hook(payload: &Value) -> Result<HookObservation, &'static 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let provider_title = matches!(event_name, "session.created" | "session.updated")
+    // `session.created` can carry a provisional provider title. Only the
+    // authoritative update may consume Studio's default-title CAS.
+    let provider_title = (event_name == "session.updated")
         .then(|| {
             info.and_then(|info| info.get("title"))
                 .and_then(Value::as_str)
@@ -195,6 +197,32 @@ fn normalize_opencode_hook(payload: &Value) -> Result<HookObservation, &'static 
         prompt: None,
         is_explicit_user_prompt: false,
     })
+}
+
+fn logical_transition_allowed(
+    current: RtTerminalLogicalState,
+    requested: RtTerminalLogicalState,
+) -> bool {
+    match requested {
+        RtTerminalLogicalState::Idle => current == RtTerminalLogicalState::Idle,
+        // A permission/question hook can be the first successfully delivered
+        // event for a turn. Admit it from Idle so a lost busy hook cannot hide
+        // an approval request from the sidebar.
+        RtTerminalLogicalState::WaitingInput => matches!(
+            current,
+            RtTerminalLogicalState::Idle | RtTerminalLogicalState::Working
+        ),
+        RtTerminalLogicalState::Completed => matches!(
+            current,
+            RtTerminalLogicalState::Idle
+                | RtTerminalLogicalState::Working
+                | RtTerminalLogicalState::WaitingInput
+                | RtTerminalLogicalState::Completed
+        ),
+        RtTerminalLogicalState::Working
+        | RtTerminalLogicalState::Failed
+        | RtTerminalLogicalState::Interrupted => true,
+    }
 }
 
 /// Match only user-role turns known to be injected by the agent harness. This
@@ -295,23 +323,7 @@ pub fn transition_logical(
         if current.physical_state == RtTerminalPhysicalState::Exited {
             return Ok(None);
         }
-        let transition_allowed = match logical_state {
-            RtTerminalLogicalState::Idle => current.logical_state == RtTerminalLogicalState::Idle,
-            RtTerminalLogicalState::WaitingInput => {
-                current.logical_state == RtTerminalLogicalState::Working
-            }
-            RtTerminalLogicalState::Completed => matches!(
-                current.logical_state,
-                RtTerminalLogicalState::Idle
-                    | RtTerminalLogicalState::Working
-                    | RtTerminalLogicalState::WaitingInput
-                    | RtTerminalLogicalState::Completed
-            ),
-            RtTerminalLogicalState::Working
-            | RtTerminalLogicalState::Failed
-            | RtTerminalLogicalState::Interrupted => true,
-        };
-        if !transition_allowed {
+        if !logical_transition_allowed(current.logical_state, logical_state) {
             return Ok(None);
         }
         match db
@@ -661,6 +673,19 @@ mod tests {
 
     #[test]
     fn opencode_session_events_checkpoint_root_identity_and_title() {
+        let created = opencode_event(
+            "session.created",
+            json!({
+                "sessionID": "ses_root",
+                "info": {
+                    "id": "ses_root",
+                    "title": "Provisional provider title",
+                },
+            }),
+        );
+        assert_eq!(created.provider_session_id.as_deref(), Some("ses_root"));
+        assert_eq!(created.provider_title, None);
+
         let observation = opencode_event(
             "session.updated",
             json!({
@@ -677,6 +702,22 @@ mod tests {
             Some("Fix terminal resume")
         );
         assert_eq!(observation.logical_state, None);
+    }
+
+    #[test]
+    fn waiting_input_recovers_when_the_working_hook_was_lost() {
+        assert!(logical_transition_allowed(
+            RtTerminalLogicalState::Idle,
+            RtTerminalLogicalState::WaitingInput
+        ));
+        assert!(logical_transition_allowed(
+            RtTerminalLogicalState::Working,
+            RtTerminalLogicalState::WaitingInput
+        ));
+        assert!(!logical_transition_allowed(
+            RtTerminalLogicalState::Completed,
+            RtTerminalLogicalState::WaitingInput
+        ));
     }
 
     #[test]
