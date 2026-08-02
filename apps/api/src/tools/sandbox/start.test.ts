@@ -659,13 +659,23 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("provisions a new desktop VM when user-desktop is explicit even when an agent-sandbox entry exists", async () => {
-    // With kind-in-key, different kinds coexist — no teardown occurs.
+  it("an explicit user-desktop reuses the agent-sandbox entry instead of provisioning a second VM", async () => {
+    // `user-desktop` is legacy: the desktop link daemon that implemented it is
+    // gone, so the resolver normalizes it to `agent-sandbox` — provider AND
+    // kind. An explicit legacy override therefore looks up the hosted entry it
+    // will actually run on, rather than recording a sibling row under a kind
+    // with no runner (which would leave the handle and the runner mismatched).
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
       sandboxProviderKind: "agent-sandbox",
+      createdAt: 123,
     };
+    mockEnsure.mockImplementation(async () => ({
+      handle: agentSandboxEntry.sandboxHandle,
+      workdir: "/app",
+      previewUrl: agentSandboxEntry.previewUrl,
+    }));
     const metadata: Metadata = {
       ...BASE_METADATA,
       // 3-level: agent-sandbox entry lives under its own key
@@ -678,7 +688,6 @@ describe("SANDBOX_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    // Explicit user-desktop override wins over the recorded hosted entry.
     const result = await SANDBOX_START.handler(
       {
         virtualMcpId: VMCP_ID,
@@ -688,11 +697,9 @@ describe("SANDBOX_START", () => {
       ctx,
     );
 
-    // No teardown of the agent-sandbox entry (kinds are siblings)
     expect(mockClusterDelete).not.toHaveBeenCalled();
-    expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.sandboxProviderKind).toBe("user-desktop");
-    expect(result.isNewVm).toBe(true);
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.isNewVm).toBe(false);
   });
 
   it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind", async () => {

@@ -12,10 +12,6 @@ import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
-import {
-  resolveDispatchTarget,
-  type DispatchTarget,
-} from "@/links/resolve-dispatch-target";
 import type { HarnessId } from "@decocms/harness/types";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import type { AnyMessage } from "@/api/routes/decopilot/part-row-builder";
@@ -184,20 +180,11 @@ async function requireStudioContext(
   return studioCtx;
 }
 
-/** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
+/** Resolve a thread row's harness. Every run is hosted in the cluster. */
 function resolveThreadTarget(
-  thread:
-    | { sandbox_provider_kind?: string | null; harness_id?: string | null }
-    | null
-    | undefined,
-): { target: DispatchTarget; harnessId: HarnessId } {
-  return {
-    target: resolveDispatchTarget({
-      sandboxProviderKind: (thread?.sandbox_provider_kind ??
-        "agent-sandbox") as never,
-    }),
-    harnessId: (thread?.harness_id ?? "decopilot") as HarnessId,
-  };
+  thread: { harness_id?: string | null } | null | undefined,
+): { harnessId: HarnessId } {
+  return { harnessId: (thread?.harness_id ?? "decopilot") as HarnessId };
 }
 
 /** Build the reaction turn's dispatch request — an internal nudge the model
@@ -207,7 +194,6 @@ function buildReactionRequest(
   opts: {
     models: ModelsConfig;
     nudge: string;
-    target: DispatchTarget;
     harnessId: HarnessId | null;
   },
 ): ThreadGateContext["request"] {
@@ -231,7 +217,6 @@ function buildReactionRequest(
     taskId: s.threadId,
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
-    target: opts.target,
     harnessId: opts.harnessId ?? undefined,
   };
 }
@@ -586,77 +571,11 @@ async function appendPartsStep(
   });
 }
 
-/**
- * Deliver a DESKTOP-run background subtask's report. The subagent runs detached
- * on the daemon (real sandbox + vm/fs context), then the daemon calls the
- * `THREAD_SUBTASK_DELIVER` management tool, which calls this: persist the report
- * nested under the subtask card, then enqueue the reaction turn carrying the
- * report so the parent agent can act on it. (Cluster threads use the in-workflow
- * `runSubtaskStep` instead; desktop threads can't run the subagent on the
- * cluster because the sandbox is on the user's machine.)
- */
-export async function deliverBackgroundSubtaskResult(args: {
-  snapshot: BackgroundToolSnapshot;
-  jobId: string;
-  report: string;
-}): Promise<void> {
-  const { snapshot, jobId, report } = args;
-  const ctx: BackgroundToolContext = {
-    ...snapshot,
-    jobId,
-    toolName: "subtask",
-    input: {},
-    toolCallId: `${jobId}:deliver`,
-  };
-  const studioCtx = await requireStudioContext(ctx);
-  const hasReport = report.trim().length > 0;
-
-  // 1. Persist the report nested under the subtask card (metadata.subtaskJobId).
-  const emitter = new PartEmitter({
-    storage: studioCtx.storage.threads.messageParts(),
-    orgId: snapshot.orgId,
-    threadId: snapshot.threadId,
-    runId: jobId,
-  });
-  await emitter.emitFinal({
-    id: `${jobId}:result`,
-    role: "assistant",
-    parts: [
-      {
-        type: "text",
-        text: hasReport ? report : "_The subtask produced no output._",
-      },
-    ],
-    metadata: { subtaskJobId: jobId },
-    // biome-ignore lint/suspicious/noExplicitAny: AnyMessage doesn't declare metadata; the row builder persists it.
-  } as any);
-
-  // 2. Enqueue the reaction turn, carrying the report in the nudge.
-  const models = await resolveReactionModels(studioCtx);
-  const { target, harnessId } = resolveThreadTarget(
-    await studioCtx.storage.threads.get(snapshot.threadId),
-  );
-  const nudge = hasReport
-    ? `The background subtask you started has completed. Its result:\n\n${report}\n\nUse this to continue with the user's request — do NOT call subtask again for this.`
-    : `The background subtask you started completed but produced no usable output. Continue with the user's request without calling subtask again for this.`;
-  await enqueueThreadRun(
-    {
-      threadId: snapshot.threadId,
-      request: buildReactionRequest(
-        { ...snapshot, jobId },
-        { models, nudge, target, harnessId },
-      ),
-      source: "background-tool",
-    },
-    { workflowID: `${jobId}:react` },
-  );
-}
-
 /** Resolve the reaction turn's target + harness from the thread row. Returns
  *  null only when the studio context can't be rebuilt. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
-): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {
+): Promise<{ harnessId: HarnessId | null } | null> {
   const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
@@ -683,7 +602,6 @@ async function reactStep(
       request: buildReactionRequest(ctx, {
         models,
         nudge: reactionNudge,
-        target: reaction.target,
         harnessId: reaction.harnessId,
       }),
       source: "background-tool",

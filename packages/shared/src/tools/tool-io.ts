@@ -3737,19 +3737,6 @@ export interface StudioToolIO {
     };
     output: { jobId: string };
   };
-  THREAD_SUBTASK_DELIVER: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      jobId: string;
-      report: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { ok: true };
-  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {
@@ -6664,25 +6651,6 @@ export interface StudioToolIO {
         type: string;
       }[];
     };
-  };
-  LINK_CURRENT_GET: {
-    input: { [x: string]: never };
-    output: {
-      online: boolean;
-      capabilities: (
-        | "claude-code"
-        | "codex"
-        | "decopilot-sandbox"
-        | "body-offload"
-      )[];
-      machineId?: string | undefined;
-      hostname?: string | undefined;
-      cliVersion?: string | undefined;
-    };
-  };
-  LINK_DISCONNECT: {
-    input: { [x: string]: never };
-    output: { disconnected: boolean };
   };
   GLOBAL_SEARCH: {
     input: {

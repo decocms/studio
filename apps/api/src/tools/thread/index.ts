@@ -17,4 +17,3 @@ export { COLLECTION_THREAD_MESSAGES_LIST } from "./list-messages";
 // Background-tool enqueue (daemon → cluster)
 export { THREAD_BACKGROUND_TOOL_START } from "./background-tool-start";
 // Backgrounded-subtask result delivery (daemon → cluster)
-export { THREAD_SUBTASK_DELIVER } from "./subtask-deliver";

@@ -21,23 +21,10 @@
 // Files outside "packages/e2e/" are not checked.
 
 // Exact bare specifiers that are allowed as-is.
-const ALLOWED_EXACT = new Set([
-  "@playwright/test",
-  "pg",
-  "zod",
-  "@nats-io/jetstream",
-  "@nats-io/transport-node",
-  "@nats-io/nats-core",
-]);
+const ALLOWED_EXACT = new Set(["@playwright/test", "pg", "zod"]);
 
 // Scoped packages allowed at the root or any subpath export (`pkg` / `pkg/sub`).
-const ALLOWED_SCOPED = [
-  "@modelcontextprotocol/sdk",
-  "@decocms/shared",
-  "@decocms/tunnel",
-  "@decocms/sandbox",
-  "@decocms/harness",
-];
+const ALLOWED_SCOPED = ["@modelcontextprotocol/sdk", "@decocms/shared"];
 
 function inE2ePackage(filename) {
   return (

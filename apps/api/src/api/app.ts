@@ -72,11 +72,6 @@ import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
 import {
-  type LinkBearerAuthApi,
-  resolveLinkBearer,
-} from "./routes/decopilot/link-bearer-auth";
-import { createLinkSessionRoutes } from "./routes/links/session";
-import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
 } from "./routes/deco-sites";
@@ -141,17 +136,6 @@ import {
 } from "./routes/decopilot/flip-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
-import {
-  createTunnelStatusProbe,
-  type LinkStatus,
-} from "../links/tunnel-status-probe";
-import { createTunnelDispatch } from "../links/tunnel-dispatch";
-import {
-  createTunnelControlPublisher,
-  createTunnelWorkPublisher,
-  type LinkWorkPublisher,
-} from "../links/tunnel-work-dispatch";
-import type { DispatchFn } from "../links/link-dispatch-types";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
@@ -189,10 +173,7 @@ import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workfl
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import {
-  dispatchRunAndWait,
-  prepareLinkWorkDispatch,
-} from "./routes/decopilot/dispatch-run";
+import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -236,23 +217,6 @@ function rejectAfter(ms: number): Promise<never> {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error("pg health-check timeout")), ms),
   );
-}
-
-// Module-level singleton for the tunnel reverse-proxy `DispatchFn`.
-// Populated inside `createApp` once `natsProvider` is wired.
-let sharedProxyDispatch: DispatchFn | null = null;
-
-/**
- * Return the shared tunnel reverse-proxy `DispatchFn`. Throws if `createApp`
- * hasn't been called yet or no NATS connection is configured.
- */
-export function getProxyDispatch(): DispatchFn {
-  if (!sharedProxyDispatch) {
-    throw new Error(
-      "getProxyDispatch() called before createApp() or without NATS — proxy dispatch unavailable",
-    );
-  }
-  return sharedProxyDispatch;
 }
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
@@ -949,8 +913,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   let providerKeyCache: ProviderKeyCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
-  let linkStatusProbe: ReturnType<typeof createTunnelStatusProbe> | undefined;
-  let linkWorkPublisher: LinkWorkPublisher | undefined;
   let natsProvider: NatsConnectionProvider | null = null;
 
   if (options.disableNats) {
@@ -970,7 +932,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       publishControlFrame: () => {},
       stop: async () => {},
     };
-    linkWorkPublisher = undefined;
     streamBuffer = {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
@@ -1054,33 +1015,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       getConnection: () => natsProvider!.getConnection(),
       getJetStream: () => natsProvider!.getJetStream(),
     });
-
-    linkStatusProbe = createTunnelStatusProbe({
-      getConnection: () => natsProvider!.getConnection(),
-    });
-
-    linkWorkPublisher = createTunnelWorkPublisher({
-      getConnection: () => natsProvider!.getConnection(),
-    });
-    const tunnelControlPublisher = createTunnelControlPublisher({
-      getConnection: () => natsProvider!.getConnection(),
-    });
-    const natsCancelBroadcast = cancelBroadcast;
-    cancelBroadcast = {
-      start: (onCancel) => natsCancelBroadcast.start(onCancel),
-      broadcast: (taskId) => natsCancelBroadcast.broadcast(taskId),
-      publishControlFrame: (userSub, frame) => {
-        void tunnelControlPublisher
-          .publishControlFrame(userSub, frame)
-          .catch((err) => {
-            console.warn(
-              "[TunnelControl] publishControlFrame failed (non-critical):",
-              err,
-            );
-          });
-      },
-      stop: () => natsCancelBroadcast.stop(),
-    };
 
     startSSEHub(natsProvider);
 
@@ -1493,9 +1427,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     modelListCache,
     providerKeyCache,
     memberRoleCache,
-    linkStatusProbe,
-    publishLinkControlFrame: (userSub, frame) =>
-      cancelBroadcast.publishControlFrame(userSub, frame),
   });
   ContextFactory.set(factory);
 
@@ -1543,11 +1474,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       streamBuffer,
       sseHub,
     },
-    // Desktop downstream dispatch is tunnel-only. Test/no-NATS setups leave
-    // `workPublisher` undefined, so user-desktop targets fall back to the
-    // hosted path instead of trying to publish desktop work.
-    prepareLinkWorkFn: prepareLinkWorkDispatch,
-    workPublisher: linkWorkPublisher,
   });
 
   // Hosted (in-process) agent-loop runtime — the thread gate's
@@ -2014,65 +1940,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
-    linkStatusProbe,
   });
   app.route("/api", decopilotRoutes);
-
-  // Tunnel reverse-proxy DispatchFn. `buildDesktopProvider` injects it as the
-  // desktop transport for sandbox lifecycle, vm-events, and vm-tools traffic.
-  if (natsProvider != null) {
-    sharedProxyDispatch = createTunnelDispatch({
-      getConnection: () => natsProvider?.getConnection() ?? null,
-    });
-  }
-
-  app.route("/api", createLinkSessionRoutes());
-
-  // GET /api/links/me — presence-read for the current user's link claim.
-  // Used by the `deco link` CLI preflight and by presence checks.
-  // Dual-auth: Bearer token (CLI — OAuth MCP session or a Better Auth API key)
-  // or the session cookie (browser/e2e via studioContext).
-  app.get("/api/links/me", async (c) => {
-    try {
-      const authHeader = c.req.header("authorization") ?? "";
-      const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-      let userSub: string | null = null;
-      if (match) {
-        const token = (match[1] ?? "").trim();
-        // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
-        // fallback).
-        userSub = await resolveLinkBearer(
-          token,
-          auth.api as unknown as LinkBearerAuthApi,
-        );
-      } else {
-        const ctx = (c.get as (key: string) => unknown)("studioContext") as
-          | { auth?: { user?: { id?: string } } }
-          | undefined;
-        userSub = ctx?.auth?.user?.id ?? null;
-      }
-      if (!userSub) return c.json({ error: "unauthorized" }, 401);
-      const status: LinkStatus = linkStatusProbe
-        ? await linkStatusProbe(userSub)
-        : { online: false, capabilities: [] };
-      if (!status.online) return c.json(null);
-      return c.json({
-        hostname: status.hostname,
-        cliVersion: status.cliVersion,
-      });
-    } catch (err) {
-      // Presence is best-effort: a failing probe / bearer-resolver / transport
-      // must read as "no link" (200 null), never a 500. The bearer path
-      // already degrades to null when offline; this keeps the cookie path
-      // (whose org-scoped studioContext can surface transient failures) in lock-
-      // step instead of bubbling an empty-body 500 to the UI poller.
-      console.error(
-        "[links/me] presence probe failed; reporting offline:",
-        err instanceof Error ? err.message : String(err),
-      );
-      return c.json(null);
-    }
-  });
 
   // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift

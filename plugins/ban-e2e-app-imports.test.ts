@@ -56,16 +56,26 @@ describe("ban-e2e-app-imports", () => {
         `import { Client } from "pg";\n` +
         `import { z } from "zod";\n` +
         `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";\n` +
-        `import { jetstream } from "@nats-io/jetstream";\n` +
         `import { sleep } from "@decocms/shared/std";\n` +
+        `import { readFileSync } from "node:fs";\n` +
+        `export const all = [test, Client, z, McpServer, sleep, readFileSync];\n`,
+    );
+    expect(await lint(f)).toEqual([]);
+  });
+
+  test("bans packages dropped from the allowlist with the link removal", async () => {
+    const f = fixture(
+      "packages/e2e/fixtures/dropped.ts",
+      `import { jetstream } from "@nats-io/jetstream";\n` +
         `import { encodeSubjectToken } from "@decocms/tunnel/subject";\n` +
         `import type { Capability } from "@decocms/sandbox/dispatch";\n` +
         `import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";\n` +
-        `import { readFileSync } from "node:fs";\n` +
-        `export const all = [test, Client, z, McpServer, jetstream, sleep, encodeSubjectToken, readFileSync, DEFAULT_THREAD_TITLE];\n` +
+        `export const all = [jetstream, encodeSubjectToken, DEFAULT_THREAD_TITLE];\n` +
         `export type C = Capability;\n`,
     );
-    expect(await lint(f)).toEqual([]);
+    const msgs = await lint(f);
+    expect(msgs.length).toBe(4);
+    expect(msgs.every((m) => m.includes("allowlist"))).toBe(true);
   });
 
   test("bans apps/*/src reach-ins", async () => {

@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.158.5",
+      "version": "4.160.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -62,7 +62,6 @@
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
-        "@decocms/tunnel": "workspace:*",
         "@jitl/quickjs-wasmfile-release-sync": "0.31.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@nats-io/jwt": "0.0.10-5",
@@ -92,7 +91,6 @@
         "pg": "^8.16.3",
         "typescript": "^7.0.2",
         "typescript5": "npm:typescript@^5.9.3",
-        "vite": "^7.2.1",
         "zod": "4.3.6",
       },
       "optionalDependencies": {
@@ -128,7 +126,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.158.5",
+      "version": "4.160.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -248,16 +246,10 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.27.0",
+      "version": "1.27.1",
       "dependencies": {
-        "@decocms/harness": "workspace:*",
-        "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
-        "@decocms/tunnel": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
-        "@nats-io/jetstream": "3.4.0",
-        "@nats-io/nats-core": "3.4.0",
-        "@nats-io/transport-node": "3.4.0",
         "@playwright/test": "^1.58.2",
         "pg": "^8.16.3",
         "zod": "4.3.6",
@@ -329,7 +321,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.33.0",
+      "version": "1.35.1",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -351,7 +343,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
