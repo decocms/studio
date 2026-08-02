@@ -2128,15 +2128,16 @@ impl ThreadsDb {
             )
             .optional()
             .map_err(DbError::from)?;
-        Ok(
-            match candidate.and_then(|(provider_session_id, blocked)| {
-                debug_assert!(provider_session_id.is_some() || blocked);
-                provider_session_id
-            }) {
-                Some(provider_session_id) => RtTerminalResumeDecision::Resume(provider_session_id),
-                None => RtTerminalResumeDecision::Fresh,
-            },
-        )
+        Ok(match candidate {
+            Some((Some(provider_session_id), _)) => {
+                RtTerminalResumeDecision::Resume(provider_session_id)
+            }
+            Some((None, true)) | None => RtTerminalResumeDecision::Fresh,
+            Some((None, false)) => {
+                debug_assert!(false, "resume candidate must contain an id or barrier");
+                RtTerminalResumeDecision::Fresh
+            }
+        })
     }
 
     /// Persist that this process was actually spawned with an older provider
@@ -2151,7 +2152,9 @@ impl ThreadsDb {
         let conn = self.lock();
         Ok(conn.execute(
             "UPDATE native_terminal_sessions SET \
-                 blocks_prior_provider_resume = 1, revision = revision + 1, updated_at = ?1 \
+                 blocks_prior_provider_resume = CASE \
+                     WHEN provider_session_id IS NULL THEN 1 ELSE 0 END, \
+                 revision = revision + 1, updated_at = ?1 \
              WHERE id = ?2 AND account_scope = ?3 AND organization_id = ?4 \
                AND thread_id = ?5 AND thread_generation = ?6 \
                AND physical_state IN ('starting', 'running')",
@@ -2324,11 +2327,42 @@ impl ThreadsDb {
             return Ok(RtTerminalProviderCheckpointOutcome::Missing);
         };
         if let Some(existing) = current.provider_session_id.as_deref() {
+            if existing != provider_session_id {
+                tx.commit()?;
+                return Ok(RtTerminalProviderCheckpointOutcome::Conflict(current));
+            }
+            if !current.blocks_prior_provider_resume || !current.physical_state.is_live() {
+                tx.commit()?;
+                return Ok(RtTerminalProviderCheckpointOutcome::Unchanged(current));
+            }
+            let changed = tx.execute(
+                "UPDATE native_terminal_sessions SET \
+                     blocks_prior_provider_resume = 0, revision = revision + 1, updated_at = ?1 \
+                 WHERE id = ?2 AND account_scope = ?3 AND organization_id = ?4 \
+                   AND thread_id = ?5 AND thread_generation = ?6 \
+                   AND provider_session_id = ?7 AND blocks_prior_provider_resume = 1 \
+                   AND physical_state IN ('starting', 'running')",
+                params![
+                    ts,
+                    session_id,
+                    fence.account_scope,
+                    fence.organization_id,
+                    fence.thread_id,
+                    fence.generation,
+                    provider_session_id,
+                ],
+            )?;
+            let stored = rt_terminal_session_by_id_fenced(&tx, fence, session_id)?;
             tx.commit()?;
-            return Ok(if existing == provider_session_id {
-                RtTerminalProviderCheckpointOutcome::Unchanged(current)
-            } else {
-                RtTerminalProviderCheckpointOutcome::Conflict(current)
+            return Ok(match stored {
+                Some(stored) if changed == 1 => RtTerminalProviderCheckpointOutcome::Stored(stored),
+                Some(stored)
+                    if stored.provider_session_id.as_deref() == Some(provider_session_id) =>
+                {
+                    RtTerminalProviderCheckpointOutcome::Unchanged(stored)
+                }
+                Some(stored) => RtTerminalProviderCheckpointOutcome::Conflict(stored),
+                None => RtTerminalProviderCheckpointOutcome::Missing,
             });
         }
         if !current.physical_state.is_live() {
@@ -2337,6 +2371,7 @@ impl ThreadsDb {
         }
         let changed = tx.execute(
             "UPDATE native_terminal_sessions SET provider_session_id = ?1, \
+                 blocks_prior_provider_resume = 0, \
                  revision = revision + 1, updated_at = ?2 \
              WHERE id = ?3 AND account_scope = ?4 AND organization_id = ?5 \
                AND thread_id = ?6 AND thread_generation = ?7 \
@@ -6029,6 +6064,144 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             RtTerminalProviderCheckpointOutcome::NotLive(ref session)
                 if session.physical_state == RtTerminalPhysicalState::Exited
         ));
+    }
+
+    #[test]
+    fn resume_barrier_and_checkpoint_converge_without_discarding_legacy_ids() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        create_rt_thread(&db, "org", "resume-race-thread");
+        let fence = terminal_fence(&db, "org", "resume-race-thread");
+        let exit = |session_id: &str| {
+            let current = db
+                .rt_get_terminal_session_fenced(&fence, session_id)
+                .unwrap()
+                .unwrap();
+            updated_terminal(
+                db.rt_compare_and_set_terminal_session_state(
+                    &fence,
+                    session_id,
+                    current.revision,
+                    RtTerminalPhysicalState::Exited,
+                    RtTerminalLogicalState::Completed,
+                    Some(0),
+                    None,
+                )
+                .unwrap(),
+            );
+        };
+
+        created_terminal(
+            db.rt_create_terminal_session_fenced(&fence, "checkpoint-first", "claude-code")
+                .unwrap(),
+        );
+        assert!(matches!(
+            db.rt_checkpoint_terminal_provider_session(
+                &fence,
+                "checkpoint-first",
+                "provider-checkpoint-first",
+            )
+            .unwrap(),
+            RtTerminalProviderCheckpointOutcome::Stored(_)
+        ));
+        assert!(db
+            .rt_mark_terminal_resume_attempted_fenced(&fence, "checkpoint-first")
+            .unwrap());
+        let checkpoint_first = db
+            .rt_get_terminal_session_fenced(&fence, "checkpoint-first")
+            .unwrap()
+            .unwrap();
+        assert!(!checkpoint_first.blocks_prior_provider_resume);
+        exit("checkpoint-first");
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("provider-checkpoint-first".to_string())
+        );
+
+        created_terminal(
+            db.rt_create_terminal_session_fenced(&fence, "marker-first", "claude-code")
+                .unwrap(),
+        );
+        assert!(db
+            .rt_mark_terminal_resume_attempted_fenced(&fence, "marker-first")
+            .unwrap());
+        assert!(
+            db.rt_get_terminal_session_fenced(&fence, "marker-first")
+                .unwrap()
+                .unwrap()
+                .blocks_prior_provider_resume
+        );
+        let checkpointed = db
+            .rt_checkpoint_terminal_provider_session(
+                &fence,
+                "marker-first",
+                "provider-marker-first",
+            )
+            .unwrap();
+        assert!(matches!(
+            checkpointed,
+            RtTerminalProviderCheckpointOutcome::Stored(ref session)
+                if !session.blocks_prior_provider_resume
+        ));
+        assert_eq!(
+            db.lock()
+                .execute(
+                    "UPDATE native_terminal_sessions SET \
+                         blocks_prior_provider_resume = 1, revision = revision + 1 \
+                     WHERE id = 'marker-first'",
+                    [],
+                )
+                .unwrap(),
+            1
+        );
+        assert!(matches!(
+            db.rt_checkpoint_terminal_provider_session(
+                &fence,
+                "marker-first",
+                "provider-marker-first",
+            )
+            .unwrap(),
+            RtTerminalProviderCheckpointOutcome::Stored(ref session)
+                if !session.blocks_prior_provider_resume
+        ));
+        exit("marker-first");
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("provider-marker-first".to_string())
+        );
+
+        created_terminal(
+            db.rt_create_terminal_session_fenced(&fence, "legacy-ambiguous", "claude-code")
+                .unwrap(),
+        );
+        assert!(matches!(
+            db.rt_checkpoint_terminal_provider_session(
+                &fence,
+                "legacy-ambiguous",
+                "missing-provider-session",
+            )
+            .unwrap(),
+            RtTerminalProviderCheckpointOutcome::Stored(_)
+        ));
+        assert_eq!(
+            db.lock()
+                .execute(
+                    "UPDATE native_terminal_sessions SET \
+                         blocks_prior_provider_resume = 1, revision = revision + 1 \
+                     WHERE id = 'legacy-ambiguous'",
+                    [],
+                )
+                .unwrap(),
+            1
+        );
+        exit("legacy-ambiguous");
+        assert_eq!(
+            db.rt_terminal_resume_decision_fenced(&fence, "claude-code")
+                .unwrap(),
+            RtTerminalResumeDecision::Resume("missing-provider-session".to_string()),
+            "legacy id-plus-barrier rows are ambiguous and must remain retryable"
+        );
     }
 
     #[test]

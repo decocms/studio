@@ -43,6 +43,27 @@ pub async fn receive(
     let opencode_delivery = OpenCodeDelivery::from_payload(&payload);
     let db = shared_db(&state)?;
 
+    if hook.harness == harness::HarnessId::ClaudeCode {
+        let Some(current) = db
+            .rt_get_terminal_session_fenced(&hook.fence, &terminal_session_id)
+            .map_err(db_err)?
+        else {
+            return Ok(StatusCode::NO_CONTENT);
+        };
+        if !claude_event_matches_root(
+            hook.expected_provider_session_id(),
+            current.provider_session_id.as_deref(),
+            observation.provider_session_id.as_deref(),
+        ) {
+            tracing::debug!(
+                terminal_session_id,
+                event_name = observation.event_name,
+                "ignored Claude event outside the established root session"
+            );
+            return Ok(StatusCode::NO_CONTENT);
+        }
+    }
+
     if is_opencode {
         let Some(current) = db
             .rt_get_terminal_session_fenced(&hook.fence, &terminal_session_id)
@@ -94,7 +115,11 @@ pub async fn receive(
                 return Ok(StatusCode::NO_CONTENT);
             }
         }
-    } else if let Some(provider_session_id) = observation.provider_session_id.as_deref() {
+    } else if let Some(provider_session_id) = provider_checkpoint_id(
+        hook.harness,
+        hook.expected_provider_session_id(),
+        &observation,
+    ) {
         match db
             .rt_checkpoint_terminal_provider_session(
                 &hook.fence,
@@ -108,11 +133,18 @@ pub async fn receive(
                     terminal_session_id,
                     "provider tried to replace a terminal session checkpoint"
                 );
+                if hook.harness == harness::HarnessId::ClaudeCode {
+                    return Ok(StatusCode::NO_CONTENT);
+                }
             }
             RtTerminalProviderCheckpointOutcome::Stored(_)
-            | RtTerminalProviderCheckpointOutcome::Unchanged(_)
-            | RtTerminalProviderCheckpointOutcome::NotLive(_)
-            | RtTerminalProviderCheckpointOutcome::Missing => {}
+            | RtTerminalProviderCheckpointOutcome::Unchanged(_) => {}
+            RtTerminalProviderCheckpointOutcome::NotLive(_)
+            | RtTerminalProviderCheckpointOutcome::Missing => {
+                if hook.harness == harness::HarnessId::ClaudeCode {
+                    return Ok(StatusCode::NO_CONTENT);
+                }
+            }
         }
     }
 
@@ -179,6 +211,44 @@ enum OpenCodeRootDecision {
     Accept,
     Checkpoint,
     Reject,
+}
+
+fn claude_event_matches_root(
+    expected_provider_session_id: Option<&str>,
+    checkpointed_provider_session_id: Option<&str>,
+    observed_provider_session_id: Option<&str>,
+) -> bool {
+    expected_provider_session_id
+        .or(checkpointed_provider_session_id)
+        .is_none_or(|root| observed_provider_session_id == Some(root))
+}
+
+fn provider_checkpoint_id<'a>(
+    harness: harness::HarnessId,
+    expected_provider_session_id: Option<&str>,
+    observation: &'a crate::terminal::lifecycle::HookObservation,
+) -> Option<&'a str> {
+    let observed = observation.provider_session_id.as_deref()?;
+    if harness != harness::HarnessId::ClaudeCode {
+        return Some(observed);
+    }
+
+    if expected_provider_session_id.is_some_and(|expected| expected != observed) {
+        return None;
+    }
+    let proves_persisted_conversation = matches!(
+        observation.event_name.as_str(),
+        "UserPromptSubmit"
+            | "PreToolUse"
+            | "PostToolUse"
+            | "PostToolUseFailure"
+            | "PermissionRequest"
+            | "Stop"
+            | "StopFailure"
+    );
+    let proves_resumed_conversation =
+        observation.event_name == "SessionStart" && expected_provider_session_id == Some(observed);
+    (proves_persisted_conversation || proves_resumed_conversation).then_some(observed)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -440,6 +510,107 @@ mod tests {
         );
         assert_eq!(fallback_title("🙂🙂"), None);
         assert_eq!(fallback_title(&"á".repeat(80)).unwrap().chars().count(), 32);
+    }
+
+    #[test]
+    fn claude_checkpoints_only_events_that_prove_a_persisted_conversation() {
+        let observation = |event_name: &str, provider_session_id: &str| {
+            crate::terminal::lifecycle::HookObservation {
+                event_name: event_name.to_string(),
+                provider_session_id: Some(provider_session_id.to_string()),
+                provider_title: None,
+                logical_state: None,
+                prompt: None,
+                is_explicit_user_prompt: false,
+            }
+        };
+
+        for event_name in ["SessionStart", "SessionEnd", "Notification"] {
+            assert_eq!(
+                provider_checkpoint_id(
+                    harness::HarnessId::ClaudeCode,
+                    None,
+                    &observation(event_name, "fresh"),
+                ),
+                None,
+                "{event_name} must not make an empty fresh Claude session resumable"
+            );
+        }
+        for event_name in [
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "PermissionRequest",
+            "Stop",
+            "StopFailure",
+        ] {
+            assert_eq!(
+                provider_checkpoint_id(
+                    harness::HarnessId::ClaudeCode,
+                    None,
+                    &observation(event_name, "fresh"),
+                ),
+                Some("fresh"),
+                "{event_name} proves Claude has materialized the conversation"
+            );
+        }
+
+        assert_eq!(
+            provider_checkpoint_id(
+                harness::HarnessId::ClaudeCode,
+                Some("resume"),
+                &observation("SessionStart", "resume"),
+            ),
+            Some("resume")
+        );
+        assert_eq!(
+            provider_checkpoint_id(
+                harness::HarnessId::ClaudeCode,
+                Some("resume"),
+                &observation("SessionStart", "other"),
+            ),
+            None
+        );
+        assert_eq!(
+            provider_checkpoint_id(
+                harness::HarnessId::ClaudeCode,
+                Some("resume"),
+                &observation("SessionEnd", "resume"),
+            ),
+            None
+        );
+        assert_eq!(
+            provider_checkpoint_id(
+                harness::HarnessId::Codex,
+                None,
+                &observation("SessionStart", "codex"),
+            ),
+            Some("codex")
+        );
+
+        assert!(claude_event_matches_root(None, None, Some("fresh")));
+        assert!(claude_event_matches_root(
+            Some("resume"),
+            None,
+            Some("resume")
+        ));
+        assert!(!claude_event_matches_root(
+            Some("resume"),
+            None,
+            Some("other")
+        ));
+        assert!(!claude_event_matches_root(Some("resume"), None, None));
+        assert!(claude_event_matches_root(
+            None,
+            Some("fresh"),
+            Some("fresh")
+        ));
+        assert!(!claude_event_matches_root(
+            None,
+            Some("fresh"),
+            Some("other")
+        ));
     }
 
     #[test]

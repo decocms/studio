@@ -1,6 +1,7 @@
 //! Guarded native terminal routes and WebSocket bridge.
 
 use std::future::Future;
+use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket};
@@ -12,7 +13,10 @@ use base64::Engine;
 use harness::HarnessId;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use terminal_session::{CommandSpec, SessionEvent, SessionKey, TerminalSize};
+use terminal_session::{
+    CommandSpec, ReplaySnapshot, SessionEvent, SessionExit, SessionKey, TerminalSession,
+    TerminalSize,
+};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -39,6 +43,8 @@ const MIN_ROWS: u16 = 2;
 const MAX_ROWS: u16 = 500;
 const MIN_COLS: u16 = 2;
 const MAX_COLS: u16 = 1_000;
+const CLAUDE_RESUME_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -711,26 +717,70 @@ impl SessionSpawnOwner {
             fence,
             options,
             terminal_session_id,
-            provider_session_id,
-            hook_token,
-            mcp_token,
-            launch,
-            command,
+            mut provider_session_id,
+            mut hook_token,
+            mut mcp_token,
+            mut launch,
+            mut command,
             key,
             start_guard: _start_guard,
             upstream_session,
         } = self;
+        let mut may_recover_missing_claude_resume =
+            options.harness == HarnessId::ClaudeCode && provider_session_id.is_some();
 
-        // Linearize process creation with every sign-out/account replacement.
-        // Preparation above may perform network I/O and therefore stays outside
-        // this short gate; the account is rechecked before trust or a child can
-        // exist. Claude's path lock is acquired first so a concurrent config
-        // writer never makes logout wait while this request is merely queued.
-        let _spawn_fences =
-            match acquire_spawn_fences(&state, &upstream_session, &fence, &launch).await {
-                Ok(fences) => fences,
+        loop {
+            // Linearize process creation with every sign-out/account replacement.
+            // Preparation above may perform network I/O and therefore stays outside
+            // this short gate; the account is rechecked before trust or a child can
+            // exist. Claude's path lock is acquired first so a concurrent config
+            // writer never makes logout wait while this request is merely queued.
+            let spawn_fences =
+                match acquire_spawn_fences(&state, &upstream_session, &fence, &launch).await {
+                    Ok(fences) => fences,
+                    Err(error) => {
+                        let message = error.message().to_string();
+                        let _ = crate::terminal::lifecycle::mark_exited(
+                            db,
+                            &fence,
+                            &terminal_session_id,
+                            None,
+                            false,
+                            Some(&message),
+                        );
+                        return Err(error.into_api_error());
+                    }
+                };
+            let mut lifecycle = state.agent_sessions.subscribe_lifecycle();
+            let hook =
+                state
+                    .agent_sessions
+                    .reserve_hook(crate::terminal::registry::HookReservation {
+                        fence: fence.clone(),
+                        terminal_session_id: terminal_session_id.clone(),
+                        harness: options.harness,
+                        cwd: launch.cwd.clone(),
+                        token: hook_token,
+                        mcp_token,
+                        mcp_path: launch.mcp_path.clone(),
+                        title_environment: launch.title_environment.clone(),
+                        expected_provider_session_id: provider_session_id.clone(),
+                    });
+            let started = state
+                .agent_sessions
+                .manager()
+                .start_or_attach_with_id(
+                    key.clone(),
+                    terminal_session_id.clone(),
+                    command,
+                    options.size,
+                )
+                .await;
+            let started = match started {
+                Ok(started) => started,
                 Err(error) => {
-                    let message = error.message().to_string();
+                    state.agent_sessions.unregister_hook(&terminal_session_id);
+                    let message = error.to_string();
                     let _ = crate::terminal::lifecycle::mark_exited(
                         db,
                         &fence,
@@ -739,113 +789,305 @@ impl SessionSpawnOwner {
                         false,
                         Some(&message),
                     );
-                    return Err(error.into_api_error());
+                    return Err(terminal_error(error));
                 }
             };
-        let hook = state
-            .agent_sessions
-            .reserve_hook(crate::terminal::registry::HookReservation {
-                fence: fence.clone(),
-                terminal_session_id: terminal_session_id.clone(),
-                harness: options.harness,
-                cwd: launch.cwd.clone(),
-                token: hook_token,
-                mcp_token,
-                mcp_path: launch.mcp_path.clone(),
-                title_environment: launch.title_environment.clone(),
-                expected_provider_session_id: provider_session_id.clone(),
-            });
-        let started = state
-            .agent_sessions
-            .manager()
-            .start_or_attach_with_id(key, terminal_session_id.clone(), command, options.size)
-            .await;
-        let started = match started {
-            Ok(started) => started,
-            Err(error) => {
+            let resume_marker_error = if provider_session_id.is_some() {
+                match db.rt_mark_terminal_resume_attempted_fenced(&fence, &terminal_session_id) {
+                    Ok(true) => None,
+                    Ok(false) => Some("terminal resume attempt is no longer available".to_string()),
+                    Err(error) => Some(error.to_string()),
+                }
+            } else {
+                None
+            };
+
+            let recover_fresh =
+                if resume_marker_error.is_none() && may_recover_missing_claude_resume {
+                    probe_missing_claude_resume(
+                        db,
+                        &fence,
+                        &terminal_session_id,
+                        provider_session_id.as_deref().unwrap_or_default(),
+                        &started.session,
+                        &mut lifecycle,
+                    )
+                    .await
+                } else {
+                    false
+                };
+            if recover_fresh {
                 state.agent_sessions.unregister_hook(&terminal_session_id);
-                let message = error.to_string();
+                drop(hook);
+                drop(spawn_fences);
+                tracing::info!(
+                    terminal_session_id,
+                    "Claude resume target was missing; restarting the terminal fresh"
+                );
+
+                may_recover_missing_claude_resume = false;
+                provider_session_id = None;
+                hook_token = generate_hook_token();
+                mcp_token = generate_mcp_token();
+                launch = match launch_context::prepare(
+                    &state,
+                    db,
+                    LaunchRequest {
+                        fence: &fence,
+                        terminal_session_id: &terminal_session_id,
+                        harness: options.harness,
+                        model_id: options.model_id.as_deref(),
+                        approval_mode: &options.approval_mode,
+                        plan_mode: options.plan_mode,
+                        hook_token: &hook_token,
+                        mcp_token: &mcp_token,
+                        provider_session_id: None,
+                    },
+                )
+                .await
+                {
+                    Ok(launch) => launch,
+                    Err(error) => {
+                        let message = error.to_string();
+                        let _ = crate::terminal::lifecycle::mark_exited(
+                            db,
+                            &fence,
+                            &terminal_session_id,
+                            None,
+                            false,
+                            Some(&message),
+                        );
+                        return Err(ApiError::bad_gateway(message));
+                    }
+                };
+                command = command_spec(&state, &launch);
+                continue;
+            }
+
+            // A resumed Claude process stays provisional only while its local
+            // checkpoint is validated. The manager owns that bounded window,
+            // and the account/Claude-state fences prevent logout or config
+            // replacement from missing the child. Every other process is
+            // registered immediately after spawn as before.
+            let managed = state.agent_sessions.register_terminal(
+                db,
+                fence.clone(),
+                started.session.clone(),
+                hook,
+            );
+            let account_error = require_current_account(&fence).await.err();
+            let pin_error = resume_marker_error.or(account_error).or_else(|| {
+                match db
+                    .rt_pin_harness_if_unset_fenced(
+                        &fence,
+                        options.harness.wire_id(),
+                        Some(DESKTOP_SANDBOX_PROVIDER),
+                        None,
+                    )
+                    .and_then(|updated| {
+                        if updated {
+                            db.rt_harness_id_fenced(&fence)
+                        } else {
+                            Ok(None)
+                        }
+                    }) {
+                    Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
+                    Ok(Some(Some(pinned))) => Some(format!("chat is already using {pinned}")),
+                    Ok(_) => Some("thread is no longer available".to_string()),
+                    Err(error) => Some(error.to_string()),
+                }
+            });
+            if let Some(error) = pin_error {
+                let exit = started
+                    .session
+                    .terminate(crate::terminal::registry::termination_policy())
+                    .await;
+                let (exit_code, requested, process_error) = match &exit {
+                    Ok(exit) => (
+                        i32::try_from(exit.code).ok(),
+                        exit.requested,
+                        exit.error.as_deref(),
+                    ),
+                    Err(terminate_error) => {
+                        tracing::warn!(%terminate_error, "could not reap coding agent after harness pin failure");
+                        (None, false, None)
+                    }
+                };
                 let _ = crate::terminal::lifecycle::mark_exited(
                     db,
                     &fence,
                     &terminal_session_id,
-                    None,
-                    false,
-                    Some(&message),
+                    exit_code,
+                    requested,
+                    process_error.or(Some(&error)),
                 );
-                return Err(terminal_error(error));
+                return Err(ApiError::conflict(error));
             }
-        };
-        let resume_marker_error = if provider_session_id.is_some() {
-            match db.rt_mark_terminal_resume_attempted_fenced(&fence, &terminal_session_id) {
-                Ok(true) => None,
-                Ok(false) => Some("terminal resume attempt is no longer available".to_string()),
-                Err(error) => Some(error.to_string()),
-            }
-        } else {
-            None
-        };
-        // Register immediately after spawn so logout/account switching cannot
-        // miss a child in the gap between process creation and durable pinning.
-        let managed = state.agent_sessions.register_terminal(
-            db,
-            fence.clone(),
-            started.session.clone(),
-            hook,
-        );
-        let account_error = require_current_account(&fence).await.err();
-        let pin_error = resume_marker_error.or(account_error).or_else(|| {
-            match db
-                .rt_pin_harness_if_unset_fenced(
-                    &fence,
-                    options.harness.wire_id(),
-                    Some(DESKTOP_SANDBOX_PROVIDER),
-                    None,
-                )
-                .and_then(|updated| {
-                    if updated {
-                        db.rt_harness_id_fenced(&fence)
-                    } else {
-                        Ok(None)
-                    }
-                }) {
-                Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
-                Ok(Some(Some(pinned))) => Some(format!("chat is already using {pinned}")),
-                Ok(_) => Some("thread is no longer available".to_string()),
-                Err(error) => Some(error.to_string()),
-            }
-        });
-        if let Some(error) = pin_error {
-            let exit = started
-                .session
-                .terminate(crate::terminal::registry::termination_policy())
-                .await;
-            let (exit_code, requested, process_error) = match &exit {
-                Ok(exit) => (
-                    i32::try_from(exit.code).ok(),
-                    exit.requested,
-                    exit.error.as_deref(),
-                ),
-                Err(terminate_error) => {
-                    tracing::warn!(%terminate_error, "could not reap coding agent after harness pin failure");
-                    (None, false, None)
-                }
-            };
-            let _ = crate::terminal::lifecycle::mark_exited(
-                db,
-                &fence,
-                &terminal_session_id,
-                exit_code,
-                requested,
-                process_error.or(Some(&error)),
-            );
-            return Err(ApiError::conflict(error));
+            crate::terminal::lifecycle::mark_running(db, &fence, &terminal_session_id)
+                .map_err(ApiError::internal)?;
+            state.agent_sessions.notify_lifecycle(&fence);
+            return Ok(managed);
         }
-        crate::terminal::lifecycle::mark_running(db, &fence, &terminal_session_id)
-            .map_err(ApiError::internal)?;
-        state.agent_sessions.notify_lifecycle(&fence);
-        Ok(managed)
     }
+}
+
+async fn probe_missing_claude_resume(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    expected_provider_session_id: &str,
+    session: &TerminalSession,
+    lifecycle: &mut tokio::sync::broadcast::Receiver<RtThreadFence>,
+) -> bool {
+    let checkpoint_is_valid = || {
+        db.rt_get_terminal_session_fenced(fence, terminal_session_id)
+            .map(|row| {
+                row.is_some_and(|row| {
+                    row.provider_session_id.as_deref() == Some(expected_provider_session_id)
+                        && !row.blocks_prior_provider_resume
+                })
+            })
+    };
+    match checkpoint_is_valid() {
+        Ok(true) => return false,
+        Ok(false) => {}
+        Err(error) => {
+            tracing::warn!(%error, terminal_session_id, "could not validate Claude resume checkpoint");
+            return false;
+        }
+    }
+
+    let exit = session.wait();
+    tokio::pin!(exit);
+    let timeout = tokio::time::sleep(CLAUDE_RESUME_PROBE_TIMEOUT);
+    tokio::pin!(timeout);
+    loop {
+        tokio::select! {
+            exit = &mut exit => {
+                let row = match db.rt_get_terminal_session_fenced(fence, terminal_session_id) {
+                    Ok(Some(row)) => row,
+                    Ok(None) => return false,
+                    Err(error) => {
+                        tracing::warn!(%error, terminal_session_id, "could not inspect exited Claude resume");
+                        return false;
+                    }
+                };
+                if row.provider_session_id.as_deref() == Some(expected_provider_session_id)
+                    && !row.blocks_prior_provider_resume
+                {
+                    return false;
+                }
+                if row.provider_session_id.is_some() || !row.blocks_prior_provider_resume {
+                    return false;
+                }
+                let replay = session.replay_from(0);
+                return is_missing_claude_resume_exit(
+                    &exit,
+                    &replay,
+                    expected_provider_session_id,
+                );
+            }
+            notification = lifecycle.recv() => {
+                match notification {
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        match checkpoint_is_valid() {
+                            Ok(true) => return false,
+                            Ok(false) => {}
+                            Err(error) => {
+                                tracing::warn!(%error, terminal_session_id, "could not validate Claude resume checkpoint");
+                                return false;
+                            }
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return false,
+                }
+            }
+            () = &mut timeout => return false,
+        }
+    }
+}
+
+fn is_missing_claude_resume_exit(
+    exit: &SessionExit,
+    replay: &ReplaySnapshot,
+    expected_provider_session_id: &str,
+) -> bool {
+    if exit.code != 1
+        || exit.signal.is_some()
+        || exit.requested
+        || !exit.output_complete
+        || exit.error.is_some()
+        || replay.requested_from != 0
+        || replay.available_from != 0
+        || replay.truncated
+        || replay.next_offset > CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES
+        || expected_provider_session_id.is_empty()
+        || expected_provider_session_id.len() > 128
+        || !expected_provider_session_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return false;
+    }
+
+    let mut raw = Vec::with_capacity(replay.next_offset as usize);
+    for chunk in &replay.chunks {
+        if raw.len().saturating_add(chunk.data.len()) > CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES as usize
+        {
+            return false;
+        }
+        raw.extend_from_slice(&chunk.data);
+    }
+    let Some(visible) = compact_terminal_ascii(&raw) else {
+        return false;
+    };
+    let expected = format!("NoconversationfoundwithsessionID:{expected_provider_session_id}");
+    visible
+        .windows(expected.len())
+        .any(|window| window == expected.as_bytes())
+}
+
+fn compact_terminal_ascii(input: &[u8]) -> Option<Vec<u8>> {
+    #[derive(Clone, Copy)]
+    enum State {
+        Ground,
+        Escape,
+        EscapeIntermediate,
+        Csi,
+        Osc,
+        OscEscape,
+    }
+
+    let mut state = State::Ground;
+    let mut visible = Vec::with_capacity(input.len());
+    for &byte in input {
+        state = match state {
+            State::Ground if byte == 0x1b => State::Escape,
+            State::Ground => {
+                if byte.is_ascii_graphic() {
+                    visible.push(byte);
+                }
+                State::Ground
+            }
+            State::Escape if byte == b'[' => State::Csi,
+            State::Escape if byte == b']' => State::Osc,
+            State::Escape if (0x20..=0x2f).contains(&byte) => State::EscapeIntermediate,
+            State::Escape if (0x30..=0x7e).contains(&byte) => State::Ground,
+            State::Escape => return None,
+            State::EscapeIntermediate if (0x20..=0x2f).contains(&byte) => State::EscapeIntermediate,
+            State::EscapeIntermediate if (0x30..=0x7e).contains(&byte) => State::Ground,
+            State::EscapeIntermediate => return None,
+            State::Csi if (0x40..=0x7e).contains(&byte) => State::Ground,
+            State::Csi if (0x20..=0x3f).contains(&byte) => State::Csi,
+            State::Csi => return None,
+            State::Osc if byte == 0x07 => State::Ground,
+            State::Osc if byte == 0x1b => State::OscEscape,
+            State::Osc => State::Osc,
+            State::OscEscape if byte == b'\\' => State::Ground,
+            State::OscEscape => return None,
+        };
+    }
+    matches!(state, State::Ground).then_some(visible)
 }
 
 async fn run_spawn_owner<F, T>(work: F) -> ApiResult<T>
@@ -1436,6 +1678,94 @@ mod tests {
         assert!(terminal_size(30, 100).is_ok());
         assert!(terminal_size(1, 100).is_err());
         assert!(terminal_size(30, 1_001).is_err());
+    }
+
+    #[test]
+    fn missing_claude_resume_matcher_is_exact_bounded_and_ansi_aware() {
+        let provider_session_id = "72441189-b8e2-4825-91bc-492889ff2374";
+        let output = format!(
+            "\u{1b}7\u{1b}[r\u{1b}8\u{1b}(B\u{1b}[2J\u{1b}[1;1HNo\u{1b}[4Gconversation\u{1b}[17Gfound\u{1b}[23Gwith\u{1b}[28Gsession\u{1b}[36GID:\u{1b}[40G{provider_session_id}\r\n"
+        );
+        let split = output.len() / 2;
+        let replay = ReplaySnapshot {
+            requested_from: 0,
+            available_from: 0,
+            next_offset: output.len() as u64,
+            truncated: false,
+            chunks: vec![
+                terminal_session::OutputChunk {
+                    start: 0,
+                    end: split as u64,
+                    data: Bytes::copy_from_slice(&output.as_bytes()[..split]),
+                },
+                terminal_session::OutputChunk {
+                    start: split as u64,
+                    end: output.len() as u64,
+                    data: Bytes::copy_from_slice(&output.as_bytes()[split..]),
+                },
+            ],
+        };
+        let exit = SessionExit {
+            code: 1,
+            signal: None,
+            requested: false,
+            output_complete: true,
+            error: None,
+        };
+
+        assert!(is_missing_claude_resume_exit(
+            &exit,
+            &replay,
+            provider_session_id
+        ));
+        assert!(!is_missing_claude_resume_exit(
+            &exit,
+            &replay,
+            "72441189-b8e2-4825-91bc-492889ff2375"
+        ));
+
+        let mut truncated = replay.clone();
+        truncated.truncated = true;
+        assert!(!is_missing_claude_resume_exit(
+            &exit,
+            &truncated,
+            provider_session_id
+        ));
+        let mut oversized = replay.clone();
+        oversized.next_offset = CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES + 1;
+        assert!(!is_missing_claude_resume_exit(
+            &exit,
+            &oversized,
+            provider_session_id
+        ));
+        let mut requested = exit.clone();
+        requested.requested = true;
+        assert!(!is_missing_claude_resume_exit(
+            &requested,
+            &replay,
+            provider_session_id
+        ));
+        let mut incomplete = exit.clone();
+        incomplete.output_complete = false;
+        assert!(!is_missing_claude_resume_exit(
+            &incomplete,
+            &replay,
+            provider_session_id
+        ));
+        let mut process_error = exit.clone();
+        process_error.error = Some("reader failed".to_string());
+        assert!(!is_missing_claude_resume_exit(
+            &process_error,
+            &replay,
+            provider_session_id
+        ));
+        let mut success = exit;
+        success.code = 0;
+        assert!(!is_missing_claude_resume_exit(
+            &success,
+            &replay,
+            provider_session_id
+        ));
     }
 
     #[test]
