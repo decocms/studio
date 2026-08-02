@@ -455,9 +455,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   });
 
-  // Path search (case-insensitive substring) across every volume, newest
-  // first — the Library's search box. Volume-less by design, so it lives
-  // above the `/:volume/*` routes.
+  // Path search (case-insensitive substring), newest first — the Library's
+  // search box. Cross-volume by default; `volume` (+ optional `prefix`) narrows
+  // it to one volume and directory subtree, which is what the Library does while
+  // you're browsing inside a folder. Volume-less by design (the volume is a
+  // query param, not a path segment), so it lives above the `/:volume/*` routes.
   app.get("/search", async (c) => {
     const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
@@ -477,6 +479,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
       MAX_RECENT_LIMIT,
     );
+    const scopeVolume = c.req.query("volume") || null;
+    if (scopeVolume !== null && !isValidVolume(scopeVolume)) {
+      return c.json({ error: "Invalid volume name" }, 400);
+    }
+    const prefix = c.req.query("prefix") || undefined;
     try {
       // Two manifests: the org's own volumes plus the deployment's shared
       // public sets (pseudo-org, gated to the configured set volumes like
@@ -485,13 +492,27 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       const publicVolumes = getPublicSets().map((s) =>
         publicVolumeForSet(s.set),
       );
+      // A `public-<set>` volume lives in the shared pseudo-org, every other
+      // volume in the org's own — so a scoped search hits exactly one manifest,
+      // and scoping to an unconfigured `public-*` volume hits neither.
+      const scopedPublic = scopeVolume !== null && isPublicVolume(scopeVolume);
+      const ownVolumes = scopeVolume === null ? undefined : [scopeVolume];
+      const pubVolumes =
+        scopeVolume === null
+          ? publicVolumes
+          : scopedPublic && publicVolumes.includes(scopeVolume)
+            ? [scopeVolume]
+            : [];
       const [own, pub] = await Promise.all([
-        ctx.orgFs.searchWithEffectivePublic(q, limit),
-        publicVolumes.length > 0
+        scopedPublic
+          ? []
+          : ctx.orgFs.searchWithEffectivePublic(q, limit, ownVolumes, prefix),
+        pubVolumes.length > 0
           ? buildPublicOrgFs(ctx).searchWithEffectivePublic(
               q,
               limit,
-              publicVolumes,
+              pubVolumes,
+              prefix,
             )
           : [],
       ]);

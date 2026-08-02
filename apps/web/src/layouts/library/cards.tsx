@@ -32,7 +32,7 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { describeFileType, FileTypeIcon } from "@/components/file-type-icon";
-import { FolderIcon } from "@/components/folder-icon";
+import { FolderIcon, type FolderTone } from "@/components/folder-icon";
 import { KEYS } from "@/lib/query-keys";
 import { parseBrandTokens } from "./brand";
 import { parseSkillMd } from "./skill";
@@ -339,6 +339,7 @@ export function FolderCard({
   meta,
   subtitle,
   glyph,
+  tone,
   readOnly,
   publicState,
   onOpen,
@@ -354,6 +355,8 @@ export function FolderCard({
   subtitle?: string;
   /** Well-known-folder mark rendered on the folder body (skills/outputs/…). */
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
+  /** Folder palette — graphite for the system folders the product fills. */
+  tone?: FolderTone;
   /** View-only corner badge (public sets). */
   readOnly?: boolean;
   /** Public badge state (own = published here, inherited = via a parent). */
@@ -379,6 +382,7 @@ export function FolderCard({
         icon={
           <FolderIcon
             glyph={glyph}
+            tone={tone}
             readOnly={readOnly}
             className="size-8 shrink-0"
           />

@@ -575,6 +575,9 @@ export class OrgFsEntryStorage {
     limit: number;
     /** Restrict to these volumes (unset = all of the org's volumes). */
     volumes?: string[];
+    /** Restrict to entries under this directory, recursively (unset = the
+     *  whole volume). Normalized, no trailing slash. */
+    pathPrefix?: string;
   }): Promise<OrgFsEntry[]> {
     if (params.volumes && params.volumes.length === 0) return [];
     // Escape LIKE metacharacters so the query is a literal substring.
@@ -586,6 +589,9 @@ export class OrgFsEntryStorage {
       .where("deleted_at", "is", null)
       .where("path", "ilike", `%${escaped}%`);
     if (params.volumes) qb = qb.where("volume", "in", params.volumes);
+    if (params.pathPrefix) {
+      qb = qb.where("path", "like", `${escapeLike(params.pathPrefix)}/%`);
+    }
     const rows = await qb
       .select(COLUMNS)
       .orderBy("seq", "desc")
