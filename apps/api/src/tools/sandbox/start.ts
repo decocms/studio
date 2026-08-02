@@ -119,7 +119,7 @@ export const SANDBOX_START = defineTool({
     daemonImpl: sandboxDaemonImplSchema
       .optional()
       .describe(
-        "Target this one sandbox at a specific sandbox daemon implementation, overriding the org's `sandbox_go_daemon` flag in either direction. Only honored on `agent-sandbox`, and only when the deployment configures a Go SandboxTemplate; otherwise the sandbox lands on `ts`. Applies to a sandbox being created — an existing sandbox keeps the binary it booted with.",
+        "Target this one sandbox at a specific sandbox daemon implementation, overriding both the `go` default and the org's `sandbox_go_daemon` opt-out. Only honored on `agent-sandbox`, and only when the deployment configures a Go SandboxTemplate; otherwise the sandbox lands on `ts`. Applies to a sandbox being created — an existing sandbox keeps the binary it booted with.",
       ),
   }),
   outputSchema: z.object({
@@ -566,9 +566,9 @@ async function provisionSandbox(
     }
   }
 
-  // Go-daemon rollout gate. Only the hosted runner can honor it (the desktop
-  // daemon is the TS bundle the link spawns), so skip the settings read
-  // entirely elsewhere. `resolveDaemonImpl` applies prop → org flag → `ts`; the
+  // Go-daemon gate. Only the hosted runner can honor it (the desktop daemon is
+  // the TS bundle the link spawns), so skip the settings read entirely
+  // elsewhere. `resolveDaemonImpl` applies prop → org opt-out → `go`; the
   // runner then collapses `go` back to `ts` when no Go SandboxTemplate is
   // configured, and persists whichever one the claim actually got.
   const daemonImpl =

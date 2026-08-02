@@ -159,7 +159,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Provision this org's new sandboxes on the Go sandbox daemon instead of the TypeScript one. Affects the NEXT sandbox only — live sandboxes drain on the binary they booted with. Ignored unless the deployment sets STUDIO_SANDBOX_GO_TEMPLATE_NAME (the global kill switch); SANDBOX_START's `daemonImpl` overrides it per sandbox in either direction.",
+      "Which sandbox daemon this org's new sandboxes run. Go is the default, so this is an OPT-OUT: set it to `false` to keep the org on the TypeScript daemon; unset (or `true`) means Go. Affects the NEXT sandbox only — live sandboxes drain on the binary they booted with. Ignored unless the deployment sets STUDIO_SANDBOX_GO_TEMPLATE_NAME (the global kill switch); SANDBOX_START's `daemonImpl` overrides it per sandbox in either direction.",
     ),
 });
 
