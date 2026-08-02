@@ -515,9 +515,21 @@ export function VolumeView({
   onMove?: (fromPath: string, toDir: string) => void;
 }) {
   const t = useT();
+  const { org } = useProjectContext();
   const volume = location.volume ?? "";
   const listing = useOrgFsList(volume, location.dirPath);
   const fileUrl = useOrgFsFileUrl();
+
+  // A folder that predates the system-folder cards (or that an agent wrote)
+  // can already be named `uploads`/`outputs`/`skills`. Both cards render — the
+  // real one still opens and renames normally — but two cards under one label
+  // is a lie, so the home-volume one carries its path to tell them apart.
+  // New collisions are rejected at the writers; this is for the ones already
+  // out there, which we won't rename behind the org's back.
+  const disambiguate = (name: string) =>
+    location.isHomeRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())
+      ? `${homeDisplayName(org.slug)}/${name}`
+      : undefined;
 
   // The system folders don't depend on this listing, so they render straight
   // away on the landing view instead of flashing a skeleton.
@@ -652,6 +664,7 @@ export function VolumeView({
                 key={e.path}
                 name={basename(e.path)}
                 meta={timeAgo(e.updatedAt)}
+                subtitle={disambiguate(basename(e.path))}
                 readOnly={location.readOnly}
                 publicState={publicStateOf(e)}
                 onOpen={() => onOpenDir(browsePathFor(location, e.path))}
