@@ -7,7 +7,14 @@
  */
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +35,7 @@ import {
   stopLocalApi,
   url,
 } from "./helpers";
+import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 const ORG = "terminal-ws-org";
 const VIRTUAL_MCP_ID = "terminal-ws-agent";
@@ -36,6 +44,7 @@ const FIXTURE_PATH = fileURLToPath(
 );
 const FRAME_TIMEOUT_MS = 15_000;
 const PROVIDERS = ["claude-code", "codex", "opencode"] as const;
+const FIXTURE_BRANCH = "terminal-e2e";
 
 type HarnessId = (typeof PROVIDERS)[number];
 
@@ -65,6 +74,7 @@ interface LaunchRecord {
     virtualMcpInstructions: true;
     mcpServerNames: ["cms"];
     scopedMcpAuthorization: true;
+    workspaceTrustSuppressed: true | null;
   };
 }
 
@@ -81,6 +91,32 @@ interface TerminalClient {
   frames: ServerFrame[];
   output: { value: string };
   failure: { value: string | null };
+}
+
+function git(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(
+      `git ${args.join(" ")} failed: ${result.stderr || result.stdout}`,
+    );
+  }
+}
+
+function setupFixtureRepo(): { root: string; bareDir: string } {
+  const root = mkdtempSync(join(tmpdir(), "terminal-agent-git-"));
+  const bareDir = join(root, "origin.git");
+  const workDir = join(root, "author");
+  git(root, ["init", "--bare", "-q", bareDir]);
+  git(root, ["init", "-q", "-b", FIXTURE_BRANCH, workDir]);
+  git(workDir, ["config", "user.name", "Test User"]);
+  git(workDir, ["config", "user.email", "test@example.com"]);
+  writeFileSync(join(workDir, "README.md"), "terminal agent fixture\n");
+  git(workDir, ["add", "README.md"]);
+  git(workDir, ["commit", "-q", "-m", "initial"]);
+  git(workDir, ["remote", "add", "origin", bareDir]);
+  git(workDir, ["push", "-q", "-u", "origin", FIXTURE_BRANCH]);
+  git(bareDir, ["symbolic-ref", "HEAD", `refs/heads/${FIXTURE_BRANCH}`]);
+  return { root, bareDir };
 }
 
 async function connectTerminal(
@@ -319,6 +355,8 @@ function titleRecords(path: string, provider: HarnessId): TitleRecord[] {
 describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
   let api: LocalApi | null = null;
   let upstream: ReturnType<typeof startAuthenticatedUpstream> | null = null;
+  let claudeConfigDir: string | null = null;
+  let gitFixture: ReturnType<typeof setupFixtureRepo> | null = null;
   let privateHeaders: Record<string, string> = {};
   const launchLog = join(
     tmpdir(),
@@ -326,6 +364,25 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
   );
 
   beforeAll(async () => {
+    gitFixture = setupFixtureRepo();
+    claudeConfigDir = mkdtempSync(join(tmpdir(), "studio-terminal-claude-"));
+    writeFileSync(
+      join(claudeConfigDir, ".claude.json"),
+      `${JSON.stringify(
+        {
+          studioE2eSentinel: { preserve: true },
+          projects: {
+            "/studio-e2e/unrelated": {
+              allowedTools: ["Read"],
+              custom: "keep",
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
     upstream = startAuthenticatedUpstream({
       virtualMcps: {
         [VIRTUAL_MCP_ID]: {
@@ -333,6 +390,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           title: "Terminal WS agent",
           metadata: {
             instructions: "Reply through the deterministic terminal fixture.",
+            githubRepo: { url: gitFixture.bareDir },
           },
         },
       },
@@ -349,6 +407,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
       LOCAL_API_CLAUDE_BIN: fixturePrefix("claude-code"),
       LOCAL_API_CODEX_BIN: fixturePrefix("codex"),
       LOCAL_API_OPENCODE_BIN: fixturePrefix("opencode"),
+      CLAUDE_CONFIG_DIR: claudeConfigDir,
       STUDIO_OPENCODE_SESSION_ID: "ambient-stale-session",
       STUDIO_TERMINAL_E2E_LOG: launchLog,
     });
@@ -379,6 +438,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               id: `terminal-${provider}`,
               title: "New chat",
               virtual_mcp_id: VIRTUAL_MCP_ID,
+              branch: FIXTURE_BRANCH,
             },
           }),
         },
@@ -391,6 +451,12 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
     await stopLocalApi(api);
     upstream?.server.stop(true);
     rmSync(launchLog, { force: true });
+    if (claudeConfigDir) {
+      rmSync(claudeConfigDir, { recursive: true, force: true });
+    }
+    if (gitFixture) {
+      rmSync(gitFixture.root, { recursive: true, force: true });
+    }
   }, HOOK_TIMEOUT_MS);
 
   for (const provider of PROVIDERS) {
@@ -487,14 +553,21 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             virtualMcpInstructions: true,
             mcpServerNames: ["cms"],
             scopedMcpAuthorization: true,
+            workspaceTrustSuppressed: provider === "opencode" ? null : true,
           });
           if (provider === "opencode") {
             expect(firstLaunches[0]?.args[0]).toBe("--agent");
             expect(firstLaunches[0]?.args[1]).toMatch(/^studio-native-.+/);
             expect(firstLaunches[0]?.args).not.toContain("--model");
           }
+          if (!gitFixture) throw new Error("git fixture was not initialized");
           expect(firstLaunches[0]?.cwd).toBe(
-            realpathSync(join(api.workdir, "orgs", ORG)),
+            realpathSync(
+              repoDirFor(
+                api.workdir,
+                computeHandle(gitFixture.bareDir, FIXTURE_BRANCH),
+              ),
+            ),
           );
           expect(existsSync(join(api.workdir, ".decocms", "rclone", ORG))).toBe(
             false,
@@ -538,6 +611,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             virtualMcpInstructions: true,
             mcpServerNames: ["cms"],
             scopedMcpAuthorization: true,
+            workspaceTrustSuppressed: provider === "opencode" ? null : true,
           });
           if (provider === "claude-code") {
             expect(launches[1]?.args).toContain("--resume");

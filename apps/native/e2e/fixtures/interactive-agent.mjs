@@ -2,8 +2,13 @@
 // @ts-nocheck -- deterministic Node/Bun process fixture, no build step.
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const NATIVE_GUARDRAIL =
@@ -156,10 +161,48 @@ function validateSystemPrompt(systemPrompt) {
   };
 }
 
+function workspaceTrustTarget(selectedProvider) {
+  const cwd = realpathSync(process.cwd());
+  const result = spawnSync(
+    "git",
+    ["-C", cwd, "rev-parse", "--git-common-dir"],
+    {
+      encoding: "utf8",
+    },
+  );
+  const commonDirRaw = result.status === 0 ? result.stdout.trim() : "";
+  if (!commonDirRaw) return cwd;
+  const commonDir = realpathSync(
+    isAbsolute(commonDirRaw) ? commonDirRaw : resolve(cwd, commonDirRaw),
+  );
+  if (basename(commonDir) === ".git") return realpathSync(dirname(commonDir));
+  return selectedProvider === "claude-code"
+    ? commonDir
+    : realpathSync(dirname(commonDir));
+}
+
 let managedLaunch;
 
 function loadHookConfig() {
   if (provider === "claude-code") {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    if (!claudeConfigDir) {
+      fail("Claude launch is missing its isolated config directory");
+    }
+    const claudeState = JSON.parse(
+      readFileSync(join(claudeConfigDir, ".claude.json"), "utf8"),
+    );
+    const trustTarget = workspaceTrustTarget(provider);
+    if (
+      claudeState.studioE2eSentinel?.preserve !== true ||
+      JSON.stringify(claudeState.projects?.["/studio-e2e/unrelated"]) !==
+        JSON.stringify({ allowedTools: ["Read"], custom: "keep" }) ||
+      claudeState.projects?.[trustTarget]?.hasTrustDialogAccepted !== true ||
+      claudeState.projects?.[dirname(trustTarget)]?.hasTrustDialogAccepted ===
+        true
+    ) {
+      fail("Claude workspace trust was not merged at the exact launch target");
+    }
     const settingsPath = argValue("--settings");
     if (!settingsPath || !providerArgs.includes("--strict-mcp-config")) {
       fail("Claude launch is missing managed settings or strict MCP config");
@@ -187,7 +230,11 @@ function loadHookConfig() {
     ) {
       fail("Claude cms MCP config is not the managed credential template");
     }
-    managedLaunch = { ...promptContract, mcpServerNames: ["cms"] };
+    managedLaunch = {
+      ...promptContract,
+      mcpServerNames: ["cms"],
+      workspaceTrustSuppressed: true,
+    };
     return JSON.parse(readFileSync(settingsPath, "utf8"));
   }
 
@@ -198,6 +245,20 @@ function loadHookConfig() {
       !providerArgs.includes("--dangerously-bypass-hook-trust")
     ) {
       fail("Codex launch is missing its managed home or hook trust flag");
+    }
+    const trustIndexes = providerArgs.flatMap((argument, index) =>
+      argument === "-c" ? [index] : [],
+    );
+    const trustTarget = workspaceTrustTarget(provider);
+    const expectedTrustOverride = `projects={ ${JSON.stringify(trustTarget)} = { trust_level = "trusted" } }`;
+    const resumeIndex = providerArgs.indexOf("resume");
+    if (
+      trustIndexes.length !== 1 ||
+      providerArgs[trustIndexes[0] + 1] !== expectedTrustOverride ||
+      (resumeIndex !== -1 && trustIndexes[0] > resumeIndex) ||
+      providerArgs.includes("--dangerously-bypass-approvals-and-sandbox")
+    ) {
+      fail("Codex workspace trust is not an exact launch-only override");
     }
     const profile = argValue("--profile");
     if (!profile) fail("Codex launch is missing its managed profile");
@@ -227,11 +288,17 @@ function loadHookConfig() {
       ) ||
       !config.includes('Authorization = "DECOCMS_MCP_AUTHORIZATION"') ||
       config.includes("Cookie =") ||
-      config.includes("Origin =")
+      config.includes("Origin =") ||
+      config.includes("trust_level") ||
+      config.includes("[projects.")
     ) {
       fail("Codex launch must expose exactly the managed cms MCP config");
     }
-    managedLaunch = { ...promptContract, mcpServerNames: ["cms"] };
+    managedLaunch = {
+      ...promptContract,
+      mcpServerNames: ["cms"],
+      workspaceTrustSuppressed: true,
+    };
     return JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8"));
   }
 
@@ -311,7 +378,11 @@ function loadHookConfig() {
     fail("fresh OpenCode launch must not contain --session");
   }
 
-  managedLaunch = { ...promptContract, mcpServerNames: ["cms"] };
+  managedLaunch = {
+    ...promptContract,
+    mcpServerNames: ["cms"],
+    workspaceTrustSuppressed: null,
+  };
   return null;
 }
 

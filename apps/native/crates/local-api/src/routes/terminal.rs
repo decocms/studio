@@ -1,5 +1,7 @@
 //! Guarded native terminal routes and WebSocket bridge.
 
+use std::future::Future;
+
 use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, State, WebSocketUpgrade};
@@ -10,7 +12,7 @@ use base64::Engine;
 use harness::HarnessId;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use terminal_session::{CommandSpec, SessionEvent, TerminalSize};
+use terminal_session::{CommandSpec, SessionEvent, SessionKey, TerminalSize};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -115,6 +117,47 @@ struct StartOptions {
     approval_mode: String,
     plan_mode: bool,
     size: TerminalSize,
+}
+
+struct SpawnFences {
+    _account: upstream::SessionTransitionGuard,
+    _claude_state: Option<tokio::sync::OwnedMutexGuard<()>>,
+}
+
+enum SpawnFenceError {
+    Account(String),
+    WorkspaceTrust(String),
+}
+
+struct SessionSpawnOwner {
+    state: AppState,
+    db: &'static ThreadsDb,
+    fence: RtThreadFence,
+    options: StartOptions,
+    terminal_session_id: String,
+    provider_session_id: Option<String>,
+    hook_token: String,
+    mcp_token: String,
+    launch: PreparedLaunch,
+    command: CommandSpec,
+    key: SessionKey,
+    start_guard: tokio::sync::OwnedMutexGuard<()>,
+    upstream_session: upstream::UpstreamSession,
+}
+
+impl SpawnFenceError {
+    fn message(&self) -> &str {
+        match self {
+            Self::Account(message) | Self::WorkspaceTrust(message) => message,
+        }
+    }
+
+    fn into_api_error(self) -> ApiError {
+        match self {
+            Self::Account(message) => ApiError::conflict(message),
+            Self::WorkspaceTrust(message) => ApiError::bad_gateway(message),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -510,7 +553,7 @@ async fn ensure_session(
     options: StartOptions,
 ) -> ApiResult<ManagedTerminal> {
     let start_lock = state.agent_sessions.start_lock(fence);
-    let _guard = start_lock.lock().await;
+    let start_guard = start_lock.lock_owned().await;
     let upstream_session = upstream::global();
     let initial_account_transition = upstream_session.begin_transition().await;
     require_current_account(fence)
@@ -638,124 +681,228 @@ async fn ensure_session(
         }
     };
     let command = command_spec(state, &launch);
-    let hook = state
-        .agent_sessions
-        .reserve_hook(crate::terminal::registry::HookReservation {
-            fence: fence.clone(),
-            terminal_session_id: commit.session.id.clone(),
-            harness: options.harness,
-            cwd: launch.cwd.clone(),
-            token: hook_token,
-            mcp_token,
-            mcp_path: launch.mcp_path.clone(),
-            title_environment: launch.title_environment.clone(),
-            expected_provider_session_id: provider_session_id.clone(),
-        });
     let key = crate::terminal::AgentSessionRegistry::session_key(fence).map_err(terminal_error)?;
-    // Linearize process creation with every sign-out/account replacement.
-    // Preparation above may perform network I/O and therefore stays outside
-    // this short gate; the account is rechecked before a child can exist.
-    let _account_transition = upstream_session.begin_transition().await;
-    if let Err(message) = require_current_account(fence).await {
-        state.agent_sessions.unregister_hook(&commit.session.id);
-        let _ = crate::terminal::lifecycle::mark_exited(
+    run_spawn_owner(
+        SessionSpawnOwner {
+            state: state.clone(),
+            db,
+            fence: fence.clone(),
+            options,
+            terminal_session_id: commit.session.id,
+            provider_session_id,
+            hook_token,
+            mcp_token,
+            launch,
+            command,
+            key,
+            start_guard,
+            upstream_session,
+        }
+        .run(),
+    )
+    .await
+}
+
+impl SessionSpawnOwner {
+    async fn run(self) -> ApiResult<ManagedTerminal> {
+        let Self {
+            state,
             db,
             fence,
-            &commit.session.id,
-            None,
-            false,
-            Some(&message),
-        );
-        return Err(ApiError::conflict(message));
-    }
-    let started = state
-        .agent_sessions
-        .manager()
-        .start_or_attach_with_id(key, commit.session.id.clone(), command, options.size)
-        .await;
-    let started = match started {
-        Ok(started) => started,
-        Err(error) => {
-            state.agent_sessions.unregister_hook(&commit.session.id);
-            let message = error.to_string();
-            let _ = crate::terminal::lifecycle::mark_exited(
-                db,
-                fence,
-                &commit.session.id,
-                None,
-                false,
-                Some(&message),
-            );
-            return Err(terminal_error(error));
-        }
-    };
-    let resume_marker_error = if provider_session_id.is_some() {
-        match db.rt_mark_terminal_resume_attempted_fenced(fence, &commit.session.id) {
-            Ok(true) => None,
-            Ok(false) => Some("terminal resume attempt is no longer available".to_string()),
-            Err(error) => Some(error.to_string()),
-        }
-    } else {
-        None
-    };
-    // Register immediately after spawn so logout/account switching cannot
-    // miss a child in the gap between process creation and durable pinning.
-    let managed =
-        state
-            .agent_sessions
-            .register_terminal(db, fence.clone(), started.session.clone(), hook);
-    let account_error = require_current_account(fence).await.err();
-    let pin_error = resume_marker_error.or(account_error).or_else(|| {
-        match db
-            .rt_pin_harness_if_unset_fenced(
-                fence,
-                options.harness.wire_id(),
-                Some(DESKTOP_SANDBOX_PROVIDER),
-                None,
-            )
-            .and_then(|updated| {
-                if updated {
-                    db.rt_harness_id_fenced(fence)
-                } else {
-                    Ok(None)
+            options,
+            terminal_session_id,
+            provider_session_id,
+            hook_token,
+            mcp_token,
+            launch,
+            command,
+            key,
+            start_guard: _start_guard,
+            upstream_session,
+        } = self;
+
+        // Linearize process creation with every sign-out/account replacement.
+        // Preparation above may perform network I/O and therefore stays outside
+        // this short gate; the account is rechecked before trust or a child can
+        // exist. Claude's path lock is acquired first so a concurrent config
+        // writer never makes logout wait while this request is merely queued.
+        let _spawn_fences =
+            match acquire_spawn_fences(&state, &upstream_session, &fence, &launch).await {
+                Ok(fences) => fences,
+                Err(error) => {
+                    let message = error.message().to_string();
+                    let _ = crate::terminal::lifecycle::mark_exited(
+                        db,
+                        &fence,
+                        &terminal_session_id,
+                        None,
+                        false,
+                        Some(&message),
+                    );
+                    return Err(error.into_api_error());
                 }
-            }) {
-            Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
-            Ok(Some(Some(pinned))) => Some(format!("chat is already using {pinned}")),
-            Ok(_) => Some("thread is no longer available".to_string()),
-            Err(error) => Some(error.to_string()),
-        }
-    });
-    if let Some(error) = pin_error {
-        let exit = started
-            .session
-            .terminate(crate::terminal::registry::termination_policy())
+            };
+        let hook = state
+            .agent_sessions
+            .reserve_hook(crate::terminal::registry::HookReservation {
+                fence: fence.clone(),
+                terminal_session_id: terminal_session_id.clone(),
+                harness: options.harness,
+                cwd: launch.cwd.clone(),
+                token: hook_token,
+                mcp_token,
+                mcp_path: launch.mcp_path.clone(),
+                title_environment: launch.title_environment.clone(),
+                expected_provider_session_id: provider_session_id.clone(),
+            });
+        let started = state
+            .agent_sessions
+            .manager()
+            .start_or_attach_with_id(key, terminal_session_id.clone(), command, options.size)
             .await;
-        let (exit_code, requested, process_error) = match &exit {
-            Ok(exit) => (
-                i32::try_from(exit.code).ok(),
-                exit.requested,
-                exit.error.as_deref(),
-            ),
-            Err(terminate_error) => {
-                tracing::warn!(%terminate_error, "could not reap coding agent after harness pin failure");
-                (None, false, None)
+        let started = match started {
+            Ok(started) => started,
+            Err(error) => {
+                state.agent_sessions.unregister_hook(&terminal_session_id);
+                let message = error.to_string();
+                let _ = crate::terminal::lifecycle::mark_exited(
+                    db,
+                    &fence,
+                    &terminal_session_id,
+                    None,
+                    false,
+                    Some(&message),
+                );
+                return Err(terminal_error(error));
             }
         };
-        let _ = crate::terminal::lifecycle::mark_exited(
+        let resume_marker_error = if provider_session_id.is_some() {
+            match db.rt_mark_terminal_resume_attempted_fenced(&fence, &terminal_session_id) {
+                Ok(true) => None,
+                Ok(false) => Some("terminal resume attempt is no longer available".to_string()),
+                Err(error) => Some(error.to_string()),
+            }
+        } else {
+            None
+        };
+        // Register immediately after spawn so logout/account switching cannot
+        // miss a child in the gap between process creation and durable pinning.
+        let managed = state.agent_sessions.register_terminal(
             db,
-            fence,
-            &commit.session.id,
-            exit_code,
-            requested,
-            process_error.or(Some(&error)),
+            fence.clone(),
+            started.session.clone(),
+            hook,
         );
-        return Err(ApiError::conflict(error));
+        let account_error = require_current_account(&fence).await.err();
+        let pin_error = resume_marker_error.or(account_error).or_else(|| {
+            match db
+                .rt_pin_harness_if_unset_fenced(
+                    &fence,
+                    options.harness.wire_id(),
+                    Some(DESKTOP_SANDBOX_PROVIDER),
+                    None,
+                )
+                .and_then(|updated| {
+                    if updated {
+                        db.rt_harness_id_fenced(&fence)
+                    } else {
+                        Ok(None)
+                    }
+                }) {
+                Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
+                Ok(Some(Some(pinned))) => Some(format!("chat is already using {pinned}")),
+                Ok(_) => Some("thread is no longer available".to_string()),
+                Err(error) => Some(error.to_string()),
+            }
+        });
+        if let Some(error) = pin_error {
+            let exit = started
+                .session
+                .terminate(crate::terminal::registry::termination_policy())
+                .await;
+            let (exit_code, requested, process_error) = match &exit {
+                Ok(exit) => (
+                    i32::try_from(exit.code).ok(),
+                    exit.requested,
+                    exit.error.as_deref(),
+                ),
+                Err(terminate_error) => {
+                    tracing::warn!(%terminate_error, "could not reap coding agent after harness pin failure");
+                    (None, false, None)
+                }
+            };
+            let _ = crate::terminal::lifecycle::mark_exited(
+                db,
+                &fence,
+                &terminal_session_id,
+                exit_code,
+                requested,
+                process_error.or(Some(&error)),
+            );
+            return Err(ApiError::conflict(error));
+        }
+        crate::terminal::lifecycle::mark_running(db, &fence, &terminal_session_id)
+            .map_err(ApiError::internal)?;
+        state.agent_sessions.notify_lifecycle(&fence);
+        Ok(managed)
     }
-    crate::terminal::lifecycle::mark_running(db, fence, &commit.session.id)
-        .map_err(ApiError::internal)?;
-    state.agent_sessions.notify_lifecycle(fence);
-    Ok(managed)
+}
+
+async fn run_spawn_owner<F, T>(work: F) -> ApiResult<T>
+where
+    F: Future<Output = ApiResult<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::spawn(work)
+        .await
+        .map_err(|error| ApiError::internal(format!("coding agent start owner failed: {error}")))?
+}
+
+async fn acquire_spawn_fences(
+    state: &AppState,
+    upstream_session: &upstream::UpstreamSession,
+    fence: &RtThreadFence,
+    launch: &PreparedLaunch,
+) -> Result<SpawnFences, SpawnFenceError> {
+    let claude_state = match launch.claude_state_path() {
+        Some(path) => Some(
+            state
+                .agent_sessions
+                .claude_state_lock(path)
+                .lock_owned()
+                .await,
+        ),
+        None => None,
+    };
+    let account = upstream_session.begin_transition().await;
+    require_current_account(fence)
+        .await
+        .map_err(SpawnFenceError::Account)?;
+
+    if claude_state.is_none() {
+        return Ok(SpawnFences {
+            _account: account,
+            _claude_state: None,
+        });
+    }
+
+    let launch = launch.clone();
+    let joined = tokio::task::spawn_blocking(move || {
+        let result = launch.ensure_workspace_trusted_blocking();
+        (result, account, claude_state)
+    })
+    .await
+    .map_err(|error| {
+        SpawnFenceError::WorkspaceTrust(format!(
+            "could not prepare Claude workspace trust: {error}"
+        ))
+    })?;
+    let (result, account, claude_state) = joined;
+    result.map_err(|error| SpawnFenceError::WorkspaceTrust(error.to_string()))?;
+    Ok(SpawnFences {
+        _account: account,
+        _claude_state: claude_state,
+    })
 }
 
 async fn require_current_account(fence: &RtThreadFence) -> Result<(), String> {
@@ -1269,6 +1416,10 @@ async fn send_stale_attachment_socket(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -1332,5 +1483,57 @@ mod tests {
             validate_request_id("  opaque-id  ").unwrap(),
             "  opaque-id  "
         );
+    }
+
+    #[tokio::test]
+    async fn spawn_owner_keeps_fences_alive_after_waiter_cancellation() {
+        struct DropProbe {
+            dropped: Arc<AtomicUsize>,
+            changed: Arc<tokio::sync::Notify>,
+        }
+
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.dropped.fetch_add(1, Ordering::SeqCst);
+                self.changed.notify_waiters();
+            }
+        }
+
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let changed = Arc::new(tokio::sync::Notify::new());
+        let account_fence = DropProbe {
+            dropped: dropped.clone(),
+            changed: changed.clone(),
+        };
+        let start_fence = DropProbe {
+            dropped: dropped.clone(),
+            changed: changed.clone(),
+        };
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let waiter = tokio::spawn(run_spawn_owner(async move {
+            let _account_fence = account_fence;
+            let _start_fence = start_fence;
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+            Ok(())
+        }));
+
+        started_rx.await.unwrap();
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+        assert_eq!(dropped.load(Ordering::SeqCst), 0);
+
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if dropped.load(Ordering::SeqCst) == 2 {
+                    break;
+                }
+                changed.notified().await;
+            }
+        })
+        .await
+        .unwrap();
     }
 }

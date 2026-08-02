@@ -333,8 +333,18 @@ verbose flags. It retains:
 
 Generate a per-session settings overlay containing Studio hooks. Verify in the
 compatibility spike that `--settings` merges safely with user configuration and
-that all required hook events fire in interactive mode. Do not rewrite the
-user's global Claude settings file.
+that all required hook events fire in interactive mode. Immediately before the
+PTY spawn, atomically merge Claude's exact provider-resolved project trust key
+into its state file while cooperating with Claude's own `<state>.lock`
+protocol. Heartbeat the lock, verify ownership before replacement and release,
+and compare/retry the bounded merge when the state changes concurrently so the
+interactive onboarding dialog cannot consume the initial prompt. Claude can
+fall back to an unlocked state write when its lock is busy, so this narrows but
+cannot claim strict cross-process mutual exclusion. Preserve every unrelated
+state field, follow a bounded state-file symlink chain without replacing the
+symlink, reject malformed or unsafe files, and keep this separate from
+permission mode; never use the broad `--dangerously-skip-permissions` flag as
+workspace-trust plumbing. Do not rewrite the user's global Claude settings file.
 
 ### Codex
 
@@ -353,8 +363,9 @@ configuration live in distinct Codex profiles; deleting a thread removes its
 profile but deliberately retains the account's provider history and auth. Seed
 the managed credential only during atomic first initialization, refuse
 symlink/non-regular auth files, and never silently reseed a credential deleted
-after initialization. Never bypass trust globally or blindly mutate
-`~/.codex`.
+after initialization. Supply the provider-resolved project trust key as a
+process-local `-c` inline-table override before the optional `resume`
+subcommand; never bypass trust globally or mutate `~/.codex`.
 
 ### OpenCode
 
