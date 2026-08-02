@@ -12,10 +12,6 @@ import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
-import {
-  resolveDispatchTarget,
-  type DispatchTarget,
-} from "@/links/resolve-dispatch-target";
 import type { HarnessId } from "@decocms/harness/types";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import type { AnyMessage } from "@/api/routes/decopilot/part-row-builder";
@@ -184,20 +180,11 @@ async function requireStudioContext(
   return studioCtx;
 }
 
-/** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
+/** Resolve a thread row's harness. Every run is hosted in the cluster. */
 function resolveThreadTarget(
-  thread:
-    | { sandbox_provider_kind?: string | null; harness_id?: string | null }
-    | null
-    | undefined,
-): { target: DispatchTarget; harnessId: HarnessId } {
-  return {
-    target: resolveDispatchTarget({
-      sandboxProviderKind: (thread?.sandbox_provider_kind ??
-        "agent-sandbox") as never,
-    }),
-    harnessId: (thread?.harness_id ?? "decopilot") as HarnessId,
-  };
+  thread: { harness_id?: string | null } | null | undefined,
+): { harnessId: HarnessId } {
+  return { harnessId: (thread?.harness_id ?? "decopilot") as HarnessId };
 }
 
 /** Build the reaction turn's dispatch request — an internal nudge the model
@@ -207,7 +194,6 @@ function buildReactionRequest(
   opts: {
     models: ModelsConfig;
     nudge: string;
-    target: DispatchTarget;
     harnessId: HarnessId | null;
   },
 ): ThreadGateContext["request"] {
@@ -231,7 +217,6 @@ function buildReactionRequest(
     taskId: s.threadId,
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
-    target: opts.target,
     harnessId: opts.harnessId ?? undefined,
   };
 }
@@ -633,7 +618,7 @@ export async function deliverBackgroundSubtaskResult(args: {
 
   // 2. Enqueue the reaction turn, carrying the report in the nudge.
   const models = await resolveReactionModels(studioCtx);
-  const { target, harnessId } = resolveThreadTarget(
+  const { harnessId } = resolveThreadTarget(
     await studioCtx.storage.threads.get(snapshot.threadId),
   );
   const nudge = hasReport
@@ -644,7 +629,7 @@ export async function deliverBackgroundSubtaskResult(args: {
       threadId: snapshot.threadId,
       request: buildReactionRequest(
         { ...snapshot, jobId },
-        { models, nudge, target, harnessId },
+        { models, nudge, harnessId },
       ),
       source: "background-tool",
     },
@@ -656,7 +641,7 @@ export async function deliverBackgroundSubtaskResult(args: {
  *  null only when the studio context can't be rebuilt. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
-): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {
+): Promise<{ harnessId: HarnessId | null } | null> {
   const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
@@ -683,7 +668,6 @@ async function reactStep(
       request: buildReactionRequest(ctx, {
         models,
         nudge: reactionNudge,
-        target: reaction.target,
         harnessId: reaction.harnessId,
       }),
       source: "background-tool",

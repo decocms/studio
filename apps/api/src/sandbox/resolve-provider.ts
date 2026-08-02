@@ -5,7 +5,7 @@
  *
  *   1. **Caller override (`explicitKind`).** `SANDBOX_START` forwards
  *      `input.sandboxProviderKind` here; `ensureSandbox` callers pass the kind
- *      they already resolved. Binds the user's link for `user-desktop`.
+ *      they already resolved.
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference`). Set by
  *      `dispatch-run` from the resolved `DispatchTarget`. Honoring it without a
@@ -13,14 +13,17 @@
  *      kind to use upstream, and any DB lookup here would just confirm what they
  *      already know.
  *
- *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
- *      sandbox provisioned via `user-desktop` stays addressable through
- *      `user-desktop` even when env/default policy points at hosted
- *      `agent-sandbox`. This is what the events/proxy route uses — no ctx
- *      hint, just the recorded entry.
+ *   3. **Recorded sandboxMap kind.** The post-provision source of truth for
+ *      which kind the events/proxy route addresses a sandbox through.
  *
- *   4. **Default policy** (`resolveDefaultKind`). Pre-provision
- *      fall-through: live link → `user-desktop`, else env kind.
+ *   4. **Default policy** (`resolveDefaultKind`) — the env kind.
+ *
+ * `user-desktop` is a LEGACY value. The desktop link daemon that implemented it
+ * is gone, but it is still persisted in `virtual_mcps.metadata.sandboxMap` rows
+ * written before its removal (migration 092 normalized `desktop`/`remote-user`
+ * into it), so it must stay *readable*. Every path that would have bound a
+ * desktop provider now resolves to the hosted `agent-sandbox` one — old rows
+ * keep parsing instead of throwing, and nothing new is ever recorded with it.
  *
  * Returns a fully-bound `SandboxProvider` plus the resolved kind. Callers
  * never need to set `ctx.sandboxPreference` themselves — the resolver reads it
@@ -36,10 +39,10 @@ import {
 
 import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
-import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
+import { getSandboxProviderByKind } from "./lifecycle";
 
 export interface ResolveSandboxProviderArgs {
-  /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
+  /** User whose sandboxMap cell to read. */
   userId: string;
   branch: string;
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
@@ -47,7 +50,7 @@ export interface ResolveSandboxProviderArgs {
   /**
    * Caller-provided override (e.g. `SANDBOX_START`'s `input.sandboxProviderKind`).
    * When set, takes precedence over both the sandboxMap entry and the default
-   * policy. The resolver still binds the user's link for `user-desktop`.
+   * policy.
    */
   explicitKind?: SandboxProviderKind;
 }
@@ -67,32 +70,21 @@ export async function resolveSandboxProvider(
 
   // 1. Caller override.
   if (explicitKind) {
-    const provider = await bindProviderForKind(ctx, userId, explicitKind);
+    const provider = await bindProviderForKind(ctx, explicitKind);
     return { provider, kind: explicitKind };
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
   //    without touching sandboxMap. `agent-sandbox` is explicit hosted
-  //    execution; `user-desktop` builds the desktop provider unconditionally;
-  //    `cluster-default` means "use the provider the env/default policy points
-  //    to" (legacy automation/default behavior).
+  //    execution; `cluster-default` means "use the provider the env/default
+  //    policy points to" (legacy automation/default behavior).
   if (ctx.sandboxPreference === "agent-sandbox") {
-    const provider = await bindProviderForKind(ctx, userId, "agent-sandbox");
+    const provider = await bindProviderForKind(ctx, "agent-sandbox");
     return { provider, kind: "agent-sandbox" };
   }
-  if (ctx.sandboxPreference === "user-desktop") {
-    const provider = await buildDesktopProvider(ctx, userId);
-    return { provider, kind: "user-desktop" };
-  }
   if (ctx.sandboxPreference === "cluster-default") {
-    // Route through `bindProviderForKind` so that env kind === "user-desktop"
-    // (the default in local dev) still binds the user's link instead of
-    // calling `instantiate("user-desktop")` directly, which throws. Without
-    // this, background fires (cron/webhook/event automations) blow up
-    // here because `dispatch-run` defaults their target to local/default
-    // and never sets `sandboxPreference="user-desktop"` with a link.
     const kind = resolveSandboxProviderKindFromEnv();
-    const provider = await bindProviderForKind(ctx, userId, kind);
+    const provider = await bindProviderForKind(ctx, kind);
     return { provider, kind };
   }
 
@@ -112,13 +104,13 @@ export async function resolveSandboxProvider(
       restRecorded.length === 0
         ? firstRecorded
         : pickRecordedKind(firstRecorded, restRecorded);
-    const provider = await bindProviderForKind(ctx, userId, preferred);
+    const provider = await bindProviderForKind(ctx, preferred);
     return { provider, kind: preferred };
   }
 
   // 4. Default policy.
   const kind = resolveDefaultKind();
-  const provider = await bindProviderForKind(ctx, userId, kind);
+  const provider = await bindProviderForKind(ctx, kind);
   return { provider, kind };
 }
 
@@ -141,10 +133,10 @@ function readRecordedKinds(
 
 /**
  * Picks one recorded kind when multiple siblings exist. Prefers the kind that
- * matches the current default policy (link online → `user-desktop`, else env
- * kind); otherwise falls back to the first recorded kind. This keeps the
- * events/proxy path deterministic across pods and matches what a fresh
- * SANDBOX_START with no explicit kind would have used.
+ * matches the current default policy (the env kind); otherwise falls back to
+ * the first recorded kind. This keeps the events/proxy path deterministic
+ * across pods and matches what a fresh SANDBOX_START with no explicit kind
+ * would have used.
  */
 function pickRecordedKind(
   first: SandboxProviderKind,
@@ -161,12 +153,12 @@ function resolveDefaultKind(): SandboxProviderKind {
 
 async function bindProviderForKind(
   ctx: StudioContext,
-  userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
-  if (kind !== "user-desktop") return getSandboxProviderByKind(ctx, kind);
-  // Optimistic: build the desktop provider unconditionally. Operations through
-  // it fail-fast over the tunnel if the daemon is gone (the VM-tool layer
-  // reaps + respawns on proxy failure). No pre-flight liveness check.
-  return buildDesktopProvider(ctx, userId);
+  // `user-desktop` has no implementation since the link daemon was removed, but
+  // it is still readable off old sandboxMap rows. Serve those from the hosted
+  // provider rather than throwing — the alternative is a 500 on any org that
+  // ever ran a desktop sandbox.
+  const resolved = kind === "user-desktop" ? "agent-sandbox" : kind;
+  return getSandboxProviderByKind(ctx, resolved);
 }

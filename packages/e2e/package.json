@@ -10,14 +10,8 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@decocms/harness": "workspace:*",
-    "@decocms/sandbox": "workspace:*",
     "@decocms/shared": "workspace:*",
-    "@decocms/tunnel": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@nats-io/jetstream": "3.4.0",
-    "@nats-io/nats-core": "3.4.0",
-    "@nats-io/transport-node": "3.4.0",
     "@playwright/test": "^1.58.2",
     "pg": "^8.16.3",
     "zod": "4.3.6"

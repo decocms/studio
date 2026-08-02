@@ -217,36 +217,6 @@ async function instantiate(
   }
 }
 
-/**
- * Construct a `DesktopSandboxProvider` bound to a specific user's link.
- * The caller (`resolve-provider.ts`) passes the target sandbox owner's
- * userSub — that's the user whose daemon should execute the dispatch,
- * which is not always the same as the acting principal (system-driven
- * paths like cron, webhooks, and vm-events run sandboxes on behalf of
- * a different user).
- */
-export async function buildDesktopProvider(
-  _ctx: StudioContext,
-  userSub: string,
-): Promise<SandboxProvider> {
-  const { DesktopSandboxProvider } = await import(
-    "@decocms/sandbox/provider/desktop"
-  );
-  const { getProxyDispatch } = await import("../api/app");
-  const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
-  if (!userSub) {
-    throw new Error("buildDesktopProvider: userSub must be a non-empty string");
-  }
-  // The provider (runner.ts) is transport-agnostic; it decodes the base64
-  // `DispatchChunk.data` the tunnel dispatch yields.
-  const dispatch = getProxyDispatch();
-  return new DesktopSandboxProvider({
-    userSub,
-    dispatch,
-    stateStore,
-  });
-}
-
 /** SANDBOX_DELETE uses this so teardown follows the entry's recorded sandboxProviderKind. */
 export function getSandboxProviderByKind(
   ctx: StudioContext,

@@ -35,10 +35,6 @@ mock.module("../../sandbox/lifecycle", () => ({
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
   },
-  buildDesktopProvider: async () => {
-    lastRequestedKind.value = "user-desktop";
-    return makeMockRunner("user-desktop");
-  },
 }));
 
 const { SANDBOX_DELETE } = await import("./delete");
@@ -225,7 +221,7 @@ describe("SANDBOX_DELETE", () => {
     expect(lastRequestedKind.value).toBe("agent-sandbox");
   });
 
-  it("binds the user-desktop provider before removing metadata", async () => {
+  it("tears down a legacy user-desktop entry through the hosted provider", async () => {
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "user-1",
@@ -248,7 +244,9 @@ describe("SANDBOX_DELETE", () => {
     );
 
     expect(result).toEqual({ success: true });
-    expect(lastRequestedKind.value).toBe("user-desktop");
+    // `user-desktop` no longer has a provider; the resolver serves it from the
+    // hosted one so old sandboxMap rows stay deletable.
+    expect(lastRequestedKind.value).toBe("agent-sandbox");
     expect(mockDelete).toHaveBeenCalledWith(DESKTOP_ENTRY.sandboxHandle);
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;

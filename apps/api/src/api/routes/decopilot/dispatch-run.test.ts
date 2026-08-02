@@ -88,7 +88,6 @@ describe("buildDurableDispatchInput", () => {
         runFenceToken: "fence-1",
         branch: "main",
         harnessId: "decopilot",
-        target: { sandboxProviderKind: "agent-sandbox" },
       },
     );
 
@@ -102,7 +101,6 @@ describe("buildDurableDispatchInput", () => {
       runFenceToken: "fence-1",
       harnessId: "decopilot",
       branch: "main",
-      target: { sandboxProviderKind: "agent-sandbox" },
     });
   });
 

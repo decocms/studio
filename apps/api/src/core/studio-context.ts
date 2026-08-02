@@ -13,7 +13,6 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
-import type { ControlFrame } from "@/api/routes/decopilot/control-frames";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
@@ -465,22 +464,6 @@ export interface StudioContext extends HarnessContext {
    *     behavior.
    */
   sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
-
-  /**
-   * Live desktop-link status probe (cluster → daemon over the tunnel).
-   * Replaces the claim-registry read for presence. Returns `{ online: false }`
-   * when no link/connection answers within the probe timeout.
-   */
-  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
-
-  /**
-   * Publish a control frame onto a user's active link. Fire-and-forget: a no-op
-   * when no live tunnel claim exists. Deliberately narrower than the
-   * CancelBroadcast it delegates to — tools only ever publish (LINK_DISCONNECT
-   * sends `shutdown`); start/stop/broadcast stay with the app wiring. Undefined
-   * in test contexts without a broadcast.
-   */
-  publishLinkControlFrame?: (userSub: string, frame: ControlFrame) => void;
 }
 
 // ============================================================================

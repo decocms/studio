@@ -6669,25 +6669,6 @@ export interface StudioToolIO {
       }[];
     };
   };
-  LINK_CURRENT_GET: {
-    input: { [x: string]: never };
-    output: {
-      online: boolean;
-      capabilities: (
-        | "claude-code"
-        | "codex"
-        | "decopilot-sandbox"
-        | "body-offload"
-      )[];
-      machineId?: string | undefined;
-      hostname?: string | undefined;
-      cliVersion?: string | undefined;
-    };
-  };
-  LINK_DISCONNECT: {
-    input: { [x: string]: never };
-    output: { disconnected: boolean };
-  };
   GLOBAL_SEARCH: {
     input: {
       query: string;

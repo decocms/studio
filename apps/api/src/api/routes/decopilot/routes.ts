@@ -51,7 +51,6 @@ import {
   shouldPublishClusterRunStatus,
 } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
 import {
   resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
@@ -514,7 +513,6 @@ export interface DecopilotDeps {
    * uses it to reject early when no link answers instead of silently queueing
    * a run that would have nowhere to go.
    */
-  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
@@ -695,17 +693,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
 
-      // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
-      // — we pass it directly instead of provisioning a VM here. VM
-      // provisioning happens lazily inside the built-in tools layer
-      // (`apps/api/src/harnesses/decopilot/built-in-tools/index.ts`'s
-      // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
-      // `ensureSandbox` at POST time used to fail in environments without a
-      // link daemon for the user even when the run never touches the
-      // sandbox (e.g. CI multi-pod tests that drive only the mock AI
-      // provider).
-      const target = resolveDispatchTarget({ sandboxProviderKind: pinnedKind });
-
       const requestMessage = input.messages.find((m) => m.role !== "system");
       if (!requestMessage) {
         throw new HTTPException(400, {
@@ -767,7 +754,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         branch,
         sandboxProviderKind: pinnedKind,
         harnessId: pinnedHarness,
-        target,
       });
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
@@ -776,7 +762,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         existingThread?.status !== "in_progress" &&
         shouldPublishClusterRunStatus({
           harnessId: pinnedHarness,
-          sandboxProviderKind: target.sandboxProviderKind,
+          sandboxProviderKind: pinnedKind,
         })
       ) {
         await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");

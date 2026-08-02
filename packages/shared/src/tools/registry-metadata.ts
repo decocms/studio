@@ -221,8 +221,6 @@ const ALL_TOOL_NAMES = [
   "GITHUB_LIST_USER_ORGS",
 
   // Link tools
-  "LINK_CURRENT_GET",
-  "LINK_DISCONNECT",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -1055,19 +1053,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
-  // Link tools
-  {
-    name: "LINK_CURRENT_GET",
-    description:
-      "Return the calling user's current desktop link status (online/offline, capabilities)",
-    category: "Links",
-  },
-  {
-    name: "LINK_DISCONNECT",
-    description:
-      "Disconnect the calling user's desktop link (stops the daemon, removes the presence claim)",
-    category: "Links",
-  },
   // Search tools
   {
     name: "GLOBAL_SEARCH",
@@ -1193,15 +1178,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
       //   USER_GET     → resolve member display ("created by" on agents, etc.);
       //                  handler scopes to shared-org members, no secrets
-      //   LINK_CURRENT_GET → caller's own desktop-link status (header poll)
-      //   LINK_DISCONNECT  → self-scoped: disconnects the CALLER's own
-      //                      desktop link only (handler keys everything off
-      //                      ctx.auth.user.id), so members keep it
       //   BRAND_CONTEXT_LIST → org branding for the chat empty state
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
-      "LINK_CURRENT_GET",
-      "LINK_DISCONNECT",
       "BRAND_CONTEXT_LIST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access

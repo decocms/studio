@@ -38,7 +38,6 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
-import * as LinkTools from "./links";
 import * as SearchTools from "./search";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
@@ -207,8 +206,6 @@ export const CORE_TOOLS = [
   GitHubTools.GITHUB_LIST_USER_ORGS,
 
   // Link tools
-  LinkTools.LINK_CURRENT_GET,
-  LinkTools.LINK_DISCONNECT,
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,

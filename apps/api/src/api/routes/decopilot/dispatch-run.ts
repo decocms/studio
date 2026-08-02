@@ -36,31 +36,7 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
-import {
-  shouldOffload,
-  type MessagesRef,
-} from "@decocms/harness/offload-messages";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
-import { computeClaimHandle } from "@/sandbox/claim-handle";
-import {
-  composeSandboxRef,
-  resolveSandboxProviderKindFromEnv,
-} from "@decocms/sandbox/provider";
-import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
-import {
-  buildAnonymousCloneInfo,
-  buildCloneInfo,
-  ensureGithubCloneToken,
-} from "@/shared/github-clone-info";
-import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
-import { resolveSandboxUserId } from "@/tools/sandbox/thread-repo";
-import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
-import { getSettings } from "@/settings";
-import type { WorkItemSandbox } from "@/links/link-work-item";
-import {
-  resolveDispatchTarget,
-  type DispatchTarget,
-} from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
@@ -81,7 +57,6 @@ import type {
 import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import { stringifyError } from "@decocms/harness/stream-error";
-import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
@@ -119,10 +94,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import { resolveCliSessionRef } from "./cli-session-messages";
-import { getPublicUrl } from "@/core/server-constants";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
-import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
@@ -286,7 +258,7 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   return "decopilot";
 }
 
-export function buildHarnessWorkspaceInput(input: {
+function buildHarnessWorkspaceInput(input: {
   virtualMcp: { metadata?: unknown } | null;
   branch?: string | null;
   cwd?: "/repo" | null;
@@ -413,15 +385,6 @@ export interface DispatchRunInput {
   /** Request-time sandbox provider pin before it is normalized into target. */
   sandboxProviderKind?: SandboxProviderKind | null;
   /**
-   * Pre-resolved dispatch target. Set by POST /messages before enqueuing
-   * onto the per-thread gate so the workflow body never has to call
-   * `resolveDispatchTarget` itself (avoids replay-time drift if the link
-   * goes offline between enqueue and dispatch). Defaults to
-   * `{ sandboxProviderKind: "agent-sandbox" }` when omitted, preserving
-   * hosted execution for legacy callers.
-   */
-  target?: DispatchTarget;
-  /**
    * Pre-resolved harness id (Decopilot / Claude Code / Codex) from POST
    * /messages — taken from the thread's persisted pin or the request
    * body. When omitted, falls back to deriving from the credential's
@@ -461,7 +424,6 @@ export interface FrozenRunSnapshot {
   branch?: string | null;
   sandboxProviderKind?: SandboxProviderKind | null;
   harnessId?: HarnessId | null;
-  target?: DispatchTarget;
   /**
    * Per-turn system context the client attached to this user turn (the
    * `role:"system"` message in the POST body — e.g. the currently-open file,
@@ -504,7 +466,6 @@ export function buildDurableDispatchInput(
     branch?: string | null;
     sandboxProviderKind?: SandboxProviderKind | null;
     harnessId?: HarnessId | null;
-    target?: DispatchTarget;
   },
 ): DurableDispatchRunInput {
   if (!input.taskId) {
@@ -553,7 +514,6 @@ export function buildDurableDispatchInput(
     sandboxProviderKind:
       options.sandboxProviderKind ?? input.sandboxProviderKind ?? null,
     harnessId: options.harnessId ?? input.harnessId ?? null,
-    ...(options.target ? { target: options.target } : {}),
     organizationId: input.organizationId,
     userId: input.userId,
     taskId: input.taskId,
@@ -821,7 +781,7 @@ export async function resolveUserContext(
   return result;
 }
 
-export async function resolveEffectiveVirtualMcpForHarness({
+async function resolveEffectiveVirtualMcpForHarness({
   virtualMcp,
   agentId,
   organizationId,
@@ -892,39 +852,17 @@ async function prepareRun(
       input.harnessId ?? resolveHarnessId(credentialKey?.providerId);
     rootSpan.setAttribute("decopilot.harnessId", harnessId);
 
-    // Resolve the dispatch target. POST /messages already runs
-    // `resolveDispatchTarget` and forwards the result on `input.target`; we
-    // re-read it here. Background enqueues (Super Agent / QA task runs, cron &
-    // webhook automations) never set `input.target`, so fall back to the
-    // deployment's configured provider (`STUDIO_SANDBOX_PROVIDER`) rather than a
-    // hardcoded hosted target — in production that env is `agent-sandbox` (no
-    // change), but in local dev (`--local-sandbox-provider` → `user-desktop`)
-    // the old default sent these runs to a cluster that isn't there, so
-    // `load_repo` failed with "Failed to create SandboxClaim".
-    const target: DispatchTarget =
-      input.target ??
-      resolveDispatchTarget({
-        sandboxProviderKind: resolveSandboxProviderKindFromEnv(),
-      });
-
-    // Stash the resolved target on the context so downstream consumers
-    // (the desktop sandbox provider, remote-cli dispatch) can read it
-    // without re-querying the registry.
-    if (target.sandboxProviderKind === "agent-sandbox") {
-      ctx.sandboxPreference = "agent-sandbox";
-    } else {
-      // user-desktop: downstream sandbox tools should use the desktop
-      // provider.
-      ctx.sandboxPreference = "user-desktop";
-    }
+    // Every run is hosted. Stash it on the context so downstream sandbox tools
+    // resolve the hosted provider without re-querying the registry.
+    ctx.sandboxPreference = "agent-sandbox";
     rootSpan.setAttribute(
       "decopilot.dispatchTarget.sandboxProviderKind",
-      target.sandboxProviderKind,
+      "agent-sandbox",
     );
 
     const shouldPublishRunStatus = shouldPublishClusterRunStatus({
       harnessId,
-      sandboxProviderKind: target.sandboxProviderKind,
+      sandboxProviderKind: "agent-sandbox",
     });
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
@@ -1300,21 +1238,12 @@ async function prepareRun(
 
     const pendingOps: Promise<void>[] = [];
 
-    // CLI-harness delta + resume only holds on the long-lived desktop daemon:
-    // the on-disk session survives between turns *only* on user-desktop. On any
-    // other sandbox kind there is no persistent rollout to resume, so fall back
-    // to the full-transcript path (pre-resume behavior) rather than silently
-    // dropping history or pointing the CLI at a session that isn't there.
-    const cliResumable =
-      isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
-
-    const cliHistory = cliResumable
-      ? (durableHistory ??
-        ((await mem.loadHistory(windowSize)) as ChatMessage[]))
-      : undefined;
-    const resumeSessionRef = cliResumable
-      ? resolveCliSessionRef(cliHistory ?? [], harnessId)
-      : undefined;
+    // CLI-harness delta + resume needed a long-lived daemon whose on-disk
+    // session survived between turns — only the desktop link had one, and it is
+    // gone (local CLI runs now happen inside the Tauri app). Hosted sandboxes
+    // have no persistent rollout to resume, so every run takes the
+    // full-transcript path.
+    const resumeSessionRef = undefined;
 
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
@@ -1377,7 +1306,7 @@ async function prepareRun(
             harnessId === "claude-code"
               ? "claude-code-session"
               : "codex-session",
-            target.sandboxProviderKind,
+            "agent-sandbox",
           );
 
     // ⚠️ SECURITY: Never log `modelSources` (any slot) or `mcp.headers` values.
@@ -1396,23 +1325,11 @@ async function prepareRun(
     // storage source. CLI harnesses running on a desktop sandbox get a real
     // HTTP endpoint so they can offload large artifacts.
     const objectStorageSource: DecopilotObjectStorageSource | undefined =
-      harnessId !== "decopilot" &&
-      target.sandboxProviderKind === "user-desktop" &&
-      organization.slug
-        ? {
-            kind: "http",
-            baseUrl: `${getPublicUrl()}/api/${encodeURIComponent(organization.slug)}/object-storage`,
-            headers: mcp.headers,
-            expiresAt: mcp.expiresAt,
-          }
-        : undefined;
+      undefined;
     const workspace = buildHarnessWorkspaceInput({
       virtualMcp: effectiveVirtualMcp,
       branch: input.branch,
-      cwd:
-        target.sandboxProviderKind === "user-desktop"
-          ? WORKSPACE_CWD_REPO
-          : null,
+      cwd: null,
     });
     const agentInstructions =
       typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
@@ -1466,14 +1383,9 @@ async function prepareRun(
     // per-task subject — that's what /stream tails.
     //
     // Only decopilot runs a cluster-hosted loop here. A CLI harness
-    // (claude-code, codex) never reaches a successful dispatch on this path: on
-    // user-desktop it resolves to the "sandbox" site (`resolveHarnessExecutionSite`)
-    // and goes through the link transport (`prepareLinkWorkDispatch` + tunnel
-    // work publisher); on agent-sandbox it is rejected up front by the gate
-    // (cloud-CLI is a planned follow-up). The only way a CLI harness lands here
-    // is a link-incapable runtime trying to run a desktop CLI loop locally — a
-    // hard misconfiguration the invariant below rejects. The push
-    // `remoteDispatch` path is deleted.
+    // (claude-code, codex) never reaches a successful dispatch on this path —
+    // the gate rejects it up front (`assertHarnessRunsInCluster`; cloud-CLI is a
+    // planned follow-up, and local CLI runs happen in the Tauri desktop app).
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
@@ -1739,337 +1651,4 @@ async function prepareRun(
 
     throw err;
   }
-}
-
-/**
- * Resolve the sandbox provisioning config for a link-transport work item.
- *
- * Mirrors the logic in `provisionSandbox` but returns the resolved config
- * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for
- * the CLI harnesses (claude-code, codex) on a user-desktop target so the daemon
- * can spawn the sandbox cold without a prior WS-path ensure call. Decopilot
- * never reaches this path — its loop runs cluster-hosted, so it has no
- * link work item to provision.
- *
- * Returns `null` when no sandbox config can be derived (non-user-desktop
- * target, or unresolvable metadata).
- */
-async function resolveLinkSandboxConfig(
-  input: DispatchRunRuntimeInput,
-  ctx: StudioContext,
-  sandboxHandle: string,
-): Promise<WorkItemSandbox | null> {
-  if (input.target?.sandboxProviderKind !== "user-desktop") return null;
-
-  const virtualMcp = await ctx.storage.virtualMcps
-    .findById(input.agent.id, input.organizationId)
-    .catch(() => null);
-  if (!virtualMcp) return null;
-
-  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const githubRepo =
-    (
-      metadata as {
-        githubRepo?: {
-          owner: string;
-          name: string;
-          connectionId?: string;
-        } | null;
-      }
-    ).githubRepo ?? null;
-
-  // Resolve the clone URL cluster-side so the daemon has it without vault access.
-  let repo: WorkItemSandbox["repo"];
-  if (githubRepo) {
-    try {
-      const connectionId = githubRepo.connectionId;
-      const { cloneUrl, gitUserName, gitUserEmail } = connectionId
-        ? await (async () => {
-            await ensureGithubCloneToken({
-              ctx,
-              connectionId,
-              organizationId: input.organizationId,
-              forceRefresh: true,
-              onLegacyMintError: (error) => {
-                console.warn(
-                  "[prepareLinkWorkDispatch] repo-scoped legacy token mint failed",
-                  {
-                    connectionId,
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                  },
-                );
-              },
-            });
-            return buildCloneInfo(
-              connectionId,
-              githubRepo.owner,
-              githubRepo.name,
-              ctx.db,
-              ctx.vault,
-            );
-          })()
-        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
-      repo = {
-        cloneUrl,
-        branch: input.branch ?? undefined,
-        userName: gitUserName,
-        userEmail: gitUserEmail,
-      };
-    } catch (err) {
-      // Log but don't fail the dispatch — the daemon may have a running sandbox.
-      console.warn(
-        `[prepareLinkWorkDispatch] failed to resolve clone info for agent=${input.agent.id}:`,
-        err instanceof Error ? err.message : String(err),
-      );
-    }
-  }
-
-  // Resolve workload from metadata.runtime (same logic as provisionSandbox).
-  const { runtime, packageManager, packageManagerPath } =
-    resolveRuntimeConfig(metadata);
-  let workload: WorkItemSandbox["workload"];
-  if (
-    runtime &&
-    packageManager &&
-    (runtime === "node" || runtime === "bun" || runtime === "deno") &&
-    (packageManager === "npm" ||
-      packageManager === "pnpm" ||
-      packageManager === "yarn" ||
-      packageManager === "bun" ||
-      packageManager === "deno")
-  ) {
-    workload = {
-      runtime,
-      packageManager,
-      ...(packageManagerPath ? { packageManagerPath } : {}),
-    };
-  }
-
-  // Derive the message-offload SSRF allowlist from the cluster's own S3 config.
-  let offloadAllowedHosts: string[] | undefined;
-  let offloadAllowSameHostDev: boolean | undefined;
-  try {
-    if (ctx.objectStorage) {
-      const offload = await deriveOffloadAllowlist(ctx.objectStorage, {
-        isProduction: getSettings().nodeEnv === "production",
-      });
-      offloadAllowedHosts = offload.hosts;
-      offloadAllowSameHostDev = offload.allowSameHostDev;
-    }
-  } catch (err) {
-    console.warn(
-      `[prepareLinkWorkDispatch] failed to derive offload allowlist for agent=${input.agent.id}:`,
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-
-  // Org-fs mounts (desktop dispatch path; this fn already returned null for
-  // non-user-desktop). Mint an fs token + build ORGFS_CONFIG; guarded → no
-  // mounting on failure. Mirrors SANDBOX_START's provisionSandbox.
-  const orgFsConfigJson = ctx.organization?.slug
-    ? await mintOrgFsConfigJson(ctx, {
-        orgSlug: ctx.organization.slug,
-        orgId: input.organizationId,
-        baseUrl: getPublicUrl(),
-      })
-    : undefined;
-
-  const operator = normalizeCoAuthorIdentity({
-    userName: ctx.auth.user?.name,
-    userEmail: ctx.auth.user?.email,
-  });
-
-  return {
-    handle: sandboxHandle,
-    ...(repo ? { repo } : {}),
-    ...(workload ? { workload } : {}),
-    ...(operator ? { operator } : {}),
-    ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
-    ...(offloadAllowSameHostDev !== undefined
-      ? { offloadAllowSameHostDev }
-      : {}),
-    ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
-  };
-}
-
-/**
- * Prepare a CLI run (claude-code, codex) on a user-desktop target for
- * downstream link execution. This is the "sandbox" execution site — decopilot
- * never reaches it (its loop is cluster-hosted; see
- * `resolveHarnessExecutionSite`).
- *
- * Claims the run and returns the fence token, task id, and fully assembled
- * wire `HarnessStreamInput` for the gate step to publish as a tunnel work
- * item.
- *
- * IMPORTANT: `uiStream` from prepareRun is never consumed here. Since
- * prepareRun's stream is lazy (harness dispatch happens on first pull), the
- * local harness does NOT run for link-dispatched threads. The daemon runs it
- * remotely and the run transitions to terminal when the ingest finish handler
- * fires FINISH.
- *
- * The work item's `harnessInput` is the complete `wireHarnessInput` that
- * prepareRun builds eagerly (mcp endpoint minted, userMessage materialized,
- * workspace + fence token attached), exactly the shape the daemon validates
- * against `harnessStreamInputSchema`. The non-serializable `signal` member is
- * intentionally absent; it only exists for the hosted dispatch path.
- *
- * Also resolves the sandbox provisioning config (handle, repo clone URL,
- * workload runtime) for harnesses targeting user-desktop, so the daemon can
- * spawn the sandbox cold. Carries `orgSlug` so the daemon ingest path can
- * construct the URL without a DB lookup.
- */
-export async function prepareLinkWorkDispatch(
-  input: DispatchRunRuntimeInput,
-  ctx: StudioContext,
-  deps: DispatchRunDeps,
-): Promise<{
-  taskId: string;
-  runFenceToken: string;
-  harnessInput: WireHarnessInput;
-  messagesRef: MessagesRef | null;
-  sandboxConfig: WorkItemSandbox | null;
-  orgSlug: string;
-}> {
-  return traced(
-    "decopilot.prepareLinkWorkDispatch",
-    async (_rootSpan) => {
-      const { taskId, runFenceToken, wireHarnessInput } = await prepareRun(
-        input,
-        ctx,
-        deps,
-        _rootSpan,
-      );
-      const failPreparedRun = async (message: string): Promise<never> => {
-        await deps.runRegistry.execute({
-          type: "FINISH",
-          taskId,
-          threadStatus: "failed",
-        });
-        throw new Error(message);
-      };
-
-      const effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
-      const messagesRef: MessagesRef | null = null;
-      const inputByteLength = Buffer.byteLength(
-        JSON.stringify(wireHarnessInput),
-        "utf8",
-      );
-      if (shouldOffload(inputByteLength)) {
-        await failPreparedRun(
-          "prepareLinkWorkDispatch: harnessInput exceeds the link payload " +
-            "limit and v3 userMessage offload is not implemented",
-        );
-      }
-
-      // Resolve the sandbox handle for the desktop work item.
-      // Pure derivation — no ensure round-trip. The daemon self-ensures
-      // the sandbox from `WorkItem.sandbox` when it dequeues the item
-      // (`dispatchLinkWorkItem`: `input.provider.ensureSandbox(ensureInput)`),
-      // so no cluster-side warm-ensure is needed (the push ensure helper was
-      // deleted with the push path). The handle formula is identical to what
-      // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
-      // Compute the sandbox config for the CLI work item. Only CLI harnesses
-      // on a user-desktop target reach `prepareLinkWorkDispatch`; decopilot is
-      // cluster-hosted and never gets here. `resolveLinkSandboxConfig` derives
-      // the repo/workload config the daemon needs to cold-spawn the sandbox.
-      let sandboxConfig: WorkItemSandbox | null = null;
-      if (input.target?.sandboxProviderKind === "user-desktop") {
-        try {
-          const branch = input.branch ?? "ephemeral";
-          const sandboxHandle = computeDesktopSandboxHandle({
-            agentId: input.agent.id,
-            // Sandbox identity, not the dispatcher: a thread-scoped branch keys
-            // by the thread's creator, the same resolution SANDBOX_START and the
-            // sandbox proxy use. Normally identical (only the owner can prompt);
-            // keeping it here means a run dispatched on someone else's behalf
-            // still targets that thread's one sandbox instead of a second,
-            // dispatcher-keyed handle the daemon would cold-spawn.
-            userId: await resolveSandboxUserId(ctx, branch, input.userId),
-            organizationId: input.organizationId,
-            branch,
-          });
-          sandboxConfig = await resolveLinkSandboxConfig(
-            input,
-            ctx,
-            sandboxHandle,
-          );
-        } catch (err) {
-          // Log but don't fail prepareLinkWorkDispatch — the daemon falls back to
-          // ensureSandbox({ handle }) for a running sandbox, and cold spawn
-          // will fail loudly on the daemon side if the config is missing.
-          console.warn(
-            `[prepareLinkWorkDispatch] failed to resolve sandbox config agent=${input.agent.id}:`,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
-      }
-
-      // The daemon is user-scoped and no longer carries a startup org, so the
-      // work item MUST carry the org slug for the ingest URL. Prefer the
-      // request-resolved org; fall back to a slug lookup by org id so it can
-      // never be missing (the daemon has no DB access to resolve it).
-      // ctx.organization is normally populated by the org-scoped route middleware
-      // (/api/:org/...); the DB lookup is only a safety net for internal callers
-      // that bypass that middleware (e.g. background automation).
-      let orgSlug = ctx.organization?.slug ?? null;
-      if (!orgSlug) {
-        const orgRow = await ctx.db
-          .selectFrom("organization")
-          .select("slug")
-          .where("id", "=", input.organizationId)
-          .executeTakeFirst();
-        orgSlug = orgRow?.slug ?? null;
-      }
-      const resolvedOrgSlug = orgSlug;
-      if (!resolvedOrgSlug) {
-        return await failPreparedRun(
-          `prepareLinkWorkDispatch: could not resolve org slug for organization ${input.organizationId}`,
-        );
-      }
-
-      return {
-        taskId,
-        runFenceToken,
-        harnessInput: effectiveHarnessInput,
-        messagesRef,
-        sandboxConfig,
-        orgSlug: resolvedOrgSlug,
-      };
-    },
-    dispatchRunSpanAttrs(input),
-  );
-}
-
-/**
- * Pure, synchronous handle derivation — no I/O, no ensure round-trip.
- *
- * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
- *   projectRef = composeSandboxRef({ orgId, virtualMcpId: agentId, branch })
- *   handle     = computeClaimHandle({ userId, projectRef }, branch)
- *
- * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
- * (set by `resolveLinkSandboxConfig`) and that the daemon derives via
- * `deriveHandle(item)`. Both sides agree by construction.
- *
- * Safe to call at dispatch-run sites where the daemon will self-ensure the
- * sandbox from the work item (`dispatchLinkWorkItem` calls
- * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure round-trip at
- * those sites is therefore redundant and is replaced by this pure call.
- *
- * Exported for unit tests.
- */
-export function computeDesktopSandboxHandle(input: {
-  agentId: string;
-  userId: string;
-  organizationId: string;
-  branch: string;
-}): string {
-  const projectRef = composeSandboxRef({
-    orgId: input.organizationId,
-    virtualMcpId: input.agentId,
-    branch: input.branch,
-  });
-  return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
 }
