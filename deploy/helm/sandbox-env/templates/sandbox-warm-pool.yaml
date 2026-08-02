@@ -17,20 +17,3 @@ spec:
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" . }}
 {{- end }}
-{{- if and .Values.goTemplate.enabled (gt (int .Values.goTemplate.warmPoolSize) 0) }}
----
-# Warm pods for the opt-in Go template. Independent of warmPool.* on purpose:
-# a Go canary wants 1–2 warm pods regardless of whether the env's default pool
-# is enabled, and turning the canary off must not resize the default pool.
-apiVersion: extensions.agents.x-k8s.io/v1alpha1
-kind: SandboxWarmPool
-metadata:
-  name: {{ include "sandbox-env.goSandboxName" . }}
-  namespace: agent-sandbox-system
-  labels:
-    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
-spec:
-  replicas: {{ .Values.goTemplate.warmPoolSize }}
-  sandboxTemplateRef:
-    name: {{ include "sandbox-env.goSandboxName" . }}
-{{- end }}

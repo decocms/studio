@@ -138,25 +138,7 @@ export interface EnsureOptions {
    * mount — that's the privileged-sidecar path). Absent → no mounting.
    */
   orgFsConfigJson?: string;
-  /**
-   * Which sandbox daemon binary the pod should run. Both ship in the image and
-   * the entrypoint picks one from `SANDBOX_DAEMON_IMPL` at *container start*, so
-   * this cannot be per-claim env: the operator rejects `spec.env` whenever the
-   * claim may bind a warm pod. `agent-sandbox` therefore honors it by choosing
-   * a per-impl SandboxTemplate (see
-   * `AgentSandboxProviderOptions.goSandboxTemplateName`), and falls back to
-   * `ts` when no Go template is configured. Other runners MUST ignore it.
-   *
-   * Absent → `ts`. The resolved value is persisted in the runner state blob so
-   * autonomous recovery rebuilds the pod on the same binary — a sandbox that
-   * silently changed implementation mid-life makes an incident unattributable.
-   */
-  daemonImpl?: SandboxDaemonImpl;
 }
-
-export const sandboxDaemonImplSchema = z.enum(["ts", "go"]);
-
-export type SandboxDaemonImpl = z.infer<typeof sandboxDaemonImplSchema>;
 
 export interface ProxyRequestInit {
   method: string;

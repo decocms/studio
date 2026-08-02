@@ -90,17 +90,6 @@ function readSandboxTemplateName(): string | undefined {
   return raw && raw.trim() !== "" ? raw : undefined;
 }
 
-// Name of the sandbox-env chart's `<name>-go` SandboxTemplate. Presence is the
-// GLOBAL KILL SWITCH for the Go daemon: unset, both the `go` default and
-// SANDBOX_START's `daemonImpl` prop are ignored, because there is no template to
-// point a claim at. Now that Go is the default, this is the fleet-wide rollback —
-// unsetting it routes every next sandbox back to TS with no rebuild; live
-// sandboxes drain on their own binary.
-function readGoSandboxTemplateName(): string | undefined {
-  const raw = process.env.STUDIO_SANDBOX_GO_TEMPLATE_NAME;
-  return raw && raw.trim() !== "" ? raw : undefined;
-}
-
 function readEnvName(): string | undefined {
   const raw = process.env.STUDIO_ENV;
   return raw && raw.trim() !== "" ? raw : undefined;
@@ -172,7 +161,6 @@ async function instantiate(
         stateStore,
         previewUrlPattern,
         sandboxTemplateName: readSandboxTemplateName(),
-        goSandboxTemplateName: readGoSandboxTemplateName(),
         envName: readEnvName(),
         previewGateway: readPreviewGateway(),
         sentinelToken: readSandboxSentinelToken(),

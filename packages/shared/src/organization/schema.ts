@@ -155,12 +155,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
     ),
-  sandbox_go_daemon: z
-    .boolean()
-    .optional()
-    .describe(
-      "Which sandbox daemon this org's new sandboxes run. Go is the default, so this is an OPT-OUT: set it to `false` to keep the org on the TypeScript daemon; unset (or `true`) means Go. Affects the NEXT sandbox only — live sandboxes drain on the binary they booted with. Ignored unless the deployment sets STUDIO_SANDBOX_GO_TEMPLATE_NAME (the global kill switch); SANDBOX_START's `daemonImpl` overrides it per sandbox in either direction.",
-    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
