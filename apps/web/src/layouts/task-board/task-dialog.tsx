@@ -81,11 +81,22 @@ import {
   enabledReviewers,
   reviewsSatisfiedForPromotion,
 } from "./review-status";
+import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
+import { authClient } from "@/lib/auth-client";
+import {
+  buildMentionables,
+  buildCommentThreads,
+  CommentThreadCard,
+  detectMentions,
+  NewCommentComposer,
+  type CommentAuthor,
+  type TaskComment,
+} from "./task-comments";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -123,6 +134,7 @@ export function TaskBoardItemDialog({
   onClose,
   item,
   defaultStatus,
+  tasks,
   onSubmit,
   onDelete,
   onOpenThread,
@@ -136,6 +148,8 @@ export function TaskBoardItemDialog({
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** The rest of the board, so a comment can `@`-mention another task. */
+  tasks?: TaskBoardItem[];
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -319,6 +333,7 @@ export function TaskBoardItemDialog({
                 <ActivitySection
                   item={item}
                   members={members}
+                  tasks={tasks ?? []}
                   startedBy={assignedBy ?? assignee}
                   onOpenThread={onOpenThread}
                 />
@@ -1242,28 +1257,58 @@ function LinksSection({
 }
 
 /**
- * Activity feed: the task's change timeline (created, moved, (re)assigned) and
- * its linked agent sessions, interleaved oldest-first. Consecutive timeline
- * events render as one run joined by a rail; a thread renders as a card.
+ * Activity feed: the task's change timeline (created, moved, (re)assigned), its
+ * linked agent sessions and its comment threads, interleaved oldest-first.
+ * Consecutive timeline events render as one run joined by a rail; a thread or a
+ * comment renders as a card. A composer at the bottom starts a new thread.
  */
 function ActivitySection({
   item,
   members,
+  tasks,
   startedBy,
   onOpenThread,
 }: {
   item: TaskBoardItem;
   members: Member[];
+  tasks: TaskBoardItem[];
   startedBy?: Member;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  const me: CommentAuthor = {
+    id: session?.user?.id ?? "me",
+    name: session?.user?.name ?? t("taskBoard.taskDialog.commentYouLabel"),
+    image: (session?.user as { image?: string | null } | undefined)?.image,
+  };
+  const superAgentLabel = t("taskBoard.taskDialog.superAgentLabel");
+  const mentionables = buildMentionables({
+    members,
+    tasks,
+    currentTaskId: item.id,
+    superAgentLabel,
+  });
+  const comments = useTaskBoardComments(item.id);
+  const threads = buildCommentThreads(comments.comments, {
+    authorFor: (userId) => {
+      const member = memberByUserId.get(userId);
+      return {
+        id: userId,
+        name: member?.user?.name ?? userId,
+        image: member?.user?.image,
+      };
+    },
+    superAgentLabel,
+  });
 
   type Ev =
     | { kind: "activity"; at: number; activity: TaskBoardActivity }
-    | { kind: "thread"; at: number; thread: TaskBoardItemThread };
+    | { kind: "thread"; at: number; thread: TaskBoardItemThread }
+    | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
     ...(activity ?? []).map(
       (a): Ev => ({
@@ -1279,18 +1324,28 @@ function ActivitySection({
         thread,
       }),
     ),
+    ...threads.map(
+      (comment): Ev => ({
+        kind: "comment",
+        at: new Date(comment.createdAt).getTime(),
+        comment,
+      }),
+    ),
   ].sort((a, b) => a.at - b.at);
-
-  if (events.length === 0) return null;
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
     | { type: "timeline"; items: TaskBoardActivity[] }
     | { type: "thread"; thread: TaskBoardItemThread }
+    | { type: "comment"; comment: TaskComment }
   )[] = [];
   for (const ev of events) {
     if (ev.kind === "thread") {
       blocks.push({ type: "thread", thread: ev.thread });
+      continue;
+    }
+    if (ev.kind === "comment") {
+      blocks.push({ type: "comment", comment: ev.comment });
       continue;
     }
     const last = blocks[blocks.length - 1];
@@ -1300,27 +1355,63 @@ function ActivitySection({
 
   return (
     <div className="flex flex-col gap-5 pb-2">
-      <span className="text-sm font-medium text-muted-foreground">
-        {t("taskBoard.taskDialog.activityLabel")}
-      </span>
-      {blocks.map((block, i) =>
-        block.type === "timeline" ? (
-          <TimelineBlock
-            // Blocks are positional runs of the same feed, so the index IS the
-            // identity here — there's no stabler key for a group.
-            key={`timeline-${i}`}
-            items={block.items}
-            memberByUserId={memberByUserId}
-          />
-        ) : (
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-foreground">
+          {t("taskBoard.taskDialog.activityLabel")}
+        </span>
+      </div>
+
+      {blocks.map((block, i) => {
+        if (block.type === "timeline") {
+          return (
+            <TimelineBlock
+              // Blocks are positional runs of the same feed, so the index IS
+              // the identity here — there's no stabler key for a group.
+              key={`timeline-${i}`}
+              items={block.items}
+              memberByUserId={memberByUserId}
+            />
+          );
+        }
+        if (block.type === "comment") {
+          return (
+            <CommentThreadCard
+              key={`comment-${block.comment.id}`}
+              thread={block.comment}
+              me={me}
+              mentionables={mentionables}
+              agentTyping={comments.typingThreadIds.includes(block.comment.id)}
+              onReply={(body) =>
+                comments.reply(
+                  block.comment.id,
+                  body,
+                  detectMentions(body, mentionables),
+                )
+              }
+              onDelete={(commentId) => comments.remove(commentId)}
+              onToggleResolved={() =>
+                comments.setResolved(block.comment.id, !block.comment.resolved)
+              }
+            />
+          );
+        }
+        return (
           <ThreadActivityItem
             key={`thread-${block.thread.threadId}`}
             thread={block.thread}
             startedBy={startedBy}
             onOpen={onOpenThread}
           />
-        ),
-      )}
+        );
+      })}
+
+      <NewCommentComposer
+        me={me}
+        mentionables={mentionables}
+        onSubmit={(body) =>
+          comments.post(body, detectMentions(body, mentionables))
+        }
+      />
     </div>
   );
 }

@@ -5,11 +5,13 @@
  * many-to-many link between a task and the agent threads run for it.
  */
 
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type {
   Database,
   TaskBoardActivity,
   TaskBoardActivityAction,
+  TaskBoardComment,
+  TaskBoardCommentMention,
   TaskBoardItem,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
@@ -18,6 +20,50 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+
+/** What `postAgentReplyForThread` found: the comment thread a Super Agent run
+ *  belongs to, and the reply it posted (null when the run answered nothing, or
+ *  the reply was already there). */
+export interface AgentReplyOutcome {
+  taskBoardItemId: string;
+  threadRootId: string;
+  comment: TaskBoardComment | null;
+}
+
+/** A comment row as the wire sees it. `mentions` arrives parsed from jsonb on
+ *  a read and as the string we wrote on an `INSERT ... RETURNING`. */
+function commentFromDbRow(row: {
+  id: string;
+  task_board_item_id: string;
+  parent_id: string | null;
+  author_id: string | null;
+  body: string;
+  mentions: unknown;
+  resolved: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}): TaskBoardComment {
+  const mentions =
+    typeof row.mentions === "string" ? JSON.parse(row.mentions) : row.mentions;
+  return {
+    id: row.id,
+    taskBoardItemId: row.task_board_item_id,
+    parentId: row.parent_id,
+    authorId: row.author_id,
+    body: row.body,
+    mentions: Array.isArray(mentions) ? mentions : [],
+    resolved: row.resolved,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : row.created_at,
+    updatedAt:
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : row.updated_at,
+  };
+}
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 function extractPartText(payload: unknown): string | null {
@@ -724,6 +770,452 @@ export class TaskBoardStorage {
           ? row.occurred_at.toISOString()
           : row.occurred_at,
     }));
+  }
+
+  // --------------------------------------------------------------------------
+  // Comments (the discussion threads in the task dialog's activity feed)
+  // --------------------------------------------------------------------------
+
+  /** A task's comments, oldest first. Flat — the read tool nests replies under
+   *  their root. Tenant-scoped through the task, the only side carrying an org. */
+  async listComments(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment[]> {
+    const rows = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("item.organization_id", "=", organizationId)
+      .where("c.task_board_item_id", "=", taskBoardItemId)
+      .orderBy("c.created_at", "asc")
+      .execute();
+    return rows.map((row) => commentFromDbRow(row));
+  }
+
+  async getComment(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("item.organization_id", "=", organizationId)
+      .where("c.id", "=", id)
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
+  }
+
+  /**
+   * Add a comment to a task. `parentId` must be a thread ROOT of the same task
+   * — replying to a reply is rejected, which is what keeps threads one level
+   * deep (a CHECK constraint can't see the grandparent). Throws when the task
+   * or the parent doesn't resolve inside `organizationId`.
+   */
+  async createComment(params: {
+    taskBoardItemId: string;
+    organizationId: string;
+    parentId?: string | null;
+    /** Null = the Super Agent wrote it. */
+    authorId: string | null;
+    body: string;
+    mentions?: TaskBoardCommentMention[];
+  }): Promise<TaskBoardComment> {
+    const item = await this.db
+      .selectFrom("task_board_items")
+      .select("id")
+      .where("id", "=", params.taskBoardItemId)
+      .where("organization_id", "=", params.organizationId)
+      .executeTakeFirst();
+    if (!item) throw new Error(`Task not found: ${params.taskBoardItemId}`);
+
+    if (params.parentId) {
+      const parent = await this.getComment(
+        params.parentId,
+        params.organizationId,
+      );
+      if (!parent || parent.taskBoardItemId !== params.taskBoardItemId) {
+        throw new Error(`Parent comment not found: ${params.parentId}`);
+      }
+      if (parent.parentId) {
+        throw new Error("Comments nest one level: reply to the thread instead");
+      }
+    }
+
+    const row = await this.db
+      .insertInto("task_board_comments")
+      .values({
+        id: generatePrefixedId("cmt"),
+        task_board_item_id: params.taskBoardItemId,
+        parent_id: params.parentId ?? null,
+        author_id: params.authorId,
+        body: params.body,
+        mentions: JSON.stringify(params.mentions ?? []),
+        agent_thread_id: null,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return commentFromDbRow(row);
+  }
+
+  /**
+   * Edit a comment's body and/or settle its thread. `resolved` applies to
+   * thread roots only — a reply has no resolved state of its own. Returns null
+   * when the comment isn't in the org.
+   */
+  async updateComment(
+    id: string,
+    organizationId: string,
+    patch: { body?: string; resolved?: boolean },
+  ): Promise<TaskBoardComment | null> {
+    const current = await this.getComment(id, organizationId);
+    if (!current) return null;
+    if (patch.resolved !== undefined && current.parentId) {
+      throw new Error("Only a thread root can be resolved");
+    }
+    const row = await this.db
+      .updateTable("task_board_comments")
+      .set({
+        ...(patch.body !== undefined ? { body: patch.body } : {}),
+        ...(patch.resolved !== undefined ? { resolved: patch.resolved } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return commentFromDbRow(row);
+  }
+
+  /** Delete a comment; its replies cascade. False when it isn't in the org. */
+  async deleteComment(id: string, organizationId: string): Promise<boolean> {
+    const current = await this.getComment(id, organizationId);
+    if (!current) return false;
+    await this.db
+      .deleteFrom("task_board_comments")
+      .where("id", "=", id)
+      .execute();
+    return true;
+  }
+
+  /** Remember which Super Agent run a comment's `@`-mention started, so the
+   *  run's answer can find its way back as a reply. */
+  async setCommentAgentThread(id: string, threadId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_comments")
+      .set({ agent_thread_id: threadId })
+      .where("id", "=", id)
+      .execute();
+  }
+
+  /**
+   * Human comments on a task written after `sinceIso` — the run's mid-flight
+   * view of what people said while it worked. The agent's own replies are
+   * excluded (they're already in its context) and so is every other agent's,
+   * since `author_id IS NULL` is the agent signature.
+   */
+  async listCommentsSince(
+    taskBoardItemId: string,
+    organizationId: string,
+    sinceIso: string,
+  ): Promise<
+    {
+      id: string;
+      threadRootId: string;
+      authorName: string;
+      body: string;
+      mentions: TaskBoardCommentMention[];
+      createdAt: string;
+    }[]
+  > {
+    const rows = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .leftJoin("user as u", "u.id", "c.author_id")
+      .select([
+        "c.id as id",
+        "c.parent_id as parentId",
+        "c.body as body",
+        "c.mentions as mentions",
+        "c.created_at as createdAt",
+        "u.name as authorName",
+      ])
+      .where("item.organization_id", "=", organizationId)
+      .where("c.task_board_item_id", "=", taskBoardItemId)
+      .where("c.author_id", "is not", null)
+      .where(sql<boolean>`c.created_at > ${sinceIso}::timestamptz`)
+      .orderBy("c.created_at", "asc")
+      .execute();
+
+    return rows.map((row) => {
+      const mentions =
+        typeof row.mentions === "string"
+          ? JSON.parse(row.mentions)
+          : row.mentions;
+      return {
+        id: row.id,
+        threadRootId: row.parentId ?? row.id,
+        authorName: row.authorName ?? "Someone",
+        body: row.body,
+        mentions: Array.isArray(mentions) ? mentions : [],
+        createdAt:
+          row.createdAt instanceof Date
+            ? row.createdAt.toISOString()
+            : (row.createdAt as unknown as string),
+      };
+    });
+  }
+
+  /**
+   * Human comments on a task the agent hasn't answered yet: everything written
+   * after its most recent reply (all of them, when it has never replied).
+   *
+   * A dispatched turn is prompted with this whole backlog, not just the comment
+   * that triggered it. Otherwise a comment with no mention is invisible forever —
+   * it starts no run of its own, and the mid-run feed only carries what arrives
+   * *while* a run is live. That's how "also what day is today?" got skipped, and
+   * why the agent then truthfully said it couldn't see it.
+   */
+  async unansweredCommentBacklog(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<
+    {
+      id: string;
+      authorName: string;
+      body: string;
+      mentions: TaskBoardCommentMention[];
+      createdAt: string;
+    }[]
+  > {
+    const lastReply = await this.db
+      .selectFrom("task_board_comments")
+      .select("created_at")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("author_id", "is", null)
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    const since =
+      lastReply?.created_at instanceof Date
+        ? lastReply.created_at.toISOString()
+        : ((lastReply?.created_at as string | undefined) ??
+          new Date(0).toISOString());
+
+    const rows = await this.listCommentsSince(
+      taskBoardItemId,
+      organizationId,
+      since,
+    );
+    return rows.map(({ threadRootId: _root, ...rest }) => rest);
+  }
+
+  /**
+   * Threads on a task where someone mentioned the Super Agent and it hasn't
+   * answered *since* that mention. "Answered" is an agent-authored comment
+   * (`author_id IS NULL`) in the same thread, newer than the mention — so a
+   * second mention in a thread the agent already replied to counts as
+   * unanswered again, which is what makes a back-and-forth work.
+   *
+   * This is also the run-end safety net's work list, and what makes that net
+   * idempotent: once a reply lands, the mention stops being unanswered, so a
+   * hook that fires twice posts once.
+   */
+  async unansweredMentionThreads(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<{ commentId: string; threadRootId: string }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .select(["c.id as id", "c.parent_id as parentId"])
+      .where("item.organization_id", "=", organizationId)
+      .where("c.task_board_item_id", "=", taskBoardItemId)
+      .where(
+        sql<boolean>`c.mentions @> ${JSON.stringify([
+          { kind: "user", id: SUPER_AGENT_ASSIGNEE_ID },
+        ])}::jsonb`,
+      )
+      // "No agent comment in this thread, newer than the mention."
+      .where(
+        sql<boolean>`not exists (
+          select 1 from task_board_comments r
+          where coalesce(r.parent_id, r.id) = coalesce(c.parent_id, c.id)
+            and r.author_id is null
+            and r.created_at > c.created_at
+        )`,
+      )
+      .orderBy("c.created_at", "asc")
+      .execute();
+
+    return rows.map((row) => ({
+      commentId: row.id,
+      threadRootId: row.parentId ?? row.id,
+    }));
+  }
+
+  /**
+   * The agent thread carrying this task's comment conversation, if it has one.
+   *
+   * One thread per task, reused for every mention: each new comment becomes a
+   * turn on it, so the agent keeps the history of what was already discussed and
+   * the thread gate (one run per thread) serializes turns for us. Any status
+   * qualifies — a completed thread is exactly what a follow-up turn continues,
+   * and keying on "still running" is what silently swallowed mentions before.
+   */
+  async commentConversationThread(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("threads as t", "t.id", "c.agent_thread_id")
+      .select("t.id as threadId")
+      .where("c.task_board_item_id", "=", taskBoardItemId)
+      .where("t.organization_id", "=", organizationId)
+      .orderBy("c.created_at", "desc")
+      .executeTakeFirst();
+    return row?.threadId ?? null;
+  }
+
+  /**
+   * A Super Agent run started by a comment mention has ended — the safety net.
+   * Posts `fallbackBody` (the run's last assistant message) once into every
+   * thread on that task still carrying an unanswered mention, so an ignored
+   * mention never goes unanswered. Threads the agent already answered with
+   * `reply_comment` are skipped, and nothing is posted when it answered
+   * everything.
+   *
+   * Returns null when this run wasn't started from a comment. `threadRootIds`
+   * covers every thread the run is accountable for (the originating one plus
+   * any it was asked about mid-run), so the caller can clear each thread's
+   * "typing…" indicator even where it posted nothing.
+   */
+  async finishCommentRun(
+    threadId: string,
+    organizationId: string,
+    opts?: { postFallback?: boolean },
+  ): Promise<{
+    taskBoardItemId: string;
+    threadRootIds: string[];
+    posted: TaskBoardComment[];
+  } | null> {
+    const origin = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .select(["c.id as id", "c.task_board_item_id as taskId", "c.parent_id"])
+      .where("item.organization_id", "=", organizationId)
+      .where("c.agent_thread_id", "=", threadId)
+      .orderBy("c.created_at", "asc")
+      .executeTakeFirst();
+    if (!origin) return null;
+
+    const taskBoardItemId = origin.taskId;
+    const unanswered = await this.unansweredMentionThreads(
+      taskBoardItemId,
+      organizationId,
+    );
+    const threadRootIds = [
+      ...new Set([
+        origin.parent_id ?? origin.id,
+        ...unanswered.map((m) => m.threadRootId),
+      ]),
+    ];
+
+    // A run parked on `user_ask` is waiting for a person, not done answering —
+    // clear the indicator but don't put words in its mouth.
+    if (opts?.postFallback === false) {
+      return { taskBoardItemId, threadRootIds, posted: [] };
+    }
+
+    const fallbackBody = await this.lastAssistantText(threadId);
+    if (!fallbackBody) return { taskBoardItemId, threadRootIds, posted: [] };
+
+    // One reply per still-unanswered thread, not per mention — two mentions in
+    // the same thread earn one answer.
+    const posted: TaskBoardComment[] = [];
+    for (const rootId of new Set(unanswered.map((m) => m.threadRootId))) {
+      const comment = await this.insertAgentReply({
+        threadId,
+        taskBoardItemId,
+        threadRootId: rootId,
+        body: fallbackBody,
+      });
+      if (comment) posted.push(comment);
+    }
+    return { taskBoardItemId, threadRootIds, posted };
+  }
+
+  /**
+   * The `reply_comment` built-in: the Super Agent answers a comment on the task
+   * it is working on, by id. Returns null when the comment isn't in the org or
+   * belongs to a different task than the run — the tool binds `taskBoardItemId`
+   * from the run, so a model-supplied id can't reach another task's thread.
+   */
+  async replyToCommentAsAgent(params: {
+    threadId: string;
+    organizationId: string;
+    taskBoardItemId: string;
+    commentId: string;
+    body: string;
+  }): Promise<AgentReplyOutcome | null> {
+    const target = await this.getComment(
+      params.commentId,
+      params.organizationId,
+    );
+    if (!target || target.taskBoardItemId !== params.taskBoardItemId) {
+      return null;
+    }
+    const threadRootId = target.parentId ?? target.id;
+    const comment = await this.insertAgentReply({
+      threadId: params.threadId,
+      taskBoardItemId: target.taskBoardItemId,
+      threadRootId,
+      body: params.body,
+    });
+    return {
+      taskBoardItemId: target.taskBoardItemId,
+      threadRootId,
+      comment,
+    };
+  }
+
+  /** Latest assistant text part of a thread (v2 stream-of-record). */
+  private async lastAssistantText(threadId: string): Promise<string | null> {
+    const last = await this.db
+      .selectFrom("thread_message_parts")
+      .select("payload")
+      .where("thread_id", "=", threadId)
+      .where("role", "=", "assistant")
+      .where("kind", "=", "text")
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+    return extractPartText(last?.payload);
+  }
+
+  /** Write one Super Agent reply into a comment thread. */
+  private async insertAgentReply(params: {
+    threadId: string;
+    taskBoardItemId: string;
+    threadRootId: string;
+    body: string;
+  }): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .insertInto("task_board_comments")
+      .values({
+        id: generatePrefixedId("cmt"),
+        task_board_item_id: params.taskBoardItemId,
+        parent_id: params.threadRootId,
+        author_id: null,
+        body: params.body,
+        mentions: "[]",
+        agent_thread_id: params.threadId,
+      })
+      .returningAll()
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
   }
 
   private itemFromDbRow(row: {

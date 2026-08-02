@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+
+export { SUPER_AGENT_ASSIGNEE_ID };
 
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
@@ -126,6 +128,34 @@ export type TaskBoardActivityAction =
   (typeof TASK_BOARD_ACTIVITY_ACTIONS)[number];
 
 const TaskBoardActivityActionSchema = z.enum(TASK_BOARD_ACTIVITY_ACTIONS);
+
+/** An `@` target inside a comment body, resolved by the client that wrote it —
+ *  a mention renders as a display label, and labels collide, so the ids come
+ *  from the composer rather than from parsing the prose. */
+export const TaskBoardCommentMentionSchema = z.object({
+  kind: z.enum(["user", "task"]),
+  id: z
+    .string()
+    .describe(
+      `A member's userId, "${SUPER_AGENT_ASSIGNEE_ID}", or another task's id`,
+    ),
+});
+
+/** A comment on a task. Flat: `parentId` null marks a thread root, and replies
+ *  point at one (one level only). The board nests them for rendering. */
+export const TaskBoardCommentSchema = z.object({
+  id: z.string(),
+  taskBoardItemId: z.string(),
+  parentId: z.string().nullable(),
+  /** Null when the Super Agent wrote it, or the account was deleted. */
+  authorId: z.string().nullable(),
+  body: z.string(),
+  mentions: z.array(TaskBoardCommentMentionSchema),
+  /** Thread roots only — a thread is settled or open as a whole. */
+  resolved: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
 
 /** One entry in a task's change timeline — who did what, when. */
 export const TaskBoardActivitySchema = z.object({

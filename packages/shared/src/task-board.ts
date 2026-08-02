@@ -127,3 +127,19 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
  * cache, so a delete on one client clears the card on every open board.
  */
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
+
+/**
+ * Org-scoped SSE event pushed on `sseHub` whenever a comment is added to a
+ * task — by a member or by the Super Agent answering a mention. Its `data` is
+ * the comment, so the task dialog appends it live instead of polling.
+ */
+export const TASK_BOARD_COMMENT_CREATED_EVENT = "task-board.comment.created";
+
+/**
+ * Org-scoped SSE event pushed on `sseHub` while the Super Agent works on a
+ * comment that mentioned it: `{ taskBoardItemId, threadRootId, typing }`.
+ * `typing: true` on dispatch, `false` when its run ends — including when the
+ * run produced no answer, so the indicator can't hang.
+ */
+export const TASK_BOARD_COMMENT_AGENT_TYPING_EVENT =
+  "task-board.comment.agent-typing";

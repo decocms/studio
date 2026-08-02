@@ -167,6 +167,9 @@ const ALLOWLIST_EXEMPT_BUILTINS = new Set<string>([
   "open_in_agent",
   "todo_write",
   "update_interests",
+  // Only registered on a run started by a task comment, and it's how that run
+  // delivers its answer — scoping it away would leave the comment unanswered.
+  "reply_comment",
 ]);
 
 /**
