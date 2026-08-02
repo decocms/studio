@@ -752,6 +752,8 @@ mod tests {
 
     const CRASH_FIXTURE_PHASE: &str = "DECOCMS_PTY_WATCHDOG_CRASH_PHASE";
     const CRASH_FIXTURE_ROOT: &str = "DECOCMS_PTY_WATCHDOG_CRASH_ROOT";
+    // Fork pressure can stretch the watcher's 100 bounded registration rounds.
+    const CRASH_FIXTURE_FENCE_TIMEOUT: Duration = Duration::from_secs(30);
 
     struct KillOnDrop(Option<std::process::Child>);
 
@@ -976,7 +978,7 @@ while :; do /bin/sleep 1; done
                 .then(|| read_pid(&root.join("descendant.pid")));
             owner.kill_and_wait();
 
-            let fence_deadline = Instant::now() + Duration::from_secs(8);
+            let fence_deadline = Instant::now() + CRASH_FIXTURE_FENCE_TIMEOUT;
             loop {
                 match contender.try_lock() {
                     Ok(()) => break,
