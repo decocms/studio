@@ -132,7 +132,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  type ImperativePanelHandle,
+  type PanelImperativeHandle,
 } from "@/components/resizable";
 import {
   shouldAutoOpenCms,
@@ -255,7 +255,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     number | null
   >(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
-  const blocksPanelRef = useRef<ImperativePanelHandle>(null);
+  const blocksPanelRef = useRef<PanelImperativeHandle>(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -751,7 +751,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const activateEditingMode = (mode: PreviewEditingMode) => {
     const previousMode = editingMode;
     if (!isMobile && mode !== previousMode) {
-      if (mode === "blocks") blocksPanelRef.current?.resize(30);
+      if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
     setEditingMode(mode);
@@ -1542,15 +1542,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {floatingPreviewControls}
           </div>
         ) : (
-          <ResizablePanelGroup direction="horizontal">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            disabled={effectiveEditingMode !== "blocks"}
+          >
             <ResizablePanel
               ref={blocksPanelRef}
               id="preview-blocks-editor"
-              order={1}
-              defaultSize={effectiveEditingMode === "blocks" ? 30 : 0}
-              minSize={20}
+              defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
+              minSize="20%"
               collapsible
-              collapsedSize={0}
+              collapsedSize="0%"
               className="min-w-0 overflow-hidden"
             >
               {effectiveEditingMode === "blocks" && (
@@ -1560,15 +1562,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 />
               )}
             </ResizablePanel>
-            <ResizableHandle
-              withHandle
-              className={cn(effectiveEditingMode !== "blocks" && "hidden")}
-            />
+            {effectiveEditingMode === "blocks" && (
+              <ResizableHandle withHandle />
+            )}
             <ResizablePanel
               id="preview-canvas"
-              order={2}
-              defaultSize={effectiveEditingMode === "blocks" ? 60 : 100}
-              minSize={35}
+              defaultSize={effectiveEditingMode === "blocks" ? "70%" : "100%"}
+              minSize="35%"
               className="min-w-0 overflow-hidden"
             >
               <div
