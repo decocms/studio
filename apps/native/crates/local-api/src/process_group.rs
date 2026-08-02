@@ -31,9 +31,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
-#[cfg(unix)]
-use tokio::process::ChildStdin;
-use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 use crate::tasks::KillSignal;
 
@@ -237,6 +235,10 @@ impl ProcessGroupChild {
 
     pub(crate) fn take_stdout(&mut self) -> Option<ChildStdout> {
         self.child.stdout.take()
+    }
+
+    pub(crate) fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
     }
 
     pub(crate) fn take_stderr(&mut self) -> Option<ChildStderr> {

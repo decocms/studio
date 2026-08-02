@@ -469,7 +469,10 @@ manual rename always wins.
 Checkpoint the provider session ID as soon as a structured hook reports it.
 On app restart, mark old physical sessions interrupted. Reopening a locked
 thread creates a new PTY using the provider resume ID; it never replays old
-input. No persisted PID is trusted after restart.
+input. An interrupted launch that has not checkpointed a replacement retries
+the last confirmed provider session. Only an exact, identity-bearing provider
+rejection creates a durable fresh-start barrier. No persisted PID is trusted
+after restart.
 
 ## Persistence and migration
 
@@ -491,6 +494,7 @@ physical_state
 logical_state
 revision
 blocks_prior_provider_resume
+rejected_provider_session_id
 started_at
 ended_at
 exit_code

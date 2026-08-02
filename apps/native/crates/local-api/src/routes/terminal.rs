@@ -792,30 +792,19 @@ impl SessionSpawnOwner {
                     return Err(terminal_error(error));
                 }
             };
-            let resume_marker_error = if provider_session_id.is_some() {
-                match db.rt_mark_terminal_resume_attempted_fenced(&fence, &terminal_session_id) {
-                    Ok(true) => None,
-                    Ok(false) => Some("terminal resume attempt is no longer available".to_string()),
-                    Err(error) => Some(error.to_string()),
-                }
+            let recover_fresh = if may_recover_missing_claude_resume {
+                probe_missing_claude_resume(
+                    db,
+                    &fence,
+                    &terminal_session_id,
+                    provider_session_id.as_deref().unwrap_or_default(),
+                    &started.session,
+                    &mut lifecycle,
+                )
+                .await
             } else {
-                None
+                false
             };
-
-            let recover_fresh =
-                if resume_marker_error.is_none() && may_recover_missing_claude_resume {
-                    probe_missing_claude_resume(
-                        db,
-                        &fence,
-                        &terminal_session_id,
-                        provider_session_id.as_deref().unwrap_or_default(),
-                        &started.session,
-                        &mut lifecycle,
-                    )
-                    .await
-                } else {
-                    false
-                };
             if recover_fresh {
                 state.agent_sessions.unregister_hook(&terminal_session_id);
                 drop(hook);
@@ -876,7 +865,7 @@ impl SessionSpawnOwner {
                 hook,
             );
             let account_error = require_current_account(&fence).await.err();
-            let pin_error = resume_marker_error.or(account_error).or_else(|| {
+            let pin_error = account_error.or_else(|| {
                 match db
                     .rt_pin_harness_if_unset_fenced(
                         &fence,
@@ -977,15 +966,36 @@ async fn probe_missing_claude_resume(
                 {
                     return false;
                 }
-                if row.provider_session_id.is_some() || !row.blocks_prior_provider_resume {
+                if row.provider_session_id.is_some() {
                     return false;
                 }
+                if row.blocks_prior_provider_resume {
+                    return row.rejected_provider_session_id.as_deref()
+                        == Some(expected_provider_session_id);
+                }
                 let replay = session.replay_from(0);
-                return is_missing_claude_resume_exit(
+                if !is_missing_claude_resume_exit(
                     &exit,
                     &replay,
                     expected_provider_session_id,
-                );
+                ) {
+                    return false;
+                }
+                match db.rt_confirm_terminal_resume_rejected_fenced(
+                    fence,
+                    terminal_session_id,
+                    expected_provider_session_id,
+                ) {
+                    Ok(confirmed) => return confirmed,
+                    Err(error) => {
+                        tracing::warn!(
+                            %error,
+                            terminal_session_id,
+                            "could not persist rejected Claude resume checkpoint"
+                        );
+                        return false;
+                    }
+                }
             }
             notification = lifecycle.recv() => {
                 match notification {
@@ -1120,6 +1130,10 @@ async fn acquire_spawn_fences(
     require_current_account(fence)
         .await
         .map_err(SpawnFenceError::Account)?;
+    let account = launch
+        .establish_managed_codex_hook_trust(state, &fence.account_scope, account)
+        .await
+        .map_err(|error| SpawnFenceError::WorkspaceTrust(error.to_string()))?;
 
     if claude_state.is_none() {
         return Ok(SpawnFences {
