@@ -1,6 +1,4 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
-import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import {
   getHarnessFactory,
   registerHarnessFactory,
@@ -14,20 +12,27 @@ describe("harness registration", () => {
   // the module-load side-effect registrations done by `./index`.
   beforeAll(() => {
     registerHarnessFactory(decopilotHarnessFactory);
-    registerHarnessFactory(claudeCodeHarnessFactory);
-    registerHarnessFactory(codexHarnessFactory);
   });
 
   test("decopilot is registered", () => {
     expect(getHarnessFactory("decopilot")?.id).toBe("decopilot");
   });
 
-  test("claude-code is registered", () => {
-    expect(getHarnessFactory("claude-code")?.id).toBe("claude-code");
-  });
+  // Inverted from "claude-code/codex are registered". The gate
+  // (`assertHarnessRunsInCluster`) throws for both before any lookup, so a
+  // registration here would be unreachable. Registering one again without
+  // giving it a cluster host should fail this test, not pass silently.
+  test.each(["claude-code", "codex"] as const)(
+    "CLI harness %s is NOT registered in the cluster",
+    (id) => {
+      expect(getHarnessFactory(id)).toBeUndefined();
+    },
+  );
 
-  test("codex is registered", () => {
-    expect(getHarnessFactory("codex")?.id).toBe("codex");
+  test("cluster harness barrel does not import the CLI harness factories", async () => {
+    const source = await Bun.file("apps/api/src/harnesses/index.ts").text();
+    expect(source).not.toContain("claudeCodeHarnessFactory");
+    expect(source).not.toContain("codexHarnessFactory");
   });
 
   test("cluster harness registration does not register desktop Decopilot builder", async () => {
