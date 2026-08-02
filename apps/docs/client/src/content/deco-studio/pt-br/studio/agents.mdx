@@ -70,24 +70,14 @@ Quando o agent está rodando com um runtime local de code-editor, os botões **O
 
 ## Onde um agent roda
 
-Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *onde* o agent executa e *qual harness* o conduz. Há dois grupos:
-
-**Cloud**
+Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *qual harness* conduz o agent.
 
 - **Decopilot** — _"Roda em um agent sandbox."_ O agent executa em um sandbox gerenciado pelo Studio. Este é o padrão, sempre disponível, sem nada para instalar.
 
-**Local** — rode o agent na sua própria máquina. Até que um runtime local seja conectado, essas opções exibem **"Desktop not detected"** e ficam desabilitadas.
-
-- **Decopilot** — o harness do Decopilot, rodando no seu desktop
-- **Claude Code** — conduz o agent com o CLI do [Claude Code](https://claude.com/claude-code)
-- **Codex** — conduz o agent com o CLI do Codex
-
-Rodar localmente significa que o sandbox do agent vive na sua máquina: ele pode ler e escrever seus arquivos locais, usar suas ferramentas instaladas e rodar com suas próprias credenciais — enquanto o Studio continua tratando o chat, as connections e o logging. O cloud sandbox, por outro lado, é totalmente gerenciado e isolado por agent.
-
-Para habilitar as opções locais, conecte um runtime de desktop com `deco link`. O Studio detecta a connection e acende quaisquer harnesses que ela expõe — **Claude Code** e **Codex** aparecem assim que seu CLI estiver disponível na máquina vinculada.
+O sandbox do agent é totalmente gerenciado e isolado por agent — o Studio trata o chat, as connections, o logging e o próprio runtime, então não há nada para instalar ou conectar na sua máquina.
 
 <Callout type="tip">
-  Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra a um runtime local quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code ou Codex.
+  O sandbox gerenciado é o padrão certo para toda execução, supervisionada ou não — colegas de time nunca precisam de uma configuração local para usar um agent.
 </Callout>
 
 ## Um agent é um MCP virtual

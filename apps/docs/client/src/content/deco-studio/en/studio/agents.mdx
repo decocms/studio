@@ -70,29 +70,15 @@ When the agent is running with a local code-editor runtime, **Open in VSCode** a
 
 ## Where an agent runs
 
-Above the chat input, next to the model picker, is the **runtime picker**. It controls *where* the agent executes and *which harness* drives it. There are two groups:
-
-**Cloud**
+Above the chat input, next to the model picker, is the **runtime picker**. It controls *which harness* drives the agent.
 
 - **Decopilot** — _"Runs in an agent sandbox."_ The agent executes in a sandbox managed by Studio. This is the default, always available, with nothing to install.
 
-**Local** — run the agent on your own machine. Until a local runtime is connected, these options read **"Desktop not detected"** and stay disabled.
-
-- **Decopilot** — the Decopilot harness, running on your desktop
-- **Claude Code** — drives the agent with the [Claude Code](https://claude.com/claude-code) CLI
-- **Codex** — drives the agent with the Codex CLI
-
-Running locally means the agent's sandbox lives on your machine: it can read and write your local files, use your installed tooling, and run with your own credentials — while Studio still handles the chat, connections, and logging. The cloud sandbox, by contrast, is fully managed and isolated per agent.
-
-To enable the local options, connect a desktop runtime with `deco link`. Studio detects the connection and lights up whichever harnesses it exposes — **Claude Code** and **Codex** appear once their CLI is available on the linked machine.
+The agent's sandbox is fully managed and isolated per agent — Studio handles the chat, connections, logging, and the runtime itself, so there is nothing to install or connect on your own machine.
 
 <Callout type="tip">
-  Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for a local runtime when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code or Codex.
+  The managed sandbox is the right default for every run, attended or unattended — teammates never need a local setup to use an agent.
 </Callout>
-
-## Windows
-
-The daemon runs natively on Windows with one prerequisite: **[Git for Windows](https://gitforwindows.org)** — it provides both `git` and the bash shell used to run your project's dev scripts. If the daemon reports "POSIX shell (sh) not found", install Git for Windows or set the `DECO_SHELL` environment variable to a bash-compatible shell. WSL2 remains a fully supported alternative. Org file mounts are not yet available on Windows.
 
 ## An agent is a virtual MCP
 
