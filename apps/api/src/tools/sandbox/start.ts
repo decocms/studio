@@ -18,8 +18,6 @@ import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
   normalizeSandboxProviderKind,
-  sandboxDaemonImplSchema,
-  type SandboxDaemonImpl,
   type SandboxProvider,
   type SandboxProviderKind,
   type Workload,
@@ -58,7 +56,6 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { resolveDaemonImpl } from "../../sandbox/resolve-daemon-impl";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
@@ -115,11 +112,6 @@ export const SANDBOX_START = defineTool({
       .optional()
       .describe(
         "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
-      ),
-    daemonImpl: sandboxDaemonImplSchema
-      .optional()
-      .describe(
-        "Target this one sandbox at a specific sandbox daemon implementation, overriding both the `go` default and the org's `sandbox_go_daemon` opt-out. Only honored on `agent-sandbox`, and only when the deployment configures a Go SandboxTemplate; otherwise the sandbox lands on `ts`. Applies to a sandbox being created — an existing sandbox keeps the binary it booted with.",
       ),
   }),
   outputSchema: z.object({
@@ -210,7 +202,6 @@ export const SANDBOX_START = defineTool({
       existing,
       providerKind,
       runner,
-      daemonImpl: input.daemonImpl,
     });
     return {
       ...entry,
@@ -343,9 +334,6 @@ type StartParams = {
   existing: SandboxRecord | null;
   providerKind: SandboxProviderKind;
   runner: SandboxProvider;
-  /** `SANDBOX_START`'s explicit daemon-impl override, when the caller passed
-   *  one. Absent on the `ensureSandbox` path, which falls back to the org flag. */
-  daemonImpl?: SandboxDaemonImpl;
 };
 
 async function provisionSandbox(
@@ -566,22 +554,6 @@ async function provisionSandbox(
     }
   }
 
-  // Go-daemon gate. Only the hosted runner can honor it (the desktop daemon is
-  // the TS bundle the link spawns), so skip the settings read entirely
-  // elsewhere. `resolveDaemonImpl` applies prop → org opt-out → `go`; the
-  // runner then collapses `go` back to `ts` when no Go SandboxTemplate is
-  // configured, and persists whichever one the claim actually got.
-  const daemonImpl =
-    runner.kind === "agent-sandbox"
-      ? resolveDaemonImpl({
-          explicit: params.daemonImpl,
-          flags: params.daemonImpl
-            ? null
-            : ((await ctx.storage.organizationSettings.get(orgId))?.flags ??
-              null),
-        })
-      : undefined;
-
   const sandbox = await runner.ensure(
     { userId: sandboxUserId, projectRef },
     {
@@ -610,7 +582,6 @@ async function provisionSandbox(
           }
         : {}),
       ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
-      ...(daemonImpl ? { daemonImpl } : {}),
     },
   );
 

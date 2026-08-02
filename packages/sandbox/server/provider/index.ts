@@ -14,7 +14,6 @@ export type {
   EnsureOptions,
   LegacySandboxProviderKind,
   ProxyRequestInit,
-  SandboxDaemonImpl,
   SandboxProviderKind,
   Sandbox,
   SandboxId,
@@ -24,7 +23,6 @@ export type {
 export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";
 export {
   normalizeSandboxProviderKind,
-  sandboxDaemonImplSchema,
   sandboxIdKey,
   sandboxProviderKindSchema,
 } from "./types";

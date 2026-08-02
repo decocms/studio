@@ -59,7 +59,6 @@ import type {
   EnsureOptions,
   ProxyRequestInit,
   Sandbox,
-  SandboxDaemonImpl,
   SandboxId,
   SandboxProvider,
   Workload,
@@ -278,17 +277,6 @@ interface K8sRecord {
    * that case so the caller's normal SANDBOX_START flow can repopulate them.
    */
   ensureOpts: EnsureOptions | null;
-  /**
-   * Which daemon binary this sandbox's pod is actually running — the metric
-   * dimension the Go rollout is compared on. Distinct from
-   * `ensureOpts.daemonImpl` (what the caller *asked* for, which the kill
-   * switch can collapse) and resolvable on paths that have no `ensureOpts` at
-   * all: adopt recovers it from the claim label, which is the cluster-side
-   * source of truth. Null only when neither is available — reported as an
-   * empty attribute rather than defaulting to `ts`, so a Go sandbox can never
-   * be silently counted as a TS one.
-   */
-  daemonImpl: SandboxDaemonImpl | null;
 }
 
 interface PersistedK8sState {
@@ -320,18 +308,6 @@ export interface AgentSandboxProviderOptions {
   namespace?: string;
   /** SandboxTemplate all claims reference. */
   sandboxTemplateName?: string;
-  /**
-   * SandboxTemplate for claims that asked for `daemonImpl: "go"` — the chart's
-   * opt-in `<name>-go` twin, identical except `SANDBOX_DAEMON_IMPL=go`.
-   *
-   * This is the **global kill switch**: leave it unset and `daemonImpl` is
-   * ignored everywhere, because there is nothing to point a claim at. That is
-   * also why the choice can't be per-claim env — the operator rejects
-   * `spec.env` whenever the claim may bind a warm pod, and the entrypoint
-   * reads `SANDBOX_DAEMON_IMPL` at container start, before Studio can talk to
-   * the daemon at all.
-   */
-  goSandboxTemplateName?: string;
   /**
    * Shared sentinel token baked into the SandboxTemplate's pod env (via the
    * sandbox-env helm chart's Secret). Presence flips the runner into
@@ -435,8 +411,6 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
-  /** See {@link AgentSandboxProviderOptions.goSandboxTemplateName}. */
-  private readonly goSandboxTemplateName: string | null;
   private readonly envName: string | null;
   private readonly tokenGenerator: () => string;
   private readonly idleTtlMs: number;
@@ -476,9 +450,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.namespace = opts.namespace ?? DEFAULT_NAMESPACE;
     this.sandboxTemplateName =
       opts.sandboxTemplateName ?? DEFAULT_TEMPLATE_NAME;
-    const trimmedGoTemplate = opts.goSandboxTemplateName?.trim() ?? "";
-    this.goSandboxTemplateName =
-      trimmedGoTemplate.length > 0 ? trimmedGoTemplate : null;
     this.envName = normalizeEnvName(opts.envName);
     this.tokenGenerator =
       opts.tokenGenerator ??
@@ -551,7 +522,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // Decrement only when we actually held the record — getRecord can be
       // null after restart-without-state-store, in which case the gauge
       // was never incremented for this handle in this process.
-      this.metrics?.active.add(-1, tenantAttrs(rec.tenant, rec.daemonImpl));
+      this.metrics?.active.add(-1, tenantAttrs(rec.tenant));
     }
     // Drop the HTTPRoute first so traffic stops resolving immediately —
     // the operator's claim teardown can take a few seconds, and we don't
@@ -1126,7 +1097,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
     }
     if (this.metrics) {
-      const attrs = tenantAttrs(rec.tenant, rec.daemonImpl);
+      const attrs = tenantAttrs(rec.tenant);
       this.metrics.ensureOutcome.add(1, { ...attrs, outcome });
       // Only increment the active gauge on first observation to avoid
       // double-counting when the same handle is rehydrated multiple times
@@ -1181,16 +1152,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Carried on both the claim and the pod; empty → block omitted entirely.
     const annotations = buildTenantAnnotations(opts);
     const hasAnnotations = Object.keys(annotations).length > 0;
-    const { impl, templateName } = resolveClaimTemplate(
-      opts.daemonImpl,
-      this.sandboxTemplateName,
-      this.goSandboxTemplateName,
-    );
-    if (opts.daemonImpl === "go" && impl !== "go") {
-      console.warn(
-        `[${LOG_LABEL}] daemonImpl=go requested for ${handle} but no Go SandboxTemplate is configured (STUDIO_SANDBOX_GO_TEMPLATE_NAME); landing on ts`,
-      );
-    }
     return {
       apiVersion: `${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}`,
       kind: "SandboxClaim",
@@ -1203,14 +1164,13 @@ export class AgentSandboxProvider implements SandboxProvider {
         labels: {
           "app.kubernetes.io/name": "studio-sandbox",
           "app.kubernetes.io/managed-by": "studio",
-          [LABEL_KEYS.daemonImpl]: impl,
           ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           ...buildTenantLabels(opts.tenant),
         },
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: templateName },
+        sandboxTemplateRef: { name: this.sandboxTemplateName },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`
@@ -1220,11 +1180,6 @@ export class AgentSandboxProvider implements SandboxProvider {
           labels: buildTenantLabels(opts.tenant, {
             [LABEL_KEYS.role]: "claimed",
             [LABEL_KEYS.sandboxHandle]: handle,
-            // Every panel that splits the Go canary from the TS fleet joins on
-            // this. Must NOT also be set in the SandboxTemplate's podTemplate:
-            // the operator rejects a claim whose additionalPodMetadata repeats a
-            // template label key, even with the same value.
-            [LABEL_KEYS.daemonImpl]: impl,
             ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           }),
           ...(hasAnnotations ? { annotations } : {}),
@@ -1247,17 +1202,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
-    // The impl the claim actually gets — `go` collapses back to `ts` here when
-    // the kill switch is off. Resolved once and reused for the record, its
-    // persisted opts, and the claim itself (buildClaim re-derives it from the
-    // same pure function on the same inputs), so the metric attribute can
-    // never disagree with the pod that ran.
-    const { impl: resolvedImpl } = resolveClaimTemplate(
-      opts.daemonImpl,
-      this.sandboxTemplateName,
-      this.goSandboxTemplateName,
-    );
-
     const claim = this.buildClaim(handle, opts, {
       token,
       daemonBootId,
@@ -1399,11 +1343,10 @@ export class AgentSandboxProvider implements SandboxProvider {
       workload: opts.workload ?? null,
       daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
-      daemonImpl: resolvedImpl,
       // Persist the impl the claim actually got, not the one asked for: with the
       // kill switch off a `go` request lands on ts, and recovery must replay
       // what ran. Same pure call buildClaim made above.
-      ensureOpts: stripEnsureOpts({ ...opts, daemonImpl: resolvedImpl }),
+      ensureOpts: stripEnsureOpts(opts),
     };
   }
 
@@ -1839,7 +1782,6 @@ export class AgentSandboxProvider implements SandboxProvider {
       ensureOpts: state.ensureOpts ?? null,
       // Rows written before the rollout gate existed have no persisted impl;
       // they are TS sandboxes by construction, but say null rather than guess.
-      daemonImpl: state.ensureOpts?.daemonImpl ?? null,
     };
   }
 
@@ -1919,7 +1861,6 @@ export class AgentSandboxProvider implements SandboxProvider {
       // studio stamped at provision time. Without this, every adopted sandbox
       // would drop out of the impl split during exactly the incident (studio
       // restarted, state-store empty) you'd be reading the dashboard for.
-      daemonImpl: readClaimDaemonImpl(claim),
     };
   }
 
@@ -2028,7 +1969,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   ): void {
     if (!this.metrics) return;
     this.metrics.proxyDurationMs.record(durationMs, {
-      ...tenantAttrs(rec?.tenant ?? null, rec?.daemonImpl ?? null),
+      ...tenantAttrs(rec?.tenant ?? null),
       source,
       sandbox_handle: rec?.handle ?? fallbackHandle ?? "",
       status_code: statusCode || 0,
@@ -2313,29 +2254,7 @@ const LABEL_KEYS = {
   orgId: "studio.decocms.com/org-id",
   userId: "studio.decocms.com/user-id",
   env: "studio.decocms.com/env",
-  daemonImpl: "studio.decocms.com/daemon-impl",
 } as const;
-
-/**
- * Which SandboxTemplate a claim gets, and therefore which daemon binary its
- * pod's entrypoint execs. Pure so the rollout gate is testable without a
- * cluster: it is the one place `go` can collapse back to `ts`.
- *
- * `goTemplateName === null` (i.e. `STUDIO_SANDBOX_GO_TEMPLATE_NAME` unset) is
- * the global kill switch — pointing a claim at a template that doesn't exist
- * fails provisioning outright, so an unconfigured deploy must ignore the
- * request rather than honor it.
- */
-export function resolveClaimTemplate(
-  requested: SandboxDaemonImpl | undefined,
-  tsTemplateName: string,
-  goTemplateName: string | null,
-): { impl: SandboxDaemonImpl; templateName: string } {
-  if (requested === "go" && goTemplateName) {
-    return { impl: "go", templateName: goTemplateName };
-  }
-  return { impl: "ts", templateName: tsTemplateName };
-}
 
 // K8s annotation keys for human-readable ownership/provenance. Unlike labels,
 // annotation values aren't charset-limited, so these carry the identity that
@@ -2498,43 +2417,19 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 }
 
 /**
- * Which daemon binary a claim's pod runs, per the label studio stamped at
- * provision time. The cluster-side source of truth, and the only way to
- * recover the impl on the adopt path (where `ensureOpts` is unrecoverable).
- * Returns null for claims that predate the label rather than assuming `ts`.
- */
-export function readClaimDaemonImpl(
-  claim: SandboxResource,
-): SandboxDaemonImpl | null {
-  const value = claim.metadata?.labels?.[LABEL_KEYS.daemonImpl];
-  return value === "go" || value === "ts" ? value : null;
-}
-
-/**
  * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
  * a given runner instance but included on every attrs set so downstream
  * dashboards can pivot across runners without re-aggregating.
- *
- * `daemon_impl` is the Go-rollout comparison dimension: it splits every
- * sandbox metric by the binary the pod actually ran, so `go` and `ts` can be
- * read side by side while both are live. Empty when unknown — never defaulted
- * to `ts`, because a Go sandbox counted as TS is worse than one counted as
- * neither. Cardinality is bounded at 3 (`go` | `ts` | `""`).
  */
-function tenantAttrs(
-  tenant: RunnerTenant | null,
-  daemonImpl: SandboxDaemonImpl | null,
-): {
+function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;
   user_id: string;
   runner_kind: string;
-  daemon_impl: string;
 } {
   return {
     org_id: tenant?.orgId ?? "",
     user_id: tenant?.userId ?? "",
     runner_kind: RUNNER_KIND,
-    daemon_impl: daemonImpl ?? "",
   };
 }
 
@@ -2551,14 +2446,8 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.tenant) out.tenant = opts.tenant;
   // Without this, `resurrectByHandle` re-provisioning from these persisted
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
-  // mounts a live sandbox had — same class of bug as the daemonImpl
-  // stickiness below, just for mounts instead of the binary.
+  // mounts a live sandbox had.
   if (opts.orgFsConfigJson) out.orgFsConfigJson = opts.orgFsConfigJson;
-  // Stickiness: `resurrectByHandle` re-provisions from these opts with no
-  // SANDBOX_START in the loop, so without this an autonomously recovered
-  // sandbox would silently come back on the other binary — which makes any
-  // incident on it unattributable. Callers persist the *resolved* impl.
-  if (opts.daemonImpl) out.daemonImpl = opts.daemonImpl;
   return Object.keys(out).length > 0 ? out : null;
 }
 

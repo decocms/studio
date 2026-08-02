@@ -124,7 +124,6 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            sandbox_go_daemon?: boolean | undefined;
           }
         | null
         | undefined;
@@ -190,7 +189,6 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            sandbox_go_daemon?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -256,7 +254,6 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            sandbox_go_daemon?: boolean | undefined;
           }
         | null
         | undefined;
@@ -6640,7 +6637,6 @@ export interface StudioToolIO {
         | "user-desktop"
         | "cluster"
         | undefined;
-      daemonImpl?: "ts" | "go" | undefined;
     };
     output: {
       previewUrl: string | null;

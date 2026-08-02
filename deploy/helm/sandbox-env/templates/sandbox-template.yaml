@@ -6,28 +6,10 @@
 # default. The template *name* is suffixed with envName so multiple
 # environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
-#
-# Rendered once per variant: the env default (image chosen by daemonImpl) plus,
-# when goTemplate.enabled, a `<name>-go` twin pinned to the Go image. The twin
-# is byte-identical apart from its name, its pod label, and the image — that is
-# the whole point, so a Go canary differs from its neighbours in exactly one
-# dimension. Both stay in THIS release on purpose: a second release would mint a
-# second sentinel Secret that Studio's single STUDIO_SANDBOX_SENTINEL_TOKEN
-# could not authenticate against.
-{{- include "sandbox-env.validateDaemonImpl" . }}
-{{- $variants := list (dict "name" (include "sandbox-env.sandboxName" .) "impl" (.Values.daemonImpl | default "ts")) }}
-{{- if .Values.goTemplate.enabled }}
-{{- $variants = append $variants (dict "name" (include "sandbox-env.goSandboxName" .) "impl" "go") }}
-{{- end }}
-{{- range $i, $v := $variants }}
-{{- if $i }}
----
-{{- end }}
-{{- with $ }}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: {{ $v.name }}
+  name: {{ include "sandbox-env.sandboxName" . }}
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
@@ -123,7 +105,7 @@ spec:
         # per pod (idempotent). Reuses the sandbox image — already on the
         # node, no extra pull.
         - name: deps-cache-init
-          image: "{{ include "sandbox-env.imageFor" (dict "root" $ "impl" $v.impl) }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
           resources:
@@ -235,7 +217,7 @@ spec:
       {{- end }}
       containers:
         - name: sandbox
-          image: "{{ include "sandbox-env.imageFor" (dict "root" $ "impl" $v.impl) }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: /app
           env:
@@ -415,5 +397,3 @@ spec:
           emptyDir:
             sizeLimit: 1Mi
         {{- end }}
-{{- end }}
-{{- end }}
