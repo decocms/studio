@@ -73,32 +73,43 @@ export async function copyToClipboard(
   }
 }
 
-function MacInstall() {
+// Both platforms install by pasting the same one-liner, so the block is shared:
+// only the confirmation copy differs (one names the Mac's Terminal app, the
+// other any terminal emulator).
+function InstallCommand({ copiedLabel }: { copiedLabel: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const command = installCommand();
 
   return (
+    <div className="flex flex-col gap-3">
+      <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
+        {command}
+      </code>
+      <Button
+        type="button"
+        className="w-full gap-2"
+        onClick={() => {
+          copyToClipboard(navigator.clipboard, command).then((ok) => {
+            if (!ok) return;
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        }}
+      >
+        {copied ? <Check size={16} /> : <Copy01 size={16} />}
+        {copied ? copiedLabel : t("downloadApp.copyLabel")}
+      </Button>
+    </div>
+  );
+}
+
+function MacInstall() {
+  const t = useT();
+
+  return (
     <>
-      <div className="flex flex-col gap-3">
-        <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
-          {command}
-        </code>
-        <Button
-          type="button"
-          className="w-full gap-2"
-          onClick={() => {
-            copyToClipboard(navigator.clipboard, command).then((ok) => {
-              if (!ok) return;
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            });
-          }}
-        >
-          {copied ? <Check size={16} /> : <Copy01 size={16} />}
-          {copied ? t("downloadApp.copiedLabel") : t("downloadApp.copyLabel")}
-        </Button>
-      </div>
+      <InstallCommand copiedLabel={t("downloadApp.copiedLabel")} />
 
       <div className="flex flex-col gap-1 text-xs text-muted-foreground">
         <p>{t("downloadApp.terminalHint")}</p>
@@ -108,21 +119,32 @@ function MacInstall() {
   );
 }
 
+// Linux leads with the installer, not the raw AppImage: the script is what
+// verifies the download (minisign signature where available, the published
+// sha256 otherwise), installs into ~/.local/bin and writes the launcher entry.
+// Handing over a bare .AppImage link skips all three. It stays available below
+// as the escape hatch for anyone who wants the file itself.
 function LinuxInstall() {
   const t = useT();
 
   return (
     <>
-      <Button asChild className="w-full gap-2">
-        <a href={appImageDownloadUrl(__STUDIO_VERSION__)} rel="noreferrer">
-          <Download01 size={16} />
-          {t("downloadApp.downloadAppImage")}
-        </a>
-      </Button>
+      <InstallCommand copiedLabel={t("downloadApp.copiedLabelLinux")} />
 
-      <div className="flex flex-col items-start gap-1 text-xs text-muted-foreground">
-        <p>{t("downloadApp.linuxChmodHint")}</p>
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <p>{t("downloadApp.linuxInstallerHint")}</p>
         <p>{t("downloadApp.linuxArchNote")}</p>
+      </div>
+
+      <div className="flex flex-col items-start gap-2 border-t pt-4 text-xs text-muted-foreground">
+        <p>{t("downloadApp.linuxDirectDownloadHint")}</p>
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <a href={appImageDownloadUrl(__STUDIO_VERSION__)} rel="noreferrer">
+            <Download01 size={14} />
+            {t("downloadApp.downloadAppImage")}
+          </a>
+        </Button>
+        <p>{t("downloadApp.linuxChmodHint")}</p>
         <a
           href={RELEASES_URL}
           target="_blank"

@@ -13,7 +13,12 @@ export const downloadApp = {
   "downloadApp.openLabel": "Baixar o app do Studio",
   "downloadApp.installOnMac": "Instalar no Mac",
   "downloadApp.linuxDescription":
-    "O app vem como um único AppImage — baixe, torne-o executável e execute. Sem instalador, sem root.",
+    "O app é instalado pelo terminal — copie o comando abaixo, cole lá e pressione Enter.",
+  "downloadApp.copiedLabelLinux": "Copiado — agora cole no seu terminal",
+  "downloadApp.linuxInstallerHint":
+    "O instalador verifica o download, coloca o app em ~/.local/bin e o adiciona ao seu menu de aplicativos. Sem root, sem mexer em mais nada.",
+  "downloadApp.linuxDirectDownloadHint":
+    "Prefere o arquivo direto? Baixe o AppImage e execute você mesmo.",
   "downloadApp.downloadAppImage": "Baixar o AppImage",
   "downloadApp.linuxChmodHint":
     "Antes torne-o executável: rode chmod +x no arquivo baixado ou marque “Permitir execução do arquivo como programa” nas propriedades dele.",

@@ -536,6 +536,38 @@ jobs:
           cp "$SRC" "$STAGE/$APPIMAGE"
           cp "$SRC.tar.gz" "$STAGE/$TARGZ"
           cp "$SRC.tar.gz.sig" "$STAGE/$TARGZ.sig"
+          # The AppImage is the only asset a human downloads and EXECUTES, and
+          # apps/web/public/install.sh puts it straight into ~/.local/bin over
+          # `curl | sh` — so it ships with a published digest and that
+          # installer refuses to run without one.
+          #
+          # What that digest is worth, stated precisely: it detects a CORRUPT
+          # OR TRUNCATED download and nothing else. It sits on the same
+          # release, behind the same origin and the same TLS session, as the
+          # AppImage it describes — anyone able to alter the binary can alter
+          # the digest beside it. It is not an authenticity anchor.
+          #
+          # Authenticity comes from the updater pair published right above:
+          # $TARGZ is a gzipped tar of this same AppImage (`tar xzf` opens it)
+          # and $TARGZ.sig is its minisign signature, verifiable against the
+          # pubkey pinned in src-tauri/tauri.conf.json5 — exactly the check the
+          # promote job runs below. install.sh embeds that same public key and
+          # prefers this path whenever minisign is installed, unpacking the
+          # AppImage out of the verified tarball; the digest is its fallback,
+          # announced as such. Because install.sh is served from
+          # studio.decocms.com, its embedded key is a genuinely out-of-band
+          # anchor rather than another file on this release.
+          #
+          # The asymmetry is worth naming: macOS gets authenticity from the
+          # cask's pinned sha256, which git records but no human approves
+          # (the release bot pushes it to main). The Linux install path has no
+          # equivalent out-of-band anchor of its own — without minisign on the
+          # user's machine there is none at all.
+          #
+          # Written from inside $STAGE so the recorded name is the asset name
+          # with no path, which is what makes `sha256sum -c` work for anyone
+          # who downloads the pair side by side.
+          ( cd "$STAGE" && sha256sum "$APPIMAGE" > "$APPIMAGE.sha256" )
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4
@@ -614,8 +646,15 @@ jobs:
             "deco-$VERSION-aarch64.app.tar.gz"
             "deco-$VERSION-aarch64.app.tar.gz.sig"
           )
+          # The .sha256 belongs INSIDE the leg, not beside it: it describes one
+          # specific build's bytes, so topping it up from a later (never
+          # reproducible) build would publish a digest that does not match the
+          # AppImage the tag serves — and install.sh would then refuse to
+          # install at all. Atomic-per-leg is the correct treatment for it,
+          # exactly as for the (tar.gz, .sig) pair.
           LINUX_ASSETS=(
             "deco-$VERSION-linux-x86_64.AppImage"
+            "deco-$VERSION-linux-x86_64.AppImage.sha256"
             "deco-$VERSION-linux-x86_64.AppImage.tar.gz"
             "deco-$VERSION-linux-x86_64.AppImage.tar.gz.sig"
           )
@@ -944,12 +983,18 @@ jobs:
 
           MAC_TARGZ="deco-$VERSION-aarch64.app.tar.gz"
           LINUX_TARGZ="deco-$VERSION-linux-x86_64.AppImage.tar.gz"
+          LINUX_APPIMAGE="deco-$VERSION-linux-x86_64.AppImage"
 
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
             --json assets --jq '.assets[].name' > "$ASSETS"
-          for A in "$MAC_TARGZ" "$MAC_TARGZ.sig" "$LINUX_TARGZ" "$LINUX_TARGZ.sig"; do
+          # The .sha256 is in this list because apps/web/public/install.sh
+          # hard-requires it: promoting a version whose installer would then
+          # refuse to run is exactly the silent half-published state the rest
+          # of this loop exists to prevent.
+          for A in "$MAC_TARGZ" "$MAC_TARGZ.sig" "$LINUX_TARGZ" "$LINUX_TARGZ.sig" \
+                   "$LINUX_APPIMAGE.sha256"; do
             if ! grep -qxF "$A" "$ASSETS"; then
-              echo "::error::$A is missing from $TAG — refusing to promote a manifest that would reference it"
+              echo "::error::$A is missing from $TAG — refusing to promote. The manifest would reference assets that are not there, or the installer would demand a checksum the release never published."
               exit 1
             fi
           done
