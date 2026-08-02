@@ -65,6 +65,8 @@ import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { resolveComposerAction } from "./composer-action";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
+import { shouldBlockHostedLegacyDispatch } from "./hosted-runtime-guard";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -420,6 +422,11 @@ export function ChatInput({
   }, [voice.transcript, voice.interimTranscript, voice.status]);
 
   const task = taskCtx?.activeTask ?? null;
+  const isDesktopApp = useIsDesktopApp();
+  const hostedLegacyDispatchBlocked = shouldBlockHostedLegacyDispatch({
+    isDesktopApp,
+    harnessId: task?.harness_id,
+  });
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
@@ -562,6 +569,14 @@ export function ChatInput({
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
       <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
+    );
+  }
+
+  if (hostedLegacyDispatchBlocked) {
+    return (
+      <ChatInputDisabledState
+        message={t("chat.input.codingAgentRequiresDesktop")}
+      />
     );
   }
 

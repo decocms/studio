@@ -32,6 +32,7 @@ import {
 export { resolveVmEntry, selectVmEntry, type BranchMapEntryLike };
 
 export interface ShouldAutoStartArgs {
+  executionEnabled: boolean;
   hasActiveGithubRepo: boolean;
   userId: string | null;
   branch: string | null;
@@ -56,6 +57,7 @@ export interface ShouldAutoStartArgs {
  */
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
+    args.executionEnabled &&
     args.hasActiveGithubRepo &&
     !!args.userId &&
     !!args.branch &&
@@ -100,6 +102,7 @@ export function shouldAdoptBranch(args: ShouldAdoptBranchArgs): boolean {
 }
 
 export interface ShouldSelfHealArgs {
+  executionEnabled: boolean;
   notFound: boolean;
   deadVmId: string | null;
   lastDeadVmId: string | null;
@@ -109,6 +112,7 @@ export interface ShouldSelfHealArgs {
 
 export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
   return (
+    args.executionEnabled &&
     args.notFound &&
     !!args.deadVmId &&
     !args.isPending &&
@@ -195,6 +199,7 @@ export function isRetryableClaimFailure(reason: ClaimFailureReason): boolean {
 }
 
 export interface ShouldAutoRetryClaimArgs {
+  executionEnabled: boolean;
   /** The terminal failure reason, or null when the phase isn't `failed`. */
   failedReason: ClaimFailureReason | null;
   /** Auto-retries already fired for this boot. */
@@ -209,6 +214,7 @@ export interface ShouldAutoRetryClaimArgs {
 
 export function shouldAutoRetryClaim(args: ShouldAutoRetryClaimArgs): boolean {
   return (
+    args.executionEnabled &&
     args.failedReason !== null &&
     isRetryableClaimFailure(args.failedReason) &&
     args.attempts < MAX_CLAIM_AUTO_RETRIES &&
@@ -356,6 +362,7 @@ export function useSandboxLifecycle(): SandboxLifecycleValue {
 }
 
 export function SandboxLifecycleProvider({
+  executionEnabled,
   virtualMcpId,
   branch,
   userId,
@@ -365,6 +372,9 @@ export function SandboxLifecycleProvider({
   threadId,
   children,
 }: {
+  /** False for native terminal threads viewed on hosted web. Keeps previews
+   *  readable without adopting branches or mutating hosted sandboxes. */
+  executionEnabled: boolean;
   virtualMcpId: string | null;
   branch: string | null;
   userId: string | null;
@@ -485,6 +495,7 @@ export function SandboxLifecycleProvider({
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
     autoStartAttemptedForBranchRef.current.has(autoStartDedupKey);
   const autoStartEligible = shouldAutoStart({
+    executionEnabled,
     hasActiveGithubRepo,
     userId,
     branch,
@@ -524,6 +535,7 @@ export function SandboxLifecycleProvider({
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
   const deadVmId = events.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
   const selfHealEligible = shouldSelfHeal({
+    executionEnabled,
     notFound: events.notFound,
     deadVmId,
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after firing
@@ -564,6 +576,7 @@ export function SandboxLifecycleProvider({
   // a bounded number of times before falling through to the errored card, so
   // the common transient-infra failure self-heals without a user click.
   const claimRetryEligible = shouldAutoRetryClaim({
+    executionEnabled,
     failedReason: failedPhase?.reason ?? null,
     attempts: claimRetryEpisode.count,
     isPending: startVm.isPending,
@@ -614,7 +627,7 @@ export function SandboxLifecycleProvider({
 
   // User-driven actions.
   const start = () => {
-    if (!virtualMcpId) return;
+    if (!executionEnabled || !virtualMcpId) return;
     const args = buildSandboxStartArgs(
       virtualMcpId,
       branch,
@@ -631,7 +644,7 @@ export function SandboxLifecycleProvider({
   };
 
   const stop = async () => {
-    if (!virtualMcpId || !branch) return;
+    if (!executionEnabled || !virtualMcpId || !branch) return;
     const kindToStop = vmEntry?.sandboxProviderKind;
     if (!kindToStop) return;
     sandboxUserStop.mark(virtualMcpId, branch);

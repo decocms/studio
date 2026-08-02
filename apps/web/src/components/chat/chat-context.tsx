@@ -54,6 +54,7 @@ import { useCurrentLink } from "@/hooks/use-current-link";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
+import { shouldBlockHostedLegacyDispatch } from "./hosted-runtime-guard";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -801,7 +802,15 @@ export function ActiveTaskProvider({
   children,
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
+  const isDesktopApp = useIsDesktopApp();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
+  const hostedLegacyDispatchBlocked = shouldBlockHostedLegacyDispatch({
+    isDesktopApp,
+    harnessId: activeTask?.harness_id,
+  });
+  const hostedLegacyDispatchBlockedMessage = t(
+    "chat.input.codingAgentRequiresDesktop",
+  );
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
   // the Set gate keeps it idempotent. Fires for every thread a user views —
@@ -834,6 +843,10 @@ export function ActiveTaskProvider({
   const queueActions = useMessageQueueActions();
 
   const [chatError, setChatError] = useState<Error | null>(null);
+
+  const reportHostedLegacyDispatchBlocked = () => {
+    setChatError(new Error(hostedLegacyDispatchBlockedMessage));
+  };
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
@@ -1150,6 +1163,16 @@ export function ActiveTaskProvider({
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
 
+    // Coding-agent harnesses have no hosted AI SDK/headless dispatch contract.
+    // A native row can still reach this shared provider, so fail closed before
+    // enqueue or submit and release any caller-owned latch without touching
+    // the wire.
+    if (hostedLegacyDispatchBlocked) {
+      reportHostedLegacyDispatchBlocked();
+      sendInFlight.delete(capturedTaskId);
+      return false;
+    }
+
     const appContextEntries = Object.entries(appContexts);
     const appContextSection =
       appContextEntries.length > 0
@@ -1334,6 +1357,13 @@ export function ActiveTaskProvider({
     messageId: string,
     text: string,
   ): Promise<boolean> {
+    // Reject before cancelling the persisted original: the replacement cannot
+    // enter hosted dispatch, so cancelling first would silently lose the turn.
+    if (hostedLegacyDispatchBlocked) {
+      reportHostedLegacyDispatchBlocked();
+      return false;
+    }
+
     // Same synchronous per-thread latch sendMessageInternal uses — an edit
     // is itself a dispatch, so it must not race a concurrent send/edit. The
     // tray probes isSendInFlight() before calling, so this drop is a
@@ -1438,6 +1468,7 @@ export function ActiveTaskProvider({
   useEffect(() => {
     if (!shouldAutosend) return;
     if (messages.length > 0) return;
+    if (hostedLegacyDispatchBlocked) return;
 
     const payload = claimStoredAutosend(sessionStorage, locator, taskId);
     if (!payload) return;
@@ -1446,15 +1477,35 @@ export function ActiveTaskProvider({
       clearStoredAutosend(sessionStorage, locator, taskId);
     });
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
-  }, [shouldAutosend, messages.length, locator, taskId, sendMessageInternal]);
+  }, [
+    shouldAutosend,
+    messages.length,
+    hostedLegacyDispatchBlocked,
+    locator,
+    taskId,
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage claim and task-scoped request id, not callback identity, gate duplicate sends
+    sendMessageInternal,
+  ]);
 
   const streamValue: ChatStreamContextValue = {
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
     editQueuedMessage,
-    stop: () => void cancelRun(),
-    submit: (action, opts) => conn.submit(action, opts),
+    stop: () => {
+      if (hostedLegacyDispatchBlocked) {
+        reportHostedLegacyDispatchBlocked();
+        return;
+      }
+      void cancelRun();
+    },
+    submit: async (action, opts) => {
+      if (hostedLegacyDispatchBlocked) {
+        reportHostedLegacyDispatchBlocked();
+        return;
+      }
+      await conn.submit(action, opts);
+    },
     removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
     isSendInFlight: () => sendInFlight.has(taskId),
     error: chatError,

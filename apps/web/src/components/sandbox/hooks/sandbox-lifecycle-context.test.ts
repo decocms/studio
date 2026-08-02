@@ -96,6 +96,7 @@ describe("resolveVmEntry", () => {
 
 describe("shouldAutoStart", () => {
   const base = {
+    executionEnabled: true,
     hasActiveGithubRepo: true,
     userId: "u1",
     branch: "main",
@@ -107,6 +108,10 @@ describe("shouldAutoStart", () => {
 
   test("all conditions met → true", () => {
     expect(shouldAutoStart(base)).toBe(true);
+  });
+
+  test("disabled execution boundary → false", () => {
+    expect(shouldAutoStart({ ...base, executionEnabled: false })).toBe(false);
   });
 
   test("no github repo → false", () => {
@@ -192,6 +197,7 @@ describe("shouldAdoptBranch", () => {
 
 describe("shouldSelfHeal", () => {
   const base = {
+    executionEnabled: true,
     notFound: true,
     deadVmId: "vm-dead",
     lastDeadVmId: null as string | null,
@@ -201,6 +207,10 @@ describe("shouldSelfHeal", () => {
 
   test("fresh dead vm → true", () => {
     expect(shouldSelfHeal(base)).toBe(true);
+  });
+
+  test("disabled execution boundary → false", () => {
+    expect(shouldSelfHeal({ ...base, executionEnabled: false })).toBe(false);
   });
 
   test("not notFound → false", () => {
@@ -441,6 +451,7 @@ describe("isRetryableClaimFailure", () => {
 
 describe("shouldAutoRetryClaim", () => {
   const base = {
+    executionEnabled: true,
     failedReason: "scheduling-timeout" as const,
     attempts: 0,
     isPending: false,
@@ -450,6 +461,12 @@ describe("shouldAutoRetryClaim", () => {
 
   test("retryable failure, budget left, not handled → true", () => {
     expect(shouldAutoRetryClaim(base)).toBe(true);
+  });
+
+  test("disabled execution boundary → false", () => {
+    expect(shouldAutoRetryClaim({ ...base, executionEnabled: false })).toBe(
+      false,
+    );
   });
 
   test("not a failed phase (null reason) → false", () => {

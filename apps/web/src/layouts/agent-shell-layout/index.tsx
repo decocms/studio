@@ -75,6 +75,7 @@ import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/bloc
 import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
+import { shouldBlockHostedLegacyDispatch } from "@/components/chat/hosted-runtime-guard";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -197,8 +198,13 @@ function VmEventsBridge({
 }) {
   const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
   const { pendingSandboxProviderKind } = useChatPrefs();
+  const isDesktopApp = useIsDesktopApp();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
+  const executionEnabled = !shouldBlockHostedLegacyDispatch({
+    isDesktopApp,
+    harnessId: activeTask?.harness_id,
+  });
 
   // Overlay the thread's own sandbox record for the current branch. A thread has
   // ONE sandbox, recorded under its creator and resolved server-side for every
@@ -224,14 +230,16 @@ function VmEventsBridge({
   // the last write — the loser's sandbox is orphaned. Bounded to one mint per
   // thread per tab; a shared lock is the fix if that ever shows up in practice.
   const adoptedBranchForThreadRef = useRef<string | null>(null);
-  const adoptBranchEligible = shouldAdoptBranch({
-    threadLoaded: !!activeTask,
-    isOwner: !!userId && activeTask?.created_by === userId,
-    hasActiveGithubRepo: effectiveHasGithubRepo,
-    branch: currentBranch ?? null,
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
-    attempted: adoptedBranchForThreadRef.current === (activeTask?.id ?? null),
-  });
+  const adoptBranchEligible =
+    executionEnabled &&
+    shouldAdoptBranch({
+      threadLoaded: !!activeTask,
+      isOwner: !!userId && activeTask?.created_by === userId,
+      hasActiveGithubRepo: effectiveHasGithubRepo,
+      branch: currentBranch ?? null,
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
+      attempted: adoptedBranchForThreadRef.current === (activeTask?.id ?? null),
+    });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot row write gated on the resolved thread; no render-time equivalent
   useEffect(() => {
     if (!adoptBranchEligible || !activeTask) return;
@@ -267,7 +275,8 @@ function VmEventsBridge({
   // vmEntry always agree on which sandbox is active.
   const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
+  const shouldConnect =
+    executionEnabled && (Object.keys(branchMap).length > 0 || isStartPending);
 
   return (
     <SandboxEventsProvider
@@ -277,6 +286,7 @@ function VmEventsBridge({
       enabled={shouldConnect}
     >
       <SandboxLifecycleProvider
+        executionEnabled={executionEnabled}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? null}
         userId={userId ?? null}

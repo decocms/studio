@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Capability } from "@decocms/sandbox/dispatch";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { isDesktopAppEnvironment } from "./use-is-desktop-app";
+
+/** Native-only terminal capabilities; they never enter the hosted dispatch wire. */
+export type LocalAgentCapability = "claude-code" | "codex";
 
 /**
  * Which CLI harnesses this machine can run.
@@ -26,7 +28,7 @@ export interface CurrentLink {
   machineId?: string;
   hostname?: string;
   cliVersion?: string;
-  capabilities: Capability[];
+  capabilities: LocalAgentCapability[];
   /**
    * False until the probe has resolved at least once this mount. Lets "no local
    * CLI" surfaces hold back instead of flashing empty state during the fetch.

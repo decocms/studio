@@ -10,7 +10,6 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Check, Copy01 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
-import type { Capability } from "@decocms/sandbox/dispatch";
 import { useCurrentLink } from "@/hooks/use-current-link";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
@@ -19,7 +18,7 @@ import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 const INSTALL_SNIPPET = "bunx decocms@latest link";
 
 interface LocalAgent {
-  capability: Capability;
+  capability: "claude-code" | "codex";
   labelKey: TranslationKey;
   descriptionKey: TranslationKey;
   icon: ReactNode;
