@@ -22,6 +22,7 @@ import (
 
 const (
 	maxImageBytes    = 5 * 1024 * 1024
+	maxTextBytes     = 10 * 1024 * 1024
 	maxTransferBytes = 500 * 1024 * 1024
 	transferDeadline = 5 * time.Minute
 )
@@ -131,6 +132,11 @@ func Read(deps FsDeps) http.HandlerFunc {
 
 		if bytes.IndexByte(probe, 0) >= 0 {
 			httpx.Error(w, 400, "File appears to be binary and is not a supported image format (jpeg/png/gif/webp).")
+			return
+		}
+
+		if stat.Size() > maxTextBytes {
+			httpx.Error(w, 400, fmt.Sprintf("File too large (%d bytes; cap is %d)", stat.Size(), maxTextBytes))
 			return
 		}
 
