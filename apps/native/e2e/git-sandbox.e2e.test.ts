@@ -43,7 +43,6 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
-  authHeaders,
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
@@ -87,6 +86,7 @@ const PACKAGE_JSON = JSON.stringify({
   private: true,
   scripts: { dev: "node server.js" },
 });
+const ORG = "git-sandbox-e2e";
 
 /** Builds a bare "origin" with two branches (`branch-a`, `branch-b`), each
  * carrying a distinguishing `BRANCH.txt` + a real bindable dev server —
@@ -143,18 +143,28 @@ async function ensureAndWriteSandboxFile(
   const ensured = (await ensure.json()) as { handle: string };
   expect(ensured.handle).toBe(expectedHandle);
 
+  // setup/ensure admits the asynchronous clone/install/start cascade. Wait
+  // for this handle's real preview (not its starting placeholder) before
+  // writing into or asserting on the materialized checkout.
+  await waitForPreviewBody(a, expectedHandle);
+
   const repoDir = repoDirFor(a.workdir, expectedHandle);
-  const write = await fetch(url(a, "/_sandbox/write"), {
-    method: "POST",
-    headers: authHeaders({
-      "content-type": "application/json",
-      "x-decocms-sandbox-handle": expectedHandle,
-    }),
-    body: JSON.stringify({
-      path: "bridge-wrote.txt",
-      content: `written through sandbox bridge in ${repoDir}\n`,
-    }),
-  });
+  const write = await fetch(
+    url(
+      a,
+      `/api/${ORG}/sandbox/${encodeURIComponent(
+        virtualMcpId,
+      )}/${encodeURIComponent(branch)}/write`,
+    ),
+    {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: JSON.stringify({
+        path: "bridge-wrote.txt",
+        content: `written through sandbox bridge in ${repoDir}\n`,
+      }),
+    },
+  );
   expect(write.status).toBe(200);
 }
 
