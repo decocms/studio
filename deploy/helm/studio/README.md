@@ -156,8 +156,7 @@ kubectl apply -f examples/secrets-example.yaml -n deco-studio
 ```
 
 The Secrets file contains:
-- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET`, `DATABASE_URL`, and optional NATS tunnel credentials
-- **Auth Config Secret** (`deco-studio-auth-secrets`): Contains OAuth client IDs/secrets and API keys
+- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET`, `DATABASE_URL`, the `AUTH_*` auth configuration (OAuth client IDs/secrets, email provider API keys — see `apps/api/src/auth/auth-env.ts` for the full key list), and optional NATS tunnel credentials
 
 #### Step 2: Configure values.yaml to Use Secrets
 
@@ -165,33 +164,16 @@ In your `values.yaml` or `values-custom.yaml`, configure:
 
 ```yaml
 secret:
-  # Reference the existing Secret created manually
+  # Reference the existing Secret created manually. The whole Secret is
+  # injected via envFrom, so auth lives there as AUTH_* keys
+  # (AUTH_GOOGLE_CLIENT_ID, AUTH_RESEND_API_KEY, ...) — there is no
+  # separate auth Secret and no authConfig values block.
   secretName: "deco-studio-secrets"
-  
-  # Reference the authConfig Secret
-  authConfigSecretName: "deco-studio-auth-secrets"
 
 database:
   engine: postgresql
   # Leave url empty when using Secret - value comes from DATABASE_URL in Secret
   url: ""
-
-configMap:
-  authConfig:
-    socialProviders:
-      google:
-        # Leave empty when using Secret - values come from Secret
-        clientId: ""
-        clientSecret: ""
-      github:
-        clientId: ""
-        clientSecret: ""
-    emailProviders:
-      - id: "resend-primary"
-        provider: "resend"
-        config:
-          apiKey: ""  # Leave empty when using Secret
-          fromEmail: "noreply@decocms.com"
 ```
 
 #### Step 3: Install/Upgrade
@@ -885,29 +867,22 @@ configMap:
     BASE_URL: "http://localhost:8080"
     # DATABASE_URL is automatically filled from database.engine/url
   
-  authConfig:
-    emailAndPassword:
-      enabled: true
-    socialProviders:
-      google:
-        clientId: "your-google-client-id.apps.googleusercontent.com"
-        clientSecret: "your-google-client-secret"
-      github:
-        clientId: "your-github-client-id"
-        clientSecret: "your-github-client-secret"
-    saml:
-      enabled: false
-      providers: []
-    emailProviders:
-      - id: "resend-primary"
-        provider: "resend"
-        config:
-          apiKey: "your-resend-api-key"
-          fromEmail: "noreply@example.com"
-    inviteEmailProviderId: "resend-primary"
-    magicLinkConfig:
-      enabled: true
-      emailProviderId: "resend-primary"
+```
+
+Authentication is configured via `AUTH_*` environment variables (see
+`apps/api/src/auth/auth-env.ts` for the schema). Put non-secret flags in
+`configMap.meshConfig` and secrets (client secrets, API keys) in the Secret —
+both reach the pod via `envFrom`:
+
+```yaml
+configMap:
+  meshConfig:
+    AUTH_EMAIL_PASSWORD_ENABLED: "true"
+    AUTH_MAGIC_LINK_ENABLED: "true"
+    AUTH_MAGIC_LINK_EMAIL_PROVIDER: "resend"
+    AUTH_RESEND_FROM_EMAIL: "noreply@example.com"
+# In the Secret: AUTH_GOOGLE_CLIENT_ID, AUTH_GOOGLE_CLIENT_SECRET,
+# AUTH_RESEND_API_KEY, ...
 ```
 
 ### Public NATS Tunnel
