@@ -99,7 +99,6 @@ import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
 import { sleep } from "@decocms/shared/std";
-import { canRespondToThread } from "@decocms/shared/thread/access";
 
 // Attributes onFinish event-loop cost by phase (settle = awaiting the
 // accumulated pendingOps; save = the synchronous message-serialization +
@@ -963,22 +962,17 @@ async function prepareRun(
     ctx.metadata.threadId = mem.thread.id;
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
 
-    if (
-      !canRespondToThread({
-        createdBy: mem.thread.created_by,
-        userId: input.userId,
-        status: mem.thread.status,
-      })
-    ) {
-      throw new Error(
-        "You are not allowed to write to this thread because you are not the owner",
-      );
-    }
-
-    // A non-owner answering a `requires_action` pause (e.g. a teammate clearing
-    // a QA Agent / Code Reviewer question) keeps the original owner in
-    // `created_by`, but record who actually responded in `updated_by` so the
-    // trail isn't lost. Best-effort — a failure here must never block the run.
+    // Thread write-authorization (owner-only, with a `requires_action`
+    // exception for any org member) is enforced at request ingress in
+    // `validate()` — it must run before the dispatch gate mints a run fence,
+    // which flips the status to `in_progress` and erases the `requires_action`
+    // signal the decision reads. By the time we reach here that gate has passed;
+    // every non-HTTP dispatch path (background tools, task-board recovery) runs
+    // as the thread owner, so it satisfies the gate too.
+    //
+    // When a non-owner answered (the `requires_action` exception), keep the
+    // original owner in `created_by` but stamp the responder into `updated_by`
+    // for audit. Best-effort — a failure here must never block the run.
     if (mem.thread.created_by !== input.userId) {
       await ctx.storage.threads
         .update(mem.thread.id, { updated_by: input.userId })

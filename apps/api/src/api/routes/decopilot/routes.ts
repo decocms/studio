@@ -46,6 +46,7 @@ import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
+import { canRespondToThread } from "@decocms/shared/thread/access";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -438,6 +439,31 @@ async function validate(
   const lockedThread = taskIdInput
     ? await ctx.storage.threads.get(taskIdInput)
     : null;
+
+  // Thread write-authorization. Only the owner may send messages, EXCEPT while
+  // the thread is paused awaiting input (`requires_action` — e.g. a QA Agent /
+  // Code Reviewer `user_ask`), where any org member may answer so the run isn't
+  // stuck on one person. This MUST run at ingress, before the message is
+  // persisted and before the dispatch gate mints a run fence — the fence flips
+  // the status to `in_progress` (see `setRunFence`), erasing the
+  // `requires_action` signal this decision reads. Org membership is already
+  // enforced (resolveOrgFromPath + the org-scoped `threads.get` above), so this
+  // only decides ownership vs. the awaiting-input exception. A brand-new thread
+  // (no `lockedThread` yet) is permissive — its first message creates it owned
+  // by the sender.
+  if (
+    !canRespondToThread({
+      createdBy: lockedThread?.created_by,
+      userId,
+      status: lockedThread?.status,
+    })
+  ) {
+    throw new HTTPException(403, {
+      message:
+        "You are not allowed to write to this thread because you are not the owner",
+    });
+  }
+
   const {
     harnessId: effectiveHarnessId,
     sandboxProviderKind: effectiveSandboxProviderKind,

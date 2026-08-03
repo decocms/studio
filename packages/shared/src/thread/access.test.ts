@@ -61,4 +61,19 @@ describe("canRespondToThread", () => {
       }),
     ).toBe(true);
   });
+
+  test("empty-string ids are treated as unknown (permissive), not as owner", () => {
+    // "" is falsy → the missing-id fallback, NOT a `"" === ""` owner match.
+    // Guards against a future refactor that compares before the presence check.
+    expect(
+      canRespondToThread({ createdBy: "", userId: "", status: "completed" }),
+    ).toBe(true);
+    expect(
+      canRespondToThread({
+        createdBy: "",
+        userId: "teammate",
+        status: "completed",
+      }),
+    ).toBe(true);
+  });
 });
