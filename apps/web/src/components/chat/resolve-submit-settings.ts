@@ -1,4 +1,4 @@
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 /**

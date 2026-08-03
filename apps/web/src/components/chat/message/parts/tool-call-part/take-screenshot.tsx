@@ -7,7 +7,7 @@ import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import { formatDuration } from "@/lib/format-time.ts";
-import { parseStudioStorageKey } from "@decocms/harness/decopilot/studio-storage-uri";
+import { parseStudioStorageKey } from "@decocms/shared/harness/studio-storage-uri";
 import { useT } from "@/i18n/use-t.ts";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {

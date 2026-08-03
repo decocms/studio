@@ -1,5 +1,5 @@
 import type { ChatTier } from "@decocms/shared/organization/schema";
-import { resolveAgentTier } from "@decocms/harness/claude-code/model/agent-tiers";
+import { resolveAgentTier } from "@decocms/shared/harness/agent-tiers";
 import type { TFunction } from "@/i18n/use-t.ts";
 import { useChatPrefs } from "./context";
 import type { AgentOption } from "./pills/agent-options";
@@ -75,7 +75,7 @@ const CLOUD_TIER_DESCRIPTION_KEYS: Record<ChatTier, Parameters<TFunction>[0]> =
  *
  * - Local (Claude Code / Codex): returns the harness-mapped model name
  *   with version (e.g. "Sonnet 5", "GPT-5.5") from
- *   `@decocms/harness/claude-code/model/agent-tiers`. Desktop-CLI users are technical and
+ *   `@decocms/shared/harness/agent-tiers`. Desktop-CLI users are technical and
  *   want to know which model is about to run.
  * - Cloud (org router): returns a non-technical intent description via `t`.
  *   The server picks the actual model via `resolveTier` at send time based on

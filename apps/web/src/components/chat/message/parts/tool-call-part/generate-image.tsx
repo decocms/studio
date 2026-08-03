@@ -15,7 +15,7 @@ import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import type { UsageStats } from "@/lib/usage-utils.ts";
 import { formatDuration } from "@/lib/format-time.ts";
-import { parseStudioStorageKey } from "@decocms/harness/decopilot/studio-storage-uri";
+import { parseStudioStorageKey } from "@decocms/shared/harness/studio-storage-uri";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
   const key = parseStudioStorageKey(uri);
