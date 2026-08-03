@@ -90,6 +90,8 @@ A escolha é permanente para aquela thread: reabri-la reconecta à sessão em ex
   Esse seletor só aparece no app de desktop Studio Native, e apenas para uma thread nova — ele não tem relação com o runtime gerenciado do **Decopilot** descrito acima, que está disponível tanto no app de desktop quanto no app web.
 </Callout>
 
+No Studio Native, abrir uma branch clona uma working tree local para ela no disco, que permanece enquanto pelo menos uma thread daquela branch estiver aberta. Arquivar a **última** thread aberta de uma branch agora oferece a opção de reclamá-la — parando tudo que estiver rodando naquela branch e apagando seus arquivos do seu computador. Isso é opt-in a cada arquivamento, afeta apenas o clone local, e não altera a branch em si nem nada que já tenha sido enviado ao remoto.
+
 ## Um agent é um MCP virtual
 
 Cada agent no Studio é exposto como seu próprio **endpoint MCP**: um pacote curado de tools, resources e instruções ao qual qualquer client compatível com MCP pode se conectar. Você pode pensar em um agent como um "MCP server virtual" que você monta visualmente — escolha algumas tools das suas connections, adicione instruções, e você publicou um endpoint MCP focado que seu time (ou seus outros agents) pode usar.
