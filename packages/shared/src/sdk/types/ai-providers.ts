@@ -2,15 +2,42 @@
 // AI Provider Types — shared between server tool output and client hooks
 // ============================================================================
 
-export const PROVIDER_IDS = [
+/**
+ * Providers backed by Studio's hosted AI-provider registry.
+ *
+ * Native coding agents are intentionally absent: Claude Code, Codex, and
+ * OpenCode run as local terminal processes and do not use provider keys.
+ */
+export const HOSTED_PROVIDER_IDS = [
   "deco",
   "anthropic",
   "openrouter",
   "llmapi",
   "google",
+  "openai-compatible",
+] as const;
+
+export type HostedProviderId = (typeof HOSTED_PROVIDER_IDS)[number];
+
+const HOSTED_PROVIDER_ID_SET: ReadonlySet<string> = new Set(
+  HOSTED_PROVIDER_IDS,
+);
+
+export function isHostedProviderId(value: string): value is HostedProviderId {
+  return HOSTED_PROVIDER_ID_SET.has(value);
+}
+
+/**
+ * Every provider ID that may exist in persisted data.
+ *
+ * Claude Code and Codex are retained only so historical provider-key rows can
+ * still be listed and deleted. New hosted credentials must use
+ * `HOSTED_PROVIDER_IDS`.
+ */
+export const PROVIDER_IDS = [
+  ...HOSTED_PROVIDER_IDS,
   "claude-code",
   "codex",
-  "openai-compatible",
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -76,11 +103,11 @@ export interface AiProviderKey {
 }
 
 export interface AiProviderInfo {
-  id: ProviderId;
+  id: HostedProviderId;
   name: string;
   description: string;
   logo?: string | null;
-  supportedMethods: ("api-key" | "oauth-pkce" | "cli-activate")[];
+  supportedMethods: ("api-key" | "oauth-pkce")[];
   supportsTopUp?: boolean;
   supportsCredits?: boolean;
   supportsProvision?: boolean;

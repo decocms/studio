@@ -2,9 +2,8 @@
 # Bun runtime nor a dependency install. The release build stages apps/web/dist
 # into apps/api/dist/client before packing the combined distribution. We then
 # extract that dist/client straight out of the tarball (npm pack lays every file
-# under package/). This avoids compiling native deps such as node-pty
-# (node-gyp + python) — the API image installs a toolchain for those, but this
-# image has no use for them.
+# under package/). This also keeps the image independent of the Bun runtime and
+# server-side dependencies.
 FROM alpine:3.20 AS bundle
 
 WORKDIR /src

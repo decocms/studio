@@ -4,8 +4,8 @@
 //! `daemon.proxy.e2e.test.ts`.
 //!
 //! Moved off the MAIN listener (which used to serve this as its top-level
-//! fallback for any path outside `/health`, `/_sandbox/*`, `/threads*`,
-//! `/models`, `/upstream/*`) onto its own dedicated loopback port — see
+//! fallback for any path outside `/health`, `/_local/*`, `/_sandbox/*`, and
+//! the app-API surface) onto its own dedicated loopback port — see
 //! `lib.rs`/`router.rs`'s module docs for why: the app's own API and the
 //! previewed dev server now need to be genuinely different origins.
 //!
@@ -257,8 +257,8 @@ fn cookie_has_value(headers: &HeaderMap, name: &str, expected: &str) -> bool {
 /// preview (the iframe, which can't set
 /// [`crate::sandbox::SANDBOX_HANDLE_HEADER`]) at a
 /// specific sandbox. The webview calls this when a git-backed thread becomes
-/// focused, so switching threads updates the preview even without re-running
-/// (a fresh dispatch also sets it, via `SandboxManager::ensure`). The handle
+/// focused, so switching threads updates the preview without another sandbox
+/// ensure. The handle
 /// must have a durable registry row: accepting a frontend-computed phantom
 /// would persist an active pointer that cannot ever resolve to repo config.
 pub async fn set_preview_handle(
@@ -343,7 +343,7 @@ fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {
         return dev_port_for(&sandbox.setup, &sandbox.config);
     }
     // Neither: serve the ACTIVE sandbox's dev server if a git-backed thread has
-    // been dispatched, else the global (non-git) orchestrator — unchanged
+    // selected one, else the global (non-git) orchestrator — unchanged
     // behavior for the plain path.
     match state.sandbox_manager.active() {
         Some(sandbox) => dev_port_for(&sandbox.setup, &sandbox.config),

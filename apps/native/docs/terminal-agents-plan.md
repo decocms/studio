@@ -55,8 +55,6 @@ This is an atomic native cutover:
 - Recreating structured tool cards, approvals, or the old native FIFO queue.
 - Supporting arbitrary shells, SSH sessions, Windows, or Orca's multi-pane and
   daemon architecture in the first version.
-- Removing `POST /_sandbox/dispatch`. It is a separate daemon-parity contract
-  and still needs the existing headless harness/event mapper.
 
 ## Target architecture
 
@@ -146,7 +144,6 @@ The browser may supply only user choices and display dimensions:
 ```json
 {
   "harnessId": "claude-code",
-  "modelId": null,
   "approvalMode": "default",
   "planMode": false,
   "cols": 100,
@@ -564,9 +561,7 @@ Retain:
 - `/api/:org/watch` and the `decopilot.thread.status` event name used by shared
   sidebar code
 - historical message rows initially
-- CLI detection, resolution, model tiers, and the title runner
-- `harness::run`, event mappers, parts, and plain-pipe spawn while
-  `/_sandbox/dispatch` remains
+- CLI detection, resolution, terminal launch builders, and the title runner
 - sandbox, org filesystem, preview, git, task, and setup machinery
 
 Continue intercepting every old `/api/:org/decopilot/*` request, but return:
@@ -652,8 +647,8 @@ and behavior remain unchanged.
 - Replace native Decopilot/resume/queue tests with terminal equivalents.
 - Add a native bundle/network guard for old route literals and runtime calls.
 
-Gate: stale routes fail locally, upstream receives zero old native chat
-requests, and all unrelated `/_sandbox/dispatch` tests still pass.
+Gate: stale routes fail locally and upstream receives zero old native chat
+requests.
 
 ### Phase 6: hardening and final UI validation
 
@@ -700,9 +695,9 @@ requests, and all unrelated `/_sandbox/dispatch` tests still pass.
 - Legacy migration preserves thread/message data and executes no queued prompt.
 - Every old native Decopilot path returns local `410` and never reaches upstream.
 
-Keep existing `/_sandbox/dispatch`, thread mini-store, CLI detection, sandbox,
-git, preview, setup, and hosted web suites unless their shared interface truly
-changes.
+Keep thread-tool interception, terminal-session persistence, CLI detection,
+sandbox, git, preview, setup, and hosted web suites unless their shared
+interface truly changes.
 
 ### Build and boundary checks
 

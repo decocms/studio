@@ -404,7 +404,7 @@ export function terminalPromptFitsWire(
   if (encoder.encode(text).byteLength > MAX_PROMPT_BYTES) return false;
 
   // `start` has more envelope fields than `submit_prompt`, so fitting this
-  // shape guarantees either dispatch path can carry the same prompt.
+  // shape guarantees either terminal frame can carry the same prompt.
   const serialized = JSON.stringify({
     type: "start",
     harnessId,

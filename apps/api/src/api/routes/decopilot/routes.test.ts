@@ -17,6 +17,7 @@ import {
   assertHostedDecopilotHarness,
   assertPersistedHostedRuntime,
   assertHostedSandboxProvider,
+  normalizeHostedSandboxProviderKind,
   computeIdempotencyKey,
   shouldPersistRequestMessage,
 } from "./routes";
@@ -257,6 +258,12 @@ describe("assertPersistedHostedRuntime", () => {
       assertPersistedHostedRuntime("decopilot", "agent-sandbox"),
     ).not.toThrow();
     expect(() => assertPersistedHostedRuntime("decopilot", null)).not.toThrow();
+    expect(() =>
+      assertPersistedHostedRuntime("decopilot", "user-desktop"),
+    ).not.toThrow();
+    expect(
+      normalizeHostedSandboxProviderKind("decopilot", "user-desktop"),
+    ).toBe("agent-sandbox");
   });
 
   test("rejects unpinned threads before a hosted control mutation", () => {
@@ -265,12 +272,12 @@ describe("assertPersistedHostedRuntime", () => {
     );
   });
 
-  test("rejects native and retired runtime rows", () => {
+  test("rejects native runtime rows", () => {
     expect(() => assertPersistedHostedRuntime("codex", "user-desktop")).toThrow(
       /Studio desktop app/,
     );
     expect(() =>
-      assertPersistedHostedRuntime("decopilot", "user-desktop"),
+      normalizeHostedSandboxProviderKind(null, "user-desktop"),
     ).toThrow(/unsupported desktop runtime/);
   });
 });

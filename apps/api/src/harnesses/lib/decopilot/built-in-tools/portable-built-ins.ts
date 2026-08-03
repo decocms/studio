@@ -21,10 +21,7 @@ import {
   type PortableImageProvider,
   type PortableMediaObjectStorage,
 } from "./portable-media-tools";
-import {
-  type BackgroundDispatcher,
-  makeBackgroundable,
-} from "./backgroundable";
+import { makeBackgroundable } from "./backgroundable";
 import type { PendingImage } from "./vm-tools/types";
 
 interface PortableObjectStorage extends PortableMediaObjectStorage {
@@ -49,12 +46,6 @@ export interface BuildPortableBuiltInToolsParams {
     provider: PortableImageProvider;
     imageModelInfo: PortableImageModelInfo;
   };
-  /** When present, generate_image is made backgroundable: the call enqueues a
-   *  durable cluster job and returns immediately instead of blocking the turn.
-   *  The daemon supplies an HTTP dispatcher that posts back to the cluster;
-   *  absent → generate_image runs inline (current behavior). */
-  imageBackgroundDispatcher?: BackgroundDispatcher | null;
-  includeUnavailableClusterOnlyTools?: boolean;
 }
 
 function createPortableBrowserlessTool(
@@ -232,85 +223,17 @@ function createPortableBrowserlessTool(
   });
 }
 
-const UnavailableWebSearchInputSchema = z.object({
-  query: z
-    .string()
-    .max(10_000)
-    .describe(
-      "The research query. Be specific about what information you need.",
-    ),
-});
-
-const UnavailableUpdateInterestsInputSchema = z.object({
-  interests: z
-    .array(
-      z.object({
-        title: z
-          .string()
-          .max(120)
-          .describe("Short noun phrase, e.g. 'Learning Rust'"),
-        summary: z
-          .string()
-          .max(500)
-          .describe("One or two sentences of context, including any progress"),
-      }),
-    )
-    .max(10),
-});
-
-function createUnavailableWebSearchTool() {
-  return tool({
-    description:
-      "Search the web and synthesize a comprehensive research report. " +
-      "This tool is only available in cluster Decopilot.",
-    inputSchema: zodSchema(UnavailableWebSearchInputSchema),
-    execute: async (
-      _input: z.infer<typeof UnavailableWebSearchInputSchema>,
-    ): Promise<{ unavailable: true }> => {
-      throw new Error("web_search is only available in cluster Decopilot.");
-    },
-  });
-}
-
-function createUnavailableUpdateInterestsTool() {
-  return tool({
-    description:
-      "Record what the user is durably working toward (their goals/interests). " +
-      "This tool is only available in cluster Decopilot.",
-    inputSchema: zodSchema(UnavailableUpdateInterestsInputSchema),
-    execute: async (
-      _input: z.infer<typeof UnavailableUpdateInterestsInputSchema>,
-    ): Promise<{ unavailable: true }> => {
-      throw new Error(
-        "update_interests is only available in cluster Decopilot.",
-      );
-    },
-  });
-}
-
 export function buildPortableBuiltInTools(
   params: BuildPortableBuiltInToolsParams,
 ): ToolSet {
-  const {
-    writer,
-    toolOutputMap,
-    objectStorage,
-    pendingImages,
-    imageTool,
-    imageBackgroundDispatcher,
-    includeUnavailableClusterOnlyTools,
-  } = params;
+  const { writer, toolOutputMap, objectStorage, pendingImages, imageTool } =
+    params;
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
     read_tool_output: createReadToolOutputTool({ toolOutputMap }),
   };
-
-  if (includeUnavailableClusterOnlyTools) {
-    tools.web_search = createUnavailableWebSearchTool();
-    tools.update_interests = createUnavailableUpdateInterestsTool();
-  }
 
   if (imageTool) {
     tools.generate_image = makeBackgroundable(
@@ -320,7 +243,7 @@ export function buildPortableBuiltInTools(
         ...imageTool,
         objectStorage,
       }),
-      imageBackgroundDispatcher,
+      null,
     );
   }
 

@@ -1,8 +1,8 @@
 /**
  * runDecopilotCore — the shared Decopilot orchestration loop.
  *
- * Extracted from the cluster `decopilot/index.ts` factory body so the cluster
- * AND (Task 15) the desktop daemon drive ONE loop. The core owns:
+ * Extracted from the hosted `decopilot/index.ts` factory body so orchestration
+ * stays independent of cluster wiring. The core owns:
  *   - the model-runtime bundle shape (`ModelRuntime`),
  *   - the deps seam (`RunDecopilotCoreDeps`) every environment satisfies,
  *   - `processConversation` invocation against the assembled tool set,
@@ -12,13 +12,9 @@
  *
  * Environment-specific pieces are injected through the deps:
  *   - `modelRuntime` — adapter-constructed provider/model bundle (never wired);
- *   - `toolRuntime` — `buildEnvironmentTools()` (cluster: virtual-MCP
- *     passthrough + web_search/update_interests/Browserless built-ins; desktop:
- *     HTTP passthrough + local built-ins) and `runEngine()` (the system-prompt +
- *     tool-assembly + streamText engine — `runAgentLoop` on the cluster,
- *     `runNativeAgentLoopCore` on the desktop);
- *   - `telemetry` — the cluster LLM-call monitoring/metrics hooks (no-op on the
- *     desktop).
+ *   - `toolRuntime` — the virtual-MCP passthrough, hosted built-ins, and
+ *     `runAgentLoop` streamText engine;
+ *   - `telemetry` — hosted LLM-call monitoring and metrics hooks.
  *
  * The single surviving prompt assembler is the ENGINE's (`runAgentLoop` →
  * `buildAgentSystemPrompt`): its assembled system messages feed both the model
@@ -26,9 +22,8 @@
  * `assembleDecopilotPrompt` path that existed only for that debug metadata is
  * deleted.
  *
- * This module is `@/*`-free so the daemon can bundle it. The cluster supplies
- * ctx-backed closures from `decopilot/index.ts`; the desktop (Task 15) supplies
- * HTTP/local ones.
+ * This module is `@/*`-free so the hosted core can be exercised independently;
+ * cluster-specific closures are supplied by `decopilot/index.ts`.
  */
 
 import type { UIMessageChunk } from "ai";
@@ -159,8 +154,7 @@ export function buildModelRuntimeFromSources(
  * passthrough client and assembles its full tool set (plus the per-run
  * side-channel/writer/pending-images/step-finish wiring it owns); `runEngine`
  * drives the env's system-prompt assembly + tool merge + streamText loop. The
- * cluster implements both via `assembleDecopilotTools` + `runAgentLoop`; the
- * desktop (Task 15) via `buildLocalTools` + `runNativeAgentLoopCore`.
+ * hosted adapter implements both via `assembleDecopilotTools` + `runAgentLoop`.
  */
 export interface DecopilotToolRuntime {
   /** Assemble the environment-specific tool bundle for one turn.
@@ -238,8 +232,7 @@ export async function* runDecopilotCore(
   // delegated run can't spawn its own delegated runs. Strip it from the
   // tool-host surfaces the engine reads (`tools` + `builtInTools`; the cluster
   // also excludes it for `kind: "subagent"` in assemble-agent-tools, but the
-  // core enforces it portably so any adapter — including the desktop in Task 18
-  // — inherits depth-1).
+  // core enforces it so every adapter inherits depth-1).
   if (isSubtask) stripSubtaskTool(tools);
 
   const {
@@ -323,13 +316,12 @@ export interface SubtaskRunResult {
 export interface SpawnSubtaskArgs {
   /** The self-contained task prompt for the fresh subagent. */
   prompt: string;
-  /** Target-agent core deps the ADAPTER builds (cluster: in-process passthrough
-   *  client for the target; desktop/Task 18: HTTP client to the target's
-   *  virtual-MCP URL). `kind` is forced to `"subtask"` here, so the caller need
-   *  not set it. */
+  /** Target-agent core deps the hosted adapter builds with an in-process
+   *  passthrough client. `kind` is forced to `"subtask"` here, so the caller
+   *  need not set it. */
   deps: Omit<RunDecopilotCoreDeps, "kind">;
   /** The PARENT tool-call abort signal, chained into the subtask core run so
-   *  parent/daemon cancellation kills the subtask (and aborts a queued
+   *  parent cancellation kills the subtask (and aborts a queued
    *  semaphore wait). */
   signal: AbortSignal;
 }
@@ -337,9 +329,8 @@ export interface SpawnSubtaskArgs {
 /**
  * Run one delegated subtask end-to-end and summarize it.
  *
- * Portable (`@/*`-free) so BOTH the cluster subtask tool and the desktop
- * (Task 18) reuse it; environment-specific TARGET-deps construction stays in
- * the adapter. Enforces the cluster resource policy:
+ * Portable (`@/*`-free) so hosted subtask paths reuse it; target-specific deps
+ * construction stays in the adapter. Enforces the hosted resource policy:
  *   - concurrency: a module-scoped semaphore caps process-wide parallelism
  *     (`SUBTASK_MAX_CONCURRENT`); a queued wait is abortable via `signal`;
  *   - depth-1 + step budget: `runDecopilotCore({ kind: "subtask" })` strips the

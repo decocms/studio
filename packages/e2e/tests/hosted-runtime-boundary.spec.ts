@@ -26,11 +26,6 @@ const PERSISTED_NON_HOSTED_ROWS = [
     sandboxProviderKind: null,
     error: "This coding-agent chat can only run in the Studio desktop app",
   },
-  {
-    harnessId: "decopilot",
-    sandboxProviderKind: "user-desktop",
-    error: "This chat is pinned to an unsupported desktop runtime",
-  },
 ] as const;
 
 test.describe("hosted runtime boundary", () => {
@@ -204,6 +199,147 @@ test.describe("hosted runtime boundary", () => {
         );
         expect(parts.rows[0]?.count).toBe(0);
       }
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("keeps a retired local Decopilot pin readable as hosted", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const agent = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: "legacy hosted runtime",
+            connections: [],
+            status: "active",
+            pinned: false,
+          },
+        },
+      );
+      const thread = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_THREADS_CREATE",
+        { data: { virtual_mcp_id: agent.item.id } },
+      );
+      const update = await db.query(
+        `UPDATE threads
+            SET harness_id = 'decopilot',
+                sandbox_provider_kind = 'user-desktop'
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(update.rowCount).toBe(1);
+
+      const queue = await api.get(
+        `/api/${orgSlug}/decopilot/queue/${thread.item.id}`,
+      );
+      expect(queue.status()).toBe(200);
+      expect(await queue.json()).toEqual({ items: [] });
+
+      const row = await db.query(
+        `SELECT harness_id, sandbox_provider_kind
+           FROM threads
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(row.rows).toEqual([
+        {
+          harness_id: "decopilot",
+          sandbox_provider_kind: "user-desktop",
+        },
+      ]);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("does not treat a historical coding-agent key as a hosted provider", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const organization = await db.query<{ id: string }>(
+        "SELECT id FROM organization WHERE slug = $1",
+        [orgSlug],
+      );
+      const organizationId = organization.rows[0]?.id;
+      expect(organizationId).toBeTruthy();
+
+      await db.query(
+        `INSERT INTO ai_provider_keys (
+           id, organization_id, provider_id, label,
+           encrypted_api_key, created_by, created_at
+         ) VALUES ($1, $2, 'codex', 'retired native sentinel',
+                   'not-a-hosted-credential', $3, NOW())`,
+        [`aik_legacy_${user.userId}`, organizationId, user.userId],
+      );
+
+      const agent = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: "legacy provider boundary",
+            connections: [],
+            status: "active",
+            pinned: false,
+          },
+        },
+      );
+      const thread = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_THREADS_CREATE",
+        { data: { virtual_mcp_id: agent.item.id } },
+      );
+
+      const response = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
+        {
+          data: {
+            messages: [
+              {
+                id: "msg-legacy-provider",
+                role: "user",
+                parts: [{ type: "text", text: "Do not dispatch this" }],
+              },
+            ],
+            agent: { id: agent.item.id },
+            harnessId: "decopilot",
+            sandboxProviderKind: "agent-sandbox",
+          },
+          headers: { "content-type": "application/json" },
+        },
+      );
+
+      expect(response.status()).toBe(400);
+      expect(await response.json()).toEqual({
+        error:
+          'No model available for tier "smart". Connect a provider or configure the tier in organization settings.',
+      });
+
+      const row = await db.query(
+        `SELECT harness_id,
+                (SELECT COUNT(*)::int
+                   FROM thread_message_parts
+                  WHERE thread_id = threads.id) AS part_count
+           FROM threads
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(row.rows).toEqual([{ harness_id: null, part_count: 0 }]);
     } finally {
       await db.end();
     }
@@ -452,6 +588,10 @@ test.describe("hosted runtime boundary", () => {
         {
           method: "GET",
           path: `/api/${orgSlug}/decopilot/threads/${thread.item.id}/stream`,
+        },
+        {
+          method: "GET",
+          path: `/api/${orgSlug}/decopilot/threads/${thread.item.id}/jobs/bgtool:${thread.item.id}:job/stream`,
         },
       ] as const;
       for (const request of requests) {

@@ -32,8 +32,8 @@
 //! ## Thin reverse-proxy catchall — no path allowlist
 //!
 //! This handler is a THIN tokio/reqwest reverse proxy to the upstream mesh:
-//! only chat (decopilot dispatch) and the sandbox/thread/model interception
-//! table (`routes/intercept/`) are handled locally, checked FIRST — anything
+//! retired native Decopilot routes plus the sandbox/thread interception table
+//! (`routes/intercept/`) are handled locally, checked FIRST — anything
 //! that isn't intercepted is forwarded upstream, for ANY path, not just a
 //! curated `/api/*` allowlist. The web client's own transport
 //! (`apps/web/src/lib/desktop/transport-rules.ts`) rewrites every

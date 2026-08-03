@@ -3,10 +3,11 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import type { ChatTier } from "@decocms/shared/organization/schema";
 import {
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   type AiProviderModel,
 } from "@/hooks/collections/use-ai-providers";
 import type { ModelSlot } from "@/hooks/use-organization-settings";
+import { firstAvailableModelSlot } from "@/hooks/model-slot-resolution";
 import { ModelSelectorContentFallback } from "./select-model/decopilot";
 import { ModelSelectorStandaloneBody } from "./select-model/index";
 
@@ -60,15 +61,22 @@ export function TierModelOverridePicker({
   onClose: () => void;
 }) {
   const t = useT();
-  const allKeys = useAiProviderKeys();
-  const effective = userSlot ?? orgSlot ?? autoSlot ?? null;
+  const allKeys = useHostedAiProviderKeys();
+  const availableKeyIds = new Set(allKeys.map((key) => key.id));
+  const effective = firstAvailableModelSlot(
+    [userSlot, orgSlot, autoSlot],
+    availableKeyIds,
+  );
+  const effectiveKeyId = effective?.keyId ?? null;
   // Which provider key's catalog the picker is browsing. Seeded from the
   // effective slot; the parent remounts this component when that slot
   // changes, so it can't outlive the value it was seeded from.
   const [localCredentialId, setLocalCredentialId] = useState<string | null>(
-    effective?.keyId ?? allKeys[0]?.id ?? null,
+    effectiveKeyId ?? allKeys[0]?.id ?? null,
   );
-  const activeKeyId = localCredentialId ?? effective?.keyId ?? null;
+  const activeKeyId = allKeys.some((key) => key.id === localCredentialId)
+    ? localCredentialId
+    : (effectiveKeyId ?? allKeys[0]?.id ?? null);
   const slotKey = activeKeyId
     ? allKeys.find((k) => k.id === activeKeyId)
     : null;
@@ -97,7 +105,7 @@ export function TierModelOverridePicker({
             credentialId={activeKeyId}
             onCredentialChange={setLocalCredentialId}
             selectedModel={slotToModel(
-              effective,
+              effectiveKeyId ? effective : null,
               slotKey?.providerId ?? "deco",
             )}
             onModelChange={(m) => {

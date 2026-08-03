@@ -31,7 +31,7 @@ import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   type AiProviderModel,
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useAiProviderModels,
   useAiProviders,
 } from "../../../hooks/collections/use-ai-providers";
@@ -661,7 +661,7 @@ function ModelSelectorInner({
   const [managing, setManaging] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const aiProviders = useAiProviders();
-  const keys = useAiProviderKeys();
+  const keys = useHostedAiProviderKeys();
 
   const providerMap = Object.fromEntries(
     (aiProviders?.providers ?? []).map((p) => [p.id, p]),

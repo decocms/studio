@@ -334,12 +334,9 @@ function VmEventsBridge({
 // Task workspace — the chat + main-panel region, rendered inside
 // the selected active-task runtime provider.
 //
-// The no-runtime state (no AI provider AND no usable local CLI) is handled
-// per-surface, not by unmounting the workspace: the active side-panel view
-// shows its runtime-setup empty state, the view tabs disable themselves
-// (main-panel-tabs-bar), and the Overview view swaps to the setup prompt
-// (overview-tab). Sandbox-backed views (Preview / Settings / Deck / …) stay
-// available without a cloud provider.
+// The hosted no-runtime state (no AI provider) is handled by the structured
+// chat side panel, not by unmounting the workspace. Native coding agents use
+// the terminal runtime adapter and never enter this provider-setup path.
 // ---------------------------------------------------------------------------
 
 type TaskLayout = ReturnType<typeof useWorkspaceLayoutState>;

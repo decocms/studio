@@ -9,7 +9,7 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useAiProviderModels,
   type AiProviderModel,
 } from "@/hooks/collections/use-ai-providers";
@@ -80,17 +80,22 @@ function SimpleModeModelRow({
   filterModels?: (m: AiProviderModel) => boolean;
   defaultKeyId: string | null;
 }) {
-  const allKeys = useAiProviderKeys();
+  const allKeys = useHostedAiProviderKeys();
+  const slotKeyId = allKeys.some((key) => key.id === slot?.keyId)
+    ? slot?.keyId
+    : null;
   const [localCredentialId, setLocalCredentialId] = useState<string | null>(
-    slot?.keyId ?? defaultKeyId,
+    slotKeyId ?? defaultKeyId,
   );
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    if (slot?.keyId) setLocalCredentialId(slot.keyId);
-  }, [slot?.keyId]);
+    if (slotKeyId) setLocalCredentialId(slotKeyId);
+  }, [slotKeyId]);
 
-  const activeKeyId = localCredentialId ?? defaultKeyId;
+  const activeKeyId = allKeys.some((key) => key.id === localCredentialId)
+    ? localCredentialId
+    : defaultKeyId;
   const slotKey = activeKeyId
     ? allKeys.find((k) => k.id === activeKeyId)
     : null;
@@ -101,19 +106,20 @@ function SimpleModeModelRow({
     ? isLoadingModels || activeModels.some(filterModels)
     : true;
 
-  const resolvedModel: AiProviderModel | null = slot
-    ? {
-        modelId: slot.modelId,
-        title: slot.title ?? slot.modelId,
-        keyId: slot.keyId,
-        providerId: slotKey?.providerId ?? "deco",
-        description: null,
-        logo: null,
-        capabilities: [],
-        limits: null,
-        costs: null,
-      }
-    : null;
+  const resolvedModel: AiProviderModel | null =
+    slot && slotKeyId
+      ? {
+          modelId: slot.modelId,
+          title: slot.title ?? slot.modelId,
+          keyId: slot.keyId,
+          providerId: slotKey?.providerId ?? "deco",
+          description: null,
+          logo: null,
+          capabilities: [],
+          limits: null,
+          costs: null,
+        }
+      : null;
 
   const t = useT();
 
@@ -172,7 +178,7 @@ function AutosaveStatus({
 
 export function SimpleModeSection() {
   const t = useT();
-  const allKeys = useAiProviderKeys();
+  const allKeys = useHostedAiProviderKeys();
   const simpleMode = useSimpleMode();
   const hasProvider = allKeys.length > 0;
 

@@ -5,7 +5,7 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useAiProviders,
 } from "@/hooks/collections/use-ai-providers";
 import { useT } from "@/i18n/use-t.ts";
@@ -28,7 +28,7 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 function OrgAiProvidersContent() {
-  const allKeys = useAiProviderKeys();
+  const allKeys = useHostedAiProviderKeys();
   const hasDeco = allKeys.some((k) => k.providerId === "deco");
   const hasAnyProvider = allKeys.length > 0;
   const [connectOpen, setConnectOpen] = useState(false);

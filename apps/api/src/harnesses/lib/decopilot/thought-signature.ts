@@ -19,8 +19,7 @@
  * turns). On the way OUT it re-embeds `__thought__<signature>` back into the id
  * so the gateway can extract it for Gemini.
  *
- * Portable: imports only AI-SDK types, no `@/*` and no StudioContext, so the
- * desktop daemon bundles it like the rest of this subtree.
+ * Portable: imports only AI-SDK types, with no `@/*` or StudioContext coupling.
  */
 
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";

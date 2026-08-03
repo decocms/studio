@@ -168,16 +168,6 @@ const sharedProxy = {
           secure: false,
           ws: true,
         },
-        "/threads": {
-          target: nativeLocalApiTarget,
-          changeOrigin: false,
-          secure: false,
-        },
-        "/models": {
-          target: nativeLocalApiTarget,
-          changeOrigin: false,
-          secure: false,
-        },
       }
     : {}),
 };

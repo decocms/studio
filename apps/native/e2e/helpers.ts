@@ -18,10 +18,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { sleep } from "@decocms/shared/std";
-import { describe as bunDescribe, expect } from "bun:test";
+import { describe as bunDescribe } from "bun:test";
 
 /** Per-test-run bearer. 32+ chars, matches the daemon suite's convention
  *  (`daemon.e2e.helpers.ts`'s `DAEMON_TOKEN`) so a Rust binary honoring the
@@ -168,8 +167,7 @@ export function jsonAuthHeaders(): Record<string, string> {
 }
 
 /** Absolute URL for a path on the local-api instance's MAIN listener under
- *  test (the app's own API — health/_sandbox/threads/models/app-API
- *  fallback). */
+ *  test (the app's own API — health/_local/_sandbox/app-API fallback). */
 export function url(a: LocalApi, path: string): string {
   return `http://127.0.0.1:${a.port}${path}`;
 }
@@ -456,202 +454,4 @@ export async function readSseUntil(
       /* already closed */
     }
   }
-}
-
-// --- Threads convenience -----------------------------------------------------
-
-export interface ThreadWire {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
-
-/** POST /threads — returns the created thread. Throws on non-201. */
-export async function createThread(
-  a: LocalApi,
-  title?: string,
-): Promise<ThreadWire> {
-  const res = await fetch(url(a, "/threads"), {
-    method: "POST",
-    headers: jsonAuthHeaders(),
-    body: JSON.stringify(title === undefined ? {} : { title }),
-  });
-  expect(res.status).toBe(201);
-  const body = (await res.json()) as { thread: ThreadWire };
-  return body.thread;
-}
-
-export interface RunWire {
-  id: string;
-  thread_id: string;
-  harness_id: "claude-code" | "codex";
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  created_at: string;
-  ended_at: string | null;
-  error: string | null;
-}
-
-/** GET /threads/:id/runs — returns the run list. Throws on non-200. */
-export async function listRuns(
-  a: LocalApi,
-  threadId: string,
-): Promise<RunWire[]> {
-  const res = await fetch(url(a, `/threads/${threadId}/runs`), {
-    headers: jsonAuthHeaders(),
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { runs: RunWire[] };
-  return body.runs;
-}
-
-export interface MessageWire {
-  id: string;
-  thread_id: string;
-  role: "user" | "assistant" | "system";
-  parts: unknown[];
-  created_at: string;
-}
-
-/** GET /threads/:id/messages — returns the message list. Throws on non-200. */
-export async function listMessages(
-  a: LocalApi,
-  threadId: string,
-): Promise<MessageWire[]> {
-  const res = await fetch(url(a, `/threads/${threadId}/messages`), {
-    headers: jsonAuthHeaders(),
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { messages: MessageWire[] };
-  return body.messages;
-}
-
-// --- Harness dispatch convenience --------------------------------------------
-
-/**
- * Absolute path to the deterministic fake `claude` CLI
- * (`apps/native/e2e/fixtures/stub-harness.mjs`) — see that file's header
- * comment for the full wire-format spec (flags accepted, ndjson event
- * shapes per scenario).
- */
-export const STUB_HARNESS_PATH = fileURLToPath(
-  new URL("./fixtures/stub-harness.mjs", import.meta.url),
-);
-
-/**
- * `extraEnv` fragment for `startLocalApi()` that points the SHARED CONTRACT
- * env override (`LOCAL_API_CLAUDE_BIN`, `apps/native/docs/
- * the native local-API contract`'s env contract section) at the stub harness,
- * invoked explicitly via `node` (JSON-array form) so this works regardless
- * of the checked-out file's execute bit. Optionally overrides
- * `STUB_HARNESS_SLOW_MS`/`STUB_HARNESS_VERSION` for the spawned stub itself
- * (forwarded to the child's env, NOT consumed by local-api).
- */
-export function stubClaudeBinEnv(
-  extra: Record<string, string> = {},
-): Record<string, string> {
-  return {
-    LOCAL_API_CLAUDE_BIN: JSON.stringify(["node", STUB_HARNESS_PATH]),
-    ...extra,
-  };
-}
-
-/**
- * Builds a `harnessStreamInputSchema`-conforming `input` payload (see
- * `packages/sandbox/dispatch/schemas.ts` — read-only reference, never
- * imported directly per this suite's zero-coupling-to-daemon-source rule,
- * see this file's top-of-file doc comment) for `POST /_sandbox/dispatch`.
- * `prompt` is embedded in `userMessage.parts[0].text` — the stub harness
- * greps its own argv/stdin for a `SCENARIO:<name>` tag anywhere, so exactly
- * how the harness crate threads this text into the CLI invocation doesn't
- * matter for scenario selection to work.
- */
-export function buildDispatchInput(opts: {
-  threadId: string;
-  prompt: string;
-}): Record<string, unknown> {
-  return {
-    threadId: opts.threadId,
-    userMessage: {
-      role: "user",
-      parts: [{ type: "text", text: opts.prompt }],
-    },
-    harness: {},
-    workspace: { cwd: null },
-    models: {
-      thinking: {
-        id: "claude-code:sonnet",
-        title: "Sonnet",
-        credentialId: "stub-cred",
-      },
-    },
-    mcp: {
-      url: "http://127.0.0.1:1/mcp",
-      headers: {},
-      expiresAt: Date.now() + 60_000,
-    },
-    mode: "default",
-    temperature: 0,
-    toolApprovalLevel: "auto",
-    user: { id: "stub-user", email: "stub@example.com" },
-    organizationId: "stub-org",
-    agent: { id: "stub-agent" },
-  };
-}
-
-/**
- * One parsed `POST /_sandbox/dispatch` SSE frame. Mirrors
- * `DispatchSSEEvent` from `packages/sandbox/dispatch/schemas.ts` structurally
- * (this suite doesn't import that module — see the zero-coupling note above
- * — so the shape is duplicated here deliberately; a divergence is a
- * wire-contract regression signal, exactly the tradeoff
- * `packages/e2e`'s black-box rule documents for its own suite, see
- * CLAUDE.md's "E2E isolation" section).
- */
-export type DispatchFrame =
-  | { type: "ui-message-chunk"; chunk: unknown }
-  | { type: "error"; code: string; message: string }
-  | { type: "done" };
-
-/**
- * Parses accumulated SSE text from `POST /_sandbox/dispatch` into ordered
- * `DispatchFrame`s. Per the native local-API contract, dispatch's
- * framing is DATA-ONLY (no `event:` line — default event name `message`
- * applies) with one leading `: dispatch accepted` comment line before the
- * first data frame. Comment lines (`:...`) and blank lines are skipped;
- * every remaining `data: <json>` line is JSON-parsed in order.
- */
-export function parseDispatchFrames(sseText: string): DispatchFrame[] {
-  const frames: DispatchFrame[] = [];
-  for (const rawLine of sseText.split("\n")) {
-    const line = rawLine.trimEnd();
-    if (line.length === 0) continue;
-    if (line.startsWith(":")) continue; // SSE comment (e.g. "dispatch accepted")
-    if (!line.startsWith("data:")) continue;
-    const jsonText = line.slice("data:".length).trimStart();
-    frames.push(JSON.parse(jsonText) as DispatchFrame);
-  }
-  return frames;
-}
-
-/**
- * Runs a full `POST /_sandbox/dispatch` request to completion (reads until
- * a `{"type":"done"}` frame lands, per the contract's "always emitted
- * exactly once, last event before the stream closes" guarantee — including
- * after an error or a client-initiated cancel), returning the parsed
- * frames plus the raw response for header assertions.
- */
-export async function runDispatchToCompletion(
-  a: LocalApi,
-  body: unknown,
-  opts: { deadlineMs?: number } = {},
-): Promise<{ res: Response; frames: DispatchFrame[]; rawText: string }> {
-  const { res, text } = await readSseUntil(url(a, "/_sandbox/dispatch"), {
-    method: "POST",
-    headers: jsonAuthHeaders(),
-    body: JSON.stringify(body),
-    predicate: (acc) => acc.includes('"type":"done"'),
-    deadlineMs: opts.deadlineMs ?? 8000,
-  });
-  return { res, frames: parseDispatchFrames(text), rawText: text };
 }

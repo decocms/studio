@@ -27,7 +27,6 @@ import { useMessageQueue } from "./use-message-queue.ts";
 import { useOpenPreviewOnRepoLoad } from "./use-open-preview-on-repo-load.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
-import { NativeAgentEmptyState } from "./native-agent-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
@@ -337,7 +336,6 @@ export const Chat = Object.assign(ChatRoot, {
   Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,
-  NativeAgentEmptyState: NativeAgentEmptyState,
   CreditsEmptyState: CreditsEmptyState,
   CreditsEyebrow: CreditsEyebrow,
   NoCreditsEyebrow: NoCreditsEyebrow,

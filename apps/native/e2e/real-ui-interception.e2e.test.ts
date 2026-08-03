@@ -222,10 +222,11 @@ describeLocalApi("local-api e2e: native thread-tool interception", () => {
 
   it("answers capability discovery locally and proxies unknown tools upstream", async () => {
     const org = freshOrg();
-    const link = await callTool(api, org, "LINK_CURRENT_GET", {});
-    expect(link.status).toBe(200);
-    expect(await link.json()).toEqual({
-      online: true,
+    const capabilities = await fetch(url(api, "/_local/agent-capabilities"), {
+      headers: authHeaders(),
+    });
+    expect(capabilities.status).toBe(200);
+    expect(await capabilities.json()).toEqual({
       capabilities: expect.any(Array),
     });
 
@@ -240,13 +241,11 @@ describeLocalApi("local-api e2e: native thread-tool interception", () => {
       LOCAL_API_TOKEN_STORE: "memory",
     });
     try {
-      const link = await callTool(
-        signedOut,
-        "signed-out-org",
-        "LINK_CURRENT_GET",
-        {},
+      const capabilities = await fetch(
+        url(signedOut, "/_local/agent-capabilities"),
+        { headers: authHeaders() },
       );
-      expect(link.status).toBe(200);
+      expect(capabilities.status).toBe(200);
 
       const create = await callTool(
         signedOut,

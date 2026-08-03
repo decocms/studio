@@ -115,7 +115,6 @@ pub struct LaunchRequest<'a> {
     pub fence: &'a RtThreadFence,
     pub terminal_session_id: &'a str,
     pub harness: HarnessId,
-    pub model_id: Option<&'a str>,
     pub approval_mode: &'a str,
     pub plan_mode: bool,
     pub hook_token: &'a str,
@@ -352,9 +351,6 @@ async fn prepare_claude(
     } else if request.approval_mode == "auto" {
         argv.extend(["--permission-mode".to_string(), "acceptEdits".to_string()]);
     }
-    if let Some(model_id) = normalized_model_id(request.model_id, request.harness) {
-        argv.extend(["--model".to_string(), model_id]);
-    }
     if let Some(provider_session_id) = provider_session_id {
         argv.extend(["--resume".to_string(), provider_session_id.to_string()]);
     }
@@ -397,21 +393,10 @@ async fn prepare_codex(
     if request.approval_mode == "auto" {
         argv.extend(["--ask-for-approval".to_string(), "on-request".to_string()]);
     }
-    if let Some(model_id) = normalized_model_id(request.model_id, request.harness) {
-        argv.extend(["--model".to_string(), model_id]);
-    }
     if let Some(provider_session_id) = provider_session_id {
         argv.extend(["resume".to_string(), provider_session_id.to_string()]);
     }
     Ok(codex_home)
-}
-
-fn normalized_model_id(model_id: Option<&str>, harness: HarnessId) -> Option<String> {
-    let model_id = model_id.map(str::trim).filter(|value| !value.is_empty())?;
-    Some(match harness {
-        HarnessId::ClaudeCode => harness::tiers::resolve_claude_model_id(model_id),
-        HarnessId::Codex => harness::tiers::resolve_codex_model_id(model_id),
-    })
 }
 
 fn local_mcp_url(base_url: &str, organization_id: &str, virtual_mcp_id: &str) -> String {

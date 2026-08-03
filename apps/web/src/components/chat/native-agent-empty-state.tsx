@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Monitor01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { useCurrentLink } from "@/hooks/use-current-link";
+import { useAgentCapabilities } from "@/desktop/agent-terminal/use-agent-capabilities";
 import { useT } from "@/i18n/use-t.ts";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import { useChatPrefs } from "./context";
@@ -25,7 +25,7 @@ export function NativeAgentEmptyState({
   onSelect?: (option: LocalAgentOption) => void;
 }) {
   const t = useT();
-  const link = useCurrentLink();
+  const availability = useAgentCapabilities();
   const { setPendingAgentOption } = useChatPrefs();
 
   const options: Array<{
@@ -38,18 +38,18 @@ export function NativeAgentEmptyState({
       option: "claude-code-desktop",
       label: "Claude Code",
       icon: <ClaudeCodeIcon size={16} />,
-      detected: link.online && link.capabilities.includes("claude-code"),
+      detected: availability.capabilities.includes("claude-code"),
     },
     {
       option: "codex-desktop",
       label: "Codex",
       icon: <CodexIcon size={16} />,
-      detected: link.online && link.capabilities.includes("codex"),
+      detected: availability.capabilities.includes("codex"),
     },
   ];
 
   const anyDetected = options.some((o) => o.detected);
-  const subtitle = !link.ready
+  const subtitle = !availability.ready
     ? t("chat.nativeAgentEmptyState.subtitleDetecting")
     : anyDetected
       ? t("chat.nativeAgentEmptyState.subtitlePick")
@@ -81,7 +81,7 @@ export function NativeAgentEmptyState({
             variant={o.detected ? "default" : "outline"}
             className="gap-2"
             title={
-              link.ready && !o.detected
+              availability.ready && !o.detected
                 ? t("chat.nativeAgentEmptyState.notDetected", {
                     label: o.label,
                   })

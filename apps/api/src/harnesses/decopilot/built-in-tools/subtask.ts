@@ -132,8 +132,7 @@ export interface SubtaskParams {
    * bash/…), bound to the parent's sandbox via its fs hooks. Forwarded to a
    * SELF-CLONE subagent so it works in the SAME sandbox — its file writes are
    * visible to the parent. Absent for cross-agent delegation (different agent =
-   * different sandbox identity) and when the parent has no sandbox (no
-   * vmContext, e.g. Claude Code).
+   * different sandbox identity) and when the parent has no sandbox context.
    *
    * Only used as a FALLBACK when `parentBuiltInParams` is absent — when present,
    * the subagent rebuilds its own full built-in set (vm tools included) instead.

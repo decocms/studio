@@ -42,7 +42,6 @@ const MAX_COLS: u16 = 1_000;
 #[serde(rename_all = "camelCase")]
 pub struct StartTerminalBody {
     pub harness_id: Option<String>,
-    pub model_id: Option<String>,
     #[serde(default = "default_approval_mode")]
     pub approval_mode: String,
     #[serde(default)]
@@ -65,8 +64,6 @@ enum ClientFrame {
     Start {
         #[serde(alias = "harness_id")]
         harness_id: String,
-        #[serde(default)]
-        model_id: Option<String>,
         #[serde(default = "default_approval_mode")]
         approval_mode: String,
         #[serde(default)]
@@ -115,7 +112,6 @@ struct TerminalMetadata {
 #[derive(Debug)]
 struct StartOptions {
     harness: HarnessId,
-    model_id: Option<String>,
     approval_mode: String,
     plan_mode: bool,
     size: TerminalSize,
@@ -182,7 +178,6 @@ pub async fn start(
         &fence,
         StartOptions {
             harness,
-            model_id: parsed.model_id,
             approval_mode: parsed.approval_mode,
             plan_mode: parsed.plan_mode,
             size,
@@ -434,7 +429,6 @@ async fn receive_handshake(
                 match frame {
                     ClientFrame::Start {
                         harness_id,
-                        model_id,
                         approval_mode,
                         plan_mode,
                         rows,
@@ -453,7 +447,6 @@ async fn receive_handshake(
                         return Ok(Handshake {
                             options: StartOptions {
                                 harness,
-                                model_id,
                                 approval_mode,
                                 plan_mode,
                                 size: terminal_size(rows, cols).map_err(api_error_message)?,
@@ -478,7 +471,6 @@ async fn receive_handshake(
                         return Ok(Handshake {
                             options: StartOptions {
                                 harness: parse_harness(&harness_id).map_err(api_error_message)?,
-                                model_id: None,
                                 approval_mode: "default".to_string(),
                                 plan_mode: false,
                                 size: terminal_size(rows, cols).map_err(api_error_message)?,
@@ -621,7 +613,6 @@ async fn ensure_session(
             fence,
             terminal_session_id: &commit.session.id,
             harness: options.harness,
-            model_id: options.model_id.as_deref(),
             approval_mode: &options.approval_mode,
             plan_mode: options.plan_mode,
             hook_token: &hook_token,

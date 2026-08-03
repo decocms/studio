@@ -27,10 +27,10 @@ export type {
 
 /** A Harness produces a stream of UI message chunks for a conversation turn.
  *
- *  Implementations:
- *    - Decopilot: runs Vercel AI SDK `streamText` with built-in tools + MCP.
- *    - Claude Code: spawns the `claude` CLI via `ai-sdk-provider-claude-code`.
- *    - Codex: spawns `codex` app-server via `ai-sdk-provider-codex-cli`.
+ *  The hosted implementation is Decopilot, which runs Vercel AI SDK
+ *  `streamText` with built-in tools and MCP. Interactive coding-agent CLIs
+ *  live exclusively in Studio Native's Rust PTY runtime and do not implement
+ *  this interface.
  *
  *  Output chunks are raw AI SDK `UIMessageChunk` — the shared stream layer
  *  extracts `providerMetadata` from the `finish-message` chunk to persist
@@ -46,10 +46,6 @@ export interface Harness {
  *  through factory construction (captured in the closure), not through
  *  `HarnessStreamInput`.
  *
- *  The desktop's daemon constructs a HarnessContext directly to invoke
- *  `claudeCodeHarnessFactory.create()` / `codexHarnessFactory.create()`
- *  without depending on cluster-only modules.
- *
  *  Re-declared here (mirroring `apps/api/src/core/harness-context.ts`) so
  *  the package stays portable. The cluster's richer `StudioContext` is
  *  structurally assignable to this shape. */
@@ -61,7 +57,7 @@ export interface HarnessContext {
     orgId?: string;
     userId?: string;
   };
-  /** Optional — only decopilot uses this; CLI harnesses never read it. */
+  /** Optional provider activation seam used by hosted Decopilot. */
   aiProviders?: {
     activate(
       credentialId: string,

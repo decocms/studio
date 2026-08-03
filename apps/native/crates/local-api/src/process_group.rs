@@ -486,8 +486,8 @@ async fn group_has_non_anchor_members(group_id: u32) -> std::io::Result<bool> {
 #[cfg(unix)]
 fn signal_anchored_process_group(group_id: u32, signal: KillSignal) -> bool {
     let signal = match signal {
-        KillSignal::Term => harness::spawn::Signal::Term,
-        KillSignal::Kill => harness::spawn::Signal::Kill,
+        KillSignal::Term => harness::watchdog::Signal::Term,
+        KillSignal::Kill => harness::watchdog::Signal::Kill,
     };
     harness::watchdog::signal_non_anchor_members(group_id, group_id, signal)
 }

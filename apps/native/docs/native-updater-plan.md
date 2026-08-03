@@ -418,8 +418,8 @@ no updater either — the axes differ.
   session cookie — i.e. an unauthenticated restart endpoint (a hostile
   previewed-sandbox page could then kill the user's runs with a `no-cors`
   POST). Concretely: mount under the existing `/_local` namespace as
-  `/_local/update/restart` inside a guarded nest (pattern: the `/threads` /
-  `app_api` sub-routers that carry `.layer(guard)`). `/_local` rather than a
+  `/_local/update/restart` inside a guarded nest (pattern: the existing guarded
+  `app_api` sub-router that carries `.layer(guard)`). `/_local` rather than a
   bare `/update` because bare paths are upstream-proxyable/SPA-fallback
   surface — the underscore namespaces are the repo's reserved-local
   convention (`is_reserved_api_path`, router.rs:728-746) — and because the

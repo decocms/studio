@@ -38,10 +38,8 @@ workspace = true
 [dependencies]
 axum-server = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
-# Phase 2: harness detection/tiers/spawn/stream-translation — see
-# `crates/harness`'s own Cargo.toml doc comment for why its PTY dependency
-# lives there instead of the shared `[workspace.dependencies]` table. This
-# is a path dep (in-workspace crate), not a version to keep in sync.
+# Native coding-agent detection and launch resolution. This is a path dep
+# (in-workspace crate), not a version to keep in sync.
 harness = { path = "../harness" }
 terminal-session = { path = "../terminal-session" }
 upstream = { path = "../upstream" }

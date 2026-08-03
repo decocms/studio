@@ -34,34 +34,6 @@ describe("buildPortableBuiltInTools", () => {
     ]);
   });
 
-  it("can expose unavailable cluster-only tools for desktop with clear errors", async () => {
-    const tools = buildPortableBuiltInTools({
-      writer,
-      toolOutputMap: new Map(),
-      passthroughClient,
-      toolApprovalLevel: "auto",
-      isPlanMode: false,
-      includeUnavailableClusterOnlyTools: true,
-    });
-
-    expect("web_search" in tools).toBe(true);
-    expect("update_interests" in tools).toBe(true);
-
-    const webSearch = tools.web_search as unknown as {
-      execute: (input: { query: string }) => Promise<unknown>;
-    };
-    const updateInterests = tools.update_interests as unknown as {
-      execute: (input: { interests: [] }) => Promise<unknown>;
-    };
-
-    await expect(
-      webSearch.execute({ query: "latest TypeScript release" }),
-    ).rejects.toThrow(/web_search is only available in cluster Decopilot/);
-    await expect(updateInterests.execute({ interests: [] })).rejects.toThrow(
-      /update_interests is only available in cluster Decopilot/,
-    );
-  });
-
   it("registers portable image and screenshot tools when their dependencies exist", () => {
     const originalBrowserlessToken = process.env.BROWSERLESS_TOKEN;
     process.env.BROWSERLESS_TOKEN = "browserless-test-token";

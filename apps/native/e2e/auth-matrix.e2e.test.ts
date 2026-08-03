@@ -7,7 +7,7 @@
  * see `daemon.e2e.test.ts`'s "serves no-auth GETs" case; that's a documented
  * divergence, not a gap). This suite asserts the 3-way matrix — no bearer,
  * wrong bearer, correct bearer — across a representative sample spanning
- * both KEPT (`/_sandbox/*`) and NEW (`/threads`, `/models`) route families.
+ * the native sandbox and local control-plane route families.
  */
 import { afterAll, beforeAll, expect, it } from "bun:test";
 
@@ -32,25 +32,17 @@ interface Case {
 }
 
 const CASES: Case[] = [
-  { name: "threads: list", path: "/threads", method: "GET" },
-  { name: "threads: create", path: "/threads", body: toBody({ title: "x" }) },
-  { name: "models: list", path: "/models", method: "GET" },
+  {
+    name: "agent capabilities: list",
+    path: "/_local/agent-capabilities",
+    method: "GET",
+  },
   {
     name: "sandbox: bash",
     path: "/_sandbox/bash",
     body: toBody({ command: "true" }),
   },
   { name: "sandbox: tasks list", path: "/_sandbox/tasks", method: "GET" },
-  {
-    name: "sandbox: dispatch",
-    path: "/_sandbox/dispatch",
-    body: toBody({ harnessId: "x", input: {} }),
-  },
-  {
-    name: "sandbox: cancel run",
-    path: "/_sandbox/runs/some-run",
-    method: "DELETE",
-  },
   // Correct-bearer answers 409 here (the standalone binary has no update
   // integration — `StartOptions.update: None`), which satisfies the
   // matrix's not-401 assertion; the 401 rows prove the route landed inside
@@ -120,7 +112,7 @@ describeLocalApi("local-api e2e: auth matrix", () => {
     // set by startLocalApi), so this documents the invariant rather than
     // exercising it; Phase 1's unit-level port of `auth.ts` should carry the
     // corresponding test forward at that tier (see auth.test.ts precedent).
-    const res = await fetch(url(a, "/threads"), {
+    const res = await fetch(url(a, "/_local/agent-capabilities"), {
       method: "GET",
       headers: { Authorization: "Bearer " },
     });

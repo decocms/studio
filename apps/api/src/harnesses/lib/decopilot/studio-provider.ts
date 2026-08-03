@@ -1,12 +1,10 @@
 /**
  * studio-provider — the portable provider surface + language-model factory.
  *
- * This file is the ONE home for `StudioProvider` + `createLanguageModel`, shared
- * by the cluster (the `@/ai-providers/*` aliases re-export from here) and the
- * desktop daemon (which deep-imports the harnesses subtree). It imports ONLY
- * AI-SDK + `@decocms/shared/sdk` + relative paths — no
- * `@/*` specifier and no StudioContext — so the daemon bundles it without the
- * tsc stack overflow that cluster types induce.
+ * This file is the ONE home for `StudioProvider` + `createLanguageModel`; the
+ * cluster's `@/ai-providers/*` aliases re-export from here. It imports only
+ * AI-SDK, `@decocms/shared/sdk`, and relative paths so the provider core stays
+ * portable and testable without StudioContext.
  */
 
 import type { LanguageModelV3 } from "@ai-sdk/provider";

@@ -17,15 +17,20 @@ describe("isHostedDecopilotThread", () => {
         sandbox_provider_kind: null,
       }),
     ).toBe(true);
+    expect(
+      isHostedDecopilotThread({
+        harness_id: "decopilot",
+        sandbox_provider_kind: "user-desktop",
+      }),
+    ).toBe(true);
   });
 
-  test("rejects unpinned, native, retired, and unknown runtimes", () => {
+  test("rejects unpinned, native, incomplete, and unknown runtimes", () => {
     for (const thread of [
       null,
       { harness_id: null, sandbox_provider_kind: null },
       { harness_id: "codex", sandbox_provider_kind: "user-desktop" },
       { harness_id: "future", sandbox_provider_kind: null },
-      { harness_id: "decopilot", sandbox_provider_kind: "user-desktop" },
       { harness_id: "decopilot" },
     ]) {
       expect(isHostedDecopilotThread(thread)).toBe(false);

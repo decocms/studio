@@ -229,9 +229,9 @@ pub enum StartError {
 /// under one `ServerHandle` — see the module doc's port-router summary and
 /// `router.rs`'s module doc for the exact route split:
 ///
-/// - the MAIN listener ([`ServerHandle::port`]) — `/health`, `/_sandbox/*`,
-///   `/threads*`, `/models`, and the app-API intercept-or-proxy fallback
-///   (bearer + Origin gated).
+/// - the MAIN listener ([`ServerHandle::port`]) — `/health`, `/_local/*`,
+///   `/_sandbox/*`, and the app-API intercept-or-proxy fallback (bearer +
+///   Origin gated).
 /// - the PREVIEW listener ([`ServerHandle::preview_port`]) — ONLY the
 ///   reverse-proxy-to-dev-server fallback (`routes::proxy::fallback`), no
 ///   auth at all. Moved to its own loopback port (rather than sharing the
@@ -361,7 +361,6 @@ pub(crate) fn shared_child_lifetime_lock_path(app_root: &std::path::Path) -> std
 }
 
 const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
-const HARNESS_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 const FS_MUTATION_REAP_TIMEOUT: Duration = Duration::from_secs(3);
 const CHILD_TERM_GRACE: Duration = Duration::from_secs(2);
 const CHILD_KILL_GRACE: Duration = Duration::from_secs(2);
@@ -427,20 +426,14 @@ impl ServerHandle {
             );
         }
 
-        // Chat harnesses own process state outside TaskRegistry. Reap both
-        // families concurrently before setup/git can observe their worktrees.
-        let (terminal_report, dispatch_stopped) = tokio::join!(
-            state.agent_sessions.shutdown(),
-            routes::dispatch::shutdown_all(HARNESS_REAP_TIMEOUT),
-        );
+        // Interactive terminals own process state outside TaskRegistry. Reap
+        // them before setup/git can observe their worktrees.
+        let terminal_report = state.agent_sessions.shutdown().await;
         if !terminal_report.all_stopped() {
             tracing::error!(
                 failures = terminal_report.failures.len(),
                 "shutdown: one or more interactive coding agents did not stop cleanly"
             );
-        }
-        if !dispatch_stopped {
-            tracing::error!("shutdown: one or more legacy dispatches did not stop in time");
         }
 
         // Each setup shutdown internally snapshots once, signals every child
@@ -494,7 +487,6 @@ impl ServerHandle {
         }
 
         let process_tree_quiescent = terminal_report.all_stopped()
-            && dispatch_stopped
             && global_setup_stopped
             && sandbox_setups_stopped
             && final_tasks_stopped

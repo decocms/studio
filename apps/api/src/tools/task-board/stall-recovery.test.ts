@@ -69,10 +69,10 @@ describe("decideStallAction", () => {
     ).toBe("nudge");
   });
 
-  test("retired Decopilot desktop rows are never nudged", () => {
+  test("retired linked Decopilot rows continue as hosted", () => {
     expect(
       decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
-    ).toBe("none");
+    ).toBe("nudge");
   });
 });
 
