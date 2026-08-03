@@ -1,9 +1,7 @@
 /**
- * ORGANIZATION_BILLING_CHECKOUT_START — first subscribe for the per-org
- * subscription (one flat monthly price, quantity 1). Creates the Stripe
- * Checkout session; completion comes back via the webhook (binds the
- * subscription, flips status). The ONE redirect in the org's life —
- * afterwards Stripe's Customer Portal manages everything.
+ * ORGANIZATION_BILLING_CHECKOUT_START — first subscribe (flat monthly price,
+ * quantity 1). Completion comes back via the webhook; afterwards Stripe's
+ * Customer Portal manages everything.
  */
 
 import { z } from "zod";
@@ -42,13 +40,10 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
     if (billing?.status === "active") {
       throw new Error("This organization already has an active subscription.");
     }
-    // A BOUND subscription blocks checkout even when status isn't active:
-    // past_due (dunning) and unpaid/paused (mapped to canceled WITHOUT
-    // unbinding) all mean a live subscription still exists on Stripe — a
-    // second checkout would charge the customer for a subscription the
-    // webhook then refuses to bind (orphan). Recovery is Stripe-side: settle
-    // the invoice (invoice.paid reactivates) or let Stripe delete the
-    // subscription (deleted unbinds, and checkout opens up again).
+    // A BOUND subscription blocks checkout even when not active: a live
+    // Stripe subscription still exists, and a second checkout would charge
+    // for one the webhook then refuses to bind. Recovery is Stripe-side
+    // (invoice settles → reactivates; deletion → unbinds, checkout reopens).
     if (billing?.stripeSubscriptionId) {
       throw new Error(
         "This organization still has a subscription on file — settle or cancel it before starting a new checkout.",

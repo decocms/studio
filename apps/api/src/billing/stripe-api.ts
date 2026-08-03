@@ -1,8 +1,6 @@
 /**
- * Minimal Stripe API client for the per-org billing surface: first-subscribe
- * Checkout, the hosted Customer Portal, and subscription cancellation. Raw
- * fetch + form encoding (Stripe's API is form-encoded), same no-SDK posture
- * as the reports worker — three endpoints don't buy a dependency.
+ * Minimal Stripe API client for the per-org subscription: Checkout, Customer
+ * Portal, cancellation. Raw fetch + form encoding — no SDK dependency.
  */
 
 import { getSettings } from "../settings";

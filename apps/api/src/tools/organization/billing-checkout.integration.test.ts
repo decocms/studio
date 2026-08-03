@@ -1,8 +1,5 @@
-/**
- * Real-Postgres coverage for the checkout guards — everything that fires
- * BEFORE any Stripe HTTP call, so no key and no network: already-active /
- * bound-but-not-active (the orphan-payment hole).
- */
+/** Real-Postgres coverage for the checkout guards that fire BEFORE any
+ *  Stripe HTTP call (no key, no network). */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { StudioDatabase } from "../../database";
@@ -119,9 +116,8 @@ describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
   });
 
   it("rejects a BOUND subscription even when not active — no second paid subscription", async () => {
-    // past_due (dunning) means a live subscription still exists on Stripe;
-    // a second checkout would charge for a subscription the webhook then
-    // refuses to bind.
+    // past_due = a live Stripe subscription still exists; a second checkout
+    // would charge for one the webhook then refuses to bind.
     await expect(
       ORGANIZATION_BILLING_CHECKOUT_START.handler(
         {},

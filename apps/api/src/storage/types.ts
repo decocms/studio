@@ -1216,11 +1216,8 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/**
- * Per-org billing identity (see migration 139). Platform-written only:
- * org-creation hook and Stripe webhooks — NEVER writable by org members
- * (billing in the org `metadata` would be, via ORGANIZATION_UPDATE).
- */
+/** Per-org billing identity (migration 139). Platform-written only —
+ *  never writable by org members. */
 export interface OrganizationBillingTable {
   organization_id: string;
   /** Subscription status: "none" | "active" | "past_due" | "canceled". */

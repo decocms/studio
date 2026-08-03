@@ -1,22 +1,13 @@
 import { type Kysely, sql } from "kysely";
 
 /**
- * Per-seat billing is gone — the model pivoted to a flat per-org subscription
- * (one price, quantity 1) gating executions of the reports-pushed tasks.
- * Drop the seat machinery migrations 139–144 built up:
- *  - organization_paid_seat + seat_change_log (whole tables);
- *  - organization_billing.billing_mode (self_serve/invoiced was seat-specific),
- *    legacy (the old-org paywall exemption — the new gate only touches the
- *    reports-task flow, which no org uses by inheritance, so nobody needs
- *    exempting), included_report_url / armed_report_url (the weekly-report
- *    benefit) and benefits_reference_id (+ its partial index) — the durable
- *    benefit-sync intent marker; the sync workflow is deleted with this
- *    migration.
- * KEPT on organization_billing: status / stripe ids / current_period_end /
- * last_stripe_event_at — the org-subscription core the webhook still writes.
- *
- * Nothing was ever enforced in production (STUDIO_BILLING_ENFORCED never
- * set), so the dropped data is staging noise at most.
+ * Per-seat billing is gone (pivot to a flat per-org subscription gating
+ * reports-task executions). Drops what migrations 139–144 built: the
+ * organization_paid_seat + seat_change_log tables and the seat-specific
+ * organization_billing columns (billing_mode, legacy, included_report_url,
+ * armed_report_url, benefits_reference_id + partial index). Keeps the
+ * subscription core: status / stripe ids / period / event watermark.
+ * Nothing was ever enforced in production (STUDIO_BILLING_ENFORCED unset).
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema.dropTable("seat_change_log").ifExists().execute();
@@ -26,8 +17,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .alterTable("organization_billing")
     .dropColumn("billing_mode")
     .execute();
-  // The migration-139 backfill (pre-billing orgs = true) is not restorable on
-  // down; irrelevant — the flag gated a paywall that no longer exists.
+  // 139's legacy backfill is not restorable on down (gated nothing by now).
   await db.schema
     .alterTable("organization_billing")
     .dropColumn("legacy")

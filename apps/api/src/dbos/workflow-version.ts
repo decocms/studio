@@ -61,10 +61,7 @@
  * adds `validateHostedThread` as the first background-tool workflow step so
  * durable jobs from the retired desktop transport fail before doing work.
  *
- * Version 7 removes the per-seat billing workflows outright
- * (`syncOrgBenefitsWorkflow` + the `benefitsSyncSweep` schedule) with the
- * pivot to the flat per-org subscription. Any v6 instance of those workflows
- * mid-flight at deploy strands by design — v7 has no registration for them,
- * and the benefit they delivered no longer exists.
+ * Version 7 removes the per-seat billing workflows (`syncOrgBenefitsWorkflow`
+ * + `benefitsSyncSweep`); in-flight v6 instances strand by design.
  */
 export const DBOS_WORKFLOW_VERSION = "7";

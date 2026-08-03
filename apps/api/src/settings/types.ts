@@ -78,8 +78,7 @@ export interface Settings {
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
 
-  // Stripe (per-org self-serve subscription). Absent → the webhook route
-  // 503s and no checkout can be created; legacy orgs are unaffected.
+  // Stripe (per-org subscription). Absent → webhook 503s, no checkout.
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe

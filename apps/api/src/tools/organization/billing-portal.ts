@@ -1,8 +1,6 @@
 /**
- * ORGANIZATION_BILLING_PORTAL — the self-serve management surface around the
- * org subscription: Stripe's hosted Customer Portal (card, invoices,
- * cancellation). We never build billing UI for what Stripe hosts; the
- * session returns to the members page.
+ * ORGANIZATION_BILLING_PORTAL — Stripe's hosted Customer Portal (card,
+ * invoices, cancellation); the session returns to the members page.
  */
 
 import { z } from "zod";

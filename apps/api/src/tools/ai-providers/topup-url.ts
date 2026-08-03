@@ -9,9 +9,8 @@ import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 
-// Ceiling for a single top-up request — an unbounded amount would overflow
-// the payment provider's unit-amount limits downstream and surface as an
-// opaque 500 instead of a clean input-validation error.
+// Ceiling per top-up — unbounded amounts overflow provider unit-amount
+// limits downstream (opaque 500 instead of clean validation).
 const MAX_TOPUP_AMOUNT_CENTS = 1_000_000; // $10,000.00
 
 export const AI_PROVIDER_TOPUP_URL = defineTool({

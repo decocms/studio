@@ -7,10 +7,8 @@ import {
 } from "../database/test-db-pg";
 import { OrganizationBillingStorage } from "./organization-billing";
 
-// Real-Postgres coverage for the org-billing row: mapping, the webhook's
-// updateStripeState patch semantics, and subscription-id resolution. The
-// event-ordering behavior on top of these writes lives in
-// billing/stripe-webhook.integration.test.ts.
+// Real-Postgres coverage: row mapping, updateStripeState patch semantics,
+// subscription-id resolution (event ordering lives in the webhook tests).
 const ORG = "org_billing_1";
 
 describe("OrganizationBillingStorage", () => {

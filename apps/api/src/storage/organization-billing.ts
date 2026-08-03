@@ -1,8 +1,6 @@
 /**
- * Organization Billing Storage — the org's billing identity
- * (organization_billing): Stripe customer/subscription binding, status and
- * period end. Platform-written only: the Stripe webhook is the source-of-truth
- * writer; no org-member-facing write goes anywhere near this table.
+ * Organization Billing Storage — Stripe customer/subscription binding,
+ * status, period end. Platform-written only (the webhook is the writer).
  */
 
 import type { Kysely, Selectable } from "kysely";
@@ -46,9 +44,7 @@ export class OrganizationBillingStorage {
     return row ? toBillingRow(row) : null;
   }
 
-  /** Resolve the org behind a Stripe subscription (webhook events carry
-   *  Stripe ids, not ours; the unique index guarantees at most one org per
-   *  subscription). */
+  /** Resolve the org behind a Stripe subscription id (unique-indexed). */
   async getBillingByStripeSubscriptionId(
     stripeSubscriptionId: string,
   ): Promise<OrganizationBillingRow | null> {
@@ -60,11 +56,8 @@ export class OrganizationBillingStorage {
     return row ? toBillingRow(row) : null;
   }
 
-  /**
-   * Platform write from the Stripe webhook handlers: subscription identity /
-   * status / period end, plus the event high-water mark — ONE row update.
-   * Webhooks only ever narrate what Stripe already committed.
-   */
+  /** Webhook write: subscription identity / status / period end + the event
+   *  high-water mark, in one row update. */
   async updateStripeState(
     organizationId: string,
     patch: {

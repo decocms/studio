@@ -92,10 +92,8 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
     const database = getDb();
     const settings = getSettings();
 
-    // Billing identity FIRST (cheapest, most load-bearing): the row the
-    // Stripe webhook binds the org's subscription onto. If this insert (or
-    // this whole hook) fails, a missing row reads as "not subscribed" —
-    // never bricks the org.
+    // The row the Stripe webhook binds the org's subscription onto; a
+    // missing row reads as "not subscribed" (fail-soft).
     await database.db
       .insertInto("organization_billing")
       .values({ organization_id: organizationId })

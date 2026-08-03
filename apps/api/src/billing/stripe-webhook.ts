@@ -1,40 +1,21 @@
 /**
- * Stripe webhook intake for the per-org self-serve subscription. The checkout
- * creator that sets metadata.orgId is ORGANIZATION_BILLING_CHECKOUT_START
- * (tools/organization/billing-checkout.ts); the customer portal handles
- * cancel / card updates. On deployments without STRIPE_WEBHOOK_SECRET this
- * module is dormant.
+ * Stripe webhook intake — the SOURCE OF TRUTH writer for organization_billing
+ * subscription state. Dormant without STRIPE_WEBHOOK_SECRET.
  *
- * The webhook is the SOURCE OF TRUTH writer for organization_billing's
- * subscription state. Stripe guarantees neither delivery order nor
- * exactly-once, so safety comes from two rules rather than trust:
- *  - `last_stripe_event_at` high-water mark: an event whose `created` is
- *    older than the newest applied one is skipped (same-second ties apply
- *    last-write-wins — the accepted 1s ceiling).
- *  - customer.subscription.deleted is EXEMPT from the mark (terminal in
- *    Stripe — a deleted subscription never comes back) and UNBINDS
- *    stripe_subscription_id, so late events for a dead subscription resolve
- *    to nothing and a re-subscribe binds a fresh subscription cleanly.
+ * Stripe guarantees neither order nor exactly-once; two rules make that safe:
+ *  - `last_stripe_event_at` high-water mark: older deliveries are skipped.
+ *  - subscription.deleted is terminal: exempt from the mark and UNBINDS the
+ *    subscription id, so late events for it resolve to nothing.
  *
- * Events:
- *  - checkout.session.completed / ...async_payment_succeeded → bind
- *    customer/subscription to the org (metadata.orgId, set by our checkout
- *    creator) once payment_status is "paid"; status active. Refuses
- *    rebinding over a live different subscription (the refused-but-paid
- *    orphan subscription is canceled).
- *  - customer.subscription.updated → mirror status + current period end.
- *  - customer.subscription.deleted → status canceled + unbind.
- *  - invoice.paid → THE MONTHLY CLOCK: refresh period end + status (also the
- *    unpaid→paid recovery path). Monthly quota resets anchor here — no cron.
+ * Events: checkout completion binds customer/subscription once paid (a
+ * rebind over a live different subscription is refused and the orphan
+ * canceled); subscription.updated mirrors status + period end; deleted
+ * cancels + unbinds; invoice.paid is THE MONTHLY CLOCK (period refresh,
+ * unpaid→paid recovery, and the future quota-reset anchor — no cron).
  *
- * Payload compat: API version 2025-03-31 (Basil) moved invoice.subscription
- * under invoice.parent.subscription_details and the subscription's
- * current_period_end onto items.data[] — handlers read both shapes.
- *
- * Signature: Stripe's v1 scheme (HMAC-SHA256 over `${t}.${rawBody}`),
- * timing-safe, ±5 min timestamp tolerance (replay window), any v1 entry may
- * match (secret rotation sends one per active secret). Hand-rolled on
- * purpose — the Stripe SDK isn't a dependency anywhere in this repo.
+ * Handlers read both pre- and post-Basil (2025-03-31) payload shapes.
+ * Signature: Stripe v1 (HMAC-SHA256, timing-safe, ±5 min tolerance, any v1
+ * entry may match for secret rotation).
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -198,9 +179,8 @@ export type HandledStripeEvent =
   | {
       handled: false;
       reason: string;
-      /** A LIVE subscription the customer paid for that we refused to bind
-       *  (rebind guard) — the route wrapper cancels it so nothing keeps
-       *  charging a card that bought no service. */
+      /** Paid-for subscription we refused to bind — the route wrapper
+       *  cancels it so it stops charging. */
       orphanSubscriptionId?: string;
     }
   | {
@@ -236,9 +216,8 @@ export async function applyStripeEvent(
       }
       const billing = await storage.getBilling(organizationId);
       if (!billing) return { handled: false, reason: "unknown org" };
-      // metadata.orgId comes from our checkout creator, but never let it
-      // rebind an org still bound to a DIFFERENT subscription (deleted
-      // unbinds, so a legitimate re-subscribe passes).
+      // Never rebind over a DIFFERENT live subscription (deleted unbinds,
+      // so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
       if (
         billing.stripeSubscriptionId &&
@@ -298,9 +277,8 @@ export async function applyStripeEvent(
       if (isStale(event, billing)) {
         return { handled: false, reason: "stale event" };
       }
-      // THE monthly clock: refresh period end. Setting active here is also
-      // the unpaid→paid recovery path; a truly deleted subscription can't
-      // reach this (deleted unbinds the id).
+      // THE monthly clock: refresh period end; active here is also the
+      // unpaid→paid recovery (a deleted subscription can't reach this).
       await storage.updateStripeState(billing.organizationId, {
         status: "active",
         currentPeriodEnd: epochToDate(obj.period_end),
@@ -320,11 +298,9 @@ export async function processStripeEvent(
 ): Promise<HandledStripeEvent> {
   const storage = new OrganizationBillingStorage(getDb().db);
   const result = await applyStripeEvent(storage, event);
-  // The customer PAID for this subscription and the org refused it — cancel
-  // so it stops charging. NOT fail-soft: the route 200-acks refusals (no
-  // Stripe redelivery), so a transient cancel failure must escape to the
-  // route's 500 to make Stripe redeliver this refusal and retry the cancel.
-  // Already-gone (400 canceled / 404 missing) is success.
+  // Cancel a refused-but-paid subscription so it stops charging. NOT
+  // fail-soft: a transient failure must 500 the route so Stripe redelivers
+  // and the cancel retries. Already-gone (400/404) is success.
   if (!result.handled && result.orphanSubscriptionId) {
     try {
       await cancelSubscription(result.orphanSubscriptionId);
