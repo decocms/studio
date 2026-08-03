@@ -134,7 +134,7 @@ function logicalState(value: unknown): TerminalLogicalState | null {
 }
 
 export function toTerminalHarnessId(
-  harnessId: HarnessId | "opencode" | null | undefined,
+  harnessId: unknown,
 ): TerminalHarnessId | null {
   if (harnessId === "claude-code") return "claude-code";
   if (harnessId === "codex") return "codex";

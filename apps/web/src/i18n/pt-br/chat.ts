@@ -291,7 +291,6 @@ export const chat = {
   "chat.nativeTerminal.exitCode":
     "O agente de codificação foi encerrado com o código {code}.",
   "chat.nativeTerminal.failed": "Erro no terminal",
-  "chat.nativeTerminal.interrupt": "Interromper",
   "chat.nativeTerminal.promptFailed": "Não foi possível enviar a mensagem.",
   "chat.nativeTerminal.promptDeliveryUnknown":
     "A conexão foi encerrada depois que a mensagem foi enviada. Ela pode já estar em execução; verifique o terminal antes de enviá-la novamente.",

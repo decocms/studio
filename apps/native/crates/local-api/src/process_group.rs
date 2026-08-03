@@ -9,9 +9,9 @@
 //! On Unix, [`ProcessGroupChild::spawn`] therefore starts an independent
 //! watchdog as the process-group leader and joins the requested command to its
 //! already-live group. The watchdog script and its anchored-group signaling
-//! helpers live in `harness::watchdog` — the ONE shared copy for this crate
-//! and the harness dispatch family, so crash-recovery semantics cannot drift
-//! between the two. The watchdog:
+//! helpers live in `harness::watchdog` — the ONE shared copy for local tasks
+//! and terminal sessions, so crash-recovery semantics cannot drift between
+//! the two. The watchdog:
 //!
 //! - pins the PGID until Studio has proved that no other group member exists;
 //! - stays alive across an immediate command-leader exit or closed stdio;
@@ -437,10 +437,9 @@ impl Drop for ProcessGroupChild {
     }
 }
 
-/// Opens+locks the shared child-lifetime fence and spawns the shared
-/// parent-liveness watchdog (`harness::watchdog` — the ONE copy of the
-/// script, so its crash-recovery semantics cannot drift from the harness
-/// dispatch family's) under this crate's own `ps`-visible argv0 label.
+/// Opens+locks the shared child-lifetime fence and spawns the parent-liveness
+/// watchdog (`harness::watchdog` — the one copy shared with terminal-session)
+/// under this crate's own `ps`-visible argv0 label.
 #[cfg(unix)]
 fn spawn_group_anchor(
     child_lifetime_lock_path: &Path,

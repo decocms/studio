@@ -49,6 +49,16 @@ function prompt(onSelect: (option: LocalAgentOption) => void) {
 describe("NativeAgentTerminalPrompt", () => {
   beforeEach(() => localStorage.clear());
 
+  test("keeps the native picker copy and sidebar surface minimal", () => {
+    const { getByRole, queryByText } = render(prompt(() => {}));
+    const heading = getByRole("heading", { name: "Choose a coding agent" });
+
+    expect(heading.closest("section")).toHaveClass("bg-sidebar");
+    expect(queryByText(/which agent/i)).toBeNull();
+    expect(queryByText(/local workspace/i)).toBeNull();
+    expect(queryByText(/^[123]$/)).toBeNull();
+  });
+
   test("keeps every agent selectable when detection is advisory", () => {
     const selections: LocalAgentOption[] = [];
     const { getAllByRole, getByRole } = render(
