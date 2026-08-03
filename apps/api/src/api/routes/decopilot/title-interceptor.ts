@@ -97,74 +97,30 @@ export async function* interceptTitleChunks(
   }
 }
 
+function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
+  const iter = source[Symbol.asyncIterator]();
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { value, done } = await iter.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      await iter.return?.(reason);
+    },
+  });
+}
+
+// A ReadableStream is itself async-iterable, so this is just
+// `interceptTitleChunks` re-wrapped as a ReadableStream — same gating logic,
+// one tested implementation (see title-interceptor.test.ts).
 export function interceptTitleChunkStream(
   source: ReadableStream<UIMessageChunk>,
   deps: TitleInterceptorDeps,
 ): ReadableStream<UIMessageChunk> {
-  const persistTitleFn =
-    deps.persistTitle ??
-    ((threadId: string, title: string) =>
-      deps.ctx.storage.threads.update(threadId, { title }).then(() => {}));
-
-  let triggered = false;
-
-  return source.pipeThrough(
-    new TransformStream<UIMessageChunk, UIMessageChunk>({
-      async transform(chunk, controller) {
-        if (isTitleInputChunk(chunk)) {
-          console.warn(
-            "[title-interceptor] harness emitted deprecated data-title-input chunk; ignoring",
-          );
-          return;
-        }
-
-        if (isTitleResultChunk(chunk)) {
-          if (triggered) {
-            console.warn(
-              "[title-interceptor] harness emitted multiple data-title-result chunks; ignoring extra",
-            );
-            return;
-          }
-          triggered = true;
-
-          if (deps.currentThreadTitle !== DEFAULT_THREAD_TITLE) return;
-
-          const title = chunk.data.title;
-          if (!title) return;
-
-          await persistTitleFn(deps.threadId, title).catch((err) => {
-            console.error(
-              "[title-interceptor] persist failed for thread",
-              deps.threadId,
-              err,
-            );
-          });
-
-          try {
-            await deps.onTitleUpdated?.(title);
-          } catch (err) {
-            console.error(
-              "[title-interceptor] onTitleUpdated callback failed",
-              err,
-            );
-          }
-
-          if (!deps.isStreamFinished()) {
-            try {
-              deps.writer.write({
-                type: "data-thread-title",
-                data: { title },
-                transient: true,
-              } as UIMessageChunk);
-            } catch (err) {
-              console.error("[title-interceptor] writer.write failed", err);
-            }
-          }
-          return;
-        }
-
-        controller.enqueue(chunk);
-      },
-    }),
-  );
+  return asReadableStream(interceptTitleChunks(source, deps));
 }
