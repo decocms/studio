@@ -187,8 +187,8 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
       // Pipe the worker's stream through — never buffer the PNG here.
       return c.body(res.body, 200, {
         "Content-Type": type,
-        // Crawlers cache the bytes; a day is plenty and re-scans are rare.
-        "Cache-Control": "public, max-age=0, s-maxage=86400",
+        // The card only changes on a re-scan (rare) — a week at the edge is safe.
+        "Cache-Control": "public, max-age=0, s-maxage=604800",
       });
     } catch {
       return serveFallback();
