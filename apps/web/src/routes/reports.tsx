@@ -70,6 +70,10 @@ function domainChromeRef(
   };
 }
 
+/** GET /site/:domain shouldn't 401 anymore (see `apps/api/.../reports.ts`),
+ *  but if it ever does — an edge case, not the normal unauthenticated path —
+ *  refresh the session and drop back to the login gate instead of a dead-end
+ *  error screen. */
 function UnauthorizedReportGate({
   domain,
   refreshSession,
@@ -142,14 +146,17 @@ export default function ReportPage() {
   // on unmount via the chrome ref below sharing the same lifecycle.
   setReportReviewerMode(Boolean(key));
 
+  // Unauthenticated too: the backend returns the cover slide of an
+  // already-completed scan without a session — see `ScanGate`/`SignalDeck`
+  // for where navigating past it prompts login.
   const initial = useQuery({
     queryKey: KEYS.report(domain, key, language),
     queryFn: () => getReport(domain, key, language),
-    enabled: authenticated,
     staleTime: Infinity,
     retry: (failureCount, error) =>
       !isReportsUnauthorized(error) && failureCount < 1,
   });
+
   const reportUnauthorized =
     initial.isError && isReportsUnauthorized(initial.error);
 
@@ -191,31 +198,45 @@ export default function ReportPage() {
     });
   };
 
-  const content = session.isPending ? (
-    <ReportAuthGate domain={domain} loading />
-  ) : !session.data?.user ? (
-    <ReportAuthGate domain={domain} />
+  const content = initial.isPending ? (
+    // Bare stage while the (unauthenticated-capable) read resolves —
+    // ScanGate takes over with the full scanning UI, or the deck renders.
+    <div className="fixed inset-0 overflow-hidden" aria-busy="true">
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+    </div>
   ) : reportUnauthorized ? (
     <UnauthorizedReportGate
       domain={domain}
       refreshSession={() => void session.refetch()}
     />
-  ) : initial.isPending ? (
-    // Bare stage while the authenticated read resolves — ScanGate takes over
-    // with the full scanning UI (or the deck renders when ready).
-    <div className="fixed inset-0 overflow-hidden" aria-busy="true">
-      <ReportBackdrop domain={domain} />
-      <div className="pointer-events-none absolute inset-0 bg-white/35" />
-    </div>
   ) : initial.isError ? (
     <ReportLoadError domain={domain} retry={() => void initial.refetch()} />
+  ) : initial.data.status === "ready" ? (
+    // A completed scan exists — render it straight away, even before login
+    // has resolved. Unauthenticated visitors only get the cover slide; see
+    // `SignalDeck`'s `authenticated` gating for what happens past it.
+    <ScanGate
+      domain={domain}
+      initial={initial.data}
+      sessionEmail={session.data?.user?.email ?? ""}
+      sessionUser={session.data?.user}
+      lang={language}
+      authenticated={authenticated}
+    />
+  ) : session.isPending ? (
+    <ReportAuthGate domain={domain} loading />
+  ) : !authenticated ? (
+    // No completed scan yet, and anonymous visitors can't start one.
+    <ReportAuthGate domain={domain} />
   ) : (
     <ScanGate
       domain={domain}
       initial={initial.data}
-      sessionEmail={session.data.user.email}
-      sessionUser={session.data.user}
+      sessionEmail={session.data?.user?.email ?? ""}
+      sessionUser={session.data?.user}
       lang={language}
+      authenticated={authenticated}
     />
   );
 

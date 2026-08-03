@@ -25,12 +25,11 @@ test("anonymous shared report shows login over a blurred preview", async ({
   await expect(page).toHaveURL(/#overview$/);
 });
 
-test("report data and scan operations reject anonymous callers", async ({
+test("scan operations reject anonymous callers, but reading a report doesn't", async ({
   playwright,
 }) => {
   const anonymous = await newApiContext(playwright);
-  const responses = await Promise.all([
-    anonymous.get("/api/_reports/site/example.com"),
+  const gated = await Promise.all([
     anonymous.post("/api/_reports/run", {
       data: { domain: "example.com", email: "other@example.com" },
     }),
@@ -38,11 +37,18 @@ test("report data and scan operations reject anonymous callers", async ({
     anonymous.get("/api/_reports/link-token/token-id"),
     anonymous.get("/api/_reports/suggest?q=e"),
   ]);
-
-  for (const response of responses) {
+  for (const response of gated) {
     expect(response.status()).toBe(401);
     expect(response.headers()["cache-control"]).toContain("no-store");
   }
+
+  // GET /site is the one route anonymous callers can reach — it's how the
+  // cover slide of an already-completed scan shows before login. There's no
+  // completed scan for this domain, so it comes back "not_found", not a 401.
+  const site = await anonymous.get("/api/_reports/site/example.com");
+  expect(site.status()).toBe(200);
+  expect(site.headers()["cache-control"]).toContain("no-store");
+  expect((await site.json()).status).toBe("not_found");
 
   await anonymous.dispose();
 });

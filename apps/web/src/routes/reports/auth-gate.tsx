@@ -354,13 +354,10 @@ export function ReportBackdrop({ domain }: { domain: string }) {
   );
 }
 
-export function ReportAuthGate({
-  domain,
-  loading = false,
-}: {
-  domain: string;
-  loading?: boolean;
-}) {
+/** The sign-in card itself — brand pill, `AuthEntry`, free-access note, social
+ *  proof. Shared by the full-page `ReportAuthGate` and the in-deck
+ *  `ReportAuthOverlay`, which differ only in what sits behind the card. */
+function ReportAuthCard({ domain }: { domain: string }) {
   const t = useT();
   const handleAuthEvent = (event: AuthFlowEvent) => {
     const provider = "provider" in event ? event.provider : undefined;
@@ -399,7 +396,7 @@ export function ReportAuthGate({
   };
 
   const trackGateRef = (element: HTMLDivElement | null) => {
-    if (!element || loading) return;
+    if (!element) return;
     const attempt = beginReportAuthAttempt(domain);
     if (element.dataset.tracked === "true" || !isPostHogInitialized()) return;
     element.dataset.tracked = "true";
@@ -411,8 +408,66 @@ export function ReportAuthGate({
   };
 
   return (
-    <div
+    <section
       ref={trackGateRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("reports.authGate.accessYourReport")}
+      className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
+    >
+      <AuthEntry
+        callbackUrl={callbackUrl(domain)}
+        title={t("reports.authGate.accessYourReport")}
+        subtitle={t("reports.authGate.authSubtitle")}
+        variant="compact"
+        allowedSocialProviders={["google"]}
+        allowPassword={false}
+        onAuthEvent={handleAuthEvent}
+        brand={
+          <div className="flex items-center justify-between gap-4">
+            <div
+              className="inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1.5"
+              style={{ borderColor: DECK.border, background: DECK.bg }}
+            >
+              <img
+                src={faviconForDomain(domain)}
+                alt=""
+                className="h-4 w-4 shrink-0 rounded object-contain"
+              />
+              <span
+                className="truncate text-[13px]"
+                style={{ color: DECK.muted }}
+              >
+                {domain}
+              </span>
+            </div>
+            <img
+              src="/logos/deco logo.svg"
+              alt="Deco"
+              className="h-7 w-7 shrink-0"
+            />
+          </div>
+        }
+        copy={getReportAuthCopy(t)}
+      />
+      <p className="mt-4 text-xs leading-5" style={{ color: DECK.faint }}>
+        {t("reports.authGate.freeAccess")}
+      </p>
+      <ReportSocialProof compact />
+    </section>
+  );
+}
+
+export function ReportAuthGate({
+  domain,
+  loading = false,
+}: {
+  domain: string;
+  loading?: boolean;
+}) {
+  const t = useT();
+  return (
+    <div
       className="fixed inset-0 overflow-hidden"
       style={{
         color: DECK.ink,
@@ -430,53 +485,37 @@ export function ReportAuthGate({
             aria-label={t("reports.authGate.loadingSession")}
           />
         ) : (
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("reports.authGate.accessYourReport")}
-            className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
-          >
-            <AuthEntry
-              callbackUrl={callbackUrl(domain)}
-              title={t("reports.authGate.accessYourReport")}
-              subtitle={t("reports.authGate.authSubtitle")}
-              variant="compact"
-              allowedSocialProviders={["google"]}
-              allowPassword={false}
-              onAuthEvent={handleAuthEvent}
-              brand={
-                <div className="flex items-center justify-between gap-4">
-                  <div
-                    className="inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1.5"
-                    style={{ borderColor: DECK.border, background: DECK.bg }}
-                  >
-                    <img
-                      src={faviconForDomain(domain)}
-                      alt=""
-                      className="h-4 w-4 shrink-0 rounded object-contain"
-                    />
-                    <span
-                      className="truncate text-[13px]"
-                      style={{ color: DECK.muted }}
-                    >
-                      {domain}
-                    </span>
-                  </div>
-                  <img
-                    src="/logos/deco logo.svg"
-                    alt="Deco"
-                    className="h-7 w-7 shrink-0"
-                  />
-                </div>
-              }
-              copy={getReportAuthCopy(t)}
-            />
-            <p className="mt-4 text-xs leading-5" style={{ color: DECK.faint }}>
-              {t("reports.authGate.freeAccess")}
-            </p>
-            <ReportSocialProof compact />
-          </section>
+          <ReportAuthCard domain={domain} />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Shown over the real deck (cover slide still visible behind it) when an
+ *  unauthenticated visitor tries to move past the cover. Unlike
+ *  `ReportAuthGate`, there's no mock backdrop — the actual slide is already
+ *  on screen. Clicking outside the card dismisses it back to the cover. */
+export function ReportAuthOverlay({
+  domain,
+  onClose,
+}: {
+  domain: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-3 py-5 sm:px-6 sm:py-10"
+      style={{
+        color: DECK.ink,
+        fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
+        WebkitFontSmoothing: "antialiased",
+      }}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
+      <div onClick={(e) => e.stopPropagation()}>
+        <ReportAuthCard domain={domain} />
       </div>
     </div>
   );
