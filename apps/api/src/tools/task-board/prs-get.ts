@@ -707,16 +707,20 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // reviewer approved but the PR can't merge because it conflicts with its
     // base branch, hand it back to the Super Agent to resolve (gated on the
     // org's `auto_merge` flag, checked inside the reaction). This is the
-    // poll-driven safety net —
-    // a conflict often appears AFTER approval (the base branch moved on), which
-    // the merge attempt at approval time can't see. `mergeable === false` is the
-    // definite conflict signal; null/true never triggers. The reaction is
+    // poll-driven safety net — a conflict often appears AFTER approval (the base
+    // branch moved on), which the merge attempt at approval time can't see. Run
+    // the same `conflictFromPrGet` mapping the review-decision path uses (only an
+    // explicit conflict triggers; null/unknown never does). The reaction is
     // idempotent (it bounces the task to In Progress, so the next poll skips).
+    const openPrConflict = openPr
+      ? conflictFromPrGet({ state: openPr.state, mergeable: openPr.mergeable })
+      : null;
     if (
       item &&
       item.status === "in_review" &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
-      openPr?.mergeable === false
+      openPr &&
+      openPrConflict === true
     ) {
       // Act on the PR the conflict was detected on (`openPr`), not a re-derived
       // "newest" — a task can have more than one linked PR.
