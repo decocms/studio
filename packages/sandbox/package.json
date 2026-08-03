@@ -17,9 +17,9 @@
     "./daemon-client": "./server/daemon-client.ts",
     "./org-fs": "./org-fs.ts",
     "./dispatch": "./dispatch/index.ts",
-    "./dispatch/*": "./dispatch/*.ts",
     "./proxy/http": "./proxy/http.ts",
-    "./proxy/websocket": "./proxy/websocket.ts"
+    "./proxy/websocket": "./proxy/websocket.ts",
+    "./dispatch/sandbox-client": "./dispatch/sandbox-client.ts"
   },
   "dependencies": {
     "@decocms/shared": "workspace:*",
