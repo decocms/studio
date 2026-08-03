@@ -291,7 +291,7 @@ Database schema key concepts:
 
 **Better Auth** for authentication:
 - OAuth 2.1, SSO, API keys
-- Config: `apps/api/auth-config.json` (example: `auth-config.example.json`)
+- Config: `AUTH_*` environment variables (`apps/api/src/auth/auth-env.ts`)
 
 **AccessControl** (`apps/api/src/core/access-control.ts`) for authorization:
 - Organization/project-level RBAC

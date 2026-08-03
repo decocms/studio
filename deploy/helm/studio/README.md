@@ -302,7 +302,6 @@ chart-deco-studio/
 │   ├── worker-deployment.yaml # Worker deployment for run queues
 │   ├── service.yaml        # Service
 │   ├── configmap.yaml      # Main ConfigMap
-│   ├── configmap-auth.yaml # Authentication ConfigMap
 │   ├── secret.yaml         # Secret
 │   ├── pvc.yaml            # PersistentVolumeClaim
 │   ├── serviceaccount.yaml # ServiceAccount
@@ -500,20 +499,7 @@ data:
   PostgreSQL topology; it comes from the chart Secret, an existing Secret, or an
   ExternalSecret.
 
-### 5. `configmap-auth.yaml` - Authentication ConfigMap
-
-```yaml
-auth-config.json: |
-  {
-    "emailAndPassword": {
-      "enabled": {{ .Values.configMap.authConfig.emailAndPassword.enabled }}
-    }
-  }
-```
-- Generates JSON from YAML values
-- Mounted as file in pod
-
-### 6. `secret.yaml` - Secret
+### 5. `secret.yaml` - Secret
 
 ```yaml
 {{- if and (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
@@ -548,7 +534,7 @@ The chart supports three secret management scenarios:
 - If `secret.secretName` defined → **does not create** Secret, only references existing one
 - If `externalSecret.enabled=true` → **does not create** Secret, renders ExternalSecret
 
-### 7. `pvc.yaml` - PersistentVolumeClaim
+### 6. `pvc.yaml` - PersistentVolumeClaim
 
 ```yaml
 {{- if .Values.persistence.enabled -}}
@@ -603,7 +589,7 @@ The chart supports three persistence scenarios:
 - If `persistence.enabled: true` AND `persistence.claimName` empty/undefined → **creates** new PVC
 - If `persistence.enabled: true` AND `persistence.claimName` defined → **does not create** PVC, only references existing one
 
-### 8. `serviceaccount.yaml` - ServiceAccount
+### 7. `serviceaccount.yaml` - ServiceAccount
 
 ```yaml
 {{- if .Values.serviceAccount.create -}}
@@ -614,7 +600,7 @@ kind: ServiceAccount
 ```
 - Creates ServiceAccount only if `serviceAccount.create: true`
 
-### 9. `hpa.yaml` - HorizontalPodAutoscaler
+### 8. `hpa.yaml` - HorizontalPodAutoscaler
 
 ```yaml
 {{- if .Values.autoscaling.enabled }}
@@ -626,7 +612,7 @@ kind: HorizontalPodAutoscaler
 - Creates HPA only if `autoscaling.enabled: true`
 - When enabled, removes `replicas` from Deployment
 
-### 10. `NOTES.txt` - Post-Installation Messages
+### 9. `NOTES.txt` - Post-Installation Messages
 
 Displays instructions after install/upgrade:
 
