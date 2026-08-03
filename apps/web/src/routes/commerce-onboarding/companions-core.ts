@@ -107,6 +107,10 @@ export function isCompanionConfigured(args: {
   switch (args.bindingType) {
     case "vtex":
       return isMeaningfulConfigValue(companionConfig?.accountName);
+    case "shopify":
+      // The access token lives on connection_token, not configuration_state, so
+      // the store domain (the MCP's other required credential) is the signal.
+      return isMeaningfulConfigValue(companionConfig?.storeDomain);
     case "google-analytics":
       return isMeaningfulConfigValue(companionConfig?.propertyId);
     case "google-search-console":
@@ -132,6 +136,10 @@ function getConnectedDetail(args: {
     case "vtex":
       return typeof companionConfig?.accountName === "string"
         ? companionConfig.accountName
+        : null;
+    case "shopify":
+      return typeof companionConfig?.storeDomain === "string"
+        ? companionConfig.storeDomain
         : null;
     case "google-analytics":
       return typeof companionConfig?.propertyId === "string"
@@ -195,6 +203,7 @@ export function parseBindingRequirements(
  */
 export const FALLBACK_COMPANION_REQUIREMENTS: BindingRequirement[] = [
   { fieldKey: "vtex", bindingType: "vtex" },
+  { fieldKey: "shopify", bindingType: "shopify" },
   { fieldKey: "ga4", bindingType: "google-analytics" },
   { fieldKey: "gsc", bindingType: "google-search-console" },
   { fieldKey: "github", bindingType: "github" },
