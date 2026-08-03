@@ -33,8 +33,7 @@ export function useSaveCompanionConfig({
       const data: Record<string, unknown> = {
         configuration_state: mergedState,
       };
-      // undefined ⇒ leave connection_token untouched (blank on edit keeps the
-      // stored secret; it never lives in configuration_state).
+      // undefined ⇒ keep the stored connection_token.
       if (connectionToken !== undefined) {
         data.connection_token = connectionToken;
       }

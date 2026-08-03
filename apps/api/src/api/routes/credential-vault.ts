@@ -147,9 +147,7 @@ export const createCredentialVaultRoutes = () => {
     });
 
     if (result.state === "missing") {
-      // Token-auth MCPs (e.g. Shopify) never write downstream_tokens — fall
-      // back to the connection's static bearer, the same OAuth-then-token
-      // order as mcp-clients/outbound/headers.ts.
+      // Static-token MCPs (e.g. Shopify): the bearer lives on connection_token.
       if (target.connection_token) {
         c.header("Cache-Control", "no-store");
         c.header("Pragma", "no-cache");
