@@ -9,6 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.10.7: opt-in node placeholder / "balloon" (nodePlaceholder.*, default off)
+# — low-priority pods that reserve warm NODE capacity on the sandbox NodePool
+# so warm-pool refill / KEDA scale-up / cold claims schedule onto an already-up
+# node instead of waiting on Karpenter. Complements warmPool (warm pods) with
+# warm nodes under them. Placement defaults to the sandbox pod's own
+# nodeSelector/tolerations so capacity lands on the same dedicated pool.
+# Additive; no change unless enabled.
 # 0.10.0: the Go daemon is the ONLY sandbox daemon. Removed `daemonImpl`,
 # `goTemplate.*` and `image.goRepository`; `image.repository` now points at
 # studio-sandbox-go and the chart renders exactly one SandboxTemplate and one
@@ -60,7 +67,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.10.6
+version: 0.10.7
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.36.0"
 kubeVersion: ">=1.30.0-0"

@@ -422,6 +422,67 @@ warmPool:
     # windows, policies). Left empty = cluster defaults.
     behavior: {}
 
+# ── node placeholder / "balloon" (optional) ────────────────────────────
+# Warm NODE capacity for the sandbox NodePool. warmPool warms *pods*; this
+# warms the *nodes under them*. Low-priority balloon pods hold ~`replicas`
+# sandbox-slots of capacity on already-running nodes and get preempted the
+# instant a real sandbox / warm-pool pod needs the space — so pool refill,
+# HPA/KEDA scale-up, and cold claims schedule onto a warm node instead of
+# waiting on Karpenter to provision one.
+#
+# Off by default: every replica costs a sandbox slot's worth of idle capacity
+# on the unshared, taint-isolated sandbox NodePool (unlike the general-pool
+# placeholder, this idle node can't be amortized by other workloads). Enable
+# only after confirming the claim-latency tail is node-provisioning, not
+# daemon boot / install / mount. See templates/sandbox-node-placeholder.yaml.
+nodePlaceholder:
+  enabled: false
+
+  # Number of warm sandbox slots to keep provisioned. Size to the burst you
+  # want to absorb without a Karpenter wait (e.g. p95 concurrent cold claims
+  # over the refill window). Prod and staging share this NodePool, so size
+  # once for the pool — don't double-count across envs.
+  replicas: 2
+
+  # LOW / negative-priority class so real sandbox + warm-pool pods (priority
+  # 0) preempt these. Defaults to the cluster-wide class the existing sites
+  # balloon uses on eks-serverless. Self-hosters without it must create an
+  # equivalent (a PriorityClass with a value below 0) and set it here.
+  priorityClassName: placeholder-priority
+
+  # Resource requests per balloon pod. Default ≈ one sandbox pod's total
+  # schedulable footprint (sandbox container 500m/2Gi + orgfs sidecar
+  # 50m/128Mi) so preempting ONE balloon frees exactly one sandbox slot. If
+  # you shrink this below the real pod footprint, preemption may free a node
+  # slice too small to fit the incoming sandbox and the buffer stops working.
+  # No ephemeral-storage request: sandbox pods request none either (only a
+  # limit), so it doesn't gate their scheduling.
+  resources:
+    requests:
+      cpu: 550m
+      memory: 2176Mi
+
+  # `pause` does nothing but block — only its resource requests hold the
+  # node. Pinned tag (never :latest) so a scheduled restart can't drift.
+  image:
+    repository: registry.k8s.io/pause
+    tag: "3.10"
+    pullPolicy: IfNotPresent
+
+  # Placement. Left empty, both default to the sandbox pod's own
+  # nodeSelector / tolerations (values.nodeSelector / values.tolerations) so
+  # the balloon lands on the SAME NodePool as real sandboxes — which is the
+  # whole point. Override only to pin the balloon somewhere different.
+  nodeSelector: {}
+  tolerations: []
+  # Merged verbatim if set. Empty = no affinity (unlike sandbox pods, the
+  # balloon should NOT copy the depsCache-packing podAffinity — spreading
+  # holds capacity more broadly).
+  affinity: {}
+  # Empty = a built-in soft AZ spread (see the template). Override to match a
+  # custom sandbox spread.
+  topologySpreadConstraints: []
+
 # ── preview URL gateway (optional) ─────────────────────────────────────
 # Wildcard preview-URL ingress. Renders an Istio Gateway (HTTPS, terminates
 # `*.<domain>`) + a cert-manager Certificate. Per-claim HTTPRoutes are NOT

@@ -197,6 +197,71 @@ worth catching at template time rather than letting the API server reject
 {{- end }}
 
 {{/*
+Validate the node-placeholder block before rendering the Deployment. Catch at
+template time rather than shipping a balloon that can't do its job:
+  - replicas < 1: nothing is reserved, so the Deployment is a no-op.
+  - empty priorityClassName: a balloon at default priority (0) ties with real
+    sandbox pods and would NOT be preempted — it would instead compete for and
+    hold the very capacity it is meant to yield. It MUST reference a low /
+    negative-priority class.
+*/}}
+{{- define "sandbox-env.validateNodePlaceholder" -}}
+{{- if .Values.nodePlaceholder.enabled }}
+{{- if lt (int .Values.nodePlaceholder.replicas) 1 }}
+{{- fail (printf "sandbox-env: nodePlaceholder.enabled=true requires nodePlaceholder.replicas >= 1 (got %v) — a balloon with 0 replicas reserves no capacity." .Values.nodePlaceholder.replicas) -}}
+{{- end }}
+{{- if not .Values.nodePlaceholder.priorityClassName }}
+{{- fail "sandbox-env: nodePlaceholder.enabled=true requires nodePlaceholder.priorityClassName pointing at a LOW / negative-priority PriorityClass (e.g. placeholder-priority). Without it the balloon runs at priority 0 and real sandbox pods can't preempt it." -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Node-placeholder (balloon) name. Reserves warm NODE capacity on the sandbox
+NodePool so SandboxWarmPool refill / cold claims schedule onto an already-up
+node instead of waiting on Karpenter. Per-env suffix so multiple releases
+sharing the NodePool coexist.
+*/}}
+{{- define "sandbox-env.nodePlaceholderName" -}}
+{{- printf "studio-sandbox-placeholder-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}
+
+{{/*
+Selector labels for the node-placeholder Deployment. Distinct component so
+dashboards split balloon capacity from real sandbox pods and warm-pool pods.
+*/}}
+{{- define "sandbox-env.nodePlaceholderSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "sandbox-env.nodePlaceholderName" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "sandbox-env.nodePlaceholderLabels" -}}
+helm.sh/chart: {{ include "sandbox-env.chart" . }}
+{{ include "sandbox-env.nodePlaceholderSelectorLabels" . }}
+app.kubernetes.io/component: sandbox-placeholder
+studio.decocms.com/env: {{ include "sandbox-env.envName" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Node-placeholder scheduling, defaulting to the sandbox pod's own placement so
+the balloon lands on the SAME dedicated NodePool as real sandbox pods (that is
+the entire point — warming general-pool nodes does nothing for a taint-isolated
+sandbox pool). Each key falls back to the sandbox value unless explicitly
+overridden under nodePlaceholder.
+*/}}
+{{- define "sandbox-env.nodePlaceholderNodeSelector" -}}
+{{- default .Values.nodeSelector .Values.nodePlaceholder.nodeSelector | toYaml -}}
+{{- end }}
+
+{{- define "sandbox-env.nodePlaceholderTolerations" -}}
+{{- default .Values.tolerations .Values.nodePlaceholder.tolerations | toYaml -}}
+{{- end }}
+
+{{/*
 Default housekeeper selectors. Mirror the labels Studio stamps in runner.ts
 (`studio.decocms.com/env=<envName>` requires STUDIO_ENV); during phased
 rollout, .Values.housekeeper.{claimSelector,podSelector} can be overridden
