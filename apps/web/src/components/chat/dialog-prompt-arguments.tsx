@@ -25,6 +25,7 @@ import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useId } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useT } from "@/i18n/use-t.ts";
 
 export type PromptArgumentValues = Record<string, string>;
 
@@ -64,6 +65,7 @@ export function PromptArgsDialog({
   defaultValues,
 }: PromptArgsDialogProps) {
   const id = useId();
+  const t = useT();
   const schema = buildArgumentSchema(prompt);
   const form = useForm<PromptArgumentValues>({
     resolver: zodResolver(schema),
@@ -154,7 +156,7 @@ export function PromptArgsDialog({
                 onClick={() => handleOpenChange(false)}
                 disabled={form.formState.isSubmitting}
               >
-                Cancel
+                {t("chat.dialogPromptArguments.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -164,10 +166,10 @@ export function PromptArgsDialog({
                 {form.formState.isSubmitting ? (
                   <span className="flex items-center gap-2">
                     <Spinner size="xs" />
-                    Loading...
+                    {t("chat.dialogPromptArguments.loading")}
                   </span>
                 ) : (
-                  "Use prompt"
+                  t("chat.dialogPromptArguments.usePrompt")
                 )}
               </Button>
             </DialogFooter>
