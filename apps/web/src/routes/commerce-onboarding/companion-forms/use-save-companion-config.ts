@@ -19,18 +19,32 @@ export function useSaveCompanionConfig({
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (formValues: Record<string, unknown>) => {
+    mutationFn: async ({
+      values,
+      connectionToken,
+    }: {
+      values: Record<string, unknown>;
+      connectionToken?: string;
+    }) => {
       const mergedState = {
         ...(card.configurationState ?? {}),
-        ...formValues,
+        ...values,
       };
+      const data: Record<string, unknown> = {
+        configuration_state: mergedState,
+      };
+      // Static-token MCPs (e.g. Shopify) keep the secret on the connection's
+      // encrypted `connection_token`, never in configuration_state. Omitted when
+      // the caller doesn't manage a token, or left blank on edit — so an existing
+      // token survives a domain-only change instead of being wiped.
+      if (connectionToken !== undefined) {
+        data.connection_token = connectionToken;
+      }
       await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_UPDATE",
         arguments: {
           id: card.linkedConnectionId || card.candidateConnectionId,
-          data: {
-            configuration_state: mergedState,
-          },
+          data,
         },
       });
     },
@@ -45,7 +59,10 @@ export function useSaveCompanionConfig({
     },
   });
 
-  const save = (values: Record<string, unknown>) => mutation.mutate(values);
+  const save = (
+    values: Record<string, unknown>,
+    opts?: { connectionToken?: string },
+  ) => mutation.mutate({ values, connectionToken: opts?.connectionToken });
 
   return { save, isPending: mutation.isPending, error: mutation.error };
 }
