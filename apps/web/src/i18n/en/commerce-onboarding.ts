@@ -67,18 +67,4 @@ export const commerceOnboarding = {
   "commerceOnboarding.vtexConfigForm.savingButton": "Saving...",
   "commerceOnboarding.vtexConfigForm.savingError":
     "Couldn't save the configuration",
-  "commerceOnboarding.shopifyConfigForm.storeDomainLabel": "Store domain",
-  "commerceOnboarding.shopifyConfigForm.storeDomainPlaceholder":
-    "my-store.myshopify.com",
-  "commerceOnboarding.shopifyConfigForm.accessTokenLabel":
-    "Admin API access token",
-  "commerceOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_...",
-  "commerceOnboarding.shopifyConfigForm.apiVersionLabel":
-    "API version (optional)",
-  "commerceOnboarding.shopifyConfigForm.apiVersionPlaceholder": "2026-07",
-  "commerceOnboarding.shopifyConfigForm.cancelButton": "Cancel",
-  "commerceOnboarding.shopifyConfigForm.saveButton": "Save",
-  "commerceOnboarding.shopifyConfigForm.savingButton": "Saving...",
-  "commerceOnboarding.shopifyConfigForm.savingError":
-    "Couldn't save the configuration",
 } as const;
