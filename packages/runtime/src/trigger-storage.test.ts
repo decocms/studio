@@ -52,6 +52,39 @@ describe("StudioKV.get", () => {
   });
 });
 
+describe("StudioKV.set/delete", () => {
+  const kv = new StudioKV({ url: "https://studio.test", apiKey: "key" });
+
+  it("throws instead of silently swallowing a failed PUT", async () => {
+    spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 500, statusText: "Internal Error" }),
+    );
+
+    await expect(
+      kv.set("conn_1", {
+        credentials: { callbackUrl: "https://x", callbackToken: "tok" },
+        activeTriggerTypes: ["github.push"],
+      }),
+    ).rejects.toThrow(/PUT failed/);
+  });
+
+  it("throws instead of silently swallowing a failed DELETE", async () => {
+    spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 500, statusText: "Internal Error" }),
+    );
+
+    await expect(kv.delete("conn_1")).rejects.toThrow(/DELETE failed/);
+  });
+
+  it("treats a 404 DELETE as success (already gone)", async () => {
+    spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("not found", { status: 404 }),
+    );
+
+    await expect(kv.delete("conn_1")).resolves.toBeUndefined();
+  });
+});
+
 describe("JsonFileStorage", () => {
   const state = (token: string) => ({
     credentials: { callbackUrl: "https://x", callbackToken: token },
