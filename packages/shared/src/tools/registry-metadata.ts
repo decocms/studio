@@ -36,7 +36,6 @@ export type ToolCategory =
   | "Registry"
   | "GitHub"
   | "VM"
-  | "Links"
   | "Search"
   | "Task Board";
 
@@ -1621,7 +1620,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Registry: [],
     GitHub: [],
     VM: [],
-    Links: [],
     Search: [],
     "Task Board": [],
   };
