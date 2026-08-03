@@ -88,6 +88,20 @@ describe("resolveRuntimeConfig", () => {
     const result = resolveRuntimeConfig(metadata);
     expect(result.port).toBeNull();
   });
+
+  it("treats a non-numeric, empty, or out-of-range port as unset", () => {
+    for (const port of ["", "abc", "0", "3.14", "70000", "-1", " 3000"]) {
+      const metadata: VmMetadata = { runtime: { selected: "npm", port } };
+      expect(resolveRuntimeConfig(metadata).port).toBeNull();
+    }
+  });
+
+  it("keeps a valid decimal port string in 1-65535", () => {
+    const metadata: VmMetadata = {
+      runtime: { selected: "npm", port: "65535" },
+    };
+    expect(resolveRuntimeConfig(metadata).port).toBe("65535");
+  });
 });
 
 describe("readValidatedSubmoduleCredentials", () => {

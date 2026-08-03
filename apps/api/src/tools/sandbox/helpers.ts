@@ -141,6 +141,20 @@ export async function requireVmEntry(
 }
 
 /**
+ * A valid dev-server port is a plain decimal string in 1-65535. The metadata
+ * JSON column is untrusted (same rationale as `readValidatedRuntimeEnv`), and
+ * `VIRTUAL_MCP_UPDATE`'s schema only requires a string — "", "0", or garbage
+ * like "abc" all pass validation there. Treating anything but a valid port as
+ * unset keeps `start.ts`'s `Number(port)` from ever producing `0`/`NaN` as a
+ * `devPort` sent to the sandbox provider.
+ */
+function parseValidPort(port: string | null): string | null {
+  if (port === null || !/^\d+$/.test(port)) return null;
+  const n = Number(port);
+  return n >= 1 && n <= 65535 ? port : null;
+}
+
+/**
  * Resolves package manager and runtime config from Virtual MCP metadata.
  * Returns null packageManager/runtime when no package manager is selected
  * (clone-only mode for non-JS repos). `port` is null unless the user
@@ -150,7 +164,7 @@ export function resolveRuntimeConfig(metadata: Record<string, unknown>) {
   const runtime = (metadata as RuntimeConfigMeta).runtime ?? null;
   const selected = runtime?.selected ?? null;
   const pm = selected as PackageManager | null;
-  const port = runtime?.port ?? null;
+  const port = parseValidPort(runtime?.port ?? null);
   const packageManagerPath = runtime?.path ?? null;
 
   if (!pm || !(pm in PACKAGE_MANAGER_CONFIG)) {
