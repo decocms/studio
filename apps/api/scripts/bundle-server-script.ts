@@ -476,11 +476,14 @@ async function pruneNodeModules(): Promise<Set<string>> {
   return successfullyCopied;
 }
 
-async function buildMigrateScript(packagesToExternalize: Set<string>) {
-  console.log("🔨 Building migrate.js...");
+async function buildScript(
+  sourcePath: string,
+  outputName: string,
+  packagesToExternalize: Set<string>,
+) {
+  console.log(`🔨 Building ${outputName}...`);
 
-  const migrateSourcePath = join(SCRIPT_DIR, "../src/database/migrate.ts");
-  const migrateOutputPath = join(OUTPUT_DIR, "migrate.js");
+  const outputPath = join(OUTPUT_DIR, outputName);
 
   // Ensure output directory exists
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -488,13 +491,13 @@ async function buildMigrateScript(packagesToExternalize: Set<string>) {
   const commandsParts = [
     "bun",
     "build",
-    migrateSourcePath,
+    sourcePath,
     "--target",
     "bun",
     "--minify",
     "--production",
     "--outfile",
-    migrateOutputPath,
+    outputPath,
   ];
 
   for (const pkg of packagesToExternalize) {
@@ -505,95 +508,34 @@ async function buildMigrateScript(packagesToExternalize: Set<string>) {
   }
 
   console.log(`🔨 Running command: ${commandsParts.join(" ")}`);
-  // Build migrate.js
   await $`${commandsParts}`.quiet();
 
-  if (!existsSync(migrateOutputPath)) {
-    console.error("❌ Failed to build migrate.js");
+  if (!existsSync(outputPath)) {
+    console.error(`❌ Failed to build ${outputName}`);
     process.exit(1);
   }
 
-  console.log(`✅ migrate.js built successfully at ${migrateOutputPath}`);
+  console.log(`✅ ${outputName} built successfully at ${outputPath}`);
 }
 
-async function buildServerScript(packagesToExternalize: Set<string>) {
-  console.log("🔨 Building server.js...");
-
-  const serverSourcePath = join(SCRIPT_DIR, "../src/index.ts");
-  const serverOutputPath = join(OUTPUT_DIR, "server.js");
-
-  // Ensure output directory exists
-  await mkdir(OUTPUT_DIR, { recursive: true });
-
-  const commandsParts = [
-    "bun",
-    "build",
-    serverSourcePath,
-    "--target",
-    "bun",
-    "--minify",
-    "--production",
-    "--outfile",
-    serverOutputPath,
-  ];
-
-  for (const pkg of packagesToExternalize) {
-    commandsParts.push("--external", pkg);
-  }
-  for (const pkg of ALWAYS_EXCLUDE) {
-    commandsParts.push("--external", pkg);
-  }
-
-  console.log(`🔨 Running command: ${commandsParts.join(" ")}`);
-  // Build server.js
-  await $`${commandsParts}`.quiet();
-
-  if (!existsSync(serverOutputPath)) {
-    console.error("❌ Failed to build server.js");
-    process.exit(1);
-  }
-
-  console.log(`✅ server.js built successfully at ${serverOutputPath}`);
+function buildMigrateScript(packagesToExternalize: Set<string>) {
+  return buildScript(
+    join(SCRIPT_DIR, "../src/database/migrate.ts"),
+    "migrate.js",
+    packagesToExternalize,
+  );
 }
 
-async function buildCliScript(packagesToExternalize: Set<string>) {
-  console.log("🔨 Building cli.js...");
+function buildServerScript(packagesToExternalize: Set<string>) {
+  return buildScript(
+    join(SCRIPT_DIR, "../src/index.ts"),
+    "server.js",
+    packagesToExternalize,
+  );
+}
 
-  const cliSourcePath = CLI_ENTRY_POINT;
-  const cliOutputPath = join(OUTPUT_DIR, "cli.js");
-
-  // Ensure output directory exists
-  await mkdir(OUTPUT_DIR, { recursive: true });
-
-  const commandsParts = [
-    "bun",
-    "build",
-    cliSourcePath,
-    "--target",
-    "bun",
-    "--minify",
-    "--production",
-    "--outfile",
-    cliOutputPath,
-  ];
-
-  for (const pkg of packagesToExternalize) {
-    commandsParts.push("--external", pkg);
-  }
-  for (const pkg of ALWAYS_EXCLUDE) {
-    commandsParts.push("--external", pkg);
-  }
-
-  console.log(`🔨 Running command: ${commandsParts.join(" ")}`);
-  // Build cli.js
-  await $`${commandsParts}`.quiet();
-
-  if (!existsSync(cliOutputPath)) {
-    console.error("❌ Failed to build cli.js");
-    process.exit(1);
-  }
-
-  console.log(`✅ cli.js built successfully at ${cliOutputPath}`);
+function buildCliScript(packagesToExternalize: Set<string>) {
+  return buildScript(CLI_ENTRY_POINT, "cli.js", packagesToExternalize);
 }
 
 async function copyRootReadme() {
