@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.160.5",
+      "version": "4.160.7",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -125,7 +125,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.160.5",
+      "version": "4.160.7",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -297,7 +297,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.35.5",
+      "version": "1.35.6",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -314,20 +314,12 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.13.4",
+      "version": "0.13.5",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
         "ai": "^6.0.208",
         "nanoid": "^5.1.6",
-        "zod": "4.3.6",
-      },
-    },
-    "packages/tunnel": {
-      "name": "@decocms/tunnel",
-      "version": "0.3.0",
-      "dependencies": {
-        "@nats-io/nats-core": "3.4.0",
         "zod": "4.3.6",
       },
     },
@@ -695,8 +687,6 @@
     "@decocms/shared": ["@decocms/shared@workspace:packages/shared"],
 
     "@decocms/studio-web": ["@decocms/studio-web@workspace:apps/web"],
-
-    "@decocms/tunnel": ["@decocms/tunnel@workspace:packages/tunnel"],
 
     "@decocms/typegen": ["@decocms/typegen@workspace:packages/typegen"],
 
