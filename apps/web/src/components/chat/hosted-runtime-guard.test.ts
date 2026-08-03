@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldBlockHostedLegacyDispatch } from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 describe("hosted terminal-only runtime guard", () => {
   test("blocks every non-Decopilot harness from hosted legacy dispatch", () => {
@@ -10,9 +10,10 @@ describe("hosted terminal-only runtime guard", () => {
       "unknown-future-harness",
     ]) {
       expect(
-        shouldBlockHostedLegacyDispatch({
+        shouldBlockHostedRuntime({
           isDesktopApp: false,
           harnessId,
+          sandboxProviderKind: "user-desktop",
         }),
       ).toBeTrue();
     }
@@ -21,22 +22,41 @@ describe("hosted terminal-only runtime guard", () => {
   test("leaves terminal-only harnesses available to the native runtime", () => {
     for (const harnessId of ["claude-code", "codex", "opencode"]) {
       expect(
-        shouldBlockHostedLegacyDispatch({
+        shouldBlockHostedRuntime({
           isDesktopApp: true,
           harnessId,
+          sandboxProviderKind: "user-desktop",
         }),
       ).toBeFalse();
     }
   });
 
-  test("allows only Decopilot or an unpinned thread on hosted web", () => {
-    for (const harnessId of [null, undefined, "decopilot"]) {
+  test("allows Decopilot and unpinned hosted runtimes on the web", () => {
+    for (const [harnessId, sandboxProviderKind] of [
+      [null, null],
+      [undefined, undefined],
+      ["decopilot", null],
+      ["decopilot", "agent-sandbox"],
+    ] as const) {
       expect(
-        shouldBlockHostedLegacyDispatch({
+        shouldBlockHostedRuntime({
           isDesktopApp: false,
           harnessId,
+          sandboxProviderKind,
         }),
       ).toBeFalse();
+    }
+  });
+
+  test("blocks retired or unknown sandbox runtimes on hosted web", () => {
+    for (const sandboxProviderKind of ["user-desktop", "future-sandbox"]) {
+      expect(
+        shouldBlockHostedRuntime({
+          isDesktopApp: false,
+          harnessId: "decopilot",
+          sandboxProviderKind,
+        }),
+      ).toBeTrue();
     }
   });
 });

@@ -75,7 +75,7 @@ import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/bloc
 import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
-import { shouldBlockHostedLegacyDispatch } from "@/components/chat/hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -196,14 +196,16 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
+  const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
   const { pendingSandboxProviderKind } = useChatPrefs();
   const isDesktopApp = useIsDesktopApp();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
-  const executionEnabled = !shouldBlockHostedLegacyDispatch({
+  const executionEnabled = !shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
+    sandboxProviderKind: activeTask?.sandbox_provider_kind,
   });
 
   // Overlay the thread's own sandbox record for the current branch. A thread has
@@ -277,6 +279,29 @@ function VmEventsBridge({
   const previewUrl = vmEntry?.previewUrl ?? null;
   const shouldConnect =
     executionEnabled && (Object.keys(branchMap).length > 0 || isStartPending);
+
+  // Native coding-agent threads are intentionally unavailable on hosted web.
+  // Do not mount their workspace at all: every main-panel surface assumes it
+  // may mutate a sandbox (Git publish/rebase, filesystem writes, process
+  // control, setup, suggestion generation). A disabled composer or lifecycle
+  // provider cannot make those independent consumers read-only.
+  if (!executionEnabled) {
+    return (
+      <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+        <div className="flex h-full rounded-[0.75rem] bg-background card-shadow">
+          <EmptyState
+            image={<AlertCircle size={48} className="text-muted-foreground" />}
+            title={t(
+              "agentShellLayout.agentShellLayout.runtimeUnavailableOnWeb",
+            )}
+            description={t(
+              "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription",
+            )}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SandboxEventsProvider

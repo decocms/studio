@@ -112,6 +112,8 @@ export function buildStreamRequest(
     mode: "default",
     organizationId: automation.organization_id,
     userId: automation.created_by,
+    harnessId: "decopilot",
+    sandboxProviderKind: "agent-sandbox",
     triggerId: triggerId ?? undefined,
     ...(runMetadata ? { runMetadata } : {}),
     taskId,

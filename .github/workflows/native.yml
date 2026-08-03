@@ -356,9 +356,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build release local-api binary
+      - name: Build release local-api binaries
         working-directory: apps/native
-        run: cargo build --release --bin local-api
+        run: cargo build --release --features e2e-runner --bin local-api --bin local-api-e2e-embedded
 
       - name: Run local-api contract suite
         working-directory: apps/native

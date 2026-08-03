@@ -12,12 +12,7 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import { resolveAgentTier } from "@/harnesses/lib/claude-code/model/agent-tiers";
-import {
-  ChatTierSchema,
-  type ChatTier,
-  type SimpleModeTier,
-} from "@decocms/shared/organization/schema";
+import type { SimpleModeTier } from "@decocms/shared/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
@@ -43,7 +38,7 @@ import {
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
-import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
+import { buildDurableDispatchInput } from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
@@ -51,10 +46,7 @@ import {
   shouldPublishClusterRunStatus,
 } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import {
-  resolveSandboxProviderKindFromEnv,
-  type SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
@@ -158,29 +150,6 @@ async function validateRequest(
   };
 }
 
-/**
- * Look up the providerId for the credential the request would use, so
- * POST /messages can pick the right harness (and therefore the right
- * link capability) before enqueuing onto the thread gate. Returns
- * undefined when the credential row isn't found — the caller falls back
- * to "decopilot" (matches the existing prepareRun behavior).
- */
-async function resolveProviderId(
-  ctx: StudioContext,
-  credentialId: string,
-  organizationId: string,
-): Promise<string | undefined> {
-  try {
-    const row = await ctx.storage.aiProviderKeys.findById(
-      credentialId,
-      organizationId,
-    );
-    return row?.providerId;
-  } catch {
-    return undefined;
-  }
-}
-
 // ============================================================================
 // Per-Request Model Resolution
 // ============================================================================
@@ -224,29 +193,7 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
 async function resolvePerRequestModels(
   ctx: StudioContext,
   tier: SimpleModeTier | undefined,
-  harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
-  if (harnessId === "claude-code" || harnessId === "codex") {
-    const chatTier: ChatTier = ChatTierSchema.safeParse(tier).data ?? "smart";
-    const entry = resolveAgentTier(harnessId, chatTier);
-    if (!entry) {
-      // Should be unreachable — resolveAgentTier returns non-null for
-      // both supported CLI harnesses and every ChatTier value.
-      throw new Error(
-        `No model mapping for harness "${harnessId}" tier "${chatTier}"`,
-      );
-    }
-    return {
-      credentialId: `desktop:${harnessId}`,
-      thinking: {
-        id: entry.modelId,
-        title: entry.label,
-        provider: harnessId,
-        capabilities: { vision: true, text: true },
-      },
-    };
-  }
-
   const [chat, image, webSearch, deepResearch] = await Promise.all([
     // The only opt-in site for per-user chat-tier overrides: this is the
     // interactive chat request, dispatched as the caller themselves.
@@ -333,13 +280,10 @@ export function applyThreadLock(args: {
       // unlocked (harness_id null = this is the first message). The branch is
       // assigned at COLLECTION_THREADS_CREATE time, so it exists before the
       // harness/sandbox lock is written. Falling back to `requestedBranch`
-      // here — as we used to — meant the first turn resolved to a null branch
-      // and dispatched against the synthetic "ephemeral" sandbox, while
-      // continuations (by then locked) used the thread's real branch. The
-      // claude-code session created on turn 1 then lived in a different
-      // sandbox than the one `claude --resume` ran in on turn 2, producing
-      // "No conversation found with session ID". Matches the pin-write
-      // resolution in the POST handler (`existingThread?.branch ?? …`).
+      // here would make the first turn use the synthetic "ephemeral" sandbox
+      // while continuations use the thread's real branch. This matches the
+      // pin-write resolution in the POST handler
+      // (`existingThread?.branch ?? …`).
       //
       // Only consult the thread row when there is a real `taskIdInput`;
       // legacy callers with no thread id must ignore the row entirely (the
@@ -369,6 +313,66 @@ export function applyThreadLock(args: {
     branch: thread.branch ?? null,
     locked: true,
   };
+}
+
+/**
+ * The hosted messages endpoint is Decopilot-only. Native coding-agent ids can
+ * remain on persisted thread rows so the desktop app can resume them, but the
+ * cloud route must reject those rows before model resolution or any write.
+ */
+export function assertHostedDecopilotHarness(
+  harnessId: string | null | undefined,
+): asserts harnessId is "decopilot" | null | undefined {
+  if (
+    harnessId !== null &&
+    harnessId !== undefined &&
+    harnessId !== "decopilot"
+  ) {
+    throw new HTTPException(409, {
+      message: "This coding-agent chat can only run in the Studio desktop app",
+    });
+  }
+}
+
+export function assertHostedSandboxProvider(
+  sandboxProviderKind: string | null | undefined,
+): asserts sandboxProviderKind is "agent-sandbox" | null | undefined {
+  if (
+    sandboxProviderKind !== null &&
+    sandboxProviderKind !== undefined &&
+    sandboxProviderKind !== "agent-sandbox"
+  ) {
+    throw new HTTPException(409, {
+      message: "This chat is pinned to an unsupported desktop runtime",
+    });
+  }
+}
+
+function assertHostedRuntime(
+  harnessId: string | null | undefined,
+  sandboxProviderKind: string | null | undefined,
+): void {
+  assertHostedDecopilotHarness(harnessId);
+  assertHostedSandboxProvider(sandboxProviderKind);
+}
+
+/**
+ * Mutating control routes operate only on a thread that has already been
+ * claimed by hosted Decopilot. Unlike the message and stream routes, they do
+ * not need to support an unpinned thread: accepting one would leave a race in
+ * which native startup could claim the row after validation but before the
+ * hosted mutation landed.
+ */
+export function assertPersistedHostedRuntime(
+  harnessId: string | null | undefined,
+  sandboxProviderKind: string | null | undefined,
+): asserts harnessId is "decopilot" {
+  assertHostedRuntime(harnessId, sandboxProviderKind);
+  if (harnessId !== "decopilot") {
+    throw new HTTPException(409, {
+      message: "This chat has not started a hosted run",
+    });
+  }
 }
 
 /**
@@ -429,9 +433,8 @@ async function validate(
 
   // Lock guard: once a thread row carries a non-null `harness_id`, the
   // thread's runtime (harness, sandbox provider, branch) is pinned for
-  // life. Any client-provided override is silently dropped, and the
-  // per-request model resolution below uses the locked harness so we
-  // never dispatch with mismatched (harness, models).
+  // life. Any client-provided override is silently dropped. Native harnesses
+  // are then rejected before model resolution or any message/pin write.
   //
   // See spec:
   // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
@@ -449,12 +452,9 @@ async function validate(
     requestedSandboxProviderKind: sandboxProviderKind,
     requestedBranch: branch,
   });
+  assertHostedRuntime(effectiveHarnessId, effectiveSandboxProviderKind);
 
-  const resolvedModels = await resolvePerRequestModels(
-    ctx,
-    tier,
-    effectiveHarnessId,
-  );
+  const resolvedModels = await resolvePerRequestModels(ctx, tier);
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -494,8 +494,8 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: effectiveBranch ?? null,
-    sandboxProviderKind: effectiveSandboxProviderKind ?? null,
-    harnessId: effectiveHarnessId ?? null,
+    sandboxProviderKind: "agent-sandbox",
+    harnessId: "decopilot",
   };
 }
 
@@ -507,12 +507,6 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
-  /**
-   * Live desktop-link status probe. Threaded onto the StudioContext so the
-   * decopilot dispatch path can consult the daemon directly. POST /messages
-   * uses it to reject early when no link answers instead of silently queueing
-   * a run that would have nowhere to go.
-   */
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
@@ -584,27 +578,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "threadId is required" });
       }
 
-      // Resolve the dispatch target up-front so we can reject a
-      // request with 409 *before* enqueuing it onto the thread gate.
-      // Holding the link-online decision at POST time also keeps DBOS
-      // replay from rerouting the run if the daemon disconnects between
-      // enqueue and dispatch (the workflow body reads target directly off
-      // the serialized request).
-      //
-      // The thread row's (sandbox_provider_kind, harness_id) are the
-      // single source of truth for routing. Tolerate storage failure when
-      // loading the thread row — a missing/erroring row just means we fall
-      // back to the request body / default helpers (the canonical thread row
-      // is created by COLLECTION_THREADS_CREATE before the first POST, but
-      // legacy callers and tests may skip it).
-      let existingThread: Awaited<
-        ReturnType<typeof ctx.storage.threads.get>
-      > | null = null;
-      try {
-        existingThread = (await ctx.storage.threads?.get?.(taskId)) ?? null;
-      } catch {
-        existingThread = null;
-      }
+      // Re-read the canonical row for its pin and message-storage version.
+      // Only a real null uses the legacy create-on-send path. A storage error
+      // must fail closed: treating it as a missing row could race a native pin
+      // and enqueue hosted work against the newly native thread.
+      const existingThread = await ctx.storage.threads.get(taskId);
 
       // Fall back to the "ephemeral" synthetic branch when neither the
       // thread row nor the request body pins one. Synthetic branches
@@ -613,7 +591,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
-      const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      let branch = existingThread?.branch ?? input.branch ?? "ephemeral";
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
@@ -621,23 +599,22 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       let pinnedKind = (existingThread?.sandbox_provider_kind ??
         null) as SandboxProviderKind | null;
 
-      const providerId = await resolveProviderId(
-        ctx,
-        input.models.credentialId,
-        input.organizationId,
-      );
-      const credentialHarness = resolveHarnessId(providerId);
-
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
       let messageStorageVersion = existingThread?.message_storage_version ?? 2;
 
-      if (!pinnedKind || !pinnedHarness) {
-        pinnedKind =
-          pinnedKind ??
-          input.sandboxProviderKind ??
-          resolveSandboxProviderKindFromEnv();
-        pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
+      // The row may have changed between validate() and this canonical re-read.
+      // Re-assert before the initial-pin branch so a persisted non-hosted
+      // runtime cannot be mutated by this route before it returns 409.
+      assertHostedRuntime(pinnedHarness, pinnedKind);
+
+      // A non-null harness is the runtime lock. Legacy Decopilot rows may have
+      // a null sandbox kind; that tuple means hosted agent-sandbox. An explicit
+      // user-desktop value is rejected above rather than silently migrated.
+      if (!pinnedHarness) {
+        pinnedKind = pinnedKind ?? input.sandboxProviderKind ?? "agent-sandbox";
+        pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
+        assertHostedRuntime(pinnedHarness, pinnedKind);
 
         if (existingThread) {
           // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
@@ -658,33 +635,26 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               pinV2 = false;
             }
           }
-          try {
-            // Persist `branch` unconditionally on the initial pin write so
-            // the thread row is the single source of truth the lock guard
-            // (validate() / applyThreadLock) reads on every follow-up.
-            // Previously we only stored the synthetic "ephemeral" fallback
-            // (`branchWasDefaulted` path); a user who explicitly picked
-            // "main" on the first message would have it dropped here, and
-            // the lock would later resolve to null and dispatch against
-            // "ephemeral" instead. The lock contract (spec
-            // 2026-06-03-lock-thread-harness-and-branch-design.md) says
-            // all three locked fields are pinned together — branch is no
-            // exception.
-            await ctx.storage.threads?.update?.(taskId, {
-              sandbox_provider_kind: pinnedKind,
-              harness_id: pinnedHarness,
-              branch,
-              ...(pinV2 ? { message_storage_version: 2 } : {}),
-            });
-            if (pinV2) messageStorageVersion = 2;
-          } catch (err) {
-            console.warn(
-              "[decopilot:messages] failed to persist thread pins",
-              err,
-            );
+          // Claim all runtime pins in one CAS. A native start can race this
+          // request, so an unconditional update would let the hosted path
+          // overwrite a runtime that became native after our preceding read.
+          const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
+            harnessId: pinnedHarness,
+            sandboxProviderKind: pinnedKind,
+            branch,
+            ...(pinV2 ? { messageStorageVersion: 2 } : {}),
+          });
+          if (!claimed.thread) {
+            throw new HTTPException(404, { message: "Thread not found" });
           }
+          pinnedHarness = claimed.thread.harness_id as HarnessId | null;
+          pinnedKind = claimed.thread
+            .sandbox_provider_kind as SandboxProviderKind | null;
+          branch = claimed.thread.branch ?? "ephemeral";
+          messageStorageVersion = claimed.thread.message_storage_version;
         }
       }
+      assertHostedRuntime(pinnedHarness, pinnedKind);
 
       if (messageStorageVersion !== 2) {
         throw new HTTPException(409, {
@@ -752,8 +722,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const serializableRequest = buildDurableDispatchInput(input, {
         messageId,
         branch,
-        sandboxProviderKind: pinnedKind,
-        harnessId: pinnedHarness,
       });
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
@@ -793,7 +761,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Cancel Endpoint — cancel ongoing run (local or via NATS to owning pod)
+  // Cancel Endpoint — cancel a hosted run locally or via NATS to its owning pod
   // ============================================================================
 
   // Shared run-cancel teardown: durable cancel flag, background-job teardown,
@@ -808,6 +776,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     userId: string;
   }): Promise<void> {
     const { ctx, taskId, thread, organization, userId } = args;
+    assertPersistedHostedRuntime(
+      thread.harness_id,
+      thread.sandbox_provider_kind,
+    );
 
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
@@ -859,8 +831,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     // Keyed by `decopilot-hosted:<runId>:<fenceToken>` (`hostedChildWorkflowId`,
     // the same single source of truth `startHostedHarness` uses) — read the
     // current fence from the thread row. Best-effort: cancelling an
-    // already-finished/unknown workflow (e.g. desktop runs, which have no
-    // hosted child) must not fail the cancel.
+    // already-finished/unknown workflow must not fail the cancel.
     // The fence current when this cancel was issued — identifies the exact turn
     // being stopped. Reused below to scope the ghost force-fail so it can't
     // clobber a follow-up turn (fresh fence) that starts while this cancel is
@@ -937,6 +908,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
     const { ctx, taskId, thread, organization, userId } =
       await validateThreadOwnership(c);
+    assertPersistedHostedRuntime(
+      thread.harness_id,
+      thread.sandbox_provider_kind,
+    );
     await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
     return c.json({ cancelled: true, async: true }, 202);
   });
@@ -946,7 +921,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // pod runs the turn (like cancel); that pod's running `subtask` call aborts
   // its inline run and re-runs it as a durable background job. Owner-only.
   app.post("/:org/decopilot/flip/:threadId", async (c) => {
-    const { taskId } = await validateThreadOwnership(c);
+    const { taskId, thread } = await validateThreadOwnership(c);
+    assertPersistedHostedRuntime(
+      thread.harness_id,
+      thread.sandbox_provider_kind,
+    );
     const body = (await c.req.json().catch(() => null)) as {
       toolCallId?: unknown;
     } | null;
@@ -965,7 +944,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ==========================================================================
 
   app.get("/:org/decopilot/queue/:threadId", async (c) => {
-    const { ctx, taskId } = await validateThreadOwnership(c);
+    const { ctx, taskId, thread } = await validateThreadOwnership(c);
+    assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
     const items = await listThreadGateQueue(taskId);
     if (items.length === 0) return c.json({ items: [] });
     // Hydrate tray display text + attachment presence from the persisted
@@ -993,6 +973,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
     const { ctx, taskId, thread, organization, userId } =
       await validateThreadOwnership(c);
+    assertPersistedHostedRuntime(
+      thread.harness_id,
+      thread.sandbox_provider_kind,
+    );
     const workflowId = c.req.param("workflowId");
 
     // The item must currently be pending for THIS thread (prefix-scoped list).
@@ -1067,6 +1051,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
+      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy

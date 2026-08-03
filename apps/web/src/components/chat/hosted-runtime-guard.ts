@@ -3,21 +3,26 @@
  * persisted native thread rows consumed by shared UI code, but the hosted AI
  * SDK dispatcher has no wire contract for them.
  *
- * Gate by harness alone rather than trusting the accompanying sandbox field:
- * an incomplete or older row must fail closed instead of reaching legacy
- * dispatch merely because `sandbox_provider_kind` is missing.
+ * Gate on both persisted pins. Explicit Decopilot with a null sandbox is a
+ * supported legacy hosted tuple; explicit desktop/unknown sandboxes and every
+ * non-Decopilot harness are unavailable on hosted web.
  */
-export function shouldBlockHostedLegacyDispatch({
+export function shouldBlockHostedRuntime({
   isDesktopApp,
   harnessId,
+  sandboxProviderKind,
 }: {
   isDesktopApp: boolean;
   harnessId: string | null | undefined;
+  sandboxProviderKind: string | null | undefined;
 }): boolean {
   return (
     !isDesktopApp &&
-    harnessId !== null &&
-    harnessId !== undefined &&
-    harnessId !== "decopilot"
+    ((harnessId !== null &&
+      harnessId !== undefined &&
+      harnessId !== "decopilot") ||
+      (sandboxProviderKind !== null &&
+        sandboxProviderKind !== undefined &&
+        sandboxProviderKind !== "agent-sandbox"))
   );
 }

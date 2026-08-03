@@ -1,4 +1,4 @@
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import type { ThreadDisplayStatus } from "@/sdk";
 
 // Output arrives in bounded PTY chunks; replay gaps are an empty reset marker

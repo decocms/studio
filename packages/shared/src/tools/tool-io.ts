@@ -3723,20 +3723,6 @@ export interface StudioToolIO {
       hasMore?: boolean | undefined;
     };
   };
-  THREAD_BACKGROUND_TOOL_START: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      toolName: "subtask" | "generate_image";
-      input: unknown;
-      toolCallId: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { jobId: string };
-  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {
