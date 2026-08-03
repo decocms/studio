@@ -11,13 +11,12 @@
  *     full cluster tool set (web_search / update_interests / Browserless
  *     built-ins) + the ctx-coupled `runAgentLoop` engine + cluster telemetry.
  * Invoked once per run because the underlying loop is stateful. Context stays
- * separate from `HarnessStreamInput`, keeping the input serializable for the
- * durable transport. The per-run side-channel + MCP-client cleanup is owned
- * here (the `try/finally` below).
+ * separate from `DecopilotStreamInput`. The per-run side-channel + MCP-client
+ * cleanup is owned here (the `try/finally` below).
  */
 
 import type { UIMessageChunk } from "ai";
-import type { HarnessContext, HarnessStreamInput } from "../types";
+import type { DecopilotStreamInput, HarnessContext } from "../types";
 import { createProviderFromSecret } from "./provider-from-secret";
 import {
   createSideChannelWriter,
@@ -29,7 +28,7 @@ import {
   type DecopilotToolRuntime,
   type ModelRuntime,
 } from "./run-core";
-import { requireDecopilotRunContext } from "./run-context";
+import type { DecopilotRunContext } from "./run-context";
 import type { DecopilotTelemetry } from "./run-stream";
 
 /** True when the injected context is a full cluster context (it carries
@@ -68,9 +67,9 @@ export function registerClusterEnvironmentBuilder(
 
 export async function* streamDecopilot(
   harnessCtx: HarnessContext,
-  input: HarnessStreamInput,
+  input: DecopilotStreamInput,
+  runContext: DecopilotRunContext,
 ): AsyncIterable<UIMessageChunk> {
-  const runContext = requireDecopilotRunContext(input);
   // ── Model runtime: providers from resolved secret sources (both
   //    environments use the same secret→provider factory). ────────────
   const modelRuntime = buildModelRuntimeFromSources(
@@ -105,6 +104,7 @@ export async function* streamDecopilot(
   try {
     yield* runDecopilotCore({
       input,
+      runContext,
       modelRuntime,
       toolRuntime: built.toolRuntime,
       telemetry: built.telemetry,

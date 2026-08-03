@@ -7,9 +7,8 @@ import type { UIMessage } from "ai";
 export type { UIMessageChunk } from "ai";
 
 /**
- * Harness domain/wire types — the shapes apps/api, apps/web, and
- * hosted API and web client share: harness ids, model slots, chat modes, and the
- * serializable dispatch input. Browser-safe; no cluster-only imports. The
+ * Harness domain types shared by the API and web client: harness ids, model
+ * slots, chat modes, and prompt context. Browser-safe; no cluster-only imports. The
  * cluster-side shapes (`ChatMessage` with metadata + tools) flow in via
  * structural compatibility: the cluster passes its richer types where these
  * expect a UIMessage, and TS accepts the widening.
@@ -73,25 +72,6 @@ export interface ModelsConfig {
  *  the AI SDK's generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
 
-export type HarnessWorkspace =
-  | {
-      cwd: "/repo";
-      repo: {
-        owner: string;
-        name: string;
-        connectedGithub: boolean;
-      };
-      branch: string | null;
-    }
-  | {
-      cwd: null;
-    };
-
-export interface HarnessAgent {
-  id: string;
-  instructions?: string;
-}
-
 /** One recent thread, pre-resolved agent-side for the prompt's history block.
  *  `updated_at` is an ISO string (the portable prompt builder formats the date
  *  label). Mirrors the fields `renderRecentThreadsSection` reads. */
@@ -124,33 +104,4 @@ export interface HarnessUserContext {
   recentThreads?: { total: number; threads: PromptThreadSummary[] };
   interests?: PromptInterest[];
   agents?: PromptAgentSummary[];
-}
-
-export interface HarnessStreamInput {
-  threadId: string;
-  userMessage: ChatMessage;
-  harness: {
-    sessionId?: string;
-  };
-  workspace: HarnessWorkspace;
-  models: ModelsConfig;
-  mcp: {
-    url: string;
-    headers: Record<string, string>;
-    expiresAt: number;
-  };
-  mode: ChatMode;
-  temperature: number;
-  toolApprovalLevel: ToolApprovalLevel;
-  toolAllowlist?: string[] | null;
-  maxAgentSteps?: number;
-  user: { id: string; email: string };
-  organizationId: string;
-  organizationSlug?: string;
-  agent: HarnessAgent;
-  triggerId?: string;
-  currentThreadTitle?: string;
-  signal: AbortSignal;
-  traceparent?: string;
-  runFenceToken?: string;
 }

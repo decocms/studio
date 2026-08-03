@@ -16,7 +16,6 @@ import {
   SUBTASK_MAX_CONCURRENT,
   type RunDecopilotCoreDeps,
 } from "./run-core";
-import { setDecopilotRunContext } from "./run-context";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
@@ -124,25 +123,21 @@ const baseInput = {
     role: "user",
     parts: [{ type: "text", text: "hi" }],
   },
-  harness: {},
-  workspace: { cwd: null },
   models: {
     thinking: { id: "m1", credentialId: "c1", limits: {} },
   },
-  mcp: { url: "http://x", headers: {}, expiresAt: Date.now() + 60_000 },
   mode: "default",
   temperature: 0,
   toolApprovalLevel: "auto",
   user: { id: "u1", email: "u@x.com" },
   organizationId: "org1",
-  agent: { id: "vir_1" },
   currentThreadTitle: "Some existing title",
   signal: new AbortController().signal,
 } as RunDecopilotCoreDeps["input"];
 
-setDecopilotRunContext(baseInput, {
+const baseRunContext: RunDecopilotCoreDeps["runContext"] = {
   virtualMcp: { id: "vir_1", metadata: {} },
-});
+};
 
 const modelRuntime = {
   thinking: {
@@ -167,6 +162,7 @@ describe("spawnSubtask", () => {
     ];
     const deps = {
       input: { ...baseInput, signal: new AbortController().signal },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks,
@@ -193,6 +189,7 @@ describe("spawnSubtask", () => {
     const captured: { args?: RunEngineArgs } = {};
     const deps = {
       input: { ...baseInput, signal: new AbortController().signal },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],
@@ -214,6 +211,7 @@ describe("spawnSubtask", () => {
     const captured: { args?: RunEngineArgs } = {};
     const deps = {
       input: { ...baseInput, signal: new AbortController().signal },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],
@@ -245,6 +243,7 @@ describe("spawnSubtask", () => {
     ac.abort(new Error("parent cancelled"));
     const deps = {
       input: { ...baseInput, signal: new AbortController().signal },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],
@@ -278,7 +277,7 @@ describe("runDecopilotCore conversation input", () => {
         parts: [{ type: "text", text: "current" }],
       },
     };
-    setDecopilotRunContext(input, {
+    const runContext: RunDecopilotCoreDeps["runContext"] = {
       virtualMcp: { id: "vir_1", metadata: {} },
       messages: [
         {
@@ -288,11 +287,12 @@ describe("runDecopilotCore conversation input", () => {
         },
         input.userMessage,
       ],
-    });
+    };
     const captured: { args?: RunEngineArgs } = {};
 
     for await (const _ of runDecopilotCore({
       input,
+      runContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],
@@ -317,6 +317,7 @@ describe("runDecopilotCore conversation input", () => {
 
     for await (const _ of runDecopilotCore({
       input,
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],
@@ -333,6 +334,7 @@ describe("runDecopilotCore conversation input", () => {
     // every truncated MCP output is written where `read_tool_output` (bound to
     // the bundle's map via extraTools) can't see it — "Available ids: (none)".
     expect(captured.args?.toolOutputMap).toBe(bundleRef.bundle!.toolOutputMap);
+    expect(captured.args?.virtualMcp.id).toBe("vir_1");
   });
 });
 
@@ -422,6 +424,7 @@ describe("usage roll-up (parent final metadata includes child tokens)", () => {
           parts: [{ type: "text", text: "hi" }],
         },
       },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: toolRuntime as never,
       kind: "main",
@@ -460,6 +463,7 @@ describe("runDecopilotCore main-run subtask policy", () => {
           parts: [{ type: "text", text: "hello" }],
         },
       },
+      runContext: baseRunContext,
       modelRuntime,
       toolRuntime: makeToolRuntime({
         chunks: [{ type: "finish" } as UIMessageChunk],

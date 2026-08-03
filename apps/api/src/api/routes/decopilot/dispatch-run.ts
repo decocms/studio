@@ -38,18 +38,12 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
-  HarnessStreamInput,
+  DecopilotStreamInput,
   HarnessUserContext,
   ModelSelection,
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource, streamDecopilot } from "@/harnesses";
-import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
-import type {
-  DecopilotHttpMcpSource,
-  DecopilotObjectStorageSource,
-  HarnessWorkspace,
-} from "@/harnesses/lib/types";
 import { createProviderFromSecret } from "@/harnesses/lib/decopilot/provider-from-secret";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
@@ -608,17 +602,16 @@ export async function dispatchRunAndWait(
 }
 
 /**
- * The fully-assembled, JSON-serializable wire shape of a run's harness
- * input — everything `HarnessStreamInput` carries EXCEPT the non-serializable
- * `signal` field.
+ * The fully prepared shape of a run's Decopilot input, excluding the
+ * request-local `signal` field.
  *
  * Built eagerly in `prepareRun`'s main body (user-message materialization and
  * field assembly) so it's available without consuming
  * `uiStream`. The hosted dispatch path layers the signal on top inside the
  * lazy harness chunk source:
- * `{ ...wireHarnessInput, signal: registrySignal }`.
+ * `{ ...preparedDecopilotInput, signal: registrySignal }`.
  */
-type WireHarnessInput = Omit<HarnessStreamInput, "signal">;
+type PreparedDecopilotInput = Omit<DecopilotStreamInput, "signal">;
 
 interface PreparedRun {
   taskId: string;
@@ -971,7 +964,7 @@ async function prepareRun(
     await ctx.storage.threads.clearCancelRequested(mem.thread.id);
 
     // Single-writer fence token for this run. The token is included in
-    // HarnessStreamInput so every ingest append carries it.
+    // DecopilotStreamInput so every ingest append carries it.
     // It is fresh PER TURN (runId == threadId is stable across turns) so the
     // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
     // projector's per-(runId, fenceToken) accumulator never collide two turns.
@@ -1111,14 +1104,10 @@ async function prepareRun(
 
     const pendingOps: Promise<void>[] = [];
 
-    const organization = ctx.organization!;
     const streamStartAt = Date.now();
 
-    // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
-    // The hosted harness input (materialized user message, workspace, fence
-    // token, and context) is assembled here,
-    // before the lazy harness chunk source runs. Hosted dispatch layers the
-    // non-serializable `signal` on top below.
+    // Materialize the Decopilot request before the lazy chunk source starts;
+    // hosted dispatch layers the request-local `signal` on top below.
 
     // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only.
@@ -1143,33 +1132,9 @@ async function prepareRun(
       systemMessages,
     });
 
-    // Hosted Decopilot uses an in-process virtual MCP passthrough. Its client
-    // doesn't consume mcp.*, but the shared HarnessStreamInput requires it.
-    const mcpBase = {
-      url: "",
-      headers: {} as Record<string, string>,
-      expiresAt: 0,
-    };
+    // ⚠️ SECURITY: Never log `modelSources` (any slot).
 
-    // ⚠️ SECURITY: Never log `modelSources` (any slot) or `mcp.headers` values.
-
-    const mcp: HarnessStreamInput["mcp"] = mcpBase;
-    const mcpSource: DecopilotHttpMcpSource | undefined = undefined;
-    // Hosted Decopilot runs in-process, so it never needs an HTTP object
-    // storage source.
-    const objectStorageSource: DecopilotObjectStorageSource | undefined =
-      undefined;
-    // Hosted runs mount no repo working directory. The harness resolves its
-    // own workspace.
-    const workspace: HarnessWorkspace = { cwd: null };
-    const agentInstructions =
-      typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
-        ?.instructions === "string"
-        ? (effectiveVirtualMcp.metadata as { instructions: string })
-            .instructions
-        : undefined;
     const decopilotRunContext = {
-      taskId: input.taskId,
       isSubagent: input.isSubagent,
       subtaskJobId: input.subtaskJobId,
       resumedFromBackground: input.resumedFromBackground,
@@ -1177,18 +1142,13 @@ async function prepareRun(
       branch: input.branch,
       messages: decopilotMessages,
       modelSources,
-      mcpSource,
-      objectStorageSource,
       userContext,
     };
 
-    const wireHarnessInput: WireHarnessInput = {
+    const preparedDecopilotInput: PreparedDecopilotInput = {
       threadId: mem.thread.id,
       userMessage: wireUserMessage,
-      harness: { sessionId: undefined },
-      workspace,
       models,
-      mcp,
       mode: input.mode,
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
@@ -1196,11 +1156,7 @@ async function prepareRun(
       maxAgentSteps: input.maxAgentSteps,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
-      organizationSlug: organization.slug,
-      agent: { id: agentId, instructions: agentInstructions },
-      triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
-      runFenceToken,
     };
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
@@ -1220,13 +1176,11 @@ async function prepareRun(
     );
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
-        // Layer the non-serializable `signal` onto the eagerly-built wire
-        // input. Everything else was assembled above.
-        const harnessInput: HarnessStreamInput = {
-          ...wireHarnessInput,
+        // Layer the request-local `signal` onto the eagerly prepared input.
+        const decopilotInput: DecopilotStreamInput = {
+          ...preparedDecopilotInput,
           signal: registrySignal,
         };
-        setDecopilotRunContext(harnessInput, decopilotRunContext);
 
         // The one hosted runtime returns its chunk iterable directly;
         // consumeHarnessStream consumes it verbatim.
@@ -1235,7 +1189,11 @@ async function prepareRun(
           mem.thread.id,
           PREPARE_RUN_STATUS_STAGES[3],
         );
-        const rawHarnessChunks = streamDecopilot(ctx, harnessInput);
+        const rawHarnessChunks = streamDecopilot(
+          ctx,
+          decopilotInput,
+          decopilotRunContext,
+        );
         yield* rawHarnessChunks;
       };
 

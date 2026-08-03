@@ -180,7 +180,7 @@ describe("SqlThreadStorage", () => {
     });
   });
 
-  describe("runtime pin", () => {
+  describe("hosted runtime pin", () => {
     it("stores explicit runtime pins during create", async () => {
       const thread = await storage.create({
         organization_id: "org_1",
@@ -195,38 +195,50 @@ describe("SqlThreadStorage", () => {
       expect(thread.branch).toBe("main");
     });
 
-    it("lets exactly one concurrent runtime claim win", async () => {
+    it("does not overwrite a concurrent native runtime claim", async () => {
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
       });
-      const pins = [
-        {
-          harnessId: "decopilot",
-          sandboxProviderKind: "agent-sandbox",
+
+      const [hostedClaim, nativeClaim] = await Promise.all([
+        storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
           branch: "hosted",
-        },
-        {
-          harnessId: "codex",
-          sandboxProviderKind: "user-desktop",
+        }),
+        database.db
+          .updateTable("threads")
+          .set({
+            harness_id: "codex",
+            sandbox_provider_kind: "user-desktop",
+            branch: "native",
+            updated_at: new Date().toISOString(),
+          })
+          .where("id", "=", thread.id)
+          .where("organization_id", "=", "org_1")
+          .where("harness_id", "is", null)
+          .where("sandbox_provider_kind", "is", null)
+          .returningAll()
+          .executeTakeFirst(),
+      ]);
+
+      expect(
+        Number(hostedClaim.claimed) + Number(nativeClaim !== undefined),
+      ).toBe(1);
+      const persisted = await storage.get(thread.id, "org_1");
+      if (hostedClaim.claimed) {
+        expect(persisted).toMatchObject({
+          harness_id: "decopilot",
+          sandbox_provider_kind: "agent-sandbox",
+          branch: "hosted",
+        });
+      } else {
+        expect(persisted).toMatchObject({
+          harness_id: "codex",
+          sandbox_provider_kind: "user-desktop",
           branch: "native",
-        },
-      ] as const;
-
-      const results = await Promise.all(
-        pins.map((pin) => storage.pinRuntimeIfUnset(thread.id, "org_1", pin)),
-      );
-      expect(results.filter((result) => result.claimed)).toHaveLength(1);
-
-      const winner = results.find((result) => result.claimed)?.thread;
-      expect(winner).not.toBeNull();
-      for (const result of results) {
-        expect(result.thread?.harness_id).toBe(winner?.harness_id);
-        expect(result.thread?.sandbox_provider_kind).toBe(
-          winner?.sandbox_provider_kind,
-        );
-        expect(result.thread?.branch).toBe(winner?.branch);
+        });
       }
+      expect(hostedClaim.thread).toEqual(persisted);
     });
 
     it("preserves branch state written before the runtime claim", async () => {
@@ -235,14 +247,18 @@ describe("SqlThreadStorage", () => {
         created_by: "user_1",
         branch: "already-selected",
       });
-      const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
+      const result = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
         branch: "stale-branch",
+        messageStorageVersion: 2,
       });
 
       expect(result.claimed).toBe(true);
-      expect(result.thread?.branch).toBe("already-selected");
+      expect(result.thread).toMatchObject({
+        harness_id: "decopilot",
+        sandbox_provider_kind: "agent-sandbox",
+        branch: "already-selected",
+        message_storage_version: 2,
+      });
     });
 
     it("updates routing only while the runtime remains unlocked", async () => {
@@ -274,9 +290,7 @@ describe("SqlThreadStorage", () => {
         harness_id: null,
       });
 
-      await storage.pinRuntimeIfUnset(unlocked.id, "org_1", {
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
+      await storage.pinHostedRuntimeIfUnset(unlocked.id, "org_1", {
         branch: "feature",
       });
       const lostRace = await storage.updateRoutingIfRuntimeUnlocked(
@@ -300,9 +314,7 @@ describe("SqlThreadStorage", () => {
         sandbox_provider_kind: "user-desktop",
         branch: "native-branch",
       });
-      const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
+      const result = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
         branch: "hosted-branch",
       });
 
@@ -318,19 +330,15 @@ describe("SqlThreadStorage", () => {
         created_by: "user_1",
       });
       const pin = {
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         branch: "hosted",
       };
 
-      expect(await storage.pinRuntimeIfUnset("missing", "org_1", pin)).toEqual({
-        thread: null,
-        claimed: false,
-      });
-      expect(await storage.pinRuntimeIfUnset(thread.id, "org_2", pin)).toEqual({
-        thread: null,
-        claimed: false,
-      });
+      expect(
+        await storage.pinHostedRuntimeIfUnset("missing", "org_1", pin),
+      ).toEqual({ thread: null, claimed: false });
+      expect(
+        await storage.pinHostedRuntimeIfUnset(thread.id, "org_2", pin),
+      ).toEqual({ thread: null, claimed: false });
       expect((await storage.get(thread.id, "org_1"))?.harness_id).toBeNull();
     });
   });

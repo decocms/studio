@@ -26,9 +26,8 @@ export type ScrapeUrlInput = z.infer<typeof ScrapeUrlInputSchema>;
 export function createScrapeUrlTool(
   writer: UIMessageStreamWriter,
   params: {
-    // baseUrl + token come from `deps.browserless`; presence of the hook is
-    // the gate (the cluster only builds this tool when BROWSERLESS_TOKEN is
-    // set). The tool no longer reads `process.env` (HarnessDeps conversion).
+    // The hosted runtime supplies these values only when BROWSERLESS_TOKEN is
+    // set. The tool does not read `process.env` itself.
     browserless: { baseUrl: string; token: string };
     objectStorage: ObjectStorageHooks;
     toolOutputMap: Map<string, string>;

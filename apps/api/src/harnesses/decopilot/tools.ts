@@ -39,8 +39,8 @@ import {
   type ToolCallAnalytics,
 } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
-import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
-import type { HarnessStreamInput } from "@/harnesses/lib/types";
+import type { DecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
+import type { DecopilotStreamInput } from "@/harnesses/lib/types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
 export type PassthroughToolList = Awaited<
@@ -87,7 +87,7 @@ export interface AssembledTools {
   close: () => Promise<void>;
 }
 
-/** Per-request extras that don't live in `HarnessStreamInput`. These are
+/** Per-request extras that don't live in `DecopilotStreamInput`. These are
  *  produced inside the `createUIMessageStream` execute callback (writer)
  *  or by the surrounding stream-core scope (toolOutputMap, pendingImages,
  *  threadId from the loaded memory). */
@@ -128,17 +128,13 @@ export interface AssembleDecopilotToolsExtras {
    *  background jobs instead of holding the turn open. Omitted on desktop. */
   backgroundDispatcher?: BackgroundDispatcher | null;
   /**
-   * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
-   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx, superUser,
-   * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
-   * the agent's `mcp.url`. The cluster impl
-   * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
-   * `PassthroughClient`; the caller owns closing it via `result.close()`.
+   * Opens the hosted in-process client for the authoritative Virtual MCP.
+   * The caller owns closing it via `result.close()`.
    */
-  mcpForAgent: (
-    agentId: string,
-    opts?: { superUser?: boolean; listTimeoutMs?: number },
-  ) => Promise<PassthroughClient>;
+  openMcp: (opts?: {
+    superUser?: boolean;
+    listTimeoutMs?: number;
+  }) => Promise<PassthroughClient>;
   /** Cluster-injected hook: resolve storage-ref args before each MCP tool
    *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
   resolveArgs?: (
@@ -217,11 +213,12 @@ function filterBuiltInsByAllowlist(
  *     round-trip when building the connections block.
  */
 export async function assembleDecopilotTools(
-  input: HarnessStreamInput,
+  input: DecopilotStreamInput,
+  runContext: DecopilotRunContext,
   ctx: StudioContext,
   extras: AssembleDecopilotToolsExtras,
 ): Promise<AssembledTools> {
-  const runContext = requireDecopilotRunContext(input);
+  const agentId = runContext.virtualMcp.id;
   const organization = ctx.organization!;
   const isPlanMode = input.mode === "plan";
   // Per-run tool allowlist (model-facing names). Empty array is treated as
@@ -236,7 +233,7 @@ export async function assembleDecopilotTools(
   // per-tool AuthTransport check would block every non-public connection
   // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
   // permissions configured — the wrong enforcement layer for chat.
-  const passthroughClient = await extras.mcpForAgent(input.agent.id, {
+  const passthroughClient = await extras.openMcp({
     superUser: true,
     listTimeoutMs: 1_000,
   });
@@ -296,16 +293,12 @@ export async function assembleDecopilotTools(
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
-    const threadRepo = await getThreadGithubRepo(
-      ctx,
-      extras.threadId,
-      input.agent.id,
-    );
+    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId, agentId);
     const effectiveRepo = threadRepo ?? vmMetadata.githubRepo;
     const isEphemeralAgent = !effectiveRepo;
     const vmContext: VmContext | null = input.user.id
       ? {
-          virtualMcpId: input.agent.id,
+          virtualMcpId: agentId,
           branch: threadRepo
             ? threadBranch(extras.threadId, threadRepo.connectionId)
             : isEphemeralAgent
@@ -319,8 +312,7 @@ export async function assembleDecopilotTools(
           // Lets the fs layer mint an endpoint and materialize the tool
           // catalog into the sandbox once it's provisioned (hosted runs
           // never send a /dispatch envelope, so the daemon can't do it
-          // itself; `input.mcp` is decopilot's in-process sentinel with an
-          // empty url — never forward it).
+          // itself).
           syncTools: true,
         }
       : null;
@@ -342,7 +334,7 @@ export async function assembleDecopilotTools(
         vmContext,
         htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
-        agentId: input.agent.id,
+        agentId,
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
       },

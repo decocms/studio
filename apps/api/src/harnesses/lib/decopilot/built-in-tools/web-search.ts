@@ -1,16 +1,13 @@
 /**
- * web_search Built-in Tool (portable)
+ * web_search built-in tool
  *
- * Server-side tool that performs web research. The tool itself is now pure: it
- * drives the injected `deps.researchJob` async-generator hook, streams each
+ * Server-side tool that performs web research. It drives the supplied
+ * `researchJob` async generator, streams each
  * progress event to the UI, and shapes the terminal `ResearchResult` into the
  * tool result. All provider/DB coupling (streaming Perplexity path, durable
  * Gemini Deep Research lifecycle over `async_research_jobs`) lives in the
  * cluster's `researchJob` hook impl (studio-owned; see
  * `createClusterResearchJob` in `cluster-research-job.ts`).
- *
- * Capability gating = hook absence: when `deps.researchJob` is undefined
- * (desktop), `web_search` is simply not in the tool set (spec §5.1).
  *
  * Small results stay inline in the tool result; large results are offloaded to
  * blob storage by the hook, which returns a `resultUri` + `preview` instead of
@@ -19,7 +16,7 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { HarnessDeps } from "../../harness-deps";
+import type { ResearchJob } from "../../harness-deps";
 
 const WebSearchInputSchema = z.object({
   query: z
@@ -44,7 +41,7 @@ export function createWebSearchTool(
   writer: UIMessageStreamWriter,
   params: {
     /** Cluster-built durable research hook (spec §6). */
-    researchJob: NonNullable<HarnessDeps["researchJob"]>;
+    researchJob: ResearchJob;
     toolOutputMap: Map<string, string>;
     /** Current thread/task id — used to scope persisted research jobs. */
     taskId: string;

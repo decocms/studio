@@ -201,7 +201,7 @@ async function buildAllTools(
   if (userId) {
     // Cluster `interests.write` hook: closes over ctx/storage and forwards the
     // org/agent/user carried in the InterestsWrite payload. The tool itself no
-    // longer touches StudioContext (HarnessDeps conversion).
+    // longer touches StudioContext.
     tools.update_interests = createUpdateInterestsTool({
       write: async (input) => {
         await ctx.storage.interests.setForAgent(
@@ -331,9 +331,8 @@ async function buildAllTools(
   // image tier with a different credential than the chat tier (caller
   // aliases it to `provider` when they share a credential).
   if (imageProvider && models.image && ctx.objectStorage) {
-    // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
-    // StudioContext + settings; the tool itself no longer reads either
-    // (HarnessDeps conversion).
+    // The hosted runtime builds `objectStorage` + `allowHttpExternalUrls` from
+    // StudioContext + settings; the tool itself no longer reads either.
     // generate_image is slow (tens of seconds). When a background dispatcher
     // is wired (cluster, hosted runs) it's made backgroundable: the call
     // enqueues a durable job and returns immediately so the turn finishes and
@@ -352,13 +351,13 @@ async function buildAllTools(
       backgroundDispatcher,
     ) as ReturnType<typeof createGenerateImageTool>;
   }
-  // web_search (quick) and deep_research (deep) both consume the cluster-built
-  // `researchJob` async-gen hook (HarnessDeps conversion, spec §6). The
+  // web_search (quick) and deep_research (deep) both consume a hosted
+  // `researchJob` async-generator. The
   // provider/DB lifecycle lives in `createClusterResearchJob`; the tools only
   // drive the generator. Each tier resolves its own provider so it can use a
   // different model/credential than the chat model (e.g. Gemini deep research
-  // via Google while chat is on LiteLLM). Hook presence is the gate — desktop
-  // omits the providers and these tools simply aren't in the set (§5.1).
+  // via Google while chat is on LiteLLM). Provider and model presence gate
+  // each tool.
   //
   // web_search forces the streaming path (mode "quick") as a backstop: even if
   // a deep/async model slips into the web_search tier, a quick lookup never
@@ -402,10 +401,8 @@ async function buildAllTools(
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
-    // Cluster builds the `browserless` + `objectStorage` hooks; the tools
-    // themselves no longer read ctx or process.env (HarnessDeps conversion).
-    // The Browserless gate stays env-based — `deps.browserless` presence
-    // equals `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
+    // The hosted runtime builds the `browserless` + `objectStorage` inputs; the
+    // tools themselves no longer read ctx or process.env.
     const browserless = {
       baseUrl: BROWSERLESS_BASE_URL,
       token: process.env.BROWSERLESS_TOKEN,

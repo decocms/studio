@@ -38,7 +38,6 @@ import type {
 import { runAgentLoop } from "./run-agent-loop";
 import type { DecopilotTelemetry } from "@/harnesses/lib/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
-import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -122,72 +121,80 @@ export function buildClusterEnvironmentTools(args: {
   const htmlArtifactBuffer = createHtmlArtifactBuffer(ctx);
 
   const toolRuntime: DecopilotToolRuntime = {
-    buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
-      const runContext = requireDecopilotRunContext(streamInput);
+    buildEnvironmentTools: async ({
+      input: streamInput,
+      runContext,
+      onChildUsage,
+    }) => {
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled, onPrOpened } =
         buildClusterMcpToolHooks(ctx, streamInput.threadId);
 
-      const assembled = await assembleDecopilotTools(streamInput, ctx, {
-        writer: sideChannel.writer,
-        toolOutputMap,
-        pendingImages,
-        threadId: streamInput.threadId,
-        // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
-        // analytics. The portable assembly forwards these as-is.
-        resolveArgs,
-        onToolCalled,
-        onPrOpened,
-        // Cluster `mcpForAgent` hook: opens the in-process passthrough
-        // client over the run's resolved Virtual MCP. superUser/listTimeout
-        // come from the caller (assembleDecopilotTools). The daemon/desktop
-        // factory supplies an HTTP-backed impl at the agent's mcp.url.
-        mcpForAgent: async (_agentId, opts) => {
-          // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
-          // the transport type widens the field to a loose bag so the
-          // daemon can ship without the cluster's storage types.
-          const vm = runContext.virtualMcp as VirtualMCPEntity;
-          // Surface tools from the run's hosted dev sandbox when it actually
-          // speaks MCP. The resolver owns thread-scoped record lookup.
-          let devConnection: ConnectionEntity | null = null;
-          if (vm.id && streamInput.user.id) {
-            devConnection = await resolveDevConnection(
-              ctx,
-              vm.id,
-              streamInput.user.id,
-              runContext.branch ?? undefined,
-            ).catch(() => null);
-          }
-          return createVirtualClientFrom(vm, ctx, opts?.superUser ?? false, {
-            listTimeoutMs: opts?.listTimeoutMs,
-            includeSkillsCatalog: true,
-            additionalConnections: devConnection ? [devConnection] : [],
-          });
-        },
-        provider: modelRuntime.thinking.provider,
-        imageProvider:
-          modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
-        webSearchProvider:
-          modelRuntime.webSearch?.provider ?? modelRuntime.thinking.provider,
-        deepResearchProvider:
-          modelRuntime.deepResearch?.provider ?? modelRuntime.thinking.provider,
-        // Hosted cluster runs get a DBOS-backed background dispatcher so slow
-        // built-ins (generate_image) don't freeze the turn. The reaction turn
-        // is rebuilt on any pod from this serializable snapshot.
-        backgroundDispatcher: createBackgroundToolDispatcher({
+      const assembled = await assembleDecopilotTools(
+        streamInput,
+        runContext,
+        ctx,
+        {
+          writer: sideChannel.writer,
+          toolOutputMap,
+          pendingImages,
           threadId: streamInput.threadId,
-          orgId: streamInput.organizationId,
-          userId: streamInput.user.id,
-          temperature: streamInput.temperature,
-          toolApprovalLevel: streamInput.toolApprovalLevel,
-          branch: runContext.branch ?? null,
-        }),
-        htmlArtifactBuffer,
-        // Roll subtask child usage into the parent run's accumulator
-        // (Task 17). Threaded into the subtask tool via getBuiltInTools.
-        onChildUsage,
-      });
+          // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
+          // analytics. The portable assembly forwards these as-is.
+          resolveArgs,
+          onToolCalled,
+          onPrOpened,
+          // Opens the in-process passthrough client over the authoritative
+          // Virtual MCP in DecopilotRunContext. superUser/listTimeout come
+          // from the caller (assembleDecopilotTools).
+          openMcp: async (opts) => {
+            // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
+            // the transport type widens the field to a loose bag so the
+            // daemon can ship without the cluster's storage types.
+            const vm = runContext.virtualMcp as VirtualMCPEntity;
+            // Surface tools from the run's hosted dev sandbox when it actually
+            // speaks MCP. The resolver owns thread-scoped record lookup.
+            let devConnection: ConnectionEntity | null = null;
+            if (vm.id && streamInput.user.id) {
+              devConnection = await resolveDevConnection(
+                ctx,
+                vm.id,
+                streamInput.user.id,
+                runContext.branch ?? undefined,
+              ).catch(() => null);
+            }
+            return createVirtualClientFrom(vm, ctx, opts?.superUser ?? false, {
+              listTimeoutMs: opts?.listTimeoutMs,
+              includeSkillsCatalog: true,
+              additionalConnections: devConnection ? [devConnection] : [],
+            });
+          },
+          provider: modelRuntime.thinking.provider,
+          imageProvider:
+            modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
+          webSearchProvider:
+            modelRuntime.webSearch?.provider ?? modelRuntime.thinking.provider,
+          deepResearchProvider:
+            modelRuntime.deepResearch?.provider ??
+            modelRuntime.thinking.provider,
+          // Hosted cluster runs get a DBOS-backed background dispatcher so slow
+          // built-ins (generate_image) don't freeze the turn. The reaction turn
+          // is rebuilt on any pod from this serializable snapshot.
+          backgroundDispatcher: createBackgroundToolDispatcher({
+            threadId: streamInput.threadId,
+            orgId: streamInput.organizationId,
+            userId: streamInput.user.id,
+            temperature: streamInput.temperature,
+            toolApprovalLevel: streamInput.toolApprovalLevel,
+            branch: runContext.branch ?? null,
+          }),
+          htmlArtifactBuffer,
+          // Roll subtask child usage into the parent run's accumulator
+          // (Task 17). Threaded into the subtask tool via getBuiltInTools.
+          onChildUsage,
+        },
+      );
       const bundle: HarnessAssembledTools = {
         tools: assembled.tools,
         passthroughTools: assembled.passthroughTools,

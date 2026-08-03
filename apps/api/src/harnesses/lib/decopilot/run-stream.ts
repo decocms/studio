@@ -49,7 +49,11 @@ import { createLanguageModel } from "./studio-provider";
 import { genTitle } from "../title-generator";
 import { extractUserText } from "../extract-user-text";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
+import type {
+  ChatMessage,
+  DecopilotStreamInput,
+  ModelSelection,
+} from "../types";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
@@ -131,7 +135,7 @@ export interface DecopilotTelemetry {
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Per-request extras that don't live in `HarnessStreamInput` and aren't
+ * Per-request extras that don't live in `DecopilotStreamInput` and aren't
  * produced by the env tool runtime. These are read by the streamText loop or
  * by one of its inline callbacks (`prepareStep`, the title/abort/finish
  * paths, or the `toUIMessageStream({ messageMetadata })` decorator).
@@ -147,7 +151,7 @@ export interface RunDecopilotStreamExtras {
 
   /** Run-registry abort signal for this run. Listened to by streamText and
    *  genTitle, and queried from the finish/abort paths to distinguish a real
-   *  finish from a user-cancel. Source: `HarnessStreamInput.signal`. */
+   *  finish from a user-cancel. Source: `DecopilotStreamInput.signal`. */
   registrySignal: AbortSignal;
 
   /** Per-request inline <system> blocks extracted by `processConversation`. */
@@ -198,11 +202,11 @@ export interface RunDecopilotStreamExtras {
    *  includes child tokens (Task 17 roll-up). Omitted by callers that don't
    *  delegate; defaults to a fresh accumulator. */
   usageAccumulator?: UsageAccumulator;
-  runContext?: DecopilotRunContext;
 }
 
 export interface RunDecopilotStreamArgs {
-  input: HarnessStreamInput;
+  input: DecopilotStreamInput;
+  runContext: DecopilotRunContext;
   tools: HarnessAssembledTools;
   /** Env engine: system-prompt assembly + tool merge + streamText. */
   runEngine: RunEngine;
@@ -278,8 +282,8 @@ function makeChunkQueue(): {
 export async function* runDecopilotStream(
   args: RunDecopilotStreamArgs,
 ): AsyncGenerator<UIMessageChunk> {
-  const { input, tools, runEngine, extras } = args;
-  const runContext = extras.runContext;
+  const { input, runContext, tools, runEngine, extras } = args;
+  const agentId = runContext.virtualMcp.id;
   const {
     provider,
     titleProvider,
@@ -382,9 +386,9 @@ export async function* runDecopilotStream(
   // its full toolset up front instead: every passthrough tool active from step 1.
   // `extras.kind === "subtask"` identifies the delegated core path;
   // DecopilotRunContext carries the hosted top-level subagent flag without
-  // widening HarnessStreamInput.
+  // widening DecopilotStreamInput.
   const isDelegatedSubagent =
-    extras.kind === "subtask" || runContext?.isSubagent === true;
+    extras.kind === "subtask" || runContext.isSubagent === true;
   const enabledTools = isDelegatedSubagent
     ? new Set(passthroughToolNames)
     : reconstructEnabledTools(originalMessages, passthroughToolNames);
@@ -439,25 +443,16 @@ export async function* runDecopilotStream(
   //   - `extraTools`         → built-ins + enable_tool (state-dependent)
   //   - `prepareStep`        → image injection + plan-mode filter
   //   - `additionalSystemMessages` → per-request inline <system> blocks
-  const vmMetadata = runContext?.virtualMcp.metadata as
+  const vmMetadata = runContext.virtualMcp.metadata as
     | {
         githubRepo?: import("@decocms/shared/sdk").GithubRepo | null;
         subAgents?: string[] | null;
       }
     | undefined;
-  const codingWorkspace =
-    input.workspace.cwd === "/repo"
-      ? {
-          repo: input.workspace.repo,
-          branch: input.workspace.branch,
-          cwd: input.workspace.cwd,
-          workspaceKind: "github" as const,
-        }
-      : undefined;
   const handle: AssembledEngineHandle = await runEngine({
-    kind: runContext?.isSubagent ? "subagent" : "agent",
+    kind: runContext.isSubagent ? "subagent" : "agent",
     virtualMcp: {
-      id: input.agent.id,
+      id: agentId,
       repo: vmMetadata?.githubRepo ?? undefined,
       delegationTargetIds: vmMetadata?.subAgents,
     },
@@ -468,12 +463,11 @@ export async function* runDecopilotStream(
     abortSignal: registrySignal,
     temperature: input.temperature,
     planMode: modeConfig.isPlanMode,
-    isDecopilot: isDecopilot(input.agent.id) !== null,
-    codingWorkspace,
+    isDecopilot: isDecopilot(agentId) !== null,
     systemAgentInstructions: tools.serverInstructions,
     currentThreadId: threadId,
     user: { id: input.user.id, email: input.user.email },
-    userContext: runContext?.userContext,
+    userContext: runContext.userContext,
     writer,
     prepareStep: parentPrepareStep,
     onStepFinish: extras.onStepFinish,
@@ -561,7 +555,7 @@ export async function* runDecopilotStream(
       });
       telemetry?.monitorLlmCall({
         organizationId: input.organizationId,
-        agentId: input.agent.id,
+        agentId,
         modelId: input.models.thinking.id,
         modelTitle: input.models.thinking.title ?? input.models.thinking.id,
         credentialId: input.models.thinking.credentialId,
@@ -609,7 +603,7 @@ export async function* runDecopilotStream(
         });
         telemetry?.monitorLlmCall({
           organizationId: input.organizationId,
-          agentId: input.agent.id,
+          agentId,
           modelId: input.models.thinking.id,
           modelTitle: input.models.thinking.title ?? input.models.thinking.id,
           credentialId: input.models.thinking.credentialId,
@@ -658,7 +652,7 @@ export async function* runDecopilotStream(
     });
     telemetry?.monitorLlmCall({
       organizationId: input.organizationId,
-      agentId: input.agent.id,
+      agentId,
       modelId: input.models.thinking.id,
       modelTitle: input.models.thinking.title ?? input.models.thinking.id,
       credentialId: input.models.thinking.credentialId,
@@ -728,7 +722,7 @@ export async function* runDecopilotStream(
       if (part.type === "start") {
         return {
           agent: {
-            id: input.agent.id ?? null,
+            id: agentId,
           },
           models: {
             credentialId: input.models.thinking.credentialId,
@@ -757,12 +751,12 @@ export async function* runDecopilotStream(
           // Set for a backgrounded subtask run: correlates this message to the
           // originating `subtask` tool call (== its `jobId`) so the UI nests it
           // inside that card instead of rendering it top-level.
-          ...(runContext?.subtaskJobId
+          ...(runContext.subtaskJobId
             ? { subtaskJobId: runContext.subtaskJobId }
             : {}),
           // Set when this turn resumes the agent after a backgrounded tool
           // completed — the UI shows a "resumed" indicator on the message.
-          ...(runContext?.resumedFromBackground
+          ...(runContext.resumedFromBackground
             ? { resumedFromBackground: true }
             : {}),
         };

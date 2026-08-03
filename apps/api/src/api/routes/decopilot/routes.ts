@@ -43,8 +43,6 @@ import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import { publishRunStatusStage } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@/harnesses";
 import { isRetiredLinkedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
@@ -281,87 +279,17 @@ async function resolvePerRequestModels(
 // ============================================================================
 
 /**
- * Resolve the effective (harnessId, sandboxProviderKind, branch) for a
- * dispatch, given the values the client supplied and the (possibly
- * locked) thread row.
- *
- * Once a thread row carries a non-null `harness_id`, persisted runtime state
- * wins and any client-provided override is silently dropped. Trusted runtime
- * tools may still evolve server-owned state such as the repository branch. If the row is unlocked
- * (`harness_id == null`) or there's no thread at all (first message of
- * a freshly-created thread, or `taskIdInput === undefined`) we fall
- * back to the client values.
- *
- * Exported so the guard can be unit-tested without standing up the rest
- * of `validate()` (model resolution, permission checks, Hono context).
- *
- * See spec:
- * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
+ * The thread owns the hosted branch. The request branch remains a temporary
+ * compatibility fallback only for an older client creating an unbranched row.
  */
-export function applyThreadLock(args: {
-  taskIdInput: string | undefined;
-  thread: Pick<
-    Thread,
-    "harness_id" | "sandbox_provider_kind" | "branch"
-  > | null;
-  requestedHarnessId: HarnessId | null | undefined;
-  requestedSandboxProviderKind: SandboxProviderKind | null | undefined;
-  requestedBranch: string | null | undefined;
-}): {
-  harnessId: HarnessId | null | undefined;
-  sandboxProviderKind: SandboxProviderKind | null | undefined;
-  branch: string | null | undefined;
-  locked: boolean;
-} {
-  const {
-    taskIdInput,
-    thread,
-    requestedHarnessId,
-    requestedSandboxProviderKind,
-    requestedBranch,
-  } = args;
-
-  if (!taskIdInput || !thread?.harness_id) {
-    return {
-      harnessId: requestedHarnessId,
-      sandboxProviderKind: requestedSandboxProviderKind,
-      // Prefer the thread's own branch even while the thread is still
-      // unlocked (harness_id null = this is the first message). The branch is
-      // assigned at COLLECTION_THREADS_CREATE time, so it exists before the
-      // harness/sandbox lock is written. Falling back to `requestedBranch`
-      // here would make the first turn use the synthetic "ephemeral" sandbox
-      // while continuations use the thread's real branch. This matches the
-      // pin-write resolution in the POST handler
-      // (`existingThread?.branch ?? …`).
-      //
-      // Only consult the thread row when there is a real `taskIdInput`;
-      // legacy callers with no thread id must ignore the row entirely (the
-      // `!taskIdInput` half of the guard above), same as harness/sandbox.
-      branch: taskIdInput
-        ? (thread?.branch ?? requestedBranch)
-        : requestedBranch,
-      locked: false,
-    };
+export function resolveHostedThreadBranch(
+  thread: Pick<Thread, "branch" | "harness_id">,
+  legacyRequestBranch: string | null | undefined,
+): string | null {
+  if (thread.branch !== null && thread.branch !== undefined) {
+    return thread.branch;
   }
-
-  if (requestedHarnessId && requestedHarnessId !== thread.harness_id) {
-    console.warn(
-      "decopilot.submit: ignored harness override on locked thread",
-      {
-        threadId: taskIdInput,
-        requested: requestedHarnessId,
-        locked: thread.harness_id,
-      },
-    );
-  }
-
-  return {
-    harnessId: thread.harness_id as HarnessId,
-    sandboxProviderKind:
-      (thread.sandbox_provider_kind as SandboxProviderKind | null) ?? undefined,
-    branch: thread.branch ?? null,
-    locked: true,
-  };
+  return thread.harness_id ? null : (legacyRequestBranch ?? null);
 }
 
 /**
@@ -397,28 +325,15 @@ export function assertHostedSandboxProvider(
   }
 }
 
-function assertHostedRuntime(
+export function assertHostedRuntime(
   harnessId: string | null | undefined,
   sandboxProviderKind: string | null | undefined,
 ): void {
-  normalizeHostedSandboxProviderKind(harnessId, sandboxProviderKind);
-}
-
-/**
- * `decopilot + user-desktop` is a readable legacy tuple from the retired link
- * runtime. It now executes as hosted Decopilot, while every coding-agent
- * harness remains native-only.
- */
-export function normalizeHostedSandboxProviderKind(
-  harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
-): "agent-sandbox" | null | undefined {
   assertHostedDecopilotHarness(harnessId);
   if (isRetiredLinkedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
-    return "agent-sandbox";
+    return;
   }
   assertHostedSandboxProvider(sandboxProviderKind);
-  return sandboxProviderKind;
 }
 
 /**
@@ -448,14 +363,12 @@ export function assertPersistedHostedRuntime(
  * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
  * for caller-visible problems.
  *
- * When `threadIdParam` is provided (e.g. from a URL path like
- * `/threads/:threadId/...`) the body's `thread_id` must match — rejecting
- * a body that disagrees rather than silently overriding either side.
- * Legacy callers that supply the id in the body alone are unaffected.
+ * The canonical thread id comes from `/threads/:threadId/...`. A legacy body
+ * `thread_id`, when present during the compatibility window, must match it.
  */
 async function validate(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
-  threadIdParam: string | undefined,
+  threadIdParam: string,
 ): Promise<DispatchRunInput> {
   const ctx = c.get("studioContext");
 
@@ -478,8 +391,8 @@ async function validate(
       message: "threadId in URL does not match thread_id in body",
     });
   }
-  const taskIdInput = threadIdParam ?? bodyThreadId;
-  if (taskIdInput && isUnsafeThreadId(taskIdInput)) {
+  const taskIdInput = threadIdParam;
+  if (isUnsafeThreadId(taskIdInput)) {
     throw new HTTPException(400, { message: "Invalid thread ID" });
   }
 
@@ -492,9 +405,6 @@ async function validate(
   // The thread row owns both the user and Virtual MCP identities. Legacy
   // request selectors were stripped by StreamRequestSchema and cannot affect
   // execution.
-  if (!taskIdInput) {
-    throw new HTTPException(400, { message: "threadId is required" });
-  }
   const lockedThread = await ctx.storage.threads.get(taskIdInput);
   if (!lockedThread) {
     throw new HTTPException(404, { message: "Thread not found" });
@@ -504,26 +414,13 @@ async function validate(
     userId,
   });
 
-  // Lock guard: once a thread row carries a non-null `harness_id`, the
-  // thread's persisted runtime (harness, sandbox provider, branch) wins over
-  // client-provided overrides. Trusted runtime tools may still evolve
-  // server-owned state such as the repository branch. Native harnesses
-  // are then rejected before model resolution or any message/pin write.
-  //
-  // See spec:
-  // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
-  const {
-    harnessId: effectiveHarnessId,
-    sandboxProviderKind: effectiveSandboxProviderKind,
-    branch: effectiveBranch,
-  } = applyThreadLock({
-    taskIdInput,
-    thread: lockedThread,
-    requestedHarnessId: "decopilot",
-    requestedSandboxProviderKind: "agent-sandbox",
-    requestedBranch: branch,
-  });
-  assertHostedRuntime(effectiveHarnessId, effectiveSandboxProviderKind);
+  // Persisted native rows are readable by the shared thread surfaces but can
+  // never enter hosted model resolution or dispatch. A retired
+  // decopilot+user-desktop row remains readable during its migration window.
+  assertHostedRuntime(
+    lockedThread.harness_id,
+    lockedThread.sandbox_provider_kind,
+  );
 
   const resolvedModels = await resolvePerRequestModels(ctx, tier);
 
@@ -563,7 +460,7 @@ async function validate(
     userId,
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
-    branch: effectiveBranch ?? null,
+    branch: resolveHostedThreadBranch(lockedThread, branch),
   };
 }
 
@@ -669,32 +566,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
-      let branch = existingThread.branch ?? input.branch ?? "ephemeral";
-
-      // Determine the pinned (kind, harness). If the thread row has them,
-      // use those. Otherwise this is the first message — derive defaults and
-      // persist to the thread row.
-      let pinnedKind = (existingThread.sandbox_provider_kind ??
-        null) as SandboxProviderKind | null;
-
-      let pinnedHarness = (existingThread.harness_id ??
-        null) as HarnessId | null;
-      let messageStorageVersion = existingThread.message_storage_version;
+      let runtimeThread = existingThread;
+      let branch =
+        resolveHostedThreadBranch(existingThread, input.branch) ?? "ephemeral";
 
       // The row may have changed between validate() and this canonical re-read.
       // Re-assert before the initial-pin branch so a persisted non-hosted
       // runtime cannot be mutated by this route before it returns 409.
-      pinnedKind =
-        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
+      assertHostedRuntime(
+        runtimeThread.harness_id,
+        runtimeThread.sandbox_provider_kind,
+      );
 
-      // A non-null harness is the runtime lock. Legacy Decopilot rows may have
-      // either a null or retired user-desktop sandbox kind; both execute as the
-      // hosted agent sandbox without rewriting the historical row.
-      if (!pinnedHarness) {
-        pinnedKind = pinnedKind ?? "agent-sandbox";
-        pinnedHarness = "decopilot";
-        assertHostedRuntime(pinnedHarness, pinnedKind);
-
+      // A non-null harness is the runtime lock. The hosted storage method owns
+      // the only tuple this route may claim: decopilot + agent-sandbox.
+      if (!runtimeThread.harness_id) {
         // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
         // every NEW thread (no prior messages, not already v2) to v2 so the
         // ingest → JetStream → durable-projector pipeline persists its parts.
@@ -716,31 +602,31 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         // Claim all runtime pins in one CAS. A native start can race this
         // request, so an unconditional update would let the hosted path
         // overwrite a runtime that became native after our preceding read.
-        const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
-          harnessId: pinnedHarness,
-          sandboxProviderKind: pinnedKind,
-          branch,
-          ...(pinV2 ? { messageStorageVersion: 2 } : {}),
-        });
+        const claimed = await ctx.storage.threads.pinHostedRuntimeIfUnset(
+          taskId,
+          {
+            branch,
+            ...(pinV2 ? { messageStorageVersion: 2 } : {}),
+          },
+        );
         if (!claimed.thread) {
           throw new HTTPException(404, { message: "Thread not found" });
         }
-        pinnedHarness = claimed.thread.harness_id as HarnessId | null;
-        pinnedKind = claimed.thread
-          .sandbox_provider_kind as SandboxProviderKind | null;
-        branch = claimed.thread.branch ?? "ephemeral";
-        messageStorageVersion = claimed.thread.message_storage_version;
-        if (claimed.thread.virtual_mcp_id !== authoritativeAgentId) {
-          await requireHostedThreadAgent(ctx, claimed.thread, {
+        runtimeThread = claimed.thread;
+        branch = runtimeThread.branch ?? "ephemeral";
+        if (runtimeThread.virtual_mcp_id !== authoritativeAgentId) {
+          await requireHostedThreadAgent(ctx, runtimeThread, {
             organizationId: input.organizationId,
             userId: input.userId,
           });
         }
       }
-      pinnedKind =
-        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
+      assertPersistedHostedRuntime(
+        runtimeThread.harness_id,
+        runtimeThread.sandbox_provider_kind,
+      );
 
-      if (messageStorageVersion !== 2) {
+      if (runtimeThread.message_storage_version !== 2) {
         throw new HTTPException(409, {
           message:
             "Thread uses legacy message storage and cannot accept new messages",

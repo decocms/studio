@@ -47,14 +47,12 @@ export type ThreadUpdateData = Partial<Thread> & {
   failure_kind?: string | null;
 };
 
-export interface ThreadRuntimePin {
-  harnessId: string;
-  sandboxProviderKind: string | null;
+export interface HostedThreadRuntimePin {
   branch: string | null;
   messageStorageVersion?: number;
 }
 
-export interface ThreadRuntimePinResult {
+export interface HostedThreadRuntimePinResult {
   thread: Thread | null;
   claimed: boolean;
 }
@@ -81,15 +79,17 @@ export interface ThreadStoragePort {
     data: ThreadUpdateData,
   ): Promise<Thread | null>;
   /**
-   * Atomically pin an unlocked thread's runtime. The `harness_id IS NULL`
-   * predicate is the lock: concurrent native and hosted starts cannot
-   * overwrite whichever runtime won first.
+   * Atomically pin an unlocked thread to the hosted Decopilot runtime. The
+   * runtime identifiers are storage-owned constants; callers supply only the
+   * branch and optional message format. The `harness_id IS NULL` predicate is
+   * the lock, while the provider predicate preserves a concurrent partial
+   * native claim.
    */
-  pinRuntimeIfUnset(
+  pinHostedRuntimeIfUnset(
     id: string,
     organizationId: string,
-    pin: ThreadRuntimePin,
-  ): Promise<ThreadRuntimePinResult>;
+    pin: HostedThreadRuntimePin,
+  ): Promise<HostedThreadRuntimePinResult>;
   /**
    * Atomically transition an in-progress thread to completed.
    * Returns the updated row when this call won the transition, or null when the

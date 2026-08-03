@@ -1,10 +1,8 @@
 /**
- * Cluster `researchJob` hook (spec §6).
+ * Hosted `researchJob` implementation.
  *
- * API-OWNED: this closes over `StudioContext` + a `StudioProvider`, so it
- * cannot move into the portable harness. It is the `deps.researchJob`
- * implementation the cluster wires into `HarnessDeps`; the portable
- * `web_search` tool only drives the async generator it returns.
+ * This closes over `StudioContext` and a `StudioProvider`; `web_search` only
+ * drives the async generator it returns.
  *
  * Two execution paths, selected per the provider's `asyncResearch` capability:
  *

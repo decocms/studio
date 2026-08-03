@@ -9,21 +9,20 @@
  * pure: computeIdempotencyKey takes a message and returns a string, no I/O.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  applyThreadLock,
   assertHostedDecopilotHarness,
+  assertHostedRuntime,
   assertPersistedHostedRuntime,
   assertHostedSandboxProvider,
-  normalizeHostedSandboxProviderKind,
   computeIdempotencyKey,
+  resolveHostedThreadBranch,
   shouldPersistRequestMessage,
 } from "./routes";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
-import type { Thread } from "@/storage/types";
 
 describe("computeIdempotencyKey", () => {
   test("returns undefined for no message", () => {
@@ -258,9 +257,9 @@ describe("assertPersistedHostedRuntime", () => {
     expect(() =>
       assertPersistedHostedRuntime("decopilot", "user-desktop"),
     ).not.toThrow();
-    expect(
-      normalizeHostedSandboxProviderKind("decopilot", "user-desktop"),
-    ).toBe("agent-sandbox");
+    expect(() =>
+      assertHostedRuntime("decopilot", "user-desktop"),
+    ).not.toThrow();
   });
 
   test("rejects unpinned threads before a hosted control mutation", () => {
@@ -273,9 +272,9 @@ describe("assertPersistedHostedRuntime", () => {
     expect(() => assertPersistedHostedRuntime("codex", "user-desktop")).toThrow(
       /Studio desktop app/,
     );
-    expect(() =>
-      normalizeHostedSandboxProviderKind(null, "user-desktop"),
-    ).toThrow(/unsupported desktop runtime/);
+    expect(() => assertHostedRuntime(null, "user-desktop")).toThrow(
+      /unsupported desktop runtime/,
+    );
   });
 });
 
@@ -302,176 +301,38 @@ describe("shouldPersistRequestMessage", () => {
   });
 });
 
-// ============================================================================
-// applyThreadLock — the server-side enforcement point for the lock spec
-// (docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md).
-// Once a thread's `harness_id` is non-null the row wins over any
-// client-supplied harness / sandbox / branch values.
-// ============================================================================
-
-function makeLockedThread(
-  overrides: Partial<
-    Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch">
-  > = {},
-): Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch"> {
-  return {
-    harness_id: "codex",
-    sandbox_provider_kind: "user-desktop",
-    branch: "main",
-    ...overrides,
-  };
-}
-
-describe("applyThreadLock", () => {
-  let warnSpy: ReturnType<typeof mock>;
-  let originalWarn: typeof console.warn;
-
-  beforeEach(() => {
-    originalWarn = console.warn;
-    warnSpy = mock(() => {});
-    console.warn = warnSpy as unknown as typeof console.warn;
+describe("resolveHostedThreadBranch", () => {
+  test("the thread branch wins over a stale compatibility value", () => {
+    expect(
+      resolveHostedThreadBranch(
+        { branch: "main", harness_id: "decopilot" },
+        "stale",
+      ),
+    ).toBe("main");
   });
 
-  afterEach(() => {
-    console.warn = originalWarn;
+  test("an older client may fill an unbranched thread during cutover", () => {
+    expect(
+      resolveHostedThreadBranch(
+        { branch: null, harness_id: null },
+        "feature-x",
+      ),
+    ).toBe("feature-x");
   });
 
-  test("locked thread: row beats client overrides for harness, sandbox, and branch", () => {
-    const result = applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(result.locked).toBe(true);
-    expect(result.harnessId).toBe("codex");
-    expect(result.sandboxProviderKind).toBe("user-desktop");
-    expect(result.branch).toBe("main");
+  test("a locked hosted thread keeps its null branch", () => {
+    expect(
+      resolveHostedThreadBranch(
+        { branch: null, harness_id: "decopilot" },
+        "stale",
+      ),
+    ).toBeNull();
   });
 
-  test("locked thread: drifting client harness triggers a console.warn audit", () => {
-    applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toBe(
-      "decopilot.submit: ignored harness override on locked thread",
-    );
-    expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({
-      threadId: "thread-abc",
-      requested: "decopilot",
-      locked: "codex",
-    });
-  });
-
-  test("locked thread: matching client harness does not trigger an audit warn", () => {
-    applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
-      }),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "main",
-    });
-
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  test("locked thread with null sandbox/branch: row's nulls win, not client values", () => {
-    const result = applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: makeLockedThread({
-        sandbox_provider_kind: null,
-        branch: null,
-      }),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(result.locked).toBe(true);
-    expect(result.harnessId).toBe("codex");
-    expect(result.sandboxProviderKind).toBeUndefined();
-    expect(result.branch).toBeNull();
-  });
-
-  test("unlocked thread (harness_id=null): client values flow through", () => {
-    const result = applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: { harness_id: null, sandbox_provider_kind: null, branch: null },
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(result.locked).toBe(false);
-    expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    expect(result.branch).toBe("feature-x");
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  test("unlocked thread with a pinned branch (first message on a COLLECTION_THREADS_CREATE'd thread): the thread's branch wins over an absent request branch", () => {
-    // The thread row already carries a branch assigned at creation, but
-    // harness_id is still null because THIS is the first message (the pin
-    // write happens alongside dispatch). The first POST commonly omits an
-    // explicit branch.
-    const result = applyThreadLock({
-      taskIdInput: "thread-abc",
-      thread: {
-        harness_id: null,
-        sandbox_provider_kind: null,
-        branch: "rho-leonis",
-      },
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: undefined,
-    });
-
-    expect(result.locked).toBe(false);
-    // Without preferring the thread's branch, its first hosted turn would use
-    // the synthetic "ephemeral" sandbox while continuations use the persisted
-    // branch.
-    expect(result.branch).toBe("rho-leonis");
-  });
-
-  test("no thread row (first message ever): client values flow through", () => {
-    const result = applyThreadLock({
-      taskIdInput: "thread-new",
-      thread: null,
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(result.locked).toBe(false);
-    expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    expect(result.branch).toBe("feature-x");
-  });
-
-  test("no taskIdInput (legacy callers): never touches the thread row", () => {
-    const result = applyThreadLock({
-      taskIdInput: undefined,
-      thread: makeLockedThread(),
-      requestedHarnessId: "decopilot",
-      requestedSandboxProviderKind: "agent-sandbox",
-      requestedBranch: "feature-x",
-    });
-
-    expect(result.locked).toBe(false);
-    expect(result.harnessId).toBe("decopilot");
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    expect(result.branch).toBe("feature-x");
+  test("returns null when neither source has a branch", () => {
+    expect(
+      resolveHostedThreadBranch({ branch: null, harness_id: null }, undefined),
+    ).toBeNull();
   });
 });
 

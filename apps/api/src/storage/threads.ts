@@ -9,8 +9,8 @@ import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
-  ThreadRuntimePin,
-  ThreadRuntimePinResult,
+  HostedThreadRuntimePin,
+  HostedThreadRuntimePinResult,
   ThreadStoragePort,
   ThreadUpdateData,
 } from "./ports";
@@ -104,11 +104,11 @@ export class OrgScopedThreadStorage {
     );
   }
 
-  pinRuntimeIfUnset(
+  pinHostedRuntimeIfUnset(
     id: string,
-    pin: ThreadRuntimePin,
-  ): Promise<ThreadRuntimePinResult> {
-    return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
+    pin: HostedThreadRuntimePin,
+  ): Promise<HostedThreadRuntimePinResult> {
+    return this.inner.pinHostedRuntimeIfUnset(id, this.requireOrg(), pin);
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
@@ -466,18 +466,18 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row ? this.threadFromDbRow(row) : null;
   }
 
-  async pinRuntimeIfUnset(
+  async pinHostedRuntimeIfUnset(
     id: string,
     organizationId: string,
-    pin: ThreadRuntimePin,
-  ): Promise<ThreadRuntimePinResult> {
+    pin: HostedThreadRuntimePin,
+  ): Promise<HostedThreadRuntimePinResult> {
     const row = await this.db
       .updateTable("threads")
       .set({
-        harness_id: pin.harnessId,
+        harness_id: "decopilot",
         sandbox_provider_kind: sql<string | null>`coalesce(${sql.ref(
           "sandbox_provider_kind",
-        )}, ${pin.sandboxProviderKind})`,
+        )}, 'agent-sandbox')`,
         branch: sql<string | null>`coalesce(${sql.ref("branch")}, ${
           pin.branch
         })`,
@@ -490,12 +490,10 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("organization_id", "=", organizationId)
       .where("harness_id", "is", null)
       .where((eb) =>
-        pin.sandboxProviderKind === null
-          ? eb("sandbox_provider_kind", "is", null)
-          : eb.or([
-              eb("sandbox_provider_kind", "is", null),
-              eb("sandbox_provider_kind", "=", pin.sandboxProviderKind),
-            ]),
+        eb.or([
+          eb("sandbox_provider_kind", "is", null),
+          eb("sandbox_provider_kind", "=", "agent-sandbox"),
+        ]),
       )
       .returningAll()
       .executeTakeFirst();

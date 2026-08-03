@@ -30,7 +30,7 @@ import type { UIMessageChunk } from "ai";
 import type {
   DecopilotSecretModelSources,
   DecopilotSecretModelSource,
-  HarnessStreamInput,
+  DecopilotStreamInput,
   ModelSelection,
 } from "../types";
 import type { StudioProvider } from "./studio-provider";
@@ -48,7 +48,7 @@ import { processConversation } from "./conversation";
 import { DEFAULT_WINDOW_SIZE, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
 import { createUsageAccumulator } from "../usage-accumulator";
 import { createSemaphore } from "../semaphore";
-import { getDecopilotRunContext, setDecopilotRunContext } from "./run-context";
+import type { DecopilotRunContext } from "./run-context";
 
 export type { DecopilotTelemetry } from "./run-stream";
 
@@ -81,10 +81,10 @@ export interface ModelRuntime {
  * Minimal source view `buildModelRuntimeFromSources` reads: the per-slot wire
  * `models` (so each slot knows its model id/capabilities) and the resolved
  * `modelSources` the adapter turns into providers. Mirrors the relevant fields
- * of `HarnessStreamInput`.
+ * of `DecopilotStreamInput`.
  */
 export interface ModelRuntimeSources {
-  models: HarnessStreamInput["models"];
+  models: DecopilotStreamInput["models"];
   modelSources?: DecopilotSecretModelSources;
 }
 
@@ -163,7 +163,8 @@ export interface DecopilotToolRuntime {
    *  usage folds into the parent's accumulator (Task 17). Absent on
    *  `kind: "subtask"` runs (which expose no subtask tool — depth-1). */
   buildEnvironmentTools(args: {
-    input: HarnessStreamInput;
+    input: DecopilotStreamInput;
+    runContext: DecopilotRunContext;
     onChildUsage?: (usage: SubtaskRunResult["usage"]) => void;
   }): Promise<HarnessAssembledTools>;
   /** Run the system-prompt + tool-assembly + streamText engine. The cluster
@@ -172,7 +173,8 @@ export interface DecopilotToolRuntime {
 }
 
 export interface RunDecopilotCoreDeps {
-  input: HarnessStreamInput;
+  input: DecopilotStreamInput;
+  runContext: DecopilotRunContext;
   modelRuntime: ModelRuntime;
   toolRuntime: DecopilotToolRuntime;
   telemetry?: DecopilotTelemetry;
@@ -209,8 +211,7 @@ export interface RunDecopilotCoreDeps {
 export async function* runDecopilotCore(
   deps: RunDecopilotCoreDeps,
 ): AsyncIterable<UIMessageChunk> {
-  const { input, modelRuntime, toolRuntime, telemetry } = deps;
-  const runContext = getDecopilotRunContext(input);
+  const { input, runContext, modelRuntime, toolRuntime, telemetry } = deps;
   const isSubtask = deps.kind === "subtask";
 
   // The core owns the cumulative-usage accumulator so a MAIN run's `subtask`
@@ -225,6 +226,7 @@ export async function* runDecopilotCore(
 
   const tools = await toolRuntime.buildEnvironmentTools({
     input,
+    runContext,
     onChildUsage,
   });
 
@@ -239,7 +241,7 @@ export async function* runDecopilotCore(
     systemMessages: processedSystemMessages,
     messages: processedMessages,
     originalMessages,
-  } = await processConversation(runContext?.messages ?? [input.userMessage], {
+  } = await processConversation(runContext.messages ?? [input.userMessage], {
     windowSize: DEFAULT_WINDOW_SIZE,
     models: input.models,
     tools: tools.tools,
@@ -259,6 +261,7 @@ export async function* runDecopilotCore(
 
   yield* runDecopilotStream({
     input,
+    runContext,
     tools,
     runEngine: toolRuntime.runEngine,
     extras: {
@@ -284,7 +287,6 @@ export async function* runDecopilotCore(
       // Shared so the subtask tool's child-usage roll-up lands in the same
       // accumulator that builds the final `message-metadata.usage`.
       usageAccumulator,
-      runContext,
     },
   });
 }
@@ -373,7 +375,7 @@ async function runSubtaskCore(
   };
 
   // Chain the parent tool-call signal into the child core run.
-  const subtaskInput: HarnessStreamInput = {
+  const subtaskInput: DecopilotStreamInput = {
     ...deps.input,
     userMessage: {
       id: "subtask-prompt",
@@ -382,18 +384,16 @@ async function runSubtaskCore(
     },
     signal,
   };
-  const runContext = getDecopilotRunContext(deps.input);
-  if (runContext) {
-    setDecopilotRunContext(subtaskInput, {
-      ...runContext,
-      messages: [subtaskInput.userMessage],
-    });
-  }
+  const subtaskRunContext: DecopilotRunContext = {
+    ...deps.runContext,
+    messages: [subtaskInput.userMessage],
+  };
 
   try {
     for await (const chunk of runDecopilotCore({
       ...deps,
       input: subtaskInput,
+      runContext: subtaskRunContext,
       kind: "subtask",
     })) {
       const c = chunk as {

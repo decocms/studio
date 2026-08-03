@@ -55,9 +55,8 @@ const PersistedRunConfigRawSchema = z.object({
     webSearch: PersistedToolModelInfoSchema.optional(),
     deepResearch: PersistedToolModelInfoSchema.optional(),
   }),
-  // Legacy rows may carry the request-selected agent. The thread's
-  // virtual_mcp_id is authoritative, so parse the old shape only to discard it.
-  agent: z.object({ id: z.string() }).optional(),
+  // The default non-strict object drops legacy request-selected `agent` data.
+  // The thread's virtual_mcp_id is the only runtime authority.
   temperature: z.number(),
   toolApprovalLevel: z.enum(["auto", "readonly", "plan"]).optional(),
   mode: z

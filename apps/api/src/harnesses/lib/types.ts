@@ -1,29 +1,43 @@
-// Domain/wire types moved to @decocms/shared/harness/types so apps/web and
-// packages/sandbox consume them without depending on this package. Re-exported
-// here so the API and harness internals keep their import paths (they follow
-// when decopilot/ folds into apps/api).
+import type {
+  ChatMessage,
+  ChatMode,
+  ModelsConfig,
+  ToolApprovalLevel,
+} from "@decocms/shared/harness/types";
+
+// Shared domain types are re-exported here so API harness internals keep one
+// import path.
 export * from "@decocms/shared/harness/types";
+
+/** Request data consumed by the one hosted Decopilot runtime. Process-local
+ *  authority such as the selected Virtual MCP lives in `DecopilotRunContext`,
+ *  not in this request data. */
+export interface DecopilotStreamInput {
+  threadId: string;
+  userMessage: ChatMessage;
+  models: ModelsConfig;
+  mode: ChatMode;
+  temperature: number;
+  toolApprovalLevel: ToolApprovalLevel;
+  toolAllowlist?: string[] | null;
+  maxAgentSteps?: number;
+  user: { id: string; email: string };
+  organizationId: string;
+  currentThreadTitle?: string;
+  signal: AbortSignal;
+}
 
 export { createSecretModelSource } from "./sources";
 export type {
-  DecopilotMcpSource,
-  DecopilotModelSource,
-  DecopilotModelSources,
-  DecopilotObjectStorageSource,
-  DecopilotSandboxSource,
-  DecopilotHttpMcpSource,
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
-  McpClientLike,
-  OpenMcpSourceOptions,
-  OpenedMcpSource,
 } from "./sources";
 
 /** Narrow context interface the hosted Decopilot stream takes. Cluster-specific
  *  surface (DB, vault, auth, MCP gateway internals) lives on the wider
  *  StudioContext; cluster-only services are supplied by the registered
  *  environment builder, not through
- *  `HarnessStreamInput`.
+ *  `DecopilotStreamInput`.
  *
  *  Re-declared here (mirroring `apps/api/src/core/harness-context.ts`) so
  *  the package stays portable. The cluster's richer `StudioContext` is
