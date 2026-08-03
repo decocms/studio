@@ -12,6 +12,7 @@ import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { cancelSiblingReviewerRuns } from "./cancel-sibling-reviewers";
 import { mergeLinkedPr } from "./merge-pr";
 
 /**
@@ -139,6 +140,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         data: { reviewer, notes, verified },
       });
       emitTaskBoardUpdated(organizationId, updated);
+      // This review cycle is abandoned — the task goes back to the Super Agent.
+      // Cancel any sibling reviewer still running in parallel so it can't record
+      // a decision for a now-stale PR and its thread goes terminal instead of
+      // wedging the advance-to-review gate. Uses `item` (pre-update) for the
+      // reviewer threads; the status write above only touched the task row.
+      await cancelSiblingReviewerRuns(ctx, item, reviewer);
       // Pass the PR under review so the re-run updates it in place (checks out
       // its branch) instead of opening a second PR. Newest linked PR is the one.
       const prs = await ctx.storage.taskBoard.listPrs(
