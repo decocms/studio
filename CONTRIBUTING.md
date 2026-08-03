@@ -44,16 +44,19 @@ formula. See the "Async primitives" section in [`AGENTS.md`](./AGENTS.md).
 Don't edit `knip.json` to hide dead-code warnings, don't disable lints to make
 them pass, don't `@ts-ignore` a real type error. Fix the underlying thing.
 
-### 4. Never block the event loop — especially in the sandbox daemon
+### 4. Never block the event loop
 
-`packages/sandbox/daemon/**` runs on a single Bun thread. Sync fs
-(`readFileSync`, `mkdirSync`, …), sync crypto / `execSync`, or CPU-bound work
-(large `JSON.parse` / `JSON.stringify`, unbounded loops) freezes that thread.
-Studio polls the daemon's health probe, and a **single** missed probe flips a
-healthy sandbox to "crashed" — tearing the pod down mid-session. Use
-`node:fs/promises` with `await`, stream large payloads, and keep CPU work off
-the hot path. Full detail in [`AGENTS.md`](./AGENTS.md). "Prefer async, never
-block the loop" is the default everywhere, not just the daemon.
+Studio's API is a single-threaded Bun process: sync fs (`readFileSync`,
+`mkdirSync`, …), sync crypto / `execSync`, or CPU-bound work (large
+`JSON.parse` / `JSON.stringify`, unbounded loops) freezes it and stalls every
+in-flight request. Use `node:fs/promises` with `await`, stream large payloads,
+and keep CPU work off the hot path.
+
+The sandbox daemon (`packages/sandbox/daemon-go/**`) is Go, so its handlers are
+goroutines rather than one loop — but the health contract is unforgiving in the
+same way: Studio polls the daemon's probe and a **single** missed probe flips a
+healthy sandbox to "crashed", tearing the pod down mid-session. Don't hold a
+lock across slow I/O on the probe path.
 
 ### 5. Keep workspace READMEs useful
 

@@ -1,5 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
+import { useState } from "react";
 import { AnnouncementCard } from "@/components/announcement-card";
+import { DownloadAppDialog } from "@/components/download-app-dialog";
 import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
@@ -45,6 +47,7 @@ export function FloatingReleaseCard() {
   const t = useT();
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const now = Date.now();
   const candidate = pickFloatingCandidate(now);
 
@@ -76,9 +79,17 @@ export function FloatingReleaseCard() {
       }
       actions={
         candidate.cta ? (
-          <Button asChild size="sm" onClick={() => markSeen(candidate.id)}>
-            <a href={candidate.cta.href}>{candidate.cta.label}</a>
-          </Button>
+          "href" in candidate.cta ? (
+            <Button asChild size="sm" onClick={() => markSeen(candidate.id)}>
+              <a href={candidate.cta.href}>{candidate.cta.label}</a>
+            </Button>
+          ) : (
+            // Not markSeen here: seeing the release unmounts this card — and
+            // the dialog with it. Marked when the dialog closes instead.
+            <Button size="sm" onClick={() => setDownloadOpen(true)}>
+              {candidate.cta.label}
+            </Button>
+          )
         ) : null
       }
     >
@@ -98,6 +109,14 @@ export function FloatingReleaseCard() {
           </li>
         ))}
       </ul>
+
+      <DownloadAppDialog
+        open={downloadOpen}
+        onOpenChange={(open) => {
+          setDownloadOpen(open);
+          if (!open) markSeen(candidate.id);
+        }}
+      />
     </AnnouncementCard>
   );
 }

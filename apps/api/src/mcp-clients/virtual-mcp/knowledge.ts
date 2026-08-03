@@ -3,9 +3,9 @@
  * `<knowledge>` block that is appended to the agent's served instructions.
  *
  * It lives in the served instructions (not a cluster-only prompt block) so it
- * reaches the model on EVERY run path — the in-process cluster engine and the
- * sandbox/desktop daemon both read the agent's instructions, but only the
- * cluster engine runs the richer `buildAgentSystemPrompt`. Keeping it here is
+ * reaches the model on every run path — hosted Decopilot and native
+ * coding-agent terminals both read the served instructions, while only the
+ * hosted engine runs the richer `buildAgentSystemPrompt`. Keeping it here is
  * the single source that covers both.
  *
  * Attached SKILLS are deliberately NOT listed here — they live in the single

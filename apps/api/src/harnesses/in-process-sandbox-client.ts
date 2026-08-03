@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from "ai";
-import { localDispatch } from "./local-dispatch";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
-import type { HarnessId, HarnessStreamInput } from "@decocms/harness/types";
+import { decopilotHarnessFactory } from "@/harnesses/lib/decopilot/index";
+import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import type { StudioContext } from "../core/studio-context";
 
 /**
@@ -11,12 +11,11 @@ import type { StudioContext } from "../core/studio-context";
  * @decocms/sandbox. `dispatch(input)` runs the harness IN-PROCESS — a direct
  * call, no HTTP, no wire, no serialization (the cluster fast path is preserved).
  *
- * STEP 1a (this commit): a behavior-preserving wrapper. It delegates to the
- * existing `localDispatch(harnessId, input, ctx)` path UNCHANGED and returns the
- * same AsyncIterable<UIMessageChunk>, which studio's consumeHarnessStream consumes
- * with no adapter. The HarnessDeps merge (fs-hooks from AgentSandboxProvider,
- * cluster hooks built from StudioContext) is layered in later sub-steps (1b…);
- * `localDispatch` is then folded fully into this client (§5.4).
+ * Decopilot is hard-wired (spec §5.4: `localDispatch` folded into this
+ * client). It is the only harness the cluster can host — the CLI harnesses
+ * (claude-code, codex) are rejected upstream by `assertHarnessRunsInCluster`
+ * at the gate and again by `dispatchRunAndWait`; this guard is the last line.
+ * The factory registry this used to consult was a Map with one entry.
  */
 export class InProcessSandboxClient implements SandboxClient {
   private readonly ctx: StudioContext;
@@ -28,10 +27,15 @@ export class InProcessSandboxClient implements SandboxClient {
   }
 
   dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-    // Behavior-preserving (§12 step 1a): identical to the prior call site
-    // `localDispatch(harnessId, harnessInput, ctx)`. StudioContext is
-    // structurally assignable to the HarnessContext that factory.create(ctx)
-    // consumes (tracer/meter/metadata/aiProviders), so this is a no-op rewire.
-    return localDispatch(this.harnessId, input, this.ctx);
+    if (this.harnessId !== "decopilot") {
+      throw new Error(
+        `InProcessSandboxClient runs cluster-hosted decopilot only; got ` +
+          `"${this.harnessId}" — CLI harnesses run in the desktop app or are ` +
+          `rejected at the gate`,
+      );
+    }
+    // StudioContext is structurally assignable to the HarnessContext that
+    // factory.create(ctx) consumes (tracer/meter/metadata/aiProviders).
+    return decopilotHarnessFactory.create(this.ctx).stream(input);
   }
 }

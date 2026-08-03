@@ -5,7 +5,6 @@
  * buildSettings(). Spawns dev servers and reports progress via the CLI
  * store so the Ink UI can update live.
  */
-import { tmpdir } from "node:os";
 import { join } from "path";
 import type { Subprocess } from "bun";
 import { buildSettings } from "../../settings/pipeline";
@@ -16,7 +15,6 @@ import {
   updateService,
 } from "../cli-store";
 import { findAvailablePort } from "../find-available-port";
-import { waitForPort } from "../lib/port-wait";
 import { stripAnsi } from "../strip-ansi";
 
 export interface DevOptions {
@@ -27,14 +25,6 @@ export interface DevOptions {
   skipMigrations: boolean;
   noTui?: boolean;
   localMode: boolean;
-  /** When true, auto-spawn the link daemon (`deco link`) so the
-   *  desktop sandbox provider has a live target. Default false —
-   *  `dev:conductor` opts in. */
-  localSandboxProvider: boolean;
-  /** When true, hot-reload the managed link daemon and sandbox daemons. */
-  hotReload?: boolean;
-  /** Dev-only: route managed user-desktop link traffic through ToxiProxy. */
-  devLinkToxiProxy?: boolean;
 }
 
 /**
@@ -130,24 +120,6 @@ export async function startDevServer(
   // import.meta.dir = apps/api/src/cli/commands → go up 5 levels to repo root
   const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
 
-  // Pre-compute the link's data dir. The dir lives in tmpdir — NOT under
-  // settings.dataDir, which is inside the studio repo. Sandbox clones go into
-  // `<DATA_DIR>/sandboxes/<handle>/repo`; when that parent is itself a git
-  // repo (e.g. `~/code/studio/...`) git's parent-walk hits the outer .git,
-  // refuses to clone, and the daemon crashes mid-bootstrap. Keying by
-  // workspace slug isolates concurrent worktrees.
-  const slug =
-    process.env.WORKTREE_SLUG ??
-    process.env.CONDUCTOR_WORKSPACE_NAME ??
-    "default";
-  // Local mode mints an API-key session into an isolated tmpdir so sandbox
-  // clones never nest inside the studio repo's .git. Non-local mode reuses
-  // DECOCMS_HOME so the auto-spawned link registers as the same OAuth user
-  // logged into the browser (e.g. tavano@deco.cx).
-  const linkDataDir = options.localMode
-    ? join(tmpdir(), `decocms-dev-link-${slug}`)
-    : settings.dataDir;
-
   // When TUI is active, pipe stdout/stderr so child output doesn't corrupt
   // Ink's cursor-based rendering. Lines are fed into the CLI store instead.
   const useInherit = noTui === true;
@@ -195,12 +167,6 @@ export async function startDevServer(
               : {}),
           }
         : {}),
-      // Local mode only: tell the cluster to mint an API-key session for the
-      // auto-spawned link. Non-local mode uses the developer's OAuth session
-      // from DECOCMS_HOME instead (see ensureDevLinkSession).
-      ...(options.localSandboxProvider && options.localMode
-        ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
-        : {}),
     },
     stdio: [
       "inherit",
@@ -219,163 +185,7 @@ export async function startDevServer(
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
   updateService({ name: "API", status: "ready", port: Number(settings.port) });
 
-  let linkClusterUrl = serverUrl;
-  let stopToxiProxy: (() => Promise<void>) | null = null;
-  try {
-    if (options.localSandboxProvider && options.devLinkToxiProxy) {
-      const {
-        DEV_LINK_TOXIPROXY_SERVICE_NAME,
-        ensureDevLinkToxiProxy,
-        resolveDevLinkClusterUrl,
-      } = await import("../lib/dev-link-toxiproxy");
-      const apiPort = await findAvailablePort(18474);
-      const listenPort = await findAvailablePort(18480);
-      const toxiproxy = await ensureDevLinkToxiProxy({
-        serverUrl,
-        apiPort,
-        listenPort,
-      });
-      stopToxiProxy = toxiproxy.stop;
-      linkClusterUrl = resolveDevLinkClusterUrl({
-        serverUrl,
-        toxiproxy: toxiproxy.config,
-      });
-      updateService({
-        name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
-        status: "ready",
-        port: listenPort,
-      });
-      addLogEntry({
-        method: "",
-        path: "",
-        status: 0,
-        duration: 0,
-        timestamp: new Date(),
-        rawLine: toxiproxy.config.logLine,
-      });
-    }
-  } catch (error) {
-    if (stopToxiProxy) {
-      await stopToxiProxy().catch(() => null);
-    }
-    child.kill("SIGTERM");
-    await child.exited.catch(() => null);
-    if (managedServiceNames.length > 0) {
-      try {
-        const { stopServices } = await import("../../services/ensure-services");
-        await stopServices(settings.dataDir);
-      } catch {
-        /* best-effort cleanup; preserve the original startup error */
-      }
-    }
-    throw error;
-  }
-
-  // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
-  // Gated on --local-sandbox-provider. When set, once the cluster is up
-  // on :PORT, spawn the link daemon so the dev session exercises the
-  // remote-cli + desktop code paths end-to-end. The link connects via
-  // WS using its persisted OAuth session.
-  //
-  // The link is tracked like postgres/nats: dynamic port, state file at
-  // <home>/services/link/state.json, owned-process verification on
-  // shutdown. `services down` (or our shutdown handler below) tears it
-  // down. The DATA_DIR lives OUTSIDE the studio repo: the daemon clones
-  // user repos into `<DATA_DIR>/sandboxes/<handle>/repo`, and if that
-  // path is nested under another git repo (this one) git's parent-walk
-  // hits the outer .git, refuses to clone, and the daemon crashes
-  // mid-bootstrap. The tmpdir-rooted path keyed by workspace slug also
-  // keeps concurrent worktrees from fighting over the same sandboxes dir.
-  //
-  // Supervise the daemon for the whole session rather than spawning it once.
-  // The daemon's WS self-heals (cluster-connection reconnects forever); only a
-  // process exit is unrecoverable, and an unsupervised exit silently expires
-  // the NATS link claim (60s TTL) → every user-desktop dispatch 409s with
-  // `user_desktop_link_offline` while the UI still reads "ready". superviseLink
-  // respawns on exit with backoff and drives Sandbox status from real liveness.
-  const linkAbort = new AbortController();
-  const linkSupervisor: Promise<void> = !options.localSandboxProvider
-    ? Promise.resolve()
-    : (async () => {
-        const { superviseLink } = await import(
-          "../../services/ensure-services"
-        );
-        await superviseLink({
-          home: settings.dataDir,
-          clusterUrl: linkClusterUrl,
-          linkDataDir,
-          repoRoot,
-          hotReload: options.hotReload,
-          signal: linkAbort.signal,
-          stdio: [
-            "inherit",
-            useInherit ? "inherit" : "pipe",
-            useInherit ? "inherit" : "pipe",
-          ],
-          onSpawn: (proc) => {
-            if (useInherit) return;
-            pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
-            pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
-          },
-          beforeSpawn: async () => {
-            await waitForPort(Number(settings.port), { intervalMs: 500 });
-            const { ensureDevLinkSession } = await import(
-              "../lib/ensure-dev-link-session"
-            );
-            await ensureDevLinkSession({
-              localMode: options.localMode,
-              linkDataDir,
-              studioDataDir: settings.dataDir,
-              serverUrl: linkClusterUrl,
-              isInteractive: Boolean(process.stdin.isTTY),
-            });
-          },
-          // Drive Sandbox status from real liveness: "ready" when the daemon's
-          // HTTP port answers, "pending" (spinner) while it's down/respawning
-          // so a crash isn't masked by a stale "ready".
-          onReady: (port) =>
-            updateService({ name: "Sandbox", status: "ready", port }),
-          onDown: () =>
-            updateService({ name: "Sandbox", status: "pending", port: 0 }),
-          onLog: (rawLine) =>
-            addLogEntry({
-              method: "",
-              path: "",
-              status: 0,
-              duration: 0,
-              timestamp: new Date(),
-              rawLine,
-            }),
-        });
-      })();
-
   const shutdown = async (signal: NodeJS.Signals) => {
-    // Stop the supervisor first so it can't respawn the daemon we're about to
-    // tear down, then wait for its loop to settle (it may be mid-spawn). This
-    // also prevents orphaning a process spawned right as we shut down.
-    linkAbort.abort();
-    await linkSupervisor.catch(() => null);
-    // Stop the link next — signal the daemon process (stopLink reads the
-    // state file written by ensureLink, signals the daemon, waits for
-    // exit, then removes the state file). There is no HTTP DELETE endpoint;
-    // the link-claim entry expires via the 60 s NATS-KV TTL after the
-    // process exits. Stopping before the API server reduces the window
-    // where polls arrive but NATS is already gone.
-    if (options.localSandboxProvider) {
-      const { stopLink } = await import("../../services/ensure-services");
-      try {
-        await stopLink(settings.dataDir);
-      } catch {
-        /* best-effort */
-      }
-    }
-    if (stopToxiProxy) {
-      try {
-        await stopToxiProxy();
-      } catch {
-        /* best-effort */
-      }
-    }
     child.kill(signal);
     // Wait for the server to finish graceful shutdown before killing shared
     // services. Otherwise pg dies mid-flight and DBOS / app.shutdown error

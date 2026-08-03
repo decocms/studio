@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   claimRunFenceForDispatch,
-  resolveHarnessExecutionSite,
+  assertHarnessRunsInCluster,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
@@ -47,6 +47,7 @@ describe("claimRunFenceForDispatch", () => {
     temperature: 0,
     toolApprovalLevel: "auto",
     mode: "default",
+    sandboxProviderKind: "agent-sandbox",
     target: { sandboxProviderKind: "agent-sandbox" },
     harnessId: "decopilot",
   } as SerializableDispatchRunInput;
@@ -72,86 +73,26 @@ describe("claimRunFenceForDispatch", () => {
   });
 });
 
-describe("resolveHarnessExecutionSite (topology tuple → site)", () => {
-  it("runs a (claude-code, user-desktop) loop on the sandbox", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-      }),
-    ).toBe("sandbox");
-  });
-
-  it("runs a (codex, user-desktop) loop on the sandbox", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "codex",
-      }),
-    ).toBe("sandbox");
-  });
-
-  it("keeps decopilot on the cluster even for user-desktop targets", () => {
-    // Decopilot always runs its agent loop in the cluster; tool calls reach
-    // the desktop via the NATS downlink inside the virtual MCP passthrough.
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "decopilot",
-      }),
-    ).toBe("cluster");
-  });
-
-  it("runs a legacy/undefined-harness agent-sandbox target on the cluster", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: "agent-sandbox",
-      }),
-    ).toBe("cluster");
-  });
-
-  it("throws for a CLI harness on an agent-sandbox (cloud-CLI not implemented)", () => {
-    for (const harnessId of ["claude-code", "codex"]) {
-      expect(() =>
-        resolveHarnessExecutionSite({
-          isLinkCapable: true,
-          sandboxProviderKind: "agent-sandbox",
-          harnessId,
-        }),
-      ).toThrow(/not implemented/);
+describe("assertHarnessRunsInCluster", () => {
+  it("throws for every native or unknown harness", () => {
+    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
+      expect(() => assertHarnessRunsInCluster(harnessId)).toThrow(
+        /explicit Decopilot/,
+      );
     }
   });
 
-  it("keeps decopilot on an agent-sandbox on the cluster", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: "agent-sandbox",
-        harnessId: "decopilot",
-      }),
-    ).toBe("cluster");
+  it("lets decopilot through", () => {
+    expect(() => assertHarnessRunsInCluster("decopilot")).not.toThrow();
   });
 
-  it("runs an undefined target (legacy path) on the cluster", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: true,
-        sandboxProviderKind: undefined,
-      }),
-    ).toBe("cluster");
-  });
-
-  it("falls back to the cluster when the runtime is not link-capable", () => {
-    expect(
-      resolveHarnessExecutionSite({
-        isLinkCapable: false,
-        sandboxProviderKind: "user-desktop",
-      }),
-    ).toBe("cluster");
+  it("rejects a missing harness instead of defaulting it", () => {
+    expect(() => assertHarnessRunsInCluster(undefined)).toThrow(
+      /explicit Decopilot/,
+    );
+    expect(() => assertHarnessRunsInCluster(null)).toThrow(
+      /explicit Decopilot/,
+    );
   });
 });
 

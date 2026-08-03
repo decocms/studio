@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { FieldHarness } from "../harness/field-harness";
+import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { readFormValue } from "../harness/ct-utils";
-import type { SchemaProperty } from "@/components/sections-editor/resolve-schema";
+import type {
+  LiveMeta,
+  SchemaProperty,
+} from "@/components/sections-editor/resolve-schema";
 
 // ── (A) module-loader union ────────────────────────────────────────────────
 // resolveTypes contain "/" → AnyOfField treats this as a module-loader union:
@@ -366,4 +370,152 @@ test("type union: switching back to Image Card swaps the active discriminator", 
     .toBe("image-card");
 
   await expect(component.getByLabel("Src")).toBeVisible();
+});
+
+// ── (C) block-config-wrapped inline union (VTEX userSegment matcher) ─────────
+// The REAL deco shape driven through the production path (raw LiveMeta →
+// resolveSchema → SchemaForm). deco wraps the config as
+// `{ allOf:[{$ref:Props}], properties:{__resolveType} }` where `Props` is a
+// `$ref` ALIAS to the `{ anyOf:[branches] }` union; each branch's discriminant
+// `segment` is a `const` marked `@hide true` (emitted as the string "true").
+const USER_SEGMENT_RT = "vtex/matchers/userSegment.ts";
+const seg = (
+  title: string,
+  value: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  type: "object",
+  title,
+  required: ["segment"],
+  properties: {
+    segment: {
+      type: "string",
+      const: value,
+      default: value,
+      hide: "true",
+      title: "Segment",
+    },
+    ...extra,
+  },
+});
+const userSegmentMeta = {
+  manifest: {
+    blocks: {
+      matchers: { [USER_SEGMENT_RT]: { $ref: "#/definitions/Wrapper" } },
+    },
+  },
+  schema: {
+    definitions: {
+      Wrapper: {
+        type: "object",
+        allOf: [{ $ref: "#/definitions/Props" }],
+        required: ["__resolveType"],
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: [USER_SEGMENT_RT],
+            default: USER_SEGMENT_RT,
+          },
+        },
+      },
+      // `@Props` is a bare `$ref` alias to the union def.
+      Props: { $ref: "#/definitions/Union", title: "…@Props" },
+      Union: {
+        // machine name — must NOT leak in as the field label
+        title: "AnonymousWithoutCart|LoggedIn|LoggedInWithRecentOrders",
+        anyOf: [
+          { $ref: "#/definitions/AnonymousWithoutCart" },
+          { $ref: "#/definitions/LoggedIn" },
+          { $ref: "#/definitions/LoggedInWithRecentOrders" },
+        ],
+      },
+      AnonymousWithoutCart: seg(
+        "Anonymous without cart",
+        "anonymous-without-cart",
+      ),
+      LoggedIn: seg("Logged in", "logged-in"),
+      LoggedInWithRecentOrders: seg(
+        "Logged in with recent orders",
+        "logged-in-with-recent-orders",
+        { months: { type: "number", title: "Months", default: 3 } },
+      ),
+    },
+  },
+} as unknown as LiveMeta;
+
+test("segment union: root renders a branch selector with no machine-name label", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <SchemaFormHarness
+      meta={userSegmentMeta}
+      resolveType={USER_SEGMENT_RT}
+      initialValue={{ __resolveType: USER_SEGMENT_RT }}
+    />,
+  );
+
+  // The union renders as a selector defaulting to the first branch...
+  await expect(component.getByRole("combobox")).toHaveText(
+    "Anonymous without cart",
+  );
+  // ...and the machine union name ("A|B|C") never leaks in as a label.
+  await expect(component.getByText(/\|/)).toHaveCount(0);
+});
+
+test("segment union: selecting a branch writes segment AND preserves __resolveType", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <SchemaFormHarness
+      meta={userSegmentMeta}
+      resolveType={USER_SEGMENT_RT}
+      initialValue={{ __resolveType: USER_SEGMENT_RT }}
+    />,
+  );
+
+  await component.getByRole("combobox").click();
+  await page
+    .getByRole("option", { name: "Logged in with recent orders" })
+    .click();
+
+  await expect
+    .poll(async () => {
+      const value = (await readFormValue(component)) as Record<string, unknown>;
+      return { segment: value?.segment, rt: value?.__resolveType };
+    })
+    .toEqual({
+      segment: "logged-in-with-recent-orders",
+      rt: USER_SEGMENT_RT,
+    });
+
+  // The recent-orders branch's Months field renders inline and round-trips.
+  await component.getByLabel("Months").fill("6");
+  await expect
+    .poll(async () => {
+      const value = (await readFormValue(component)) as Record<string, unknown>;
+      return value?.months;
+    })
+    .toBe(6);
+});
+
+test("segment union: a discriminator-only branch shows just the selector", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <SchemaFormHarness
+      meta={userSegmentMeta}
+      resolveType={USER_SEGMENT_RT}
+      initialValue={{
+        __resolveType: USER_SEGMENT_RT,
+        segment: "logged-in",
+      }}
+    />,
+  );
+
+  // "Logged in" has no extra field — selector only, no editable inputs, and no
+  // "Segment" discriminant field leaking through.
+  await expect(component.getByRole("combobox")).toHaveText("Logged in");
+  await expect(component.getByRole("textbox")).toHaveCount(0);
+  await expect(component.getByLabel("Months")).toHaveCount(0);
 });

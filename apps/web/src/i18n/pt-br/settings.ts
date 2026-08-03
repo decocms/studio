@@ -387,6 +387,20 @@ export const settings = {
   "settings.mainAgent.resetToast": "Redefinido para o Super Agent",
   "settings.mainAgent.errorToast":
     "N\u00e3o foi poss\u00edvel atualizar o agente principal",
+  "settings.review.title": "Revisores e merge",
+  "settings.review.description":
+    "Revisores autom\u00e1ticos rodam no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ambos aparecem como sess\u00f5es no card da tarefa.",
+  "settings.review.qaAgentTitle": "Ativar QA Agent",
+  "settings.review.qaAgentDescription":
+    "Garante que a tarefa realmente resolveu o problema \u2014 testa a feature, n\u00e3o s\u00f3 o diff.",
+  "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
+  "settings.review.codeReviewerDescription":
+    "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+  "settings.review.autoMergeTitle": "Ativar Auto-merge",
+  "settings.review.autoMergeDescription":
+    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+  "settings.review.updateError":
+    "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o de revis\u00e3o",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
@@ -554,6 +568,8 @@ export const settings = {
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · adicionada há {time}",
   "settings.providerKeyRow.cancel": "Cancelar",
+  "settings.providerKeyRow.claudeCode": "Claude Code",
+  "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",
   "settings.providerKeyRow.deleteProviderKey": "Excluir chave do provedor",
@@ -621,7 +637,8 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
-  "settings.secrets.secretsCount": "{count} segredo{plural} armazenado",
+  "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
+  "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
@@ -657,5 +674,6 @@ export const settings = {
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.moreProviders": "{count} provedor{plural} adicional",
+  "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
+  "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
 } satisfies Record<keyof typeof settingsEn, string>;

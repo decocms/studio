@@ -1,5 +1,5 @@
 import type { ToolDefinition, UsageStats } from "@/sdk";
-import type { ModelsConfig } from "@decocms/harness/types";
+import type { ModelsConfig } from "@decocms/shared/harness/types";
 import type { ChatMessage } from "../types.ts";
 
 type MessagePart = ChatMessage["parts"][number];

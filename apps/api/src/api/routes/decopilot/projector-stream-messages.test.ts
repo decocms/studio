@@ -4,7 +4,7 @@ import {
   buildDoneMsgId,
   parseRunStreamMsgId,
   streamSubject,
-} from "@decocms/harness/run-stream-codec";
+} from "@/harnesses/lib/run-stream-codec";
 import { isDoneEnvelope, runIdFromSubject } from "./projector-stream-messages";
 
 describe("projector stream message helpers", () => {

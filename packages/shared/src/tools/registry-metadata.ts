@@ -119,8 +119,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_THREADS_UPDATE",
   "COLLECTION_THREADS_DELETE",
   "COLLECTION_THREAD_MESSAGES_LIST",
-  "THREAD_BACKGROUND_TOOL_START",
-  "THREAD_SUBTASK_DELIVER",
   // Tag tools
   "TAGS_LIST",
   "TAGS_CREATE",
@@ -221,8 +219,6 @@ const ALL_TOOL_NAMES = [
   "GITHUB_LIST_USER_ORGS",
 
   // Link tools
-  "LINK_CURRENT_GET",
-  "LINK_DISCONNECT",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -233,6 +229,8 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
+  "TASK_BOARD_REVIEW_DECISION",
+  "TASK_BOARD_PROMOTE_TO_PRODUCTION",
   "TASK_BOARD_ACTIVITY_LIST",
 ] as const;
 
@@ -627,16 +625,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "COLLECTION_THREAD_MESSAGES_LIST",
     description: "List thread messages",
-    category: "Threads",
-  },
-  {
-    name: "THREAD_BACKGROUND_TOOL_START",
-    description: "Enqueue a slow built-in tool as a background job",
-    category: "Threads",
-  },
-  {
-    name: "THREAD_SUBTASK_DELIVER",
-    description: "Deliver a backgrounded subtask's result to its thread",
     category: "Threads",
   },
   // Tag tools
@@ -1053,19 +1041,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
-  // Link tools
-  {
-    name: "LINK_CURRENT_GET",
-    description:
-      "Return the calling user's current desktop link status (online/offline, capabilities)",
-    category: "Links",
-  },
-  {
-    name: "LINK_DISCONNECT",
-    description:
-      "Disconnect the calling user's desktop link (stops the daemon, removes the presence claim)",
-    category: "Links",
-  },
   // Search tools
   {
     name: "GLOBAL_SEARCH",
@@ -1099,6 +1074,20 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "TASK_BOARD_ITEM_PRS_GET",
     description: "Get a task board item's linked pull requests with live state",
     category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_REVIEW_DECISION",
+    description:
+      "Record a reviewer's decision (approve or request changes) for a task under review",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "TASK_BOARD_PROMOTE_TO_PRODUCTION",
+    description:
+      "Merge a reviewed task's pull request and move the task to Done",
+    category: "Task Board",
+    dangerous: true,
   },
   {
     name: "TASK_BOARD_ACTIVITY_LIST",
@@ -1177,15 +1166,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
       //   USER_GET     → resolve member display ("created by" on agents, etc.);
       //                  handler scopes to shared-org members, no secrets
-      //   LINK_CURRENT_GET → caller's own desktop-link status (header poll)
-      //   LINK_DISCONNECT  → self-scoped: disconnects the CALLER's own
-      //                      desktop link only (handler keys everything off
-      //                      ctx.auth.user.id), so members keep it
       //   BRAND_CONTEXT_LIST → org branding for the chat empty state
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
-      "LINK_CURRENT_GET",
-      "LINK_DISCONNECT",
       "BRAND_CONTEXT_LIST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
@@ -1197,10 +1180,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_THREADS_UPDATE",
       "COLLECTION_THREADS_DELETE",
       "COLLECTION_THREAD_MESSAGES_LIST",
-      // Background a slow built-in on your own thread — gated per-handler by
-      // the run fence token, same trust boundary as the chat turn itself.
-      "THREAD_BACKGROUND_TOOL_START",
-      "THREAD_SUBTASK_DELIVER",
       // Task board — org-scoped, usable by every member, same basic-usage
       // tier as chat threads.
       "TASK_BOARD_ITEM_CREATE",
@@ -1208,6 +1187,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
+      "TASK_BOARD_REVIEW_DECISION",
+      "TASK_BOARD_PROMOTE_TO_PRODUCTION",
       "TASK_BOARD_ACTIVITY_LIST",
     ],
   },

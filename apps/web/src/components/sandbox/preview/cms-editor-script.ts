@@ -272,9 +272,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("mouseout", outHandler, true);
 
+  // Blocks observes clicks to select sections in the side panel; it must not
+  // cancel the iframe page's own handlers or native control behavior.
   var clickHandler = function(e) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
     var target = e.target;
     if (!target || target === highlight || target === badge) return;
     var section = findSection(target);

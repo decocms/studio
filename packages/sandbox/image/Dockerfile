@@ -1,4 +1,7 @@
-# Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
+# The sandbox image. One daemon, written in Go (`daemon-go/`):
+#
+#   docker build -t studio-sandbox-go:local -f packages/sandbox/image/Dockerfile packages/sandbox
+#
 # Published multi-arch (linux/amd64 + linux/arm64) by
 # .github/workflows/release-studio-sandbox.yaml so sandboxes run natively on
 # arm64 nodes (Apple Silicon, arm64 cloud) as well as amd64.
@@ -10,7 +13,18 @@ ARG NODE_MAJOR=26
 # digest cache the base image already depends on. Multi-arch like the rest.
 FROM node:${NODE_MAJOR}-slim AS node-dist
 
-FROM oven/bun:1.3.14-debian
+# The daemon. Every dep is pure Go, so CGO_ENABLED=0 cross-compiles without
+# emulation.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS daemon-go
+ARG TARGETARCH
+WORKDIR /src
+COPY daemon-go/go.mod daemon-go/go.sum ./
+RUN go mod download
+COPY daemon-go/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
+      go build -trimpath -ldflags="-s -w" -o /out/daemon-go .
+
+FROM oven/bun:1.3.14-debian AS runtime-base
 
 ARG COREPACK_VERSION=0.35.0
 ARG DENO_VERSION=v1.46.3
@@ -86,33 +100,20 @@ RUN userdel --remove bun \
 
 WORKDIR /app
 
-# node-pty is a native addon. The daemon bundle marks it `--external`, so it
-# must be installed inside the image. `bun init -y` creates a minimal
-# package.json; `bun add` triggers node-pty's prebuilt-binary download (or
-# builds from source for archs without prebuilts). build-essential + python3 +
-# node-gyp are required for the node-gyp fallback on architectures (e.g.
-# linux-arm64) that have no pre-built binary. They are kept in the final
-# image so user repos in /app/repo that depend on node-pty (or any native
-# addon) can rebuild during their own `bun install`. The `find … chmod +x`
-# step ensures the spawn-helper binary is executable (relevant on
-# macOS-targeted prebuilds; no-op on Linux).
+# build-essential + python3 + node-gyp for user repos in /app/repo that depend
+# on a native addon and rebuild it during their own `bun install`. The daemon
+# itself is a static Go binary and needs none of this.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/* \
-  && npm install -g node-gyp \
-  && cd /opt/sandbox-daemon \
-  && bun init -y \
-  && bun add node-pty@^1.0.0 \
-  && find /opt/sandbox-daemon/node_modules/node-pty -name "spawn-helper" -exec chmod +x {} \; \
-  && chown -R sandbox:sandbox /opt/sandbox-daemon
+  && npm install -g node-gyp
 
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
-COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
+COPY --chown=sandbox:sandbox dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
 RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
-COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 
 # Expose skill helper scripts as bare commands. Wrappers in skills/_bin/
@@ -124,4 +125,8 @@ RUN chmod +x /mnt/skills/public/_bin/* \
 ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000
-CMD ["bun", "/opt/sandbox-daemon/daemon.js"]
+
+COPY --from=daemon-go --chown=sandbox:sandbox /out/daemon-go /opt/sandbox-daemon/daemon-go
+# exec form, so the daemon is PID 1 and gets SIGTERM directly — that is what
+# triggers the shutdown git publish.
+CMD ["/opt/sandbox-daemon/daemon-go"]

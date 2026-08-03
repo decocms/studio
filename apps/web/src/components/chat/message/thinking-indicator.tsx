@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
-import { RUN_STATUS_COPY } from "../run-status.ts";
+import { getRunStatusCopy } from "../run-status.ts";
 import { useOptionalChatStream } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
@@ -60,7 +60,6 @@ function ThoughtSummaryShell({
   detail,
   state,
   detailVariant = "prose",
-  latency,
   trailing,
 }: {
   icon: ReactNode;
@@ -69,7 +68,6 @@ function ThoughtSummaryShell({
   detail?: string | null;
   state: "loading" | "error" | "idle";
   detailVariant?: "code" | "prose";
-  latency?: number;
   trailing?: ReactNode;
 }) {
   return (
@@ -80,7 +78,6 @@ function ThoughtSummaryShell({
       detail={detail}
       state={state}
       detailVariant={detailVariant}
-      latency={latency}
       trailing={trailing}
     />
   );
@@ -104,7 +101,7 @@ function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
   }, [stage]);
 
   if (stage !== null) {
-    const copy = RUN_STATUS_COPY[stage];
+    const copy = getRunStatusCopy(t, stage);
     return (
       <ThoughtSummaryShell
         icon={<Stars01 className="size-4" />}
@@ -222,9 +219,6 @@ export function ThoughtSummary({
   const fullText = parts.map((p) => p.text ?? "").join("\n\n");
   const detail = !allPartsRedacted && fullText.trim() ? fullText : null;
 
-  const latency =
-    !isStreaming && duration != null ? duration / 1000 : undefined;
-
   return (
     <ThoughtSummaryShell
       icon={
@@ -241,7 +235,6 @@ export function ThoughtSummary({
       detail={detail}
       state={isStreaming ? "loading" : "idle"}
       detailVariant="prose"
-      latency={latency}
     />
   );
 }

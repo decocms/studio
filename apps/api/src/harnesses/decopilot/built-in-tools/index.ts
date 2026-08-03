@@ -11,7 +11,7 @@ import type { ToolSet, UIMessageStreamWriter } from "ai";
 import {
   toolNeedsApproval,
   type ToolApprovalLevel,
-} from "@decocms/harness/decopilot/mcp-tools";
+} from "@/harnesses/lib/decopilot/mcp-tools";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter
@@ -38,35 +38,35 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
 };
-import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
-import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
-import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
+import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
+import { createVmTools } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/index";
+import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSwappableFs } from "./swappable-fs";
 import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
-import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
-import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
-import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
-import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
+import { userAskTool } from "@/harnesses/lib/decopilot/built-in-tools/user-ask";
+import { todoWriteTool } from "@/harnesses/lib/decopilot/built-in-tools/todo-write";
+import { createUpdateInterestsTool } from "@/harnesses/lib/decopilot/built-in-tools/update-interests";
+import { proposePlanTool } from "@/harnesses/lib/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
-import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import { makeBackgroundable } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import { registerFlip } from "@/harnesses/decopilot/flip-registry";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
-import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
-import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
+import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
+import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
+import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
   createTakeScreenshotTool,
   type PendingImage,
-} from "@decocms/harness/decopilot/built-in-tools/take-screenshot";
-import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
-import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
-import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+} from "@/harnesses/lib/decopilot/built-in-tools/take-screenshot";
+import { createScrapeUrlTool } from "@/harnesses/lib/decopilot/built-in-tools/scrape-url";
+import { createInspectPageTool } from "@/harnesses/lib/decopilot/built-in-tools/inspect-page";
+import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
-import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
-import type { ModelsConfig } from "@decocms/harness/types";
+import { BROWSERLESS_BASE_URL } from "@/harnesses/lib/decopilot/built-in-tools/constants";
+import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
 
@@ -89,15 +89,13 @@ export type VmContext = {
   /**
    * When true, the sandbox fs layer mints a virtual-MCP endpoint and fires
    * POST /_sandbox/tools/sync after provisioning so the daemon materializes
-   * the tool catalog + endpoint file under `<repo>/.deco/tools/` — hosted
-   * harnesses never send a /dispatch envelope, so this is the cloud-path
-   * counterpart of the daemon's onDispatchMcp hook.
+   * the tool catalog + endpoint file under `<repo>/.deco/tools/`.
    */
   syncTools?: boolean;
 };
 
 export interface BuiltinToolParams {
-  /** Provider — null for Claude Code (subtask tool is omitted when null) */
+  /** Provider — the subtask tool is omitted when no provider is available. */
   provider: StudioProvider | null;
   /** Provider used to instantiate `generate_image`. Caller passes the
    *  chat provider when the org's `image` tier shares the chat credential
@@ -262,7 +260,8 @@ async function buildAllTools(
     Object.assign(tools, vmTools);
     // Repo switcher — dynamic description lists the org's imported repos; calling
     // it binds the repo to the thread, eagerly clones its sandbox, and opens the
-    // Preview. Omitted when the org has no imported repos (nothing to switch).
+    // Preview. Returns null (tool omitted) for any agent but the super-agent, and
+    // when the org has no imported repos (nothing to switch).
     const loadRepo = await createLoadRepoTool({
       ctx,
       orgId: organization.id,
@@ -286,7 +285,7 @@ async function buildAllTools(
     });
     if (loadRepo) tools.load_repo = loadRepo;
   }
-  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
+  // Subtask requires a provider for its LLM calls.
   if (provider) {
     // Made backgroundable: the model can opt a subtask into a durable cluster
     // run (`background: true`) instead of blocking the turn. Without a

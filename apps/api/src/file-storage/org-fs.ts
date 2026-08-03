@@ -287,12 +287,14 @@ export class OrgFs {
    * Path search (case-insensitive substring) with `effectivePublic` per
    * entry — the Library's search box. Searches every volume unless
    * `volumes` narrows it (the public-sets pseudo-org passes its configured
-   * set volumes).
+   * set volumes), and the whole volume unless `pathPrefix` narrows it to one
+   * directory subtree (the Library scopes search to the folder you're in).
    */
   async searchWithEffectivePublic(
     query: string,
     limit: number,
     volumes?: string[],
+    pathPrefix?: string,
   ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
     return this.withEffectivePublic(
       await this.manifest.searchFiles({
@@ -300,6 +302,7 @@ export class OrgFs {
         query,
         limit,
         volumes,
+        pathPrefix: pathPrefix ? normalizeFsPath(pathPrefix) : undefined,
       }),
     );
   }

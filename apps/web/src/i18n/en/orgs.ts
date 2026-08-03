@@ -18,10 +18,14 @@ export const orgs = {
   "orgs.automations.loading": "Loading…",
   "orgs.automations.selectPlaceholder": "Select an automation…",
   "orgs.bulkDeleteDialog.cancelButton": "Cancel",
-  "orgs.bulkDeleteDialog.deleteButton": "Delete {count} connection{plural}",
-  "orgs.bulkDeleteDialog.deleteDescription":
-    "This will permanently delete the selected connection{plural}. This action cannot be undone.",
-  "orgs.bulkDeleteDialog.deleteTitle": "Delete {count} connection{plural}?",
+  "orgs.bulkDeleteDialog.deleteButtonSingular": "Delete {count} connection",
+  "orgs.bulkDeleteDialog.deleteButtonPlural": "Delete {count} connections",
+  "orgs.bulkDeleteDialog.deleteDescriptionSingular":
+    "This will permanently delete the selected connection. This action cannot be undone.",
+  "orgs.bulkDeleteDialog.deleteDescriptionPlural":
+    "This will permanently delete the selected connections. This action cannot be undone.",
+  "orgs.bulkDeleteDialog.deleteTitleSingular": "Delete {count} connection?",
+  "orgs.bulkDeleteDialog.deleteTitlePlural": "Delete {count} connections?",
   "orgs.catalogItemCard.cancel": "Cancel",
   "orgs.catalogItemCard.communityMcpServerDescription":
     "This MCP server is from the Community MCP Registry and is not maintained or verified by Deco. Community servers may have varying levels of quality, security, and reliability. Proceed with caution and review the server details before connecting.",

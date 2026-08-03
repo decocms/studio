@@ -9,7 +9,7 @@
 //! folder. That's true for `LOCAL_API_WORKDIR` in the steady state, but it
 //! misses how a project FIRST lands on a machine and how its preview dev
 //! server starts — both still go through this same clone -> install -> start
-//! pipeline (mirroring `packages/sandbox/daemon/setup/orchestrator.ts`), just
+//! pipeline (mirroring `packages/sandbox/daemon-go/internal/setup/orchestrator.go`), just
 //! triggered by a `POST /_sandbox/config` carrying `git.repository.cloneUrl`
 //! instead of a cluster-side clone-then-hand-the-daemon-a-workdir flow. This
 //! module is the correction: KEPT, not dropped. See the doc updates in the
@@ -63,6 +63,7 @@
 //! own module doc for the fix in detail.
 
 pub mod clone;
+pub(crate) mod detect_runtime;
 pub mod dev;
 pub mod install;
 

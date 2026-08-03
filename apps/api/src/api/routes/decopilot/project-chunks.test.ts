@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
-import { makeTitleResultChunk } from "@decocms/harness/title-chunk";
+import { makeTitleResultChunk } from "@/harnesses/lib/title-chunk";
 import { DEFAULT_THREAD_TITLE } from "./constants";
 import {
   consumeHarnessStream,

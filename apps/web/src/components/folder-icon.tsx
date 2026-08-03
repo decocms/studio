@@ -10,20 +10,48 @@
  * like skills/outputs. `readOnly` adds a small view-only badge on the
  * corner — an eye (the Drive convention), not a lock: read-only sets are
  * public, a padlock would misread as "private".
+ *
+ * `tone` picks the palette: Finder blue for folders people make, graphite for
+ * the system folders the product fills (uploads/outputs/skills), so "nobody
+ * made this by hand" reads at a glance.
  */
 
 import { useId } from "react";
 import type { ComponentType, SVGProps } from "react";
 import { Eye } from "@untitledui/icons";
 
+const TONES = {
+  default: {
+    backFrom: "#4D87DF",
+    backTo: "#296FE8",
+    frontFrom: "#72B6FA",
+    frontTo: "#5BB1EF",
+    stripe: "#84CDFB",
+    glyph: "#014AC9",
+  },
+  system: {
+    backFrom: "#8A94A6",
+    backTo: "#6B7687",
+    frontFrom: "#B6BEC9",
+    frontTo: "#A3ADBA",
+    stripe: "#D5DBE3",
+    glyph: "#3D4757",
+  },
+} as const;
+
+export type FolderTone = keyof typeof TONES;
+
 export function FolderIcon({
   glyph: Glyph,
   readOnly,
+  tone = "default",
   ...props
 }: {
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   readOnly?: boolean;
+  tone?: FolderTone;
 } & SVGProps<SVGSVGElement>) {
+  const colors = TONES[tone];
   // Gradient ids must be unique per instance — folder cards render many of
   // these on one page and a hidden duplicate id can break url() references.
   const id = useId();
@@ -62,8 +90,8 @@ export function FolderIcon({
         opacity="0.25"
       />
       {/* bottom stripes */}
-      <rect y="25.81" width="32" height="0.552" fill="#84CDFB" />
-      <rect y="27.05" width="32" height="0.552" fill="#84CDFB" />
+      <rect y="25.81" width="32" height="0.552" fill={colors.stripe} />
+      <rect y="27.05" width="32" height="0.552" fill={colors.stripe} />
       {/* well-known-folder glyph, embossed on the body (design's glyph blue) */}
       {Glyph && (
         <Glyph
@@ -72,7 +100,7 @@ export function FolderIcon({
           width={11}
           height={11}
           strokeWidth={2.2}
-          style={{ color: "#014AC9", opacity: 0.55 }}
+          style={{ color: colors.glyph, opacity: 0.55 }}
         />
       )}
       {/* read-only corner badge — eye = view-only (Drive convention) */}
@@ -104,8 +132,8 @@ export function FolderIcon({
           y2="9.53"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0.3" stopColor="#4D87DF" />
-          <stop offset="1" stopColor="#296FE8" />
+          <stop offset="0.3" stopColor={colors.backFrom} />
+          <stop offset="1" stopColor={colors.backTo} />
         </linearGradient>
         <radialGradient
           id={frontId}
@@ -115,8 +143,8 @@ export function FolderIcon({
           gradientUnits="userSpaceOnUse"
           gradientTransform="matrix(1.6 0 0 2.1538 16 19.22)"
         >
-          <stop stopColor="#72B6FA" />
-          <stop offset="1" stopColor="#5BB1EF" />
+          <stop stopColor={colors.frontFrom} />
+          <stop offset="1" stopColor={colors.frontTo} />
         </radialGradient>
       </defs>
     </svg>

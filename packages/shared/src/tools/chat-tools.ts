@@ -3,7 +3,6 @@
  *
  * Browser-safe AI SDK tool contracts for Studio's built-in chat tools.
  */
-import type { FinishReason } from "ai";
 
 export interface StudioGenerateImageResult {
   success: true;
@@ -42,9 +41,8 @@ export type StudioChatTools = {
   subtask: {
     input: { prompt: string; agent_id?: string | undefined };
     output:
-      | { text: string; error: string; finishReason: string }
       | { text: string; error?: undefined; finishReason?: undefined }
-      | { text: string; error: string | undefined; finishReason: FinishReason };
+      | { text: string; error: string | undefined; finishReason: string };
   };
   read_tool_output: {
     input: { tool_call_id: string; pattern: string };

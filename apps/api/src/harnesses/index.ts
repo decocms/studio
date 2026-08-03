@@ -1,17 +1,17 @@
 import type { OrganizationScope, StudioContext } from "../core/studio-context";
-import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
-import {
-  decopilotHarnessFactory,
-  registerClusterEnvironmentBuilder,
-} from "@decocms/harness/decopilot/index";
-import { codexHarnessFactory } from "@decocms/harness/codex/index";
+import { registerClusterEnvironmentBuilder } from "@/harnesses/lib/decopilot/index";
 import { buildClusterEnvironmentTools } from "./decopilot/harness-deps";
-import { registerHarnessFactory } from "@decocms/harness/registry";
 
-// Register the environment-deps builders for the unified decopilot factory.
-// This barrel is the sole in-process registration point for cluster Decopilot
-// dispatch. Desktop Decopilot is intentionally not registered; user-desktop
-// execution is reserved for CLI harnesses.
+// Register the environment-deps builder for the decopilot factory. This
+// side-effect is why dispatch paths import this barrel before dispatching:
+// the factory's stream() throws if no cluster environment builder is set.
+//
+// Decopilot is the only harness the cluster hosts — dispatch is hard-wired to
+// its factory in `in-process-sandbox-client.ts` (the one-entry registry this
+// barrel used to populate is gone). The CLI harnesses (claude-code, codex) are
+// rejected by `assertHarnessRunsInCluster` at the gate and again by
+// `dispatchRunAndWait`; local CLI runs happen in the Tauri desktop app
+// (`apps/native`, its own Rust harness crate), and cloud-CLI is unimplemented.
 registerClusterEnvironmentBuilder((args) => {
   const ctx = args.ctx as StudioContext;
   return buildClusterEnvironmentTools({
@@ -21,18 +21,7 @@ registerClusterEnvironmentBuilder((args) => {
   });
 });
 
-// Side-effect registration. Importing this module wires up the three
-// in-tree harnesses. Out-of-tree harnesses register themselves the same way.
-//
-// CLI harnesses (claude-code, codex) are also imported by the desktop link
-// daemon; decopilot pulls in cluster-only modules (RunRegistry, run-stream,
-// studio tools) and is only usable on the cluster side.
-registerHarnessFactory(decopilotHarnessFactory);
-registerHarnessFactory(claudeCodeHarnessFactory);
-registerHarnessFactory(codexHarnessFactory);
-
-export { localDispatch } from "./local-dispatch";
-export { createSecretModelSource } from "@decocms/harness/types";
+export { createSecretModelSource } from "@/harnesses/lib/types";
 export type {
   ChatMessage,
   ChatMode,
@@ -47,4 +36,4 @@ export type {
   ModelSelection,
   ModelsConfig,
   ToolApprovalLevel,
-} from "@decocms/harness/types";
+} from "@/harnesses/lib/types";

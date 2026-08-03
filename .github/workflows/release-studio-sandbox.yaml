@@ -9,11 +9,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/studio-sandbox
+  # One image, one daemon (Go). The `studio-sandbox` name is frozen at its last
+  # TS-daemon tag (1.35.2) — kept pullable for rollback, never pushed again.
+  IMAGE_NAME: ${{ github.repository }}/studio-sandbox-go
 
 jobs:
   build-push:
-    name: Build & Push studio-sandbox image
+    name: Build & Push studio-sandbox-go image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,8 +65,8 @@ jobs:
         if: steps.tag-check.outputs.exists != 'true'
         uses: ./.github/actions/setup-bun
 
-      # The Dockerfile copies daemon/dist/daemon.js into the image.
-      - name: Build daemon bundle
+      # The Dockerfile copies dist/typegen.tgz into the image.
+      - name: Build typegen package
         if: steps.tag-check.outputs.exists != 'true'
         run: bun run --cwd=packages/sandbox build
 
@@ -158,7 +160,7 @@ jobs:
           token: ${{ secrets.DEPLOY_REPO_TOKEN }}
           repository: decocms/deco-apps-cd
           event-type: image-bump
-          client-payload: '{"version": "${{ needs.build-push.outputs.version }}", "repository": "decocms/studio/studio-sandbox", "files": ["apps/studio-sandbox-stg/values.yaml", "apps/studio-sandbox-prod/values.yaml"]}'
+          client-payload: '{"version": "${{ needs.build-push.outputs.version }}", "repository": "decocms/studio/studio-sandbox-go", "files": ["apps/studio-sandbox-stg/values.yaml", "apps/studio-sandbox-prod/values.yaml"]}'
       - name: Summary
         if: env.DISPATCH_TOKEN != ''
-        run: echo "Dispatched \`image-bump\` (studio-sandbox ${{ needs.build-push.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Dispatched \`image-bump\` (studio-sandbox-go ${{ needs.build-push.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"

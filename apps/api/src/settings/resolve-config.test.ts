@@ -45,6 +45,20 @@ describe("resolveConfig sandbox provider kind", () => {
   });
 });
 
+describe("resolveConfig sandbox sticky head ref", () => {
+  it("defaults to disabled when unset", () => {
+    const result = resolveConfig(flags, {});
+    expect(result.settings.sandboxStickyHeadRefEnabled).toBe(false);
+  });
+
+  it("enables via SANDBOX_STICKY_HEAD_REF=true", () => {
+    const result = resolveConfig(flags, {
+      SANDBOX_STICKY_HEAD_REF: "true",
+    });
+    expect(result.settings.sandboxStickyHeadRefEnabled).toBe(true);
+  });
+});
+
 describe("resolveConfig NATS tunnel settings", () => {
   it("enables public tunnel when NATS_PUBLIC_URL is set and flag is unset", () => {
     const result = resolveConfig(flags, {
@@ -121,6 +135,29 @@ describe("resolveConfig database pool max", () => {
   );
 });
 
+describe("resolveConfig DBOS pool size", () => {
+  it("defaults to 5 when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.dbosPoolSize).toBe(5);
+  });
+
+  it("uses DBOS_POOL_SIZE when set", () => {
+    const result = resolveConfig(flags, { DBOS_POOL_SIZE: "20" });
+
+    expect(result.settings.dbosPoolSize).toBe(20);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid pool size %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { DBOS_POOL_SIZE: value })).toThrow(
+        "DBOS_POOL_SIZE must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig port", () => {
   it("defaults to 3000 when unset", () => {
     const result = resolveConfig(flags, {});
@@ -175,6 +212,29 @@ describe("resolveConfig clickhouse max memory usage", () => {
   );
 });
 
+describe("resolveConfig duckdb threads", () => {
+  it("defaults to undefined when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.duckdbThreads).toBeUndefined();
+  });
+
+  it("uses DUCKDB_THREADS when set", () => {
+    const result = resolveConfig(flags, { DUCKDB_THREADS: "4" });
+
+    expect(result.settings.duckdbThreads).toBe(4);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid value %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { DUCKDB_THREADS: value })).toThrow(
+        "DUCKDB_THREADS must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig deployment admin emails", () => {
   it("defaults to an empty list when unset", () => {
     const result = resolveConfig(flags, {});
@@ -191,6 +251,26 @@ describe("resolveConfig deployment admin emails", () => {
       "alice@example.com",
       "bob@example.com",
     ]);
+  });
+});
+
+describe("resolveConfig pod name", () => {
+  it("generates a random id when POD_NAME is unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.podName).toBeTruthy();
+  });
+
+  it("falls back to a random id when POD_NAME is set to an empty string", () => {
+    const result = resolveConfig(flags, { POD_NAME: "" });
+
+    expect(result.settings.podName).toBeTruthy();
+  });
+
+  it("uses POD_NAME when set", () => {
+    const result = resolveConfig(flags, { POD_NAME: "studio-worker-abc123" });
+
+    expect(result.settings.podName).toBe("studio-worker-abc123");
   });
 });
 
@@ -216,6 +296,18 @@ describe("resolveConfig Studio environment aliases", () => {
     expect(result.settings.studioJwtSecret).toBe("legacy-secret");
     expect(result.settings.dispatchRole).toBe("worker");
   });
+
+  it("falls back to the legacy variables when the Studio ones are set to an empty string", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_JWT_SECRET: "",
+      MESH_JWT_SECRET: "legacy-secret",
+      STUDIO_DISPATCH_ROLE: "",
+      MESH_DISPATCH_ROLE: "worker",
+    });
+
+    expect(result.settings.studioJwtSecret).toBe("legacy-secret");
+    expect(result.settings.dispatchRole).toBe("worker");
+  });
 });
 
 describe("resolveConfig public URL", () => {
@@ -230,6 +322,15 @@ describe("resolveConfig public URL", () => {
 
   it("accepts the legacy MESH_PUBLIC_URL during the compatibility window", () => {
     const result = resolveConfig(flags, {
+      MESH_PUBLIC_URL: "https://legacy.example.com",
+    });
+
+    expect(result.settings.publicUrl).toBe("https://legacy.example.com");
+  });
+
+  it("falls back to MESH_PUBLIC_URL when STUDIO_PUBLIC_URL is an empty string", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_PUBLIC_URL: "",
       MESH_PUBLIC_URL: "https://legacy.example.com",
     });
 
@@ -368,6 +469,20 @@ describe("resolveConfig reports internal API env rename", () => {
     );
     expect(result.settings.reportsInternalApiKey).toBe("old-key");
   });
+
+  it("falls back to the legacy CD names when the new ones are set to an empty string", () => {
+    const result = resolveConfig(flags, {
+      REPORTS_INTERNAL_API_URL: "",
+      REPORTS_INTERNAL_API_KEY: "",
+      COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
+      COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
+    });
+
+    expect(result.settings.reportsInternalApiUrl).toBe(
+      "https://reports-old.example.com",
+    );
+    expect(result.settings.reportsInternalApiKey).toBe("old-key");
+  });
 });
 
 describe("resolveConfig topup fee percent", () => {
@@ -386,5 +501,55 @@ describe("resolveConfig topup fee percent", () => {
     expect(() =>
       resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "free" }),
     ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
+  });
+
+  it("rejects a value above 100 instead of silently overcharging top-ups", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "150" }),
+    ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be at most 100");
+  });
+});
+
+describe("resolveConfig decopilot max concurrent subagents", () => {
+  it("defaults to 4", () => {
+    expect(
+      resolveConfig(flags, {}).settings.decopilotMaxConcurrentSubagents,
+    ).toBe(4);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_SUBAGENTS: "8" }).settings
+        .decopilotMaxConcurrentSubagents,
+    ).toBe(8);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_SUBAGENTS: "free" }),
+    ).toThrow("DECOPILOT_MAX_CONCURRENT_SUBAGENTS must be a positive integer");
+  });
+});
+
+describe("resolveConfig decopilot max concurrent hosted runs", () => {
+  it("defaults to 3", () => {
+    expect(
+      resolveConfig(flags, {}).settings.decopilotMaxConcurrentHostedRuns,
+    ).toBe(3);
+  });
+
+  it("honors an override", () => {
+    expect(
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS: "5" })
+        .settings.decopilotMaxConcurrentHostedRuns,
+    ).toBe(5);
+  });
+
+  it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
+    expect(() =>
+      resolveConfig(flags, { DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS: "free" }),
+    ).toThrow(
+      "DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS must be a positive integer",
+    );
   });
 });

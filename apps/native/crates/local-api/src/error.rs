@@ -1,6 +1,6 @@
 //! The daemon-parity JSON error envelope.
 //!
-//! Every route in `packages/sandbox/daemon/routes/*.ts` responds to a
+//! Every route in `packages/sandbox/daemon-go/internal/routes/*.go` responds to a
 //! rejected request with `{ "error": "<message>" }`, sometimes with extra
 //! fields (`detail`, `notReady`, `available`) — see
 //! the native local-API contract. `ApiError` is
@@ -9,13 +9,6 @@
 //! `Result<Json<T>, ApiError>` (or `Result<Response, ApiError>` for
 //! non-JSON success bodies like SSE/204/empty) and use the constructors
 //! below rather than building `(StatusCode, Json(..))` tuples by hand.
-
-// Most constructors below (and `ApiResult`) aren't called yet — every route
-// handler in `routes/*.rs` is still a bare `ApiError::not_implemented(..)`
-// stub. They're reserved for the families that replace those stubs (see
-// the native module-ownership contract), not dead in the "should be
-// deleted" sense.
-#![allow(dead_code)]
 
 use axum::{
     http::StatusCode,
@@ -78,27 +71,6 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, error)
     }
 
-    /// 400 `{"error":"bad_input","detail":"<zod-shaped message>"}` — the
-    /// dispatch route's schema-validation-failure shape specifically
-    /// (contract's error-envelope table).
-    pub fn bad_input(detail: impl Into<String>) -> Self {
-        Self::with_extra(
-            StatusCode::BAD_REQUEST,
-            "bad_input",
-            json!({ "detail": detail.into() }),
-        )
-    }
-
-    /// 400 with a `detail` field, for the other "unknown_*"/"missing_*"
-    /// dispatch-gate errors that also carry extra context.
-    pub fn bad_request_with_detail(error: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self::with_extra(
-            StatusCode::BAD_REQUEST,
-            error,
-            json!({ "detail": detail.into() }),
-        )
-    }
-
     /// 409 `{"error":..., "notReady": true}` — git's "repository not
     /// initialized" gate and analogous "not ready yet, retry" cases.
     pub fn not_ready(error: impl Into<String>) -> Self {
@@ -111,7 +83,7 @@ impl ApiError {
         Self::new(StatusCode::CONFLICT, error)
     }
 
-    /// 410 — dispatch's post-cancel tombstone window.
+    /// 410 — a deliberately retired local route.
     pub fn gone(error: impl Into<String>) -> Self {
         Self::new(StatusCode::GONE, error)
     }
@@ -130,18 +102,6 @@ impl ApiError {
     /// "the caller did something wrong").
     pub fn internal(error: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, error)
-    }
-
-    /// 501 — the bootstrap skeleton's placeholder for every route a family
-    /// hasn't implemented yet. `route` should be `"METHOD /path"` so a 501
-    /// response is self-describing during Phase 1 development. A family
-    /// MUST replace every `not_implemented` call in the files it owns
-    /// before that family's e2e subset is expected to go green.
-    pub fn not_implemented(route: impl Into<String>) -> Self {
-        Self::new(
-            StatusCode::NOT_IMPLEMENTED,
-            format!("not implemented: {}", route.into()),
-        )
     }
 }
 

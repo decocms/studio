@@ -106,14 +106,16 @@ export const library = {
   "library.library.folderCreateFailed": "Failed to create folder",
   "library.library.folderCreated": 'Folder "{name}" created',
   "library.library.folderNamePlaceholder": "folder-name",
+  "library.library.folderNameReserved":
+    '"{name}" is a system folder here — pick another name.',
   "library.library.newFolder": "New folder",
   "library.library.newFolderDescription": "Create a folder in {path}.",
   "library.library.newFolderTitle": "New folder",
   "library.library.readOnly": "Read-only",
   "library.library.refresh": "Refresh",
+  "library.library.searchInPlaceholder": "Search files in {folder}…",
   "library.library.searchPlaceholder": "Search all files…",
   "library.library.theLibrary": "the library",
-  "library.library.title": "Library",
   "library.library.uploadFailed": "Upload failed",
   "library.library.uploadFile": "Upload file",
   "library.library.uploadedMultiple": "Uploaded {count} files",
@@ -130,10 +132,7 @@ export const library = {
   "library.libraryViews.files": "Files",
   "library.libraryViews.filesCount": "{count} files",
   "library.libraryViews.folders": "Folders",
-  "library.libraryViews.library": "Library",
   "library.libraryViews.noFilesMatch": 'No files match "{query}".',
-  "library.libraryViews.noFilesYet":
-    "No files yet — upload one, or ask an agent to produce something.",
   "library.libraryViews.noPublicSkillSetsConfigured":
     "No public skill sets are configured.",
   "library.libraryViews.readOnly": "Read-only",
@@ -141,11 +140,10 @@ export const library = {
   "library.libraryViews.searchResults": "{count} result(s)",
   "library.libraryViews.skillSetsCount": "{count} sets",
   "library.libraryViews.skills": "Skills",
-  "library.libraryViews.volumeHomeDescription":
-    "Your organization's home folder",
   "library.libraryViews.volumeOutputsDescription": "Agent run outputs",
   "library.libraryViews.volumeUploadsDescription": "Files your team uploads",
   "library.previewContent.close": "Close",
+  "library.seeInLibrary.label": "See in library",
   "library.previewContent.download": "Download",
   "library.previewContent.fileNotAvailable":
     "This file is no longer available.",

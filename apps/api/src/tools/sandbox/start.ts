@@ -5,8 +5,9 @@
  * resumes that thread's single sandbox instead of booting a private copy of the
  * same git branch (see `resolveSandboxUserId`).
  * Provider-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `sandboxMap` bookkeeping. Branch defaults to a Bayer-style
- * `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) when omitted.
+ * handler only does `sandboxMap` bookkeeping. Branch is minted from the caller's
+ * slug + a timestamp (`generateBranchName`) when omitted — a fresh identity, so
+ * callers that have a branch must pass it or they get a second sandbox.
  *
  * Different sandbox provider kinds coexist as siblings under the same
  * (user, branch) key — no stale-sandbox teardown is needed on kind change.
@@ -49,7 +50,10 @@ import {
   detectRepoRuntime,
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
@@ -60,7 +64,7 @@ import {
   syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "./thread-repo";
-import { isStickyHeadRefEnabled, pickGitBranch } from "../../sandbox/head-ref";
+import { pickGitBranch } from "../../sandbox/head-ref";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
@@ -102,7 +106,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted the handler generates a Bayer-style `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) and uses it. The resolved branch is returned in the response so callers can persist it.",
+        "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
@@ -123,10 +127,7 @@ export const SANDBOX_START = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
     const resolvedBranch =
-      input.branch ??
-      generateBranchName(
-        ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-      );
+      input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.
@@ -448,7 +449,7 @@ async function provisionSandbox(
     // derived ref: the derived ref may never have been pushed, in which case
     // cloning it forks from the repo default and the preview serves pre-change
     // code while the work sits on the PR branch. Flagged off by default.
-    const stickyHeadRef = isStickyHeadRefEnabled();
+    const stickyHeadRef = getSettings().sandboxStickyHeadRefEnabled;
     const gitBranch = pickGitBranch({
       branch,
       derivedRef: syntheticBranchToGitRef(branch),

@@ -19,7 +19,6 @@ import { type AiProviderModel } from "./select-model/shared";
 import { useChatPrefs } from "./context";
 import { ModelSelectorContentFallback } from "./select-model/decopilot";
 import { SelectedModelDisplay } from "./select-model/shared";
-import type { HarnessId } from "@decocms/harness/types";
 import {
   ModelSelectorBody,
   ModelSelectorStandaloneBody,
@@ -47,7 +46,6 @@ export interface ModelSelectorProps {
   onCredentialChange?: (id: string | null) => void;
   onModelChange?: (model: AiProviderModel) => void;
   filterModels?: (m: AiProviderModel) => boolean;
-  agent?: HarnessId;
 }
 
 export function ModelSelector({
@@ -60,7 +58,6 @@ export function ModelSelector({
   onCredentialChange,
   onModelChange,
   filterModels,
-  agent,
 }: ModelSelectorProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -94,7 +91,6 @@ export function ModelSelector({
       {standalone ? (
         <ModelSelectorStandaloneBody
           onClose={() => setOpen(false)}
-          agent={agent}
           credentialId={credentialIdProp ?? null}
           onCredentialChange={onCredentialChange ?? (() => {})}
           selectedModel={modelProp ?? null}
@@ -102,7 +98,7 @@ export function ModelSelector({
           filterModels={filterModels}
         />
       ) : (
-        <ModelSelectorBody onClose={() => setOpen(false)} agent={agent} />
+        <ModelSelectorBody onClose={() => setOpen(false)} />
       )}
     </Suspense>
   );

@@ -22,22 +22,13 @@ import {
   Atom01,
   ChevronDown,
   Check,
-  Cloud01,
   Lightning01,
-  Monitor01,
   Settings01,
   Stars01,
 } from "@untitledui/icons";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { ChatTier } from "@decocms/shared/organization/schema";
-import {
-  resolveTierSubtitle,
-  useAgentMode,
-  useChatTier,
-  useSetChatTier,
-  type AgentMode,
-} from "./use-agent-mode";
-import { useChatPrefs, useOptionalChatTask } from "./context";
+import { useChatPrefs } from "./context";
 import {
   useEffectiveSimpleMode,
   useUpdateUserModelPreferences,
@@ -45,17 +36,10 @@ import {
 } from "@/hooks/use-user-model-preferences";
 import { useSimpleMode } from "@/hooks/use-organization-settings";
 import {
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { useAgentOptionAvailability } from "./use-agent-availability";
-import {
-  type AgentOption,
-  preferredLocalAgentOption,
-} from "./pills/agent-options";
-import { ClaudeCodeIcon, CodexIcon, localHarnessBrand } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
@@ -67,7 +51,13 @@ function getTierLabels(t: TFunction): Record<ChatTier, string> {
   };
 }
 
-/** One selectable row in the popover — a concrete (runtime, tier) choice. */
+const TIER_DESCRIPTION_KEYS: Record<ChatTier, Parameters<TFunction>[0]> = {
+  fast: "chat.agentModels.quickerResponses",
+  smart: "chat.agentModels.balancedQuality",
+  thinking: "chat.agentModels.deeperReasoning",
+};
+
+/** One selectable tier row in the hosted Decopilot popover. */
 interface TierRow {
   key: string;
   icon?: ReactNode;
@@ -84,14 +74,9 @@ interface TierRow {
   modelOverride?: (closeOverride: () => void) => ReactNode;
 }
 
-/**
- * A labelled cluster of rows. The `label` is the small-font runtime heading
- * (e.g. "Claude Code", "Codex") rendered above its tiers; omit it for a single
- * ungrouped list (Cloud, or a lone local CLI).
- */
+/** A cluster of hosted tier rows. */
 interface TierGroup {
   key: string;
-  label?: string;
   rows: TierRow[];
 }
 
@@ -100,29 +85,18 @@ interface PureProps {
   tier: ChatTier;
   /** Optional glyph rendered on the closed pill next to the tier label. */
   pillIcon?: ReactNode;
-  /** Accessible label and tooltip for the closed pill. Defaults to the tier. */
-  pillLabel?: string;
-  /** Runtime × tier options, grouped by runtime. */
+  /** Tier options grouped for rendering. */
   groups: TierGroup[];
-  /** Optional content rendered above the groups (the runtime toggle). */
-  header?: ReactNode;
 }
 
 /**
  * Pure variant — no external dependencies (no context, no queries).
  * Owns only local UI state (the popover open flag) so tests can mount
  * it without mocking the chat context. Closed pill shows the icon
- * (when provided) + tier label; the popover renders `header` then one
- * block per group (optional heading + its rows). Selecting a row runs its
- * `onSelect` and closes the popover.
+ * (when provided) + tier label. Selecting a row runs its `onSelect` and closes
+ * the popover.
  */
-export function TierTriggerPure({
-  tier,
-  pillIcon,
-  pillLabel,
-  groups,
-  header,
-}: PureProps) {
+export function TierTriggerPure({ tier, pillIcon, groups }: PureProps) {
   const t = useT();
   const tierLabels = getTierLabels(t);
   const [open, setOpen] = useState(false);
@@ -130,7 +104,7 @@ export function TierTriggerPure({
     row.onSelect();
     setOpen(false);
   };
-  const resolvedPillLabel = pillLabel ?? tierLabels[tier];
+  const pillLabel = tierLabels[tier];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -142,7 +116,7 @@ export function TierTriggerPure({
                 type="button"
                 variant="ghost"
                 size="default"
-                aria-label={resolvedPillLabel}
+                aria-label={pillLabel}
                 className={cn(
                   "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
                   "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -165,24 +139,16 @@ export function TierTriggerPure({
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{resolvedPillLabel}</TooltipContent>
+        <TooltipContent>{pillLabel}</TooltipContent>
       </Tooltip>
       <PopoverContent
         align="end"
         className="p-1 w-64"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {header && (
-          <div className="mb-1 border-b border-border/60 pb-1">{header}</div>
-        )}
         <div role="menu" className="flex flex-col">
           {groups.map((group) => (
             <div key={group.key} className="flex flex-col">
-              {group.label && (
-                <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground">
-                  <span className="truncate">{group.label}</span>
-                </div>
-              )}
               {group.rows.map((row) => (
                 <div
                   key={row.key}
@@ -191,9 +157,7 @@ export function TierTriggerPure({
                   <button
                     type="button"
                     role="menuitem"
-                    aria-label={
-                      group.label ? `${group.label} ${row.title}` : row.title
-                    }
+                    aria-label={row.title}
                     onClick={() => handleSelect(row)}
                     className={cn(
                       "flex flex-1 min-w-0 items-start gap-2 px-2 py-1.5 text-left",
@@ -313,9 +277,7 @@ function TierRowModelOverride({
 }
 
 /**
- * Per-tier intent glyph (Lightning / Stars / Atom) used by the cloud runtime.
- * Local runtimes use their harness glyph on every tier instead, keeping the
- * active runtime legible from both the closed trigger and each menu row.
+ * Per-tier intent glyph (Lightning / Stars / Atom) used by hosted Decopilot.
  */
 function tierIconFor(tier: ChatTier): ReactNode {
   if (tier === "fast") return <Lightning01 size={16} />;
@@ -347,139 +309,15 @@ function useTierModelNames(
   };
 }
 
-const SEG_BTN =
-  "flex items-center justify-center gap-1.5 flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors min-w-0";
-const SEG_ACTIVE = "bg-background text-foreground shadow-sm";
-const SEG_INACTIVE = "text-muted-foreground hover:text-foreground";
-
-function Segmented({
-  options,
-}: {
-  options: Array<{
-    key: string;
-    icon: ReactNode;
-    label: string;
-    active: boolean;
-    onSelect: () => void;
-  }>;
-}) {
-  const t = useT();
-  return (
-    <div className="flex items-center gap-1 p-1 rounded-lg bg-muted">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={o.onSelect}
-          aria-pressed={o.active}
-          className={cn(SEG_BTN, o.active ? SEG_ACTIVE : SEG_INACTIVE)}
-          title={o.active ? t("chat.tierTrigger.selected") : undefined}
-        >
-          {o.icon}
-          <span className="truncate">{o.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /**
- * Runtime location toggle shown at the top of the tier popover when a desktop
- * is linked with a coding agent: Cloud (org router) ⟷ This device. Writes the
- * (harness, sandbox) choice through `pendingAgentOption`. The specific local
- * CLI (Claude / Codex) is no longer a nested toggle here — each CLI's tiers are
- * listed directly below as their own group. Hidden on a locked thread.
- */
-function RuntimeToggle() {
-  const t = useT();
-  const { pendingHarnessId, setPendingAgentOption } = useChatPrefs();
-  const availability = useAgentOptionAvailability();
-  const isLocal =
-    pendingHarnessId === "claude-code" || pendingHarnessId === "codex";
-  // This toggle only renders when a local CLI is present (TierTrigger gates on
-  // `hasLocal`), so the fallback is unreachable — but keep it total.
-  const firstLocal: AgentOption =
-    preferredLocalAgentOption(availability) ?? "claude-code-desktop";
-
-  return (
-    <div className="p-1">
-      <Segmented
-        options={[
-          {
-            key: "cloud",
-            icon: <Cloud01 size={14} />,
-            label: t("chat.tierTrigger.runtimeCloud"),
-            active: !isLocal,
-            onSelect: () => setPendingAgentOption("decopilot"),
-          },
-          {
-            key: "local",
-            icon: <Monitor01 size={14} />,
-            label: t("chat.tierTrigger.runtimeThisDevice"),
-            active: isLocal,
-            onSelect: () => setPendingAgentOption(firstLocal),
-          },
-        ]}
-      />
-    </div>
-  );
-}
-
-/** Build a runtime's three tier rows. Selecting a row pins the runtime (via
- *  `option`) and the tier in one click. */
-function localGroup(params: {
-  key: string;
-  label: string | undefined;
-  icon: ReactNode;
-  mode: AgentMode;
-  option: AgentOption;
-  isActiveRuntime: boolean;
-  currentTier: ChatTier;
-  setOption: (option: AgentOption) => void;
-  setTier: (tier: ChatTier) => void;
-  tierLabels: Record<ChatTier, string>;
-  t: TFunction;
-}): TierGroup {
-  return {
-    key: params.key,
-    label: params.label,
-    rows: TIER_ORDER.map((t) => ({
-      key: `${params.key}-${t}`,
-      icon: params.icon,
-      title: params.tierLabels[t],
-      subtitle: resolveTierSubtitle(params.mode, t, params.t),
-      active: params.isActiveRuntime && params.currentTier === t,
-      onSelect: () => {
-        params.setOption(params.option);
-        params.setTier(t);
-      },
-    })),
-  };
-}
-
-/**
- * Smart wrapper used by `Chat.Input`. Reads current tier + mode, and builds the
- * popover groups. Cloud renders a single ungrouped list of tiers; when a
- * desktop is linked it surfaces the Cloud ⟷ This device toggle in the header
- * and — in local mode — lists each available CLI's tiers as its own group so a
- * single click picks both the runtime and the tier.
+ * Hosted Decopilot tier picker used by `Chat.Input`. Native coding agents own
+ * their full-screen xterm surface and never render the hosted composer.
  */
 export function TierTrigger() {
   const t = useT();
-  const tier = useChatTier();
-  const setTier = useSetChatTier();
-  const mode = useAgentMode();
-  const { pendingHarnessId, setPendingAgentOption } = useChatPrefs();
-  const availability = useAgentOptionAvailability();
-  const taskCtx = useOptionalChatTask();
-  const locked = taskCtx?.isThreadLocked ?? false;
-  const isDesktopApp = useIsDesktopApp();
-  const hasLocal = availability.claudeCode || availability.codex;
-  const isLocal = mode !== "cloud-decopilot";
-  // Cloud rows only: org config + this user's overrides, wired into each
-  // row's cog popover below.
+  const { simpleModeTier: tier, setSimpleModeTier: setTier } = useChatPrefs();
   const org = useSimpleMode();
-  const keys = useAiProviderKeys();
+  const keys = useHostedAiProviderKeys();
   // Mirrors the server's default-pick across the org's first few keys (not
   // just the first one) so an org with more than one provider — e.g. a
   // self-hosted/local key alongside a cloud one — shows and edits whichever
@@ -494,138 +332,51 @@ export function TierTrigger() {
 
   const tierLabels = getTierLabels(t);
 
-  let groups: TierGroup[];
-  if (isLocal) {
-    // A locked thread is pinned to one harness for its lifetime, so only that
-    // CLI's group is real — listing the other would offer a switch that can't
-    // happen. Otherwise show a CLI when it's detected, or when it's the active
-    // runtime (so the popover never renders empty if detection lags). Label the
-    // groups only when both are shown.
-    const showClaude = locked
-      ? pendingHarnessId === "claude-code"
-      : availability.claudeCode || pendingHarnessId === "claude-code";
-    const showCodex = locked
-      ? pendingHarnessId === "codex"
-      : availability.codex || pendingHarnessId === "codex";
-    const bothShown = showClaude && showCodex;
-    const built: TierGroup[] = [];
-    if (showClaude) {
-      built.push(
-        localGroup({
-          key: "claude-code",
-          label: bothShown
-            ? t("chat.tierTrigger.runtimeClaudeCode")
-            : undefined,
-          icon: <ClaudeCodeIcon size={16} />,
-          mode: "local-claude-code",
-          option: "claude-code-desktop",
-          isActiveRuntime: pendingHarnessId === "claude-code",
-          currentTier: tier,
-          setOption: setPendingAgentOption,
-          setTier,
-          tierLabels,
-          t,
-        }),
-      );
-    }
-    if (showCodex) {
-      built.push(
-        localGroup({
-          key: "codex",
-          label: bothShown ? t("chat.tierTrigger.runtimeCodex") : undefined,
-          icon: <CodexIcon size={16} />,
-          mode: "local-codex",
-          option: "codex-desktop",
-          isActiveRuntime: pendingHarnessId === "codex",
-          currentTier: tier,
-          setOption: setPendingAgentOption,
-          setTier,
-          tierLabels,
-          t,
-        }),
-      );
-    }
-    groups = built;
-  } else {
-    groups = [
-      {
-        key: "cloud",
-        rows: TIER_ORDER.map((tierOption) => {
-          const modelName = tierModelNames[tierOption];
-          const userSlot = userModelPrefs.tiers[tierOption];
-          return {
-            key: `cloud-${tierOption}`,
-            icon: tierIconFor(tierOption),
-            title: tierLabels[tierOption],
-            // Show the concrete model backing this tier; fall back to the
-            // intent blurb before the org config has loaded.
-            subtitle:
-              modelName ??
-              resolveTierSubtitle("cloud-decopilot", tierOption, t),
-            active: tier === tierOption,
-            onSelect: () => setTier(tierOption),
-            // Local CLI tiers are fixed per harness, so only cloud rows get a
-            // personal-override cog.
-            modelOverride: (closeOverride: () => void) => (
-              <>
-                {/* A failed read would otherwise render every tier as "using
-                    organization default" here too — see useUserModelPreferencesQuery. */}
-                {userModelPrefsError && (
-                  <div className="text-xs text-destructive p-3 pb-0">
-                    {t("chat.modelPreferences.loadFailed")}
-                  </div>
-                )}
-                <TierModelOverridePicker
-                  // Remount when the effective slot changes so the picker's
-                  // "browsing which provider key" state can't go stale.
-                  key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
-                  tier={tierOption}
-                  orgSlot={org.tiers[tierOption]}
-                  userSlot={userSlot}
-                  autoSlot={autoDefaults.chat[tierOption]}
-                  onClose={closeOverride}
-                  onPick={(slot) =>
-                    updateUserModelPreferences.mutate({
-                      tier: tierOption,
-                      slot,
-                    })
-                  }
-                  onReset={() =>
-                    updateUserModelPreferences.mutate({
-                      tier: tierOption,
-                      slot: null,
-                    })
-                  }
-                />
-              </>
-            ),
-          };
-        }),
-      },
-    ];
-  }
-
-  const localBrand = isLocal ? localHarnessBrand(pendingHarnessId) : null;
-  const LocalBrandIcon = localBrand?.Icon;
+  const groups: TierGroup[] = [
+    {
+      key: "decopilot",
+      rows: TIER_ORDER.map((tierOption) => {
+        const modelName = tierModelNames[tierOption];
+        const userSlot = userModelPrefs.tiers[tierOption];
+        return {
+          key: `decopilot-${tierOption}`,
+          icon: tierIconFor(tierOption),
+          title: tierLabels[tierOption],
+          subtitle: modelName ?? t(TIER_DESCRIPTION_KEYS[tierOption]),
+          active: tier === tierOption,
+          onSelect: () => setTier(tierOption),
+          modelOverride: (closeOverride: () => void) => (
+            <>
+              {userModelPrefsError && (
+                <div className="text-xs text-destructive p-3 pb-0">
+                  {t("chat.modelPreferences.loadFailed")}
+                </div>
+              )}
+              <TierModelOverridePicker
+                key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
+                tier={tierOption}
+                orgSlot={org.tiers[tierOption]}
+                userSlot={userSlot}
+                autoSlot={autoDefaults.chat[tierOption]}
+                onClose={closeOverride}
+                onPick={(slot) =>
+                  updateUserModelPreferences.mutate({ tier: tierOption, slot })
+                }
+                onReset={() =>
+                  updateUserModelPreferences.mutate({
+                    tier: tierOption,
+                    slot: null,
+                  })
+                }
+              />
+            </>
+          ),
+        };
+      }),
+    },
+  ];
 
   return (
-    <TierTriggerPure
-      tier={tier}
-      pillIcon={
-        LocalBrandIcon ? <LocalBrandIcon size={16} /> : tierIconFor(tier)
-      }
-      pillLabel={
-        localBrand
-          ? `${t(localBrand.labelKey)} ${tierLabels[tier]}`
-          : tierLabels[tier]
-      }
-      groups={groups}
-      // Hidden on desktop for the same reason as `locked`: the runtime is not
-      // a choice there. Everything runs in a sandbox on this machine, so a
-      // two-way cloud/device control offers a state the app cannot enter.
-      header={
-        hasLocal && !locked && !isDesktopApp ? <RuntimeToggle /> : undefined
-      }
-    />
+    <TierTriggerPure tier={tier} pillIcon={tierIconFor(tier)} groups={groups} />
   );
 }

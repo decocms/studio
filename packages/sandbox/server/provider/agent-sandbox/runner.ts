@@ -1202,7 +1202,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
-
     const claim = this.buildClaim(handle, opts, {
       token,
       daemonBootId,
@@ -1323,11 +1322,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // (separate endpoint — see postOrgFsConfig). Post-bind on purpose:
       // warm-pool claims reject spec.env. Best-effort: mounts are additive,
       // a relay failure must not fail provisioning.
-      if (opts.orgFsConfigJson) {
-        await postOrgFsConfig(daemonUrl, token, opts.orgFsConfigJson).catch(
-          (err) => console.warn("[org-fs] sidecar config relay failed", err),
-        );
-      }
+      await this.relayOrgFsConfig(daemonUrl, token, opts.orgFsConfigJson);
     } catch (err) {
       this.closeForwarder(daemonForward);
       await this.deleteHttpRouteIfManaged(handle).catch(() => {});
@@ -1348,6 +1343,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       workload: opts.workload ?? null,
       daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
+      // Persist the impl the claim actually got, not the one asked for: with the
+      // kill switch off a `go` request lands on ts, and recovery must replay
+      // what ran. Same pure call buildClaim made above.
       ensureOpts: stripEnsureOpts(opts),
     };
   }
@@ -1371,6 +1369,24 @@ export class AgentSandboxProvider implements SandboxProvider {
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
     });
+  }
+
+  /**
+   * Relay org-fs mount config to the pod's privileged sidecar (separate
+   * endpoint — see `postOrgFsConfig`). Shared by fresh provision and
+   * warm-pool re-bootstrap; a recreated pool pod's sidecar starts unmounted
+   * and must be re-configured the same way a fresh one is. Best-effort:
+   * mounts are additive, a relay failure must not fail provisioning/recovery.
+   */
+  private async relayOrgFsConfig(
+    daemonUrl: string,
+    token: string,
+    orgFsConfigJson: string | undefined,
+  ): Promise<void> {
+    if (!orgFsConfigJson) return;
+    await postOrgFsConfig(daemonUrl, token, orgFsConfigJson).catch((err) =>
+      console.warn("[org-fs] sidecar config relay failed", err),
+    );
   }
 
   /**
@@ -1517,6 +1533,14 @@ export class AgentSandboxProvider implements SandboxProvider {
       await postConfig(daemonUrl, this.sentinelToken, payload, {
         rotateToken: token,
       });
+      // A recreated pool pod boots with an empty sidecar — the org-fs mounts
+      // from the original provision must be re-relayed here too, or a pod
+      // recreated under a live claim silently loses them.
+      await this.relayOrgFsConfig(
+        daemonUrl,
+        token,
+        ensureOpts?.orgFsConfigJson,
+      );
       return true;
     } catch (err) {
       // A 401 means the daemon no longer accepts the sentinel: it was already
@@ -1529,6 +1553,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       if (err instanceof ConfigRequestError && err.status === 401) {
         try {
           await postConfig(daemonUrl, token, payload, { rotateToken: token });
+          await this.relayOrgFsConfig(
+            daemonUrl,
+            token,
+            ensureOpts?.orgFsConfigJson,
+          );
           return true;
         } catch (retryErr) {
           console.warn(
@@ -1751,6 +1780,8 @@ export class AgentSandboxProvider implements SandboxProvider {
       daemonBootId: live.bootId,
       tenant: state.tenant ?? null,
       ensureOpts: state.ensureOpts ?? null,
+      // Rows written before the rollout gate existed have no persisted impl;
+      // they are TS sandboxes by construction, but say null rather than guess.
     };
   }
 
@@ -1826,6 +1857,10 @@ export class AgentSandboxProvider implements SandboxProvider {
       // can't autonomously re-provision; falls back to the caller's
       // SANDBOX_START path.
       ensureOpts: null,
+      // The one thing that IS recoverable without ensureOpts: the claim label
+      // studio stamped at provision time. Without this, every adopted sandbox
+      // would drop out of the impl split during exactly the incident (studio
+      // restarted, state-store empty) you'd be reading the dashboard for.
     };
   }
 
@@ -2148,7 +2183,7 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
   return {
     active: meter.createUpDownCounter("studio.sandbox.active", {
       description:
-        "Active sandbox count, by runner kind and owning org. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (studio deleted but K8s didn't reap) or unattributed pods.",
+        "Active sandbox count, by runner kind, owning org, and daemon impl. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (studio deleted but K8s didn't reap) or unattributed pods.",
       unit: "{sandbox}",
     }),
     ensureOutcome: meter.createCounter("studio.sandbox.ensure.outcome", {
@@ -2403,12 +2438,16 @@ function tenantAttrs(tenant: RunnerTenant | null): {
  * (k8s ignores it — template pins the image) and any nullish entries so the
  * persisted blob stays small.
  */
-function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
+export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   const out: EnsureOptions = {};
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
   if (opts.tenant) out.tenant = opts.tenant;
+  // Without this, `resurrectByHandle` re-provisioning from these persisted
+  // opts (no SANDBOX_START in that loop) would silently drop the org-fs
+  // mounts a live sandbox had.
+  if (opts.orgFsConfigJson) out.orgFsConfigJson = opts.orgFsConfigJson;
   return Object.keys(out).length > 0 ? out : null;
 }
 

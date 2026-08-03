@@ -30,24 +30,17 @@ const stubAgentSandbox: SandboxProvider = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
-const stubDesktop: SandboxProvider = {
-  ...stubAgentSandbox,
-  kind: "user-desktop",
-};
-
 const realLifecycle = await import("./lifecycle");
 
 // Mock lifecycle: dispatch on requested kind so we can assert which one was
 // picked.
 const byKindSpy = mock(async (_ctx: unknown, kind: SandboxProviderKind) => {
   if (kind === "agent-sandbox") return stubAgentSandbox;
-  throw new Error("unreachable — resolver builds user-desktop directly");
+  throw new Error(`unexpected kind reached lifecycle: ${kind}`);
 });
-const buildDesktopSpy = mock(async (_ctx: unknown) => stubDesktop);
 
 mock.module("./lifecycle", () => ({
   getSandboxProviderByKind: byKindSpy,
-  buildDesktopProvider: buildDesktopSpy,
   getOrInitSharedRunner: realLifecycle.getOrInitSharedRunner,
   subscribeLifecycle: realLifecycle.subscribeLifecycle,
   __resetSharedLifecyclesForTesting:
@@ -95,7 +88,6 @@ describe("resolveSandboxProvider", () => {
     });
     expect(kind).toBe("agent-sandbox");
     expect(provider).toBe(stubAgentSandbox);
-    expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
   test("no sandboxMap entry + no ctx hint → env kind (default policy is env-only)", async () => {
@@ -110,7 +102,6 @@ describe("resolveSandboxProvider", () => {
     });
     expect(kind).toBe("agent-sandbox");
     expect(provider).toBe(stubAgentSandbox);
-    expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
   test("explicit override beats both sandboxMap and default policy", async () => {
@@ -148,12 +139,10 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("agent-sandbox");
   });
 
-  test("ctx hint (sandboxPreference=user-desktop) short-circuits without sandboxMap read", async () => {
-    // dispatch-run sets `sandboxPreference` on ctx from the resolved
-    // DispatchTarget. Resolver must honor it and skip the sandboxMap lookup so
-    // the decopilot hot path doesn't pay a DB hit per turn. Metadata is
-    // intentionally present and would point at a *different* recorded kind —
-    // proving the hint wins.
+  test("ctx hint (sandboxPreference=user-desktop) resolves to the hosted provider", async () => {
+    // `user-desktop` is a legacy value with no implementation since the link
+    // daemon was removed. It must still resolve — to the hosted provider —
+    // rather than throw, and still skip the sandboxMap lookup.
     const metadata = {
       sandboxMap: {
         "u-1": {
@@ -178,8 +167,8 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
     });
-    expect(kind).toBe("user-desktop");
-    expect(provider).toBe(stubDesktop);
+    expect(kind).toBe("agent-sandbox");
+    expect(provider).toBe(stubAgentSandbox);
   });
 
   test("ctx hint (sandboxPreference=cluster-default) routes to env kind", async () => {
@@ -193,12 +182,12 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("agent-sandbox");
   });
 
-  test("sandboxPreference=cluster-default + env=user-desktop → binds user-desktop", async () => {
-    // Regression: background fires (cron/webhook/event automations) get
-    // `sandboxPreference: "cluster-default"` from dispatch-run, but in local
-    // dev env defaults to `user-desktop`. Before the fix this hit
-    // `instantiate("user-desktop")` directly and threw the confusing
-    // "user-desktop provider cannot be instantiated without a per-run link claim".
+  test("sandboxPreference=cluster-default + env=user-desktop → hosted", async () => {
+    // Background fires (cron/webhook/event automations) get
+    // `sandboxPreference: "cluster-default"`, and a local dev env may still be
+    // pinned to the legacy `user-desktop`. It resolves to hosted rather than
+    // throwing on a provider that no longer exists — and reports the hosted
+    // kind, so nothing new is persisted under a kind with no runner.
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
@@ -208,8 +197,8 @@ describe("resolveSandboxProvider", () => {
         branch: "deco/foo",
         virtualMcpMetadata: null,
       });
-      expect(kind).toBe("user-desktop");
-      expect(provider).toBe(stubDesktop);
+      expect(kind).toBe("agent-sandbox");
+      expect(provider).toBe(stubAgentSandbox);
     } finally {
       process.env.STUDIO_SANDBOX_PROVIDER = prev;
     }
@@ -232,38 +221,17 @@ describe("resolveSandboxProvider", () => {
     }
   });
 
-  test("sandboxPreference=cluster-default + env=user-desktop + no link → builds desktop optimistically", async () => {
-    // Optimistic presence: there is no claim precondition anymore. With env
-    // resolving to `user-desktop`, `cluster-default` builds the desktop provider
-    // unconditionally — operations fail-fast over the tunnel if no daemon
-    // answers, rather than the resolver refusing up front.
-    const prev = process.env.STUDIO_SANDBOX_PROVIDER;
-    process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
-    try {
-      const ctx = stubCtx({ sandboxPreference: "cluster-default" });
-      const { kind, provider } = await resolveSandboxProvider(ctx, {
-        userId: "u-1",
-        branch: "deco/foo",
-        virtualMcpMetadata: null,
-      });
-      expect(kind).toBe("user-desktop");
-      expect(provider).toBe(stubDesktop);
-    } finally {
-      process.env.STUDIO_SANDBOX_PROVIDER = prev;
-    }
-  });
-
-  test("recorded user-desktop builds the desktop provider even when offline", async () => {
-    // Optimistic presence: a sandboxMap entry recorded as `user-desktop` resolves
-    // to the desktop provider regardless of link liveness. There is no pre-flight
-    // claim check — the tunnel operation fails-fast later if no daemon answers,
-    // and the VM-tool layer reaps + respawns on proxy failure.
+  test("a recorded user-desktop sandboxMap entry still resolves, on hosted", async () => {
+    // Old rows persist `user-desktop` (migration 092 normalized `desktop` /
+    // `remote-user` into it). Reading one must not throw now that the desktop
+    // provider is gone — it is served by hosted AND reported as `agent-sandbox`,
+    // so a caller that re-persists this kind writes the runner it actually got.
     const metadata = {
       sandboxMap: {
         "u-1": {
           "deco/foo": {
             "user-desktop": {
-              sandboxHandle: "vm_xyz",
+              sandboxHandle: "vm_desktop",
               previewUrl: "https://p",
               sandboxApiUrl: "https://p",
               sandboxProviderKind: "user-desktop",
@@ -274,12 +242,13 @@ describe("resolveSandboxProvider", () => {
         },
       },
     };
-    const { kind, provider } = await resolveSandboxProvider(stubCtx(), {
+    const ctx = stubCtx({});
+    const { kind, provider } = await resolveSandboxProvider(ctx, {
       userId: "u-1",
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
     });
-    expect(kind).toBe("user-desktop");
-    expect(provider).toBe(stubDesktop);
+    expect(kind).toBe("agent-sandbox");
+    expect(provider).toBe(stubAgentSandbox);
   });
 });

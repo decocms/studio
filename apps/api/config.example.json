@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "$comment": "Full config.json example. Copy to config.json and customize. See also auth-config.example.json for auth-only config.",
+  "$comment": "Full config.json example. Copy to config.json and customize.",
   "auth": {
     "emailAndPassword": {
       "enabled": true

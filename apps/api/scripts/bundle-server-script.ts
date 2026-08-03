@@ -23,7 +23,6 @@ const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
-  "@anthropic-ai/claude-agent-sdk",
   "@dbos-inc/dbos-sdk",
   "embedded-postgres",
   "ink",
@@ -91,18 +90,6 @@ const ALWAYS_INCLUDE = [
   "@decocms/better-auth",
   "better-auth",
   "@better-auth/sso",
-  // The OG-card renderer (src/reports/og-card.ts → src/api/routes/report-pages).
-  // Both use package.json `exports` maps that @vercel/nft can't follow from the
-  // source import, so nft returns 0 traced files and neither lands in the copy
-  // set. bun build then tries to INLINE them into server.js — and satori pulls
-  // yoga (wasm) while @resvg/resvg-js loads a native .node, so bun needs to emit
-  // a second output file and dies with "cannot write multiple output files
-  // without an output directory". Listing them here makes nft root-resolve each
-  // (skipping the broken exports walk) so they're copied and externalized, never
-  // inlined. Their platform-specific native binary is handled by
-  // EXCLUDE_COPY_PREFIXES below.
-  "satori",
-  "@resvg/resvg-js",
 ];
 const ALWAYS_EXCLUDE = [
   "kysely-codegen",
@@ -124,14 +111,7 @@ const ALWAYS_EXCLUDE = [
 // (CI builds linux-x64; a Mac/arm consumer's runtime never loads it, and the
 // Docker `bun add` already installs the correct linux-<arch> binary per image).
 // Skipping the copy lets the consumer's install supply the right binary.
-// @resvg/resvg-js resolves its native binary from a per-platform optional
-// dependency (@resvg/resvg-js-linux-x64-gnu, -darwin-arm64, …). Like
-// @embedded-postgres/<platform>, the build host traces only its OWN platform's
-// binary, so bundling it is dead weight (and wrong-platform) for every other
-// target. The `@resvg/resvg-js` wrapper is externalized (see ALWAYS_INCLUDE),
-// so bun never bundles the require; at runtime the Docker `bun add` installs the
-// matching binary and node resolution finds it. Skip copying the host binary.
-const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/", "@resvg/resvg-js-"];
+const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/"];
 
 // Parse command line arguments
 function parseArgs() {
@@ -417,7 +397,7 @@ async function pruneNodeModules(): Promise<Set<string>> {
     // @decocms/better-auth is the one published @decocms/* dep, so it ships
     // like any other.
     //
-    // Because workspace deps (e.g. @decocms/harness) are inlined from source
+    // Because workspace deps (e.g. @decocms/shared) are inlined from source
     // rather than read from npm at runtime, the published `decocms` CLI only
     // picks up a harness change when studio itself re-releases and re-bundles.
     // A harness-only version bump does NOT reach `decocms@latest` on its own.
@@ -657,22 +637,6 @@ async function copyQuickjsWasm() {
 
   await cp(wasmSource, wasmDest);
   console.log(`✅ QuickJS WASM copied to ${wasmDest}`);
-}
-
-// host/runner.ts inlines packages/sandbox/daemon/dist/daemon.js via a
-// text-import attribute. `bun build` needs that file present on disk to
-// embed it into the server bundle, so produce it before bundling.
-// Idempotent — `bun run build` just rewrites the same outfile.
-async function buildSandboxDaemon() {
-  console.log("🔨 Building sandbox daemon bundle...");
-  const sandboxRoot = join(WORKSPACE_ROOT, "packages/sandbox");
-  await $`bun run build`.cwd(sandboxRoot).quiet();
-  const daemonBundle = join(sandboxRoot, "daemon/dist/daemon.js");
-  if (!existsSync(daemonBundle)) {
-    console.error(`❌ Sandbox daemon bundle missing at ${daemonBundle}`);
-    process.exit(1);
-  }
-  console.log(`✅ Sandbox daemon bundle ready at ${daemonBundle}`);
 }
 
 // Node built-ins — these don't need to be in dist/server/node_modules/.
@@ -916,9 +880,6 @@ async function stripNonRuntimeFiles() {
 }
 
 async function main() {
-  // Build sandbox daemon bundle so runner.ts's text-import has a file to embed.
-  await buildSandboxDaemon();
-
   // Prune node_modules to only include required dependencies for both scripts
   const packagesToExternalize = await pruneNodeModules();
 

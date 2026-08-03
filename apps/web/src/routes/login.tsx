@@ -1,6 +1,7 @@
 import { AuthEntry } from "@/components/auth-entry";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { SplashScreen } from "@/components/splash-screen";
+import { useNativeSessionSync } from "@/desktop/use-native-session-sync";
 import { authClient } from "@/lib/auth-client";
 import { captureSignupAttribution } from "@/lib/signup-attribution";
 import { Navigate, useSearch } from "@tanstack/react-router";
@@ -41,6 +42,11 @@ function buildOAuthAuthorizeUrl(params: {
 
 export default function LoginRoute() {
   const session = authClient.useSession();
+  // Desktop only (inert on web): after the system-browser PKCE flow heals
+  // the Keychain, nothing else tells better-auth's `useSession` to re-fetch
+  // — without this the page would keep showing the sign-in form after a
+  // successful sign-in. See `@/desktop/use-native-session-sync`.
+  useNativeSessionSync();
   const searchParams = useSearch({ from: "/login" });
   const {
     next: rawNext = "/",

@@ -2,7 +2,7 @@
 //! (`POST /_sandbox/bash` with `mode:"background"`), the `tasks` family
 //! (`/_sandbox/tasks*`), and the `scripts`/exec family
 //! (`POST /_sandbox/exec/:name`). Byte-parity target for the summary shape:
-//! `TaskSummary` in `packages/sandbox/daemon/process/task-manager.ts`.
+//! `TaskSummary` in `packages/sandbox/daemon-go/internal/proc/taskmanager.go`.
 //!
 //! Owned by the bash+tasks family (see
 //! the native module-ownership contract) — extended past the Phase 1

@@ -1,6 +1,3 @@
-import type { HarnessId } from "@decocms/harness/types";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-
 /**
  * Lock-aware submit-settings resolver.
  *
@@ -11,7 +8,7 @@ import type { SandboxProviderKind } from "@decocms/sandbox/provider";
  * them from the thread row.
  *
  * For unlocked threads (no row yet, or a legacy row with `harness_id IS
- * NULL`), the submit ships the user's current global picker selection.
+ * NULL`), hosted web explicitly pins Decopilot on the managed agent sandbox.
  *
  * Pure function, no I/O. See spec:
  * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
@@ -24,14 +21,12 @@ export interface ResolveSubmitSettingsThread {
 }
 
 export interface ResolveSubmitSettingsGlobals {
-  harnessId?: HarnessId;
-  sandboxProviderKind?: SandboxProviderKind;
   branch?: string | null;
 }
 
 export interface ResolveSubmitSettingsResult {
-  harnessId?: HarnessId;
-  sandboxProviderKind?: SandboxProviderKind;
+  harnessId?: "decopilot";
+  sandboxProviderKind?: "agent-sandbox";
   branch?: string | null;
 }
 
@@ -43,8 +38,8 @@ export function resolveSubmitSettings(args: {
     return {};
   }
   return {
-    harnessId: args.globals.harnessId,
-    sandboxProviderKind: args.globals.sandboxProviderKind,
+    harnessId: "decopilot",
+    sandboxProviderKind: "agent-sandbox",
     branch: args.globals.branch ?? null,
   };
 }

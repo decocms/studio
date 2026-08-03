@@ -403,6 +403,20 @@ export class TaskBoardStorage {
           item.updatedBy,
         ),
       );
+      // Record the transition — the reviewer flow keys its "current review
+      // cycle" off the newest `status_changed→in_review` activity, and a
+      // re-review (Super Agent pushed a fix to the same PR, no new PR opened)
+      // re-enters In Review only through THIS path. Without the activity row
+      // the cycle boundary would stay stale and reviewers would never re-run.
+      // Machine-driven, hence a null actor. Best-effort.
+      await this.recordActivity({
+        taskBoardItemId: taskId,
+        action: "status_changed",
+        actorId: null,
+        data: { from: item.status, to: "in_review" },
+      }).catch((err) =>
+        console.error("[task-board] in_review activity write failed", err),
+      );
     }
     return moved;
   }
@@ -599,6 +613,88 @@ export class TaskBoardStorage {
         data: params.data ? JSON.stringify(params.data) : null,
         occurred_at: new Date().toISOString(),
       })
+      .execute();
+  }
+
+  /**
+   * Atomically claim the (task, reviewer, cycle) slot, minting a token.
+   * `claimed` is false when the slot was already taken (a concurrent enqueue
+   * won the race) — the caller then skips enqueueing that reviewer. Either way
+   * returns the winning claim's `token`, which the reviewer run carries and
+   * echoes back to prove its identity when it records a decision.
+   */
+  async claimReviewer(
+    taskBoardItemId: string,
+    reviewer: string,
+    cycleAt: Date,
+  ): Promise<{ claimed: boolean; token: string }> {
+    const token = `rtok_${crypto.randomUUID()}`;
+    const inserted = await this.db
+      .insertInto("task_board_review_claims")
+      .values({
+        task_board_item_id: taskBoardItemId,
+        reviewer,
+        cycle_at: cycleAt,
+        token,
+      })
+      .onConflict((oc) =>
+        oc.columns(["task_board_item_id", "reviewer", "cycle_at"]).doNothing(),
+      )
+      .returning("token")
+      .executeTakeFirst();
+    if (inserted) return { claimed: true, token: inserted.token };
+    const existing = await this.db
+      .selectFrom("task_board_review_claims")
+      .select("token")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("reviewer", "=", reviewer)
+      .where("cycle_at", "=", cycleAt)
+      .executeTakeFirst();
+    return { claimed: false, token: existing?.token ?? token };
+  }
+
+  /** Resolve a review token to its claim (which reviewer, which cycle) for a
+   *  task. Null when the token doesn't belong to this task — used to verify
+   *  that a decision's caller really is the reviewer it claims to be. */
+  async resolveReviewClaimByToken(
+    taskBoardItemId: string,
+    token: string,
+  ): Promise<{ reviewer: string; cycleAt: Date } | null> {
+    const row = await this.db
+      .selectFrom("task_board_review_claims")
+      .select(["reviewer", "cycle_at"])
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("token", "=", token)
+      .executeTakeFirst();
+    return row ? { reviewer: row.reviewer, cycleAt: row.cycle_at } : null;
+  }
+
+  /** Append several activity events in one insert — same semantics as
+   *  `recordActivity`, batched so a caller earning multiple timeline entries
+   *  from one change (e.g. a status+assignee+tags update) pays a single DB
+   *  round-trip instead of one per entry. */
+  async recordActivities(
+    entries: {
+      taskBoardItemId: string;
+      action: TaskBoardActivityAction;
+      actorId: string | null;
+      data?: Record<string, unknown>;
+    }[],
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("task_board_activity")
+      .values(
+        entries.map((params) => ({
+          id: generatePrefixedId("act"),
+          task_board_item_id: params.taskBoardItemId,
+          action: params.action,
+          actor_id: params.actorId,
+          data: params.data ? JSON.stringify(params.data) : null,
+          occurred_at: now,
+        })),
+      )
       .execute();
   }
 

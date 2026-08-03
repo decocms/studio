@@ -54,5 +54,11 @@
  * strands..." above). The existing Stop-button cancel path
  * (`cancelThreadGateHead` + `cancelHostedHarness`, `routes.ts`) is the
  * user-facing recovery: cancel the stranded gate/child and re-send.
+ *
+ * Version 6 makes the hosted runtime explicit in automation dispatch-step
+ * output; replaying a version-5 request with no harness would be ambiguous
+ * after coding-agent execution moved exclusively into the native app. It also
+ * adds `validateHostedThread` as the first background-tool workflow step so
+ * durable jobs from the retired desktop transport fail before doing work.
  */
-export const DBOS_WORKFLOW_VERSION = "5";
+export const DBOS_WORKFLOW_VERSION = "6";

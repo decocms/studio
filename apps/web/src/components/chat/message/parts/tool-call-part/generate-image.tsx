@@ -15,7 +15,7 @@ import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import type { UsageStats } from "@/lib/usage-utils.ts";
 import { formatDuration } from "@/lib/format-time.ts";
-import { parseStudioStorageKey } from "@decocms/harness/decopilot/studio-storage-uri";
+import { parseStudioStorageKey } from "@decocms/shared/harness/studio-storage-uri";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
   const key = parseStudioStorageKey(uri);
@@ -43,6 +43,13 @@ interface GenerateImagePartProps {
   part: ToolUIPart;
   /** Latency in seconds from data-tool-metadata part */
   latency?: number;
+}
+
+/** Validated `images` array — guards against a malformed (non-array) backend payload. */
+export function getGeneratedImages(
+  result: GenerateImageResult | undefined,
+): GenerateImageResult["images"] {
+  return Array.isArray(result?.images) ? result.images : undefined;
 }
 
 function extractUsage(
@@ -102,7 +109,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   const state = getEffectiveState(part.state);
   const input = part.input as GenerateImageInput | undefined;
   const result = part.output as GenerateImageResult | undefined;
-  const images = result?.images;
+  const images = getGeneratedImages(result);
   const usage = extractUsage(result);
   const modelLabel = result?.model;
   const refImages = Array.isArray(input?.referenceImages)

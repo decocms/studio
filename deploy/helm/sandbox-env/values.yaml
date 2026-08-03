@@ -39,12 +39,14 @@ envName: ""
 
 # ── sandbox pod image (used by SandboxTemplate) ────────────────────────
 image:
-  repository: ghcr.io/decocms/studio/studio-sandbox
+  # The Go sandbox daemon. The daemon implementation IS the image — there is no
+  # runtime switch, so a pod cannot disagree with the template that created it.
+  repository: ghcr.io/decocms/studio/studio-sandbox-go
   # Pinned to a specific version so chart upgrades pull a matching image
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.28.3"
+  tag: "1.36.0"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -75,6 +77,35 @@ resources:
 # a 30s-bounded push comfortably and still sits inside AWS spot's 120s
 # reclaim notice.
 terminationGracePeriodSeconds: 90
+
+# ── daemon telemetry (OTLP metrics) ───────────────────────────────────
+# Opens exactly ONE in-cluster destination in the sandbox egress boundary —
+# the OTel collector — and hands the daemon the matching
+# OTEL_EXPORTER_OTLP_ENDPOINT. Off by default: rendering costs nothing, and a
+# sandbox with no endpoint starts no exporter.
+#
+# `otlp.ip` MUST be the collector Service's ClusterIP, not a DNS name.
+# Sandboxes run `dnsPolicy: None` against public resolvers (see dnsConfig
+# below), so `gateway-otlp.opentelemetry-collector` is NXDOMAIN inside the pod.
+# Read it with:
+#   kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'
+#
+# KNOWN CEILING: a ClusterIP is stable for the life of a Service but not across
+# a delete/recreate. If the collector is recreated this value goes stale and
+# metrics stop — the daemon logs export failures and keeps serving, because
+# telemetry must never take a sandbox down. Re-read the IP and upgrade.
+#
+# Why a hole here is acceptable when the rest of the boundary is not: the
+# collector is a write-only ingest endpoint with no tenant data behind it. It
+# accepts unauthenticated OTLP, so there is no credential in the pod for user
+# code to steal. User code CAN write junk metrics to it — accepted knowingly;
+# turn `enabled` off to cut it. Do not widen this to a CIDR.
+telemetry:
+  enabled: false
+  otlp:
+    ip: ""
+    # 4318 = OTLP/HTTP. Use 4317 for gRPC (the collector serves both).
+    port: 4318
 
 # ── netinit / sandbox egress enforcement ──────────────────────────────
 # Sandbox pods run user code and must not reach in-cluster services.

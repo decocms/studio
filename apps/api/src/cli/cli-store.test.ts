@@ -25,26 +25,15 @@ describe("cli-store dev mode services", () => {
     );
   });
 
-  test("does not include ToxiProxy by default", () => {
-    setDevMode({ localSandboxProvider: true });
+  test("tracks only the services dev actually spawns", () => {
+    // The ToxiProxy and Sandbox rows went away with the desktop link daemon —
+    // dev no longer spawns a local sandbox provider to route through.
+    setDevMode();
     expect(getCliState().services.map((s) => s.name)).toEqual([
       "Postgres",
       "NATS",
       "API",
       "Vite",
-      "Sandbox",
-    ]);
-  });
-
-  test("includes ToxiProxy before Sandbox when enabled", () => {
-    setDevMode({ localSandboxProvider: true, devLinkToxiProxy: true });
-    expect(getCliState().services.map((s) => s.name)).toEqual([
-      "Postgres",
-      "NATS",
-      "API",
-      "Vite",
-      "ToxiProxy",
-      "Sandbox",
     ]);
   });
 });

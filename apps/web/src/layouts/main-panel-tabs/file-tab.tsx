@@ -54,7 +54,12 @@ function FileToolbar({
       </div>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("mainPanelTabs.fileTab.download")}
+            asChild
+          >
             <a href={file.downloadUrl} download={file.filename}>
               <Download01 size={14} />
             </a>
@@ -69,6 +74,7 @@ function FileToolbar({
           <Button
             variant="ghost"
             size="icon"
+            aria-label={t("mainPanelTabs.fileTab.openInNewTab")}
             onClick={() => window.open(file.downloadUrl, "_blank", "noopener")}
           >
             <LinkExternal01 size={14} />
@@ -80,7 +86,12 @@ function FileToolbar({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("mainPanelTabs.fileTab.close")}
+            onClick={onClose}
+          >
             <XClose size={14} />
           </Button>
         </TooltipTrigger>

@@ -131,7 +131,7 @@ export interface ProjectChunksResult {
    * The parts of the LAST assistant message the fold produced, taken directly
    * from the onFinish callback's responseMessage. Used by the workflow's
    * terminal branch to call resolveThreadStatus(finishReason, finalParts) so
-   * it can distinguish requires_action (tool-approval pause / question ending)
+   * it can distinguish requires_action (tool-approval pause / pending user_ask)
    * from completed without a round-trip back to the DB.
    */
   finalParts: Array<{ type: string; text?: string; state?: string }>;

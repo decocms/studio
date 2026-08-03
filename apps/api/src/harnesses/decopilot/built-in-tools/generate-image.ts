@@ -8,12 +8,12 @@
 
 import type { UIMessageStreamWriter } from "ai";
 import type { StudioProvider } from "@/ai-providers/types";
-import type { ObjectStorageHooks } from "@decocms/harness/harness-deps";
-import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
+import type { ObjectStorageHooks } from "@/harnesses/lib/harness-deps";
+import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
 import {
   createPortableGenerateImageTool,
   type GenerateImageInput,
-} from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
+} from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 
 export type { GenerateImageInput };
 

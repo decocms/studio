@@ -11,15 +11,21 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { resolveSubagent } from "../resolve-subagent";
-import type { ToolSet, UIMessageStreamWriter } from "ai";
+import type {
+  LanguageModelUsage,
+  ModelMessage,
+  StepResult,
+  ToolSet,
+  UIMessageStreamWriter,
+} from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { StudioProvider } from "@/ai-providers/types";
-import type { ModelsConfig } from "@decocms/harness/types";
+import type { ModelsConfig } from "@/harnesses/lib/types";
 import { runAgentLoop } from "../run-agent-loop";
-import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
+import { SUBAGENT_STEP_LIMIT } from "@/harnesses/lib/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
-import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
+import type { CodingWorkspacePromptInput } from "@/harnesses/lib/coding-workspace-prompt";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -44,6 +50,27 @@ export const SubtaskInputSchema = z.object({
 });
 
 export type SubtaskInput = z.infer<typeof SubtaskInputSchema>;
+
+/**
+ * Does this `runAgentLoop` error message describe a broken transport rather
+ * than a rejected request? Only these resume — a 400/401/context-length error
+ * would fail identically on every attempt.
+ *
+ * Exported for its unit test; the drain loop below is the only caller.
+ */
+export function isTransientStreamError(message: string): boolean {
+  return /socket connection was closed|econnreset|epipe|etimedout|fetch failed|terminated|network error|premature close|\b(429|500|502|503|504)\b|overloaded|rate.?limit|timed? ?out/i.test(
+    message,
+  );
+}
+
+/**
+ * How many times a subagent may resume after a transient stream failure.
+ *
+ * ponytail: fixed at 2 — a third attempt against a provider that dropped twice
+ * is almost always the same outage. Make it a setting only if prod disagrees.
+ */
+const MAX_STREAM_RESUMES = 2;
 
 const SUBTASK_DESCRIPTION =
   "Run a focused task in a fresh subagent that works independently and returns only its conclusion.\n\n" +
@@ -105,8 +132,7 @@ export interface SubtaskParams {
    * bash/…), bound to the parent's sandbox via its fs hooks. Forwarded to a
    * SELF-CLONE subagent so it works in the SAME sandbox — its file writes are
    * visible to the parent. Absent for cross-agent delegation (different agent =
-   * different sandbox identity) and when the parent has no sandbox (no
-   * vmContext, e.g. Claude Code).
+   * different sandbox identity) and when the parent has no sandbox context.
    *
    * Only used as a FALLBACK when `parentBuiltInParams` is absent — when present,
    * the subagent rebuilds its own full built-in set (vm tools included) instead.
@@ -313,56 +339,14 @@ export function createSubtaskTool(
             })()
           : undefined;
 
-        // 3. Call runAgentLoop with subagent kind.
-        const handle = await runAgentLoop({
-          kind: "subagent",
-          ctx,
-          organization,
-          virtualMcp: targetRef,
-          mcpClient,
-          provider,
-          models,
-          messages: [{ role: "user", content: prompt }],
-          // Inherit the parent's thread id so a PR the subagent opens still
-          // moves the linked task board card to In Review via the thread link
-          // (see SubtaskParams.currentThreadId).
-          currentThreadId,
-          systemAgentInstructions: targetRef.instructions,
-          abortSignal: abortSignal ?? new AbortController().signal,
-          stepLimit: SUBAGENT_STEP_LIMIT,
-          toolApprovalLevel: "auto",
-          planMode: false,
-          codingWorkspace: subtaskCodingWorkspace,
-          writer,
-          subtaskParams: {
-            provider,
-            organization,
-            models,
-            needsApproval,
-            codingWorkspace: subtaskCodingWorkspace,
-          },
-          // Subagent inherits the parent's writer for nested chunk routing.
-          // Subagent gets prompts/connections blocks via the MCP client
-          // (which is both the tool source AND the prompts source for the
-          // target agent). This passes through to buildAgentSystemPrompt.
-          passthroughClient: mcpClient,
-          // Full heavy built-ins for the subagent (vm/generate_image/web_search).
-          subagentBuiltInParams,
-          // Fallback only — when no parent params are available (no full-built-in
-          // rebuild), a self-clone still inherits the parent's sandbox tools so
-          // it can run bash / file I/O against the SAME sandbox.
-          extraTools: subagentBuiltInParams
-            ? undefined
-            : isSelf
-              ? vmTools
-              : undefined,
-        });
-
         // Surface the subagent's tool calls in the live stream so the UI shows
         // progress even while the subagent works silently (calling tools, not
         // emitting text). The input STREAMS as it's generated (capped), so a
         // long call (e.g. a file write) reveals progressively rather than
         // popping in whole when the call completes.
+        //
+        // Declared OUTSIDE the resume loop below: a resumed attempt continues
+        // the same transcript instead of restarting the rendered text.
         let streamedText = "";
         // The tool call currently streaming its input (name + accumulated args).
         let pending: { name: string; args: string } | null = null;
@@ -383,52 +367,158 @@ export function createSubtaskTool(
           const sep = streamedText && !streamedText.endsWith("\n") ? "\n" : "";
           return `${streamedText}${sep}↳ ${args ? `${pending.name} ${args}` : pending.name}`;
         };
-        for await (const part of handle.result.fullStream) {
-          const now = performance.now();
-          if (part.type === "text-delta") {
-            commitPending();
-            streamedText += part.text;
-            if (now - lastFlush >= FLUSH_MS) {
+
+        // 3. Drive runAgentLoop, RESUMING across a transient stream failure.
+        //
+        // A provider stream that dies mid-run (socket close, gateway 5xx) used
+        // to end the subagent right there: `handle.error` set, every completed
+        // step discarded, and the parent handed a bare "Subtask failed" — so
+        // the parent had to redo work the subagent had already done, against
+        // side effects it had already applied. Resume instead: replay the
+        // completed steps' response messages, so already-executed tool calls
+        // are NOT re-run, and let the loop carry on from where it broke.
+        // The step budget is shared across attempts, never refreshed.
+        let convo: ModelMessage[] = [{ role: "user", content: prompt }];
+        const steps: StepResult<ToolSet>[] = [];
+        // The LAST attempt's usage object, so the provider's own detail
+        // (`raw`, cache/reasoning token breakdowns) still reaches the metadata
+        // chunk — with the earlier attempts' totals folded into the counts.
+        let usage: LanguageModelUsage | undefined;
+        let error: string | undefined;
+        let finishReason = "unknown";
+        let resumes = 0;
+
+        while (true) {
+          const handle = await runAgentLoop({
+            kind: "subagent",
+            ctx,
+            organization,
+            virtualMcp: targetRef,
+            mcpClient,
+            provider,
+            models,
+            messages: convo,
+            // Inherit the parent's thread id so a PR the subagent opens still
+            // moves the linked task board card to In Review via the thread link
+            // (see SubtaskParams.currentThreadId).
+            currentThreadId,
+            systemAgentInstructions: targetRef.instructions,
+            abortSignal: abortSignal ?? new AbortController().signal,
+            // Budget is shared across resumes — a resumed run gets what's left,
+            // never a fresh 30, so a flapping provider can't multiply the cost.
+            stepLimit: SUBAGENT_STEP_LIMIT - steps.length,
+            toolApprovalLevel: "auto",
+            planMode: false,
+            codingWorkspace: subtaskCodingWorkspace,
+            writer,
+            subtaskParams: {
+              provider,
+              organization,
+              models,
+              needsApproval,
+              codingWorkspace: subtaskCodingWorkspace,
+            },
+            // Subagent inherits the parent's writer for nested chunk routing.
+            // Subagent gets prompts/connections blocks via the MCP client
+            // (which is both the tool source AND the prompts source for the
+            // target agent). This passes through to buildAgentSystemPrompt.
+            passthroughClient: mcpClient,
+            // Full heavy built-ins for the subagent (vm/generate_image/web_search).
+            subagentBuiltInParams,
+            // Fallback only — when no parent params are available (no full-built-in
+            // rebuild), a self-clone still inherits the parent's sandbox tools so
+            // it can run bash / file I/O against the SAME sandbox.
+            extraTools: subagentBuiltInParams
+              ? undefined
+              : isSelf
+                ? vmTools
+                : undefined,
+          });
+
+          for await (const part of handle.result.fullStream) {
+            const now = performance.now();
+            if (part.type === "text-delta") {
+              commitPending();
+              streamedText += part.text;
+              if (now - lastFlush >= FLUSH_MS) {
+                lastFlush = now;
+                yield { text: streamedText };
+              }
+            } else if (part.type === "tool-input-start") {
+              // A new call begins — commit any prior pending line, start streaming.
+              commitPending();
+              pending = { name: part.toolName, args: "" };
+              lastFlush = now;
+              yield { text: render() };
+            } else if (part.type === "tool-input-delta") {
+              if (pending) pending.args += part.delta;
+              if (now - lastFlush >= FLUSH_MS) {
+                lastFlush = now;
+                yield { text: render() };
+              }
+            } else if (part.type === "tool-call") {
+              // Authoritative complete input — finalize with the full (capped) args.
+              const sep =
+                streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+              streamedText += `${sep}↳ ${formatToolCall(part.toolName, part.input)}\n`;
+              pending = null;
               lastFlush = now;
               yield { text: streamedText };
             }
-          } else if (part.type === "tool-input-start") {
-            // A new call begins — commit any prior pending line, start streaming.
-            commitPending();
-            pending = { name: part.toolName, args: "" };
-            lastFlush = now;
-            yield { text: render() };
-          } else if (part.type === "tool-input-delta") {
-            if (pending) pending.args += part.delta;
-            if (now - lastFlush >= FLUSH_MS) {
-              lastFlush = now;
-              yield { text: render() };
-            }
-          } else if (part.type === "tool-call") {
-            // Authoritative complete input — finalize with the full (capped) args.
-            const sep =
-              streamedText && !streamedText.endsWith("\n") ? "\n" : "";
-            streamedText += `${sep}↳ ${formatToolCall(part.toolName, part.input)}\n`;
-            pending = null;
-            lastFlush = now;
-            yield { text: streamedText };
           }
-        }
-        commitPending();
+          commitPending();
 
-        // 5. Collect results from the resolved promises.
-        const error = await handle.error;
-        const finishReason = await handle.result.finishReason;
-        const steps = await handle.result.steps;
+          // 4. Collect this attempt's results from the resolved promises.
+          error = await handle.error;
+          finishReason = await handle.result.finishReason;
+          const attemptSteps = await handle.result.steps;
+          steps.push(...attemptSteps);
+          const attemptUsage = await handle.result.usage;
+          usage = {
+            ...attemptUsage,
+            inputTokens:
+              (usage?.inputTokens ?? 0) + (attemptUsage.inputTokens ?? 0),
+            outputTokens:
+              (usage?.outputTokens ?? 0) + (attemptUsage.outputTokens ?? 0),
+            totalTokens:
+              (usage?.totalTokens ?? 0) + (attemptUsage.totalTokens ?? 0),
+          };
+
+          // 5. Resume only a broken transport, and only while budget remains.
+          //    An abort is the user stopping this subtask — never resume it.
+          if (
+            !error ||
+            !isTransientStreamError(error) ||
+            resumes >= MAX_STREAM_RESUMES ||
+            steps.length >= SUBAGENT_STEP_LIMIT ||
+            abortSignal?.aborted
+          ) {
+            break;
+          }
+          resumes++;
+          console.warn(
+            `[subtask:${targetLabel}${isSelf ? ":self" : ""}] transient stream failure after ${steps.length} step(s), resuming (${resumes}/${MAX_STREAM_RESUMES}): ${error}`,
+          );
+          // Replaying the completed steps' response messages is what makes this
+          // a RESUME and not a restart: every tool call already executed is in
+          // the transcript with its result, so the model continues rather than
+          // re-running it. Empty (the failure landed before step 1) → the same
+          // `convo` is retried, which is the plain-retry case.
+          convo = [
+            ...convo,
+            ...attemptSteps.flatMap((s) => s.response.messages),
+          ];
+          error = undefined;
+        }
+
         const aggregatedText = steps
           .map((s) => s.text ?? "")
           .filter((t) => t.trim().length > 0)
           .join("\n\n")
           .trim();
-        const usage = await handle.result.usage;
 
         console.log(
-          `[subtask:${targetLabel}${isSelf ? ":self" : ""}] completed: finishReason=${finishReason}, steps=${steps.length}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens })}`,
+          `[subtask:${targetLabel}${isSelf ? ":self" : ""}] completed: finishReason=${finishReason}, steps=${steps.length}, resumes=${resumes}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens })}`,
         );
 
         // 6. Roll the child's usage into the PARENT run's accumulator so the
@@ -436,9 +526,9 @@ export function createSubtaskTool(
         //    (Task 17 — the kernel sees one number). Per-subtask detail still
         //    rides the `data-tool-subtask-metadata` chunk below.
         onChildUsage?.({
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          totalTokens: usage.totalTokens ?? 0,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          totalTokens: usage?.totalTokens ?? 0,
         });
 
         // 6b. Emit metadata chunks to the parent's writer.
@@ -471,9 +561,15 @@ export function createSubtaskTool(
         | { text?: string; error?: string; finishReason?: string }
         | undefined;
       if (o?.error) {
+        // Hand back whatever the subagent DID produce before it died. Dropping
+        // it made the parent redo work that had already run (and whose side
+        // effects had already landed) with no way to know that.
+        const partial = o.text?.trim();
         return {
           type: "error-text" as const,
-          value: `Subtask failed: ${o.error}`,
+          value: partial
+            ? `Subtask failed: ${o.error}\n\nPartial result produced before the failure (its tool calls already ran — do not repeat them blindly):\n\n${partial}`
+            : `Subtask failed: ${o.error}`,
         };
       }
       const text = o?.text?.trim();

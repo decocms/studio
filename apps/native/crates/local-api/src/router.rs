@@ -13,7 +13,7 @@
 //!
 //! 1. Public zone — `GET /health`; in embedded mode also exact UI assets,
 //!    HTML-navigation SPA fallback, and one-time `/_local/session/bootstrap`.
-//! 2. `/_sandbox/*`, `/threads*`, `/models` — nested sub-routers, each
+//! 2. `/_sandbox/*` — the guarded sandbox control surface
 //!    wrapped in [`guard`] (standalone Origin + bearer, or embedded exact
 //!    Host/unsafe-Origin + HttpOnly session cookie)
 //!    and each with its own JSON-404 fallback so an unmatched path WITHIN
@@ -68,7 +68,7 @@ use axum::extract::{Extension, OriginalUri, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::client_auth::ClientAuth;
@@ -84,6 +84,7 @@ type Request = axum::extract::Request;
 struct GuardState {
     auth: ClientAuth,
     mode: crate::state::ApiMode,
+    agent_sessions: Arc<crate::terminal::AgentSessionRegistry>,
 }
 
 #[derive(Clone)]
@@ -102,6 +103,7 @@ pub fn build(
     let guard_state = GuardState {
         auth: auth.clone(),
         mode: state.mode,
+        agent_sessions: state.agent_sessions.clone(),
     };
     let runtime = MainRuntime {
         auth: auth.clone(),
@@ -163,37 +165,12 @@ pub fn build(
         .route("/exec/:name", post(routes::scripts::exec))
         .route("/exec/:name/kill", post(routes::scripts::exec_kill))
         .route("/events", get(routes::events::events))
-        .route("/dispatch", post(routes::dispatch::dispatch))
-        .route("/runs/:id", delete(routes::dispatch::cancel_run))
         .route("/preview-handle", post(routes::proxy::set_preview_handle))
         // GET /_sandbox/repo-dir — see routes::repo_dir's module doc (a
         // git-backed sandbox's absolute workdir, for the webview's
         // "Open in VS Code/Cursor" deep link).
         .route("/repo-dir", get(routes::repo_dir::get))
         .fallback(sandbox_not_found)
-        .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
-
-    let threads = Router::new()
-        .route(
-            "/",
-            get(routes::threads::list).post(routes::threads::create),
-        )
-        .route(
-            "/:id",
-            get(routes::threads::get)
-                .patch(routes::threads::update)
-                .delete(routes::threads::delete),
-        )
-        .route(
-            "/:id/messages",
-            get(routes::threads::messages_list).post(routes::threads::messages_create),
-        )
-        .route("/:id/runs", get(routes::threads::runs_list))
-        .fallback(sandbox_not_found)
-        .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
-
-    let models = Router::new()
-        .route("/", get(routes::models::list))
         .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     // Literal internal app-API routes. The general app-API catchall is owned
@@ -220,6 +197,20 @@ pub fn build(
         // `routes/upstream.rs::logout`'s doc comment. Renamed from
         // `/upstream/_logout`.
         .route("/_auth/logout", post(routes::upstream::logout))
+        .route(
+            "/_local/agent-capabilities",
+            get(routes::agent_capabilities::get),
+        )
+        .route(
+            "/api/:org/threads/:thread_id/terminal",
+            get(routes::terminal::get)
+                .post(routes::terminal::start)
+                .delete(routes::terminal::delete),
+        )
+        .route(
+            "/api/:org/threads/:thread_id/terminal/ws",
+            get(routes::terminal::websocket),
+        )
         // The WEBVIEW half of the browser-completed MCP OAuth flow. Guarded
         // like everything else here: a parked authorization code must only be
         // readable by a caller that proved it is this app. Its unauthenticated
@@ -229,23 +220,37 @@ pub fn build(
             "/_auth/mcp-callback/result",
             get(routes::mcp_callback::result).delete(routes::mcp_callback::discard),
         )
+        // Apply a staged self-update by restarting through the graceful
+        // shutdown pipeline — see routes::update's module doc. Lives in this
+        // guard-carrying sub-router deliberately: a top-level `.route()`
+        // would get only `require_expected_host` (no Origin check on POST,
+        // no session cookie), i.e. an unauthenticated restart trigger.
+        // Mounted in BOTH auth modes so the standalone binary answers its
+        // documented 409 and the e2e auth matrix can cover the route.
+        .route("/_local/update/restart", post(routes::update::restart))
         .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     let mut app = Router::new()
         .route("/health", get(routes::health::health))
+        // Provider children cannot use the webview cookie. This endpoint has
+        // its own random per-terminal bearer and remains behind the outer
+        // exact-Host fence.
+        .route(
+            "/_local/agent-hooks/:session_id",
+            post(routes::agent_hooks::receive),
+        )
         // CORS-only — `.route_layer()` wraps ONLY the routes registered so
-        // far (`/health`), never the `.nest()`ed zone-2 routers below (each
+        // far (`/health` and the token-authenticated hook receiver), never the
+        // `.nest()`ed zone-2 routers below (each
         // already wrapped in the full `guard`, applied independently) or
         // `app_api`'s own fallback merged in next (same reasoning — it
         // carries its own `guard`). See [`cors_only`]'s doc comment for why
-        // `/health` needs this at all.
+        // these public-auth-zone routes need this at all.
         .route_layer(middleware::from_fn_with_state(
             guard_state.clone(),
             cors_only,
         ))
         .nest("/_sandbox", sandbox)
-        .nest("/threads", threads)
-        .nest("/models", models)
         // `.merge()`, not `.nest()`: these literal routes live at the root.
         .merge(app_api)
         // Registered OUTSIDE `guard`, deliberately. This is where an MCP
@@ -446,8 +451,8 @@ async fn sandbox_not_found(OriginalUri(uri): OriginalUri) -> ApiError {
 
 /// Standalone: Origin allowlist then bearer auth. Embedded: exact Host,
 /// exact Origin on unsafe methods, then the per-launch session cookie.
-/// Applied to every zone-2 sub-router (`/_sandbox`, `/threads`, `/models`)
-/// AND to `app_api` (the merged-in, no-prefix app-API fallback + its
+/// Applied to the zone-2 local routers (`/_sandbox`, `/_local`) AND to
+/// `app_api` (the merged-in, no-prefix app-API fallback + its
 /// `/_auth/*` literal routes), including their own 404 fallbacks, via
 /// `.layer()` (not `.route_layer()`, which would skip the fallback and let
 /// an unauthenticated caller enumerate unmatched routes without ever
@@ -466,7 +471,8 @@ async fn guard(State(state): State<GuardState>, mut req: Request, next: Next) ->
 
 /// CORS-only half of [`guard`] — validates `Origin` and applies the
 /// `Access-Control-Allow-Origin`/`Vary` headers, but never checks the
-/// bearer. Applied via `.route_layer()` to `GET /health` only.
+/// bearer. Applied via `.route_layer()` to `GET /health` and the provider
+/// hook receiver; the latter enforces its own random per-terminal bearer.
 ///
 /// `/health` is intentionally unauthenticated in both states
 /// (the native local-API contract, byte-parity with the daemon), but the
@@ -557,6 +563,16 @@ fn authorize_private(
 ) -> Result<Option<cors::OriginDecision>, ApiError> {
     state.auth.require_expected_host(req.headers())?;
     if state.auth.is_embedded() {
+        // Provider children receive a distinct per-terminal capability, never
+        // the browser's whole-API cookie. It bypasses browser Origin checks
+        // only for the one exact encoded MCP path registered at launch.
+        if scoped_agent_bearer(req.headers()).is_some_and(|candidate| {
+            state
+                .agent_sessions
+                .authorizes_mcp(full_request_path(req), candidate)
+        }) {
+            return Ok(None);
+        }
         state
             .auth
             .require_unsafe_origin(req.method(), req.headers())?;
@@ -579,18 +595,29 @@ fn authorize_private(
     }
 }
 
+fn scoped_agent_bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+}
+
+fn full_request_path(req: &Request) -> &str {
+    req.extensions()
+        .get::<OriginalUri>()
+        .map_or_else(|| req.uri().path(), |uri| uri.0.path())
+}
+
 /// The org-filesystem WebDAV prefix, judged on the FULL request path.
 ///
 /// `guard` runs inside each `nest()`, where `req.uri()` has already had the
-/// prefix stripped — so a `/threads` route could otherwise be reached at the
+/// prefix stripped — so another guarded route could otherwise be reached at the
 /// nest-relative `/orgfs/…`. `OriginalUri` (which `nest` always inserts) is
 /// the pre-strip path; the fallback covers the un-nested `app_api` merge,
 /// where no stripping happened and the two are the same.
 fn is_org_filesystem_path(req: &Request) -> bool {
-    req.extensions()
-        .get::<OriginalUri>()
-        .map_or_else(|| req.uri().path(), |uri| uri.0.path())
-        .starts_with("/_sandbox/orgfs/")
+    full_request_path(req).starts_with("/_sandbox/orgfs/")
 }
 
 async fn bootstrap_embedded_session(
@@ -640,6 +667,7 @@ async fn app_or_ui_fallback(
     let guard_state = GuardState {
         auth: runtime.auth,
         mode: state.mode,
+        agent_sessions: state.agent_sessions.clone(),
     };
     let decision = match authorize_private(&guard_state, &mut req) {
         Ok(decision) => decision,
@@ -668,6 +696,14 @@ fn try_serve_ui(runtime: &MainRuntime, req: &Request) -> Option<Response> {
     if !ui::is_safe_asset_path(path) {
         return Some(ApiError::not_found("Not found").into_response());
     }
+    // Browsers request bundle files percent-encoded (`/logos/deco%20logo.svg`
+    // for the on-disk `logos/deco logo.svg`) while providers do exact
+    // raw-path lookup. Decoding is only safe AFTER `is_safe_asset_path`: it
+    // rejects every encoded traversal byte (%2e/%2f/%5c) on the raw path, so
+    // a decode can change a file name, never the directory structure. An
+    // undecodable path (invalid UTF-8 escape) stays raw and can only miss.
+    let decoded = urlencoding::decode(path).unwrap_or(std::borrow::Cow::Borrowed(path));
+    let path = decoded.as_ref();
 
     if matches!(path, "/" | "/index.html") {
         return Some(index_response(provider, runtime, req.method()));
@@ -727,8 +763,6 @@ fn is_reserved_api_path(path: &str) -> bool {
         "/_auth",
         "/_local",
         "/_sandbox",
-        "/threads",
-        "/models",
         "/health",
         "/metrics",
     ];
@@ -756,6 +790,14 @@ mod tests {
                     Bytes::from_static(b"console.log('ok')"),
                     "text/javascript",
                     "public, max-age=31536000, immutable",
+                )),
+                // Space in the file name on purpose: the real bundle ships
+                // `logos/deco logo.svg`, which browsers request as
+                // `/logos/deco%20logo.svg`.
+                "/logos/deco logo.svg" => Some(UiAsset::new(
+                    Bytes::from_static(b"<svg/>"),
+                    "image/svg+xml",
+                    "no-cache",
                 )),
                 _ => None,
             }
@@ -855,6 +897,37 @@ mod tests {
             "public, max-age=31536000, immutable"
         );
         assert_eq!(asset.headers()[header::CONTENT_TYPE], "text/javascript");
+    }
+
+    #[tokio::test]
+    async fn percent_encoded_asset_paths_decode_before_lookup_but_traversal_stays_rejected() {
+        let (app, _root) = embedded_router();
+
+        let logo = app
+            .clone()
+            .oneshot(request(Method::GET, "/logos/deco%20logo.svg"))
+            .await
+            .unwrap();
+        assert_eq!(logo.status(), StatusCode::OK);
+        assert_eq!(logo.headers()[header::CONTENT_TYPE], "image/svg+xml");
+
+        // Decoding must never open up traversal: encoded dot/slash/backslash
+        // bytes are rejected on the RAW path, before any decode happens.
+        for path in [
+            "/logos/%2e%2e/secret.svg",
+            "/logos/..%2Fsecret.svg",
+            "/logos/%5c..%5csecret.svg",
+        ] {
+            assert_eq!(
+                app.clone()
+                    .oneshot(request(Method::GET, path))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND,
+                "{path} should stay rejected"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1036,7 +1109,7 @@ mod tests {
             "/_sandbox/bash",
             "/_sandbox/read",
             "/_sandbox/git/publish",
-            "/threads",
+            "/_local/agent-capabilities",
             "/api/acme/tools/ANYTHING",
             // Not under `orgfs` despite naming it — a prefix, not a substring.
             "/_sandbox/orgfs-config",
@@ -1057,6 +1130,72 @@ mod tests {
             app.oneshot(wrong).await.unwrap().status(),
             StatusCode::UNAUTHORIZED
         );
+    }
+
+    #[test]
+    fn terminal_mcp_bearer_bypasses_browser_auth_for_one_exact_path_only() {
+        let root = tempfile::tempdir().unwrap();
+        let app_state = crate::routes::intercept::test_state(root.path());
+        let terminal_id = "terminal-session";
+        let selected_path = "/api/org%20one/mcp/agent%2Fselected";
+        app_state
+            .agent_sessions
+            .reserve_hook(crate::terminal::registry::HookReservation {
+                fence: crate::routes::threads::db::RtThreadFence {
+                    account_scope: "account".to_string(),
+                    organization_id: "org one".to_string(),
+                    thread_id: "thread".to_string(),
+                    generation: "generation".to_string(),
+                },
+                terminal_session_id: terminal_id.to_string(),
+                harness: harness::HarnessId::Codex,
+                cwd: std::path::PathBuf::from("/tmp"),
+                token: "hook-only-secret".to_string(),
+                mcp_token: "mcp-only-secret".to_string(),
+                mcp_path: selected_path.to_string(),
+                title_environment: harness::title::TitleEnvironment::default(),
+                expected_provider_session_id: None,
+            });
+        let guard = GuardState {
+            auth: ClientAuth::embedded(
+                vec!["127.0.0.1:43120".into()],
+                "http://127.0.0.1:43120".into(),
+                vec!["bootstrap".into()],
+                "control-session".into(),
+                "mount-token".into(),
+            )
+            .unwrap(),
+            mode: crate::state::ApiMode::Strict,
+            agent_sessions: app_state.agent_sessions.clone(),
+        };
+        let request_with = |path: &str, token: &str| {
+            HttpRequest::builder()
+                .method(Method::POST)
+                .uri(path)
+                .header(header::HOST, "127.0.0.1:43120")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap()
+        };
+
+        let mut selected = request_with(selected_path, "mcp-only-secret");
+        assert!(authorize_private(&guard, &mut selected).is_ok());
+
+        for (path, token) in [
+            ("/api/org%20one/mcp/another", "mcp-only-secret"),
+            ("/_auth/status", "mcp-only-secret"),
+            (selected_path, "hook-only-secret"),
+        ] {
+            let mut denied = request_with(path, token);
+            assert!(
+                authorize_private(&guard, &mut denied).is_err(),
+                "{token} must not authorize {path}"
+            );
+        }
+
+        app_state.agent_sessions.unregister_hook(terminal_id);
+        let mut expired = request_with(selected_path, "mcp-only-secret");
+        assert!(authorize_private(&guard, &mut expired).is_err());
     }
 
     /// The preview listener carries untrusted sandbox output, and cookies

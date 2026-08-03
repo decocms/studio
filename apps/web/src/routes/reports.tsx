@@ -46,9 +46,7 @@ function domainChromeRef(
     // React-managed head nodes — flipping `rel` to an inert value avoids
     // orphaning nodes and leaking this favicon onto the next route.
     const disabled = Array.from(
-      head.querySelectorAll<HTMLLinkElement>(
-        'link[rel~="icon"], link[rel="apple-touch-icon"]',
-      ),
+      head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'),
     ).filter((n) => !n.hasAttribute("data-domain-favicon"));
     disabled.forEach((n) => {
       n.dataset.prevRel = n.getAttribute("rel") ?? "";

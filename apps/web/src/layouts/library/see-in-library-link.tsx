@@ -8,8 +8,10 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { Folder } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
+import { useT } from "@/i18n/use-t.ts";
 
 export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
+  const t = useT();
   const navigate = useNavigate();
   const parentPath = previewPath.split("/").slice(0, -1).join("/");
 
@@ -18,7 +20,11 @@ export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        main: `library:${parentPath}`,
+        // The Library is the `files` main-panel tab; `path` is what navigates
+        // it. (This used to set a `library:<path>` tab id that no parser knew,
+        // so the button did nothing.)
+        main: "files",
+        path: parentPath || undefined,
         preview: previewPath,
         skill: undefined,
         brand: undefined,
@@ -34,7 +40,7 @@ export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
       className="shrink-0 gap-1.5 text-xs text-muted-foreground"
     >
       <Folder size={14} />
-      See in library
+      {t("library.seeInLibrary.label")}
     </Button>
   );
 }

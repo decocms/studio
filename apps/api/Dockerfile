@@ -7,7 +7,7 @@ FROM oven/bun:1-slim
 # byte-identical to `bunx decocms@<version>` and avoids any npm-registry
 # round-trip (and propagation race) at image-build time.
 
-# Install runtime dependencies plus the toolchain needed to compile node-pty.
+# Install runtime dependencies.
 # - ca-certificates: the oven/bun:1-slim base ships NO system CA bundle, but
 #   DuckDB's native httpfs (OpenSSL) needs the OS trust store to verify TLS to
 #   storage.googleapis.com. Without it the GCS monitoring read fails with
@@ -16,11 +16,8 @@ FROM oven/bun:1-slim
 #   Named explicitly so it's marked manually-installed and survives the
 #   --auto-remove purge below.
 # - unzip: needed by embedded-postgres.
-# - python3 + build-essential: node-pty ships prebuilt binaries only for
-#   darwin/win32, so on Linux `bun add` falls back to `node-gyp rebuild`. We
-#   purge this toolchain after install to keep the layer lean.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates unzip python3 build-essential && \
+      ca-certificates unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and app directories
@@ -37,12 +34,9 @@ WORKDIR /app/apps/api
 COPY decocms.tgz /tmp/decocms.tgz
 RUN bun add /tmp/decocms.tgz
 
-# Drop the build toolchain now that native modules have been compiled.
-# Also create the DuckDB extension dir (owned by bunuser) where httpfs is baked.
+# Create the DuckDB extension dir (owned by bunuser) where httpfs is baked.
 USER root
-RUN apt-get purge -y --auto-remove python3 build-essential && \
-    rm -rf /var/lib/apt/lists/* && \
-    mkdir -p /opt/duckdb/extensions && \
+RUN mkdir -p /opt/duckdb/extensions && \
     chown -R bunuser:bunapp /opt/duckdb
 USER bunuser
 

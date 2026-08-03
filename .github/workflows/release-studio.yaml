@@ -614,3 +614,84 @@ jobs:
       - name: Summary
         if: env.DISPATCH_TOKEN != ''
         run: echo "Dispatched \`studio-image-bump\` (version ${{ needs.prepare.outputs.version }}, scope ${{ steps.scope.outputs.scope }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Notify the docs agent that a new Studio version shipped. The agent decides
+  # whether the docs need updating from the CHANGE RANGE between the previous
+  # release and this one — NOT the release-bump commit alone, whose diff is only
+  # the version bump in package.json. We resolve the previous release tag and
+  # send a `compare_url` (previous_tag...tag) so the agent diffs the real
+  # feature changes.
+  # This is a convenience hook and must NEVER red the release: it no-ops when
+  # the webhook isn't configured, and a failed call is logged, not fatal.
+  #   * URL   -> repo variable  DOCS_AGENT_WEBHOOK_URL   (not sensitive)
+  #   * token -> repo secret    DOCS_AGENT_WEBHOOK_TOKEN (sent as Bearer)
+  # Runs only after `release` actually cut a release, so re-runs where the
+  # version already existed don't re-ping the agent.
+  # ---------------------------------------------------------------------------
+  notify-docs-agent:
+    name: Notify docs agent
+    needs: [prepare, release]
+    if: always() && needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      WEBHOOK_URL: ${{ vars.DOCS_AGENT_WEBHOOK_URL }}
+      WEBHOOK_TOKEN: ${{ secrets.DOCS_AGENT_WEBHOOK_TOKEN }}
+    steps:
+      - name: Skip notice (webhook not configured)
+        if: env.WEBHOOK_URL == '' || env.WEBHOOK_TOKEN == ''
+        run: echo "::notice::DOCS_AGENT_WEBHOOK_URL / DOCS_AGENT_WEBHOOK_TOKEN not set — skipping the docs-agent notification."
+      - uses: actions/checkout@v4
+        if: env.WEBHOOK_URL != '' && env.WEBHOOK_TOKEN != ''
+        with:
+          # Full history + tags so we can resolve the previous release tag.
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+      - name: Resolve previous release tag
+        id: range
+        if: env.WEBHOOK_URL != '' && env.WEBHOOK_TOKEN != ''
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet || true
+          TAG="v${VERSION}"
+          # Nearest release tag reachable from this tag's first parent. Empty on
+          # the very first release (agent then falls back to the sha alone).
+          PREV="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+          echo "prev_tag=${PREV}" >> "$GITHUB_OUTPUT"
+          if [ -n "$PREV" ]; then
+            echo "compare_url=${{ github.server_url }}/${{ github.repository }}/compare/${PREV}...${TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "compare_url=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Call docs-agent webhook
+        if: env.WEBHOOK_URL != '' && env.WEBHOOK_TOKEN != ''
+        run: |
+          set -euo pipefail
+          payload=$(cat <<EOF
+          {
+            "event": "studio.released",
+            "version": "${{ needs.prepare.outputs.version }}",
+            "tag": "v${{ needs.prepare.outputs.version }}",
+            "previous_tag": "${{ steps.range.outputs.prev_tag }}",
+            "repository": "${{ github.repository }}",
+            "sha": "${{ inputs.ref || github.sha }}",
+            "compare_url": "${{ steps.range.outputs.compare_url }}",
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          )
+          code=$(curl -sS -o /tmp/resp.txt -w '%{http_code}' \
+            --retry 3 --retry-connrefused --max-time 30 \
+            -X POST "$WEBHOOK_URL" \
+            -H "Authorization: Bearer $WEBHOOK_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$payload") || true
+          echo "Webhook responded HTTP $code"
+          echo "::group::Response body"; cat /tmp/resp.txt || true; echo; echo "::endgroup::"
+          if [ "${code:0:1}" != "2" ]; then
+            echo "::warning::docs-agent webhook returned HTTP $code (non-blocking)"
+          else
+            echo "Notified docs agent for v${{ needs.prepare.outputs.version }} (range ${{ steps.range.outputs.prev_tag }}...v${{ needs.prepare.outputs.version }})" >> "$GITHUB_STEP_SUMMARY"
+          fi

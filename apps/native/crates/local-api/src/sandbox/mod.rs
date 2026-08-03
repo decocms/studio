@@ -18,12 +18,10 @@
 //! and `SetupOrchestrator` — the EXISTING clone -> install -> start pipeline
 //! (`crate::setup`), just instantiated per-workdir instead of once globally.
 //!
-//! Callers (`routes/intercept/decopilot.rs::send_message`,
-//! `routes/dispatch.rs::build_run_spec`) call [`SandboxManager::ensure`] with
-//! a [`GitSandboxConfig`] derived from the dispatch payload's `sandbox`
-//! block (decopilot) or `workspace.repo`/`workspace.branch` (the daemon-parity
-//! dispatch family), then use the returned [`Sandbox::workdir`] as the
-//! harness's spawn `cwd` instead of the single global `state.repo_dir`.
+//! Setup and intercepted sandbox-lifecycle callers invoke
+//! [`SandboxManager::ensure`] with a [`GitSandboxConfig`] derived from the
+//! selected workspace, then use the returned [`Sandbox::workdir`] as the
+//! terminal's spawn `cwd` instead of the single global `state.repo_dir`.
 //! `routes/proxy.rs` reads a [`Sandbox`]'s own `setup`/`config` to resolve
 //! the SNIFFED dev port for that specific handle (see that file's module
 //! doc for the header-based routing convention).
@@ -141,7 +139,7 @@ pub const PROTECTED_BRANCHES: [&str; 2] = ["main", "master"];
 /// keys, not real git refs — they must never be checked out or shown to a
 /// user as a branch. Byte-parity with
 /// `packages/shared/src/is-synthetic-branch.ts` (itself mirroring
-/// `packages/sandbox/daemon/constants.ts`): this predicate is a
+/// `packages/sandbox/daemon-go/internal/gitx/refname.go`): this predicate is a
 /// cross-language wire contract, and a second Rust copy is how one side ends
 /// up checking out a routing key the other side still treats as synthetic.
 pub(crate) fn is_synthetic_branch(branch: &str) -> bool {

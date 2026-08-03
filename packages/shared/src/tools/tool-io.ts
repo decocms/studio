@@ -121,6 +121,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
           }
         | null
         | undefined;
@@ -183,6 +186,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -245,6 +251,9 @@ export interface StudioToolIO {
         | {
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
+            qa_agent_enabled?: boolean | undefined;
+            code_reviewer_enabled?: boolean | undefined;
+            auto_merge?: boolean | undefined;
           }
         | null
         | undefined;
@@ -432,7 +441,36 @@ export interface StudioToolIO {
         state: "open" | "closed" | null;
         draft: boolean | null;
         merged: boolean | null;
+        checksStatus: "pending" | "passing" | "failing" | null;
+        checks: {
+          name: string;
+          status: string;
+          conclusion: string | null;
+          detailsUrl: string | null;
+          summary: string | null;
+        }[];
+        previewUrl: string | null;
       }[];
+    };
+  };
+  TASK_BOARD_REVIEW_DECISION: {
+    input: {
+      taskBoardItemId: string;
+      reviewer: "qa" | "code_review";
+      decision: "approve" | "request_changes";
+      notes: string;
+      reviewToken?: string | undefined;
+    };
+    output: {
+      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      merged: boolean;
+    };
+  };
+  TASK_BOARD_PROMOTE_TO_PRODUCTION: {
+    input: { taskBoardItemId: string };
+    output: {
+      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      merged: boolean;
     };
   };
   TASK_BOARD_ACTIVITY_LIST: {
@@ -449,7 +487,10 @@ export interface StudioToolIO {
           | "due_date_changed"
           | "title_changed"
           | "description_changed"
-          | "tags_changed";
+          | "tags_changed"
+          | "review_requested"
+          | "review_approved"
+          | "review_changes_requested";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -3682,33 +3723,6 @@ export interface StudioToolIO {
       hasMore?: boolean | undefined;
     };
   };
-  THREAD_BACKGROUND_TOOL_START: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      toolName: "subtask" | "generate_image";
-      input: unknown;
-      toolCallId: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { jobId: string };
-  };
-  THREAD_SUBTASK_DELIVER: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      jobId: string;
-      report: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { ok: true };
-  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {
@@ -4211,8 +4225,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       label: string;
       apiKey: string;
@@ -4256,9 +4268,9 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
+        | "openai-compatible"
         | "claude-code"
         | "codex"
-        | "openai-compatible"
         | undefined;
     };
     output: {
@@ -4280,8 +4292,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       callbackUrl: string;
     };
@@ -4295,8 +4305,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       code: string;
       stateToken: string;
@@ -4318,8 +4326,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
     };
     output: {
@@ -4338,8 +4344,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       amountCents: number;
       currency?: "usd" | "brl" | undefined;
@@ -4354,8 +4358,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
     };
     output: { balanceCents: number };
@@ -6622,27 +6624,7 @@ export interface StudioToolIO {
         avatarUrl: string;
         type: string;
       }[];
-      appSlug?: string | undefined;
     };
-  };
-  LINK_CURRENT_GET: {
-    input: { [x: string]: never };
-    output: {
-      online: boolean;
-      capabilities: (
-        | "claude-code"
-        | "codex"
-        | "decopilot-sandbox"
-        | "body-offload"
-      )[];
-      machineId?: string | undefined;
-      hostname?: string | undefined;
-      cliVersion?: string | undefined;
-    };
-  };
-  LINK_DISCONNECT: {
-    input: { [x: string]: never };
-    output: { disconnected: boolean };
   };
   GLOBAL_SEARCH: {
     input: {

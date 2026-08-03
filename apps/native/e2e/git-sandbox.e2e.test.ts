@@ -9,14 +9,13 @@
  * port and prints a `Local: http://localhost:PORT` line — the exact
  * announcement `setup/dev.rs`'s port-sniffer regex matches — mirroring the
  * daemon e2e suite's own git fixture conventions
- * (`packages/sandbox/daemon/daemon.e2e.git.test.ts`).
+ * (`packages/sandbox/daemon-e2e/daemon.git.e2e.test.ts`).
  *
  * Proves, over HTTP only (no Rust-internal access):
- *   (a) dispatching on branch A clones the fixture repo into
+ *   (a) ensuring branch A clones the fixture repo into
  *       `<APP_ROOT>/sandboxes/<handleA>/repo`, checked out to branch A, and
- *       a file the harness writes (`SCENARIO:writefile`, see
- *       `fixtures/stub-harness.mjs`) lands in THAT directory;
- *   (b) dispatching on branch B (same repo) produces a SECOND, independent
+ *       a file written through the sandbox bridge lands in THAT directory;
+ *   (b) ensuring branch B (same repo) produces a SECOND, independent
  *       clone at `<handleB>` on branch B — branch A's directory/files are
  *       untouched;
  *   (c) each branch's `dev` script runs in ITS OWN workdir, the port is
@@ -44,19 +43,14 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
-  signInAndCompleteSession,
-  startAuthenticatedUpstream,
-} from "./authenticated-upstream";
-import {
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   previewUrl,
   startLocalApi,
   stopLocalApi,
-  stubClaudeBinEnv,
-  url,
   type LocalApi,
+  url,
 } from "./helpers";
 
 function git(cwd: string, args: string[]): void {
@@ -92,6 +86,7 @@ const PACKAGE_JSON = JSON.stringify({
   private: true,
   scripts: { dev: "node server.js" },
 });
+const ORG = "git-sandbox-e2e";
 
 /** Builds a bare "origin" with two branches (`branch-a`, `branch-b`), each
  * carrying a distinguishing `BRANCH.txt` + a real bindable dev server —
@@ -128,52 +123,49 @@ function setupFixtureRepo(): { root: string; bareDir: string } {
   return { root, bareDir };
 }
 
-async function dispatchWriteFileTurn(
+async function ensureAndWriteSandboxFile(
   a: LocalApi,
-  org: string,
-  threadId: string,
   virtualMcpId: string,
   cloneUrl: string,
   branch: string,
 ): Promise<void> {
-  const res = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/messages`),
+  const ensure = await fetch(url(a, "/_sandbox/setup/ensure"), {
+    method: "POST",
+    headers: jsonAuthHeaders(),
+    body: JSON.stringify({
+      virtualMcpId,
+      repo: { cloneUrl, branch },
+      workload: { runtime: "bun", packageManager: "bun" },
+    }),
+  });
+  expect(ensure.status).toBe(200);
+  const expectedHandle = computeHandle(cloneUrl, branch);
+  const ensured = (await ensure.json()) as { handle: string };
+  expect(ensured.handle).toBe(expectedHandle);
+
+  // setup/ensure admits the asynchronous clone/install/start cascade. Wait
+  // for this handle's real preview (not its starting placeholder) before
+  // writing into or asserting on the materialized checkout.
+  await waitForPreviewBody(a, expectedHandle);
+
+  const repoDir = repoDirFor(a.workdir, expectedHandle);
+  const write = await fetch(
+    url(
+      a,
+      `/api/${ORG}/sandbox/${encodeURIComponent(
+        virtualMcpId,
+      )}/${encodeURIComponent(branch)}/write`,
+    ),
     {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: JSON.stringify({
-        messages: [
-          {
-            role: "user",
-            parts: [{ type: "text", text: "SCENARIO:writefile" }],
-          },
-        ],
-        tier: "smart",
-        mode: "default",
-        toolApprovalLevel: "auto",
-        agent: { id: virtualMcpId },
-        harnessId: "claude-code",
-        branch,
-        sandbox: {
-          virtualMcpId,
-          repo: { cloneUrl, branch },
-          workload: { runtime: "bun", packageManager: "bun" },
-        },
+        path: "bridge-wrote.txt",
+        content: `written through sandbox bridge in ${repoDir}\n`,
       }),
     },
   );
-  expect(res.status).toBe(202);
-
-  // Read the stream to its natural end (sender dropped by `run.finish()`),
-  // matching `real-ui-interception.e2e.test.ts`'s convention — by the time
-  // this resolves, the stub harness's file write has already happened
-  // (SCENARIO:writefile writes BEFORE emitting any ndjson).
-  const streamRes = await fetch(
-    url(a, `/api/${org}/decopilot/threads/${threadId}/stream`),
-    { headers: jsonAuthHeaders() },
-  );
-  expect(streamRes.status).toBe(200);
-  await streamRes.text();
+  expect(write.status).toBe(200);
 }
 
 /** Polls the PREVIEW listener's reverse-proxy fallback (its ONLY route,
@@ -211,55 +203,41 @@ describeLocalApi(
   () => {
     let a: LocalApi;
     let fixture: { root: string; bareDir: string };
-    let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     const virtualMcpId = "git-sandbox-e2e-vmcp";
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      upstream = startAuthenticatedUpstream();
-      a = await startLocalApi(
-        stubClaudeBinEnv({
-          DECOCMS_UPSTREAM_URL: upstream.url,
-          LOCAL_API_TOKEN_STORE: "memory",
-        }),
-      );
-      await signInAndCompleteSession(a);
+      a = await startLocalApi();
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {
       await stopLocalApi(a);
-      upstream.server.stop(true);
       rmSync(fixture.root, { recursive: true, force: true });
     }, HOOK_TIMEOUT_MS);
 
     it("isolates two branches of the same repo into two independent workdirs, each with its own running (sniffed-port) preview", async () => {
-      const org = "git-sandbox-org";
       const handleA = computeHandle(fixture.bareDir, "branch-a");
       const handleB = computeHandle(fixture.bareDir, "branch-b");
       const repoA = repoDirFor(a.workdir, handleA);
       const repoB = repoDirFor(a.workdir, handleB);
 
-      // (a) Dispatch on branch A.
-      await dispatchWriteFileTurn(
+      // (a) Materialize branch A and write through its scoped bridge.
+      await ensureAndWriteSandboxFile(
         a,
-        org,
-        "thread-branch-a",
         virtualMcpId,
         fixture.bareDir,
         "branch-a",
       );
       expect(existsSync(join(repoA, ".git"))).toBe(true);
       expect(readFileSync(join(repoA, "BRANCH.txt"), "utf8").trim()).toBe("A");
-      expect(existsSync(join(repoA, "harness-wrote.txt"))).toBe(true);
-      expect(readFileSync(join(repoA, "harness-wrote.txt"), "utf8")).toContain(
+      expect(existsSync(join(repoA, "bridge-wrote.txt"))).toBe(true);
+      expect(readFileSync(join(repoA, "bridge-wrote.txt"), "utf8")).toContain(
         repoA,
       );
 
-      // (b) Dispatch on branch B — same repo, a SECOND independent handle.
-      await dispatchWriteFileTurn(
+      // (b) Ensure branch B — same repo, a SECOND independent handle.
+      await ensureAndWriteSandboxFile(
         a,
-        org,
-        "thread-branch-b",
         virtualMcpId,
         fixture.bareDir,
         "branch-b",
@@ -267,19 +245,19 @@ describeLocalApi(
       expect(handleB).not.toBe(handleA);
       expect(existsSync(join(repoB, ".git"))).toBe(true);
       expect(readFileSync(join(repoB, "BRANCH.txt"), "utf8").trim()).toBe("B");
-      expect(existsSync(join(repoB, "harness-wrote.txt"))).toBe(true);
-      expect(readFileSync(join(repoB, "harness-wrote.txt"), "utf8")).toContain(
+      expect(existsSync(join(repoB, "bridge-wrote.txt"))).toBe(true);
+      expect(readFileSync(join(repoB, "bridge-wrote.txt"), "utf8")).toContain(
         repoB,
       );
 
-      // Branch A's directory/files are UNTOUCHED by branch B's dispatch —
+      // Branch A's directory/files are UNTOUCHED by branch B's sandbox setup —
       // the "one pwd per branch" proof.
       expect(readFileSync(join(repoA, "BRANCH.txt"), "utf8").trim()).toBe("A");
-      expect(readFileSync(join(repoA, "harness-wrote.txt"), "utf8")).toContain(
+      expect(readFileSync(join(repoA, "bridge-wrote.txt"), "utf8")).toContain(
         repoA,
       );
       expect(
-        readFileSync(join(repoA, "harness-wrote.txt"), "utf8"),
+        readFileSync(join(repoA, "bridge-wrote.txt"), "utf8"),
       ).not.toContain(repoB);
 
       // (c) Each branch's own dev server, reached via the reverse proxy

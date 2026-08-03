@@ -128,22 +128,6 @@ impl ClientAuth {
         matches!(self, Self::Embedded { .. })
     }
 
-    /// The control credential, for the one non-browser caller that genuinely
-    /// needs the whole API: the agent harness' MCP endpoint, which exists so
-    /// the CLI can call the agent's own tools. It must satisfy the same guard
-    /// as the webview and has no cookie jar to be handed one through.
-    ///
-    /// Anything narrower gets [`Self::mount_token_matches`] instead.
-    ///
-    /// `None` in bearer mode, where callers authenticate with the bearer
-    /// instead.
-    pub(crate) fn session_token(&self) -> Option<&str> {
-        match self {
-            Self::Embedded { session } => Some(&session.session_token),
-            _ => None,
-        }
-    }
-
     /// Whether the request presents the mount-scoped credential — the one for
     /// the caller that is neither a browser nor entitled to the whole API: the
     /// `rclone` child serving the org filesystem.

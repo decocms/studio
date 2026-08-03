@@ -5,6 +5,7 @@ import { BranchPill } from "./branch-pill";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
+import { branchUserLabel } from "@decocms/shared/branch-name";
 
 interface PureProps {
   branchPill: ReactNode;
@@ -50,7 +51,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
-  const userLabel = session?.user?.name ?? session?.user?.email?.split("@")[0];
+  const userLabel = branchUserLabel(session?.user);
   const { org } = useProjectContext();
 
   const branchPill =

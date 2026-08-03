@@ -82,12 +82,16 @@ function toBoolOrUndefined(value: string | undefined): boolean | undefined {
 function toPositiveIntegerOrUndefined(
   name: string,
   value: string | undefined,
+  max?: number,
 ): number | undefined {
   if (value === undefined || value === "") return undefined;
 
   const numberValue = Number(value);
   if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
     throw new Error(`${name} must be a positive integer`);
+  }
+  if (max !== undefined && numberValue > max) {
+    throw new Error(`${name} must be at most ${max}`);
   }
   return numberValue;
 }
@@ -96,8 +100,9 @@ function toPositiveIntegerOrDefault(
   name: string,
   value: string | undefined,
   defaultValue: number,
+  max?: number,
 ): number {
-  return toPositiveIntegerOrUndefined(name, value) ?? defaultValue;
+  return toPositiveIntegerOrUndefined(name, value, max) ?? defaultValue;
 }
 
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
@@ -138,6 +143,19 @@ export function externalUrlOrNull(url: string | undefined): string | null {
  */
 export function resolveS3ForcePathStyle(raw: string | undefined): boolean {
   return raw === undefined || raw === "" || raw === "true" || raw === "1";
+}
+
+/**
+ * Resolve a "new name first, legacy alias second" env var pair. Uses `||`
+ * (not `??`) so an env var explicitly set to "" — common when a deployment
+ * template renders an unset value as an empty string rather than omitting the
+ * key — falls through to the legacy alias instead of silently winning as "".
+ */
+function resolveAliasedEnv(
+  value: string | undefined,
+  legacyValue: string | undefined,
+): string | undefined {
+  return value || legacyValue;
 }
 
 const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
@@ -193,7 +211,10 @@ export function resolveConfig(
     nodeEnv,
     port: toPositiveIntegerOrDefault("PORT", flags.port || envVars.PORT, 3000),
     baseUrl: flags.baseUrl || envVars.BASE_URL,
-    publicUrl: envVars.STUDIO_PUBLIC_URL ?? envVars.MESH_PUBLIC_URL,
+    publicUrl: resolveAliasedEnv(
+      envVars.STUDIO_PUBLIC_URL,
+      envVars.MESH_PUBLIC_URL,
+    ),
     dataDir,
 
     // Database (url resolved after services start)
@@ -203,11 +224,19 @@ export function resolveConfig(
       envVars.DATABASE_POOL_MAX,
       5,
     ),
+    dbosPoolSize: toPositiveIntegerOrDefault(
+      "DBOS_POOL_SIZE",
+      envVars.DBOS_POOL_SIZE,
+      5,
+    ),
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",
     encryptionKey: envVars.ENCRYPTION_KEY || "",
-    studioJwtSecret: envVars.STUDIO_JWT_SECRET ?? envVars.MESH_JWT_SECRET,
+    studioJwtSecret: resolveAliasedEnv(
+      envVars.STUDIO_JWT_SECRET,
+      envVars.MESH_JWT_SECRET,
+    ),
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
@@ -253,10 +282,15 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
+    // Capped at 100: a fee percent above that is a fat-fingered misconfig
+    // (e.g. "150" typed for "15"), and computeTopUpChargeCents() would
+    // otherwise silently charge customers more than double their top-up
+    // amount instead of failing fast at boot.
     topupFeePercent: toPositiveIntegerOrDefault(
       "STUDIO_TOPUP_FEE_PERCENT",
       envVars.STUDIO_TOPUP_FEE_PERCENT,
       15,
+      100,
     ),
 
     // Feature Flags
@@ -270,6 +304,16 @@ export function resolveConfig(
     ),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
     orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
+    decopilotMaxConcurrentSubagents: toPositiveIntegerOrDefault(
+      "DECOPILOT_MAX_CONCURRENT_SUBAGENTS",
+      envVars.DECOPILOT_MAX_CONCURRENT_SUBAGENTS,
+      4,
+    ),
+    decopilotMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
+      "DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS",
+      envVars.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS,
+      3,
+    ),
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
     s3Bucket: envVars.S3_BUCKET,
@@ -289,20 +333,29 @@ export function resolveConfig(
     duckdbExtensionDirectory:
       envVars.DUCKDB_EXTENSION_DIRECTORY || "/opt/duckdb/extensions",
     duckdbMemoryLimit: envVars.DUCKDB_MEMORY_LIMIT || undefined,
-    duckdbThreads: envVars.DUCKDB_THREADS
-      ? Number(envVars.DUCKDB_THREADS)
-      : undefined,
+    duckdbThreads: toPositiveIntegerOrUndefined(
+      "DUCKDB_THREADS",
+      envVars.DUCKDB_THREADS,
+    ),
 
     // Runtime flags
     isCli: true,
     noTui: flags.noTui === true,
-    podName: envVars.POD_NAME ?? crypto.randomUUID(),
+    // `||` (not `??`): an env var explicitly set to "" (a deployment template
+    // rendering an unset POD_NAME as empty rather than omitting the key) must
+    // fall through to a random id instead of every pod sharing "" as its
+    // identity in logs/metrics — see resolveAliasedEnv above for the same trap.
+    podName: envVars.POD_NAME || crypto.randomUUID(),
     dispatchRole: resolveDispatchRole(
-      envVars.STUDIO_DISPATCH_ROLE ?? envVars.MESH_DISPATCH_ROLE,
+      resolveAliasedEnv(
+        envVars.STUDIO_DISPATCH_ROLE,
+        envVars.MESH_DISPATCH_ROLE,
+      ),
     ),
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
+    sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
@@ -311,12 +364,14 @@ export function resolveConfig(
     // New name first, legacy Commerce Discovery envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
     // coordinated deploy. Drop the fallback once the CD envs are renamed.
-    reportsInternalApiUrl:
-      envVars.REPORTS_INTERNAL_API_URL ??
+    reportsInternalApiUrl: resolveAliasedEnv(
+      envVars.REPORTS_INTERNAL_API_URL,
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_URL,
-    reportsInternalApiKey:
-      envVars.REPORTS_INTERNAL_API_KEY ??
+    ),
+    reportsInternalApiKey: resolveAliasedEnv(
+      envVars.REPORTS_INTERNAL_API_KEY,
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
+    ),
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the
     // legacy admin platform so an existing deployment works without new env.

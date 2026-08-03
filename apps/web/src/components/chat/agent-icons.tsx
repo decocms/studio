@@ -1,11 +1,7 @@
-/**
- * Brand identity (name + glyph) for the desktop-CLI agents shown in the
- * chat-input tier popover and the settings-flow model selector. Lifted out of
- * `select-model/agent-models.tsx` so the same paths can be reused by the tier
- * trigger without duplicating the SVG data.
- */
 import type { ReactNode } from "react";
-import type { HarnessId } from "@decocms/harness/types";
+import type { NativeHarnessId } from "./pills/agent-options";
+
+/** Glyphs used by the native coding-agent picker. */
 
 export function ClaudeCodeIcon({ size = 16 }: { size?: number }) {
   return (
@@ -45,19 +41,29 @@ export function CodexIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-/**
- * Product name + glyph for each desktop CLI harness — the one place these live,
- * so the tier trigger and popover can't drift on what a harness is called or
- * what it looks like. `Icon` is the component (not rendered JSX) so each call
- * site picks its own size.
- *
- * Keyed by the harnesses that *have* a brand: `decopilot` is deliberately
- * absent — it's the cloud runtime, described by where it runs rather than by a
- * CLI name, so callers fall back to their runtime glyph for it.
- */
+export function OpenCodeIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4l-3 16" />
+    </svg>
+  );
+}
+
 const LOCAL_HARNESS_BRAND_LABELS = {
   "claude-code": "chat.agentIcons.claudeCode",
   codex: "chat.agentIcons.codex",
+  opencode: "chat.agentIcons.opencode",
 } as const;
 
 type HarnessLabelKey =
@@ -65,7 +71,7 @@ type HarnessLabelKey =
 
 const LOCAL_HARNESS_BRAND: Partial<
   Record<
-    HarnessId,
+    NativeHarnessId,
     { labelKey: HarnessLabelKey; Icon: (props: { size?: number }) => ReactNode }
   >
 > = {
@@ -74,9 +80,10 @@ const LOCAL_HARNESS_BRAND: Partial<
     Icon: ClaudeCodeIcon,
   },
   codex: { labelKey: "chat.agentIcons.codex", Icon: CodexIcon },
+  opencode: { labelKey: "chat.agentIcons.opencode", Icon: OpenCodeIcon },
 };
 
-/** Brand for a harness, or null when it has none (cloud / unknown / legacy). */
-export function localHarnessBrand(harness: HarnessId | null | undefined) {
+/** Native brand metadata for a coding-agent harness. */
+export function localHarnessBrand(harness: NativeHarnessId | null | undefined) {
   return (harness && LOCAL_HARNESS_BRAND[harness]) ?? null;
 }

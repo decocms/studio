@@ -154,7 +154,11 @@ describe("resolveTier", () => {
         web_research: null,
       },
       providerKeys: [
-        { id: "k1", providerId: "openai", createdAt: "2026-01-01" },
+        {
+          id: "k1",
+          providerId: "openai-compatible",
+          createdAt: "2026-01-01",
+        },
       ],
       listModelsThrows: true,
     });
@@ -236,7 +240,11 @@ describe("resolveTier", () => {
       // A malformed/legacy override for a non-chat tier must not win.
       userTiers: { image: { keyId: "k1", modelId: "user-image-model" } },
       providerKeys: [
-        { id: "k1", providerId: "openai", createdAt: "2026-01-01" },
+        {
+          id: "k1",
+          providerId: "openai-compatible",
+          createdAt: "2026-01-01",
+        },
       ],
       models: {
         k1: [

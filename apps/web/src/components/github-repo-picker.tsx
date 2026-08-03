@@ -41,7 +41,10 @@ import {
 import { useAutoInstallGitHub } from "@/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { fetchGithubInstallations } from "@/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  GITHUB_APP_INSTALL_URL,
+} from "@/lib/github-installations";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -61,6 +64,7 @@ export interface Repo {
   private: boolean;
   description: string | null;
   updatedAt: string;
+  fork: boolean;
 }
 
 export interface GitHubImportPayload {
@@ -413,14 +417,25 @@ function PickerContent({
       );
       navigateToAgent(virtualMcpId);
     },
-    onError: (error) => {
+    onError: (error, repo) => {
+      console.error("GitHub import failed:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("common.githubRepoPicker.unknownError");
+      // A fork the GitHub App wasn't granted shows up in public search but the
+      // token mint fails (provisionRepoScopedGithubConnection throws a
+      // "…mint a repo-scoped GitHub token…" error) — point the user at the
+      // installation settings. Only do this for the mint failure; other fork
+      // import errors (agent create, rollback, network) keep the real message.
+      if (repo.fork && message.toLowerCase().includes("mint")) {
+        toast.error(
+          t("common.githubRepoPicker.failedImportFork", { name: repo.name }),
+        );
+        return;
+      }
       toast.error(
-        t("common.githubRepoPicker.failedImport", {
-          error:
-            error instanceof Error
-              ? error.message
-              : t("common.githubRepoPicker.unknownError"),
-        }),
+        t("common.githubRepoPicker.failedImport", { error: message }),
       );
     },
   });
@@ -628,10 +643,6 @@ function InstallationPicker({
   const data = installationsQuery.data;
   if (!data) return null;
 
-  const installUrl = data.appSlug
-    ? `https://github.com/apps/${data.appSlug}/installations/new`
-    : "https://github.com/settings/installations";
-
   if (data.installations.length === 0) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -667,7 +678,11 @@ function InstallationPicker({
 
           <div className="mt-5 flex items-center gap-2">
             <Button asChild size="sm">
-              <a href={installUrl} target="_blank" rel="noopener noreferrer">
+              <a
+                href={GITHUB_APP_INSTALL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {t("common.githubRepoPicker.chooseRepositories")}
                 <LinkExternal01 size={14} />
               </a>
@@ -741,7 +756,7 @@ function InstallationPicker({
 
       <div className="px-4 py-3 border-t border-border shrink-0">
         <a
-          href={installUrl}
+          href={GITHUB_APP_INSTALL_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -838,9 +853,13 @@ function RepoList({
   const githubClient = useMCPClient({ connectionId, orgId, orgSlug });
 
   const qualifier = installation.type === "User" ? "user" : "org";
+  // `fork:true` includes forks alongside non-forks. GitHub's search API omits
+  // forks by default, so without this the picker silently hides every fork the
+  // account owns. Forks the GitHub App wasn't granted still fail at import time
+  // (see importMutation.onError) — that's surfaced with a fork-specific hint.
   const searchQuery = query
-    ? `${qualifier}:${installation.login} ${query} in:name`
-    : `${qualifier}:${installation.login}`;
+    ? `${qualifier}:${installation.login} ${query} in:name fork:true`
+    : `${qualifier}:${installation.login} fork:true`;
 
   const { data: repos } = useSuspenseQuery({
     queryKey: KEYS.githubOrgRepos(
@@ -869,6 +888,7 @@ function RepoList({
           private: boolean;
           description: string | null;
           updated_at: string;
+          fork?: boolean;
         }>;
       };
       return (parsed.items ?? []).map((r) => ({
@@ -879,6 +899,7 @@ function RepoList({
         private: r.private,
         description: r.description,
         updatedAt: r.updated_at,
+        fork: r.fork ?? false,
       }));
     },
   });
@@ -911,6 +932,11 @@ function RepoList({
           <GitHubIcon className="size-4 text-muted-foreground mt-0.5 shrink-0" />
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-sm font-medium truncate">{repo.name}</span>
+            {repo.fork && (
+              <span className="text-xs font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5 shrink-0 leading-none">
+                {t("common.githubRepoPicker.forkBadge")}
+              </span>
+            )}
           </div>
           <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5 shrink-0 leading-none">
             {repo.private ? <Lock01 size={10} /> : <LockUnlocked01 size={10} />}

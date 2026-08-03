@@ -371,6 +371,19 @@ export const settings = {
   "settings.mainAgent.setToast": '"{title}" is now the main agent',
   "settings.mainAgent.resetToast": "Reset to the Super Agent",
   "settings.mainAgent.errorToast": "Couldn't update the main agent",
+  "settings.review.title": "Reviewers & merge",
+  "settings.review.description":
+    "Automated reviewers run on a task's pull request once it's In Review (checks passing or none). Both appear as sessions on the task card.",
+  "settings.review.qaAgentTitle": "Enable QA Agent",
+  "settings.review.qaAgentDescription":
+    "Verifies the task actually solved the problem — exercises the feature, not just the diff.",
+  "settings.review.codeReviewerTitle": "Enable Code Reviewer",
+  "settings.review.codeReviewerDescription":
+    "Reviews the code using the repository's stack-appropriate review skills.",
+  "settings.review.autoMergeTitle": "Enable Auto-merge",
+  "settings.review.autoMergeDescription":
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+  "settings.review.updateError": "Couldn't update the review setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
@@ -523,6 +536,8 @@ export const settings = {
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · added {time} ago",
   "settings.providerKeyRow.cancel": "Cancel",
+  "settings.providerKeyRow.claudeCode": "Claude Code",
+  "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
   "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
@@ -584,7 +599,8 @@ export const settings = {
   "settings.secrets.scopePrivate": "Private",
   "settings.secrets.scopePrivateDescription": "Private — only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
-  "settings.secrets.secretsCount": "{count} secret{plural} stored",
+  "settings.secrets.secretsCountSingular": "{count} secret stored",
+  "settings.secrets.secretsCountPlural": "{count} secrets stored",
   "settings.secrets.sectionOrganization": "Organization",
   "settings.secrets.sectionPrivate": "Private to me",
   "settings.secrets.valueLabel": "Value",
@@ -618,5 +634,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.moreProviders": "{count} more provider{plural}",
+  "settings.aiProviders.moreProvidersSingular": "{count} more provider",
+  "settings.aiProviders.moreProvidersPlural": "{count} more providers",
 } as const;

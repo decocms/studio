@@ -40,10 +40,11 @@
 //! problem, not a missing plugin — and why a genuine mesh-side
 //! bearer-to-session bridge was the actual fix).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch, OwnedMutexGuard};
 
 use crate::bridge::{self, BridgeError};
 use crate::cookie_jar::CookieJar;
@@ -63,6 +64,17 @@ use crate::tokens::{
 /// `403` an authenticated-but-non-member caller — see `probe_upstream`'s
 /// doc comment for why that distinction matters).
 const PROBE_PATH: &str = "/api/links/me";
+
+/// `GET /api/auth/get-session` — the endpoint the production web shell's own
+/// sign-in gate authenticates with, using the durable session COOKIE
+/// ([`StoredSession::cookie`]), never the OAuth bearer. Better Auth answers
+/// `200` with a session object for a live cookie and `200 null` for a dead
+/// or missing one — which is exactly why [`PROBE_PATH`] alone is not enough:
+/// a valid bearer with a dead cookie reports `signed_in: true` here while
+/// the shell bounces the user to an in-webview `/login` page whose social
+/// buttons cannot work (blocked external navigation). See
+/// `UpstreamSession::confirm_shell_session`.
+const SESSION_PROBE_PATH: &str = "/api/auth/get-session";
 
 /// "at most once per 5 min" — the contract doc's exact throttle window for
 /// `status()`'s network revalidation.
@@ -101,6 +113,18 @@ pub struct StatusResult {
     /// Distinguishes a genuine empty Keychain entry from a read failure. A
     /// storage outage is not evidence that the user signed out.
     pub storage_state: AuthStorageState,
+}
+
+/// A monotonic change to the authenticated subject visible process-wide.
+///
+/// This is deliberately separate from [`StatusResult`]'s watch channel:
+/// `watch` coalesces equal values, while consumers that own account-scoped
+/// child processes must observe every hard sign-out even when no prior status
+/// call published the corresponding signed-in value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionIdentityEvent {
+    pub generation: u64,
+    pub user_sub: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -152,6 +176,11 @@ struct Inner {
     session_cache: RwLock<Option<Option<StoredSession>>>,
     session_load_lock: tokio::sync::Mutex<()>,
     watch_tx: watch::Sender<StatusResult>,
+    /// Serializes the short commit/sign-out boundary with account-scoped
+    /// process admission. Long-running login preparation happens outside it.
+    transition_gate: Arc<tokio::sync::Mutex<()>>,
+    identity_generation: AtomicU64,
+    identity_tx: broadcast::Sender<SessionIdentityEvent>,
 }
 
 /// Cheap to clone (one `Arc` bump) — every call site (IPC commands, the
@@ -159,6 +188,25 @@ struct Inner {
 /// to the same underlying state.
 #[derive(Clone)]
 pub struct UpstreamSession(Arc<Inner>);
+
+/// A fully obtained session that has not yet been installed into the
+/// process-global cache or durable store. Keeping this opaque lets the native
+/// shell stop account-A child processes before account B becomes usable.
+pub struct PreparedSession(StoredSession);
+
+impl PreparedSession {
+    pub fn user_sub(&self) -> &str {
+        &self.0.user.sub
+    }
+}
+
+/// Exclusive guard for an authenticated-subject transition. Terminal spawn
+/// holds the same gate across process creation and registration, so either a
+/// start belongs wholly to the old generation or the transition wins first.
+pub struct SessionTransitionGuard {
+    session: UpstreamSession,
+    _guard: OwnedMutexGuard<()>,
+}
 
 impl UpstreamSession {
     pub fn new(target: String, store: Arc<dyn TokenStore>) -> Self {
@@ -170,6 +218,7 @@ impl UpstreamSession {
             upstream_url: target.clone(),
             storage_state: AuthStorageState::Available,
         });
+        let (identity_tx, _) = broadcast::channel(32);
         Self(Arc::new(Inner {
             target,
             host,
@@ -182,6 +231,9 @@ impl UpstreamSession {
             session_cache: RwLock::new(None),
             session_load_lock: tokio::sync::Mutex::new(()),
             watch_tx,
+            transition_gate: Arc::new(tokio::sync::Mutex::new(())),
+            identity_generation: AtomicU64::new(0),
+            identity_tx,
         }))
     }
 
@@ -207,10 +259,10 @@ impl UpstreamSession {
     }
 
     /// The DURABLE, Keychain-persisted Better Auth session cookie for this
-    /// session's host, if one was ever captured — `None` for a
-    /// system-browser (`login()`) session, which never has one (see
-    /// `tokens.rs`'s `StoredSession::cookie` doc comment), or for a host
-    /// with no stored session at all.
+    /// session's host, if one was ever captured or minted — `None` only for
+    /// a host with no stored session at all, or a legacy pre-cookie-field
+    /// session (which `confirm_shell_session`'s re-mint heals on the next
+    /// revalidation; see `tokens.rs`'s `StoredSession::cookie` doc comment).
     ///
     /// This is what `routes/upstream.rs` attaches (as a plain `Cookie:`
     /// header) on EVERY app-API request for the rest of this
@@ -285,6 +337,19 @@ impl UpstreamSession {
         self.0.watch_tx.subscribe()
     }
 
+    /// Subscribe to non-coalescing authenticated-subject transitions.
+    pub fn subscribe_identity(&self) -> broadcast::Receiver<SessionIdentityEvent> {
+        self.0.identity_tx.subscribe()
+    }
+
+    /// Acquire the process-wide authenticated-subject transition gate.
+    pub async fn begin_transition(&self) -> SessionTransitionGuard {
+        SessionTransitionGuard {
+            session: self.clone(),
+            _guard: self.0.transition_gate.clone().lock_owned().await,
+        }
+    }
+
     /// `auth_status()`. Re-validates against upstream at most once per
     /// [`STATUS_CACHE_TTL`]; every call inside that window returns the
     /// cached verdict without a network round trip.
@@ -329,11 +394,13 @@ impl UpstreamSession {
 
         match self.ensure_fresh_session(session.clone()).await {
             Ok(fresh) => match self.probe_upstream(&fresh.access_token).await {
-                ProbeOutcome::Authenticated => self.publish_signed_in(&fresh),
+                ProbeOutcome::Authenticated => self.confirm_shell_session(fresh).await,
                 ProbeOutcome::Unauthenticated => {
                     match self.force_refresh_session(fresh.clone()).await {
                         Ok(refreshed) => match self.probe_upstream(&refreshed.access_token).await {
-                            ProbeOutcome::Authenticated => self.publish_signed_in(&refreshed),
+                            ProbeOutcome::Authenticated => {
+                                self.confirm_shell_session(refreshed).await
+                            }
                             ProbeOutcome::Unauthenticated => {
                                 self.hard_sign_out(
                                     "upstream rejected an access token after a forced refresh",
@@ -440,16 +507,19 @@ impl UpstreamSession {
     /// way; the shell's own `organization.list`/last-visited-org logic and
     /// org-creation flow take it from there, with no client-side org logic
     /// in this crate.
-    pub async fn login(&self) -> Result<StatusResult, SessionError> {
+    pub async fn prepare_login(&self) -> Result<PreparedSession, SessionError> {
         let stored = login::perform_interactive_login(
             &self.0.http,
             &self.0.target,
             login::open_system_browser,
         )
         .await?;
-        self.0.store.save(&self.0.host, stored.clone()).await?;
-        self.cache_session(Some(stored.clone()));
-        Ok(self.publish_signed_in(&stored))
+        Ok(PreparedSession(stored))
+    }
+
+    pub async fn login(&self) -> Result<StatusResult, SessionError> {
+        let prepared = self.prepare_login().await?;
+        self.begin_transition().await.install(prepared).await
     }
 
     /// `auth_logout()`. Best-effort upstream revoke THEN Keychain clear, in
@@ -466,6 +536,10 @@ impl UpstreamSession {
     /// doc) — a signed-out app has no business holding onto an
     /// in-flight-captured Better Auth session cookie either.
     pub async fn logout(&self) -> StatusResult {
+        self.begin_transition().await.logout().await
+    }
+
+    async fn logout_unlocked(&self) -> StatusResult {
         let current = self.load().await;
         if let Some(session) = current.as_ref() {
             revoke_upstream_best_effort(&self.0.http, session).await;
@@ -483,6 +557,7 @@ impl UpstreamSession {
         self.mark_validated(false);
         let result = self.signed_out();
         self.publish(result.clone());
+        self.publish_identity(None);
         result
     }
 
@@ -494,16 +569,23 @@ impl UpstreamSession {
     /// to revoke). Also purges the cookie jar, for the same reason
     /// `logout()` does.
     pub async fn hard_sign_out(&self, reason: &str) -> StatusResult {
+        self.begin_transition().await.hard_sign_out(reason).await
+    }
+
+    async fn hard_sign_out_unlocked(&self, reason: &str) -> StatusResult {
         tracing::warn!(reason, target = %self.0.target, "upstream session invalidated — clearing local credentials");
         if let Err(err) = self.0.store.clear(&self.0.host).await {
             tracing::warn!(error = %err, "failed to clear upstream Keychain entry during hard sign-out");
-        } else {
-            self.cache_session(None);
         }
+        // A hard invalidation is authoritative for this process even if the
+        // durable delete failed. Never leave the rejected credential usable
+        // until restart; the next launch may retry cleanup independently.
+        self.cache_session(None);
         self.0.cookie_jar.clear(&self.0.host);
         self.mark_validated(false);
         let result = self.signed_out();
         self.publish(result.clone());
+        self.publish_identity(None);
         result
     }
 
@@ -537,7 +619,7 @@ impl UpstreamSession {
     /// unconditional-clear posture: this crate treats "purge on any
     /// terminal outcome" as the safer default throughout, never "keep
     /// retrying with stale credentials."
-    pub async fn complete_session(&self) -> Result<StatusResult, SessionError> {
+    pub async fn prepare_complete_session(&self) -> Result<PreparedSession, SessionError> {
         let outcome = bridge::complete_via_cookie_jar(
             &self.0.http_no_redirect,
             &self.0.target,
@@ -548,9 +630,12 @@ impl UpstreamSession {
         self.0.cookie_jar.clear(&self.0.host);
 
         let stored = outcome?;
-        self.0.store.save(&self.0.host, stored.clone()).await?;
-        self.cache_session(Some(stored.clone()));
-        Ok(self.publish_signed_in(&stored))
+        Ok(PreparedSession(stored))
+    }
+
+    pub async fn complete_session(&self) -> Result<StatusResult, SessionError> {
+        let prepared = self.prepare_complete_session().await?;
+        self.begin_transition().await.install(prepared).await
     }
 
     /// The access token `routes/upstream.rs` attaches to a forwarded
@@ -698,6 +783,21 @@ impl UpstreamSession {
         });
     }
 
+    fn publish_identity(&self, user_sub: Option<String>) {
+        let previous = self
+            .0
+            .identity_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
+                Some(generation.saturating_add(1))
+            })
+            .unwrap_or_else(|generation| generation);
+        let generation = previous.saturating_add(1);
+        let _ = self.0.identity_tx.send(SessionIdentityEvent {
+            generation,
+            user_sub,
+        });
+    }
+
     /// Probes `PROBE_PATH` with `access_token` — see `PROBE_PATH`'s doc
     /// comment for why this endpoint specifically. Only a genuine `401`
     /// (bearer resolution failure) is treated as "unauthenticated"; every
@@ -722,11 +822,169 @@ impl UpstreamSession {
             Err(e) => ProbeOutcome::Inconclusive(e.to_string()),
         }
     }
+
+    /// Probes [`SESSION_PROBE_PATH`] with the durable session cookie — the
+    /// credential the web shell actually signs in with. Only an explicit
+    /// "no session" answer (`200 null`, a `401`, or no stored cookie at
+    /// all) is [`CookieProbeOutcome::Dead`]; every other failure is
+    /// `Inconclusive` and must not trigger a re-mint or sign-out, mirroring
+    /// [`Self::probe_upstream`]'s fail-open posture.
+    async fn probe_cookie_session(&self, stored: &StoredSession) -> CookieProbeOutcome {
+        let Some(cookie) = stored.cookie.as_deref() else {
+            return CookieProbeOutcome::Dead("no durable session cookie is stored".to_string());
+        };
+        let res = self
+            .0
+            .http
+            .get(format!("{}{SESSION_PROBE_PATH}", self.0.target))
+            .header(reqwest::header::COOKIE, cookie)
+            .send()
+            .await;
+        match res {
+            Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>().await {
+                Ok(value) if value.is_null() => CookieProbeOutcome::Dead(
+                    "get-session does not recognize the stored cookie".to_string(),
+                ),
+                Ok(_) => CookieProbeOutcome::Valid,
+                Err(e) => {
+                    CookieProbeOutcome::Inconclusive(format!("malformed get-session response: {e}"))
+                }
+            },
+            Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                CookieProbeOutcome::Dead("HTTP 401".to_string())
+            }
+            Ok(r) => CookieProbeOutcome::Inconclusive(format!("HTTP {}", r.status())),
+            Err(e) => CookieProbeOutcome::Inconclusive(e.to_string()),
+        }
+    }
+
+    /// The second half of `force_revalidate`'s authenticated branch: a valid
+    /// BEARER is not enough to report `signed_in: true`. The production
+    /// shell signs in with the durable session cookie, and a dead cookie
+    /// under a live bearer strands the user on an in-webview `/login` page
+    /// whose social buttons cannot work — the desktop gate mounts the main
+    /// shell on this status, so the status must vouch for the credential
+    /// the shell will actually use.
+    ///
+    /// A dead cookie is first HEALED, not punished: the same mesh bridge
+    /// `login()` uses re-mints a fresh session from the just-validated
+    /// bearer, transparently. Only the bridge explicitly refusing to mint
+    /// (`401`/`403` — the upstream rejecting a bearer it validated moments
+    /// ago) reads as a truly unusable session and signs out; any transient
+    /// bridge failure keeps the signed-in state, consistent with this
+    /// crate's "a network hiccup must never read as sign the user out."
+    async fn confirm_shell_session(&self, fresh: StoredSession) -> StatusResult {
+        match self.probe_cookie_session(&fresh).await {
+            CookieProbeOutcome::Valid => self.publish_signed_in(&fresh),
+            CookieProbeOutcome::Inconclusive(reason) => {
+                tracing::debug!(
+                    reason,
+                    "session-cookie probe inconclusive; keeping signed-in state"
+                );
+                self.publish_signed_in(&fresh)
+            }
+            CookieProbeOutcome::Dead(reason) => {
+                tracing::info!(
+                    reason,
+                    "stored session cookie is dead; re-minting via the session bridge"
+                );
+                match login::mint_session_from_access_token(
+                    &self.0.http,
+                    &self.0.target,
+                    &fresh.access_token,
+                )
+                .await
+                {
+                    Ok(token_value) => {
+                        let mut healed = fresh;
+                        healed.cookie = Some(format!(
+                            "{}={}",
+                            login::session_cookie_name(&self.0.target),
+                            token_value
+                        ));
+                        // Mirrors `remember_cookie`: cache only what the
+                        // store actually holds, and a failed persist still
+                        // reports signed in — the next revalidation simply
+                        // re-mints again.
+                        match self.0.store.save(&self.0.host, healed.clone()).await {
+                            Ok(()) => self.cache_session(Some(healed.clone())),
+                            Err(err) => {
+                                tracing::warn!(error = %err, "failed to persist the re-minted session cookie");
+                            }
+                        }
+                        self.publish_signed_in(&healed)
+                    }
+                    Err(LoginError::SessionBridgeRejected(status @ (401 | 403), body)) => {
+                        self.hard_sign_out(&format!(
+                            "session cookie is dead and the bridge refused to re-mint: HTTP {status} {body}"
+                        ))
+                        .await
+                    }
+                    Err(err) => {
+                        tracing::debug!(error = %err, "session-cookie re-mint failed transiently; keeping signed-in state");
+                        self.publish_signed_in(&fresh)
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl SessionTransitionGuard {
+    pub fn generation(&self) -> u64 {
+        self.session.0.identity_generation.load(Ordering::Acquire)
+    }
+
+    pub async fn current_user_sub_result(&self) -> Result<Option<String>, TokenStoreError> {
+        self.session.current_user_sub_result().await
+    }
+
+    /// Make a prepared identity process-global while this guard excludes
+    /// terminal admission and every other identity transition.
+    pub async fn install(&self, prepared: PreparedSession) -> Result<StatusResult, SessionError> {
+        let previous_user_sub = self
+            .session
+            .load_result()
+            .await?
+            .map(|stored| stored.user.sub);
+        let stored = prepared.0;
+        let next_user_sub = stored.user.sub.clone();
+        self.session
+            .0
+            .store
+            .save(&self.session.0.host, stored.clone())
+            .await?;
+        self.session.cache_session(Some(stored.clone()));
+        let status = self.session.publish_signed_in(&stored);
+        if previous_user_sub.as_deref() != Some(next_user_sub.as_str()) {
+            self.session.publish_identity(Some(next_user_sub));
+        }
+        Ok(status)
+    }
+
+    pub async fn logout(&self) -> StatusResult {
+        self.session.logout_unlocked().await
+    }
+
+    pub async fn hard_sign_out(&self, reason: &str) -> StatusResult {
+        self.session.hard_sign_out_unlocked(reason).await
+    }
 }
 
 enum ProbeOutcome {
     Authenticated,
     Unauthenticated,
+    Inconclusive(String),
+}
+
+/// Outcome of probing the durable session COOKIE — the credential the web
+/// shell signs in with, distinct from the OAuth bearer [`ProbeOutcome`]
+/// covers.
+enum CookieProbeOutcome {
+    Valid,
+    /// The upstream explicitly does not recognize the cookie (or none is
+    /// stored) — the shell WOULD bounce to `/login` despite a valid bearer.
+    Dead(String),
     Inconclusive(String),
 }
 
@@ -923,6 +1181,95 @@ mod tests {
         Ok,
         AlwaysUnauthorized,
         AlwaysServerError,
+    }
+
+    #[derive(Clone, Copy)]
+    enum GetSessionBehavior {
+        Live,
+        Null,
+        ServerError,
+    }
+
+    #[derive(Clone, Copy)]
+    enum MintBehavior {
+        Mint,
+        Unauthorized,
+    }
+
+    /// A full shell-shaped upstream: bearer probe always OK, plus the two
+    /// cookie-session endpoints `confirm_shell_session` talks to. Returns
+    /// (target, mint call counter, last Cookie header the get-session probe
+    /// saw).
+    async fn spawn_shell_server(
+        get_session: GetSessionBehavior,
+        mint: MintBehavior,
+    ) -> (
+        String,
+        Arc<AtomicUsize>,
+        Arc<std::sync::Mutex<Option<String>>>,
+    ) {
+        let mint_calls = Arc::new(AtomicUsize::new(0));
+        let seen_cookie = Arc::new(std::sync::Mutex::new(None));
+        let mint_calls_route = mint_calls.clone();
+        let seen_cookie_route = seen_cookie.clone();
+        let app = Router::new()
+            .route(
+                "/api/links/me",
+                get(|| async { (StatusCode::OK, Json(serde_json::json!(null))) }),
+            )
+            .route(
+                "/api/auth/get-session",
+                get(move |headers: axum::http::HeaderMap| {
+                    let seen = seen_cookie_route.clone();
+                    async move {
+                        *seen.lock().unwrap() = headers
+                            .get(axum::http::header::COOKIE)
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_string);
+                        match get_session {
+                            GetSessionBehavior::Live => (
+                                StatusCode::OK,
+                                Json(serde_json::json!({
+                                    "session": {"id": "s1"},
+                                    "user": {"id": "u1"},
+                                })),
+                            ),
+                            GetSessionBehavior::Null => {
+                                (StatusCode::OK, Json(serde_json::json!(null)))
+                            }
+                            GetSessionBehavior::ServerError => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({"error": "boom"})),
+                            ),
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/api/auth/desktop/session-from-oauth",
+                post(move || {
+                    let calls = mint_calls_route.clone();
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        match mint {
+                            MintBehavior::Mint => (
+                                StatusCode::OK,
+                                Json(serde_json::json!({"sessionToken": "minted-123"})),
+                            ),
+                            MintBehavior::Unauthorized => (
+                                StatusCode::UNAUTHORIZED,
+                                Json(serde_json::json!({"error": "unauthorized"})),
+                            ),
+                        }
+                    }
+                }),
+            );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        (format!("http://{addr}"), mint_calls, seen_cookie)
     }
 
     use axum::http::StatusCode;
@@ -1176,6 +1523,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn force_revalidate_keeps_a_live_shell_cookie_without_reminting() {
+        let (target, mint_calls, seen_cookie) =
+            spawn_shell_server(GetSessionBehavior::Live, MintBehavior::Mint).await;
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target, store);
+
+        let status = session.force_revalidate().await;
+        assert!(status.signed_in);
+        assert_eq!(mint_calls.load(Ordering::SeqCst), 0);
+        // The probe authenticated with the DURABLE stored cookie — the same
+        // credential the web shell will use.
+        assert_eq!(
+            seen_cookie.lock().unwrap().as_deref(),
+            Some("better-auth.session_token=test")
+        );
+    }
+
+    #[tokio::test]
+    async fn force_revalidate_heals_a_dead_shell_cookie_by_reminting_from_the_valid_bearer() {
+        let (target, mint_calls, _seen) =
+            spawn_shell_server(GetSessionBehavior::Null, MintBehavior::Mint).await;
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target.clone(), store.clone());
+
+        let status = session.force_revalidate().await;
+        assert!(status.signed_in);
+        assert_eq!(mint_calls.load(Ordering::SeqCst), 1);
+        // The re-minted cookie is persisted durably (http target → the
+        // unprefixed Better Auth cookie name).
+        let healed = store.load(&host_key(&target)).await.unwrap().unwrap();
+        assert_eq!(
+            healed.cookie.as_deref(),
+            Some("better-auth.session_token=minted-123")
+        );
+    }
+
+    #[tokio::test]
+    async fn force_revalidate_signs_out_when_a_dead_shell_cookie_cannot_be_reminted() {
+        // The exact wedge this closes: bearer probe fine, cookie session
+        // dead, bridge refuses to mint — previously reported
+        // `signed_in: true` and stranded the user on an in-webview /login
+        // page with a non-functional social button.
+        let (target, mint_calls, _seen) =
+            spawn_shell_server(GetSessionBehavior::Null, MintBehavior::Unauthorized).await;
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target.clone(), store.clone());
+
+        let status = session.force_revalidate().await;
+        assert!(!status.signed_in);
+        assert_eq!(mint_calls.load(Ordering::SeqCst), 1);
+        // Hard sign-out: the unusable credentials are gone from the store.
+        assert!(store.load(&host_key(&target)).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn force_revalidate_fails_open_when_the_cookie_probe_is_inconclusive() {
+        let (target, mint_calls, _seen) =
+            spawn_shell_server(GetSessionBehavior::ServerError, MintBehavior::Mint).await;
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target, store);
+
+        let status = session.force_revalidate().await;
+        assert!(status.signed_in);
+        // A 5xx from get-session is not proof the cookie is bad — no
+        // re-mint, no sign-out.
+        assert_eq!(mint_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn logout_clears_the_store_and_publishes_signed_out() {
         let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
         let store = seeded_store(&target, valid_session(&target));
@@ -1245,6 +1661,80 @@ mod tests {
 
         session.hard_sign_out("test").await;
         assert!(session.cookie_jar().is_empty(session.host()));
+    }
+
+    #[tokio::test]
+    async fn transition_gate_linearizes_terminal_admission_with_hard_sign_out() {
+        let target = "http://example.invalid".to_string();
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target, store);
+        let admission = session.begin_transition().await;
+        let mut identity_events = session.subscribe_identity();
+
+        let sign_out = {
+            let session = session.clone();
+            tokio::spawn(async move { session.hard_sign_out("test invalidation").await })
+        };
+        tokio::task::yield_now().await;
+        assert!(
+            !sign_out.is_finished(),
+            "hard sign-out must wait for an in-flight terminal admission"
+        );
+
+        drop(admission);
+        assert!(!sign_out.await.unwrap().signed_in);
+        let event = identity_events.recv().await.unwrap();
+        assert_eq!(event.user_sub, None);
+        assert_eq!(event.generation, 1);
+        assert_eq!(session.current_user_sub().await, None);
+    }
+
+    #[tokio::test]
+    async fn identity_generation_changes_for_replacement_but_not_same_subject_refresh() {
+        let target = "http://example.invalid".to_string();
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target.clone(), store);
+        let mut events = session.subscribe_identity();
+
+        let mut refreshed = valid_session(&target);
+        refreshed.access_token = "refreshed-token".to_string();
+        let transition = session.begin_transition().await;
+        transition
+            .install(PreparedSession(refreshed))
+            .await
+            .unwrap();
+        assert_eq!(transition.generation(), 0);
+        assert!(events.try_recv().is_err());
+
+        let mut replacement = valid_session(&target);
+        replacement.user.sub = "user_2".to_string();
+        replacement.user.email = Some("second@example.com".to_string());
+        transition
+            .install(PreparedSession(replacement))
+            .await
+            .unwrap();
+        assert_eq!(transition.generation(), 1);
+        let event = events.recv().await.unwrap();
+        assert_eq!(event.generation, 1);
+        assert_eq!(event.user_sub.as_deref(), Some("user_2"));
+    }
+
+    #[tokio::test]
+    async fn hard_sign_out_drops_the_process_cache_even_when_durable_clear_fails() {
+        let target = "http://example.invalid".to_string();
+        let stored = valid_session(&target);
+        let session = UpstreamSession::new(
+            target,
+            Arc::new(RejectingClearStore {
+                stored: stored.clone(),
+            }),
+        );
+        assert_eq!(session.current_user_sub().await.as_deref(), Some("user_1"));
+
+        let status = session.hard_sign_out("server rejected credentials").await;
+
+        assert!(!status.signed_in);
+        assert_eq!(session.current_user_sub().await, None);
     }
 
     /// Logout ordering: the best-effort upstream revoke MUST fire (with the

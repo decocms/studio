@@ -216,21 +216,6 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extracting brand context",
   "routes.onboarding.uploadOrgLogo": "Upload organization logo",
   "routes.onboarding.welcomeTitle": "Welcome to deco",
-  "routes.orgInstall.addToHomeScreen": "Add {name} to your Home Screen",
-  "routes.orgInstall.addToHomeScreenButton": "Add {name} to Home Screen",
-  "routes.orgInstall.alreadyInstalled":
-    "{name} is already installed on this device.",
-  "routes.orgInstall.backLink": "Back to {name}",
-  "routes.orgInstall.defaultOrgName": "this organization",
-  "routes.orgInstall.fallbackInstructions":
-    "To install, open your browser's menu and choose Install {name} (or \"Add to Home Screen\"). If you don't see it yet, interact with the app for a moment and try again.",
-  "routes.orgInstall.installDescription":
-    'Install {name} as its own app — a standalone window that opens straight into this organization. To install the full deco Studio app instead, use your browser\'s "Add to Home Screen" from any other page.',
-  "routes.orgInstall.installDismissed": "Install dismissed.",
-  "routes.orgInstall.installOnIos": "Install on iOS",
-  "routes.orgInstall.installing": "Installing {name}…",
-  "routes.orgInstall.iosInstructions":
-    "Tap the Share button, then choose Add to Home Screen.",
   "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the report",
   "routes.reports.failedToLoadReportDescription":
     "Check your connection and try again.",

@@ -1,10 +1,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { resolveTier } from "@/core/resolve-tier";
-import { enqueueThreadRun } from "@/dispatch-queue";
-import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { enqueueAgentRunForTask } from "./enqueue-task-run";
 
 /**
  * The shared post-write reaction for a task delegated to the Super Agent:
@@ -34,30 +31,17 @@ export async function reactToSuperAgentDelegation(
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
-async function enqueueSuperAgentForTask(
+export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
+  opts?: {
+    /** A reviewer's change request — leads the re-run prompt. */
+    feedback?: string;
+    /** The PR already under review, so the re-run updates it in place instead
+     *  of opening a second PR. */
+    pr?: { number: number; url: string };
+  },
 ): Promise<void> {
-  const organizationId = task.organizationId;
-  const userId = task.assignedBy ?? task.createdBy;
-
-  const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
-
-  const thread = await ctx.storage.threads.create({
-    organization_id: organizationId,
-    title: `Super Agent: ${task.title}`,
-    status: "in_progress",
-    virtual_mcp_id: agentId,
-    // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
-    message_storage_version: 2,
-    created_by: userId,
-  });
-
-  // Link the run thread to the task (many-to-many) so the board can render it
-  // in the card and derive its live run state.
-  await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
-
   // Guidance tuned from observed runs. First: let the agent judge whether the
   // task even touches a repo — not every task does, and forcing a PR on a
   // research/answer task made it invent code changes. Only when it works on a
@@ -67,57 +51,45 @@ async function enqueueSuperAgentForTask(
   const prompt = [
     "You've been assigned this task. Complete it.",
     "",
+    "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
+      "to completion on your own. Use `user_ask` ONLY for a genuine, " +
+      "unresolvable blocker a human must clear (a missing credential/secret, or " +
+      "a decision so ambiguous you truly cannot proceed) — that should be rare. " +
+      "Do not ask for confirmation of a reasonable choice; make it and move on.",
+    "",
     `Title: ${task.title}`,
     task.description ? `\nDescription:\n${task.description}\n` : "",
+    // When a reviewer bounced the task back, its feedback is the whole point of
+    // this re-run — lead with it so the model addresses it (and updates the
+    // EXISTING PR), not re-does the task from scratch or opens a second PR.
+    opts?.feedback
+      ? [
+          opts.pr
+            ? `A reviewer requested changes on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
+            : "A reviewer requested changes on your previous work:",
+          opts.feedback,
+          opts.pr
+            ? `Load the repo, then CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, commit, and push to update the SAME pull request — do NOT open a new one or start a new branch.`
+            : "Address this feedback.",
+          "",
+        ].join("\n")
+      : "",
     "How to work:",
     "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
+    // The reviewer-feedback block above overrides this for a re-run: only a
+    // FIRST attempt opens a new branch + PR; a re-run pushes to the PR's branch.
     "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
     "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
     "- If a dev server is running it hot-reloads your changes — don't restart it, hunt for its port, or run a full typecheck/build just to verify a small edit.",
     "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
-    "- If you're blocked on a decision or information only a human has, call the `user_ask` tool instead of guessing or stopping.",
+    "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
     "",
     `(task id: ${task.id})`,
   ].join("\n");
 
-  const requestMessage = {
-    id: crypto.randomUUID(),
-    role: "user" as const,
-    parts: [{ type: "text" as const, text: prompt }],
-  };
-
-  // Persist the user turn BEFORE dispatch (as POST /messages does) so it lands
-  // with an early created_at. The projector runs concurrently with the run's own
-  // prepareRun user-message emit; if it projects the assistant reply first, that
-  // reply gets base = Date.now() (no user parts yet) and the user message then
-  // persists with a LATER created_at — inverting their order in the UI (the
-  // request renders after the reply, trailed by "No response was generated").
-  // Writing it here first guarantees user-before-assistant ordering. Idempotent:
-  // the run's own emit reuses this same message id (ON CONFLICT keeps this row).
-  await new PartEmitter({
-    storage: ctx.storage.threads.messageParts(),
-    orgId: organizationId,
-    threadId: thread.id,
-    runId: thread.id,
-  }).emitRequestMessage(requestMessage);
-
-  await enqueueThreadRun({
-    threadId: thread.id,
-    source: "background-tool",
-    request: {
-      messages: [requestMessage],
-      models: {
-        credentialId: model.credentialId,
-        thinking: { id: model.modelId, title: model.modelMeta.title },
-      },
-      agent: { id: agentId },
-      temperature: 0.5,
-      toolApprovalLevel: "auto",
-      mode: "default",
-      organizationId,
-      userId,
-      taskId: thread.id,
-      runMetadata: { taskBoardItemId: task.id },
-    },
+  await enqueueAgentRunForTask(ctx, task, {
+    title: `Super Agent: ${task.title}`,
+    prompt,
+    temperature: 0.5,
   });
 }

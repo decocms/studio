@@ -7,6 +7,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { MCP_LIST_TOOLS_TIMEOUT_MS } from "@/core/constants";
 import {
   type McpListCache,
   getMcpListCache,
@@ -44,6 +45,9 @@ export class AuthTransport extends WrapperTransport {
   /**
    * Fetch tools by sending a tools/list JSON-RPC request through the inner transport.
    * Single-flighted: concurrent callers share the same in-flight request.
+   * Bounded by MCP_LIST_TOOLS_TIMEOUT_MS — without it, a downstream server that
+   * never replies would leave every subsequent authorized tool call on this
+   * connection hanging forever (the single-flighted promise never resets).
    */
   private fetchToolsFromServer(): Promise<unknown[] | null> {
     if (!this.toolsListPromise) {
@@ -51,17 +55,24 @@ export class AuthTransport extends WrapperTransport {
         const requestId = `auth-tools-${Date.now()}`;
         const prev = this.innerTransport.onmessage;
 
+        const finish = (tools: unknown[] | null) => {
+          clearTimeout(timer);
+          this.innerTransport.onmessage = prev;
+          this.toolsListPromise = null;
+          resolve(tools);
+        };
+
+        const timer = setTimeout(() => finish(null), MCP_LIST_TOOLS_TIMEOUT_MS);
+
         this.innerTransport.onmessage = (message: JSONRPCMessage) => {
           if ("id" in message && message.id === requestId) {
-            this.innerTransport.onmessage = prev;
-            this.toolsListPromise = null;
             if ("result" in message) {
               const tools =
                 (message.result as { tools?: unknown[] })?.tools ?? null;
-              resolve(tools);
+              finish(tools);
             } else {
               // JSON-RPC error response — resolve null so callers degrade gracefully
-              resolve(null);
+              finish(null);
             }
           } else {
             prev?.(message);
@@ -75,11 +86,7 @@ export class AuthTransport extends WrapperTransport {
             method: "tools/list",
             params: {},
           } as JSONRPCMessage)
-          .catch(() => {
-            this.innerTransport.onmessage = prev;
-            this.toolsListPromise = null;
-            resolve(null);
-          });
+          .catch(() => finish(null));
       });
     }
     return this.toolsListPromise;

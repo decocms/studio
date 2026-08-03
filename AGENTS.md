@@ -291,7 +291,7 @@ Database schema key concepts:
 
 **Better Auth** for authentication:
 - OAuth 2.1, SSO, API keys
-- Config: `apps/api/auth-config.json` (example: `auth-config.example.json`)
+- Config: `AUTH_*` environment variables (`apps/api/src/auth/auth-env.ts`)
 
 **AccessControl** (`apps/api/src/core/access-control.ts`) for authorization:
 - Organization/project-level RBAC
@@ -431,7 +431,7 @@ If a test needs `vi.mock`, `mock.module`, a stubbed `StudioContext`, or a fake `
 The e2e suite is a **black-box contract** over HTTP + DB: spin the server, hit it over the wire,
 assert on responses. It must stay decoupled from the implementation so a component can be rewritten
 — even in another language — and the same suite still holds. The in-sandbox daemon's suite
-(`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
+(`packages/sandbox/daemon-e2e/daemon.*.e2e.test.ts`) already works this way: it spawns the built binary
 (swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The Studio suite lives in the
 dedicated `packages/e2e` (`@decocms/e2e`) workspace behind the same wall — its Playwright config
 spawns `apps/api` and `apps/web` as separate processes via `webServer.cwd`
@@ -591,7 +591,7 @@ them in the **first** PR — they are the difference between "works in the demo"
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
 6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
 7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
-8. **No synchronous/blocking work in the sandbox daemon** (`packages/sandbox/daemon/**`). It runs on a single-threaded Bun event loop. Any sync fs (`readFileSync`/`writeFileSync`/`mkdirSync`), sync crypto/hashing, or CPU-bound work (huge `JSON.parse`/`stringify`, unbounded loops) blocks the loop—so the daemon stops answering its HTTP health probe. Studio polls that probe and will mark the sandbox **dead** and tear it down / trigger recovery on a single miss. Use `node:fs/promises`, `await`, stream/chunk large payloads, and offload CPU work. This is CONTRIBUTING.md rule #1 for a reason. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+8. **The sandbox daemon is Go** (`packages/sandbox/daemon-go/**`) — one static binary per sandbox pod, the only daemon there is (the TypeScript one is deleted). Write Go there, not TypeScript. Its health probe is unforgiving: Studio polls it and marks the sandbox **dead** on a single miss, tearing the pod down mid-session, so never hold a lock across slow I/O on that path. The daemon's contract is asserted black-box in `packages/sandbox/daemon-e2e/` (swap the binary under test with `DAEMON_E2E_CMD`). Blocking work is still banned in Studio's own Bun processes — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## API Path Convention
 

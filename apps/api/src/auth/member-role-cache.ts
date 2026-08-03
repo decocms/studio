@@ -15,14 +15,11 @@ export interface MemberRoleCache {
   set(userId: string, organizationId: string, role: string): void;
   /** Invalidate a specific user+org entry */
   invalidate(userId: string, organizationId: string): void;
-  /** Invalidate all entries for an organization (e.g. bulk role changes) */
-  invalidateOrg(organizationId: string): void;
 }
 
 interface CacheEntry {
   role: string;
   expiresAt: number;
-  organizationId: string;
 }
 
 function cacheKey(userId: string, organizationId: string): string {
@@ -74,21 +71,12 @@ export function createMemberRoleCache(options?: {
       cache.set(key, {
         role,
         expiresAt: Date.now() + ttlMs,
-        organizationId,
       });
       evictExpired();
     },
 
     invalidate(userId, organizationId) {
       cache.delete(cacheKey(userId, organizationId));
-    },
-
-    invalidateOrg(organizationId) {
-      for (const [key, entry] of cache) {
-        if (entry.organizationId === organizationId) {
-          cache.delete(key);
-        }
-      }
     },
   };
 }

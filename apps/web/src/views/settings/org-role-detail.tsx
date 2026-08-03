@@ -20,7 +20,7 @@ import {
 } from "@/sdk";
 import {
   type AiProviderKey,
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useSuspenseAiProviderModels,
 } from "@/hooks/collections/use-ai-providers";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -600,7 +600,7 @@ function ModelsPermissionsTab({
 }: ModelsPermissionsTabProps) {
   const t = useT();
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const allModelsConnections = useAiProviderKeys();
+  const allModelsConnections = useHostedAiProviderKeys();
 
   const toggleModel = (connectionId: string, modelId: string) => {
     const current = modelSet[connectionId] ?? [];

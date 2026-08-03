@@ -5,12 +5,7 @@
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  keepPreviousData,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 
@@ -92,8 +87,14 @@ export function useOrgFsList(volume: string, path: string) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsList(org.id, volume, path),
-    // Keep the previous listing on screen while navigating into a dir.
-    placeholderData: keepPreviousData,
+    // Keep the previous listing on screen while navigating into a dir —
+    // but only within the same org+volume, so switching orgs (which
+    // doesn't remount this hook) never flashes another org's file names.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === org.id &&
+      previousQuery.queryKey[2] === volume
+        ? previousData
+        : undefined,
     queryFn: async () => {
       const res = await fsFetch(fsUrl(org.slug, volume, "list", { path }));
       const body = (await res.json()) as { entries: OrgFsEntry[] };
@@ -166,20 +167,48 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   });
 }
 
+const SEARCH_LIMIT = 50;
+
+/** Narrow a search to one volume and (optionally) one directory subtree. */
+export interface OrgFsSearchScope {
+  volume: string;
+  /** In-volume directory to search under ("" = the whole volume). */
+  prefix: string;
+}
+
 /**
- * Path search (case-insensitive substring) across every volume, newest
- * first — the Library's search box. Only runs for non-empty queries;
- * previous results stay on screen while a new query loads.
+ * Path search (case-insensitive substring), newest first — the Library's search
+ * box. Cross-volume by default; `scope` narrows it to one volume + directory
+ * subtree, which is what the Library does while you're inside a folder. Only
+ * runs for non-empty queries; previous results stay on screen while a new
+ * query loads.
  */
-export function useOrgFsSearch(query: string, limit = 50) {
+export function useOrgFsSearch(query: string, scope?: OrgFsSearchScope) {
   const { org } = useProjectContext();
   return useQuery({
-    queryKey: KEYS.orgFsSearch(org.id, query),
+    queryKey: KEYS.orgFsSearch(
+      org.id,
+      query,
+      scope?.volume ?? "",
+      scope?.prefix ?? "",
+    ),
     enabled: query.length > 0,
-    placeholderData: keepPreviousData,
+    // Keep previous results on screen between keystrokes, but only within
+    // the same org — switching orgs doesn't remount this hook, so without
+    // this guard the new org's search box would flash the old org's results.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === org.id ? previousData : undefined,
     queryFn: async () => {
+      const params = new URLSearchParams({
+        q: query,
+        limit: String(SEARCH_LIMIT),
+      });
+      if (scope) {
+        params.set("volume", scope.volume);
+        if (scope.prefix) params.set("prefix", scope.prefix);
+      }
       const res = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+        `/api/${encodeURIComponent(org.slug)}/fs/search?${params}`,
       );
       return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
     },

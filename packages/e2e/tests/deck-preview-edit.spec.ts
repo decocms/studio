@@ -107,12 +107,44 @@ test.describe("deck preview tab", () => {
       await dismissRelease.click();
     }
 
+    // Releasing a workspace resize over an iframe used to leave the panel
+    // group's drag state active forever. The library then kept
+    // `pointer-events: none` on the panels, so the framed page still painted
+    // but no longer accepted clicks or keyboard focus.
+    const resizeHandle = page.locator('[data-slot="resizable-handle"]').first();
+    const iframe = page.locator(`iframe[title="${DECK_PATH}"]`);
+    const mainResizablePanel = page
+      .getByTestId("main-panel")
+      .locator("xpath=ancestor::*[@data-panel][1]");
+    const resizeHandleBox = await resizeHandle.boundingBox();
+    const iframeBox = await iframe.boundingBox();
+    expect(resizeHandleBox).not.toBeNull();
+    expect(iframeBox).not.toBeNull();
+    if (!resizeHandleBox || !iframeBox) {
+      throw new Error("Resize handle and preview iframe must be visible");
+    }
+
+    const resizeX = resizeHandleBox.x + resizeHandleBox.width / 2;
+    const resizeY = iframeBox.y + iframeBox.height / 2;
+    await page.mouse.move(resizeX, resizeY);
+    await page.mouse.down();
+    // Establish the drag while still over the parent document. v4 captures the
+    // pointer on this first movement so the later iframe crossing cannot steal
+    // the release event.
+    await page.mouse.move(resizeX - 4, resizeY);
+    await expect(mainResizablePanel).toHaveCSS("pointer-events", "none");
+    await page.mouse.move(iframeBox.x + 40, resizeY, { steps: 10 });
+    await page.mouse.up();
+    await expect(mainResizablePanel).toHaveCSS("pointer-events", "auto");
+
     // Enter edit mode and delete slide 2 via the rail context menu.
     await page.getByRole("button", { name: "Edit inline" }).click();
-    await expect(frame.locator("section[data-deck-active]")).toHaveAttribute(
-      "contenteditable",
-      "true",
-    );
+    const activeSlide = frame.locator("section[data-deck-active]");
+    await expect(activeSlide).toHaveAttribute("contenteditable", "true");
+    // Prove the iframe is interactive again, not merely that its parent style
+    // changed: a real click must reach and focus its contenteditable slide.
+    await activeSlide.click({ position: { x: 20, y: 20 } });
+    await expect(activeSlide).toBeFocused();
 
     await frame.locator(".thumb").nth(1).click({ button: "right" });
     await frame.locator('[data-act="delete"]').click();

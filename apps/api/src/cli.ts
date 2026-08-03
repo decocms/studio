@@ -58,14 +58,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "local-sandbox-provider": {
-      type: "boolean",
-      default: false,
-    },
-    hot: {
-      type: "boolean",
-      default: false,
-    },
     prune: {
       type: "boolean",
       default: false,
@@ -94,7 +86,6 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link [studio-url] [options]   Start the desktop-side link daemon
   deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
@@ -110,16 +101,9 @@ Server Options:
 Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
-  --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
-  --hot                         Hot-reload managed link and sandbox daemons in dev
 
 Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
-
-Link Options:
-  [studio-url]      Studio to link against (default: https://studio.decocms.com)
-  --port <port>     Local port for the daemon (default: 5174)
-  --prune           Prune safe stale local sandboxes before starting link
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
@@ -144,7 +128,6 @@ Examples:
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
-  deco link https://studio.decocms.com   Link this machine to a studio
 
 Documentation:
   https://decocms.com/studio
@@ -244,7 +227,7 @@ if (command === "backfill-assets") {
   process.exit(code);
 }
 
-// ── Auth / Link helpers ────────────────────────────────────────────────
+// ── Auth helpers ───────────────────────────────────────────────────────
 function resolveDataDir(): string {
   return (
     values.home ||
@@ -281,57 +264,6 @@ if (command === "auth") {
   process.exit(1);
 }
 
-// ── Link command ───────────────────────────────────────────────────────
-if (command === "link") {
-  const { runLinkCommand } = await import("./cli/commands/link");
-  // Optional positional: the studio to link against (auth target + cluster
-  // websocket), e.g. https://studio-stg.decocms.com. When omitted, falls back
-  // to STUDIO_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
-  const studioArg = positionals[1];
-  let studioUrl: string | undefined;
-  if (studioArg !== undefined) {
-    try {
-      const parsed = new URL(studioArg);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error("must be http(s)");
-      }
-      studioUrl = studioArg.replace(/\/$/, "");
-    } catch {
-      console.error(
-        `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
-      );
-      process.exit(1);
-    }
-  }
-  // The top-level `parseArgs` declares `--port` with a default of 3000
-  // (for the server command). Only honor it for `deco link` if the user
-  // actually passed `--port`/`-p` on the command line — otherwise
-  // `runLinkCommand` falls back to the daemon's own default of 5174.
-  const portExplicit = process.argv.some(
-    (a) =>
-      a === "--port" ||
-      a === "-p" ||
-      a.startsWith("--port=") ||
-      a.startsWith("-p="),
-  );
-  const tui = resolveTui({
-    noTui: values["no-tui"] === true,
-    isTty: process.stdout.isTTY,
-  });
-  const code = await runLinkCommand({
-    port: portExplicit ? Number(values.port) : undefined,
-    clusterBaseUrl: studioUrl,
-    tui,
-    version: await getVersion(),
-    hotReload: values.hot === true,
-    prune: values.prune === true,
-    // Managed daemons (dev / npx --local-sandbox-provider) suppress the
-    // banner — the parent dev/serve process already renders one.
-    banner: process.env.DECOCMS_LINK_MANAGED !== "1",
-  });
-  process.exit(code);
-}
-
 // ── Dev command (Ink TUI + dev servers) ─────────────────────────────────
 if (command === "dev") {
   const decoHome =
@@ -345,12 +277,6 @@ if (command === "dev") {
     isTty: process.stdout.isTTY,
   });
 
-  const localSandboxProvider = values["local-sandbox-provider"] === true;
-  const { isDevLinkToxiProxyEnabled } = await import(
-    "./cli/lib/dev-link-toxiproxy"
-  );
-  const devLinkToxiProxy =
-    localSandboxProvider && isDevLinkToxiProxyEnabled(process.env);
   const devOptions = {
     port: values.port!,
     vitePort: values["vite-port"]!,
@@ -359,9 +285,6 @@ if (command === "dev") {
     skipMigrations: values["skip-migrations"] === true,
     noTui,
     localMode: values["no-local-mode"] !== true,
-    localSandboxProvider,
-    hotReload: values.hot === true,
-    devLinkToxiProxy,
   };
 
   if (noTui) {
@@ -380,7 +303,7 @@ if (command === "dev") {
     const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode({ localSandboxProvider, devLinkToxiProxy });
+    setDevMode();
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });
@@ -399,7 +322,6 @@ if (
     "dev",
     "services",
     "auth",
-    "link",
     "backfill-assets",
   ].includes(command)
 ) {

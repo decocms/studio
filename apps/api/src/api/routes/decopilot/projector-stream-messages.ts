@@ -1,4 +1,4 @@
-import { DECOPILOT_STREAM_SUBJECT_PREFIX } from "@decocms/harness/run-stream-codec";
+import { DECOPILOT_STREAM_SUBJECT_PREFIX } from "@/harnesses/lib/run-stream-codec";
 
 export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
 

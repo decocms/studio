@@ -138,6 +138,44 @@ export async function resolvesToPrivateAddress(
   }
 }
 
+/**
+ * Full SSRF guard for a remote MCP URL: rejects private/loopback/link-local
+ * IP literals synchronously via `isPrivateUrl`, then — for a plain hostname —
+ * resolves DNS and rejects if any resolved address is private. Shared by
+ * every code path that connects to a user-supplied MCP server URL, so a
+ * caller can't bypass the registry discovery guard by hitting a different
+ * entry point (e.g. connection create/update) with the same URL.
+ */
+export async function guardAgainstPrivateUrl(
+  url: string,
+): Promise<string | null> {
+  const blockedMessage = "URLs targeting private networks are not allowed";
+
+  if (isPrivateUrl(url)) {
+    return blockedMessage;
+  }
+
+  // isPrivateUrl already fully vets an IP-literal hostname; only a plain
+  // domain name needs a DNS lookup to catch a domain whose DNS record
+  // points at a private/metadata address.
+  const hostname = new URL(url).hostname;
+  const isIpLiteral =
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+    (hostname.startsWith("[") && hostname.endsWith("]"));
+  if (isIpLiteral) return null;
+
+  try {
+    const blocked = await withTimeout(
+      resolvesToPrivateAddress(hostname),
+      5_000,
+      "DNS resolution timeout",
+    );
+    return blocked ? blockedMessage : null;
+  } catch {
+    return blockedMessage; // can't verify in time — fail closed
+  }
+}
+
 const DiscoverToolsInputSchema = z.object({
   url: z.string().describe("Remote MCP server URL"),
   type: z
@@ -249,6 +287,30 @@ export function withTimeout<T>(
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Wraps `fetch` to refuse 3xx redirects. `isPrivateUrl` and the DNS check
+ * above only vet the URL we're about to connect to — the MCP SDK's client
+ * transports follow redirects by default, so a malicious/compromised remote
+ * server could 3xx-redirect the `tools/list` request to a private/metadata
+ * address and bypass both checks. `tryRawToolsList` already guards its own
+ * bare fetch this way; this does the same for the primary SDK-client path
+ * (attempted first, for every server).
+ */
+export function createNoRedirectFetch(
+  fetchImpl: (
+    url: string | URL,
+    init?: RequestInit,
+  ) => Promise<Response> = fetch,
+): (url: string | URL, init?: RequestInit) => Promise<Response> {
+  return async (url, init) => {
+    const res = await fetchImpl(url, { ...init, redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error("Refusing to follow a redirect from the remote server");
+    }
+    return res;
+  };
+}
+
 async function tryRawToolsList(
   url: string,
   timeoutMs: number,
@@ -304,42 +366,12 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
       return { tools: [], error: "URL is required" };
     }
 
-    if (isPrivateUrl(url)) {
-      return {
-        tools: [],
-        error: "URLs targeting private networks are not allowed",
-      };
+    const guardError = await guardAgainstPrivateUrl(url);
+    if (guardError) {
+      return { tools: [], error: guardError };
     }
 
     const timeoutMs = 10_000;
-
-    // isPrivateUrl already fully vets an IP-literal hostname; only a plain
-    // domain name needs a DNS lookup to catch a domain whose DNS record
-    // points at a private/metadata address.
-    const hostname = new URL(url).hostname;
-    const isIpLiteral =
-      /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
-      (hostname.startsWith("[") && hostname.endsWith("]"));
-
-    let blockedByDns = false;
-    if (!isIpLiteral) {
-      try {
-        blockedByDns = await withTimeout(
-          resolvesToPrivateAddress(hostname),
-          5_000,
-          "DNS resolution timeout",
-        );
-      } catch {
-        blockedByDns = true; // can't verify in time — fail closed
-      }
-    }
-
-    if (blockedByDns) {
-      return {
-        tools: [],
-        error: "URLs targeting private networks are not allowed",
-      };
-    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -359,6 +391,7 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
 
     let lastError: string | null = null;
     let authErrorUrl: string | null = null;
+    const noRedirectFetch = createNoRedirectFetch();
 
     for (const attempt of attempts) {
       let client: Client | null = null;
@@ -372,9 +405,11 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
           attempt.transport === "sse"
             ? new SSEClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: noRedirectFetch,
               })
             : new StreamableHTTPClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: noRedirectFetch,
               });
 
         await withTimeout(

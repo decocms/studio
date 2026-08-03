@@ -27,6 +27,7 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
+import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemThreadRef } from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
@@ -42,13 +43,19 @@ export type StallAction = "none" | "advance" | "nudge";
 export function decideStallAction(thread: {
   status: string | null;
   messageStorageVersion: number;
+  harnessId: string | null;
+  sandboxProviderKind: string | null;
 }): StallAction {
   if (thread.status === "completed") return "advance";
   // Only v2 threads can take a new turn: dispatch nulls the part emitter for v1
   // (deprecated, read-only), so a nudge would run with nothing persisted and
   // nothing rendered. A failed v1 thread is left In Progress for a human rather
   // than advanced — its work really is unfinished.
-  if (thread.status === "failed" && thread.messageStorageVersion === 2) {
+  if (
+    thread.status === "failed" &&
+    thread.messageStorageVersion === 2 &&
+    isHostedDecopilotRuntime(thread)
+  ) {
     return "nudge";
   }
   return "none";
@@ -113,6 +120,8 @@ async function nudgeThread(
         mode: "default",
         organizationId,
         userId: item.assignedBy ?? item.createdBy,
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
         taskId: thread.threadId,
         runMetadata: { taskBoardItemId: item.id },
       },
@@ -135,6 +144,8 @@ async function resolveStallAction(
   return decideStallAction({
     status: thread.status,
     messageStorageVersion: thread.message_storage_version,
+    harnessId: thread.harness_id,
+    sandboxProviderKind: thread.sandbox_provider_kind,
   });
 }
 

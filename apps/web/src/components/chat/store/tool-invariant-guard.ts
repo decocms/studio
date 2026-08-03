@@ -1,38 +1,27 @@
 /**
  * Tool-invocation invariant guard.
  *
- * The AI SDK's `readUIMessageStream` throws
- * `No tool invocation found for tool call ID "X"` when a `tool-output-available`
- * / `tool-output-error` / `tool-input-delta` chunk references a tool call whose
- * `tool-input-*` part is neither in the seed message nor earlier in the stream.
+ * A tail that starts mid-run (subject purged, retention gap, pod SIGTERM'd
+ * mid-step) delivers a tool's deltas or output without its `tool-input-start`.
+ * `readUIMessageStream` then throws and the whole chat bricks:
+ *   - `No tool invocation found for tool call ID "X"` — output chunk with no
+ *     tool part (from the seed message or an earlier `tool-input-*`).
+ *   - `Received tool-input-delta for missing tool call with ID "X"` — delta with
+ *     no `partialToolCalls` entry, which ONLY `tool-input-start` creates.
  *
- * That invariant breaks whenever a run is reconstructed after abnormal
- * termination — the owning pod is SIGTERM'd mid-step (ghost run force-fail),
- * the JetStream subject is purged mid-window, or a retention gap drops the
- * input seq — so a tool's output survives but its input does not. The whole
- * chat then bricks on reload.
- *
- * The guard sits between the chunk source and the reader: it tracks which tool
- * call ids already have an invocation (seeded from the message's existing
- * parts, then updated as `tool-input-*` chunks flow through) and synthesizes a
- * minimal `tool-input-available` before any orphaned reference. The tool then
- * renders as a completed call with an unknown name instead of aborting the run.
+ * So: synthesize a `tool-input-available` before an orphan output (renders as a
+ * completed call named "unknown"), and drop an orphan delta — deltas carry no
+ * `toolName` and the closing `tool-input-available` carries the full input, so
+ * dropping the partial prefix costs one streaming animation.
  */
 
 import type { UIMessage, UIMessageChunk } from "ai";
 
-/** Chunk types that create a tool invocation the reader can look up later. */
-const CREATES_INVOCATION = new Set([
-  "tool-input-start",
-  "tool-input-available",
-]);
+/** Chunk types that create the tool *part* an output chunk looks up. */
+const CREATES_PART = new Set(["tool-input-start", "tool-input-available"]);
 
-/** Chunk types that require a pre-existing invocation and throw without one. */
-const REQUIRES_INVOCATION = new Set([
-  "tool-input-delta",
-  "tool-output-available",
-  "tool-output-error",
-]);
+/** Chunk types that require a pre-existing part and throw without one. */
+const REQUIRES_PART = new Set(["tool-output-available", "tool-output-error"]);
 
 /** Placeholder name for a tool whose input part was lost. */
 const UNKNOWN_TOOL_NAME = "unknown";
@@ -49,13 +38,17 @@ export function toolCallIdsInMessage(msg: UIMessage | undefined): string[] {
 
 /**
  * Build a stateful guard. Call it once per chunk in stream order; it returns
- * the chunk(s) to forward — either the input unchanged, or a synthetic
- * `tool-input-available` followed by the orphaned chunk.
+ * the chunk(s) to forward — the chunk unchanged, a synthetic
+ * `tool-input-available` followed by an orphan output, or nothing (orphan
+ * delta).
  */
 export function createToolInvariantGuard(
   seedToolCallIds: Iterable<string> = [],
 ): (chunk: UIMessageChunk) => UIMessageChunk[] {
-  const known = new Set(seedToolCallIds);
+  /** Ids with a tool part (seeded, or created by a `tool-input-*` chunk). */
+  const withPart = new Set(seedToolCallIds);
+  /** Ids the reader has a `partialToolCalls` entry for — `tool-input-start` only. */
+  const started = new Set<string>();
 
   return (chunk) => {
     const { type } = chunk;
@@ -63,21 +56,28 @@ export function createToolInvariantGuard(
 
     if (typeof toolCallId !== "string") return [chunk];
 
-    if (CREATES_INVOCATION.has(type)) {
-      known.add(toolCallId);
+    if (CREATES_PART.has(type)) {
+      withPart.add(toolCallId);
+      if (type === "tool-input-start") started.add(toolCallId);
       return [chunk];
     }
 
-    if (REQUIRES_INVOCATION.has(type) && !known.has(toolCallId)) {
-      known.add(toolCallId);
-      const synthetic = {
-        type: "tool-input-available",
-        toolCallId,
-        toolName:
-          (chunk as { toolName?: unknown }).toolName ?? UNKNOWN_TOOL_NAME,
-        input: {},
-      } as UIMessageChunk;
-      return [synthetic, chunk];
+    if (type === "tool-input-delta") {
+      return started.has(toolCallId) ? [chunk] : [];
+    }
+
+    if (REQUIRES_PART.has(type) && !withPart.has(toolCallId)) {
+      withPart.add(toolCallId);
+      return [
+        {
+          type: "tool-input-available",
+          toolCallId,
+          toolName:
+            (chunk as { toolName?: unknown }).toolName ?? UNKNOWN_TOOL_NAME,
+          input: {},
+        } as UIMessageChunk,
+        chunk,
+      ];
     }
 
     return [chunk];

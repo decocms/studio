@@ -14,8 +14,8 @@
 # once a version bump lands on main) rewrites both to real values and the tap
 # becomes installable. Until then this file only reserves the cask name.
 cask "deco-studio" do
-  version "4.147.0"
-  sha256 "7ef9c2346f7ac0e201a77d57e6039a3c270521641dd99a767b2d708635342ba6"
+  version "4.163.1"
+  sha256 "cea1700ce68cbb04f0e81757a41a3f520191473eb7314f903fc0153f1fc5068f"
 
   url "https://github.com/decocms/studio/releases/download/native-v#{version}/deco-#{version}-aarch64.zip"
   name "deco studio"
@@ -27,7 +27,24 @@ cask "deco-studio" do
   depends_on formula: "git"
   depends_on formula: "ripgrep"
 
+  # The app updates itself (Tauri updater — see
+  # apps/native/docs/native-updater-plan.md). Without this, `brew upgrade`
+  # compares the tap version against its install receipt and REINSTALLS
+  # (downgrades) over a self-updated app. `--greedy` still overwrites, which
+  # is fine (the app self-updates back) and is the documented break-glass
+  # recovery path if the updater signing key is ever lost.
+  auto_updates true
+
   app "deco.app"
+
+  # Drop this block once releases are signed + notarized (the six APPLE_*
+  # secrets in release-native.yaml) — at that point Gatekeeper passes and
+  # the quarantine flag no longer needs clearing.
+  caveats <<~EOS
+    deco studio is not yet signed/notarized, so macOS reports the app as
+    "damaged" on first launch. Clear the quarantine flag and relaunch:
+      xattr -dr com.apple.quarantine "#{appdir}/deco.app"
+  EOS
 
   zap trash: [
     "~/Library/Application Support/com.decocms.studio",

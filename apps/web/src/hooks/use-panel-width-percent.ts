@@ -1,6 +1,6 @@
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
-/** react-resizable-panels requires numeric defaultSize; localStorage may hold strings. */
+/** Stored widths are percentages; legacy localStorage values may be strings. */
 function normalizePanelSizePercent(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0 || n >= 100) return fallback;

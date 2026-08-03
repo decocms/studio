@@ -10,7 +10,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
-import { recordTaskActivity } from "./activity";
+import { recordTaskActivities } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
@@ -31,6 +31,43 @@ const LOGGED_FIELDS: {
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
 ];
+
+/**
+ * Which activity entries an update earns, diffed against the pre-update item.
+ * Pure — unit-tested — so the one-batched-insert change below can't silently
+ * drop or duplicate an entry the old sequential-await version logged.
+ */
+export function diffTaskActivityEntries(
+  previous: TaskBoardItem,
+  item: TaskBoardItem,
+): { action: TaskBoardActivityAction; data?: Record<string, unknown> }[] {
+  const entries: {
+    action: TaskBoardActivityAction;
+    data?: Record<string, unknown>;
+  }[] = [];
+
+  for (const { field, action } of LOGGED_FIELDS) {
+    if (item[field] === previous[field]) continue;
+    entries.push({ action, data: { from: previous[field], to: item[field] } });
+  }
+
+  if (item.description !== previous.description) {
+    entries.push({ action: "description_changed" });
+  }
+
+  const previousTagIds = new Set(previous.tags.map((t) => t.id));
+  const tagsChanged =
+    item.tags.length !== previous.tags.length ||
+    item.tags.some((t) => !previousTagIds.has(t.id));
+  if (tagsChanged) {
+    entries.push({
+      action: "tags_changed",
+      data: { from: previous.tags, to: item.tags },
+    });
+  }
+
+  return entries;
+}
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
@@ -177,36 +214,20 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       item = fetched;
     }
 
-    // Log every changed field to the activity timeline. Best-effort.
+    // Log every changed field to the activity timeline in one batched write
+    // instead of one sequential DB round-trip per changed field. Best-effort.
     if (previous) {
       const actorId = getUserId(ctx)!;
-      for (const { field, action } of LOGGED_FIELDS) {
-        if (item[field] === previous[field]) continue;
-        await recordTaskActivity(ctx, {
-          taskBoardItemId: item.id,
-          action,
-          actorId,
-          data: { from: previous[field], to: item[field] },
-        });
-      }
-      if (item.description !== previous.description) {
-        await recordTaskActivity(ctx, {
-          taskBoardItemId: item.id,
-          action: "description_changed",
-          actorId,
-        });
-      }
-      const previousTagIds = new Set(previous.tags.map((t) => t.id));
-      const tagsChanged =
-        item.tags.length !== previous.tags.length ||
-        item.tags.some((t) => !previousTagIds.has(t.id));
-      if (tagsChanged) {
-        await recordTaskActivity(ctx, {
-          taskBoardItemId: item.id,
-          action: "tags_changed",
-          actorId,
-          data: { from: previous.tags, to: item.tags },
-        });
+      const entries = diffTaskActivityEntries(previous, item);
+      if (entries.length > 0) {
+        await recordTaskActivities(
+          ctx,
+          entries.map((entry) => ({
+            taskBoardItemId: item.id,
+            actorId,
+            ...entry,
+          })),
+        );
       }
     }
 

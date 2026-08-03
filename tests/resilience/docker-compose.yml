@@ -106,23 +106,3 @@ services:
     volumes:
       - ./nats-config/cluster.creds:/nats-creds/cluster.creds:ro
 
-  link-daemon:
-    # Reuse the studio image (built once by the `studio` service); only override
-    # the command to run the headless link-daemon entrypoint. Behind the `link`
-    # profile so the default `up --wait` does NOT start it — the resilience
-    # scenarios start it explicitly with the test user's freshly-minted API key.
-    image: deco-resilience-studio:latest
-    profiles: ["link"]
-    working_dir: /app
-    command: ["bun", "run", "/app/tests/resilience/link-daemon-entrypoint.ts"]
-    environment:
-      NODE_ENV: production
-      STUDIO_CLUSTER_URL: http://toxiproxy:3011
-      DAEMON_API_KEY: "${DAEMON_API_KEY:-}"
-      DATA_DIR: /app/data/link-daemon
-      LINK_DAEMON_PORT: "4500"
-    depends_on:
-      studio:
-        condition: service_healthy
-      toxiproxy:
-        condition: service_healthy

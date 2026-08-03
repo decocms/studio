@@ -342,11 +342,6 @@ export const KEYS = {
   // First bytes of a CSV/TSV file for the card thumbnail (range request).
   csvThumb: (downloadUrl: string) => ["csv-thumb", downloadUrl] as const,
 
-  // Virtual MCP tools (for tool definition lookup in chat)
-  // null virtualMcpId means default virtual MCP
-  virtualMcpTools: (virtualMcpId: string | null, orgId: string) =>
-    ["virtual-mcp", orgId, virtualMcpId ?? "default", "tools"] as const,
-
   toolDefinitionLookup: (
     connectionId: string | null,
     orgId: string,
@@ -487,11 +482,12 @@ export const KEYS = {
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
   orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
-  // Cross-volume path search (Library search box). The root key is the
-  // prefix mutations invalidate; per-query keys nest under it.
+  // Path search (Library search box) — cross-volume, or narrowed to one
+  // volume + directory subtree when browsing inside a folder. The root key is
+  // the prefix mutations invalidate; per-query keys nest under it.
   orgFsSearchRoot: (orgId: string) => ["org-fs-search", orgId] as const,
-  orgFsSearch: (orgId: string, query: string) =>
-    ["org-fs-search", orgId, query] as const,
+  orgFsSearch: (orgId: string, query: string, volume: string, prefix: string) =>
+    ["org-fs-search", orgId, query, volume, prefix] as const,
   // Skill folders (dirs with SKILL.md) across home + public sets — the
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
@@ -579,12 +575,8 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 
-  // Link daemon status (user-scoped; the cluster derives the userSub
-  // from the bearer session, so we don't include it in the key).
-  linkStatus: () => ["link-status"] as const,
-
-  // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
-  currentLink: (orgId: string) => ["current-link", orgId] as const,
+  // Native-only coding-agent availability; process-wide, not org-scoped.
+  localAgentCapabilities: () => ["local-agent-capabilities"] as const,
 
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>

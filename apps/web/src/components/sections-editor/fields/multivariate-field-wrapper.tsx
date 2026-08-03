@@ -18,6 +18,7 @@ import {
   type MatcherEntry,
 } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
+import { seedMatcherRule } from "../matcher-rules";
 import type { LiveMeta } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
@@ -154,8 +155,10 @@ export function MultivariateFieldWrapper({
   };
 
   const handleRuleChange = (resolveType: string) => {
+    // Seed union-matcher discriminants so accepting the default branch still
+    // persists a valid rule (see seedMatcherRule).
     const rule = resolveType
-      ? { __resolveType: resolveType }
+      ? seedMatcherRule(resolveType, meta)
       : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
     onChange(updateVariantRule(wrapper, safeIndex, rule));
   };
@@ -190,7 +193,9 @@ export function MultivariateFieldWrapper({
 
       <div className="space-y-4 px-2 pt-3">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Rule</Label>
+          <Label className="text-xs text-muted-foreground">
+            {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
+          </Label>
           <MatcherPicker
             currentRt={currentRt}
             currentLabel={formatMatcher(currentRule)}

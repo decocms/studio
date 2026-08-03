@@ -1,7 +1,7 @@
 // apps/api/src/api/routes/decopilot/nats-chunk-source.ts
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
-import type { DecodedEvent, RawMsg } from "@decocms/harness/run-stream-codec";
+import type { DecodedEvent, RawMsg } from "@/harnesses/lib/run-stream-codec";
 
 /**
  * Thrown by `natsChunkSource` when a pull produces no message within

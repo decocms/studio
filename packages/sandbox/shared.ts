@@ -6,7 +6,7 @@ export type {
   DaemonEventPayload,
   DaemonStatus,
   LifecycleState,
-} from "./daemon/events/types";
+} from "./daemon-protocol";
 
 export const PLUGIN_ID = "MCP User Sandbox";
 export const PLUGIN_DESCRIPTION =

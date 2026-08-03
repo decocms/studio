@@ -137,6 +137,24 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
+  qa_agent_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the QA Agent on a task's pull request once it's In Review — it verifies the task actually solved the problem (exercises the feature, not just the diff).",
+    ),
+  code_reviewer_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the Code Reviewer on a task's pull request once it's In Review — it reviews the code using the repo's stack-appropriate review skills.",
+    ),
+  auto_merge: z
+    .boolean()
+    .optional()
+    .describe(
+      "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

@@ -7,8 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "packages/sandbox/daemon/org-fs/**"
-      - "apps/api/src/file-storage/mount/**"
+      - "packages/sandbox/orgfs/**"
       - "packages/shared/**"
       - "deploy/helm/sandbox-env/orgfs-sidecar/**"
       - "deploy/helm/sandbox-env/values.yaml"

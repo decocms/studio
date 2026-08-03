@@ -271,6 +271,12 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     embedded.listener_host = Some(control.listener_host());
     embedded.ui_assets = bundled_ui;
     embedded.preview_cookie_selftest = selftest_mode;
+    // Built BEFORE StartOptions so the staged-version channel and restart
+    // callback exist for local-api's `/api/config` rewrite and
+    // `/_local/update/restart` route; the background task itself only spawns
+    // after the server is up (below). `hooks()` is `None` in every non-release
+    // context — see `updater`'s module doc for the gating story.
+    let updater = crate::updater::init(app, &app_root);
     let handle = local_api::start_embedded(
         local_api::StartOptions {
             // Serve the leaf minted above: the webview's origin must be a
@@ -286,6 +292,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             app_root,
             port: control.listener_port,
             mode: local_api::ApiMode::Strict,
+            update: updater.hooks(),
         },
         embedded,
     )
@@ -310,6 +317,8 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
         upstream_session,
         upstream::revalidate::DEFAULT_INTERVAL,
     ));
+    // Background self-update loop (no-op outside packaged release builds).
+    updater.spawn();
 
     let webview_url = WebviewUrl::External(
         browser_origin
@@ -374,7 +383,15 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             }
         });
     }
-    builder.build().map_err(SetupError::Window)?;
+    let window = builder.build().map_err(SetupError::Window)?;
+    // The `devtools` cargo feature (workspace Cargo.toml) makes the webview
+    // inspectable even in release builds. Auto-opening rides the same switch
+    // as native-side logging: a packaged run under `RUST_LOG=…` is a
+    // debugging session, so one env var yields both Rust logs and the web
+    // inspector. A normal Finder launch (no RUST_LOG) never pops it.
+    if std::env::var("RUST_LOG").is_ok_and(|level| !level.is_empty()) {
+        window.open_devtools();
+    }
 
     Ok(())
 }

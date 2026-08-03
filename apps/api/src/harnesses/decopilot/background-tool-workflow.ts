@@ -11,17 +11,12 @@ import type { StudioContextFactory } from "@/automations/fire";
 import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
-import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
-import {
-  resolveDispatchTarget,
-  type DispatchTarget,
-} from "@/links/resolve-dispatch-target";
-import type { HarnessId } from "@decocms/harness/types";
+import { SUBAGENT_STEP_LIMIT } from "@/harnesses/lib/decopilot/prompt-constants";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import type { AnyMessage } from "@/api/routes/decopilot/part-row-builder";
 import { getSettings } from "@/settings";
-import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type { ToolApprovalLevel } from "@/harnesses/lib/decopilot/mcp-tools";
+import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import {
   registerBackgroundAbort,
   unregisterBackgroundAbort,
@@ -30,13 +25,14 @@ import {
   generateImageCore,
   type GenerateImageInput,
   type GenerateImageResult,
-} from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
+} from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { runAgentLoop } from "./run-agent-loop";
 import { resolveSubagent } from "./resolve-subagent";
-import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
+import { createSideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { ingestRun } from "@/api/routes/decopilot/ingest-run";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { UIMessageChunk } from "ai";
+import { isHostedDecopilotRuntime } from "./hosted-runtime";
 
 // Re-export from the side-effect-free `queue-names` module so `index.ts` can
 // reference the name without importing this module (which registers a workflow).
@@ -184,20 +180,47 @@ async function requireStudioContext(
   return studioCtx;
 }
 
-/** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
-function resolveThreadTarget(
+export function isHostedDecopilotThread(
   thread:
-    | { sandbox_provider_kind?: string | null; harness_id?: string | null }
+    | {
+        harness_id?: string | null;
+        sandbox_provider_kind?: string | null;
+      }
     | null
     | undefined,
-): { target: DispatchTarget; harnessId: HarnessId } {
-  return {
-    target: resolveDispatchTarget({
-      sandboxProviderKind: (thread?.sandbox_provider_kind ??
-        "agent-sandbox") as never,
-    }),
-    harnessId: (thread?.harness_id ?? "decopilot") as HarnessId,
-  };
+): boolean {
+  if (!thread) return false;
+  return isHostedDecopilotRuntime({
+    harnessId: thread.harness_id,
+    sandboxProviderKind: thread.sandbox_provider_kind,
+  });
+}
+
+async function requireHostedThreadContext(
+  ctx: BackgroundToolContext,
+): Promise<StudioContext> {
+  const studioCtx = await requireStudioContext(ctx);
+  const thread = await studioCtx.storage.threads.get(ctx.threadId);
+  if (!isHostedDecopilotThread(thread)) {
+    throw new Error(
+      `[background-tool] thread ${ctx.threadId} is not hosted Decopilot`,
+    );
+  }
+  return studioCtx;
+}
+
+/** Resolve a thread row only when it still belongs to hosted Decopilot. */
+function resolveThreadTarget(
+  thread:
+    | {
+        harness_id?: string | null;
+        sandbox_provider_kind?: string | null;
+      }
+    | null
+    | undefined,
+): { harnessId: "decopilot" } | null {
+  if (!isHostedDecopilotThread(thread)) return null;
+  return { harnessId: "decopilot" };
 }
 
 /** Build the reaction turn's dispatch request — an internal nudge the model
@@ -207,8 +230,7 @@ function buildReactionRequest(
   opts: {
     models: ModelsConfig;
     nudge: string;
-    target: DispatchTarget;
-    harnessId: HarnessId | null;
+    harnessId: "decopilot";
   },
 ): ThreadGateContext["request"] {
   return {
@@ -231,8 +253,8 @@ function buildReactionRequest(
     taskId: s.threadId,
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
-    target: opts.target,
-    harnessId: opts.harnessId ?? undefined,
+    harnessId: opts.harnessId,
+    sandboxProviderKind: "agent-sandbox",
   };
 }
 
@@ -568,11 +590,7 @@ async function appendPartsStep(
   ctx: BackgroundToolContext,
   parts: AnyMessage["parts"],
 ): Promise<void> {
-  const studioCtx = await requireStudioContext(ctx);
-  const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!thread) {
-    throw new Error(`[background-tool] thread ${ctx.threadId} not found`);
-  }
+  const studioCtx = await requireHostedThreadContext(ctx);
   const emitter = new PartEmitter({
     storage: studioCtx.storage.threads.messageParts(),
     orgId: ctx.orgId,
@@ -586,77 +604,10 @@ async function appendPartsStep(
   });
 }
 
-/**
- * Deliver a DESKTOP-run background subtask's report. The subagent runs detached
- * on the daemon (real sandbox + vm/fs context), then the daemon calls the
- * `THREAD_SUBTASK_DELIVER` management tool, which calls this: persist the report
- * nested under the subtask card, then enqueue the reaction turn carrying the
- * report so the parent agent can act on it. (Cluster threads use the in-workflow
- * `runSubtaskStep` instead; desktop threads can't run the subagent on the
- * cluster because the sandbox is on the user's machine.)
- */
-export async function deliverBackgroundSubtaskResult(args: {
-  snapshot: BackgroundToolSnapshot;
-  jobId: string;
-  report: string;
-}): Promise<void> {
-  const { snapshot, jobId, report } = args;
-  const ctx: BackgroundToolContext = {
-    ...snapshot,
-    jobId,
-    toolName: "subtask",
-    input: {},
-    toolCallId: `${jobId}:deliver`,
-  };
-  const studioCtx = await requireStudioContext(ctx);
-  const hasReport = report.trim().length > 0;
-
-  // 1. Persist the report nested under the subtask card (metadata.subtaskJobId).
-  const emitter = new PartEmitter({
-    storage: studioCtx.storage.threads.messageParts(),
-    orgId: snapshot.orgId,
-    threadId: snapshot.threadId,
-    runId: jobId,
-  });
-  await emitter.emitFinal({
-    id: `${jobId}:result`,
-    role: "assistant",
-    parts: [
-      {
-        type: "text",
-        text: hasReport ? report : "_The subtask produced no output._",
-      },
-    ],
-    metadata: { subtaskJobId: jobId },
-    // biome-ignore lint/suspicious/noExplicitAny: AnyMessage doesn't declare metadata; the row builder persists it.
-  } as any);
-
-  // 2. Enqueue the reaction turn, carrying the report in the nudge.
-  const models = await resolveReactionModels(studioCtx);
-  const { target, harnessId } = resolveThreadTarget(
-    await studioCtx.storage.threads.get(snapshot.threadId),
-  );
-  const nudge = hasReport
-    ? `The background subtask you started has completed. Its result:\n\n${report}\n\nUse this to continue with the user's request — do NOT call subtask again for this.`
-    : `The background subtask you started completed but produced no usable output. Continue with the user's request without calling subtask again for this.`;
-  await enqueueThreadRun(
-    {
-      threadId: snapshot.threadId,
-      request: buildReactionRequest(
-        { ...snapshot, jobId },
-        { models, nudge, target, harnessId },
-      ),
-      source: "background-tool",
-    },
-    { workflowID: `${jobId}:react` },
-  );
-}
-
-/** Resolve the reaction turn's target + harness from the thread row. Returns
- *  null only when the studio context can't be rebuilt. */
+/** Resolve the reaction target only while the thread remains hosted Decopilot. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
-): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {
+): Promise<{ harnessId: "decopilot" } | null> {
   const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
@@ -683,7 +634,6 @@ async function reactStep(
       request: buildReactionRequest(ctx, {
         models,
         nudge: reactionNudge,
-        target: reaction.target,
         harnessId: reaction.harnessId,
       }),
       source: "background-tool",
@@ -695,6 +645,14 @@ async function reactStep(
 async function backgroundToolWorkflowFn(
   ctx: BackgroundToolContext,
 ): Promise<void> {
+  // Durable jobs created before the native/hosted split may still replay after
+  // deployment. Reject them before model calls, sandbox work, or part writes.
+  await DBOS.runStep(
+    async () => {
+      await requireHostedThreadContext(ctx);
+    },
+    { name: "validateHostedThread" },
+  );
   const producer = PRODUCERS[ctx.toolName];
   if (!producer) {
     throw new Error(`[background-tool] unknown tool "${ctx.toolName}"`);

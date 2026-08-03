@@ -4,10 +4,13 @@
  *
  * End-to-end boot smoke for the Tauri shell (`apps/native/src-tauri/`):
  *
- *   1. Builds the release `.app` bundle (`bunx @tauri-apps/cli build`) —
- *      the same profile the shipped app uses, so the smoke gates what ships
- *      if it doesn't already exist (pass `--rebuild` to force a fresh
- *      build — useful after touching Rust or frontend source).
+ *   1. By default, ensures the release `.app` bundle exists
+ *      (`bunx @tauri-apps/cli build`) and is newer than its inputs — the same
+ *      profile the shipped app uses, so the smoke gates what ships. Pass
+ *      `--rebuild` to force a fresh build after touching Rust or frontend
+ *      source. CI, which already built the exact artifact it needs to test,
+ *      passes `--require-existing-bundle` to fail when that `.app` is absent
+ *      and never rebuild it.
  *   2. Launches `Contents/MacOS/<bin>` DIRECTLY (not `open -a`, which
  *      detaches from this process's stdio/exit-code and complicates
  *      cleanup) with `DESKTOP_SELFTEST=1`,
@@ -50,6 +53,11 @@ import {
   type BootSmokePaths,
   resolveBootSmokePaths,
 } from "./boot-smoke-paths";
+import {
+  type BootSmokeBundleMode,
+  parseBootSmokeOptions,
+  resolveBootSmokeBundleAction,
+} from "./boot-smoke-options";
 
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
 const APP_BINARY_NAME = "deco";
@@ -57,6 +65,7 @@ const APP_BUNDLE = join(
   DESKTOP_DIR,
   `target/release/bundle/macos/${APP_BINARY_NAME}.app`,
 );
+const TAURI_CLI_VERSION = "2.11.4";
 const SELFTEST_DEADLINE_MS = 60_000;
 const ORPHAN_CHECK_SETTLE_MS = 1000;
 
@@ -132,8 +141,22 @@ function newestMtimeUnder(dir: string): number {
   return newest;
 }
 
-async function ensureBuilt(forceRebuild: boolean): Promise<void> {
-  if (!forceRebuild && existsSync(APP_BUNDLE)) {
+async function ensureBuilt(bundleMode: BootSmokeBundleMode): Promise<void> {
+  const action = resolveBootSmokeBundleAction(
+    bundleMode,
+    existsSync(APP_BUNDLE),
+  );
+  if (action === "reject-missing") {
+    fail(
+      `--require-existing-bundle was passed but ${APP_BUNDLE} does not exist`,
+    );
+  }
+  if (action === "use-existing") {
+    log(`using required existing bundle at ${APP_BUNDLE}`);
+    return;
+  }
+
+  if (action === "check-freshness") {
     // Staleness guard: the bundle bakes the frontend + Rust in at build
     // time, so an existing .app can silently predate both. A stale bundle
     // is exactly how a fixed frontend kept shipping a blank window on
@@ -170,11 +193,11 @@ async function ensureBuilt(forceRebuild: boolean): Promise<void> {
     log("existing bundle is older than its inputs — rebuilding");
   }
   log(
-    "building release app bundle: bunx @tauri-apps/cli@latest build --bundles app",
+    `building release app bundle: bunx @tauri-apps/cli@${TAURI_CLI_VERSION} build --bundles app`,
   );
   const code = await run(
     "bunx",
-    ["@tauri-apps/cli@latest", "build", "--bundles", "app"],
+    [`@tauri-apps/cli@${TAURI_CLI_VERSION}`, "build", "--bundles", "app"],
     { cwd: DESKTOP_DIR },
   );
   if (code !== 0) {
@@ -240,9 +263,9 @@ function livingProcessesMatching(pattern: string): number[] {
 }
 
 async function main(): Promise<void> {
-  const forceRebuild = process.argv.includes("--rebuild");
+  const options = parseBootSmokeOptions(process.argv.slice(2));
 
-  await ensureBuilt(forceRebuild);
+  await ensureBuilt(options.bundleMode);
   const bin = binaryPath();
   log(`binary: ${bin}`);
 
@@ -272,6 +295,11 @@ async function main(): Promise<void> {
         // Set DESKTOP_SELFTEST_VISIBLE=0 to force the old hidden behavior.
         DESKTOP_SELFTEST_VISIBLE: process.env.DESKTOP_SELFTEST_VISIBLE ?? "1",
         DESKTOP_SELFTEST_OUT: outFile,
+        // This is a RELEASE-profile build at the committed 0.1.0 placeholder
+        // version — never let it "update" itself from the production channel
+        // mid-smoke. (The updater task also refuses to spawn under selftest
+        // and at 0.1.0; this is belt-and-braces for local runs.)
+        DECOCMS_DISABLE_AUTO_UPDATE: "1",
         // Boot smoke validates the shell/IPC contract, not the operator's real
         // login. Never let its auth-status probe open a macOS ACL dialog for the
         // production Keychain item; persistence itself is covered by the

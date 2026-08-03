@@ -27,7 +27,7 @@ export type ChatMessage = StudioChatMessage<StudioChatTools>;
 // Model Config Types
 // ============================================================================
 
-import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
+import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
 
 export type { ModelInfo };
 

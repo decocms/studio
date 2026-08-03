@@ -38,9 +38,9 @@ What it does:
    `apps/web` + the real API server from `apps/api/src/index.ts`), after
    migrating from `apps/api`.
 
-**Why not `bun run dev`?** That entrypoint is `deco dev --local-sandbox-provider`
-— it spins up its OWN embedded Postgres/NATS and a LOCAL (laptop) sandbox,
-ignoring these targets. The raw server `src/index.ts` instead honors
+**Why not `bun run dev`?** That entrypoint is `deco dev` — it spins up its OWN
+embedded Postgres/NATS, ignoring these targets. The raw server `src/index.ts`
+instead honors
 `DATABASE_URL`/`NATS_URL`/`STUDIO_SANDBOX_*` from the environment, so it connects
 to the cluster's backends and the agent-sandbox provider.
 

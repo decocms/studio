@@ -8,7 +8,7 @@ describe("buildDevCommand", () => {
       slug: "delhi-v4",
       port: 3001,
       vitePort: 4000,
-      extraArgs: ["--local-sandbox-provider"],
+      extraArgs: ["--no-tui"],
       tmpRoot: "/tmp",
     });
 
@@ -22,7 +22,7 @@ describe("buildDevCommand", () => {
       slug: "delhi-v4",
       port: 3001,
       vitePort: 4000,
-      extraArgs: ["--home", "/custom/home", "--local-sandbox-provider"],
+      extraArgs: ["--home", "/custom/home", "--no-tui"],
       tmpRoot: "/tmp",
     });
 

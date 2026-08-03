@@ -20,6 +20,7 @@ import {
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { isHostedProviderId } from "../../ai-providers/provider-ids";
 import type { StudioContext } from "../../core/studio-context";
 
 // ============================================================================
@@ -495,7 +496,8 @@ app.post("/:org/v1/chat/completions", async (c) => {
       const keys = await ctx.storage.aiProviderKeys.list({
         organizationId: ctx.organization.id,
       });
-      if (keys.length === 0) {
+      const hostedKey = keys.find((key) => isHostedProviderId(key.providerId));
+      if (!hostedKey) {
         return c.json(
           createErrorResponse(
             "No AI provider credentials configured for this organization. " +
@@ -506,7 +508,7 @@ app.post("/:org/v1/chat/completions", async (c) => {
           400,
         );
       }
-      credentialId = keys[0]!.id;
+      credentialId = hostedKey.id;
     }
 
     // 6. Activate AI provider

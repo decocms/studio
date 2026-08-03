@@ -91,6 +91,36 @@ describe("createToolInvariantGuard", () => {
     ]);
   });
 
+  it("passes a start→delta pair through untouched", () => {
+    const guard = createToolInvariantGuard();
+    const out = flat(guard, [
+      { type: "tool-input-start", toolCallId: "tc", toolName: "x" },
+      { type: "tool-input-delta", toolCallId: "tc", inputTextDelta: "{" },
+    ] as UIMessageChunk[]);
+    expect(out.map((c) => c.type)).toEqual([
+      "tool-input-start",
+      "tool-input-delta",
+    ]);
+  });
+
+  it("drops a delta with no preceding tool-input-start", () => {
+    // Only `tool-input-start` populates the reader's partialToolCalls map —
+    // neither a seeded part nor a `tool-input-available` does.
+    for (const seeded of [[], ["tc"]]) {
+      const guard = createToolInvariantGuard(seeded);
+      const out = flat(guard, [
+        {
+          type: "tool-input-available",
+          toolCallId: "tc",
+          toolName: "x",
+          input: {},
+        },
+        { type: "tool-input-delta", toolCallId: "tc", inputTextDelta: "{" },
+      ] as UIMessageChunk[]);
+      expect(out.map((c) => c.type)).toEqual(["tool-input-available"]);
+    }
+  });
+
   it("leaves non-tool chunks alone", () => {
     const guard = createToolInvariantGuard();
     const out = flat(guard, [

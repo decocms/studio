@@ -12,7 +12,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse } from "./helpers";
+import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
 import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
@@ -64,18 +64,25 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       throw new Error("Thread not found in organization");
     }
 
+    if (data.virtual_mcp_id !== undefined) {
+      const targetVmcp = await ctx.storage.virtualMcps.findById(
+        data.virtual_mcp_id,
+        organization.id,
+      );
+      // `findById`'s organizationId param only resolves well-known synthetic
+      // ids — for a normal row it does NOT filter by org, so existence alone
+      // doesn't prove the vMCP is ours. Without this, re-pointing a thread
+      // (data.virtual_mcp_id) could target another organization's agent.
+      if (!targetVmcp || targetVmcp.organization_id !== organization.id) {
+        throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
+      }
+    }
+
     if (data.branch === null && existing.virtual_mcp_id) {
       const vmcp = await ctx.storage.virtualMcps.findById(
         existing.virtual_mcp_id,
-        requireOrganization(ctx).id,
+        organization.id,
       );
-      type GithubRepoMeta = {
-        githubRepo?: {
-          owner: string;
-          name: string;
-          connectionId?: string;
-        } | null;
-      };
       const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
         ?.githubRepo;
       if (githubRepo) {

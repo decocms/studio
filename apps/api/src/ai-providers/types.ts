@@ -3,9 +3,9 @@ export type { ProviderKeyInfo } from "../storage/types";
 
 /**
  * `StudioProvider` + its portable dependencies + `createLanguageModel` now live
- * in the portable harness package (`@decocms/harness/decopilot/studio-provider`) so the
- * shared Decopilot core and the desktop daemon use ONE implementation. These
- * re-exports keep every existing `@/ai-providers/types` importer compiling.
+ * in the portable harness package (`@/harnesses/lib/decopilot/studio-provider`).
+ * These re-exports keep every existing `@/ai-providers/types` importer
+ * compiling against the hosted Decopilot implementation.
  */
 export type {
   AsyncResearchProvider,
@@ -13,12 +13,12 @@ export type {
   StudioProvider,
   ModelInfo,
   ProviderInfo,
-} from "@decocms/harness/decopilot/studio-provider";
+} from "@/harnesses/lib/decopilot/studio-provider";
 
 import type {
   StudioProvider,
   ProviderInfo,
-} from "@decocms/harness/decopilot/studio-provider";
+} from "@/harnesses/lib/decopilot/studio-provider";
 
 export interface TokenCounter {
   countTokens(params: {

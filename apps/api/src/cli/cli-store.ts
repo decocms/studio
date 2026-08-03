@@ -81,28 +81,13 @@ export function addLogEntry(entry: LogEntry) {
   emit();
 }
 
-export function setDevMode(
-  opts: { localSandboxProvider?: boolean; devLinkToxiProxy?: boolean } = {},
-) {
-  const includeToxiProxy =
-    opts.localSandboxProvider === true && opts.devLinkToxiProxy === true;
-
+export function setDevMode() {
   state = {
     ...state,
     services: [
       ...initialServices(),
       { name: "API", status: "pending", port: 0 },
       { name: "Vite", status: "pending", port: 0 },
-      ...(includeToxiProxy
-        ? [{ name: "ToxiProxy", status: "pending" as const, port: 0 }]
-        : []),
-      // Auto-spawned by `bun run dev --local-sandbox-provider` after the
-      // cluster is up — see apps/api/src/cli/commands/dev.ts. The
-      // desktop sandbox provider routes through this. Marked ready
-      // once the link binary's HTTP server begins accepting connections.
-      ...(opts.localSandboxProvider
-        ? [{ name: "Sandbox", status: "pending" as const, port: 0 }]
-        : []),
     ],
   };
   emit();

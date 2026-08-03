@@ -1,4 +1,4 @@
-//! Port of `packages/sandbox/daemon/git-exclude.ts::ensureGitExclude`.
+//! Port of `packages/sandbox/daemon-go/internal/gitx/exclude.go::ensureGitExclude`.
 //! Registers a line in `<repoDir>/.git/info/exclude` so the git family's
 //! shutdown-publish hook (`git add -A`) never commits local-api-managed
 //! paths (the tool catalog, its endpoint credential file) onto the user's

@@ -13,12 +13,14 @@ import { registry } from "./registry.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
+import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
 import { layouts } from "./layouts.ts";
 import { home } from "./home.ts";
 import { header } from "./header.ts";
 import { filePicker } from "./file-picker.ts";
 import { devAgent } from "./dev-agent.ts";
+import { downloadApp } from "./download-app.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { connections } from "./connections.ts";
@@ -53,12 +55,14 @@ export const en = {
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,
+  ...markdownEditor,
   ...library,
   ...layouts,
   ...home,
   ...header,
   ...filePicker,
   ...devAgent,
+  ...downloadApp,
   ...details,
   ...deck,
   ...connections,

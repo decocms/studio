@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 /// `rotate()`.
 pub const WRITE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
-/// Byte-parity with `REPLAY_BYTES` (`packages/sandbox/daemon/constants.ts`)
+/// Byte-parity with `REPLAY_BYTES` (`packages/sandbox/daemon-go/internal/gitx/refname.go`)
 /// — the default/expected read size for an SSE replay-on-connect frame:
 /// only the LAST 256KB of a (possibly up-to-10MB) file is ever handed back
 /// by [`LogStore::tail_read`] for that purpose. Callers may pass any

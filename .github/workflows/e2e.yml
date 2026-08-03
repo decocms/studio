@@ -181,10 +181,6 @@ jobs:
         working-directory: packages/e2e
         run: npx playwright install-deps chromium
 
-      - name: Write CI auth config
-        run: |
-          echo '{"emailAndPassword":{"enabled":true},"socialProviders":{},"saml":{"enabled":false,"providers":[]},"emailProviders":[],"magicLinkConfig":{"enabled":false}}' > auth-config.json
-
       - name: Create data directory
         run: mkdir -p data
 

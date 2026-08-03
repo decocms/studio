@@ -1,16 +1,21 @@
 /**
  * Library browse-path grammar (the `?path=` search param).
  *
- * The Library projects the org filesystem as one tree: the first segment is
- * the volume, and the synthetic `public` namespace maps
- * `public/<set>/...` → readonly volume `public-<set>` (mirroring the
- * sandbox's `org/public/<set>` mounts).
+ * The Library projects the org filesystem as one tree rooted at the org's
+ * `home` volume: the first segment is the volume, and the synthetic `public`
+ * namespace maps `public/<set>/...` → readonly volume `public-<set>`
+ * (mirroring the sandbox's `org/public/<set>` mounts).
  *
- *   ""                     → root (volumes listing)
+ *   "home"                 → the landing view (the org's home folder)
  *   "uploads/docs"         → volume "uploads", dir "docs"
  *   "public"               → public sets listing
  *   "public/core/skills"   → volume "public-core", dir "skills"
+ *
+ * `""` still parses (empty location) but is not reachable from the UI — the
+ * page falls back to `HOME_MOUNT_PATH`.
  */
+
+import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 
 export interface LibraryLocation {
   /** Raw path segments, as browsed (incl. the `public/<set>` prefix). */
@@ -22,6 +27,9 @@ export interface LibraryLocation {
   isPublic: boolean;
   publicSet: string | null;
   readOnly: boolean;
+  /** The Library's landing view: the root of the org's home volume. The
+   *  system-folder cards and the "Recently added" feed live only here. */
+  isHomeRoot: boolean;
 }
 
 export function parseLibraryPath(path: string): LibraryLocation {
@@ -41,7 +49,16 @@ export function parseLibraryPath(path: string): LibraryLocation {
     isPublic,
     publicSet,
     readOnly: isPublic,
+    isHomeRoot: volume === HOME_MOUNT_PATH && dirPath === "",
   };
+}
+
+/** Display label for a browse-path segment. The `public` volume presents as
+ *  "skills" — it holds the shared read-only skill sets — while the browse path
+ *  and the sandbox mount stay `public/<set>`. Not translated: these are path
+ *  identifiers, like `uploads`. */
+export function segmentLabel(segment: string): string {
+  return segment === "public" ? "skills" : segment;
 }
 
 /** Browse path for an in-volume entry path, from the current location. */

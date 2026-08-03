@@ -23,10 +23,13 @@
     "allow-selftest-report",
     {
       "identifier": "opener:allow-open-url",
-      "comment": "http://localhost is the sandbox preview origin. https://* is required by MCP OAuth and by every external link in the app, both of which reach the OS because window.open returns null in a webview: an authorize URL belongs to whatever authorization server a connection's MCP server advertises, so the set is open-ended and cannot be enumerated ahead of time. vscode/cursor back the Open in editor buttons. Plaintext http beyond loopback stays denied \u2014 an authorize URL served over it would be a downgrade.",
+      "comment": "Loopback HTTP covers sandbox previews and local development servers. https://* is required by MCP OAuth and by every external link in the app, both of which reach the OS because window.open returns null in a webview: an authorize URL belongs to whatever authorization server a connection's MCP server advertises, so the set is open-ended and cannot be enumerated ahead of time. vscode/cursor back the Open in editor buttons. Plaintext http beyond loopback stays denied \u2014 an authorize URL served over it would be a downgrade.",
       "allow": [
         {
           "url": "http://localhost:*/*"
+        },
+        {
+          "url": "http://127.0.0.1:*/*"
         },
         {
           "url": "https://*.local.studio.decocms.com:*/*"

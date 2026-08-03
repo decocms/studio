@@ -9,7 +9,6 @@ import type { ThreadStatus } from "@/storage/types";
 
 type ResponsePart = {
   type: string;
-  text?: string;
   state?: string;
 };
 
@@ -25,14 +24,9 @@ export function resolveThreadStatus(
   responseParts: ResponsePart[] = [],
 ): Exclude<ThreadStatus, "in_progress"> {
   if (finishReason === "stop") {
-    const text = responseParts
-      .filter((p) => p.type === "text" && p.text)
-      .map((p) => p.text!)
-      .join("\n");
-
-    // Strip URLs so their query strings don't trigger a false positive
-    const textWithoutUrls = text.replace(/https?:\/\/[^\s)>\]]+/g, "");
-    return textWithoutUrls.includes("?") ? "requires_action" : "completed";
+    // Finished turn. "Needs input" comes only from the structured `tool-calls`
+    // signals below (user_ask / approval), never from a `?` in the prose.
+    return "completed";
   }
 
   if (finishReason === "tool-calls") {

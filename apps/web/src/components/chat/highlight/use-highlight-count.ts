@@ -12,7 +12,7 @@
  */
 
 import type { UIMessage } from "ai";
-import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import type { Todo } from "@decocms/shared/harness/todo-write";
 import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";

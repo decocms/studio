@@ -9,6 +9,7 @@ export const chat = {
   "chat.agentCreate.seeAgentLabel": "See agent: {name}",
   "chat.agentIcons.claudeCode": "Claude Code",
   "chat.agentIcons.codex": "Codex",
+  "chat.agentIcons.opencode": "OpenCode",
   "chat.agentList.agentsNoun": "agents",
   "chat.agentList.couldntLoad": "Couldn't load agents",
   "chat.agentList.listAgents": "List agents",
@@ -20,13 +21,7 @@ export const chat = {
   "chat.agentList.unavailable": "Agent list unavailable",
   "chat.agentModels.balancedQuality": "Balanced quality",
   "chat.agentModels.deeperReasoning": "Deeper reasoning",
-  "chat.agentModels.gptLunaLabel": "GPT-5.6 Luna",
-  "chat.agentModels.gptSolLabel": "GPT-5.6 Sol",
-  "chat.agentModels.gptTerraLabel": "GPT-5.6 Terra",
-  "chat.agentModels.haikuLabel": "Haiku 4.5",
-  "chat.agentModels.opusLabel": "Opus 5 1M",
   "chat.agentModels.quickerResponses": "Quicker responses",
-  "chat.agentModels.sonnetLabel": "Sonnet 5",
   "chat.approval.acceptButton": "Accept",
   "chat.approval.batchedLabel": "{count} approvals pending",
   "chat.approval.defaultDenyReason":
@@ -89,23 +84,6 @@ export const chat = {
     "useChatTask must be used within ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Close",
   "chat.collapsibleHighlight.closeTitle": "Close",
-  "chat.common.copy": "Copy",
-  "chat.common.seeAll": "See all {count} {noun}",
-  "chat.connectDesktopDialog.agentClaudeCodeDescription":
-    "Runs through the Claude Code CLI",
-  "chat.connectDesktopDialog.agentClaudeCodeLabel": "Claude Code",
-  "chat.connectDesktopDialog.agentCodexDescription":
-    "Runs through the Codex CLI",
-  "chat.connectDesktopDialog.agentCodexLabel": "Codex",
-  "chat.connectDesktopDialog.connectYourDesktop": "Connect your desktop",
-  "chat.connectDesktopDialog.connectedTo": "Connected to {desktopName}",
-  "chat.connectDesktopDialog.machineAgentsDescription":
-    "This machine provides the following local agents.",
-  "chat.connectDesktopDialog.notDetected": "Not detected",
-  "chat.connectDesktopDialog.runCommandDescription":
-    "Run this command in your desktop terminal. The dialog will close once your desktop is online.",
-  "chat.connectDesktopDialog.waitingForDesktop": "Waiting for desktop…",
-  "chat.connectDesktopDialog.yourDesktop": "Your desktop",
   "chat.connectionList.connectionNoun": "connections",
   "chat.connectionList.emptySummary":
     "This organization hasn't connected any MCPs.",
@@ -187,15 +165,6 @@ export const chat = {
   "chat.decopilot.tierOther": "Other",
   "chat.decopilot.tierSmarter": "Smarter",
   "chat.decopilot.tryAnotherProviderOrRetry": "Try another provider or retry.",
-  "chat.desktopCli.tierFastDescription": "Quicker responses",
-  "chat.desktopCli.tierSmartDescription": "Balanced quality",
-  "chat.desktopCli.tierThinkingDescription": "Deeper reasoning",
-  "chat.desktopOfflineBanner.instructions":
-    "Run bunx decocms@latest link in a terminal on that machine to bring it back. Messages you send while it's offline will fail.",
-  "chat.desktopOfflineBanner.label": "Your desktop is offline",
-  "chat.desktopOfflineBanner.reconnectButton": "Reconnect desktop",
-  "chat.desktopOfflineBanner.title":
-    "This chat runs on your desktop, which isn't connected right now.",
   "chat.generateImage.failed": "Failed",
   "chat.generateImage.generatedImage": "Generated image",
   "chat.generateImage.generatedImageAlt": "Generated image",
@@ -259,6 +228,8 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "This model can't read attachments — switch to one with vision or file support",
   "chat.input.planMode": "Plan mode",
+  "chat.input.codingAgentRequiresDesktop":
+    "Continue this coding-agent chat in the Studio desktop app.",
   "chat.input.readOnlyOthersChat":
     "Read only - you're viewing someone else's chat",
   "chat.input.sendMessage": "Send message",
@@ -293,18 +264,58 @@ export const chat = {
     "Failed to load prompt. Please try again.",
   "chat.nextActionChip.mcpClientNotAvailable": "MCP client not available",
   "chat.nextActionChip.next": "Next:",
-  "chat.noAiProviderEmptyState.connectDesktopLabel": "Connect your desktop",
-  "chat.noAiProviderEmptyState.desktopLinkedLabel": "Desktop linked",
+  "chat.nativeAgentEmptyState.agentListLabel": "Coding agents",
+  "chat.nativeAgentEmptyState.detected": "detected",
+  "chat.nativeAgentEmptyState.detecting": "detecting",
+  "chat.nativeAgentEmptyState.heading": "Choose a coding agent",
+  "chat.nativeAgentEmptyState.keyboardHint": "↑↓ select · ↵ launch",
+  "chat.nativeAgentEmptyState.notDetected":
+    "{label} was not detected on this computer",
+  "chat.nativeAgentEmptyState.tryAnyway": "try anyway",
+  "chat.nativeTerminal.chooseAgentFirst":
+    "Choose Claude Code, Codex, or OpenCode before sending a message.",
+  "chat.nativeTerminal.agentLabel": "coding agent",
+  "chat.nativeTerminal.chatClosedBeforePrompt":
+    "The chat closed before your message was sent. Reopen it and try again.",
+  "chat.nativeTerminal.connectionFailed":
+    "We couldn't connect to the coding agent. Reopen the chat and try again.",
+  "chat.nativeTerminal.emptyPrompt": "Write a message before sending.",
+  "chat.nativeTerminal.exited": "Coding agent exited",
+  "chat.nativeTerminal.exitedBeforeReady":
+    "The coding agent stopped before it was ready. Reopen the chat and try again.",
+  "chat.nativeTerminal.failed": "Terminal error",
+  "chat.nativeTerminal.promptFailed":
+    "We couldn't send your message. Try again.",
+  "chat.nativeTerminal.promptDeliveryUnknown":
+    "We lost contact after your message was sent. It may already be running, so check the coding agent before sending it again.",
+  "chat.nativeTerminal.promptTooLarge":
+    "This message is too large to send. Shorten it and try again.",
+  "chat.nativeTerminal.attachmentsUnsupported":
+    "File and image attachments aren't available in coding-agent chats yet.",
+  "chat.nativeTerminal.readOnly":
+    "Only the chat owner can open or control its terminal.",
+  "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
+  "chat.nativeTerminal.reconnectingAgent": "Reconnecting to {agent}…",
+  "chat.nativeTerminal.pulseConnected": "connected",
+  "chat.nativeTerminal.pulseInitializing": "initializing",
+  "chat.nativeTerminal.pulseReconnecting": "reconnecting",
+  "chat.nativeTerminal.startingAgent": "Starting {agent}…",
+  "chat.nativeTerminal.structuredActionUnsupported":
+    "This action isn't available in coding-agent chats yet.",
+  "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
+  "chat.nativeTerminal.unsupportedHarness":
+    "This chat was created with an agent that the desktop app doesn't support. Open it in Studio on the web, or update Studio and try again.",
+  "chat.nativeTerminal.unsupportedHarnessTitle":
+    "This chat can't be opened in the desktop app",
+  "chat.nativeTerminal.unexpectedExit":
+    "The coding agent stopped unexpectedly. Reopen the chat and try again.",
+  "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",
+  "chat.nativeTerminal.waitingForTerminalDraw":
+    "waiting for the terminal to draw",
   "chat.noAiProviderEmptyState.headingDefault": "Your agents are almost ready",
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for agents",
-  "chat.noAiProviderEmptyState.orConnectProvider":
-    "or connect a cloud provider",
   "chat.noAiProviderEmptyState.subtitleDefault":
-    "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.",
-  "chat.noAiProviderEmptyState.subtitleLocalMode":
-    "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files.",
-  "chat.noAiProviderEmptyState.subtitleWithDesktop":
-    "Your desktop is linked — start now with a local coding agent, or connect a cloud provider for hosted models.",
+    "Connect an AI provider to start chatting.",
   "chat.noAiProviderEmptyState.useLabel": "Use {label}",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
@@ -324,6 +335,29 @@ export const chat = {
   "chat.queueTray.queuedMessages": "{count} queued messages",
   "chat.queueTray.removeFromQueue": "Remove from queue",
   "chat.queueTray.sendNow": "Send now",
+  "chat.runStatus.analyzingScopeDetail": "Working out how to respond",
+  "chat.runStatus.analyzingScopeLabel": "Thinking",
+  "chat.runStatus.choosingNextStepsDetail": "Deciding what to do next",
+  "chat.runStatus.choosingNextStepsLabel": "Thinking",
+  "chat.runStatus.gatheringContextDetail":
+    "Looking through the history, files, and notes",
+  "chat.runStatus.gatheringContextLabel": "Reading the chat",
+  "chat.runStatus.preparingToolsDetail": "Setting up the tools it can use",
+  "chat.runStatus.preparingToolsLabel": "Getting ready",
+  "chat.runStatus.receivedDetail": "Your message is in line to be worked on",
+  "chat.runStatus.receivedLabel": "Message received",
+  "chat.runStatus.sendingDetail": "Adding your message to the chat",
+  "chat.runStatus.sendingLabel": "Sending your message",
+  "chat.runStatus.startingAssistantDetail": "Almost ready to reply",
+  "chat.runStatus.startingAssistantLabel": "Warming up",
+  "chat.runStatus.startingRunDetail": "Setting up to work on your message",
+  "chat.runStatus.startingRunLabel": "Getting started",
+  "chat.runStatus.waitingCapacityDetail":
+    "Other runs are using every slot — this one starts as soon as one frees up",
+  "chat.runStatus.waitingCapacityLabel": "Waiting for a free runner",
+  "chat.runStatus.waitingRunnerDetail":
+    "Finishing up the previous message in this chat",
+  "chat.runStatus.waitingRunnerLabel": "Waiting to start",
   "chat.selectModel.selectModel": "Select model",
   "chat.selectVirtualMcp.chooseAgentTooltip": "Choose an agent to chat with",
   "chat.selectVirtualMcp.createAgent": "Create Agent",
@@ -400,10 +434,6 @@ export const chat = {
   "chat.thinkingIndicator.thinkingLabel": "Thinking",
   "chat.thinkingIndicator.thought": "Thought",
   "chat.thinkingIndicator.thoughtFor": "Thought for {duration}",
-  "chat.tierTrigger.runtimeClaudeCode": "Claude Code",
-  "chat.tierTrigger.runtimeCloud": "Cloud",
-  "chat.tierTrigger.runtimeCodex": "Codex",
-  "chat.tierTrigger.runtimeThisDevice": "This device",
   "chat.tierTrigger.selected": "Selected",
   "chat.tierTrigger.tierFast": "Fast",
   "chat.tierTrigger.tierSmart": "Smart",
@@ -464,4 +494,7 @@ export const chat = {
   "chat.modelPreferences.autoPicked": "auto-picked",
   "chat.modelPreferences.loadFailed":
     "Couldn't load your model choices. What you see below may not match what your chats use.",
+  "chat.todoStatus.completed": "completed",
+  "chat.todoStatus.inProgress": "in progress",
+  "chat.todoStatus.pending": "pending",
 } as const;

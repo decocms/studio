@@ -1,26 +1,20 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.28.3",
+  "version": "1.36.0",
   "private": true,
   "type": "module",
   "description": "Sandbox runtime for isolated Studio tool execution",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun run build:daemon && bun run build:typegen",
-    "build:daemon": "bun build daemon/entry.ts --target=bun --outfile=daemon/dist/daemon.js --external node-pty && bun run daemon/strip-bun-pragma.ts",
-    "build:typegen": "bun run --cwd=../typegen build && bun --cwd=../typegen pm pack --filename $PWD/daemon/dist/typegen.tgz --quiet",
-    "dev:daemon": "bun run --watch daemon/entry.ts"
+    "build": "bun run build:typegen",
+    "build:typegen": "mkdir -p dist && bun run --cwd=../typegen build && bun --cwd=../typegen pm pack --filename $PWD/dist/typegen.tgz --quiet"
   },
   "exports": {
     "./shared": "./shared.ts",
     "./provider": "./server/provider/index.ts",
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
-    "./daemon-spawn": "./server/daemon-spawn.ts",
-    "./provider/desktop": "./server/provider/desktop/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
-    "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts",
-    "./org-fs/detach-mount": "./daemon/org-fs/detach-mount.ts",
     "./org-fs": "./org-fs.ts",
     "./dispatch": "./dispatch/index.ts",
     "./dispatch/*": "./dispatch/*.ts",
@@ -28,12 +22,10 @@
     "./proxy/websocket": "./proxy/websocket.ts"
   },
   "dependencies": {
-    "@decocms/harness": "workspace:*",
     "@decocms/shared": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentelemetry/api": "^1.9.0",
-    "node-pty": "^1.0.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

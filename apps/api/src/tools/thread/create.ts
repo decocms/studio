@@ -7,9 +7,13 @@
  *   1. Honor `data.branch` when provided.
  *   2. Otherwise pick the most-recently-touched branch from the user's
  *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
- *   3. Fall back to a freshly generated Bayer-style `<greek>-<constellation>`
- *      name (e.g. `alpha-centauri`) when the user has no sandboxMap entries
- *      for this vMCP.
+ *   3. Fall back to `generateBranchName` (`<user-slug>-<timestamp>`) when the
+ *      user has no sandboxMap entries for this vMCP.
+ *
+ * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
+ * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
+ * invisible here and step 3 mints a sibling branch; the frontend must never
+ * auto-start without a branch (see `shouldAutoStart`).
  *
  * Threads created on a vMCP without a githubRepo always get `branch = null`.
  *
@@ -24,13 +28,16 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse } from "./helpers";
+import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
 import {
   ThreadCreateDataSchema,
   ThreadEntitySchema,
 } from "@decocms/shared/thread/schema";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -43,14 +50,6 @@ export type CreateThreadInput = z.infer<typeof CreateInputSchema>;
 const CreateOutputSchema = z.object({
   item: ThreadEntitySchema.describe("The created thread entity"),
 });
-
-type GithubRepoMeta = {
-  githubRepo?: {
-    owner: string;
-    name: string;
-    connectionId?: string;
-  } | null;
-};
 
 type SandboxMapMeta = {
   sandboxMap?: Record<
@@ -116,7 +115,11 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       data.virtual_mcp_id,
       organization.id,
     );
-    if (!vmcp) {
+    // `findById`'s organizationId param only resolves well-known synthetic
+    // ids (decopilot, brand-context-setup) — for a normal row it does NOT
+    // filter by org, so existence alone doesn't prove the vMCP is ours. Must
+    // check explicitly, same as COLLECTION_VIRTUAL_MCP_UPDATE does.
+    if (!vmcp || vmcp.organization_id !== organization.id) {
       throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
     }
 
@@ -130,9 +133,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       branch =
         data.branch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName(
-          ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-        );
+        generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
     const result = await ctx.storage.threads.create({

@@ -38,6 +38,14 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
+Sandbox container image. The daemon implementation IS the image, so there is no
+runtime switch a pod could use to disagree with the template that created it.
+*/}}
+{{- define "sandbox-env.sandboxImage" -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
 Studio runner Role / RoleBinding name. Stays under 63 chars even with a
 32-char envName.
 */}}
@@ -58,6 +66,22 @@ the Gateway/HTTPRoute name so the cert ↔ listener pairing is obvious.
 */}}
 {{- define "sandbox-env.previewTlsSecretName" -}}
 {{- default (printf "agent-sandbox-preview-%s-tls" (include "sandbox-env.envName" .)) .Values.previewGateway.tlsSecretName -}}
+{{- end }}
+
+{{/*
+OTLP endpoint handed to the daemon, built from the same ip/port the netinit
+ACCEPT rule is built from so the configured destination is by construction the
+reachable one. Fails at template time rather than shipping a sandbox that
+retries into a REJECT for its whole life.
+*/}}
+{{- define "sandbox-env.otlpEndpoint" -}}
+{{- if not .Values.telemetry.otlp.ip }}
+{{- fail "sandbox-env: telemetry.enabled requires telemetry.otlp.ip — the OTLP collector's ClusterIP. A DNS name will NOT work: sandboxes use dnsPolicy: None with public resolvers, so in-cluster names do not resolve. Get it with: kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'" -}}
+{{- end }}
+{{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" .Values.telemetry.otlp.ip) }}
+{{- fail (printf "sandbox-env: telemetry.otlp.ip must be a bare IPv4 address, got %q. It is interpolated into an iptables -d rule; a hostname there fails the init container and the pod never starts." .Values.telemetry.otlp.ip) -}}
+{{- end }}
+{{- printf "http://%s:%v" .Values.telemetry.otlp.ip .Values.telemetry.otlp.port -}}
 {{- end }}
 
 {{/*

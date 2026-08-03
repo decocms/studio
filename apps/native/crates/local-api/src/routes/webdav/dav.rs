@@ -3,7 +3,7 @@
 //! HTTP-date formatting. No I/O, no upstream, no axum state, so every rule
 //! rclone actually depends on is unit-testable in isolation.
 //!
-//! Port of the non-I/O half of `packages/sandbox/daemon/org-fs/webdav.ts`
+//! Port of the non-I/O half of `packages/sandbox/orgfs/webdav.ts`
 //! (`xmlEscape`, `pathFromUrl`, `basename`, `isMacJunk`, `hrefFor`,
 //! `propResponse`, `multistatus`, `parseRange`), with one deliberate
 //! addition: the TS daemon ran ONE server per mounted volume at the origin

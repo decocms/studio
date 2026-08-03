@@ -21,7 +21,7 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "@/api/routes/dev-connection";
 import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
-import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
+import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
@@ -30,16 +30,16 @@ import type { PendingImage } from "./built-in-tools";
 import type {
   DecopilotToolRuntime,
   ModelRuntime,
-} from "@decocms/harness/decopilot/run-core";
+} from "@/harnesses/lib/decopilot/run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
   RunEngineArgs,
-} from "@decocms/harness/decopilot/engine";
+} from "@/harnesses/lib/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
-import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
+import type { DecopilotTelemetry } from "@/harnesses/lib/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
-import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
+import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -83,6 +83,7 @@ async function runClusterEngine(
     passthroughClient: args.passthroughClient,
     connectionsData: args.connectionsData,
     extraTools: args.extraTools,
+    toolOutputMap: args.toolOutputMap,
     additionalSystemMessages: args.additionalSystemMessages,
     activeToolNames: args.activeToolNames,
     // Subtask core runs cap the loop at SUBAGENT_STEP_LIMIT (Task 17).
@@ -134,9 +135,8 @@ export function buildClusterEnvironmentTools(args: {
         toolOutputMap,
         pendingImages,
         threadId: streamInput.threadId,
-        // Cluster MCP tool-call hooks: storage-ref resolution + posthog
-        // analytics. The portable assembly forwards these as-is; the
-        // desktop daemon omits them.
+        // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
+        // analytics. The portable assembly forwards these as-is.
         resolveArgs,
         onToolCalled,
         onPrOpened,
@@ -167,17 +167,11 @@ export function buildClusterEnvironmentTools(args: {
               runContext.branch ?? undefined,
             ).catch(() => null);
           }
-          return createVirtualClientFrom(
-            vm,
-            ctx,
-            "passthrough",
-            opts?.superUser ?? false,
-            {
-              listTimeoutMs: opts?.listTimeoutMs,
-              includeSkillsCatalog: true,
-              additionalConnections: devConnection ? [devConnection] : [],
-            },
-          );
+          return createVirtualClientFrom(vm, ctx, opts?.superUser ?? false, {
+            listTimeoutMs: opts?.listTimeoutMs,
+            includeSkillsCatalog: true,
+            additionalConnections: devConnection ? [devConnection] : [],
+          });
         },
         provider: modelRuntime.thinking.provider,
         imageProvider:
@@ -212,6 +206,7 @@ export function buildClusterEnvironmentTools(args: {
         connectionTitleMap: assembled.connectionTitleMap,
         serverInstructions: assembled.serverInstructions,
         passthroughClient: assembled.passthroughClient,
+        toolOutputMap,
         writer: sideChannel.writer,
         pendingImages,
         sideChunks: sideChannel.stream,

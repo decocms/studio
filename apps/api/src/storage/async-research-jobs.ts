@@ -41,7 +41,7 @@ function toIso(v: Date | string | null): string | null {
  * so it must stay under Postgres's ~2704-byte index-row cap. Gemini-thinking
  * gateways used to blow that by packing the thought signature into the id;
  * that's now stripped upstream by the thought-signature middleware
- * (packages/harness), so ids reach storage small.
+ * (apps/api/src/harnesses/lib), so ids reach storage small.
  */
 function stubMessageId(toolCallId: string): string {
   return `msg_async_stub_${toolCallId}`;

@@ -32,6 +32,7 @@ import {
 export { resolveVmEntry, selectVmEntry, type BranchMapEntryLike };
 
 export interface ShouldAutoStartArgs {
+  executionEnabled: boolean;
   hasActiveGithubRepo: boolean;
   userId: string | null;
   branch: string | null;
@@ -41,10 +42,25 @@ export interface ShouldAutoStartArgs {
   attempted: boolean;
 }
 
+/**
+ * `branch` is REQUIRED. Auto-starting without one made `SANDBOX_START` mint a
+ * branch name of its own (`generateBranchName` — a `Date.now()` mint), racing
+ * the one `COLLECTION_THREADS_CREATE` mints for the thread row. Both won: the
+ * thread kept its branch and booted a second sandbox, while the auto-start's
+ * branch was left owning a live pod no thread ever referenced. Observed in
+ * prod as sibling branches minted 8ms apart (`user-fsif89sm` orphaned,
+ * `user-nsif89sm` on the thread), one leaked pod per new chat.
+ *
+ * The agent shell only mounts under `/$org/$taskId` and blocks rendering until
+ * `useEnsureTask` resolves the row, so a missing branch means "the row hasn't
+ * landed yet" — wait a render and start on the branch it carries.
+ */
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
+    args.executionEnabled &&
     args.hasActiveGithubRepo &&
     !!args.userId &&
+    !!args.branch &&
     !args.vmEntry &&
     !args.userStopped &&
     !args.isPending &&
@@ -52,7 +68,41 @@ export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   );
 }
 
+export interface ShouldAdoptBranchArgs {
+  /** The thread row has resolved. `false` while `useEnsureTask` is still
+   *  fetching/creating, when a null branch means "not known yet". */
+  threadLoaded: boolean;
+  /** The viewer created this thread. A teammate's row stays read-only. */
+  isOwner: boolean;
+  hasActiveGithubRepo: boolean;
+  branch: string | null;
+  /** Already adopted once for this thread in this session. */
+  attempted: boolean;
+}
+
+/**
+ * A loaded thread on a repo-backed agent with no branch gets one assigned, so
+ * the branch-gated auto-start (`shouldAutoStart`) can fire for it.
+ *
+ * Threads only reach this state when the repo was attached to the agent AFTER
+ * they were created — `COLLECTION_THREADS_CREATE` assigns a branch whenever the
+ * agent already has a `githubRepo`. Before the branch gate those threads were
+ * covered by `SANDBOX_START` minting a branch server-side, which is exactly the
+ * race that leaked a sandbox per new chat; minting here instead is safe because
+ * the row already exists, so nothing else is naming it concurrently.
+ */
+export function shouldAdoptBranch(args: ShouldAdoptBranchArgs): boolean {
+  return (
+    args.threadLoaded &&
+    args.isOwner &&
+    args.hasActiveGithubRepo &&
+    !args.branch &&
+    !args.attempted
+  );
+}
+
 export interface ShouldSelfHealArgs {
+  executionEnabled: boolean;
   notFound: boolean;
   deadVmId: string | null;
   lastDeadVmId: string | null;
@@ -62,6 +112,7 @@ export interface ShouldSelfHealArgs {
 
 export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
   return (
+    args.executionEnabled &&
     args.notFound &&
     !!args.deadVmId &&
     !args.isPending &&
@@ -148,6 +199,7 @@ export function isRetryableClaimFailure(reason: ClaimFailureReason): boolean {
 }
 
 export interface ShouldAutoRetryClaimArgs {
+  executionEnabled: boolean;
   /** The terminal failure reason, or null when the phase isn't `failed`. */
   failedReason: ClaimFailureReason | null;
   /** Auto-retries already fired for this boot. */
@@ -162,6 +214,7 @@ export interface ShouldAutoRetryClaimArgs {
 
 export function shouldAutoRetryClaim(args: ShouldAutoRetryClaimArgs): boolean {
   return (
+    args.executionEnabled &&
     args.failedReason !== null &&
     isRetryableClaimFailure(args.failedReason) &&
     args.attempts < MAX_CLAIM_AUTO_RETRIES &&
@@ -309,6 +362,7 @@ export function useSandboxLifecycle(): SandboxLifecycleValue {
 }
 
 export function SandboxLifecycleProvider({
+  executionEnabled,
   virtualMcpId,
   branch,
   userId,
@@ -318,6 +372,9 @@ export function SandboxLifecycleProvider({
   threadId,
   children,
 }: {
+  /** False for native terminal threads viewed on hosted web. Keeps previews
+   *  readable without adopting branches or mutating hosted sandboxes. */
+  executionEnabled: boolean;
   virtualMcpId: string | null;
   branch: string | null;
   userId: string | null;
@@ -431,13 +488,14 @@ export function SandboxLifecycleProvider({
   // not already started → fire SANDBOX_START once for this branch."
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
-  // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
-  // single auto-start fires even before the server assigns a branch.
+  // `?? ""` only keeps the Set keyed by string — a null branch is never
+  // eligible (shouldAutoStart requires one), so the "" bucket is never written.
   const autoStartDedupKey = branch ?? "";
   const attempted =
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
     autoStartAttemptedForBranchRef.current.has(autoStartDedupKey);
   const autoStartEligible = shouldAutoStart({
+    executionEnabled,
     hasActiveGithubRepo,
     userId,
     branch,
@@ -477,6 +535,7 @@ export function SandboxLifecycleProvider({
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
   const deadVmId = events.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
   const selfHealEligible = shouldSelfHeal({
+    executionEnabled,
     notFound: events.notFound,
     deadVmId,
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after firing
@@ -517,6 +576,7 @@ export function SandboxLifecycleProvider({
   // a bounded number of times before falling through to the errored card, so
   // the common transient-infra failure self-heals without a user click.
   const claimRetryEligible = shouldAutoRetryClaim({
+    executionEnabled,
     failedReason: failedPhase?.reason ?? null,
     attempts: claimRetryEpisode.count,
     isPending: startVm.isPending,
@@ -567,7 +627,7 @@ export function SandboxLifecycleProvider({
 
   // User-driven actions.
   const start = () => {
-    if (!virtualMcpId) return;
+    if (!executionEnabled || !virtualMcpId) return;
     const args = buildSandboxStartArgs(
       virtualMcpId,
       branch,
@@ -584,7 +644,7 @@ export function SandboxLifecycleProvider({
   };
 
   const stop = async () => {
-    if (!virtualMcpId || !branch) return;
+    if (!executionEnabled || !virtualMcpId || !branch) return;
     const kindToStop = vmEntry?.sandboxProviderKind;
     if (!kindToStop) return;
     sandboxUserStop.mark(virtualMcpId, branch);

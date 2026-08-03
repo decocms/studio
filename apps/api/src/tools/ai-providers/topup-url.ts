@@ -8,22 +8,30 @@ import {
   requireOrganization,
   getUserId,
 } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 import { getSettings } from "../../settings";
+
+// Ceiling for a single top-up request. Stripe's own `unit_amount` cap is
+// 99999999 (~$999,999.99) and computeTopUpChargeCents() multiplies
+// amountCents up further by the fee percent, so an unbounded amount here can
+// overflow Stripe's limit and surface as an opaque 500 instead of a clean
+// input-validation error.
+const MAX_TOPUP_AMOUNT_CENTS = 1_000_000; // $10,000.00
 
 export const AI_PROVIDER_TOPUP_URL = defineTool({
   name: "AI_PROVIDER_TOPUP_URL",
   description:
     "Get a checkout URL to top up credits for a provider that supports it (e.g. Deco AI Gateway)",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
     amountCents: z
       .number()
       .int()
       .positive()
-      .describe("Amount in cents (e.g. 1000 = $10.00)"),
+      .max(MAX_TOPUP_AMOUNT_CENTS)
+      .describe("Amount in cents (e.g. 1000 = $10.00), max $10,000.00"),
     currency: z.enum(["usd", "brl"]).default("usd"),
   }),
   outputSchema: z.object({

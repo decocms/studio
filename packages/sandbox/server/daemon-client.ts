@@ -3,8 +3,7 @@
  * under `/_sandbox/*` (except `/health` at root, which is unauth).
  */
 
-import type { ConfigPatch } from "../daemon/config-store/types";
-import type { TenantConfig } from "../daemon/types";
+import type { ConfigPatch, TenantConfig } from "../daemon-protocol";
 import { sleep } from "../shared";
 
 export type { ConfigPatch };

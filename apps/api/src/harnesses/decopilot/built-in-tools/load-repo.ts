@@ -8,8 +8,9 @@
  * repo to the THREAD (`threads.metadata.githubRepo` + a dedicated
  * `thread:<id>` branch — real, persisted columns). Sandbox provisioning
  * (`ensureSandbox`) and the fs-tool binding (`tools.ts`) both prefer the
- * thread's repo, so the thread gets its own repo-cloned sandbox. For real
- * repo-agents this is a per-conversation override.
+ * thread's repo, so the thread gets its own repo-cloned sandbox. Only the
+ * super-agent gets this tool — every other agent is scoped to the repo it was
+ * configured with and must not be able to re-point itself at another one.
  *
  * The tool clones EAGERLY and waits: it provisions the repo sandbox and blocks
  * until the git checkout is present before returning, then signals the client
@@ -30,6 +31,7 @@ import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import { isDecopilot } from "@decocms/shared/sdk";
 import {
   mergeSandboxMapEntry,
   readSandboxMap,
@@ -149,6 +151,11 @@ export async function createLoadRepoTool(opts: {
   rebindFs?: (branch: string) => Promise<void>;
 }) {
   const { ctx, orgId, virtualMcpId, userId, threadId, writer, rebindFs } = opts;
+  // Super-Agent-only. Every other agent either owns a repo already (repo-agents
+  // get it from `metadata.githubRepo`) or is deliberately scoped to one — letting
+  // them re-point the thread at an arbitrary org repo mid-run isn't an override,
+  // it's an escape from their configured scope.
+  if (!isDecopilot(virtualMcpId)) return null;
   const repos = await listOrgRepos(ctx, orgId);
   // Nothing to switch between — don't expose the tool at all.
   if (repos.length === 0) return null;

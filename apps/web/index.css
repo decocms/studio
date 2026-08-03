@@ -32,54 +32,6 @@
   }
 }
 
-/* Window Controls Overlay (installed PWA on Chromium):
-   The toolbar header is already the top element of the flex shell, so all
-   we need to do is (1) make its background act as the OS drag region,
-   (2) inset its content on the right to clear the OS title-bar controls,
-   (3) hide elements that duplicate the chrome (e.g. app logo),
-   and (4) opt buttons back to clickable. The sidebar owns the left control
-   area, so the app toolbar must not reserve it again.
-
-   Lives outside @layer base so it wins against Tailwind utilities like
-   h-12, pl-1, pr-2 that would otherwise cascade later. */
-@media (display-mode: window-controls-overlay) {
-  .app-titlebar {
-    padding-right: calc(
-      100vw -
-      env(titlebar-area-x, 0) -
-      env(titlebar-area-width, 100vw)
-    );
-    /* Match the OS title-bar strip height so close/min/max buttons line up
-       vertically with the header's icon buttons. Overrides Tailwind's h-12
-       (3rem) for the WCO case only. */
-    height: env(titlebar-area-height, 3rem);
-  }
-  /* On desktop the sidebar — not the toolbar — owns the top-left corner where
-     the OS window controls (macOS traffic lights) overlay sits, so its header
-     reserves the same left inset. Left-only: the sidebar isn't full width, so
-     the 100vw right inset .app-titlebar uses doesn't apply. max() keeps the
-     header's default px-2 gutter when there's no OS inset. */
-  .sidebar-titlebar {
-    padding-left: max(env(titlebar-area-x, 0), 0.5rem);
-    height: env(titlebar-area-height, 3rem);
-  }
-  .wco-drag {
-    -webkit-app-region: drag;
-    app-region: drag;
-  }
-  .wco-drag button,
-  .wco-drag a,
-  .wco-drag input,
-  .wco-drag [role="button"],
-  .wco-no-drag {
-    -webkit-app-region: no-drag;
-    app-region: no-drag;
-  }
-  .wco-hide {
-    display: none !important;
-  }
-}
-
 @layer components {
   /* Animated todo checkbox — stroke-dasharray technique from checkbox source */
   .todo-cb {

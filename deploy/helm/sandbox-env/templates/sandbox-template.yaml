@@ -105,7 +105,7 @@ spec:
         # per pod (idempotent). Reuses the sandbox image — already on the
         # node, no extra pull.
         - name: deps-cache-init
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
           resources:
@@ -152,6 +152,16 @@ spec:
               iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                 || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
                 || { echo "ERROR: neither -m conntrack nor -m state available; cannot install ESTABLISHED,RELATED rule. Preview ingress would silently break. Failing the init container so the pod does not come up." >&2; exit 1; }
+              {{- if .Values.telemetry.enabled }}
+              # The ONE in-cluster destination a sandbox may reach: the OTLP
+              # collector. Must precede the blockCIDR REJECTs below — the
+              # collector's ClusterIP lives inside them (172.20.x is covered by
+              # 172.16.0.0/12), so a rule placed after would never be evaluated.
+              # Scoped to an exact /32 and a single port: this is a hole in the
+              # boundary that keeps user code away from in-cluster services, and
+              # it stays exactly one destination wide.
+              iptables -A OUTPUT -d {{ printf "%s/32" .Values.telemetry.otlp.ip | quote }} -p tcp --dport {{ .Values.telemetry.otlp.port }} -j ACCEPT
+              {{- end }}
               {{- range .Values.netinit.blockCIDRs }}
               iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
@@ -207,7 +217,7 @@ spec:
       {{- end }}
       containers:
         - name: sandbox
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: /app
           env:
@@ -237,6 +247,19 @@ spec:
             - name: GOLDEN_CACHE_REMOTE
               value: {{ .Values.depsCache.remote.mountPath | quote }}
             {{- end }}
+            {{- end }}
+            {{- if .Values.telemetry.enabled }}
+            # OTLP metrics endpoint for the daemon. Standard OTel variable, so
+            # it reaches whichever daemon the image runs — a daemon with no
+            # exporter wired simply ignores it. Absent → the daemon must not
+            # start an exporter at all (no endpoint is the off switch).
+            #
+            # An IP, never a DNS name: sandboxes run `dnsPolicy: None` against
+            # public resolvers, so `gateway-otlp.opentelemetry-collector` is
+            # NXDOMAIN in here. Same value drives the netinit ACCEPT above, so
+            # the reachable destination and the configured one cannot drift.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ include "sandbox-env.otlpEndpoint" . | quote }}
             {{- end }}
             - name: DAEMON_PORT
               value: "9000"
@@ -314,7 +337,7 @@ spec:
         # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
         # under the shared /app/org, and Bidirectional propagation surfaces
         # them in the (unprivileged) sandbox container. See
-        # packages/sandbox/daemon/org-fs/sidecar.ts.
+        # packages/sandbox/orgfs/sidecar.ts.
         - name: orgfs-sidecar
           image: "{{ .Values.orgFs.image.repository }}:{{ .Values.orgFs.image.tag }}"
           imagePullPolicy: {{ .Values.orgFs.image.pullPolicy }}

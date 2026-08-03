@@ -12,21 +12,17 @@ import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import { useDecoCredits } from "@/hooks/use-deco-credits";
-import { usePanelActions } from "@/layouts/shell-layout";
 
 // ---------- Panel content ----------
 
 function ChatSidePanelContent() {
   const { org } = useProjectContext();
   const { isChatEmpty } = useChatStream();
-  const { openTab } = usePanelActions();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
 
-  // Surface the provider-setup UI when there's no way to run a chat — no cloud
-  // AI provider AND no usable local runtime. The empty state itself offers the
-  // local Claude Code / Codex options as a one-click escape when a desktop is
-  // linked. Same signal gates the main-panel view tabs.
+  // The structured chat side panel is web-only. Native uses the terminal
+  // runtime adapter instead, so cloud provider setup is the only gate here.
   const showProviderEmptyState = useNeedsRuntimeSetup();
 
   if (showProviderEmptyState) {
@@ -34,11 +30,7 @@ function ChatSidePanelContent() {
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState
-              // Picking a local runtime is the same gesture as opening a new
-              // chat with this agent: open its Overview alongside the composer.
-              onLocalRuntimePicked={() => openTab("overview")}
-            />
+            <Chat.NoAiProviderEmptyState />
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>
@@ -61,6 +53,8 @@ function ChatSidePanelContent() {
 
       {/* Chat view */}
       <div
+        inert={activePanel !== "chat" ? true : undefined}
+        aria-hidden={activePanel !== "chat"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel !== "chat"
@@ -92,6 +86,8 @@ function ChatSidePanelContent() {
 
       {/* Context view */}
       <div
+        inert={activePanel !== "context" ? true : undefined}
+        aria-hidden={activePanel !== "context"}
         className={cn(
           "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
           activePanel === "context"

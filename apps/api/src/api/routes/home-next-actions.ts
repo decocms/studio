@@ -133,13 +133,9 @@ async function defaultHomeAgentNextActions(
         });
 
         try {
-          const client = await createVirtualClientFrom(
-            virtualMcp,
-            ctx,
-            "passthrough",
-            false,
-            { listTimeoutMs: LIST_PROMPTS_TIMEOUT_MS },
-          );
+          const client = await createVirtualClientFrom(virtualMcp, ctx, false, {
+            listTimeoutMs: LIST_PROMPTS_TIMEOUT_MS,
+          });
           try {
             const { prompts } = await client.listPrompts();
             // `homePrompts: null/undefined` means "all prompts"; an

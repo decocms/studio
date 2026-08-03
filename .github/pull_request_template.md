@@ -1,6 +1,9 @@
 ## What is this contribution about?
 > Describe your changes and why they're needed.
 
+## How did you verify your code works?
+> Name the tests you ran or added and what you observed. "Verified manually" or "existing tests" without specifics doesn't count.
+
 ## Screenshots/Demonstration
 > Add screenshots or a Loom video if your changes affect the UI.
 

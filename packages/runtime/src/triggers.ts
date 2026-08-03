@@ -70,6 +70,11 @@ class TriggerStateManager {
   private credentials = new Map<string, CallbackCredentials>();
   private activeTriggers = new Map<string, Set<string>>();
   private storage: TriggerStorage | null;
+  // Concurrent enable()/disable() calls for a connection not yet cached must
+  // share one in-flight storage read — otherwise a second call's read (started
+  // before the first's write) can resolve later and overwrite the first
+  // call's in-memory update with stale data, silently dropping it.
+  private loading = new Map<string, Promise<void>>();
 
   constructor(storage?: TriggerStorage) {
     this.storage = storage ?? null;
@@ -81,11 +86,30 @@ class TriggerStateManager {
 
   async loadFromStorage(connectionId: string): Promise<void> {
     if (!this.storage || this.credentials.has(connectionId)) return;
-    const state = await this.storage.get(connectionId);
-    if (state) {
-      this.credentials.set(connectionId, state.credentials);
-      this.activeTriggers.set(connectionId, new Set(state.activeTriggerTypes));
-    }
+
+    const inFlight = this.loading.get(connectionId);
+    if (inFlight) return inFlight;
+
+    const storage = this.storage;
+    const promise = (async () => {
+      try {
+        const state = await storage.get(connectionId);
+        // Skip if a concurrent call already populated this connection while
+        // this read was in flight.
+        if (state && !this.credentials.has(connectionId)) {
+          this.credentials.set(connectionId, state.credentials);
+          this.activeTriggers.set(
+            connectionId,
+            new Set(state.activeTriggerTypes),
+          );
+        }
+      } finally {
+        this.loading.delete(connectionId);
+      }
+    })();
+
+    this.loading.set(connectionId, promise);
+    return promise;
   }
 
   async enable(

@@ -11,6 +11,7 @@ You are the Task Manager. You organize and maintain this organization's task boa
 - Update task details and move work through triage, to do, in progress, in review, and done.
 - Delegate a task to the Super Agent, which queues the task for execution.
 - Inspect the live state of pull requests linked to a task.
+- Record a reviewer's decision (QA Agent / Code Reviewer) on a task under review.
 - Delete obsolete or duplicate tasks after explicit confirmation.
 </capabilities>
 
@@ -49,7 +50,11 @@ You are the Task Manager. You organize and maintain this organization's task boa
    b. Review its linked thread states. If the user asks about code delivery or pull requests, call TASK_BOARD_ITEM_PRS_GET with the task id.
    c. Report whether each linked pull request is open, closed, draft, or merged. If live state is unavailable, say so and retain the link as the source of truth.
 
-5. Deleting a task:
+5. Recording a review decision:
+   a. When a reviewer (QA Agent or Code Reviewer) has finished reviewing a task's pull request, call TASK_BOARD_REVIEW_DECISION with the task id, the reviewer (\`qa\` or \`code_review\`), the decision (\`approve\` or \`request_changes\`), and their notes.
+   b. \`request_changes\` hands the task back to the Super Agent with the notes; \`approve\` records the sign-off and, once every enabled reviewer has approved, merges the PR when the org enabled auto-merge. Pass the notes through verbatim — do not invent an approval or change request.
+
+6. Deleting a task:
    a. Resolve the exact item with TASK_BOARD_ITEM_LIST unless its id is already known.
    b. Show the task title and explain that deleting the card is irreversible. Get explicit confirmation immediately before the tool call.
    c. Call TASK_BOARD_ITEM_DELETE only after confirmation, then briefly confirm removal.
@@ -66,6 +71,7 @@ export const taskManagerAgent = {
     "TASK_BOARD_ITEM_UPDATE",
     "TASK_BOARD_ITEM_DELETE",
     "TASK_BOARD_ITEM_PRS_GET",
+    "TASK_BOARD_REVIEW_DECISION",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
   selectedPrompts: [] as readonly string[],

@@ -1,11 +1,11 @@
 /**
- * FLIP animation for the kanban board. When a task changes status its card
- * unmounts from one lane and remounts in another (React re-render), so a CSS
- * transition can't follow it. Instead we measure every card's position before
- * and after the arrangement changes, invert the delta with a transform, then
- * release it — the card slides from its old spot to the new one and the cards
- * it displaces reflow into place. A lane-changing card also leans into its
- * horizontal motion (tilt) and straightens on arrival.
+ * FLIP animation for lane changes that don't go through an active drag — the
+ * agent auto-moving a card, or the bulk "Move to" action. Those just patch
+ * `items` and let React reconcile: the card unmounts from one lane's
+ * `SortableContext` and remounts in another with no transition to follow.
+ * Dragging already gets its own smooth motion from dnd-kit (live gap preview
+ * + the `landed` settle animation), so this hook stays out of its way while
+ * `enabled` is false and only measures/animates when it's true.
  *
  * Concurrent moves are staggered so cards shift one-after-another instead of a
  * chaotic simultaneous flurry — the "only one at a time" feel without holding
@@ -13,6 +13,7 @@
  */
 
 import { useLayoutEffect, useRef } from "react";
+import type { RefObject } from "react";
 
 const DURATION = 380;
 const STAGGER = 90;
@@ -20,14 +21,19 @@ const TILT = 5;
 const EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 
 export function useFlipLanes(
-  containerRef: React.RefObject<HTMLElement | null>,
+  containerRef: RefObject<HTMLElement | null>,
   signature: string,
+  enabled: boolean,
 ) {
   // Remember each card's position AND which lane it was in, so a lane change is
   // detected by the column it actually moved between — not by horizontal delta,
   // which a board-wide sideways shift (scrollbar toggling, row re-centering)
   // gives to every card at once, tilting the whole board.
   const prev = useRef<Map<string, { rect: DOMRect; lane?: string }>>(new Map());
+  // Ref-counted per lane so two cards animating through the same column at
+  // once don't have the first one's cleanup re-clip it while the second is
+  // still mid-flight.
+  const unclipped = useRef<Map<HTMLElement, number>>(new Map());
 
   useLayoutEffect(() => {
     const root = containerRef.current;
@@ -35,6 +41,11 @@ export function useFlipLanes(
 
     const nodes = root.querySelectorAll<HTMLElement>("[data-flip-id]");
     const next = new Map<string, { rect: DOMRect; lane?: string }>();
+    const prevPositions = prev.current;
+    // Always resync — even while `enabled` is false — so a drag's continuous
+    // position changes (live gap preview) are the baseline once it ends, and
+    // the settle isn't misread as a full-distance move needing its own FLIP.
+    prev.current = next;
 
     const reduced =
       typeof window !== "undefined" &&
@@ -49,7 +60,8 @@ export function useFlipLanes(
       const rect = el.getBoundingClientRect();
       const lane = el.dataset.flipLane;
       next.set(id, { rect, lane });
-      const old = prev.current.get(id);
+      if (!enabled) continue;
+      const old = prevPositions.get(id);
       if (!old) continue;
       const dx = old.rect.left - rect.left;
       const dy = old.rect.top - rect.top;
@@ -58,8 +70,28 @@ export function useFlipLanes(
       }
     }
 
-    prev.current = next;
-    if (reduced || moved.length === 0) return;
+    if (!enabled || reduced || moved.length === 0) return;
+
+    // A lane-changer travels sideways out of its own column for the length of
+    // the animation — its home lane clips that (an `overflow-y` container's
+    // `overflow-x` computes to `auto`, never `visible`, so it always clips).
+    // Lift the clip on that lane for the duration and restore it afterward.
+    const counts = unclipped.current;
+    const unclip = (laneEl: Element | null) => {
+      if (!(laneEl instanceof HTMLElement)) return;
+      counts.set(laneEl, (counts.get(laneEl) ?? 0) + 1);
+      laneEl.style.overflow = "visible";
+    };
+    const reclip = (laneEl: Element | null) => {
+      if (!(laneEl instanceof HTMLElement)) return;
+      const count = (counts.get(laneEl) ?? 1) - 1;
+      if (count > 0) {
+        counts.set(laneEl, count);
+        return;
+      }
+      counts.delete(laneEl);
+      laneEl.style.overflow = "";
+    };
 
     // Invert: paint every moved card at its previous position (before browser
     // paints the new layout). Lane-changers also start tilted, leaning toward
@@ -68,7 +100,10 @@ export function useFlipLanes(
       const tilt = m.lane ? ` rotate(${m.dx > 0 ? TILT : -TILT}deg)` : "";
       m.el.style.transition = "none";
       m.el.style.transform = `translate(${m.dx}px, ${m.dy}px)${tilt}`;
-      if (m.lane) m.el.style.zIndex = "10";
+      if (m.lane) {
+        m.el.style.zIndex = "10";
+        unclip(m.el.closest("[data-lane-scroll]"));
+      }
     }
 
     // Play: release to the new position next frame. Stagger lane-changers so
@@ -86,6 +121,7 @@ export function useFlipLanes(
               m.el.style.transition = "";
               m.el.style.transform = "";
               m.el.style.zIndex = "";
+              if (m.lane) reclip(m.el.closest("[data-lane-scroll]"));
             },
             DURATION + delay + 30,
           ),
@@ -96,6 +132,18 @@ export function useFlipLanes(
     return () => {
       cancelAnimationFrame(raf);
       for (const t of cleanups) clearTimeout(t);
+      // A new signature can land mid-flight (that's the point of staggering —
+      // see the module doc), which tears this effect down before the timeouts
+      // above ever get to reset what they set. Without this, a lane-changer's
+      // home lane is left permanently `overflow: visible`, unclipped. Reclip is
+      // idempotent (a second call for an already-settled lane is a no-op), so
+      // running it unconditionally here is safe.
+      for (const m of moved) {
+        m.el.style.transition = "";
+        m.el.style.transform = "";
+        m.el.style.zIndex = "";
+        if (m.lane) reclip(m.el.closest("[data-lane-scroll]"));
+      }
     };
-  }, [signature, containerRef]);
+  }, [signature, containerRef, enabled]);
 }

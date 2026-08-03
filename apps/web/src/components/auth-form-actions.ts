@@ -1,14 +1,16 @@
 /**
  * Injectable network + post-auth actions for the shared sign-in surface
- * (`AuthEntry` / `UnifiedAuthForm`). The web `/login` route never passes an
- * `actions` override, so it gets `defaultAuthFormActions` below — BYTE-
- * IDENTICAL to what `UnifiedAuthForm` did before this indirection existed
- * (same `authClient` calls, same `window.location.href` navigate).
+ * (`AuthEntry` / `UnifiedAuthForm`). A call site that passes no `actions`
+ * override gets platform defaults resolved inside `AuthEntry`: on the web
+ * build that is exactly `defaultAuthFormActions` below — BYTE-IDENTICAL to
+ * what `UnifiedAuthForm` did before this indirection existed (same
+ * `authClient` calls, same `window.location.href` navigate) — while the
+ * desktop build additionally layers the browser-hop/Keychain-bridge
+ * overrides on top (`@/desktop/use-desktop-auth-form-defaults`), so social/
+ * SSO buttons can never silently dead-end inside the Tauri webview again.
  *
- * The desktop sign-in screen
- * (`apps/web/src/desktop/sign-in-screen.tsx`) overrides three of the
- * six slots — see `apps/web/src/desktop/auth-actions.ts` for why only
- * those three need a desktop-specific implementation.
+ * See `apps/web/src/desktop/auth-actions.ts` for why only three of the six
+ * slots need a desktop-specific implementation.
  */
 import { authClient } from "@/lib/auth-client";
 

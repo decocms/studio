@@ -64,7 +64,6 @@ kv-wal
 .playwright-mcp/
 
 # Local test files
-deploy/auth-config.json
 deploy/docs
 deploy/test*
 

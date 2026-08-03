@@ -7,7 +7,7 @@
  * daemon) the same way the `<knowledge>` block does.
  */
 
-import { buildSkillsBlock } from "@decocms/harness/decopilot/skills-block";
+import { buildSkillsBlock } from "@/harnesses/lib/decopilot/skills-block";
 import type { StudioContext } from "../../core/studio-context";
 import { buildSkillCatalog } from "../../file-storage/skill-catalog";
 import { orgFsSandboxPath } from "../../file-storage/mount/provisioning";

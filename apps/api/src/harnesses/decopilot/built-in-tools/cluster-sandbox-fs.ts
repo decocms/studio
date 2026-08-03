@@ -23,7 +23,7 @@ import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
-import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
+import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 
 /**
  * Fire-and-forget: mint the run's virtual-MCP endpoint and have the daemon

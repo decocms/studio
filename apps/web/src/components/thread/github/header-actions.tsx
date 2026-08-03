@@ -13,7 +13,10 @@ import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -305,9 +308,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
-    const nextBranch = generateBranchName(
-      session?.user?.name ?? session?.user?.email?.split("@")[0],
-    );
+    const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
   };
 

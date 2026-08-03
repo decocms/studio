@@ -13,7 +13,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import { assertValidAssignee } from "./validate-assignee";
-import { SUPER_AGENT_ASSIGNEE_ID } from "./schema";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 function ctxWithListMembers(
   listMembers: (options?: {

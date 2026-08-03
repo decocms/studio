@@ -210,6 +210,7 @@ export function StringField({
         onChange={onChange}
         path={path}
         label={label}
+        inline={format === "rich-text-inline"}
       />
     );
   }

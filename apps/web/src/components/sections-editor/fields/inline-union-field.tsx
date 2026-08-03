@@ -31,6 +31,10 @@ function branchFormSchema(branch: Branch): SchemaProperty | null {
   for (const [key, prop] of Object.entries(schema.properties)) {
     if (!discKeys.has(key)) properties[key] = prop;
   }
+  // A branch whose only fields are const discriminators (e.g. a userSegment
+  // option with no extra config) has nothing to edit — render just the selector
+  // instead of an empty "no fields" form.
+  if (Object.keys(properties).length === 0) return null;
   return { ...schema, properties };
 }
 
@@ -82,7 +86,7 @@ export function InlineUnionField(props: FieldProps) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor={path}>{label}</Label>
+        {label && <Label htmlFor={path}>{label}</Label>}
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>
           <SelectTrigger id={path}>
             <SelectValue

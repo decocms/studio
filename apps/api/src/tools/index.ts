@@ -38,7 +38,6 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
-import * as LinkTools from "./links";
 import * as SearchTools from "./search";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
@@ -55,6 +54,8 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
+  TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
+  TaskBoardTools.TASK_BOARD_PROMOTE_TO_PRODUCTION,
   TaskBoardTools.TASK_BOARD_ACTIVITY_LIST,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
@@ -130,8 +131,6 @@ export const CORE_TOOLS = [
   ThreadTools.COLLECTION_THREADS_UPDATE,
   ThreadTools.COLLECTION_THREADS_DELETE,
   ThreadTools.COLLECTION_THREAD_MESSAGES_LIST,
-  ThreadTools.THREAD_BACKGROUND_TOOL_START,
-  ThreadTools.THREAD_SUBTASK_DELIVER,
 
   // Tag tools
   TagTools.TAGS_LIST,
@@ -205,8 +204,6 @@ export const CORE_TOOLS = [
   GitHubTools.GITHUB_LIST_USER_ORGS,
 
   // Link tools
-  LinkTools.LINK_CURRENT_GET,
-  LinkTools.LINK_DISCONNECT,
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,

@@ -1,10 +1,10 @@
 name: Sandbox
 
-# packages/sandbox/daemon/daemon.e2e.test.ts spawns the built daemon binary
-# and exercises real HTTP/SSE endpoints — it's an integration test that
-# runs under `bun test` purely because of where it lives in the tree.
+# packages/sandbox/daemon-e2e/ spawns the built daemon binary and exercises real
+# HTTP/SSE endpoints — it's an integration test that runs under `bun test`
+# purely because of the language its assertions are written in.
 # Split into its own workflow so the unit-test job stays infrastructure-free
-# (no daemon-bundle build, no per-test process spawning) per TESTING.md.
+# (no daemon build, no per-test process spawning) per TESTING.md.
 
 on:
   push:
@@ -65,7 +65,7 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              packages/sandbox/*|packages/typegen/*|packages/shared/*|packages/harness/*) relevant=true; break ;;
+              packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
@@ -81,18 +81,31 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      # The fs `grep` route shells out to ripgrep; install it so that test can
-      # assert results strictly instead of tolerating "grep unavailable".
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/sandbox/daemon-go/go.mod
+          cache-dependency-path: packages/sandbox/daemon-go/go.sum
+
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
-      - name: Build daemon bundle
-        run: bun run --cwd=packages/sandbox build
+      - name: Go vet and unit tests
+        working-directory: packages/sandbox/daemon-go
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: Build the daemon
+        run: cd packages/sandbox/daemon-go && go build -o bin/daemon .
 
       - name: Run daemon e2e tests
         # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
         # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
-        run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
+        # DAEMON_E2E_CMD is what makes the suite implementation-agnostic; the
+        # default it falls back to is this same binary.
+        env:
+          DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
+        run: bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
 
   docker-smoke:
     needs: changes
@@ -105,36 +118,49 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Build daemon bundle
+      - name: Build typegen package
         run: bun run --cwd=packages/sandbox build
 
-      - name: Build sandbox image
+      - name: Build the sandbox image
         run: |
           docker build \
-            -t studio-sandbox:ci \
+            -t studio-sandbox-go:ci \
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
 
+      # The image must boot the daemon with no env telling it which — the
+      # `impl=` boot line is the assertion, so an image that shipped the wrong
+      # binary fails here rather than in a canary panel.
       - name: Smoke test
         run: |
-          docker run -d --name sandbox-smoke -p 19999:9000 \
-            -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
-            -e DAEMON_BOOT_ID="ci-smoke" \
-            -e APP_ROOT=/app \
-            -e PROXY_PORT=9000 \
-            -e DAEMON_NO_AUTOSTART=1 \
-            studio-sandbox:ci
-          for _ in $(seq 1 30); do
-            if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
-              echo "ok"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "smoke test failed — daemon did not return /health with ci-smoke bootId"
-          docker logs sandbox-smoke
-          exit 1
+          smoke() {
+            image="$1"; impl="$2"; port="$3"; name="sandbox-smoke-$impl"
+            docker run -d --name "$name" -p "$port:9000" \
+              -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
+              -e DAEMON_BOOT_ID="ci-smoke-$impl" \
+              -e APP_ROOT=/app \
+              -e PROXY_PORT=9000 \
+              -e DAEMON_NO_AUTOSTART=1 \
+              "$image"
+            for _ in $(seq 1 30); do
+              if curl -fsS "http://localhost:$port/health" \
+                   | grep -q "\"bootId\":\"ci-smoke-$impl\""; then
+                if docker logs "$name" 2>&1 | grep -q "impl=$impl"; then
+                  echo "$impl ok"
+                  return 0
+                fi
+                echo "$image answered /health but did not log impl=$impl"
+                docker logs "$name"
+                return 1
+              fi
+              sleep 1
+            done
+            echo "smoke test failed ($impl) — /health did not report ci-smoke-$impl"
+            docker logs "$name"
+            return 1
+          }
+          smoke studio-sandbox-go:ci go 19998
 
       - name: Tear down
         if: always()
-        run: docker rm -f sandbox-smoke || true
+        run: docker rm -f sandbox-smoke-go || true

@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/local-api", "crates/harness", "crates/upstream", "src-tauri"]
+members = [
+  "crates/local-api",
+  "crates/harness",
+  "crates/terminal-session",
+  "crates/upstream",
+  "src-tauri",
+]
 
 [workspace.package]
 edition = "2021"
@@ -69,11 +75,22 @@ tempfile = "3"
 # minimize merge friction with `crates/upstream` (built in parallel), which
 # is expected to add its own (`keyring`, etc.) below these rather than
 # interleaving.
-tauri = { version = "2", features = ["config-json5"] }
+# `devtools` keeps the webview inspectable in RELEASE builds too (Safari's
+# Develop menu can attach; launching with `RUST_LOG` set auto-opens the
+# inspector — see `src-tauri/src/setup.rs`). The packaged app has no file
+# logging and no in-webview console capture, so without this a
+# production-only rendering or CSP failure is undiagnosable. Uses private
+# WebKit API on macOS — fine for the Homebrew cask channel, would need
+# dropping for an App Store build.
+tauri = { version = "2", features = ["config-json5", "devtools"] }
 # Dev-only MCP bridge for @hypothesi/tauri-mcp-server (registered under
 # `#[cfg(debug_assertions)]` in src-tauri/src/lib.rs — never in release).
 tauri-plugin-mcp-bridge = "0.12"
 tauri-plugin-opener = "2"
+# Self-update (registered under `#[cfg(not(debug_assertions))]` — the exact
+# mirror of mcp-bridge above; see src-tauri/src/updater.rs for the full
+# gating story).
+tauri-plugin-updater = "2"
 tauri-build = { version = "2", features = ["config-json5"] }
 # `crates/upstream`'s OAuth/Keychain-specific deps (`keyring`, `sha2`,
 # `base64`, `dirs`) are declared directly in `crates/upstream/Cargo.toml`
@@ -81,10 +98,7 @@ tauri-build = { version = "2", features = ["config-json5"] }
 # precedent `crates/harness/Cargo.toml` set for `portable-pty` — see that
 # crate's Cargo.toml doc comment.
 
-# Phase 2's `crates/harness` PTY spawn (see
-# the desktop migration contract) declares `portable-pty` (and
-# `libc`, for process-group signaling) directly in its OWN
-# `crates/harness/Cargo.toml` rather than here — this table stays the
-# family-agnostic dependency set every OTHER crate inherits via
-# `.workspace = true`; local-api itself never spawns a PTY directly and has
-# no reason to pull either dependency in.
+# The PTY-owning crates declare `portable-pty` directly rather than widening
+# this shared table. Process-group and tty signaling use absolute system-tool
+# paths through safe process APIs, so no direct `libc`/`nix` dependency is
+# needed here.

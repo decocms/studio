@@ -1,13 +1,17 @@
 /**
- * Library (/$org/files) — the org filesystem as a Drive-like home (Figma
- * qFc7wr91 node 7870-5644). Replaces the settings → Files table browser.
+ * Library — the org filesystem as a Drive-like home (Figma qFc7wr91 node
+ * 7870-5644).
  *
- * A global search box (cross-volume `/fs/search`) sits above every view;
- * typing swaps the active listing for its results. Root: "Recently added"
- * (cross-volume `/fs/recent` feed) + Folders (volumes and public sets).
- * Browsing into a folder swaps to a breadcrumbed listing of that directory
- * in the same card language. Browse location lives in `?path=` and the open
- * preview in `?preview=`, so both are linkable and survive reload.
+ * It opens on the org's own home folder, named after the org: no synthetic
+ * "root" listing of volumes and nothing labelled "home". The other volumes
+ * (`uploads`, `outputs`, `public`) present as system folders inside it — same
+ * mounts, different framing. The breadcrumb is the only place the current
+ * folder is named, which frees the header row for the search box.
+ *
+ * Search sits in that row and follows you: cross-volume at the home root,
+ * narrowed to the current folder's subtree anywhere else. Browse location lives
+ * in `?path=` and the open preview in `?preview=`, so both are linkable and
+ * survive reload.
  */
 
 import { useRef, useState } from "react";
@@ -45,21 +49,25 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import {
+  HOME_MOUNT_PATH,
+  homeDisplayName,
+} from "@decocms/shared/organization/home-mount";
 import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
-import { basename, parseLibraryPath } from "./location";
+import { basename, parseLibraryPath, segmentLabel } from "./location";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
   Breadcrumbs,
+  LIBRARY_VOLUMES,
   type PendingDelete,
   PublicSetsView,
-  RootView,
   SearchResultsView,
-  VOLUMES,
+  SYSTEM_FOLDER_NAMES,
   VolumeView,
 } from "./library-views";
 
@@ -84,9 +92,10 @@ export function LibraryPage({
     skill?: string;
     brand?: string;
   };
-  const browsePath = search.path ?? "";
+  // The home folder is the top of the tree, so a missing (or emptied) `?path=`
+  // lands there rather than on a volumes listing.
+  const browsePath = search.path || HOME_MOUNT_PATH;
   const location = parseLibraryPath(browsePath);
-  const isRoot = location.segments.length === 0;
 
   const setSearchParam = (
     key: "path" | "preview" | "skill" | "brand",
@@ -124,10 +133,25 @@ export function LibraryPage({
     onOpenBrandOverride ??
     ((brandPath: string) => openPreview("brand", brandPath));
 
-  // Global file search — cross-volume, so it lives above the browse
-  // location and stays visible while inside any folder.
+  // The search box lives in the header row and follows the browse location:
+  // cross-volume at the home root, narrowed to this folder's subtree elsewhere.
+  // (`volume === null` is the `public` sets listing — global there; scoping it
+  // would need a multi-volume filter.)
   const [searchText, setSearchText] = useState("");
   const searchQuery = useDebouncedValue(searchText.trim(), 300);
+  const searchScope =
+    !location.isHomeRoot && location.volume !== null
+      ? { volume: location.volume, prefix: location.dirPath }
+      : undefined;
+  const searchPlaceholder = searchScope
+    ? t("library.library.searchInPlaceholder", {
+        folder: segmentLabel(location.segments.at(-1) ?? ""),
+      })
+    : t("library.library.searchPlaceholder");
+  // What to call the current folder in copy — never the internal "home".
+  const locationLabel = location.isHomeRoot
+    ? homeDisplayName(org.slug)
+    : segmentLabel(location.segments.at(-1) ?? "");
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
@@ -146,21 +170,22 @@ export function LibraryPage({
   // Depth counter so dragenter/leave bubbling from child cards doesn't flicker.
   const dragDepth = useRef(0);
 
-  // Root uploads land in the uploads volume root — visible org-wide, outside
-  // any thread folder (those belong to chat-attachment flows).
-  const uploadVolume = location.readOnly
-    ? null
-    : (location.volume ?? "uploads");
-  const uploadDir = location.volume ? location.dirPath : "";
-  const { upload, mkdir, move } = useOrgFsMutations(uploadVolume ?? "uploads");
-  // Deletes can target any volume (the root feed is cross-volume), so they
+  // Every writer — upload, new folder, drag-move — acts on the folder being
+  // browsed, so what you drop always shows up in the listing you're looking at.
+  // (The `uploads` volume still receives chat attachments; that's a different
+  // flow.) Read-only locations (public sets) allow none of it.
+  const browseVolume = location.readOnly ? null : location.volume;
+  const { upload, mkdir, move } = useOrgFsMutations(
+    browseVolume ?? HOME_MOUNT_PATH,
+  );
+  // Deletes can target any volume (the recent feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
 
   async function handleUpload(files: FileList | null) {
-    if (!uploadVolume || !files || files.length === 0) return;
+    if (!browseVolume || !files || files.length === 0) return;
     try {
-      await upload.mutateAsync({ dir: uploadDir, files: [...files] });
+      await upload.mutateAsync({ dir: location.dirPath, files: [...files] });
       toast.success(
         files.length === 1
           ? t("library.library.uploadedSingle", {
@@ -177,12 +202,9 @@ export function LibraryPage({
     }
   }
 
-  // Drag-and-drop upload — same destination as the Upload button: the current
-  // folder, or the uploads volume at root. Off in read-only locations.
-  const canDrop = uploadVolume !== null;
-  const dropLabel = isRoot
-    ? "uploads"
-    : (location.segments.at(-1) ?? "this folder");
+  // Drag-and-drop upload — same destination as the Upload button: the folder
+  // being browsed. Off in read-only locations.
+  const canDrop = browseVolume !== null;
 
   function dragHasFiles(e: React.DragEvent) {
     return e.dataTransfer.types.includes("Files");
@@ -214,9 +236,14 @@ export function LibraryPage({
 
   async function handleCreateFolder() {
     const name = newFolderName.trim();
-    if (!uploadVolume || !name) return;
+    if (!browseVolume || !name) return;
+    if (location.isHomeRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())) {
+      toast.error(t("library.library.folderNameReserved", { name }));
+      return;
+    }
     try {
-      await mkdir.mutateAsync(uploadDir ? `${uploadDir}/${name}` : name);
+      const dir = location.dirPath;
+      await mkdir.mutateAsync(dir ? `${dir}/${name}` : name);
       toast.success(t("library.library.folderCreated", { name }));
       setNewFolderOpen(false);
       setNewFolderName("");
@@ -260,6 +287,16 @@ export function LibraryPage({
       setRenameName("");
       return;
     }
+    // Same reserved names as folder creation — a rename is the other way to
+    // land a hand-made folder on top of a system-folder card.
+    if (
+      renameTarget.kind === "dir" &&
+      location.isHomeRoot &&
+      SYSTEM_FOLDER_NAMES.has(newName.toLowerCase())
+    ) {
+      toast.error(t("library.library.folderNameReserved", { name: newName }));
+      return;
+    }
     try {
       const dir = renameTarget.path.includes("/")
         ? renameTarget.path.slice(0, renameTarget.path.lastIndexOf("/"))
@@ -298,9 +335,9 @@ export function LibraryPage({
   }
 
   function refresh() {
-    for (const v of VOLUMES) {
+    for (const volume of LIBRARY_VOLUMES) {
       queryClient.invalidateQueries({
-        queryKey: KEYS.orgFsVolume(org.id, v.id),
+        queryKey: KEYS.orgFsVolume(org.id, volume),
       });
     }
     if (location.volume) {
@@ -313,8 +350,20 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
+  // Right-clicking empty space creates a folder here. This listens on the whole
+  // page, so anything interactive has to opt out first: entry cards that own a
+  // rename menu call preventDefault, and everything else (the search box, the
+  // toolbar, the cards with no menu of their own) keeps its native menu — a
+  // right-click meant for "paste" must never become "new folder".
   function handleContextMenuEmpty(e: React.MouseEvent) {
-    if (!isRoot || location.readOnly || !uploadVolume) return;
+    if (e.defaultPrevented || !browseVolume) return;
+    if (
+      (e.target as HTMLElement).closest(
+        "input, textarea, button, a, [role='button']",
+      )
+    ) {
+      return;
+    }
     e.preventDefault();
     setNewFolderOpen(true);
   }
@@ -333,109 +382,97 @@ export function LibraryPage({
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary px-10 py-8 text-center">
             <Upload01 size={28} className="text-primary" />
             <p className="text-sm font-medium text-foreground">
-              {t("library.library.dropToUpload", { location: dropLabel })}
+              {t("library.library.dropToUpload", { location: locationLabel })}
             </p>
           </div>
         </div>
       )}
       <div className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-          <div className="flex flex-col gap-2">
-            {!isRoot && (
+          {/* One header row: the breadcrumb names the location (no heading
+              repeating it), and the reclaimed space holds the search box. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
               <Breadcrumbs
                 segments={location.segments}
                 onNavigate={onOpenDir}
               />
-            )}
-            <div className="flex items-center gap-2">
-              <h1 className="min-w-0 flex-1 truncate text-xl font-medium text-foreground">
-                {isRoot
-                  ? t("library.library.title")
-                  : (location.segments.at(-1) ?? t("library.library.title"))}
-              </h1>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={refresh}
-                aria-label={t("library.library.refresh")}
-              >
-                <RefreshCw01 size={14} />
-              </Button>
-              {!isRoot && uploadVolume && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setNewFolderOpen(true)}
-                >
-                  <Plus size={14} />
-                  {t("library.library.newFolder")}
-                </Button>
-              )}
-              {location.readOnly ? (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Eye size={12} />
-                  {t("library.library.readOnly")}
-                </span>
-              ) : (
-                <Button
-                  size="sm"
-                  disabled={upload.isPending}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload01 size={14} />
-                  {upload.isPending
-                    ? t("library.library.uploading")
-                    : t("library.library.uploadFile")}
-                </Button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => void handleUpload(e.target.files)}
-              />
             </div>
-          </div>
-
-          <div className="relative">
-            <SearchLg
-              size={16}
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setSearchText("");
-              }}
-              placeholder={t("library.library.searchPlaceholder")}
-              className="h-10 rounded-xl pr-9 pl-9"
-            />
-            {searchText && (
+            <div className="relative w-full shrink-0 sm:w-56">
+              <SearchLg
+                size={16}
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSearchText("");
+                }}
+                placeholder={searchPlaceholder}
+                className="h-9 rounded-xl pr-9 pl-9"
+              />
+              {searchText && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+                  onClick={() => setSearchText("")}
+                  aria-label={t("library.library.clearSearch")}
+                >
+                  <XClose size={14} />
+                </Button>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={refresh}
+              aria-label={t("library.library.refresh")}
+            >
+              <RefreshCw01 size={14} />
+            </Button>
+            {browseVolume && (
               <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                onClick={() => setSearchText("")}
-                aria-label={t("library.library.clearSearch")}
+                variant="outline"
+                size="sm"
+                onClick={() => setNewFolderOpen(true)}
               >
-                <XClose size={14} />
+                <Plus size={14} />
+                {t("library.library.newFolder")}
               </Button>
             )}
+            {location.readOnly ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Eye size={12} />
+                {t("library.library.readOnly")}
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                disabled={upload.isPending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload01 size={14} />
+                {upload.isPending
+                  ? t("library.library.uploading")
+                  : t("library.library.uploadFile")}
+              </Button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleUpload(e.target.files)}
+            />
           </div>
 
           {searchQuery ? (
             <SearchResultsView
               query={searchQuery}
+              scope={searchScope}
               stale={searchText.trim() !== searchQuery}
-              onOpenFile={onOpenFile}
-              onShare={setShareTarget}
-              onDelete={setPendingDelete}
-            />
-          ) : isRoot ? (
-            <RootView
-              onOpenDir={onOpenDir}
               onOpenFile={onOpenFile}
               onShare={setShareTarget}
               onDelete={setPendingDelete}
@@ -494,7 +531,7 @@ export function LibraryPage({
             <DialogTitle>{t("library.library.newFolderTitle")}</DialogTitle>
             <DialogDescription>
               {t("library.library.newFolderDescription", {
-                path: browsePath || t("library.library.theLibrary"),
+                path: locationLabel || t("library.library.theLibrary"),
               })}
             </DialogDescription>
           </DialogHeader>

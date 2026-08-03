@@ -35,6 +35,16 @@ impl LocalApiState {
         ))
     }
 
+    /// Clone the local API state for lifecycle-coordinating IPC commands such
+    /// as logout. The server handle remains owned here.
+    pub fn app_state(&self) -> Option<local_api::AppState> {
+        self.0
+            .lock()
+            .ok()?
+            .as_ref()
+            .map(|handle| handle.state().clone())
+    }
+
     /// Removes and returns the handle, exactly once. Subsequent calls
     /// return `None`.
     pub fn take(&self) -> Option<local_api::ServerHandle> {

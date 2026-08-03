@@ -124,9 +124,10 @@ release signing identity; there is no filesystem token-store fallback.
 ### Verification matrix
 
 The native E2E suite can run against the built `local-api` binary through
-`LOCAL_API_E2E_CMD`. Provider-resume tests use deterministic Claude Code and
-Codex fixtures to prove that the persisted provider session ID is reused and
-only the newest user message is sent when a run resumes.
+`LOCAL_API_E2E_CMD`. Terminal-agent tests use deterministic interactive Claude
+Code and Codex fixtures to prove PTY behavior, scoped MCP and hook
+capabilities, persisted provider-session resume, and that an accepted prompt
+is never replayed after restart.
 
 Run `bun run fmt` after changes.
 
@@ -144,6 +145,31 @@ Run `bun run fmt` after changes.
 - Sandboxes may persist identity and logs, but child processes are always
   re-established after an application restart rather than orphaned.
 - Subprocess logs are file-backed and bounded; memory holds only live fan-out.
+
+## Self-update channel (operations)
+
+The packaged app auto-updates via the Tauri updater: it polls `latest.json`
+on the rolling `native-updates` GitHub prerelease, which
+`release-native.yaml` promotes at most ~daily (unit-tested logic in
+`scripts/ci/native-update-channel.mjs`). Design and full rationale:
+[`docs/native-updater-plan.md`](./docs/native-updater-plan.md).
+
+Operator notes:
+
+- **Signing key** (`TAURI_SIGNING_PRIVATE_KEY`/`_PASSWORD`, GitHub
+  environment `native-release`): the public key is pinned in
+  `src-tauri/tauri.conf.json5`. Losing the private key permanently strands
+  the installed base on the updater — the Homebrew cask is the break-glass
+  recovery channel (`brew upgrade --greedy --cask deco-studio`), so the CI
+  cask bump must keep working forever. A leaked key has no revocation:
+  rotation = new keypair + cask-forced reinstall.
+- **Bad release**: the updater never downgrades. Ship a newer fixed release;
+  use the `force_promote` dispatch input of `release-native.yaml` to bypass
+  the ~daily channel throttle.
+- **Kill switch**: `DECOCMS_DISABLE_AUTO_UPDATE=1` disables the updater task
+  (warn-logged every cycle). A Finder-launched app does not inherit shell
+  env — use `launchctl setenv DECOCMS_DISABLE_AUTO_UPDATE 1` or a terminal
+  launch when debugging.
 
 ## Related documentation
 

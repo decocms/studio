@@ -1,4 +1,7 @@
-import type { PackageManagerConfig, TenantConfig } from "../../../daemon/types";
+import type {
+  PackageManagerConfig,
+  TenantConfig,
+} from "../../../daemon-protocol";
 import { normalizeCoAuthorIdentity } from "../../../git-co-author";
 import type { EnsureOptions } from "../types";
 

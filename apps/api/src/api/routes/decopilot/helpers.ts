@@ -13,7 +13,7 @@ import {
   sanitizeToolName,
   toolNeedsApproval,
   type ToolApprovalLevel,
-} from "@decocms/harness/decopilot/mcp-tools";
+} from "@/harnesses/lib/decopilot/mcp-tools";
 
 export {
   buildSanitizedNameMap,
@@ -41,7 +41,7 @@ export function ensureOrganization(
 /**
  * Thread IDs are used verbatim as NATS subject tokens (e.g.
  * `decopilot.stream.<threadId>`, see streamSubject() in
- * packages/harness/src/run-stream-codec.ts). `.`/`*`/`>`/whitespace are
+ * apps/api/src/harnesses/lib/run-stream-codec.ts). `.`/`*`/`>`/whitespace are
  * subject metacharacters there, so a thread id containing one would either
  * blow up subject construction downstream or (for `*`/`>`) silently widen
  * the subject to match other threads. Reject it up front instead.

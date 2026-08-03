@@ -2,7 +2,7 @@ import z from "zod";
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 
 export const providerKeyOutputSchema = z.object({
   id: z.string(),
@@ -17,7 +17,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
   description:
     "Store an API key for an AI provider. The key is encrypted at rest in the vault.",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
     label: z.string().min(1).max(100),
     apiKey: z.string().min(1),
     presetId: z.string().min(1).max(64).optional(),

@@ -1,9 +1,9 @@
 # org-fs sidecar: FUSE-mounts organization filesystem volumes inside sandbox
-# pods (see packages/sandbox/daemon/org-fs/sidecar.ts). Runs privileged with
+# pods (see packages/sandbox/orgfs/sidecar.ts). Runs privileged with
 # Bidirectional mount propagation — see the orgFs block in ../values.yaml.
 #
-# Build context is the REPO ROOT (the bundle pulls TS from packages/ and
-# apps/api): docker build -f deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile .
+# Build context is the REPO ROOT (the bundle pulls TS from packages/):
+# docker build -f deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile .
 
 FROM oven/bun:1.3.14-debian AS build
 WORKDIR /repo
@@ -11,11 +11,10 @@ WORKDIR /repo
 # @decocms/shared/std is a zero-dependency workspace export; a hand-made
 # node_modules link resolves the specifier without bun install.
 COPY packages/shared packages/shared
-COPY packages/sandbox/daemon packages/sandbox/daemon
-COPY apps/api/src/file-storage/mount apps/api/src/file-storage/mount
+COPY packages/sandbox/orgfs packages/sandbox/orgfs
 RUN mkdir -p node_modules/@decocms \
   && ln -s ../../packages/shared node_modules/@decocms/shared \
-  && bun build packages/sandbox/daemon/org-fs/sidecar-main.ts \
+  && bun build packages/sandbox/orgfs/sidecar-main.ts \
     --target bun --outfile /out/sidecar.js
 
 FROM oven/bun:1.3.14-debian

@@ -11,6 +11,10 @@ import {
   defaultAuthFormActions,
   type AuthFormActions,
 } from "@/components/auth-form-actions";
+import { useDesktopAuthFormDefaults } from "@/desktop/use-desktop-auth-form-defaults";
+import { needsBrowserOnlyFallback } from "@/desktop/auth-actions";
+import { BrowserOnlyColumn } from "@/desktop/browser-only-column";
+import { StatusColumn } from "@/desktop/status-column";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -34,13 +38,6 @@ export interface AuthEntryProps {
   allowPassword?: boolean;
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
-  /**
-   * Overrides for the underlying network/post-auth actions (forwarded to
-   * `UnifiedAuthForm` and used for the `sso.enabled` auto-redirect branch
-   * below). Omitted -> `defaultAuthFormActions`. See
-   * `apps/web/src/components/auth-form-actions.ts`.
-   */
-  actions?: Partial<AuthFormActions>;
 }
 
 class RetriableAutoLoginResponse {
@@ -226,7 +223,6 @@ export function AuthEntry({
   allowedSocialProviders,
   allowPassword,
   onAuthEvent,
-  actions,
 }: AuthEntryProps) {
   const t = useT();
   const {
@@ -237,11 +233,40 @@ export function AuthEntry({
     socialProviders,
     localMode,
   } = useAuthConfig();
+  const desktopDefaults = useDesktopAuthFormDefaults();
   const redirectAfterLogin = redirectUrl || callbackUrl;
+  // Actions are resolved per platform HERE, beneath every sign-in surface
+  // (the web/shell `/login` route, the desktop gate, embedded surfaces):
+  // web defaults, with the desktop browser-hop/Keychain-bridge overrides
+  // layered on top in the desktop build. No call site wires this itself —
+  // that's what makes the "forgot the desktop override, social buttons
+  // silently dead-end in Tauri" bug class unrepresentable.
+  const platformOverrides = desktopDefaults?.actions;
   const resolvedActions: AuthFormActions = {
     ...defaultAuthFormActions,
-    ...actions,
+    ...platformOverrides,
   };
+
+  // The system-browser hop / Keychain bridge is a full takeover: nothing in
+  // the shared form is usable while either is in flight. Placed above every
+  // branch: these states can only be in flight after one of the desktop
+  // actions actually ran.
+  if (desktopDefaults?.isPending) {
+    return (
+      <StatusColumn
+        label={t("common.authEntry.finishSignInInBrowser")}
+        error={desktopDefaults.loginError}
+      />
+    );
+  }
+  if (desktopDefaults?.isCompletingSession) {
+    return (
+      <StatusColumn
+        label={t("common.authEntry.finishingSignIn")}
+        error={desktopDefaults.completeSessionError}
+      />
+    );
+  }
 
   if (localMode && allowAutoLogin) {
     return (
@@ -260,13 +285,44 @@ export function AuthEntry({
     );
   }
 
+  // Desktop only: a magic-link-ONLY deployment has no in-app UI to fall
+  // back to at all (magic links open in the system browser and can't hand a
+  // session back to the webview), so skip the shared form and show a single
+  // browser-hop affordance instead — see `needsBrowserOnlyFallback`.
+  if (
+    desktopDefaults &&
+    needsBrowserOnlyFallback({
+      emailAndPassword,
+      emailOtp,
+      socialProviders,
+      magicLink,
+      sso,
+    })
+  ) {
+    return (
+      <BrowserOnlyColumn
+        onContinue={desktopDefaults.login}
+        isPending={desktopDefaults.isPending}
+        error={desktopDefaults.loginError}
+      />
+    );
+  }
+
   if (
     emailAndPassword.enabled ||
     magicLink.enabled ||
     emailOtp.enabled ||
     socialProviders.enabled
   ) {
-    return (
+    // A settled browser-hop/bridge failure: `auth_login` errors land in the
+    // desktop defaults' hook state, not in any of `UnifiedAuthForm`'s
+    // mutations, so its own banner never sees them — surface here, same
+    // visual treatment. (Null on web.)
+    const desktopError =
+      desktopDefaults?.loginError ??
+      desktopDefaults?.completeSessionError ??
+      null;
+    const form = (
       <UnifiedAuthForm
         redirectUrl={redirectUrl}
         callbackUrl={callbackUrl}
@@ -278,8 +334,17 @@ export function AuthEntry({
         allowedSocialProviders={allowedSocialProviders}
         allowPassword={allowPassword}
         onAuthEvent={onAuthEvent}
-        actions={actions}
+        actions={platformOverrides}
       />
+    );
+    if (!desktopError) return form;
+    return (
+      <div className="grid gap-4">
+        <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+          {desktopError}
+        </div>
+        {form}
+      </div>
     );
   }
 

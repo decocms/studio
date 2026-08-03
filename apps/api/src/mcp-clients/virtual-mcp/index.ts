@@ -53,7 +53,7 @@ export async function createVirtualClient(
   }
 
   // Create client from virtual MCP entity
-  return createVirtualClientFrom(virtualMcp, ctx, "passthrough", superUser);
+  return createVirtualClientFrom(virtualMcp, ctx, superUser);
 }
 
 /**
@@ -62,14 +62,12 @@ export async function createVirtualClient(
  *
  * @param virtualMcp - Virtual MCP entity from database
  * @param ctx - Studio context for creating proxies
- * @param _strategy - Kept for backward compatibility, always uses passthrough
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
  */
 export async function createVirtualClientFrom(
   virtualMcp: VirtualMCPEntity,
   ctx: StudioContext,
-  _strategy: "passthrough",
   superUser = false,
   options?: {
     listTimeoutMs?: number;
@@ -156,8 +154,8 @@ export async function createVirtualClientFrom(
 
   // Agent runtimes opt into the skill catalog: enumerate the org's skills now
   // (async — the sync getInstructions() can't) and stash the rendered block so
-  // it reaches both the cluster engine and the desktop daemon. Cheap: the
-  // public portion is cached process-wide. Skipped for non-agent consumers
+  // it reaches both hosted Decopilot and native coding-agent terminals. Cheap:
+  // the public portion is cached process-wide. Skipped for non-agent consumers
   // (e.g. the home-next-actions prompt poll).
   const skillsBlock = options?.includeSkillsCatalog
     ? ((await renderSkillsCatalogBlock(ctx, virtualMcp)) ?? undefined)

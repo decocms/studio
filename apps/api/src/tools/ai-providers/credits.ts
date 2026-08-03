@@ -5,7 +5,7 @@ import {
   requireOrganization,
   getUserId,
 } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 
@@ -14,7 +14,7 @@ export const AI_PROVIDER_CREDITS = defineTool({
   description:
     "Get the current credit balance for a provider (providers that support it, e.g. Deco AI Gateway)",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
   }),
   outputSchema: z.object({
     balanceCents: z
