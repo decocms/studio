@@ -119,7 +119,6 @@ describe("release change classification", () => {
       "packages/runtime/src/index.ts",
       "packages/sandbox/src/index.ts",
       "packages/shared/src/index.ts",
-      "packages/tunnel/src/index.ts",
       "packages/typegen/src/index.ts",
       "packages/ui/src/index.ts",
       "packages/mesh-sdk/src/index.ts",
@@ -142,7 +141,6 @@ describe("release change classification", () => {
       "packages/runtime/package.json",
       "packages/sandbox/package.json",
       "packages/shared/package.json",
-      "packages/tunnel/package.json",
       "packages/typegen/package.json",
       "packages/ui/package.json",
     ];
