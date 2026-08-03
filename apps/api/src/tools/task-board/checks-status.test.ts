@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  conflictFromPrGet,
   extractPreviewUrl,
   extractPreviewUrlFromComments,
   isDecoPreviewHost,
@@ -41,6 +42,36 @@ describe("toChecksStatus", () => {
   it("is null for a missing response or unknown state", () => {
     expect(toChecksStatus(null)).toBeNull();
     expect(toChecksStatus({ state: "weird", total_count: 1 })).toBeNull();
+  });
+});
+
+describe("conflictFromPrGet", () => {
+  it("maps an open PR with mergeable === false → conflict (true)", () => {
+    expect(conflictFromPrGet({ state: "open", mergeable: false })).toBe(true);
+  });
+
+  it("maps an open, mergeable PR → false", () => {
+    expect(conflictFromPrGet({ state: "open", mergeable: true })).toBe(false);
+  });
+
+  it("is null when GitHub hasn't computed mergeability yet (mergeable null/absent)", () => {
+    // GitHub computes `mergeable` asynchronously — it's null right after a push.
+    // An unknown must NEVER read as a conflict (the caller only acts on `true`).
+    expect(conflictFromPrGet({ state: "open", mergeable: null })).toBeNull();
+    expect(conflictFromPrGet({ state: "open" })).toBeNull();
+  });
+
+  it("treats a non-open PR as not-conflicting, never a conflict", () => {
+    // A merged/closed PR reports `mergeable: null` but must not read as a
+    // conflict (guards a just-merged PR from a spurious resolution run).
+    expect(conflictFromPrGet({ state: "closed", mergeable: null })).toBe(false);
+    expect(conflictFromPrGet({ state: "merged", mergeable: false })).toBe(
+      false,
+    );
+  });
+
+  it("is null for a missing response", () => {
+    expect(conflictFromPrGet(null)).toBeNull();
   });
 });
 

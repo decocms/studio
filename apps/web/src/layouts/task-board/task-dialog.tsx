@@ -1563,6 +1563,8 @@ function describeActivity(
         : t("taskBoard.taskDialog.activityReviewChangesRequested", {
             reviewer: reviewerName(d.reviewer, t),
           });
+    case "merge_conflict_resolution":
+      return t("taskBoard.taskDialog.activityMergeConflictResolution");
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

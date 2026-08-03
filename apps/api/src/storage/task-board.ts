@@ -446,6 +446,40 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically claim a task for merge-conflict auto-resolution: move it from In
+   * Review to In Progress ONLY if it's still In Review, returning the updated
+   * item to the single winner and null to everyone else. The auto-resolve
+   * reaction fires from two triggers that can coincide — a reviewer's approval
+   * (`review-decision`) and the PR modal's poll (`prs-get`) — so, like
+   * `claimReviewer`, this fence must be atomic: a read-then-write would let both
+   * dispatch a Super Agent run on the same PR. A single conditional UPDATE is
+   * atomic under READ COMMITTED — the second writer re-checks `status` against
+   * the first's committed row and matches nothing.
+   */
+  async claimConflictResolution(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: "in_progress",
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_review")
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Populate each item's `threads` and `tags` — one transaction, so a card
    * can't read its threads from before a concurrent edit and its tags from
    * after.

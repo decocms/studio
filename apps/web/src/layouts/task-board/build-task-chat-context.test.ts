@@ -25,6 +25,7 @@ const pr = (o: Partial<TaskBoardItemPr>): TaskBoardItemPr => ({
   state: "open",
   draft: false,
   merged: false,
+  mergeable: null,
   checksStatus: null,
   checks: [],
   previewUrl: null,

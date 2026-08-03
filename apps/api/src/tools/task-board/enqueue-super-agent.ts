@@ -31,24 +31,38 @@ export async function reactToSuperAgentDelegation(
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
-export async function enqueueSuperAgentForTask(
-  ctx: StudioContext,
-  task: TaskBoardItem,
-  opts?: {
-    /** A reviewer's change request — leads the re-run prompt. */
-    feedback?: string;
-    /** The PR already under review, so the re-run updates it in place instead
-     *  of opening a second PR. */
-    pr?: { number: number; url: string };
-  },
-): Promise<void> {
+/** Options that steer the Super Agent prompt for a re-run on an existing PR. */
+export type SuperAgentPromptOpts = {
+  /** A reviewer's change request — leads the re-run prompt. */
+  feedback?: string;
+  /** The PR already under review, so the re-run updates it in place instead
+   *  of opening a second PR. */
+  pr?: { number: number; url: string };
+  /** This re-run exists to resolve a merge conflict on `pr` (not reviewer
+   *  feedback): the lead instructs a checkout + base merge + push. Requires
+   *  `pr` — without it the conflict lead is skipped (a conflict instruction
+   *  is meaningless with no PR to check out). */
+  resolveConflict?: boolean;
+};
+
+/**
+ * The autonomous Super Agent prompt for a task. Pure (no I/O) so the branch
+ * selection is unit-tested: a fresh attempt, a reviewer's change request, or a
+ * merge-conflict resolution — the last two lead with an instruction to update
+ * the EXISTING PR rather than open a second one. Conflict resolution wins over
+ * feedback when both are set.
+ */
+export function buildSuperAgentTaskPrompt(
+  task: { id: string; title: string; description: string | null },
+  opts?: SuperAgentPromptOpts,
+): string {
   // Guidance tuned from observed runs. First: let the agent judge whether the
   // task even touches a repo — not every task does, and forcing a PR on a
   // research/answer task made it invent code changes. Only when it works on a
   // repo does the commit/push/PR flow apply. Then keep it direct: don't hunt for
   // the dev-server port, don't chase incidental symbols. Keep it tight — a
   // bloated prompt costs tokens every step.
-  const prompt = [
+  return [
     "You've been assigned this task. Complete it.",
     "",
     "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
@@ -59,25 +73,35 @@ export async function enqueueSuperAgentForTask(
     "",
     `Title: ${task.title}`,
     task.description ? `\nDescription:\n${task.description}\n` : "",
-    // When a reviewer bounced the task back, its feedback is the whole point of
-    // this re-run — lead with it so the model addresses it (and updates the
-    // EXISTING PR), not re-does the task from scratch or opens a second PR.
-    opts?.feedback
+    // A conflict re-run leads with the resolution instruction; a reviewer's
+    // change request leads with its feedback. Either way the whole point is to
+    // update the EXISTING PR, not re-do the task or open a second PR.
+    opts?.resolveConflict && opts.pr
       ? [
-          opts.pr
-            ? `A reviewer requested changes on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
-            : "A reviewer requested changes on your previous work:",
-          opts.feedback,
-          opts.pr
-            ? `Load the repo, then CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, commit, and push to update the SAME pull request — do NOT open a new one or start a new branch.`
-            : "Address this feedback.",
+          `Your pull request #${opts.pr.number} (${opts.pr.url}) is approved but can't be merged — it has a MERGE CONFLICT with its base branch.`,
+          `Load the repo, CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`), then merge (or rebase) the base branch into it and resolve the conflicts, and push to update the SAME pull request — do NOT open a new one or start a new branch. Resolve conflicts by preserving BOTH sides' intent; never blindly discard either side. Change only what resolving the conflict requires.`,
           "",
         ].join("\n")
-      : "",
+      : // When a reviewer bounced the task back, its feedback is the whole point
+        // of this re-run — lead with it so the model addresses it (and updates
+        // the EXISTING PR), not re-does the task from scratch or opens a second.
+        opts?.feedback
+        ? [
+            opts.pr
+              ? `A reviewer requested changes on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
+              : "A reviewer requested changes on your previous work:",
+            opts.feedback,
+            opts.pr
+              ? `Load the repo, then CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, commit, and push to update the SAME pull request — do NOT open a new one or start a new branch.`
+              : "Address this feedback.",
+            "",
+          ].join("\n")
+        : "",
     "How to work:",
     "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
-    // The reviewer-feedback block above overrides this for a re-run: only a
-    // FIRST attempt opens a new branch + PR; a re-run pushes to the PR's branch.
+    // A re-run's lead block above (reviewer feedback OR conflict resolution)
+    // overrides this: only a FIRST attempt opens a new branch + PR; a re-run
+    // checks out the existing PR's branch and pushes to it.
     "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
     "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
     "- If a dev server is running it hot-reloads your changes — don't restart it, hunt for its port, or run a full typecheck/build just to verify a small edit.",
@@ -86,6 +110,14 @@ export async function enqueueSuperAgentForTask(
     "",
     `(task id: ${task.id})`,
   ].join("\n");
+}
+
+export async function enqueueSuperAgentForTask(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+  opts?: SuperAgentPromptOpts,
+): Promise<void> {
+  const prompt = buildSuperAgentTaskPrompt(task, opts);
 
   await enqueueAgentRunForTask(ctx, task, {
     title: `Super Agent: ${task.title}`,
