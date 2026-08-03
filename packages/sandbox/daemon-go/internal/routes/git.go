@@ -132,7 +132,10 @@ func GitDiscard(deps GitDeps) http.HandlerFunc {
 		for _, fp := range body.Filepaths {
 			rel, err := resolveRepoRelativePath(deps, fp)
 			if err != nil {
-				httpx.Error(w, 500, err.Error())
+				// resolveRepoRelativePath only ever fails on a client-supplied path
+				// that escapes the repo — a 400, not a 500 (matches fs.go's
+				// "Path escapes app root" handling for the same SafePath check).
+				httpx.Error(w, 400, err.Error())
 				return
 			}
 			validated = append(validated, rel)
