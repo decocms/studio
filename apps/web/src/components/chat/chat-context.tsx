@@ -202,7 +202,7 @@ export interface ChatTaskContextValue {
    *  message has been processed and the runtime is pinned for life. */
   isThreadLocked: boolean;
   /** Locked harness for the active thread (null when unlocked / no thread). */
-  lockedHarness: NativeHarnessId | null;
+  lockedHarness: string | null;
   /** Locked sandbox provider kind (null when unlocked, or harness has no sandbox). */
   lockedSandbox: SandboxProviderKind | null;
   /** Locked branch (null when unlocked or thread has no branch). */
@@ -665,8 +665,7 @@ export function ChatContextProvider({
   // navigation by only honoring the prop when ids match.
   const activeTask =
     effectiveTaskId && task?.id === effectiveTaskId ? task : null;
-  const lockedHarness = (activeTask?.harness_id ??
-    null) as NativeHarnessId | null;
+  const lockedHarness = activeTask?.harness_id ?? null;
   const lockedSandbox = (activeTask?.sandbox_provider_kind ??
     null) as SandboxProviderKind | null;
   const lockedBranch = activeTask?.branch ?? null;

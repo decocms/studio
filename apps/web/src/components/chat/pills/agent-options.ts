@@ -40,7 +40,7 @@ export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
  * going through this picker).
  */
 export function agentOptionFor(
-  harness: NativeHarnessId | null,
+  harness: string | null,
   sandbox: LegacySandboxProviderKind | null,
 ): AgentOption | null {
   if (!harness) return null;
@@ -81,7 +81,7 @@ export function resolveNativeAgentOption({
   lockedHarness,
 }: {
   pendingOption: AgentOption | null;
-  lockedHarness: NativeHarnessId | null;
+  lockedHarness: string | null;
 }): LocalAgentOption | null {
   if (lockedHarness === "claude-code") return "claude-code-desktop";
   if (lockedHarness === "codex") return "codex-desktop";

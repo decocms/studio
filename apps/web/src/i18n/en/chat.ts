@@ -282,7 +282,6 @@ export const chat = {
     "The coding agent exited before it was ready.",
   "chat.nativeTerminal.exitCode": "Coding agent exited with code {code}.",
   "chat.nativeTerminal.failed": "Terminal error",
-  "chat.nativeTerminal.interrupt": "Interrupt",
   "chat.nativeTerminal.promptFailed": "Could not send the prompt.",
   "chat.nativeTerminal.promptDeliveryUnknown":
     "The connection closed after the prompt was sent. It may already be running; check the terminal before sending it again.",

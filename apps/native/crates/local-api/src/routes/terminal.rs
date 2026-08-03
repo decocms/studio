@@ -825,7 +825,6 @@ impl SessionSpawnOwner {
                         fence: &fence,
                         terminal_session_id: &terminal_session_id,
                         harness: options.harness,
-                        model_id: options.model_id.as_deref(),
                         approval_mode: &options.approval_mode,
                         plan_mode: options.plan_mode,
                         hook_token: &hook_token,

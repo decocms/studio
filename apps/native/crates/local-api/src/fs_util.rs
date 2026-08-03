@@ -5,7 +5,7 @@
 //! resurrection sidecars (`sandbox::persist`), the sandbox registry and the
 //! threads database (the two tenants of `studio.db` and its `-wal`/`-shm`
 //! companions), the instance/child-lifetime lock files (`crate::lib`), the
-//! retained task logs and run spool, and the tools-catalog endpoint writer
+//! retained task logs and the tools-catalog endpoint writer
 //! (`routes::fs`). Each copy embodied the same easy-to-drift invariants, so
 //! they live here once:
 //!
@@ -47,8 +47,8 @@ pub(crate) fn set_owner_only(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Async twin of [`set_owner_only`] for tokio callers (append-log writers,
-/// spool files) that must not block the executor on metadata I/O.
+/// Async twin of [`set_owner_only`] for tokio append-log writers that must not
+/// block the executor on metadata I/O.
 pub(crate) async fn set_owner_only_async(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {

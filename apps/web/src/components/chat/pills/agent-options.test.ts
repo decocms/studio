@@ -39,7 +39,6 @@ describe("agentOptionFor", () => {
   });
 
   test("returns null for unknown harness", () => {
-    // @ts-expect-error — deliberately passing an out-of-union value
     expect(agentOptionFor("unknown-harness", null)).toBeNull();
   });
 

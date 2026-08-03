@@ -74,8 +74,8 @@ This is an atomic native cutover:
 - OpenCode's `session.updated.info.title` is authoritative. Studio accepts a
   validated generated title only while the chat is still `New chat`, so a
   manual rename always wins and no second title model process is spawned.
-- OpenCode owns arbitrary provider/model selection; `/models` advertises it
-  with an empty tier list instead of inventing fixed Studio model IDs.
+- OpenCode owns arbitrary provider/model selection inside its TUI; Studio does
+  not invent or advertise fixed native model IDs.
 
 ## Non-goals
 
@@ -299,7 +299,7 @@ work formerly embedded in native Decopilot execution:
 - selected Virtual MCP and agent instructions;
 - sandbox ensure and canonical cwd;
 - organization filesystem prompt;
-- model, approval, and plan choices;
+- approval and plan choices;
 - local org-scoped MCP endpoint, exact-path bearer capability, and CA;
 - persisted provider resume identity.
 
@@ -328,7 +328,7 @@ verbose flags. It retains:
 - `--append-system-prompt-file` with the Studio launch context;
 - `--mcp-config` using environment references;
 - `--strict-mcp-config` for the selected Studio Virtual MCP;
-- interactive-safe model, permission, and plan settings;
+- interactive-safe permission and plan settings;
 - `--resume <providerSessionId>` for resumed conversations.
 
 Generate a per-session settings overlay containing Studio hooks. Verify in the
@@ -352,7 +352,7 @@ Interactive argv removes `exec` and `--json`. It retains:
 
 - provider/developer instructions;
 - Studio MCP configuration with environment-backed headers;
-- model, sandbox, approval, and plan settings;
+- sandbox, approval, and plan settings;
 - interactive `resume <providerSessionId>` ordering.
 
 Codex uses one app-private, account-scoped `CODEX_HOME`. Its regular

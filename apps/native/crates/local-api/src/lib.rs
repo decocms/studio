@@ -260,7 +260,7 @@ pub struct ServerHandle {
     auth_reaper_task: tokio::task::JoinHandle<()>,
     /// Kernel-held advisory lock for this app root. The file handle—not a
     /// stale PID marker—is the lifetime fence: a second process cannot run
-    /// queue recovery against live harness work, and the OS releases it even
+    /// durable recovery against live native work, and the OS releases it even
     /// after SIGKILL. Graceful shutdown releases it only after every mutation
     /// and process owner proves quiescence; on a failed proof the handle is
     /// intentionally retained until OS process exit instead of permitting an
@@ -638,8 +638,8 @@ pub async fn start_with_client_auth(
         source,
     })?;
     // `.decocms/` is local-api's OWN directory (distinct from a project's
-    // `.deco/tools/` catalog dir): lockfiles, run-stream spools and staged
-    // mutations. The SQLite store itself is `<app_root>/studio.db`.
+    // `.deco/tools/` catalog dir): lockfiles and staged mutations. The SQLite
+    // store itself is `<app_root>/studio.db`.
     let decocms_dir = opts.app_root.join(".decocms");
     std::fs::create_dir_all(&decocms_dir).map_err(|source| StartError::DecocmsDir {
         path: decocms_dir.clone(),
@@ -657,7 +657,7 @@ pub async fn start_with_client_auth(
     // that main lock, while independent watchdogs survive long enough to reap
     // old harnesses/tasks. Every watchdog inherited a SHARED lock on this
     // separate file; the successor waits for EXCLUSIVE ownership before any
-    // mutation/queue recovery can observe or promote durable work.
+    // durable recovery can observe or promote work.
     let child_lifetime_lock_path = shared_child_lifetime_lock_path(&opts.app_root);
     let child_recovery_fence =
         acquire_child_recovery_fence(&child_lifetime_lock_path, CHILD_CRASH_REAP_TIMEOUT)
