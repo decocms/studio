@@ -181,8 +181,11 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
         { signal: AbortSignal.timeout(OG_PROXY_TIMEOUT_MS) },
       );
       const type = res.headers.get("content-type") ?? "";
-      if (!res.ok || !type.startsWith("image/")) return serveFallback();
-      return c.body(new Uint8Array(await res.arrayBuffer()), 200, {
+      if (!res.ok || !type.startsWith("image/") || !res.body) {
+        return serveFallback();
+      }
+      // Pipe the worker's stream through — never buffer the PNG here.
+      return c.body(res.body, 200, {
         "Content-Type": type,
         // Crawlers cache the bytes; a day is plenty and re-scans are rare.
         "Cache-Control": "public, max-age=0, s-maxage=86400",
