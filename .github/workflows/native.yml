@@ -375,9 +375,9 @@ jobs:
   # 4. tauri-build — bundles the RELEASE .app (the same profile
   #    release-native.yaml ships; a debug bundle used to be built here but
   #    gated nothing the release profile doesn't, while leaving the shipped
-  #    profile untested until release day), uploads it as an artifact, and
-  #    boot-smokes it. Unsigned always — signing/notarization live in
-  #    release-native.yaml, the secret-gated release job.
+  #    profile untested until release day), boot-smokes it, and uploads the
+  #    exact tested bundle as an artifact. Unsigned always — signing and
+  #    notarization live in release-native.yaml, the secret-gated release job.
   # ---------------------------------------------------------------------
   tauri-build:
     needs: changes
@@ -406,14 +406,14 @@ jobs:
       #   APPLE_ID                       - Apple ID used for notarization
       #   APPLE_PASSWORD                 - app-specific password for APPLE_ID
       #   APPLE_TEAM_ID                  - Developer Team ID
-      # DELIBERATELY NOT WIRED HERE. This job only ever produces a DEBUG
+      # DELIBERATELY NOT WIRED HERE. This job produces an unsigned release
       # bundle for boot-smoke, which runs the binary directly and gains
       # nothing from a Developer ID. Exporting the secrets made the Tauri CLI
-      # attempt `security import` on every build in this job — including the
-      # one boot-smoke launches itself — and it failed with "failed codesign
-      # application: failed to import keychain certificate", from a cert that
-      # is present but not importable. Wiring them cost a green CI and bought
-      # nothing. Signing belongs to the separate, secret-gated release job.
+      # attempt `security import` during this verification build, and it
+      # failed with "failed codesign application: failed to import keychain
+      # certificate", from a cert that is present but not importable. Wiring
+      # them cost a green CI and bought nothing. Signing belongs to the
+      # separate, secret-gated release job.
       # --- Tauri updater artifact signing: NOT wired here, by design.
       #     createUpdaterArtifacts is enabled only by release-native.yaml's
       #     --config overlay (never the committed tauri.conf.json5), so this
@@ -450,58 +450,37 @@ jobs:
           path: apps/native/src-tauri/binaries
           key: rclone-${{ runner.os }}-${{ hashFiles('apps/native/scripts/fetch-rclone.sh') }}
 
-      # Explicit for the same reason as the frontend bundle below:
-      # `beforeBuildCommand` also runs it, but a dedicated step attributes a
+      # `beforeBuildCommand` also runs this, but a dedicated step attributes a
       # download or checksum failure to itself instead of to `tauri build`.
       - name: Fetch bundled rclone
         working-directory: apps/native
         run: ./scripts/fetch-rclone.sh
 
-      # Explicit step (not relying solely on tauri.conf.json5's own
-      # `beforeBuildCommand: bun run build:native`) for a clearer CI step
-      # boundary/log — slightly redundant with that hook, harmless (the
-      # second invocation is a fast no-op rebuild of already-fresh output).
-      - name: Build desktop frontend bundle
-        run: bun run --cwd apps/web build:native
-
-      - name: tauri build
+      # These verification builds are NEVER signed, whether or not the
+      # secrets exist. Boot-smoke runs the binary directly and a Developer ID
+      # buys it nothing, while attempting the import couples this job to the
+      # health of six repo secrets. Signing belongs to release-native.yaml,
+      # the secret-gated release job.
+      #
+      # PRs build only the artifact this job smokes and uploads. Pushes to
+      # main and manual runs retain DMG bundler coverage without adding that
+      # packaging cost to every review cycle.
+      - name: tauri build (.app only)
+        if: github.event_name == 'pull_request'
         working-directory: apps/native
-        # This build is NEVER signed, whether or not the secrets exist.
-        # boot-smoke runs the binary directly and a Developer ID buys it
-        # nothing, while attempting the import couples this job to the health
-        # of six repo secrets — which is exactly how it has been failing:
-        # "failed codesign application: failed to import keychain certificate",
-        # from a cert that is present but not importable. Signing belongs to
-        # release-native.yaml, the secret-gated release job.
-        run: bunx @tauri-apps/cli@latest build
+        run: bunx @tauri-apps/cli@2.11.4 build --bundles app
 
-      - name: Upload .app artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deco-app
-          path: apps/native/target/release/bundle/macos/deco.app
-          if-no-files-found: error
-          retention-days: 14
+      - name: tauri build (.app + DMG)
+        if: github.event_name != 'pull_request'
+        working-directory: apps/native
+        run: bunx @tauri-apps/cli@2.11.4 build
 
-      # Boot-smoke consideration (the desktop migration contract §5.1): CI macOS runners
-      # are full logged-in GUI VMs (not headless like Linux — no Xvfb
-      # needed), and DESKTOP_SELFTEST=1 builds the "main" window
-      # `.visible(false)` specifically so this never pops a real window
-      # (see the native Tauri integration's "Self-test mode" section) — confirmed
-      # locally: `bun run --cwd apps/native smoke:boot` passes end-to-end
-      # (all 7 self-test checks + the orphan-process check) without ever
-      # showing a window. Included here rather than documented as
-      # local-only. Residual risk not fully provable from a dev machine:
-      # `authStatusInvoke`'s status check touches macOS Keychain via the
-      # `keyring` crate (crates/upstream) — GH's macos-latest runners
-      # provide an unlocked default login keychain so a read-only
-      # "no stored session" status check is expected to work the same way
-      # it does locally, but if this step ever starts failing ONLY in CI
-      # with a Keychain-access error, add a
-      # `security unlock-keychain -p runner ~/Library/Keychains/login.keychain-db`
-      # step immediately before this one rather than reverting it to
-      # local-only.
-      - name: Boot smoke (DESKTOP_SELFTEST=1, hidden window)
+      # GitHub's macOS runners provide a GUI session, so no headless display
+      # shim is needed. Self-test uses an isolated app-data directory and an
+      # in-memory token store, validates the runtime report, and checks for
+      # orphaned child processes. Its window is briefly visible by default to
+      # avoid macOS App Nap stalling the runtime probes.
+      - name: Boot smoke (DESKTOP_SELFTEST=1)
         # DECOCMS_DISABLE_AUTO_UPDATE: this job builds the RELEASE profile at
         # the committed version 0.1.0 — without the kill-switch, a
         # plugin-registered updater would see the prod channel as "newer" and
@@ -510,7 +489,17 @@ jobs:
         # the 0.1.0 placeholder version.
         env:
           DECOCMS_DISABLE_AUTO_UPDATE: "1"
-        run: bun run --cwd apps/native smoke:boot
+        # CI must smoke the bundle produced above without letting the smoke
+        # script replace it with a second build.
+        run: bun run --cwd apps/native smoke:boot --require-existing-bundle
+
+      - name: Upload smoked .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deco-app
+          path: apps/native/target/release/bundle/macos/deco.app
+          if-no-files-found: error
+          retention-days: 14
 
   # ---------------------------------------------------------------------
   # 5. stub-seam-nightly — keeps the DAEMON_E2E_CMD swap-seam mechanics
