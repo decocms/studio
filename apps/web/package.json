@@ -22,7 +22,6 @@
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
     "@decocms/bindings": "workspace:*",
-    "@decocms/harness": "workspace:*",
     "@decocms/mcp-utils": "workspace:*",
     "@decocms/sandbox": "workspace:*",
     "@decocms/shared": "workspace:*",

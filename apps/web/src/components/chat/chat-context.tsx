@@ -42,7 +42,7 @@ import {
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,

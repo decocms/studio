@@ -144,7 +144,6 @@
         "@daveyplate/better-auth-ui": "^3.2.7",
         "@deco/ui": "workspace:*",
         "@decocms/bindings": "workspace:*",
-        "@decocms/harness": "workspace:*",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -321,7 +320,6 @@
       "name": "@decocms/sandbox",
       "version": "1.35.4",
       "dependencies": {
-        "@decocms/harness": "workspace:*",
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
         "@modelcontextprotocol/sdk": "1.29.0",

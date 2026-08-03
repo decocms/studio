@@ -53,7 +53,7 @@ import { guardToolInvariant } from "./tool-invariant-guard";
 import type { ChatMode } from "../types";
 import { toast } from "sonner";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   advanceRunStatusStage,
   isRunStatusControlChunk,

@@ -22,7 +22,6 @@
     "./proxy/websocket": "./proxy/websocket.ts"
   },
   "dependencies": {
-    "@decocms/harness": "workspace:*",
     "@decocms/shared": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",

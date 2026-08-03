@@ -1,5 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import type { Todo } from "@decocms/shared/harness/todo-write";
 import { useT } from "@/i18n/use-t";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { type ChipIcon, deriveChipLabel } from "./derive-chip-label";

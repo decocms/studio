@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import type { AiProviderModel } from "@/hooks/collections/use-ai-providers";
 import type { ChatTier } from "@decocms/shared/organization/schema";
 import { CLAUDE_CODE_MODELS } from "@decocms/shared/models/claude-code-models";

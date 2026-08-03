@@ -60,7 +60,6 @@
     "./harness-deps": "./src/harness-deps.ts",
     "./liveness-heartbeat": "./src/liveness-heartbeat.ts",
     "./message-id": "./src/message-id.ts",
-    "./offload-messages": "./src/offload-messages.ts",
     "./registry": "./src/registry.ts",
     "./run-stream-codec": "./src/run-stream-codec.ts",
     "./side-channel-writer": "./src/side-channel-writer.ts",

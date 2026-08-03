@@ -20,7 +20,7 @@
  * Empty list is tolerated for safety but the caller short-circuits on
  * `todos.length === 0` and the chip never renders.
  */
-import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import type { Todo } from "@decocms/shared/harness/todo-write";
 
 export type ChipIcon = Todo["status"];
 

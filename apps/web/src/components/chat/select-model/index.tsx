@@ -1,5 +1,5 @@
 // apps/web/src/components/chat/select-model/index.tsx
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   DecopilotModelSelectorBody,
   DecopilotModelSelectorStandalone,

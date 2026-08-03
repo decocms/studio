@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { JetStreamClient } from "@nats-io/jetstream";
-import { MAX_PUBLISH_BYTES } from "@decocms/harness/offload-messages";
+import { MAX_PUBLISH_BYTES } from "@decocms/shared/harness/offload-messages";
 import {
   FRAG_INDEX_HEADER,
   FRAG_TOTAL_HEADER,
-} from "@decocms/harness/run-stream-codec";
+} from "@decocms/shared/harness/run-stream-codec";
 import {
   createDirectNatsPublisher,
   publishRelayBodyToNats,

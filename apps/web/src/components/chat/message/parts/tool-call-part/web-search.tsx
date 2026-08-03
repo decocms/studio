@@ -13,7 +13,7 @@ import { getEffectiveState } from "./utils.tsx";
 import { MemoizedMarkdown } from "../../../markdown.tsx";
 import { formatDuration } from "@/lib/format-time.ts";
 import { type UsageStats, type UsageData, getCostFromUsage } from "@/sdk";
-import { parseStudioStorageKey } from "@decocms/harness/decopilot/studio-storage-uri";
+import { parseStudioStorageKey } from "@decocms/shared/harness/studio-storage-uri";
 
 function resolveStorageUri(uri: string, orgSlug: string): string {
   const key = parseStudioStorageKey(uri);

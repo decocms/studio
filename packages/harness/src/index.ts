@@ -13,5 +13,3 @@ export {
   registerHarnessFactory,
   resetRegistryForTests,
 } from "./registry";
-export { MAX_PUBLISH_BYTES } from "./offload-messages";
-export type { DispatchEnvelope, MessagesRef } from "./offload-messages";

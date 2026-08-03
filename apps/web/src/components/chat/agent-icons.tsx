@@ -5,7 +5,7 @@
  * trigger without duplicating the SVG data.
  */
 import type { ReactNode } from "react";
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 
 export function ClaudeCodeIcon({ size = 16 }: { size?: number }) {
   return (

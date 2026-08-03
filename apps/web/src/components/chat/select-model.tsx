@@ -19,7 +19,7 @@ import { type AiProviderModel } from "./select-model/shared";
 import { useChatPrefs } from "./context";
 import { ModelSelectorContentFallback } from "./select-model/decopilot";
 import { SelectedModelDisplay } from "./select-model/shared";
-import type { HarnessId } from "@decocms/harness/types";
+import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   ModelSelectorBody,
   ModelSelectorStandaloneBody,
