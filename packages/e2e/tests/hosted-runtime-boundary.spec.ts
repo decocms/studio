@@ -1,7 +1,9 @@
-import { expect, test } from "../fixtures/test";
+import { retry } from "@decocms/shared/std";
+import type { APIRequestContext } from "@playwright/test";
+import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
-import { retry } from "@decocms/shared/std";
+import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 const NON_HOSTED_HARNESSES = ["claude-code", "codex", "opencode", "future"];
 
@@ -27,6 +29,166 @@ const PERSISTED_NON_HOSTED_ROWS = [
     error: "This coding-agent chat can only run in the Studio desktop app",
   },
 ] as const;
+
+type DevDb = Awaited<ReturnType<typeof connectDevDb>>;
+
+async function createAgent(
+  api: APIRequestContext,
+  orgSlug: string,
+  title: string,
+): Promise<string> {
+  const agent = await callSelfMcpTool<{ item: { id: string } }>(
+    api,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title,
+        connections: [],
+        status: "active",
+        pinned: false,
+      },
+    },
+  );
+  return agent.item.id;
+}
+
+async function createThread(
+  api: APIRequestContext,
+  orgSlug: string,
+  virtualMcpId: string,
+): Promise<string> {
+  const thread = await callSelfMcpTool<{ item: { id: string } }>(
+    api,
+    orgSlug,
+    "COLLECTION_THREADS_CREATE",
+    { data: { virtual_mcp_id: virtualMcpId } },
+  );
+  return thread.item.id;
+}
+
+async function organizationIdForSlug(
+  db: DevDb,
+  orgSlug: string,
+): Promise<string> {
+  const result = await db.query<{ id: string }>(
+    `SELECT id FROM organization WHERE slug = $1`,
+    [orgSlug],
+  );
+  const organizationId = result.rows[0]?.id;
+  if (!organizationId) {
+    throw new Error(`Organization not found for slug ${orgSlug}`);
+  }
+  return organizationId;
+}
+
+async function readThreadAuthorityState(
+  db: DevDb,
+  args: { threadId: string; organizationId: string; userId: string },
+) {
+  const result = await db.query<{
+    title: string;
+    virtual_mcp_id: string;
+    harness_id: string | null;
+    sandbox_provider_kind: string | null;
+    status: string;
+    part_count: number;
+  }>(
+    `SELECT t.title,
+            t.virtual_mcp_id,
+            t.harness_id,
+            t.sandbox_provider_kind,
+            t.status,
+            (SELECT COUNT(*)::int
+               FROM thread_message_parts p
+              WHERE p.org_id = t.organization_id
+                AND p.thread_id = t.id) AS part_count
+       FROM threads t
+      WHERE t.id = $1
+        AND t.organization_id = $2
+        AND t.created_by = $3`,
+    [args.threadId, args.organizationId, args.userId],
+  );
+  const state = result.rows[0];
+  if (!state) {
+    throw new Error(`Thread not found in expected tenant: ${args.threadId}`);
+  }
+  return state;
+}
+
+async function inviteAndAcceptMember(
+  ownerApi: APIRequestContext,
+  memberApi: APIRequestContext,
+  organizationId: string,
+  memberEmail: string,
+): Promise<void> {
+  const invite = await ownerApi.post("/api/auth/organization/invite-member", {
+    data: {
+      organizationId,
+      email: memberEmail,
+      role: "user",
+    },
+    headers: { Origin: getE2EAppOrigin() },
+  });
+  expect(
+    invite.ok(),
+    `invite failed: ${await invite.text().catch(() => "")}`,
+  ).toBe(true);
+  const body = (await invite.json()) as {
+    id?: string;
+    invitation?: { id?: string };
+  };
+  const invitationId = body.id ?? body.invitation?.id;
+  expect(invitationId).toBeTruthy();
+
+  const accept = await memberApi.post(
+    "/api/auth/organization/accept-invitation",
+    { data: { invitationId } },
+  );
+  expect(
+    accept.ok(),
+    `accept failed: ${await accept.text().catch(() => "")}`,
+  ).toBe(true);
+}
+
+async function postMessageAsAgent(
+  api: APIRequestContext,
+  args: {
+    orgSlug: string;
+    threadId: string;
+    agentId: string;
+    messageId: string;
+  },
+) {
+  return api.post(
+    `/api/${args.orgSlug}/decopilot/threads/${args.threadId}/messages`,
+    {
+      data: {
+        messages: [
+          {
+            id: args.messageId,
+            role: "user",
+            parts: [{ type: "text", text: "Do not dispatch this" }],
+          },
+        ],
+        agent: { id: args.agentId },
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
+      },
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
+async function expectNoQueuedRun(
+  api: APIRequestContext,
+  orgSlug: string,
+  threadId: string,
+): Promise<void> {
+  const queue = await api.get(`/api/${orgSlug}/decopilot/queue/${threadId}`);
+  expect(queue.status()).toBe(200);
+  expect(await queue.json()).toEqual({ items: [] });
+}
 
 test.describe("hosted runtime boundary", () => {
   test.describe.configure({ mode: "serial" });
@@ -116,6 +278,185 @@ test.describe("hosted runtime boundary", () => {
       expect(parts.rows[0]?.count).toBe(0);
     } finally {
       await db.end();
+    }
+  });
+
+  test("rejects a body agent that differs from the thread's same-org agent", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const organizationId = await organizationIdForSlug(db, orgSlug);
+      const threadAgentId = await createAgent(
+        api,
+        orgSlug,
+        "thread authority canonical agent",
+      );
+      const requestedAgentId = await createAgent(
+        api,
+        orgSlug,
+        "thread authority requested agent",
+      );
+      const threadId = await createThread(api, orgSlug, threadAgentId);
+      const scope = { threadId, organizationId, userId: user.userId };
+      const before = await readThreadAuthorityState(db, scope);
+
+      const response = await postMessageAsAgent(api, {
+        orgSlug,
+        threadId,
+        agentId: requestedAgentId,
+        messageId: "msg-same-org-agent-mismatch",
+      });
+
+      expect(response.status()).toBe(409);
+      expect(await readThreadAuthorityState(db, scope)).toEqual(before);
+      expect(before).toMatchObject({
+        virtual_mcp_id: threadAgentId,
+        harness_id: null,
+        sandbox_provider_kind: null,
+        part_count: 0,
+      });
+      await expectNoQueuedRun(api, orgSlug, threadId);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("rejects a foreign-org agent before any message or run is persisted", async ({
+    authedPage,
+    playwright,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const foreignApi = await newApiContext(playwright);
+    const db = await connectDevDb();
+    try {
+      const organizationId = await organizationIdForSlug(db, orgSlug);
+      const threadAgentId = await createAgent(
+        api,
+        orgSlug,
+        "foreign authority canonical agent",
+      );
+      const foreignUser = await signUpViaApi(foreignApi);
+      const foreignAgentId = await createAgent(
+        foreignApi,
+        foreignUser.orgSlug,
+        "foreign authority agent",
+      );
+
+      // The usual attack shape: the owned thread still points at its own
+      // tenant's agent, while the request tries to select a foreign one.
+      const threadId = await createThread(api, orgSlug, threadAgentId);
+      const scope = { threadId, organizationId, userId: user.userId };
+      const before = await readThreadAuthorityState(db, scope);
+      const mismatchResponse = await postMessageAsAgent(api, {
+        orgSlug,
+        threadId,
+        agentId: foreignAgentId,
+        messageId: "msg-foreign-agent-mismatch",
+      });
+
+      expect(mismatchResponse.status()).toBe(409);
+      expect(await readThreadAuthorityState(db, scope)).toEqual(before);
+      await expectNoQueuedRun(api, orgSlug, threadId);
+
+      // Defense in depth: even if a malformed legacy row or privileged DB
+      // writer points an owned thread at another tenant's agent, equality with
+      // the body is not authorization. The hosted endpoint must validate the
+      // canonical agent's organization before its first write.
+      const corruptThreadId = await createThread(api, orgSlug, threadAgentId);
+      const corruptUpdate = await db.query(
+        `UPDATE threads
+            SET virtual_mcp_id = $1
+          WHERE id = $2
+            AND organization_id = $3
+            AND created_by = $4`,
+        [foreignAgentId, corruptThreadId, organizationId, user.userId],
+      );
+      expect(corruptUpdate.rowCount).toBe(1);
+
+      const corruptScope = {
+        threadId: corruptThreadId,
+        organizationId,
+        userId: user.userId,
+      };
+      const corruptBefore = await readThreadAuthorityState(db, corruptScope);
+      const corruptResponse = await postMessageAsAgent(api, {
+        orgSlug,
+        threadId: corruptThreadId,
+        agentId: foreignAgentId,
+        messageId: "msg-foreign-agent-canonical-corruption",
+      });
+
+      expect(corruptResponse.status()).toBe(409);
+      expect(await readThreadAuthorityState(db, corruptScope)).toEqual(
+        corruptBefore,
+      );
+      expect(corruptBefore).toMatchObject({
+        virtual_mcp_id: foreignAgentId,
+        harness_id: null,
+        sandbox_provider_kind: null,
+        part_count: 0,
+      });
+      await expectNoQueuedRun(api, orgSlug, corruptThreadId);
+    } finally {
+      await Promise.all([db.end(), foreignApi.dispose()]);
+    }
+  });
+
+  test("keeps an organization teammate from mutating another owner's thread", async ({
+    authedPage,
+    playwright,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const ownerApi = page.context().request;
+    const memberApi = await newApiContext(playwright);
+    const db = await connectDevDb();
+    try {
+      const organizationId = await organizationIdForSlug(db, orgSlug);
+      const agentId = await createAgent(
+        ownerApi,
+        orgSlug,
+        "teammate boundary agent",
+      );
+      const threadId = await createThread(ownerApi, orgSlug, agentId);
+      const scope = { threadId, organizationId, userId: user.userId };
+      const before = await readThreadAuthorityState(db, scope);
+
+      const member = await signUpViaApi(memberApi);
+      await inviteAndAcceptMember(
+        ownerApi,
+        memberApi,
+        organizationId,
+        member.email,
+      );
+
+      const messageResponse = await postMessageAsAgent(memberApi, {
+        orgSlug,
+        threadId,
+        agentId,
+        messageId: "msg-teammate-owner-boundary",
+      });
+      expect(messageResponse.status()).toBe(403);
+
+      await expect(
+        callSelfMcpTool(memberApi, orgSlug, "COLLECTION_THREADS_UPDATE", {
+          id: threadId,
+          data: { title: "teammate changed this" },
+        }),
+      ).rejects.toThrow(/chat owner/i);
+      await expect(
+        callSelfMcpTool(memberApi, orgSlug, "COLLECTION_THREADS_DELETE", {
+          id: threadId,
+        }),
+      ).rejects.toThrow(/chat owner/i);
+
+      expect(await readThreadAuthorityState(db, scope)).toEqual(before);
+      await expectNoQueuedRun(ownerApi, orgSlug, threadId);
+    } finally {
+      await Promise.all([db.end(), memberApi.dispose()]);
     }
   });
 

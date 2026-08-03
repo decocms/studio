@@ -17,6 +17,10 @@ import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
 } from "@decocms/shared/thread/schema";
+import {
+  assertThreadRoutingUpdateAllowed,
+  changesThreadRouting,
+} from "./runtime-lock";
 
 /**
  * Input schema for updating threads
@@ -63,16 +67,19 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     if (!existing) {
       throw new Error("Thread not found in organization");
     }
+    if (existing.created_by !== userId) {
+      throw new Error("Only the chat owner can update this thread");
+    }
+
+    assertThreadRoutingUpdateAllowed(existing, data);
 
     if (data.virtual_mcp_id !== undefined) {
       const targetVmcp = await ctx.storage.virtualMcps.findById(
         data.virtual_mcp_id,
         organization.id,
       );
-      // `findById`'s organizationId param only resolves well-known synthetic
-      // ids — for a normal row it does NOT filter by org, so existence alone
-      // doesn't prove the vMCP is ours. Without this, re-pointing a thread
-      // (data.virtual_mcp_id) could target another organization's agent.
+      // Keep the explicit entity check as defense in depth for synthesized
+      // well-known agents; normal rows are scoped in SQL by findById.
       if (!targetVmcp || targetVmcp.organization_id !== organization.id) {
         throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
       }
@@ -115,7 +122,15 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       updateData.virtual_mcp_id = data.virtual_mcp_id;
     }
 
-    const thread = await ctx.storage.threads.update(id, updateData);
+    const routingChanged = changesThreadRouting(existing, data);
+    const thread = routingChanged
+      ? await ctx.storage.threads.updateRoutingIfRuntimeUnlocked(id, updateData)
+      : await ctx.storage.threads.update(id, updateData);
+    if (!thread) {
+      throw new Error(
+        "Cannot change the agent or branch after this chat has started",
+      );
+    }
 
     // Fire chat_archived / chat_unarchived when the hidden flag flips. Only
     // fires on the specific transition, not on title/description edits that

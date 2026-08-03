@@ -90,6 +90,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
+import { resolveThreadAuthority } from "@/core/thread-authority";
 import { meter, traced } from "@/observability";
 import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
@@ -511,7 +512,6 @@ function dispatchRunSpanAttrs(
 ): Record<string, string> {
   const clientModels = input.models;
   return {
-    "decopilot.agent.id": input.agent.id,
     "decopilot.model.id": clientModels.thinking.id,
     "decopilot.credential.id": clientModels.credentialId,
     "decopilot.organization.id": input.organizationId,
@@ -765,6 +765,50 @@ async function prepareRun(
   let taskId: string | undefined;
 
   try {
+    if (!input.taskId) {
+      throw new Error("dispatchRunAndWait: taskId is required");
+    }
+    const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
+
+    // The persisted thread is the authority for both ownership and agent
+    // identity. Resolve it before credentials, model permissions, status
+    // publication, or run-state writes. `input.agent` remains in the durable
+    // shape only so old DBOS payloads deserialize; it never selects execution.
+    const mem = await createMemory(ctx.storage.threads, {
+      organization_id: input.organizationId,
+      thread_id: input.taskId,
+      userId: input.userId,
+      defaultWindowSize: windowSize,
+    });
+    const { agentId } = resolveThreadAuthority(mem.thread, {
+      organizationId: input.organizationId,
+      userId: input.userId,
+    });
+    const authoritativeAgent: AgentConfig = { id: agentId };
+    if (input.agent?.id && input.agent.id !== agentId) {
+      console.warn("decopilot.dispatch: ignored stale payload agent", {
+        threadId: mem.thread.id,
+        requested: input.agent.id,
+        authoritative: agentId,
+      });
+    }
+
+    // Normal rows are scoped by VirtualMCPStorage.findById's SQL predicate;
+    // retain the explicit entity check for synthesized well-known agents and
+    // defense in depth if another storage adapter is introduced.
+    const virtualMcp = await ctx.storage.virtualMcps.findById(
+      agentId,
+      input.organizationId,
+    );
+    if (!virtualMcp || virtualMcp.organization_id !== input.organizationId) {
+      throw new PermanentRunError("agent_not_found", "Agent not found");
+    }
+
+    taskId = mem.thread.id;
+    ctx.metadata.threadId = mem.thread.id;
+    rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
+    rootSpan.setAttribute("decopilot.agent.id", agentId);
+
     // The HTTP layer still sends the CLIENT models shape (root credentialId,
     // optional client-only extras like `capabilities`). Everything below the
     // normalization call uses the per-slot v2 `models`.
@@ -818,11 +862,6 @@ async function prepareRun(
     // added here when they gain a producer.
     models = filterToolTiersByPermission(allowedModels, models);
 
-    const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
-
-    if (!input.taskId) {
-      throw new Error("dispatchRunAndWait: taskId is required");
-    }
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
@@ -845,37 +884,23 @@ async function prepareRun(
           )
         : Promise.resolve(undefined);
     const [
-      virtualMcp,
       thinkingSource,
       fastSource,
       smartSource,
       imageSource,
       webSearchSource,
       deepResearchSource,
-      mem,
       userContext,
     ] = await Promise.all([
-      ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
       resolveSlot(models.thinking),
       resolveSlot(models.fast),
       resolveSlot(models.smart),
       resolveSlot(models.image),
       resolveSlot(models.webSearch),
       resolveSlot(models.deepResearch),
-      createMemory(ctx.storage.threads, {
-        organization_id: input.organizationId,
-        thread_id: input.taskId,
-        userId: input.userId,
-        defaultWindowSize: windowSize,
-      }),
       // Pre-resolve threads/interests/sibling-agents agent-side so the portable
       // prompt builder renders them without any `ctx.storage` reach-in.
-      resolveUserContext(
-        ctx,
-        input.organizationId,
-        input.agent.id,
-        input.userId,
-      ),
+      resolveUserContext(ctx, input.organizationId, agentId, input.userId),
     ]);
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
@@ -899,16 +924,6 @@ async function prepareRun(
     const primaryProvider = thinkingSource
       ? createProviderFromSecret(thinkingSource)
       : null;
-
-    taskId = mem.thread.id;
-    ctx.metadata.threadId = mem.thread.id;
-    rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
-
-    if (mem.thread.created_by !== input.userId) {
-      throw new Error(
-        "You are not allowed to write to this thread because you are not the owner",
-      );
-    }
 
     // Guard: async-research-only models (e.g. Gemini Deep Research) cannot
     // drive `streamText`. They only work via the AsyncResearchProvider path
@@ -954,12 +969,9 @@ async function prepareRun(
         })
       : null;
 
-    if (!virtualMcp) {
-      throw new PermanentRunError("agent_not_found", "Agent not found");
-    }
     const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
       virtualMcp,
-      agentId: input.agent.id,
+      agentId,
       organizationId: input.organizationId,
       ctx,
     });
@@ -984,7 +996,7 @@ async function prepareRun(
         podId: getPodId(),
         runConfig: {
           models: input.models,
-          agent: input.agent,
+          agent: authoritativeAgent,
           temperature: input.temperature,
           toolApprovalLevel: input.toolApprovalLevel,
           mode: input.mode,
@@ -1232,7 +1244,7 @@ async function prepareRun(
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,
-      agent: { id: input.agent.id, instructions: agentInstructions },
+      agent: { id: agentId, instructions: agentInstructions },
       triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
       runFenceToken,
@@ -1438,7 +1450,7 @@ async function prepareRun(
                 properties: {
                   organization_id: input.organizationId,
                   thread_id: mem.thread.id,
-                  agent_id: input.agent.id,
+                  agent_id: agentId,
                   model_id: models.thinking.id,
                   mode: input.mode,
                   duration_ms: Date.now() - streamStartAt,

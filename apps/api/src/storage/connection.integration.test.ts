@@ -8,6 +8,7 @@ import {
 import type { StudioDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
 import { CredentialVault } from "../encryption/credential-vault";
+import { getDecopilotId } from "@decocms/shared/sdk";
 
 describe("ConnectionStorage", () => {
   let database: StudioDatabase;
@@ -135,6 +136,25 @@ describe("ConnectionStorage", () => {
     it("should return null for non-existent ID", async () => {
       const found = await storage.findById("conn_nonexistent");
       expect(found).toBeNull();
+    });
+
+    it("should reject normal and well-known connections from another organization", async () => {
+      const foreign = await storage.create({
+        organization_id: "org_456",
+        created_by: "user_123",
+        title: "Foreign",
+        connection_type: "HTTP",
+        connection_url: "https://foreign.example.com/mcp",
+      });
+
+      expect(await storage.findById(foreign.id, "org_123")).toBeNull();
+      expect(
+        await storage.findById(getDecopilotId("org_456"), "org_123"),
+      ).toBeNull();
+      expect(await storage.findById(foreign.id, "org_456")).toMatchObject({
+        id: foreign.id,
+        organization_id: "org_456",
+      });
     });
   });
 

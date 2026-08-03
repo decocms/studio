@@ -7,7 +7,7 @@ import {
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
-import { getDecopilotId } from "@decocms/shared/sdk";
+import { getBrandContextSetupId, getDecopilotId } from "@decocms/shared/sdk";
 
 describe("VirtualMCPStorage.findById (Decopilot)", () => {
   let database: StudioDatabase;
@@ -77,5 +77,39 @@ describe("VirtualMCPStorage.findById (Decopilot)", () => {
     expect(decopilot).not.toBeNull();
     expect(decopilot?.title).toBe("Super Agent");
     expect(decopilot?.connections).toEqual([]);
+  });
+
+  test("rejects well-known agent ids encoded for another organization", async () => {
+    const foreignOrgId = "org_decopilot_foreign";
+
+    expect(
+      await storage.findById(getDecopilotId(foreignOrgId), orgId),
+    ).toBeNull();
+    expect(
+      await storage.findById(getBrandContextSetupId(foreignOrgId), orgId),
+    ).toBeNull();
+  });
+
+  test("does not return a normal Virtual MCP from another organization", async () => {
+    const foreignOrgId = "org_decopilot_foreign";
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${foreignOrgId}, ${foreignOrgId}, ${foreignOrgId}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+
+    const foreign = await storage.create(foreignOrgId, "user_decopilot_test", {
+      title: "Foreign agent",
+      connections: [],
+      status: "active",
+      pinned: false,
+    });
+
+    expect(await storage.findById(foreign.id, orgId)).toBeNull();
+    expect(await storage.findById(foreign.id, foreignOrgId)).toMatchObject({
+      id: foreign.id,
+      organization_id: foreignOrgId,
+    });
   });
 });

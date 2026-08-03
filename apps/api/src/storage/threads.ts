@@ -93,6 +93,17 @@ export class OrgScopedThreadStorage {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
+  updateRoutingIfRuntimeUnlocked(
+    id: string,
+    data: ThreadUpdateData,
+  ): Promise<Thread | null> {
+    return this.inner.updateRoutingIfRuntimeUnlocked(
+      id,
+      this.requireOrg(),
+      data,
+    );
+  }
+
   pinRuntimeIfUnset(
     id: string,
     pin: ThreadRuntimePin,
@@ -360,6 +371,27 @@ export class SqlThreadStorage implements ThreadStoragePort {
     organizationId: string,
     data: ThreadUpdateData,
   ): Promise<Thread> {
+    const thread = await this.executeUpdate(id, organizationId, data, false);
+    if (!thread) {
+      throw new Error("Thread not found after update");
+    }
+    return thread;
+  }
+
+  async updateRoutingIfRuntimeUnlocked(
+    id: string,
+    organizationId: string,
+    data: ThreadUpdateData,
+  ): Promise<Thread | null> {
+    return this.executeUpdate(id, organizationId, data, true);
+  }
+
+  private async executeUpdate(
+    id: string,
+    organizationId: string,
+    data: ThreadUpdateData,
+    requireRuntimeUnlocked: boolean,
+  ): Promise<Thread | null> {
     const now = new Date().toISOString();
 
     const updateData: Record<string, unknown> = {
@@ -422,19 +454,16 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.message_storage_version !== undefined) {
       updateData.message_storage_version = data.message_storage_version;
     }
-    await this.db
+    let query = this.db
       .updateTable("threads")
       .set(updateData)
       .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .execute();
-
-    const thread = await this.get(id, organizationId);
-    if (!thread) {
-      throw new Error("Thread not found after update");
+      .where("organization_id", "=", organizationId);
+    if (requireRuntimeUnlocked) {
+      query = query.where("harness_id", "is", null);
     }
-
-    return thread;
+    const row = await query.returningAll().executeTakeFirst();
+    return row ? this.threadFromDbRow(row) : null;
   }
 
   async pinRuntimeIfUnset(

@@ -47,8 +47,14 @@ export async function createVirtualClient(
   const virtualMcpId = connection.id;
 
   // Load virtual MCP entity
-  const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
-  if (!virtualMcp) {
+  const virtualMcp = await ctx.storage.virtualMcps.findById(
+    virtualMcpId,
+    connection.organization_id,
+  );
+  if (
+    !virtualMcp ||
+    virtualMcp.organization_id !== connection.organization_id
+  ) {
     throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
   }
 
@@ -96,7 +102,10 @@ export async function createVirtualClientFrom(
       try {
         const result = await Promise.all(
           connectionIds.map((connId) =>
-            ctx.storage.connections.findById(connId),
+            ctx.storage.connections.findById(
+              connId,
+              virtualMcp.organization_id,
+            ),
           ),
         );
         span.setStatus({ code: SpanStatusCode.OK });

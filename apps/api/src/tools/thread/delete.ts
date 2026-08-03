@@ -42,20 +42,25 @@ export const COLLECTION_THREADS_DELETE = defineTool({
       throw new Error(`Thread not found: ${input.id}`);
     }
 
+    const userId = getUserId(ctx);
+    if (!userId) {
+      throw new Error("User ID required to delete thread");
+    }
+    if (thread.created_by !== userId) {
+      throw new Error("Only the chat owner can delete this thread");
+    }
+
     await ctx.storage.threads.delete(input.id);
 
-    const userId = getUserId(ctx);
-    if (userId) {
-      posthog.capture({
-        distinctId: userId,
-        event: "chat_deleted",
-        groups: { organization: organization.id },
-        properties: {
-          organization_id: organization.id,
-          thread_id: input.id,
-        },
-      });
-    }
+    posthog.capture({
+      distinctId: userId,
+      event: "chat_deleted",
+      groups: { organization: organization.id },
+      properties: {
+        organization_id: organization.id,
+        thread_id: input.id,
+      },
+    });
 
     return {
       item: normalizeThreadForResponse(thread),

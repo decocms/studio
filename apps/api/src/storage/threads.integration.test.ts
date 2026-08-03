@@ -245,6 +245,54 @@ describe("SqlThreadStorage", () => {
       expect(result.thread?.branch).toBe("already-selected");
     });
 
+    it("updates routing only while the runtime remains unlocked", async () => {
+      const unlocked = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        virtual_mcp_id: "agent-before",
+        branch: "main",
+      });
+      expect(
+        await storage.updateRoutingIfRuntimeUnlocked(unlocked.id, "org_2", {
+          virtual_mcp_id: "cross-tenant",
+        }),
+      ).toBeNull();
+      expect(
+        await storage.updateRoutingIfRuntimeUnlocked("missing", "org_1", {
+          virtual_mcp_id: "missing",
+        }),
+      ).toBeNull();
+
+      const updated = await storage.updateRoutingIfRuntimeUnlocked(
+        unlocked.id,
+        "org_1",
+        { virtual_mcp_id: "agent-after", branch: "feature" },
+      );
+      expect(updated).toMatchObject({
+        virtual_mcp_id: "agent-after",
+        branch: "feature",
+        harness_id: null,
+      });
+
+      await storage.pinRuntimeIfUnset(unlocked.id, "org_1", {
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
+        branch: "feature",
+      });
+      const lostRace = await storage.updateRoutingIfRuntimeUnlocked(
+        unlocked.id,
+        "org_1",
+        { virtual_mcp_id: "agent-too-late", branch: "other" },
+      );
+
+      expect(lostRace).toBeNull();
+      expect(await storage.get(unlocked.id, "org_1")).toMatchObject({
+        virtual_mcp_id: "agent-after",
+        branch: "feature",
+        harness_id: "decopilot",
+      });
+    });
+
     it("does not overwrite a conflicting partial runtime", async () => {
       const thread = await storage.create({
         organization_id: "org_1",

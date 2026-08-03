@@ -33,6 +33,7 @@ import { ingestRun } from "@/api/routes/decopilot/ingest-run";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { UIMessageChunk } from "ai";
 import { isHostedDecopilotRuntime } from "./hosted-runtime";
+import { resolveThreadAuthority } from "@/core/thread-authority";
 
 // Re-export from the side-effect-free `queue-names` module so `index.ts` can
 // reference the name without importing this module (which registers a workflow).
@@ -198,29 +199,28 @@ export function isHostedDecopilotThread(
 
 async function requireHostedThreadContext(
   ctx: BackgroundToolContext,
-): Promise<StudioContext> {
+): Promise<{ studioCtx: StudioContext; agentId: string }> {
   const studioCtx = await requireStudioContext(ctx);
   const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!isHostedDecopilotThread(thread)) {
+  if (!thread || !isHostedDecopilotThread(thread)) {
     throw new Error(
       `[background-tool] thread ${ctx.threadId} is not hosted Decopilot`,
     );
   }
-  return studioCtx;
-}
-
-/** Resolve a thread row only when it still belongs to hosted Decopilot. */
-function resolveThreadTarget(
-  thread:
-    | {
-        harness_id?: string | null;
-        sandbox_provider_kind?: string | null;
-      }
-    | null
-    | undefined,
-): { harnessId: "decopilot" } | null {
-  if (!isHostedDecopilotThread(thread)) return null;
-  return { harnessId: "decopilot" };
+  const { agentId } = resolveThreadAuthority(thread, {
+    organizationId: ctx.orgId,
+    userId: ctx.userId,
+  });
+  const virtualMcp = await studioCtx.storage.virtualMcps.findById(
+    agentId,
+    ctx.orgId,
+  );
+  if (!virtualMcp || virtualMcp.organization_id !== ctx.orgId) {
+    throw new Error(
+      `[background-tool] thread ${ctx.threadId} agent is unavailable in org ${ctx.orgId}`,
+    );
+  }
+  return { studioCtx, agentId };
 }
 
 /** Build the reaction turn's dispatch request — an internal nudge the model
@@ -244,6 +244,8 @@ function buildReactionRequest(
       // biome-ignore lint/suspicious/noExplicitAny: ChatMessage part union is built from the cluster tool set
     ] as any,
     models: opts.models,
+    // Compatibility snapshot only. Central dispatch resolves the executing
+    // agent from the thread row and ignores this value.
     agent: { id: s.agentId },
     temperature: s.temperature,
     toolApprovalLevel: s.toolApprovalLevel,
@@ -280,7 +282,8 @@ interface BackgroundJob {
 function makeJob(ctx: BackgroundToolContext): BackgroundJob {
   return {
     ctx,
-    studioContext: () => requireStudioContext(ctx),
+    studioContext: async () =>
+      (await requireHostedThreadContext(ctx)).studioCtx,
     emitFinal: (parts) =>
       DBOS.runStep(() => appendPartsStep(ctx, parts), { name: "appendResult" }),
   };
@@ -368,7 +371,7 @@ function extractAssistantText(
 async function runSubtaskStep(
   ctx: BackgroundToolContext,
 ): Promise<{ report: string; finishReason: string; models: ModelsConfig }> {
-  const studioCtx = await requireStudioContext(ctx);
+  const { studioCtx, agentId } = await requireHostedThreadContext(ctx);
   const organization = studioCtx.organization;
   if (!organization) {
     throw new Error(
@@ -376,8 +379,11 @@ async function runSubtaskStep(
     );
   }
   const input = ctx.input as { prompt: string; agent_id?: string };
-  const isSelf = !input.agent_id || input.agent_id === ctx.agentId;
-  const targetId = isSelf ? ctx.agentId : input.agent_id!;
+  const isSelf =
+    !input.agent_id ||
+    input.agent_id === ctx.agentId ||
+    input.agent_id === agentId;
+  const targetId = isSelf ? agentId : input.agent_id!;
   const models = await resolveReactionModels(studioCtx);
   const provider = await studioCtx.aiProviders.activate(
     models.credentialId,
@@ -590,7 +596,7 @@ async function appendPartsStep(
   ctx: BackgroundToolContext,
   parts: AnyMessage["parts"],
 ): Promise<void> {
-  const studioCtx = await requireHostedThreadContext(ctx);
+  const { studioCtx } = await requireHostedThreadContext(ctx);
   const emitter = new PartEmitter({
     storage: studioCtx.storage.threads.messageParts(),
     orgId: ctx.orgId,
@@ -613,7 +619,27 @@ async function resolveReactionTargetStep(
     ctx.userId,
   );
   if (!studioCtx) return null;
-  return resolveThreadTarget(await studioCtx.storage.threads.get(ctx.threadId));
+
+  const thread = await studioCtx.storage.threads.get(ctx.threadId);
+  if (!thread || !isHostedDecopilotThread(thread)) return null;
+
+  // Keep transient storage failures retriable. Only a missing/non-hosted
+  // thread is a deliberate no-op; invalid ownership or agent authority must
+  // fail closed instead of silently dropping the reaction turn.
+  const { agentId } = resolveThreadAuthority(thread, {
+    organizationId: ctx.orgId,
+    userId: ctx.userId,
+  });
+  const virtualMcp = await studioCtx.storage.virtualMcps.findById(
+    agentId,
+    ctx.orgId,
+  );
+  if (!virtualMcp || virtualMcp.organization_id !== ctx.orgId) {
+    throw new Error(
+      `[background-tool] thread ${ctx.threadId} agent is unavailable in org ${ctx.orgId}`,
+    );
+  }
+  return { harnessId: "decopilot" };
 }
 
 /** Re-enter the per-thread gate so the agent reacts to the delivered result.

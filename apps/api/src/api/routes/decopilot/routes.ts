@@ -61,6 +61,10 @@ import {
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
 import { type QueuePartRow, foldQueueHydration } from "./queue-text";
+import {
+  ThreadAuthorityError,
+  resolveThreadAuthority,
+} from "@/core/thread-authority";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -151,6 +155,55 @@ async function validateRequest(
   };
 }
 
+function resolveHttpThreadAuthority(
+  thread: Pick<Thread, "organization_id" | "created_by" | "virtual_mcp_id">,
+  expected: {
+    organizationId: string;
+    userId: string;
+    requestedAgentId?: string;
+  },
+): { agentId: string } {
+  try {
+    return resolveThreadAuthority(thread, expected);
+  } catch (error) {
+    if (!(error instanceof ThreadAuthorityError)) throw error;
+    if (error.reason === "organization_mismatch") {
+      throw new HTTPException(404, { message: "Thread not found" });
+    }
+    if (error.reason === "owner_mismatch") {
+      throw new HTTPException(403, { message: "Not authorized" });
+    }
+    throw new HTTPException(409, { message: error.message });
+  }
+}
+
+/**
+ * Resolve the hosted agent from the thread row and prove that it belongs to
+ * the path-resolved organization. The legacy request `agent.id` is only a
+ * consistency assertion; it never selects the executing Virtual MCP.
+ */
+async function requireHostedThreadAgent(
+  ctx: StudioContext,
+  thread: Pick<Thread, "organization_id" | "created_by" | "virtual_mcp_id">,
+  expected: {
+    organizationId: string;
+    userId: string;
+    requestedAgentId?: string;
+  },
+): Promise<string> {
+  const { agentId } = resolveHttpThreadAuthority(thread, expected);
+  const virtualMcp = await ctx.storage.virtualMcps.findById(
+    agentId,
+    expected.organizationId,
+  );
+  if (!virtualMcp || virtualMcp.organization_id !== expected.organizationId) {
+    throw new HTTPException(409, {
+      message: "Thread agent is unavailable in this organization",
+    });
+  }
+  return agentId;
+}
+
 // ============================================================================
 // Per-Request Model Resolution
 // ============================================================================
@@ -237,9 +290,9 @@ async function resolvePerRequestModels(
  * dispatch, given the values the client supplied and the (possibly
  * locked) thread row.
  *
- * Once a thread row carries a non-null `harness_id`, the thread's
- * runtime is pinned for life: the row's values win and any
- * client-provided override is silently dropped. If the row is unlocked
+ * Once a thread row carries a non-null `harness_id`, persisted runtime state
+ * wins and any client-provided override is silently dropped. Trusted runtime
+ * tools may still evolve server-owned state such as the repository branch. If the row is unlocked
  * (`harness_id == null`) or there's no thread at all (first message of
  * a freshly-created thread, or `taskIdInput === undefined`) we fall
  * back to the client values.
@@ -448,16 +501,34 @@ async function validate(
     throw new HTTPException(401, { message: "User ID is required" });
   }
 
+  // Resolve authority before model selection or any message/runtime write.
+  // The thread row owns both the user and Virtual MCP identities; the legacy
+  // request agent is accepted only when it agrees with that row.
+  if (!taskIdInput) {
+    throw new HTTPException(400, { message: "threadId is required" });
+  }
+  const lockedThread = await ctx.storage.threads.get(taskIdInput);
+  if (!lockedThread) {
+    throw new HTTPException(404, { message: "Thread not found" });
+  }
+  const authoritativeAgentId = await requireHostedThreadAgent(
+    ctx,
+    lockedThread,
+    {
+      organizationId: organization.id,
+      userId,
+      requestedAgentId: agent.id,
+    },
+  );
+
   // Lock guard: once a thread row carries a non-null `harness_id`, the
-  // thread's runtime (harness, sandbox provider, branch) is pinned for
-  // life. Any client-provided override is silently dropped. Native harnesses
+  // thread's persisted runtime (harness, sandbox provider, branch) wins over
+  // client-provided overrides. Trusted runtime tools may still evolve
+  // server-owned state such as the repository branch. Native harnesses
   // are then rejected before model resolution or any message/pin write.
   //
   // See spec:
   // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
-  const lockedThread = taskIdInput
-    ? await ctx.storage.threads.get(taskIdInput)
-    : null;
   const {
     harnessId: effectiveHarnessId,
     sandboxProviderKind: effectiveSandboxProviderKind,
@@ -502,7 +573,7 @@ async function validate(
   return {
     messages: [...systemMessages, requestMessage],
     models,
-    agent,
+    agent: { id: authoritativeAgentId },
     temperature,
     toolApprovalLevel,
     mode,
@@ -595,11 +666,22 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "threadId is required" });
       }
 
-      // Re-read the canonical row for its pin and message-storage version.
-      // Only a real null uses the legacy create-on-send path. A storage error
-      // must fail closed: treating it as a missing row could race a native pin
-      // and enqueue hosted work against the newly native thread.
+      // Re-read the canonical row for its pin, agent, and message-storage
+      // version. A storage error must fail closed so a disappearing row cannot
+      // enqueue hosted work.
       const existingThread = await ctx.storage.threads.get(taskId);
+      if (!existingThread) {
+        throw new HTTPException(404, { message: "Thread not found" });
+      }
+      let authoritativeAgentId = await requireHostedThreadAgent(
+        ctx,
+        existingThread,
+        {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          requestedAgentId: input.agent.id,
+        },
+      );
 
       // Fall back to the "ephemeral" synthetic branch when neither the
       // thread row nor the request body pins one. Synthetic branches
@@ -608,17 +690,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
-      let branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      let branch = existingThread.branch ?? input.branch ?? "ephemeral";
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
       // persist to the thread row.
-      let pinnedKind = (existingThread?.sandbox_provider_kind ??
+      let pinnedKind = (existingThread.sandbox_provider_kind ??
         null) as SandboxProviderKind | null;
 
-      let pinnedHarness = (existingThread?.harness_id ??
+      let pinnedHarness = (existingThread.harness_id ??
         null) as HarnessId | null;
-      let messageStorageVersion = existingThread?.message_storage_version ?? 2;
+      let messageStorageVersion = existingThread.message_storage_version;
 
       // The row may have changed between validate() and this canonical re-read.
       // Re-assert before the initial-pin branch so a persisted non-hosted
@@ -634,42 +716,51 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
         assertHostedRuntime(pinnedHarness, pinnedKind);
 
-        if (existingThread) {
-          // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
-          // every NEW thread (no prior messages, not already v2) to v2 so the
-          // ingest → JetStream → durable-projector pipeline persists its parts.
-          // Pre-existing v1 threads WITH history stay v1: deprecated read-only
-          // legacy — their `thread_messages` rows still render via the v1 read
-          // path; no backfill. The message-count probe only runs for not-yet-v2
-          // threads, so already-v2 threads add no DB read.
-          let pinV2 = false;
-          if (existingThread.message_storage_version !== 2) {
-            try {
-              const { total } = await ctx.storage.threads.listMessages(taskId, {
-                limit: 1,
-              });
-              pinV2 = total === 0;
-            } catch {
-              pinV2 = false;
-            }
+        // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
+        // every NEW thread (no prior messages, not already v2) to v2 so the
+        // ingest → JetStream → durable-projector pipeline persists its parts.
+        // Pre-existing v1 threads WITH history stay v1: deprecated read-only
+        // legacy — their `thread_messages` rows still render via the v1 read
+        // path; no backfill. The message-count probe only runs for not-yet-v2
+        // threads, so already-v2 threads add no DB read.
+        let pinV2 = false;
+        if (existingThread.message_storage_version !== 2) {
+          try {
+            const { total } = await ctx.storage.threads.listMessages(taskId, {
+              limit: 1,
+            });
+            pinV2 = total === 0;
+          } catch {
+            pinV2 = false;
           }
-          // Claim all runtime pins in one CAS. A native start can race this
-          // request, so an unconditional update would let the hosted path
-          // overwrite a runtime that became native after our preceding read.
-          const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
-            harnessId: pinnedHarness,
-            sandboxProviderKind: pinnedKind,
-            branch,
-            ...(pinV2 ? { messageStorageVersion: 2 } : {}),
-          });
-          if (!claimed.thread) {
-            throw new HTTPException(404, { message: "Thread not found" });
-          }
-          pinnedHarness = claimed.thread.harness_id as HarnessId | null;
-          pinnedKind = claimed.thread
-            .sandbox_provider_kind as SandboxProviderKind | null;
-          branch = claimed.thread.branch ?? "ephemeral";
-          messageStorageVersion = claimed.thread.message_storage_version;
+        }
+        // Claim all runtime pins in one CAS. A native start can race this
+        // request, so an unconditional update would let the hosted path
+        // overwrite a runtime that became native after our preceding read.
+        const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
+          harnessId: pinnedHarness,
+          sandboxProviderKind: pinnedKind,
+          branch,
+          ...(pinV2 ? { messageStorageVersion: 2 } : {}),
+        });
+        if (!claimed.thread) {
+          throw new HTTPException(404, { message: "Thread not found" });
+        }
+        pinnedHarness = claimed.thread.harness_id as HarnessId | null;
+        pinnedKind = claimed.thread
+          .sandbox_provider_kind as SandboxProviderKind | null;
+        branch = claimed.thread.branch ?? "ephemeral";
+        messageStorageVersion = claimed.thread.message_storage_version;
+        if (claimed.thread.virtual_mcp_id !== authoritativeAgentId) {
+          authoritativeAgentId = await requireHostedThreadAgent(
+            ctx,
+            claimed.thread,
+            {
+              organizationId: input.organizationId,
+              userId: input.userId,
+              requestedAgentId: input.agent.id,
+            },
+          );
         }
       }
       pinnedKind =
@@ -738,10 +829,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         await emitter.emitRequestMessage(persistedRequestMessage);
       }
 
-      const serializableRequest = buildDurableDispatchInput(input, {
-        messageId,
-        branch,
-      });
+      const serializableRequest = buildDurableDispatchInput(
+        { ...input, agent: { id: authoritativeAgentId } },
+        {
+          messageId,
+          branch,
+        },
+      );
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.

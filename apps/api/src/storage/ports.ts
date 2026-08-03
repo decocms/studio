@@ -71,6 +71,16 @@ export interface ThreadStoragePort {
     data: ThreadUpdateData,
   ): Promise<Thread>;
   /**
+   * Apply an update only while no runtime has claimed the thread. Used for
+   * agent/branch mutations so a concurrent hosted/native pin cannot race a
+   * preceding read and move a started chat to another execution context.
+   */
+  updateRoutingIfRuntimeUnlocked(
+    id: string,
+    organizationId: string,
+    data: ThreadUpdateData,
+  ): Promise<Thread | null>;
+  /**
    * Atomically pin an unlocked thread's runtime. The `harness_id IS NULL`
    * predicate is the lock: concurrent native and hosted starts cannot
    * overwrite whichever runtime won first.

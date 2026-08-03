@@ -275,8 +275,10 @@ export class ConnectionStorage implements ConnectionStoragePort {
     // Handle Decopilot ID - return Decopilot connection entity
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
-      const resolvedOrgId = organizationId ?? decopilotOrgId;
-      return getWellKnownDecopilotConnection(resolvedOrgId);
+      if (organizationId && organizationId !== decopilotOrgId) {
+        return null;
+      }
+      return getWellKnownDecopilotConnection(decopilotOrgId);
     }
 
     let query = this.db

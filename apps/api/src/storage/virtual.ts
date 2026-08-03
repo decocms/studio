@@ -141,9 +141,11 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     // The model uses the <available-agents> catalog as its routing table.
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
-      const resolvedOrgId = organizationId ?? decopilotOrgId;
+      if (organizationId && organizationId !== decopilotOrgId) {
+        return null;
+      }
       return {
-        ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
+        ...getWellKnownDecopilotVirtualMCP(decopilotOrgId),
         pinned: false,
         connections: [],
       };
@@ -154,28 +156,36 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     // built-in tool is injected by dispatchRun based on this id.
     const bcsOrgId = isBrandContextSetup(id);
     if (bcsOrgId) {
-      const resolvedOrgId = organizationId ?? bcsOrgId;
+      if (organizationId && organizationId !== bcsOrgId) {
+        return null;
+      }
       return {
-        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
+        ...getWellKnownBrandContextSetupVirtualMCP(bcsOrgId),
         pinned: false,
         connections: [],
       };
     }
 
-    // Normal database lookup for string IDs
-    return this.findByIdInternal(this.db, id);
+    // Normal database lookup for string IDs. When the caller supplies an
+    // organization, enforce it in SQL rather than relying on every consumer to
+    // remember a second organization_id check after lookup.
+    return this.findByIdInternal(this.db, id, organizationId);
   }
 
   private async findByIdInternal(
     db: Kysely<Database>,
     id: string,
+    organizationId?: string,
   ): Promise<VirtualMCPEntity | null> {
-    const row = await db
+    let query = db
       .selectFrom("connections")
       .selectAll()
       .where("id", "=", id)
-      .where("connection_type", "=", "VIRTUAL")
-      .executeTakeFirst();
+      .where("connection_type", "=", "VIRTUAL");
+    if (organizationId) {
+      query = query.where("organization_id", "=", organizationId);
+    }
+    const row = await query.executeTakeFirst();
 
     if (!row) {
       return null;

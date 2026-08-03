@@ -115,10 +115,8 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       data.virtual_mcp_id,
       organization.id,
     );
-    // `findById`'s organizationId param only resolves well-known synthetic
-    // ids (decopilot, brand-context-setup) — for a normal row it does NOT
-    // filter by org, so existence alone doesn't prove the vMCP is ours. Must
-    // check explicitly, same as COLLECTION_VIRTUAL_MCP_UPDATE does.
+    // Keep the explicit entity check as defense in depth for synthesized
+    // well-known agents; normal rows are scoped in SQL by findById.
     if (!vmcp || vmcp.organization_id !== organization.id) {
       throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
     }
