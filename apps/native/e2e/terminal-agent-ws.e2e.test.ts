@@ -106,10 +106,12 @@ interface LaunchRecord {
     mcpServerNames: ["cms"];
     scopedMcpAuthorization: true;
     workspaceTrustSuppressed: true | null;
+    claudeYoloMode?: true;
     codexYoloMode?: true;
     codexHookTrustBypassAbsent?: true;
     codexTooltipsDisabled?: true;
     codexHookTrustPreflightSequence?: number;
+    opencodeYoloMode?: true;
   };
 }
 
@@ -613,6 +615,28 @@ function expectCodexInteractiveLaunch(
   );
 }
 
+function expectClaudeInteractiveLaunch(record: LaunchRecord): void {
+  const permissionModeIndexes = record.args.flatMap((argument, index) =>
+    argument === "--permission-mode" ? [index] : [],
+  );
+  expect(permissionModeIndexes).toHaveLength(1);
+  const permissionModeIndex = permissionModeIndexes[0]!;
+  expect(record.args[permissionModeIndex + 1]).toBe("bypassPermissions");
+  expect(record.args).not.toContain("--dangerously-skip-permissions");
+  const resumeIndex = record.args.indexOf("--resume");
+  if (resumeIndex !== -1) {
+    expect(permissionModeIndex).toBeLessThan(resumeIndex);
+  }
+  expect(record.managedLaunch.claudeYoloMode).toBe(true);
+}
+
+function expectOpenCodeInteractiveLaunch(record: LaunchRecord): void {
+  expect(record.args.filter((argument) => argument === "--auto")).toHaveLength(
+    1,
+  );
+  expect(record.managedLaunch.opencodeYoloMode).toBe(true);
+}
+
 function expectCodexHookTrustPreflight(
   record: CodexHookTrustPreflightRecord,
   expectedCwd: string,
@@ -1026,6 +1050,8 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             mcpServerNames: ["cms"],
             scopedMcpAuthorization: true,
             workspaceTrustSuppressed: provider === "opencode" ? null : true,
+            ...(provider === "claude-code" ? { claudeYoloMode: true } : {}),
+            ...(provider === "opencode" ? { opencodeYoloMode: true } : {}),
             ...(provider === "codex"
               ? {
                   codexYoloMode: true,
@@ -1036,11 +1062,14 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               : {}),
           });
           if (provider === "opencode") {
+            expectOpenCodeInteractiveLaunch(firstLaunches[0]!);
             expect(firstLaunches[0]?.args[0]).toBe("--agent");
             expect(firstLaunches[0]?.args[1]).toMatch(/^studio-native-.+/);
             expect(
               hasCliFlag(firstLaunches[0]?.args ?? [], "--model"),
             ).toBeFalse();
+          } else if (provider === "claude-code") {
+            expectClaudeInteractiveLaunch(firstLaunches[0]!);
           } else if (provider === "codex") {
             expectCodexInteractiveLaunch(firstLaunches[0]!, 1);
             const preflights = await waitForCodexHookTrustPreflightRecords(
@@ -1106,6 +1135,8 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             mcpServerNames: ["cms"],
             scopedMcpAuthorization: true,
             workspaceTrustSuppressed: provider === "opencode" ? null : true,
+            ...(provider === "claude-code" ? { claudeYoloMode: true } : {}),
+            ...(provider === "opencode" ? { opencodeYoloMode: true } : {}),
             ...(provider === "codex"
               ? {
                   codexYoloMode: true,
@@ -1117,6 +1148,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           });
           if (provider === "claude-code") {
             expect(launches[1]?.args).toContain("--resume");
+            expectClaudeInteractiveLaunch(launches[1]!);
           } else if (provider === "codex") {
             expect(launches[1]?.args).toContain("resume");
             expectCodexInteractiveLaunch(launches[1]!, 2);
@@ -1135,9 +1167,11 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               );
             }
           } else {
+            expectOpenCodeInteractiveLaunch(launches[1]!);
             expect(launches[1]?.args[0]).toBe("--agent");
             expect(launches[1]?.args[1]).toMatch(/^studio-native-.+/);
             expect(launches[1]?.args.slice(2)).toEqual([
+              "--auto",
               "--session",
               `studio-e2e-${provider}-session`,
             ]);

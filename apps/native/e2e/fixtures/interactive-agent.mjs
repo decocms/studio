@@ -740,6 +740,20 @@ function loadHookConfig() {
     if (!claudeConfigDir) {
       fail("Claude launch is missing its isolated config directory");
     }
+    const permissionModeIndexes = providerArgs.flatMap((argument, index) =>
+      argument === "--permission-mode" ? [index] : [],
+    );
+    const permissionModeIndex = permissionModeIndexes[0];
+    const resumeIndex = providerArgs.indexOf("--resume");
+    if (
+      permissionModeIndexes.length !== 1 ||
+      permissionModeIndex === undefined ||
+      providerArgs[permissionModeIndex + 1] !== "bypassPermissions" ||
+      providerArgs.includes("--dangerously-skip-permissions") ||
+      (resumeIndex !== -1 && permissionModeIndex > resumeIndex)
+    ) {
+      fail("Claude interactive launch did not use the managed YOLO contract");
+    }
     const claudeState = JSON.parse(
       readFileSync(join(claudeConfigDir, ".claude.json"), "utf8"),
     );
@@ -785,6 +799,7 @@ function loadHookConfig() {
       ...promptContract,
       mcpServerNames: ["cms"],
       workspaceTrustSuppressed: true,
+      claudeYoloMode: true,
     };
     return JSON.parse(readFileSync(settingsPath, "utf8"));
   }
@@ -892,6 +907,9 @@ function loadHookConfig() {
   if (hasCliFlag(providerArgs, "--model")) {
     fail("OpenCode launch must leave provider/model selection to its TUI");
   }
+  if (providerArgs.filter((argument) => argument === "--auto").length !== 1) {
+    fail("OpenCode interactive launch did not use the managed YOLO contract");
+  }
   const promptContract = validateSystemPrompt(
     config.agent[managedAgentName].prompt,
   );
@@ -944,6 +962,7 @@ function loadHookConfig() {
     ...promptContract,
     mcpServerNames: ["cms"],
     workspaceTrustSuppressed: null,
+    opencodeYoloMode: true,
   };
   return null;
 }

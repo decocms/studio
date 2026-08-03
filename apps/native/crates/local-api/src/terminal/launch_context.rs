@@ -621,15 +621,26 @@ async fn prepare_claude(
         "--settings".to_string(),
         settings_path.display().to_string(),
     ]);
+    append_claude_launch_args(request, provider_session_id, argv);
+    Ok(())
+}
+
+fn append_claude_launch_args(
+    request: LaunchRequest<'_>,
+    provider_session_id: Option<&str>,
+    argv: &mut Vec<String>,
+) {
     if request.plan_mode || request.approval_mode == "readonly" {
         argv.extend(["--permission-mode".to_string(), "plan".to_string()]);
-    } else if request.approval_mode == "auto" {
-        argv.extend(["--permission-mode".to_string(), "acceptEdits".to_string()]);
+    } else {
+        argv.extend([
+            "--permission-mode".to_string(),
+            "bypassPermissions".to_string(),
+        ]);
     }
     if let Some(provider_session_id) = provider_session_id {
         argv.extend(["--resume".to_string(), provider_session_id.to_string()]);
     }
-    Ok(())
 }
 
 async fn prepare_codex(
@@ -706,7 +717,7 @@ async fn prepare_opencode(
     let config = opencode_config(system_prompt, plugin_url.as_str(), &agent_name, readonly);
 
     argv.extend(["--agent".to_string(), agent_name]);
-    if request.approval_mode == "auto" && !readonly {
+    if !readonly {
         argv.push("--auto".to_string());
     }
     if let Some(provider_session_id) = provider_session_id {
@@ -2260,6 +2271,64 @@ mod tests {
     }
 
     #[test]
+    fn claude_normal_launches_bypass_permissions_before_resume() {
+        let fence = test_fence("account", "thread");
+        for approval_mode in ["default", "auto"] {
+            let request = LaunchRequest {
+                fence: &fence,
+                terminal_session_id: "terminal",
+                harness: HarnessId::ClaudeCode,
+                approval_mode,
+                plan_mode: false,
+                hook_token: "hook",
+                mcp_token: "mcp",
+                provider_session_id: Some("session"),
+            };
+            let mut argv = Vec::new();
+            append_claude_launch_args(request, Some("session"), &mut argv);
+
+            assert_eq!(
+                argv,
+                [
+                    "--permission-mode",
+                    "bypassPermissions",
+                    "--resume",
+                    "session",
+                ]
+            );
+            assert!(!argv.iter().any(|arg| arg == "acceptEdits"));
+            assert!(!argv
+                .iter()
+                .any(|arg| arg == "--dangerously-skip-permissions"));
+        }
+    }
+
+    #[test]
+    fn claude_plan_and_readonly_launches_never_bypass_permissions() {
+        let fence = test_fence("account", "thread");
+        for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
+            let request = LaunchRequest {
+                fence: &fence,
+                terminal_session_id: "terminal",
+                harness: HarnessId::ClaudeCode,
+                approval_mode,
+                plan_mode,
+                hook_token: "hook",
+                mcp_token: "mcp",
+                provider_session_id: None,
+            };
+            let mut argv = Vec::new();
+            append_claude_launch_args(request, None, &mut argv);
+
+            assert_eq!(argv, ["--permission-mode", "plan"]);
+            assert!(!argv.iter().any(|arg| arg == "bypassPermissions"));
+            assert!(!argv
+                .iter()
+                .any(|arg| arg == "--dangerously-skip-permissions"));
+        }
+    }
+
+    #[test]
     fn codex_workspace_trust_override_is_launch_scoped_and_precedes_resume() {
         let fence = test_fence("account", "thread");
         let request = LaunchRequest {
@@ -2648,49 +2717,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn opencode_launch_uses_exact_session_resume_and_managed_plugin() {
-        let root = tempfile::tempdir().unwrap();
+    async fn opencode_normal_launches_enable_auto_before_exact_session_resume() {
         let fence = test_fence("account", "thread-one");
-        let request = LaunchRequest {
-            fence: &fence,
-            terminal_session_id: "terminal-one",
-            harness: HarnessId::OpenCode,
-            approval_mode: "auto",
-            plan_mode: false,
-            hook_token: "hook-token",
-            mcp_token: "mcp-token",
-            provider_session_id: Some("ses_exact"),
-        };
-        let mut argv = Vec::new();
-        let config = prepare_opencode(
-            root.path(),
-            "instructions",
-            request,
-            &mut argv,
-            Some("ses_exact"),
-        )
-        .await
-        .unwrap();
+        for approval_mode in ["default", "auto"] {
+            let root = tempfile::tempdir().unwrap();
+            let request = LaunchRequest {
+                fence: &fence,
+                terminal_session_id: "terminal-one",
+                harness: HarnessId::OpenCode,
+                approval_mode,
+                plan_mode: false,
+                hook_token: "hook-token",
+                mcp_token: "mcp-token",
+                provider_session_id: Some("ses_exact"),
+            };
+            let mut argv = Vec::new();
+            let config = prepare_opencode(
+                root.path(),
+                "instructions",
+                request,
+                &mut argv,
+                Some("ses_exact"),
+            )
+            .await
+            .unwrap();
 
-        assert_eq!(
-            argv,
-            [
-                "--agent",
-                "studio-native-terminal-one",
-                "--auto",
-                "--session",
-                "ses_exact",
-            ]
-        );
-        let config: Value = serde_json::from_str(&config).unwrap();
-        let plugin = config["plugin"][0].as_str().unwrap();
-        assert!(plugin.starts_with("file://"));
-        assert!(root.path().join("opencode-lifecycle.js").is_file());
+            assert_eq!(
+                argv,
+                [
+                    "--agent",
+                    "studio-native-terminal-one",
+                    "--auto",
+                    "--session",
+                    "ses_exact",
+                ]
+            );
+            let config: Value = serde_json::from_str(&config).unwrap();
+            let plugin = config["plugin"][0].as_str().unwrap();
+            assert!(plugin.starts_with("file://"));
+            assert!(root.path().join("opencode-lifecycle.js").is_file());
+        }
     }
 
     #[tokio::test]
     async fn opencode_readonly_and_plan_launches_never_enable_auto() {
-        for (approval_mode, plan_mode) in [("readonly", false), ("auto", true)] {
+        for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let root = tempfile::tempdir().unwrap();
             let fence = test_fence("account", "thread-one");
             let request = LaunchRequest {

@@ -65,9 +65,9 @@ This is an atomic native cutover:
   and a local lifecycle plugin without mutating global or project
   configuration. The unique identity keeps the managed agent authoritative
   under OpenCode's deep config merge.
-- Fresh sessions use the ordinary TUI; exact resume is
-  `opencode --session <provider-session-id>`. Studio never uses ambiguous
-  `--continue`.
+- Fresh sessions use the ordinary TUI with `--auto`; exact resume is
+  `opencode --auto --session <provider-session-id>`. Read-only and plan
+  launches omit `--auto`, and Studio never uses ambiguous `--continue`.
 - Root-session plugin events drive busy/retry/idle/error and
   permission/question states. Child-session events are filtered both in the
   plugin and at the hook normalization boundary.
@@ -333,7 +333,8 @@ verbose flags. It retains:
 - `--append-system-prompt-file` with the Studio launch context;
 - `--mcp-config` using environment references;
 - `--strict-mcp-config` for the selected Studio Virtual MCP;
-- interactive-safe permission and plan settings;
+- `bypassPermissions` for ordinary launches and `plan` for read-only or plan
+  launches;
 - `--resume <providerSessionId>` for resumed conversations.
 
 Generate a per-session settings overlay containing Studio hooks. Verify in the
@@ -348,8 +349,10 @@ fall back to an unlocked state write when its lock is busy, so this narrows but
 cannot claim strict cross-process mutual exclusion. Preserve every unrelated
 state field, follow a bounded state-file symlink chain without replacing the
 symlink, reject malformed or unsafe files, and keep this separate from
-permission mode; never use the broad `--dangerously-skip-permissions` flag as
-workspace-trust plumbing. Do not rewrite the user's global Claude settings file.
+permission mode. Ordinary Studio launches intentionally use the explicit
+`--permission-mode bypassPermissions` launch setting, but workspace trust is
+still injected independently and read-only or plan launches remain in `plan`
+mode. Do not rewrite the user's global Claude settings file.
 
 ### Codex
 
@@ -376,11 +379,11 @@ subcommand; never bypass trust globally or mutate `~/.codex`.
 
 Interactive argv selects the launch-unique `studio-native-*` primary agent and
 uses `--session <providerSessionId>` for exact resume. It does not use
-`--continue` or `--pure`. Studio passes `--auto` only when the user explicitly
-chooses auto mode outside read-only/plan mode. Read-only and plan launches deny
-OpenCode's `edit`, `bash`, and `task` permissions so writes cannot be performed
-directly, through a shell, or through a delegated subagent. Provider/model
-selection remains owned by the user's OpenCode configuration.
+`--continue` or `--pure`. Studio passes `--auto` for ordinary launches. Read-only
+and plan launches omit `--auto` and deny OpenCode's `edit`, `bash`, and `task`
+permissions so writes cannot be performed directly, through a shell, or through
+a delegated subagent. Provider/model selection remains owned by the user's
+OpenCode configuration.
 
 `OPENCODE_CONFIG_CONTENT` supplies the Studio agent prompt, an environment-
 referenced remote `cms` MCP, and a file-URL lifecycle plugin from the private
