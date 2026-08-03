@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
   buildDurableDispatchInput,
 } from "./dispatch-run";
@@ -74,14 +73,11 @@ describe("buildDurableDispatchInput", () => {
           credentialId: "cred-1",
           thinking: { id: "model-1" },
         },
-        agent: { id: "agent-1" },
         temperature: 0.2,
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         windowSize: 50,
         branch: "main",
@@ -101,9 +97,11 @@ describe("buildDurableDispatchInput", () => {
       taskId: "thread-1",
       messageId: "msg-user",
       runFenceToken: "fence-1",
-      harnessId: "decopilot",
       branch: "main",
     });
+    expect(durable).not.toHaveProperty("agent");
+    expect(durable).not.toHaveProperty("harnessId");
+    expect(durable).not.toHaveProperty("sandboxProviderKind");
   });
 
   test("carries runMetadata through the frozen snapshot", () => {
@@ -111,14 +109,11 @@ describe("buildDurableDispatchInput", () => {
       {
         messages: [],
         models: { credentialId: "cred-1", thinking: { id: "model-1" } },
-        agent: { id: "agent-1" },
         temperature: 0.2,
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         runMetadata: { org_id: "org-xyz", url: "shop.com" },
       },
@@ -145,14 +140,11 @@ describe("buildDurableDispatchInput", () => {
           } as ChatMessage,
         ],
         models: { credentialId: "cred-1", thinking: { id: "model-1" } },
-        agent: { id: "agent-1" },
         temperature: 0.2,
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },
@@ -175,36 +167,15 @@ describe("buildDurableDispatchInput", () => {
           } as ChatMessage,
         ],
         models: { credentialId: "cred-1", thinking: { id: "model-1" } },
-        agent: { id: "agent-1" },
         temperature: 0.2,
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },
     );
     expect("systemContext" in durable).toBe(false);
-  });
-});
-
-describe("assertHostedDispatchHarness", () => {
-  test("accepts only explicit Decopilot", () => {
-    expect(() => assertHostedDispatchHarness("decopilot")).not.toThrow();
-    for (const harnessId of [
-      null,
-      undefined,
-      "claude-code",
-      "codex",
-      "opencode",
-      "future",
-    ] as const) {
-      expect(() => assertHostedDispatchHarness(harnessId)).toThrow(
-        /explicit Decopilot/,
-      );
-    }
   });
 });

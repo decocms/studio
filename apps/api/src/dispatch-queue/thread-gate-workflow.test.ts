@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   claimRunFenceForDispatch,
-  assertHarnessRunsInCluster,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
@@ -43,13 +42,9 @@ describe("claimRunFenceForDispatch", () => {
       credentialId: "cred-1",
       thinking: { id: "model-1" },
     },
-    agent: { id: "agent-1" },
     temperature: 0,
     toolApprovalLevel: "auto",
     mode: "default",
-    sandboxProviderKind: "agent-sandbox",
-    target: { sandboxProviderKind: "agent-sandbox" },
-    harnessId: "decopilot",
   } as SerializableDispatchRunInput;
 
   it("preserves the submit-time run fence token", () => {
@@ -73,26 +68,36 @@ describe("claimRunFenceForDispatch", () => {
   });
 });
 
-describe("assertHarnessRunsInCluster", () => {
-  it("throws for every native or unknown harness", () => {
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
-      expect(() => assertHarnessRunsInCluster(harnessId)).toThrow(
-        /explicit Decopilot/,
-      );
-    }
-  });
+// The dispatch step requires a live StudioContext, real storage, and DBOS, so
+// repo policy keeps it out of unit tests. Pin the security-sensitive ordering
+// in the real function body: persisted authority must be checked before either
+// hosted status publication or the run-fence write.
+describe("dispatchRunAndWaitStep authority ordering", () => {
+  const src = readFileSync(
+    join(import.meta.dir, "thread-gate-workflow.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("async function dispatchRunAndWaitStep(");
+  const fnEnd = src.indexOf(
+    "\nasync function trackMessageStartedStep",
+    fnStart,
+  );
+  const body = src.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
 
-  it("lets decopilot through", () => {
-    expect(() => assertHarnessRunsInCluster("decopilot")).not.toThrow();
-  });
+  it("checks the persisted hosted runtime before status or fence side effects", () => {
+    const loadThreadIdx = body.indexOf("storage.threads.get(taskId)");
+    const authorityIdx = body.indexOf("resolveThreadAuthority(thread");
+    const runtimeIdx = body.indexOf("isHostedDecopilotRuntime({");
+    const statusIdx = body.indexOf("publishRunStatusStage(");
+    const fenceIdx = body.indexOf("storage.threads.setRunFence(");
 
-  it("rejects a missing harness instead of defaulting it", () => {
-    expect(() => assertHarnessRunsInCluster(undefined)).toThrow(
-      /explicit Decopilot/,
-    );
-    expect(() => assertHarnessRunsInCluster(null)).toThrow(
-      /explicit Decopilot/,
-    );
+    expect(fnStart).toBeGreaterThan(-1);
+    expect(fnEnd).toBeGreaterThan(fnStart);
+    expect(loadThreadIdx).toBeGreaterThan(-1);
+    expect(authorityIdx).toBeGreaterThan(loadThreadIdx);
+    expect(runtimeIdx).toBeGreaterThan(authorityIdx);
+    expect(statusIdx).toBeGreaterThan(runtimeIdx);
+    expect(fenceIdx).toBeGreaterThan(runtimeIdx);
   });
 });
 

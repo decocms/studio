@@ -33,19 +33,17 @@ import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
-  HarnessId,
   HarnessStreamInput,
   HarnessUserContext,
   ModelSelection,
   ModelsConfig,
 } from "@/harnesses";
-import { createSecretModelSource } from "@/harnesses";
+import { createSecretModelSource, streamDecopilot } from "@/harnesses";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -58,6 +56,7 @@ import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
+import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
@@ -70,7 +69,6 @@ import { ensureModelCompatibility } from "./model-compat";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
-  shouldPublishClusterRunStatus,
 } from "./run-status-stage";
 import { publishUserMessage } from "./user-message-stream";
 import type {
@@ -273,16 +271,11 @@ async function resolveSecretModelSource(
 // Types
 // ============================================================================
 
-export interface AgentConfig {
-  id: string;
-}
-
 export interface DispatchRunInput {
   messages: ChatMessage[];
   /** CLIENT request shape (root credentialId). `prepareRun` normalizes it
    *  into the per-slot harness/wire `ModelsConfig` before dispatch. */
   models: ClientModelsConfig;
-  agent: AgentConfig;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
   /**
@@ -326,10 +319,6 @@ export interface DispatchRunInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
-  /** Hosted runs always use the managed agent sandbox. */
-  sandboxProviderKind: "agent-sandbox";
-  /** Hosted dispatch accepts only the explicit Decopilot harness. */
-  harnessId: "decopilot";
   /**
    * Single-writer fence token for this run. Durable submit callers mint and
    * persist it before starting DBOS, then thread it down here so `prepareRun`
@@ -342,7 +331,6 @@ export interface DispatchRunInput {
 
 export interface FrozenRunSnapshot {
   models: ClientModelsConfig;
-  agent: AgentConfig;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
   toolAllowlist?: string[] | null;
@@ -357,8 +345,6 @@ export interface FrozenRunSnapshot {
    *  it to downstream MCP tool calls (see DispatchRunInput.runMetadata). */
   runMetadata?: Record<string, string>;
   branch?: string | null;
-  sandboxProviderKind: "agent-sandbox";
-  harnessId: "decopilot";
   /**
    * Per-turn system context the client attached to this user turn (the
    * `role:"system"` message in the POST body — e.g. the currently-open file,
@@ -386,16 +372,6 @@ export interface DurableDispatchRunInput extends FrozenRunSnapshot {
 export type DispatchRunRuntimeInput =
   | DispatchRunInput
   | DurableDispatchRunInput;
-
-export function assertHostedDispatchHarness(
-  harnessId: string | null | undefined,
-): asserts harnessId is "decopilot" {
-  if (harnessId !== "decopilot") {
-    throw new Error(
-      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
-    );
-  }
-}
 
 function isDurableDispatchRunInput(
   input: DispatchRunRuntimeInput,
@@ -431,7 +407,6 @@ export function buildDurableDispatchInput(
 
   return {
     models: input.models,
-    agent: input.agent,
     temperature: input.temperature,
     toolApprovalLevel: input.toolApprovalLevel,
     ...(input.toolAllowlist !== undefined
@@ -454,8 +429,6 @@ export function buildDurableDispatchInput(
       ? { runMetadata: input.runMetadata }
       : {}),
     branch: options.branch ?? input.branch ?? null,
-    sandboxProviderKind: input.sandboxProviderKind,
-    harnessId: input.harnessId,
     organizationId: input.organizationId,
     userId: input.userId,
     taskId: input.taskId,
@@ -645,9 +618,7 @@ export async function dispatchRunAndWait(
  * lazy harness chunk source:
  * `{ ...wireHarnessInput, signal: registrySignal }`.
  */
-type WireHarnessInput = Omit<HarnessStreamInput, "signal"> & {
-  harnessId: HarnessId;
-};
+type WireHarnessInput = Omit<HarnessStreamInput, "signal">;
 
 interface PreparedRun {
   taskId: string;
@@ -747,8 +718,6 @@ async function prepareRun(
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
   const { runRegistry, streamBuffer } = deps;
-  assertHostedDispatchHarness(input.harnessId);
-  const harnessId = input.harnessId;
 
   // Legacy/direct callers may still provide raw messages. Durable workflow
   // callers pass only a messageId and reload the already-persisted user turn.
@@ -772,8 +741,9 @@ async function prepareRun(
 
     // The persisted thread is the authority for both ownership and agent
     // identity. Resolve it before credentials, model permissions, status
-    // publication, or run-state writes. `input.agent` remains in the durable
-    // shape only so old DBOS payloads deserialize; it never selects execution.
+    // publication, or run-state writes. Old DBOS payloads may still carry
+    // agent/harness/sandbox selector fields, but structural deserialization
+    // ignores them and none can select execution.
     const mem = await createMemory(ctx.storage.threads, {
       organization_id: input.organizationId,
       thread_id: input.taskId,
@@ -784,15 +754,17 @@ async function prepareRun(
       organizationId: input.organizationId,
       userId: input.userId,
     });
-    const authoritativeAgent: AgentConfig = { id: agentId };
-    if (input.agent?.id && input.agent.id !== agentId) {
-      console.warn("decopilot.dispatch: ignored stale payload agent", {
-        threadId: mem.thread.id,
-        requested: input.agent.id,
-        authoritative: agentId,
-      });
+    if (
+      !isHostedDecopilotRuntime({
+        harnessId: mem.thread.harness_id,
+        sandboxProviderKind: mem.thread.sandbox_provider_kind,
+      })
+    ) {
+      throw new PermanentRunError(
+        "invalid_runtime",
+        "Thread is not assigned to the hosted Decopilot runtime",
+      );
     }
-
     // Normal rows are scoped by VirtualMCPStorage.findById's SQL predicate;
     // retain the explicit entity check for synthesized well-known agents and
     // defense in depth if another storage adapter is introduced.
@@ -813,7 +785,7 @@ async function prepareRun(
     // optional client-only extras like `capabilities`). Everything below the
     // normalization call uses the per-slot v2 `models`.
     const clientModels = input.models;
-    rootSpan.setAttribute("decopilot.harnessId", harnessId);
+    rootSpan.setAttribute("decopilot.harnessId", "decopilot");
 
     // Every run is hosted. Stash it on the context so downstream sandbox tools
     // resolve the hosted provider without re-querying the registry.
@@ -822,11 +794,6 @@ async function prepareRun(
       "decopilot.dispatchTarget.sandboxProviderKind",
       "agent-sandbox",
     );
-
-    const shouldPublishRunStatus = shouldPublishClusterRunStatus({
-      harnessId,
-      sandboxProviderKind: "agent-sandbox",
-    });
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission
@@ -862,13 +829,11 @@ async function prepareRun(
     // added here when they gain a producer.
     models = filterToolTiersByPermission(allowedModels, models);
 
-    if (shouldPublishRunStatus) {
-      await publishRunStatusStage(
-        streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[0],
-      );
-    }
+    await publishRunStatusStage(
+      streamBuffer,
+      input.taskId,
+      PREPARE_RUN_STATUS_STAGES[0],
+    );
 
     // 2. Load entities, create/load memory, and resolve Decopilot model
     // credentials in parallel — one resolution per configured slot, each
@@ -902,13 +867,11 @@ async function prepareRun(
       // prompt builder renders them without any `ctx.storage` reach-in.
       resolveUserContext(ctx, input.organizationId, agentId, input.userId),
     ]);
-    if (shouldPublishRunStatus) {
-      await publishRunStatusStage(
-        streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[1],
-      );
-    }
+    await publishRunStatusStage(
+      streamBuffer,
+      input.taskId,
+      PREPARE_RUN_STATUS_STAGES[1],
+    );
 
     const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
       ? {
@@ -996,7 +959,6 @@ async function prepareRun(
         podId: getPodId(),
         runConfig: {
           models: input.models,
-          agent: authoritativeAgent,
           temperature: input.temperature,
           toolApprovalLevel: input.toolApprovalLevel,
           mode: input.mode,
@@ -1229,7 +1191,6 @@ async function prepareRun(
     };
 
     const wireHarnessInput: WireHarnessInput = {
-      harnessId,
       threadId: mem.thread.id,
       userMessage: wireUserMessage,
       harness: { sessionId: undefined },
@@ -1260,13 +1221,11 @@ async function prepareRun(
     //
     // Only Decopilot runs a hosted loop here. Coding-agent harnesses are
     // native-only and the thread gate rejects them before this point.
-    if (shouldPublishRunStatus) {
-      await publishRunStatusStage(
-        streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[2],
-      );
-    }
+    await publishRunStatusStage(
+      streamBuffer,
+      input.taskId,
+      PREPARE_RUN_STATUS_STAGES[2],
+    );
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
@@ -1277,17 +1236,14 @@ async function prepareRun(
         };
         setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // The in-process SandboxClient returns the Decopilot chunk iterable;
+        // The one hosted runtime returns its chunk iterable directly;
         // consumeHarnessStream consumes it verbatim.
-        if (shouldPublishRunStatus) {
-          await publishRunStatusStage(
-            streamBuffer,
-            mem.thread.id,
-            PREPARE_RUN_STATUS_STAGES[3],
-          );
-        }
-        const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
-        const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
+        await publishRunStatusStage(
+          streamBuffer,
+          mem.thread.id,
+          PREPARE_RUN_STATUS_STAGES[3],
+        );
+        const rawHarnessChunks = streamDecopilot(ctx, harnessInput);
         yield* rawHarnessChunks;
       };
 

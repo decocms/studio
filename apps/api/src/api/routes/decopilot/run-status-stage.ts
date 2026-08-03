@@ -24,29 +24,6 @@ export const PREPARE_RUN_STATUS_STAGES = [
 
 const STAGE_SET = new Set<string>(RUN_STATUS_STAGES);
 
-export function shouldPublishClusterRunStatus(input: {
-  harnessId?: string | null;
-  sandboxProviderKind?: string | null;
-}): boolean {
-  return (
-    input.sandboxProviderKind === "agent-sandbox" &&
-    input.harnessId === "decopilot"
-  );
-}
-
-export function shouldPublishThreadGateRunStatus(input: {
-  harnessId?: string | null;
-  sandboxProviderKind?: string | null;
-}): boolean {
-  // Legacy requests may have no target; those replay through hosted dispatch
-  // alongside explicit agent-sandbox targets.
-  return (
-    input.harnessId === "decopilot" &&
-    (input.sandboxProviderKind == null ||
-      input.sandboxProviderKind === "agent-sandbox")
-  );
-}
-
 export type RunStatusChunk = Extract<
   UIMessageChunk,
   { type: `data-${string}` }

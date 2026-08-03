@@ -177,8 +177,9 @@ test.describe("decopilot projection — hosted happy path", () => {
       });
       expect(thread.item.title).toBe("New chat");
 
-      // POST a user message via agent-sandbox (hosted path → hostedHarnessWorkflow
-      // → consumeRunProjection as the sole terminal-status writer).
+      // POST the selectorless hosted contract. The persisted thread selects
+      // Decopilot + agent-sandbox; hostedHarnessWorkflow then feeds
+      // consumeRunProjection as the sole terminal-status writer.
       const runResp = await api.post(
         `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
         {
@@ -189,11 +190,8 @@ test.describe("decopilot projection — hosted happy path", () => {
                 parts: [{ type: "text", text: "Reply with one word: hello" }],
               },
             ],
-            agent: { id: agent.item.id },
             branch: "ephemeral",
             temperature: 0,
-            sandboxProviderKind: "agent-sandbox",
-            harnessId: "decopilot",
           },
           headers: { "content-type": "application/json" },
         },

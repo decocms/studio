@@ -30,7 +30,6 @@ import { enqueueThreadRun } from "@/dispatch-queue";
 import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemThreadRef } from "@/storage/types";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 
 export type StallAction = "none" | "advance" | "nudge";
@@ -86,8 +85,6 @@ async function nudgeThread(
 ): Promise<void> {
   const organizationId = item.organizationId;
   const model = await resolveTier(ctx, "smart");
-  const agentId = thread.virtualMcpId ?? getDecopilotId(organizationId);
-
   const requestMessage = {
     id: `stall-nudge-${item.id}-${thread.threadId}`,
     role: "user" as const,
@@ -114,14 +111,11 @@ async function nudgeThread(
           credentialId: model.credentialId,
           thinking: { id: model.modelId, title: model.modelMeta.title },
         },
-        agent: { id: agentId },
         temperature: 0.5,
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId,
         userId: item.assignedBy ?? item.createdBy,
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         taskId: thread.threadId,
         runMetadata: { taskBoardItemId: item.id },
       },

@@ -187,7 +187,6 @@ export function buildClusterEnvironmentTools(args: {
           threadId: streamInput.threadId,
           orgId: streamInput.organizationId,
           userId: streamInput.user.id,
-          agentId: streamInput.agent.id,
           temperature: streamInput.temperature,
           toolApprovalLevel: streamInput.toolApprovalLevel,
           branch: runContext.branch ?? null,

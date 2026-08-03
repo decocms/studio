@@ -28,12 +28,12 @@ import type {
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import {
-  publishRunStatusStage,
-  shouldPublishThreadGateRunStatus,
-} from "@/api/routes/decopilot/run-status-stage";
+import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import { mintRunFenceToken } from "@/api/routes/decopilot/dispatch-fence";
 import { consumeRunProjection } from "@/api/routes/decopilot/consume-run-projection";
+import { PermanentRunError } from "@/core/dispatch-errors";
+import { resolveThreadAuthority } from "@/core/thread-authority";
+import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 
 export { THREAD_GATE_QUEUE } from "./queue-names";
 import { THREAD_GATE_QUEUE } from "./queue-names";
@@ -45,22 +45,6 @@ import { startHostedHarness } from "./hosted-harness-workflow";
  * on the same thread.
  */
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
-
-/**
- * Guard: hosted dispatch is Decopilot-only.
- *
- * Coding-agent loops run entirely inside the Tauri desktop app (`apps/native`,
- * which owns its Rust `local-api` and never enqueues onto this gate). Use a
- * positive allowlist so an unknown or future native harness cannot silently
- * fall through to the hosted Decopilot loop.
- */
-export function assertHarnessRunsInCluster(harnessId?: string | null): void {
-  if (harnessId !== "decopilot") {
-    throw new Error(
-      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
-    );
-  }
-}
 
 /**
  * Serializable subset of `DispatchRunInput`. The abort signal is the only
@@ -166,14 +150,13 @@ async function dispatchRunAndWaitStep(
 ): Promise<DispatchStepResult> {
   const rt = requireRuntime();
   const { request } = ctx;
-  const taskId = request.taskId ?? ctx.threadId;
-  if (
-    shouldPublishThreadGateRunStatus({
-      harnessId: request.harnessId,
-    })
-  ) {
-    await publishRunStatusStage(rt.deps.streamBuffer, taskId, "starting-run");
+  if (request.taskId && request.taskId !== ctx.threadId) {
+    throw new PermanentRunError(
+      "invalid_runtime",
+      "Queued run does not match its thread partition",
+    );
   }
+  const taskId = ctx.threadId;
 
   const studioCtx = await rt.studioContextFactory(
     request.organizationId,
@@ -186,8 +169,31 @@ async function dispatchRunAndWaitStep(
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Defense in depth for replayed workflow payloads and direct callers.
-  assertHarnessRunsInCluster(request.harnessId);
+  // Re-validate the persisted authority at the last durable boundary before
+  // any hosted side effect. Internal enqueues and DBOS replays bypass the HTTP
+  // route, so a stale payload must not publish hosted status or replace a
+  // native thread's run fence before the child rejects it.
+  const thread = await studioCtx.storage.threads.get(taskId);
+  if (!thread) {
+    throw new PermanentRunError("invalid_runtime", "Thread not found");
+  }
+  resolveThreadAuthority(thread, {
+    organizationId: request.organizationId,
+    userId: request.userId,
+  });
+  if (
+    !isHostedDecopilotRuntime({
+      harnessId: thread.harness_id,
+      sandboxProviderKind: thread.sandbox_provider_kind,
+    })
+  ) {
+    throw new PermanentRunError(
+      "invalid_runtime",
+      "Thread is not assigned to the hosted Decopilot runtime",
+    );
+  }
+
+  await publishRunStatusStage(rt.deps.streamBuffer, taskId, "starting-run");
 
   // The run fence is minted and persisted HERE, inside the dispatch step —
   // i.e. only while this gate holds the thread's partition slot. POST-time
@@ -196,11 +202,10 @@ async function dispatchRunAndWaitStep(
   // turn's projection (stranding its reply). A request may still carry a
   // fence (redelivery/replay of this step's own recorded output); absent one,
   // mint + persist now.
-  const fenceThreadId = request.taskId ?? ctx.threadId;
   const { runFenceToken, claimedRequest, shouldPersistFence } =
     claimRunFenceForDispatch(request);
   if (shouldPersistFence) {
-    await studioCtx.storage.threads.setRunFence(fenceThreadId, runFenceToken);
+    await studioCtx.storage.threads.setRunFence(taskId, runFenceToken);
   }
 
   // Hosted dispatch. Every run takes this path.
@@ -247,7 +252,6 @@ async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
     groups: { organization: request.organizationId },
     properties: {
       organization_id: request.organizationId,
-      agent_id: request.agent,
       mode: request.mode,
       thread_id: request.taskId ?? ctx.threadId,
       credential_id: request.models.credentialId,
@@ -282,7 +286,6 @@ async function trackMessageFailedStep(
     properties: {
       organization_id: request.organizationId,
       thread_id: request.taskId ?? ctx.threadId,
-      agent_id: request.agent,
       model_id: request.models.thinking.id,
       mode: request.mode,
       error_category: "setup",
@@ -309,7 +312,6 @@ async function trackMessageFailedStep(
 export async function runDispatchSteps(
   ctx: ThreadGateContext,
 ): Promise<ThreadGateOutcome> {
-  assertHarnessRunsInCluster(ctx.request.harnessId);
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
@@ -442,10 +444,6 @@ export async function enqueueThreadRun(
   ctx: ThreadGateContext,
   opts?: { workflowID?: string },
 ): Promise<{ workflowID: string }> {
-  // Reject before DBOS persists or starts any workflow. Background callers
-  // must resolve and pass the thread's explicit hosted runtime before writing
-  // their own request message.
-  assertHarnessRunsInCluster(ctx.request.harnessId);
   const handle = await DBOS.startWorkflow(threadGateWorkflow, {
     queueName: THREAD_GATE_QUEUE,
     enqueueOptions: { queuePartitionKey: ctx.threadId },

@@ -55,7 +55,9 @@ const PersistedRunConfigRawSchema = z.object({
     webSearch: PersistedToolModelInfoSchema.optional(),
     deepResearch: PersistedToolModelInfoSchema.optional(),
   }),
-  agent: z.object({ id: z.string() }),
+  // Legacy rows may carry the request-selected agent. The thread's
+  // virtual_mcp_id is authoritative, so parse the old shape only to discard it.
+  agent: z.object({ id: z.string() }).optional(),
   temperature: z.number(),
   toolApprovalLevel: z.enum(["auto", "readonly", "plan"]).optional(),
   mode: z
@@ -81,7 +83,6 @@ export const PersistedRunConfigSchema = PersistedRunConfigRawSchema.transform(
 
     return {
       models: raw.models,
-      agent: raw.agent,
       temperature: raw.temperature,
       toolApprovalLevel,
       mode,

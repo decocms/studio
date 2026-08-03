@@ -60,5 +60,11 @@
  * after coding-agent execution moved exclusively into the native app. It also
  * adds `validateHostedThread` as the first background-tool workflow step so
  * durable jobs from the retired desktop transport fail before doing work.
+ *
+ * Version 7 removes request-selected agent, harness, and sandbox fields from
+ * every hosted workflow input, including the background-tool snapshot, and
+ * removes the background reaction-target step's redundant agent output.
+ * In-flight version-6 journals contain the old recorded shapes, so replaying
+ * them against the thread-authoritative contract would diverge.
  */
-export const DBOS_WORKFLOW_VERSION = "6";
+export const DBOS_WORKFLOW_VERSION = "7";

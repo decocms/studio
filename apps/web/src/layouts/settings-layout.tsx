@@ -276,7 +276,7 @@ function useIsActiveSettingsPath() {
   return { org, isActive };
 }
 
-export function SettingsSidebar() {
+function SettingsSidebar() {
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
@@ -359,7 +359,7 @@ export function SettingsSidebar() {
   );
 }
 
-export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
+function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();

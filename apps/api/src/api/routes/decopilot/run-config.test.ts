@@ -7,7 +7,6 @@ describe("PersistedRunConfigSchema", () => {
       credentialId: "cred_123",
       thinking: { id: "claude-3-5-sonnet" },
     },
-    agent: { id: "agent_456" },
     temperature: 0.7,
     toolApprovalLevel: "auto" as const,
     mode: "default" as const,
@@ -24,7 +23,7 @@ describe("PersistedRunConfigSchema", () => {
   it("maps legacy toolApprovalLevel plan to mode plan and readonly", () => {
     const legacy = {
       models: validConfig.models,
-      agent: validConfig.agent,
+      agent: { id: "legacy-agent" },
       temperature: validConfig.temperature,
       toolApprovalLevel: "plan" as const,
     };
@@ -39,6 +38,15 @@ describe("PersistedRunConfigSchema", () => {
   it("rejects missing required fields", () => {
     const result = PersistedRunConfigSchema.safeParse({ agent: { id: "x" } });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts and strips a legacy persisted agent selector", () => {
+    const result = PersistedRunConfigSchema.parse({
+      ...validConfig,
+      agent: { id: "stale-agent" },
+    });
+    expect(result).toMatchObject(validConfig);
+    expect(result).not.toHaveProperty("agent");
   });
 
   it("accepts optional fields as undefined", () => {

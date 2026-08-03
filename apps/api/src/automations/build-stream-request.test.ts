@@ -181,7 +181,7 @@ describe("buildStreamRequest", () => {
     expect(result.mode).toBe("default");
   });
 
-  it("uses virtual_mcp_id as the agent id", () => {
+  it("does not duplicate thread routing selectors in the dispatch request", () => {
     const automation = makeAutomation({ virtual_mcp_id: "vir_xyz" });
     const result = buildStreamRequest(
       automation,
@@ -189,7 +189,9 @@ describe("buildStreamRequest", () => {
       "thrd_1",
       makeResolvedModel(),
     );
-    expect(result.agent).toEqual({ id: "vir_xyz" });
+    expect(result).not.toHaveProperty("agent");
+    expect(result).not.toHaveProperty("harnessId");
+    expect(result).not.toHaveProperty("sandboxProviderKind");
   });
 
   it("leaves toolAllowlist null when automation.tools is null", () => {

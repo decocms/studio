@@ -41,10 +41,7 @@ import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput } from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
-import {
-  publishRunStatusStage,
-  shouldPublishClusterRunStatus,
-} from "./run-status-stage";
+import { publishRunStatusStage } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
@@ -160,7 +157,6 @@ function resolveHttpThreadAuthority(
   expected: {
     organizationId: string;
     userId: string;
-    requestedAgentId?: string;
   },
 ): { agentId: string } {
   try {
@@ -179,8 +175,8 @@ function resolveHttpThreadAuthority(
 
 /**
  * Resolve the hosted agent from the thread row and prove that it belongs to
- * the path-resolved organization. The legacy request `agent.id` is only a
- * consistency assertion; it never selects the executing Virtual MCP.
+ * the path-resolved organization. Request payloads never select the executing
+ * Virtual MCP.
  */
 async function requireHostedThreadAgent(
   ctx: StudioContext,
@@ -188,7 +184,6 @@ async function requireHostedThreadAgent(
   expected: {
     organizationId: string;
     userId: string;
-    requestedAgentId?: string;
   },
 ): Promise<string> {
   const { agentId } = resolveHttpThreadAuthority(thread, expected);
@@ -461,18 +456,12 @@ export function assertPersistedHostedRuntime(
 async function validate(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
   threadIdParam: string | undefined,
-): Promise<
-  DispatchRunInput & {
-    sandboxProviderKind?: SandboxProviderKind | null;
-    harnessId?: HarnessId | null;
-  }
-> {
+): Promise<DispatchRunInput> {
   const ctx = c.get("studioContext");
 
   const {
     organization,
     tier,
-    agent,
     systemMessages,
     requestMessage,
     temperature,
@@ -481,8 +470,6 @@ async function validate(
     branch,
     toolApprovalLevel,
     mode,
-    sandboxProviderKind,
-    harnessId,
   } = await validateRequest(c);
 
   const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
@@ -502,8 +489,9 @@ async function validate(
   }
 
   // Resolve authority before model selection or any message/runtime write.
-  // The thread row owns both the user and Virtual MCP identities; the legacy
-  // request agent is accepted only when it agrees with that row.
+  // The thread row owns both the user and Virtual MCP identities. Legacy
+  // request selectors were stripped by StreamRequestSchema and cannot affect
+  // execution.
   if (!taskIdInput) {
     throw new HTTPException(400, { message: "threadId is required" });
   }
@@ -511,15 +499,10 @@ async function validate(
   if (!lockedThread) {
     throw new HTTPException(404, { message: "Thread not found" });
   }
-  const authoritativeAgentId = await requireHostedThreadAgent(
-    ctx,
-    lockedThread,
-    {
-      organizationId: organization.id,
-      userId,
-      requestedAgentId: agent.id,
-    },
-  );
+  await requireHostedThreadAgent(ctx, lockedThread, {
+    organizationId: organization.id,
+    userId,
+  });
 
   // Lock guard: once a thread row carries a non-null `harness_id`, the
   // thread's persisted runtime (harness, sandbox provider, branch) wins over
@@ -536,8 +519,8 @@ async function validate(
   } = applyThreadLock({
     taskIdInput,
     thread: lockedThread,
-    requestedHarnessId: harnessId,
-    requestedSandboxProviderKind: sandboxProviderKind,
+    requestedHarnessId: "decopilot",
+    requestedSandboxProviderKind: "agent-sandbox",
     requestedBranch: branch,
   });
   assertHostedRuntime(effectiveHarnessId, effectiveSandboxProviderKind);
@@ -573,7 +556,6 @@ async function validate(
   return {
     messages: [...systemMessages, requestMessage],
     models,
-    agent: { id: authoritativeAgentId },
     temperature,
     toolApprovalLevel,
     mode,
@@ -582,8 +564,6 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: effectiveBranch ?? null,
-    sandboxProviderKind: "agent-sandbox",
-    harnessId: "decopilot",
   };
 }
 
@@ -673,13 +653,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       if (!existingThread) {
         throw new HTTPException(404, { message: "Thread not found" });
       }
-      let authoritativeAgentId = await requireHostedThreadAgent(
+      const authoritativeAgentId = await requireHostedThreadAgent(
         ctx,
         existingThread,
         {
           organizationId: input.organizationId,
           userId: input.userId,
-          requestedAgentId: input.agent.id,
         },
       );
 
@@ -712,8 +691,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // either a null or retired user-desktop sandbox kind; both execute as the
       // hosted agent sandbox without rewriting the historical row.
       if (!pinnedHarness) {
-        pinnedKind = pinnedKind ?? input.sandboxProviderKind ?? "agent-sandbox";
-        pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
+        pinnedKind = pinnedKind ?? "agent-sandbox";
+        pinnedHarness = "decopilot";
         assertHostedRuntime(pinnedHarness, pinnedKind);
 
         // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
@@ -752,15 +731,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         branch = claimed.thread.branch ?? "ephemeral";
         messageStorageVersion = claimed.thread.message_storage_version;
         if (claimed.thread.virtual_mcp_id !== authoritativeAgentId) {
-          authoritativeAgentId = await requireHostedThreadAgent(
-            ctx,
-            claimed.thread,
-            {
-              organizationId: input.organizationId,
-              userId: input.userId,
-              requestedAgentId: input.agent.id,
-            },
-          );
+          await requireHostedThreadAgent(ctx, claimed.thread, {
+            organizationId: input.organizationId,
+            userId: input.userId,
+          });
         }
       }
       pinnedKind =
@@ -829,23 +803,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         await emitter.emitRequestMessage(persistedRequestMessage);
       }
 
-      const serializableRequest = buildDurableDispatchInput(
-        { ...input, agent: { id: authoritativeAgentId } },
-        {
-          messageId,
-          branch,
-        },
-      );
+      const serializableRequest = buildDurableDispatchInput(input, {
+        messageId,
+        branch,
+      });
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
-      if (
-        existingThread?.status !== "in_progress" &&
-        shouldPublishClusterRunStatus({
-          harnessId: pinnedHarness,
-          sandboxProviderKind: pinnedKind,
-        })
-      ) {
+      if (existingThread.status !== "in_progress") {
         await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");
       }
       await enqueueThreadRun(

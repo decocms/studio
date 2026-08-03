@@ -28,7 +28,7 @@ const ThreadResultSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   virtual_mcp_id: z.string().nullable(),
-  /** Raw run_config so the client can resolve the agent (mirrors monitoring view). */
+  /** Deprecated rolling-compat field; clients should use virtual_mcp_id. */
   run_config: z.record(z.string(), z.unknown()).nullable(),
   status: z.string().nullable(),
 });

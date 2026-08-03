@@ -6,6 +6,8 @@ import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 const NON_HOSTED_HARNESSES = ["claude-code", "codex", "opencode", "future"];
+const NO_SMART_MODEL_ERROR =
+  'No model available for tier "smart". Connect a provider or configure the tier in organization settings.';
 
 const PERSISTED_NON_HOSTED_ROWS = [
   {
@@ -151,13 +153,13 @@ async function inviteAndAcceptMember(
   ).toBe(true);
 }
 
-async function postMessageAsAgent(
+async function postMessage(
   api: APIRequestContext,
   args: {
     orgSlug: string;
     threadId: string;
-    agentId: string;
     messageId: string;
+    legacyAgentId?: string;
   },
 ) {
   return api.post(
@@ -171,9 +173,13 @@ async function postMessageAsAgent(
             parts: [{ type: "text", text: "Do not dispatch this" }],
           },
         ],
-        agent: { id: args.agentId },
-        harnessId: "decopilot",
-        sandboxProviderKind: "agent-sandbox",
+        ...(args.legacyAgentId
+          ? {
+              agent: { id: args.legacyAgentId },
+              harnessId: "decopilot",
+              sandboxProviderKind: "agent-sandbox",
+            }
+          : {}),
       },
       headers: { "content-type": "application/json" },
     },
@@ -232,7 +238,6 @@ test.describe("hosted runtime boundary", () => {
                   parts: [{ type: "text", text: "Do not dispatch this" }],
                 },
               ],
-              agent: { id: agent.item.id },
               harnessId,
             },
             headers: { "content-type": "application/json" },
@@ -281,7 +286,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("rejects a body agent that differs from the thread's same-org agent", async ({
+  test("accepts and ignores a legacy body agent that differs from the thread", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -303,14 +308,17 @@ test.describe("hosted runtime boundary", () => {
       const scope = { threadId, organizationId, userId: user.userId };
       const before = await readThreadAuthorityState(db, scope);
 
-      const response = await postMessageAsAgent(api, {
+      const response = await postMessage(api, {
         orgSlug,
         threadId,
-        agentId: requestedAgentId,
+        legacyAgentId: requestedAgentId,
         messageId: "msg-same-org-agent-mismatch",
       });
 
-      expect(response.status()).toBe(409);
+      // Reaching canonical model resolution proves the legacy selector parsed
+      // successfully and did not become execution authority.
+      expect(response.status()).toBe(400);
+      expect(await response.json()).toEqual({ error: NO_SMART_MODEL_ERROR });
       expect(await readThreadAuthorityState(db, scope)).toEqual(before);
       expect(before).toMatchObject({
         virtual_mcp_id: threadAgentId,
@@ -351,14 +359,17 @@ test.describe("hosted runtime boundary", () => {
       const threadId = await createThread(api, orgSlug, threadAgentId);
       const scope = { threadId, organizationId, userId: user.userId };
       const before = await readThreadAuthorityState(db, scope);
-      const mismatchResponse = await postMessageAsAgent(api, {
+      const mismatchResponse = await postMessage(api, {
         orgSlug,
         threadId,
-        agentId: foreignAgentId,
+        legacyAgentId: foreignAgentId,
         messageId: "msg-foreign-agent-mismatch",
       });
 
-      expect(mismatchResponse.status()).toBe(409);
+      expect(mismatchResponse.status()).toBe(400);
+      expect(await mismatchResponse.json()).toEqual({
+        error: NO_SMART_MODEL_ERROR,
+      });
       expect(await readThreadAuthorityState(db, scope)).toEqual(before);
       await expectNoQueuedRun(api, orgSlug, threadId);
 
@@ -383,10 +394,10 @@ test.describe("hosted runtime boundary", () => {
         userId: user.userId,
       };
       const corruptBefore = await readThreadAuthorityState(db, corruptScope);
-      const corruptResponse = await postMessageAsAgent(api, {
+      const corruptResponse = await postMessage(api, {
         orgSlug,
         threadId: corruptThreadId,
-        agentId: foreignAgentId,
+        legacyAgentId: foreignAgentId,
         messageId: "msg-foreign-agent-canonical-corruption",
       });
 
@@ -433,10 +444,10 @@ test.describe("hosted runtime boundary", () => {
         member.email,
       );
 
-      const messageResponse = await postMessageAsAgent(memberApi, {
+      const messageResponse = await postMessage(memberApi, {
         orgSlug,
         threadId,
-        agentId,
+        legacyAgentId: agentId,
         messageId: "msg-teammate-owner-boundary",
       });
       expect(messageResponse.status()).toBe(403);
@@ -511,7 +522,6 @@ test.describe("hosted runtime boundary", () => {
                   parts: [{ type: "text", text: "Do not dispatch this" }],
                 },
               ],
-              agent: { id: agent.item.id },
             },
             headers: { "content-type": "application/json" },
           },
@@ -603,7 +613,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("does not treat a historical coding-agent key as a hosted provider", async ({
+  test("accepts a selectorless request without treating a coding-agent key as hosted", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -657,19 +667,13 @@ test.describe("hosted runtime boundary", () => {
                 parts: [{ type: "text", text: "Do not dispatch this" }],
               },
             ],
-            agent: { id: agent.item.id },
-            harnessId: "decopilot",
-            sandboxProviderKind: "agent-sandbox",
           },
           headers: { "content-type": "application/json" },
         },
       );
 
       expect(response.status()).toBe(400);
-      expect(await response.json()).toEqual({
-        error:
-          'No model available for tier "smart". Connect a provider or configure the tier in organization settings.',
-      });
+      expect(await response.json()).toEqual({ error: NO_SMART_MODEL_ERROR });
 
       const row = await db.query(
         `SELECT harness_id,
@@ -681,6 +685,78 @@ test.describe("hosted runtime boundary", () => {
         [thread.item.id, user.userId],
       );
       expect(row.rows).toEqual([{ harness_id: null, part_count: 0 }]);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("accepts a selectorless request through the durable enqueue boundary", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const organizationId = await organizationIdForSlug(db, orgSlug);
+      const key = await callSelfMcpTool<{ id: string }>(
+        api,
+        orgSlug,
+        "AI_PROVIDER_KEY_CREATE",
+        {
+          providerId: "anthropic",
+          label: "selectorless-enqueue-e2e",
+          apiKey: "sk-ant-e2e-fake-key-do-not-use",
+        },
+      );
+      await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+        organizationId,
+        simple_mode: {
+          tiers: {
+            fast: null,
+            smart: { keyId: key.id, modelId: "claude-sonnet-4-6" },
+            thinking: null,
+            image: null,
+            web_search: null,
+            deep_research: null,
+          },
+        },
+      });
+
+      const agentId = await createAgent(
+        api,
+        orgSlug,
+        "selectorless durable enqueue",
+      );
+      const threadId = await createThread(api, orgSlug, agentId);
+      const response = await postMessage(api, {
+        orgSlug,
+        threadId,
+        messageId: "msg-selectorless-durable-enqueue",
+      });
+
+      expect(response.status()).toBe(202);
+      expect(await response.json()).toEqual({ taskId: threadId });
+      await expect(async () => {
+        const state = await readThreadAuthorityState(db, {
+          threadId,
+          organizationId,
+          userId: user.userId,
+        });
+        expect(state).toMatchObject({
+          virtual_mcp_id: agentId,
+          harness_id: "decopilot",
+          sandbox_provider_kind: "agent-sandbox",
+        });
+        expect(state.part_count).toBeGreaterThanOrEqual(1);
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] });
+
+      // The fake credential is sufficient to prove request validation and
+      // durable enqueue. Stop the detached run before it can wait on provider
+      // retries; model execution itself is covered by the live-key suite.
+      const cancel = await api.post(
+        `/api/${orgSlug}/decopilot/cancel/${threadId}`,
+      );
+      expect(cancel.status()).toBe(202);
     } finally {
       await db.end();
     }
@@ -768,9 +844,6 @@ test.describe("hosted runtime boundary", () => {
                 parts: [{ type: "text", text: "Do not win this race" }],
               },
             ],
-            agent: { id: agent.item.id },
-            harnessId: "decopilot",
-            sandboxProviderKind: "agent-sandbox",
           },
           headers: { "content-type": "application/json" },
           timeout: 30_000,

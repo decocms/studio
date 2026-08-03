@@ -97,10 +97,6 @@ export function buildStreamRequest(
       ...(resolved.webSearch ? { webSearch: resolved.webSearch } : {}),
       ...(resolved.deepResearch ? { deepResearch: resolved.deepResearch } : {}),
     },
-    // Caller guarantees `automation.kind === "agent"` (the workflow only
-    // takes the agent branch when this invariant holds), so virtual_mcp_id
-    // is non-null. The `!` is the cheapest way to express that here.
-    agent: { id: automation.virtual_mcp_id! },
     // Per-automation tool allowlist (model-facing tool names). null/absent
     // leaves the run with the bound agent's full toolset.
     toolAllowlist: parseToolAllowlist(automation.tools),
@@ -112,8 +108,6 @@ export function buildStreamRequest(
     mode: "default",
     organizationId: automation.organization_id,
     userId: automation.created_by,
-    harnessId: "decopilot",
-    sandboxProviderKind: "agent-sandbox",
     triggerId: triggerId ?? undefined,
     ...(runMetadata ? { runMetadata } : {}),
     taskId,

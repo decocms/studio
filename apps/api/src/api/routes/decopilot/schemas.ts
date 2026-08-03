@@ -24,7 +24,16 @@ const MemoryConfigSchema = z.object({
   thread_id: z.string(),
 });
 
-export const StreamRequestSchema = z
+const LegacyAgentSchema = z
+  .object({
+    id: z.string(),
+  })
+  .loose()
+  .describe(
+    "Deprecated compatibility field. Hosted execution derives the agent from the thread.",
+  );
+
+const StreamRequestInputSchema = z
   .object({
     messages: z
       .array(UIMessageSchema)
@@ -34,11 +43,7 @@ export const StreamRequestSchema = z
       }),
     memory: MemoryConfigSchema.optional(),
     tier: SimpleModeTierSchema.optional(),
-    agent: z
-      .object({
-        id: z.string(),
-      })
-      .loose(),
+    agent: LegacyAgentSchema.optional(),
     stream: z.boolean().optional(),
     temperature: z.number().default(0.5),
     thread_id: z.string().optional(),
@@ -50,17 +55,35 @@ export const StreamRequestSchema = z
     toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
     sandboxProviderKind: z
       .enum(["agent-sandbox", "cluster"])
-      .transform((kind) => (kind === "cluster" ? "agent-sandbox" : kind))
       .nullish()
-      .describe("Hosted chat supports only the managed agent sandbox."),
+      .describe(
+        "Deprecated compatibility field. Hosted chat always uses the managed agent sandbox.",
+      ),
     harnessId: z
       .literal("decopilot")
       .nullish()
-      .describe("Hosted chat supports only the Decopilot harness."),
+      .describe(
+        "Deprecated compatibility field. Hosted chat always uses Decopilot.",
+      ),
     mode: z
       .enum(["default", "plan", "web-search", "deep-research", "gen-image"])
       .default("default"),
   })
   .strict();
+
+/**
+ * Accept the previous hosted request envelope during the rolling client
+ * cutover, but remove its routing selectors from the parsed contract. Their
+ * schemas remain deliberately narrow so a typo or a retired native runtime is
+ * rejected instead of being mistaken for a supported hosted configuration.
+ */
+export const StreamRequestSchema = StreamRequestInputSchema.transform(
+  ({
+    agent: _legacyAgent,
+    harnessId: _legacyHarnessId,
+    sandboxProviderKind: _legacySandboxProviderKind,
+    ...request
+  }) => request,
+);
 
 export type StreamRequest = z.infer<typeof StreamRequestSchema>;

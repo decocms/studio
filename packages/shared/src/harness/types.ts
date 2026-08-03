@@ -1,21 +1,21 @@
 import type { UIMessage } from "ai";
 
-// Re-exported so downstream packages (@decocms/sandbox's SandboxClient, the
-// web client) consume the AI-SDK chunk type via @decocms/shared without
+// Re-exported so downstream applications consume the AI-SDK chunk type via
+// @decocms/shared without
 // declaring a direct `ai` dependency — keeping a SINGLE hoisted `ai` instance
 // (avoids the double-AI-SDK / broken-instanceof hazard).
 export type { UIMessageChunk } from "ai";
 
 /**
  * Harness domain/wire types — the shapes apps/api, apps/web, and
- * packages/sandbox all speak: harness ids, model slots, chat modes, and the
+ * hosted API and web client share: harness ids, model slots, chat modes, and the
  * serializable dispatch input. Browser-safe; no cluster-only imports. The
  * cluster-side shapes (`ChatMessage` with metadata + tools) flow in via
  * structural compatibility: the cluster passes its richer types where these
  * expect a UIMessage, and TS accepts the widening.
  *
- * The host-side execution contracts (`Harness`, `HarnessContext`,
- * `HarnessFactory`) stay in apps/api/src/harnesses/lib — only the API runs one.
+ * The host-side execution context stays in apps/api/src/harnesses/lib — only
+ * the API runs the hosted Decopilot stream.
  */
 
 /** Built-in harness identifiers. Open-ended on purpose — third-party harnesses

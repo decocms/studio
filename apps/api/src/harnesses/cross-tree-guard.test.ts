@@ -8,20 +8,16 @@ import { Glob } from "bun";
 // ../../api/routes/decopilot/*, ../../ai-providers/*, or ../../shared/*").
 //
 // `core`/`storage`/`tools` are intentionally NOT in the pattern: the
-// cluster-side DI assemblers (`in-process-sandbox-client.ts`,
-// `decopilot/harness-deps.ts`, `decopilot/index.ts`) legitimately keep
+// cluster-side DI assemblers (`decopilot/harness-deps.ts`,
+// `decopilot/index.ts`) legitimately keep
 // `StudioContext`/`HarnessContext` type reaches (`../core/studio-context`,
 // `../../core/harness-context`) — that DI surface is rewritten to
 // harness-lib specifiers when the package moved, and stays that way.
 //
 // Excludes:
 //  - *.integration.test.ts (DB-backed; stays studio-side, not packaged)
-//  - local-dispatch.ts / index.ts (studio-only, folded into InProcessSandboxClient)
-const EXCLUDED = new Set([
-  "local-dispatch.ts",
-  "local-dispatch.test.ts",
-  "index.ts", // top-level studio barrel
-]);
+//  - index.ts (top-level studio barrel)
+const EXCLUDED = new Set(["index.ts"]);
 const CROSS_TREE =
   /from\s+["'](?:\.\.\/)+(?:api\/routes\/decopilot|ai-providers|shared)\//;
 
@@ -45,15 +41,12 @@ describe("harness tree is cross-tree-free", () => {
 // What remains in this directory is the cluster island, which sits ABOVE
 // `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
 // not a layering violation — but we still keep that surface explicit and small.
-// Only the two dispatch/fs glue modules may bridge into sandbox:
-//  - `in-process-sandbox-client.ts` implements the `SandboxClient` dispatch
-//    contract (`@decocms/sandbox/dispatch`) for in-process cluster dispatch.
-//  - `cluster-sandbox-fs.ts` constructs the cluster `SandboxProvider` + fs hooks.
+// Only `cluster-sandbox-fs.ts` may bridge into sandbox: it constructs the
+// cluster `SandboxProvider` + fs hooks.
 // Every other production file consumes the harness-owned flat `SandboxFsHooks`
 // via DI and stays sandbox-free. (`desktop-sandbox-fs.ts` relocated into
 // `@decocms/sandbox/dispatch` with the desktop subtree in the package-move slice.)
 const SANDBOX_GLUE = new Set([
-  "in-process-sandbox-client.ts",
   "decopilot/built-in-tools/cluster-sandbox-fs.ts",
 ]);
 const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;

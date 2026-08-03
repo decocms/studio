@@ -1,8 +1,8 @@
 /**
- * Decopilot harness — the UNIFIED factory for the shared Decopilot core.
+ * Hosted Decopilot stream for the shared Decopilot core.
  *
  * The orchestration (processConversation → engine → streamText → title +
- * side-channel merge) lives in `runDecopilotCore` (`./run-core`). This factory
+ * side-channel merge) lives in `runDecopilotCore` (`./run-core`). This stream
  * builds the cluster environment-deps bag:
  *
  *   - CLUSTER: when the injected `harnessCtx` carries a full `StudioContext`
@@ -10,19 +10,14 @@
  *     `buildClusterEnvironmentTools` — in-process virtual-MCP passthrough + the
  *     full cluster tool set (web_search / update_interests / Browserless
  *     built-ins) + the ctx-coupled `runAgentLoop` engine + cluster telemetry.
- * Created per-call (one `Harness` instance per stream) because the underlying
- * loop is stateful. The factory captures `ctx` so `HarnessStreamInput` stays
- * serializable for the remote transport. The per-run side-channel + MCP-client
- * cleanup is owned here (the `try/finally` below).
+ * Invoked once per run because the underlying loop is stateful. Context stays
+ * separate from `HarnessStreamInput`, keeping the input serializable for the
+ * durable transport. The per-run side-channel + MCP-client cleanup is owned
+ * here (the `try/finally` below).
  */
 
 import type { UIMessageChunk } from "ai";
-import type {
-  Harness,
-  HarnessContext,
-  HarnessFactory,
-  HarnessStreamInput,
-} from "../types";
+import type { HarnessContext, HarnessStreamInput } from "../types";
 import { createProviderFromSecret } from "./provider-from-secret";
 import {
   createSideChannelWriter,
@@ -46,7 +41,7 @@ function isClusterContext(ctx: HarnessContext): boolean {
 }
 
 // ── Environment-deps registration seam ──────────────────────────────────────
-// The factory looks the cluster deps builder up from a module-scoped registry
+// The stream looks the cluster deps builder up from a module-scoped registry
 // instead of statically importing the `@/`-coupled cluster assembler
 // (`apps/api/src/harnesses/decopilot/harness-deps`). That keeps this package
 // entry free of `@/` imports; the studio barrel registers the implementation.
@@ -71,58 +66,52 @@ export function registerClusterEnvironmentBuilder(
   clusterEnvironmentBuilder = builder;
 }
 
-export const decopilotHarnessFactory: HarnessFactory = {
-  id: "decopilot",
-  create(harnessCtx: HarnessContext): Harness {
-    return {
-      id: "decopilot",
-      async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-        const runContext = requireDecopilotRunContext(input);
-        // ── Model runtime: providers from resolved secret sources (both
-        //    environments use the same secret→provider factory). ────────────
-        const modelRuntime = buildModelRuntimeFromSources(
-          { models: input.models, modelSources: runContext.modelSources },
-          createProviderFromSecret,
-        );
+export async function* streamDecopilot(
+  harnessCtx: HarnessContext,
+  input: HarnessStreamInput,
+): AsyncIterable<UIMessageChunk> {
+  const runContext = requireDecopilotRunContext(input);
+  // ── Model runtime: providers from resolved secret sources (both
+  //    environments use the same secret→provider factory). ────────────
+  const modelRuntime = buildModelRuntimeFromSources(
+    { models: input.models, modelSources: runContext.modelSources },
+    createProviderFromSecret,
+  );
 
-        // ── Per-run side-channel + MCP-client cleanup (shared lifecycle). ──
-        const sideChannel = createSideChannelWriter();
-        // The assembled tool bundle owns a live passthrough MCP client; the
-        // factory must close it on completion/abort. Captured inside the
-        // environment assembler's `buildEnvironmentTools` so the finally below
-        // runs it even if the core throws mid-stream.
-        const cleanup: { close?: () => Promise<void> } = {};
+  // ── Per-run side-channel + MCP-client cleanup (shared lifecycle). ──
+  const sideChannel = createSideChannelWriter();
+  // The assembled tool bundle owns a live passthrough MCP client. Capture
+  // its cleanup inside the environment assembler so the finally below
+  // runs it even if the core throws mid-stream.
+  const cleanup: { close?: () => Promise<void> } = {};
 
-        if (!isClusterContext(harnessCtx)) {
-          throw new Error("[decopilot] a hosted Studio context is required");
-        }
-        if (!clusterEnvironmentBuilder) {
-          throw new Error(
-            "[decopilot] cluster environment builder not registered — " +
-              "apps/api/src/harnesses must be imported before dispatching " +
-              "the decopilot harness in cluster mode",
-          );
-        }
-        const built = clusterEnvironmentBuilder({
-          ctx: harnessCtx,
-          modelRuntime,
-          sideChannel,
-          cleanup,
-        });
+  if (!isClusterContext(harnessCtx)) {
+    throw new Error("[decopilot] a hosted Studio context is required");
+  }
+  if (!clusterEnvironmentBuilder) {
+    throw new Error(
+      "[decopilot] cluster environment builder not registered — " +
+        "apps/api/src/harnesses must be imported before dispatching " +
+        "the decopilot stream in cluster mode",
+    );
+  }
+  const built = clusterEnvironmentBuilder({
+    ctx: harnessCtx,
+    modelRuntime,
+    sideChannel,
+    cleanup,
+  });
 
-        try {
-          yield* runDecopilotCore({
-            input,
-            modelRuntime,
-            toolRuntime: built.toolRuntime,
-            telemetry: built.telemetry,
-            kind: "main",
-          });
-        } finally {
-          sideChannel.close();
-          await cleanup.close?.().catch(() => {});
-        }
-      },
-    };
-  },
-};
+  try {
+    yield* runDecopilotCore({
+      input,
+      modelRuntime,
+      toolRuntime: built.toolRuntime,
+      telemetry: built.telemetry,
+      kind: "main",
+    });
+  } finally {
+    sideChannel.close();
+    await cleanup.close?.().catch(() => {});
+  }
+}

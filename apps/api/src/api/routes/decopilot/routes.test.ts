@@ -147,35 +147,36 @@ describe("computeIdempotencyKey", () => {
 });
 
 describe("StreamRequestSchema", () => {
-  test("normalizes legacy cluster sandboxProviderKind to agent-sandbox", () => {
+  const base = {
+    messages: [
+      {
+        id: "user-123",
+        role: "user" as const,
+        parts: [{ type: "text", text: "hi" }],
+      },
+    ],
+  };
+
+  test("accepts the canonical request without routing selectors", () => {
+    expect(StreamRequestSchema.safeParse(base).success).toBe(true);
+  });
+
+  test("accepts and strips the complete legacy routing envelope", () => {
     const result = StreamRequestSchema.parse({
-      messages: [
-        {
-          id: "user-123",
-          role: "user",
-          parts: [{ type: "text", text: "hi" }],
-        },
-      ],
-      agent: { id: "agent-123" },
-      memory: { thread_id: "thread-123" },
+      ...base,
+      // This id deliberately need not match the thread: the compatibility
+      // field is parsed only for shape validation and never becomes authority.
+      agent: { id: "stale-agent", legacyExtra: true },
+      harnessId: "decopilot",
       sandboxProviderKind: "cluster",
     });
 
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result).not.toHaveProperty("agent");
+    expect(result).not.toHaveProperty("harnessId");
+    expect(result).not.toHaveProperty("sandboxProviderKind");
   });
 
-  test("accepts only Decopilot as an explicit hosted harness", () => {
-    const base = {
-      messages: [
-        {
-          id: "user-123",
-          role: "user" as const,
-          parts: [{ type: "text", text: "hi" }],
-        },
-      ],
-      agent: { id: "agent-123" },
-    };
-
+  test("accepts only the known legacy Decopilot harness value", () => {
     expect(
       StreamRequestSchema.safeParse({ ...base, harnessId: "decopilot" })
         .success,
@@ -187,19 +188,7 @@ describe("StreamRequestSchema", () => {
     }
   });
 
-  test("accepts only the managed sandbox on hosted requests", () => {
-    const base = {
-      messages: [
-        {
-          id: "user-123",
-          role: "user" as const,
-          parts: [{ type: "text", text: "hi" }],
-        },
-      ],
-      agent: { id: "agent-123" },
-      harnessId: "decopilot" as const,
-    };
-
+  test("accepts only known legacy hosted sandbox values", () => {
     expect(
       StreamRequestSchema.safeParse({
         ...base,
@@ -207,15 +196,23 @@ describe("StreamRequestSchema", () => {
       }).success,
     ).toBe(true);
     expect(
-      StreamRequestSchema.parse({
+      StreamRequestSchema.safeParse({
         ...base,
         sandboxProviderKind: "cluster",
-      }).sandboxProviderKind,
-    ).toBe("agent-sandbox");
+      }).success,
+    ).toBe(true);
     for (const sandboxProviderKind of ["user-desktop", "future-sandbox"]) {
       expect(
         StreamRequestSchema.safeParse({ ...base, sandboxProviderKind }).success,
       ).toBe(false);
+    }
+  });
+
+  test("rejects malformed legacy agent envelopes", () => {
+    for (const agent of [null, {}, { id: 42 }, "agent-123"]) {
+      expect(StreamRequestSchema.safeParse({ ...base, agent }).success).toBe(
+        false,
+      );
     }
   });
 });

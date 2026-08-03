@@ -20,32 +20,11 @@ describe("resolveThreadAuthority", () => {
     ).toEqual({ agentId: "agent-canonical" });
   });
 
-  test("accepts a matching legacy request agent", () => {
-    expect(
-      resolveThreadAuthority(thread, {
-        organizationId: "org-1",
-        userId: "user-1",
-        requestedAgentId: "agent-canonical",
-      }),
-    ).toEqual({ agentId: "agent-canonical" });
-  });
-
-  test("rejects a request that tries to select another agent", () => {
-    expect(() =>
-      resolveThreadAuthority(thread, {
-        organizationId: "org-1",
-        userId: "user-1",
-        requestedAgentId: "agent-from-request",
-      }),
-    ).toThrow("Requested agent does not match this thread");
-  });
-
-  test("checks ownership before considering the request agent", () => {
+  test("checks ownership before agent resolution", () => {
     try {
       resolveThreadAuthority(thread, {
         organizationId: "org-1",
         userId: "another-user",
-        requestedAgentId: "agent-from-request",
       });
       throw new Error("Expected thread authority to fail");
     } catch (error) {

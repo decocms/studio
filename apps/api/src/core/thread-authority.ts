@@ -3,8 +3,7 @@ import type { Thread } from "@/storage/types";
 type ThreadAuthorityFailure =
   | "organization_mismatch"
   | "owner_mismatch"
-  | "agent_missing"
-  | "agent_mismatch";
+  | "agent_missing";
 
 export class ThreadAuthorityError extends Error {
   constructor(
@@ -21,16 +20,14 @@ export class ThreadAuthorityError extends Error {
  * thread. Request and durable-workflow payloads are snapshots, so neither is
  * allowed to choose the agent that executes a thread.
  *
- * `requestedAgentId` is used only at the HTTP boundary, where a mismatched
- * legacy field is rejected before any write. Durable callers omit it so an old
- * DBOS payload can still replay safely after the thread becomes authoritative.
+ * Legacy request and durable-workflow selector fields are ignored; the thread
+ * remains authoritative across both boundaries.
  */
 export function resolveThreadAuthority(
   thread: Pick<Thread, "organization_id" | "created_by" | "virtual_mcp_id">,
   expected: {
     organizationId: string;
     userId: string;
-    requestedAgentId?: string;
   },
 ): { agentId: string } {
   if (thread.organization_id !== expected.organizationId) {
@@ -53,15 +50,5 @@ export function resolveThreadAuthority(
       "Thread has no assigned agent",
     );
   }
-  if (
-    expected.requestedAgentId !== undefined &&
-    expected.requestedAgentId !== agentId
-  ) {
-    throw new ThreadAuthorityError(
-      "agent_mismatch",
-      "Requested agent does not match this thread",
-    );
-  }
-
   return { agentId };
 }

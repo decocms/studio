@@ -48,7 +48,6 @@ export interface BackgroundToolSnapshot {
   threadId: string;
   orgId: string;
   userId: string;
-  agentId: string;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
   branch: string | null;
@@ -230,7 +229,6 @@ function buildReactionRequest(
   opts: {
     models: ModelsConfig;
     nudge: string;
-    harnessId: "decopilot";
   },
 ): ThreadGateContext["request"] {
   return {
@@ -244,9 +242,6 @@ function buildReactionRequest(
       // biome-ignore lint/suspicious/noExplicitAny: ChatMessage part union is built from the cluster tool set
     ] as any,
     models: opts.models,
-    // Compatibility snapshot only. Central dispatch resolves the executing
-    // agent from the thread row and ignores this value.
-    agent: { id: s.agentId },
     temperature: s.temperature,
     toolApprovalLevel: s.toolApprovalLevel,
     mode: "default",
@@ -255,8 +250,6 @@ function buildReactionRequest(
     taskId: s.threadId,
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
-    harnessId: opts.harnessId,
-    sandboxProviderKind: "agent-sandbox",
   };
 }
 
@@ -379,10 +372,7 @@ async function runSubtaskStep(
     );
   }
   const input = ctx.input as { prompt: string; agent_id?: string };
-  const isSelf =
-    !input.agent_id ||
-    input.agent_id === ctx.agentId ||
-    input.agent_id === agentId;
+  const isSelf = !input.agent_id || input.agent_id === agentId;
   const targetId = isSelf ? agentId : input.agent_id!;
   const models = await resolveReactionModels(studioCtx);
   const provider = await studioCtx.aiProviders.activate(
@@ -613,15 +603,15 @@ async function appendPartsStep(
 /** Resolve the reaction target only while the thread remains hosted Decopilot. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
-): Promise<{ harnessId: "decopilot" } | null> {
+): Promise<boolean> {
   const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
   );
-  if (!studioCtx) return null;
+  if (!studioCtx) return false;
 
   const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!thread || !isHostedDecopilotThread(thread)) return null;
+  if (!thread || !isHostedDecopilotThread(thread)) return false;
 
   // Keep transient storage failures retriable. Only a missing/non-hosted
   // thread is a deliberate no-op; invalid ownership or agent authority must
@@ -639,7 +629,7 @@ async function resolveReactionTargetStep(
       `[background-tool] thread ${ctx.threadId} agent is unavailable in org ${ctx.orgId}`,
     );
   }
-  return { harnessId: "decopilot" };
+  return true;
 }
 
 /** Re-enter the per-thread gate so the agent reacts to the delivered result.
@@ -650,17 +640,16 @@ async function reactStep(
   models: ModelsConfig,
   reactionNudge: string,
 ): Promise<void> {
-  const reaction = await DBOS.runStep(() => resolveReactionTargetStep(ctx), {
+  const shouldReact = await DBOS.runStep(() => resolveReactionTargetStep(ctx), {
     name: "resolveReactionTarget",
   });
-  if (!reaction) return;
+  if (!shouldReact) return;
   await enqueueThreadRun(
     {
       threadId: ctx.threadId,
       request: buildReactionRequest(ctx, {
         models,
         nudge: reactionNudge,
-        harnessId: reaction.harnessId,
       }),
       source: "background-tool",
     },
