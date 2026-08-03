@@ -47,6 +47,7 @@ describe("claimRunFenceForDispatch", () => {
     temperature: 0,
     toolApprovalLevel: "auto",
     mode: "default",
+    sandboxProviderKind: "agent-sandbox",
     target: { sandboxProviderKind: "agent-sandbox" },
     harnessId: "decopilot",
   } as SerializableDispatchRunInput;
@@ -73,10 +74,10 @@ describe("claimRunFenceForDispatch", () => {
 });
 
 describe("assertHarnessRunsInCluster", () => {
-  it("throws for a CLI harness — cloud-CLI has no cluster host", () => {
-    for (const harnessId of ["claude-code", "codex"]) {
+  it("throws for every native or unknown harness", () => {
+    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
       expect(() => assertHarnessRunsInCluster(harnessId)).toThrow(
-        /not implemented/,
+        /explicit Decopilot/,
       );
     }
   });
@@ -85,9 +86,13 @@ describe("assertHarnessRunsInCluster", () => {
     expect(() => assertHarnessRunsInCluster("decopilot")).not.toThrow();
   });
 
-  it("lets a legacy/undefined harness through", () => {
-    expect(() => assertHarnessRunsInCluster(undefined)).not.toThrow();
-    expect(() => assertHarnessRunsInCluster(null)).not.toThrow();
+  it("rejects a missing harness instead of defaulting it", () => {
+    expect(() => assertHarnessRunsInCluster(undefined)).toThrow(
+      /explicit Decopilot/,
+    );
+    expect(() => assertHarnessRunsInCluster(null)).toThrow(
+      /explicit Decopilot/,
+    );
   });
 });
 

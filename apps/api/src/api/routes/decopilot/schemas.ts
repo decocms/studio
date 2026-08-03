@@ -49,18 +49,14 @@ export const StreamRequestSchema = z
     branch: z.string().nullish(),
     toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
     sandboxProviderKind: z
-      .enum(["agent-sandbox", "user-desktop", "cluster"])
+      .enum(["agent-sandbox", "cluster"])
       .transform((kind) => (kind === "cluster" ? "agent-sandbox" : kind))
       .nullish()
-      .describe(
-        "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",
-      ),
+      .describe("Hosted chat supports only the managed agent sandbox."),
     harnessId: z
-      .enum(["claude-code", "codex", "decopilot"])
+      .literal("decopilot")
       .nullish()
-      .describe(
-        "Pinned on first message. Subsequent messages ignore this field.",
-      ),
+      .describe("Hosted chat supports only the Decopilot harness."),
     mode: z
       .enum(["default", "plan", "web-search", "deep-research", "gen-image"])
       .default("default"),

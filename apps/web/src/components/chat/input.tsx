@@ -66,7 +66,7 @@ import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { resolveComposerAction } from "./composer-action";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { shouldBlockHostedLegacyDispatch } from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -423,9 +423,10 @@ export function ChatInput({
 
   const task = taskCtx?.activeTask ?? null;
   const isDesktopApp = useIsDesktopApp();
-  const hostedLegacyDispatchBlocked = shouldBlockHostedLegacyDispatch({
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: task?.harness_id,
+    sandboxProviderKind: task?.sandbox_provider_kind,
   });
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
@@ -572,7 +573,7 @@ export function ChatInput({
     );
   }
 
-  if (hostedLegacyDispatchBlocked) {
+  if (hostedRuntimeBlocked) {
     return (
       <ChatInputDisabledState
         message={t("chat.input.codingAgentRequiresDesktop")}

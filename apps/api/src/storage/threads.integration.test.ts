@@ -18,12 +18,20 @@ describe("SqlThreadStorage", () => {
     // Insert org and user for thread FK constraints
     await database.db
       .insertInto("organization")
-      .values({
-        id: "org_1",
-        name: "Test Org",
-        slug: "test-org",
-        createdAt: new Date().toISOString(),
-      })
+      .values([
+        {
+          id: "org_1",
+          name: "Test Org",
+          slug: "test-org",
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: "org_2",
+          name: "Other Org",
+          slug: "other-org",
+          createdAt: new Date().toISOString(),
+        },
+      ])
       .execute();
     // Use raw SQL: the Database schema type still has emailVerified as
     // `number` (matching the old PGlite hand-rolled schema). Real Postgres
@@ -169,6 +177,113 @@ describe("SqlThreadStorage", () => {
       expect(loaded?.metadata.expanded_tools?.[0]!.args).toEqual({
         foo: "bar",
       });
+    });
+  });
+
+  describe("runtime pin", () => {
+    it("stores explicit runtime pins during create", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        branch: "main",
+        harness_id: "decopilot",
+        sandbox_provider_kind: "agent-sandbox",
+      });
+
+      expect(thread.harness_id).toBe("decopilot");
+      expect(thread.sandbox_provider_kind).toBe("agent-sandbox");
+      expect(thread.branch).toBe("main");
+    });
+
+    it("lets exactly one concurrent runtime claim win", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      const pins = [
+        {
+          harnessId: "decopilot",
+          sandboxProviderKind: "agent-sandbox",
+          branch: "hosted",
+        },
+        {
+          harnessId: "codex",
+          sandboxProviderKind: "user-desktop",
+          branch: "native",
+        },
+      ] as const;
+
+      const results = await Promise.all(
+        pins.map((pin) => storage.pinRuntimeIfUnset(thread.id, "org_1", pin)),
+      );
+      expect(results.filter((result) => result.claimed)).toHaveLength(1);
+
+      const winner = results.find((result) => result.claimed)?.thread;
+      expect(winner).not.toBeNull();
+      for (const result of results) {
+        expect(result.thread?.harness_id).toBe(winner?.harness_id);
+        expect(result.thread?.sandbox_provider_kind).toBe(
+          winner?.sandbox_provider_kind,
+        );
+        expect(result.thread?.branch).toBe(winner?.branch);
+      }
+    });
+
+    it("preserves branch state written before the runtime claim", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        branch: "already-selected",
+      });
+      const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
+        branch: "stale-branch",
+      });
+
+      expect(result.claimed).toBe(true);
+      expect(result.thread?.branch).toBe("already-selected");
+    });
+
+    it("does not overwrite a conflicting partial runtime", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        sandbox_provider_kind: "user-desktop",
+        branch: "native-branch",
+      });
+      const result = await storage.pinRuntimeIfUnset(thread.id, "org_1", {
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
+        branch: "hosted-branch",
+      });
+
+      expect(result.claimed).toBe(false);
+      expect(result.thread?.harness_id).toBeNull();
+      expect(result.thread?.sandbox_provider_kind).toBe("user-desktop");
+      expect(result.thread?.branch).toBe("native-branch");
+    });
+
+    it("returns no row for missing and cross-tenant targets", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      const pin = {
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
+        branch: "hosted",
+      };
+
+      expect(await storage.pinRuntimeIfUnset("missing", "org_1", pin)).toEqual({
+        thread: null,
+        claimed: false,
+      });
+      expect(await storage.pinRuntimeIfUnset(thread.id, "org_2", pin)).toEqual({
+        thread: null,
+        claimed: false,
+      });
+      expect((await storage.get(thread.id, "org_1"))?.harness_id).toBeNull();
     });
   });
 });

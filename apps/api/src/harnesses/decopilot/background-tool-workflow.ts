@@ -12,7 +12,6 @@ import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { SUBAGENT_STEP_LIMIT } from "@/harnesses/lib/decopilot/prompt-constants";
-import type { HarnessId } from "@/harnesses/lib/types";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import type { AnyMessage } from "@/api/routes/decopilot/part-row-builder";
 import { getSettings } from "@/settings";
@@ -180,11 +179,47 @@ async function requireStudioContext(
   return studioCtx;
 }
 
-/** Resolve a thread row's harness. Every run is hosted in the cluster. */
+export function isHostedDecopilotThread(
+  thread:
+    | {
+        harness_id?: string | null;
+        sandbox_provider_kind?: string | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  return (
+    thread?.harness_id === "decopilot" &&
+    (thread.sandbox_provider_kind === null ||
+      thread.sandbox_provider_kind === "agent-sandbox")
+  );
+}
+
+async function requireHostedThreadContext(
+  ctx: BackgroundToolContext,
+): Promise<StudioContext> {
+  const studioCtx = await requireStudioContext(ctx);
+  const thread = await studioCtx.storage.threads.get(ctx.threadId);
+  if (!isHostedDecopilotThread(thread)) {
+    throw new Error(
+      `[background-tool] thread ${ctx.threadId} is not hosted Decopilot`,
+    );
+  }
+  return studioCtx;
+}
+
+/** Resolve a thread row only when it still belongs to hosted Decopilot. */
 function resolveThreadTarget(
-  thread: { harness_id?: string | null } | null | undefined,
-): { harnessId: HarnessId } {
-  return { harnessId: (thread?.harness_id ?? "decopilot") as HarnessId };
+  thread:
+    | {
+        harness_id?: string | null;
+        sandbox_provider_kind?: string | null;
+      }
+    | null
+    | undefined,
+): { harnessId: "decopilot" } | null {
+  if (!isHostedDecopilotThread(thread)) return null;
+  return { harnessId: "decopilot" };
 }
 
 /** Build the reaction turn's dispatch request — an internal nudge the model
@@ -194,7 +229,7 @@ function buildReactionRequest(
   opts: {
     models: ModelsConfig;
     nudge: string;
-    harnessId: HarnessId | null;
+    harnessId: "decopilot";
   },
 ): ThreadGateContext["request"] {
   return {
@@ -217,7 +252,8 @@ function buildReactionRequest(
     taskId: s.threadId,
     branch: s.branch ?? undefined,
     resumedFromBackground: true,
-    harnessId: opts.harnessId ?? undefined,
+    harnessId: opts.harnessId,
+    sandboxProviderKind: "agent-sandbox",
   };
 }
 
@@ -553,11 +589,7 @@ async function appendPartsStep(
   ctx: BackgroundToolContext,
   parts: AnyMessage["parts"],
 ): Promise<void> {
-  const studioCtx = await requireStudioContext(ctx);
-  const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!thread) {
-    throw new Error(`[background-tool] thread ${ctx.threadId} not found`);
-  }
+  const studioCtx = await requireHostedThreadContext(ctx);
   const emitter = new PartEmitter({
     storage: studioCtx.storage.threads.messageParts(),
     orgId: ctx.orgId,
@@ -571,11 +603,10 @@ async function appendPartsStep(
   });
 }
 
-/** Resolve the reaction turn's target + harness from the thread row. Returns
- *  null only when the studio context can't be rebuilt. */
+/** Resolve the reaction target only while the thread remains hosted Decopilot. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
-): Promise<{ harnessId: HarnessId | null } | null> {
+): Promise<{ harnessId: "decopilot" } | null> {
   const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
@@ -613,6 +644,14 @@ async function reactStep(
 async function backgroundToolWorkflowFn(
   ctx: BackgroundToolContext,
 ): Promise<void> {
+  // Durable jobs created before the native/hosted split may still replay after
+  // deployment. Reject them before model calls, sandbox work, or part writes.
+  await DBOS.runStep(
+    async () => {
+      await requireHostedThreadContext(ctx);
+    },
+    { name: "validateHostedThread" },
+  );
   const producer = PRODUCERS[ctx.toolName];
   if (!producer) {
     throw new Error(`[background-tool] unknown tool "${ctx.toolName}"`);

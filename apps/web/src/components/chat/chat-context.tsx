@@ -54,7 +54,7 @@ import { useCurrentLink } from "@/hooks/use-current-link";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
-import { shouldBlockHostedLegacyDispatch } from "./hosted-runtime-guard";
+import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -804,11 +804,12 @@ export function ActiveTaskProvider({
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
-  const hostedLegacyDispatchBlocked = shouldBlockHostedLegacyDispatch({
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
+    sandboxProviderKind: activeTask?.sandbox_provider_kind,
   });
-  const hostedLegacyDispatchBlockedMessage = t(
+  const hostedRuntimeBlockedMessage = t(
     "chat.input.codingAgentRequiresDesktop",
   );
 
@@ -845,7 +846,7 @@ export function ActiveTaskProvider({
   const [chatError, setChatError] = useState<Error | null>(null);
 
   const reportHostedLegacyDispatchBlocked = () => {
-    setChatError(new Error(hostedLegacyDispatchBlockedMessage));
+    setChatError(new Error(hostedRuntimeBlockedMessage));
   };
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
@@ -1167,7 +1168,7 @@ export function ActiveTaskProvider({
     // A native row can still reach this shared provider, so fail closed before
     // enqueue or submit and release any caller-owned latch without touching
     // the wire.
-    if (hostedLegacyDispatchBlocked) {
+    if (hostedRuntimeBlocked) {
       reportHostedLegacyDispatchBlocked();
       sendInFlight.delete(capturedTaskId);
       return false;
@@ -1359,7 +1360,7 @@ export function ActiveTaskProvider({
   ): Promise<boolean> {
     // Reject before cancelling the persisted original: the replacement cannot
     // enter hosted dispatch, so cancelling first would silently lose the turn.
-    if (hostedLegacyDispatchBlocked) {
+    if (hostedRuntimeBlocked) {
       reportHostedLegacyDispatchBlocked();
       return false;
     }
@@ -1468,7 +1469,7 @@ export function ActiveTaskProvider({
   useEffect(() => {
     if (!shouldAutosend) return;
     if (messages.length > 0) return;
-    if (hostedLegacyDispatchBlocked) return;
+    if (hostedRuntimeBlocked) return;
 
     const payload = claimStoredAutosend(sessionStorage, locator, taskId);
     if (!payload) return;
@@ -1480,7 +1481,7 @@ export function ActiveTaskProvider({
   }, [
     shouldAutosend,
     messages.length,
-    hostedLegacyDispatchBlocked,
+    hostedRuntimeBlocked,
     locator,
     taskId,
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage claim and task-scoped request id, not callback identity, gate duplicate sends
@@ -1493,14 +1494,14 @@ export function ActiveTaskProvider({
     sendMessage: sendMessagePublic,
     editQueuedMessage,
     stop: () => {
-      if (hostedLegacyDispatchBlocked) {
+      if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
         return;
       }
       void cancelRun();
     },
     submit: async (action, opts) => {
-      if (hostedLegacyDispatchBlocked) {
+      if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
         return;
       }

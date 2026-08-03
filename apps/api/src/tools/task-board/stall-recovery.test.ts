@@ -9,7 +9,20 @@ const thread = (status: string | null, hasMessages = true) => ({
 });
 
 /** A thread on the current storage format. */
-const ran = (status: string) => ({ status, messageStorageVersion: 2 });
+const ran = (
+  status: string | null,
+  overrides: Partial<{
+    messageStorageVersion: number;
+    harnessId: string | null;
+    sandboxProviderKind: string | null;
+  }> = {},
+) => ({
+  status,
+  messageStorageVersion: 2,
+  harnessId: "decopilot",
+  sandboxProviderKind: "agent-sandbox",
+  ...overrides,
+});
 
 describe("decideStallAction", () => {
   test("a run that finished advances the card", () => {
@@ -21,23 +34,45 @@ describe("decideStallAction", () => {
   });
 
   test("a v1 thread cannot be nudged — dispatch persists nothing for it", () => {
-    expect(
-      decideStallAction({ status: "failed", messageStorageVersion: 1 }),
-    ).toBe("none");
+    expect(decideStallAction(ran("failed", { messageStorageVersion: 1 }))).toBe(
+      "none",
+    );
   });
 
   test("a v1 thread that completed still advances", () => {
     expect(
-      decideStallAction({ status: "completed", messageStorageVersion: 1 }),
+      decideStallAction(ran("completed", { messageStorageVersion: 1 })),
     ).toBe("advance");
   });
 
   test("non-terminal statuses are never acted on", () => {
     for (const status of ["in_progress", "requires_action", null] as const) {
-      expect(decideStallAction({ status, messageStorageVersion: 2 })).toBe(
-        "none",
-      );
+      expect(decideStallAction(ran(status))).toBe("none");
     }
+  });
+
+  test("failed native, unknown, or unpinned threads are never nudged", () => {
+    for (const harnessId of [
+      "claude-code",
+      "codex",
+      "opencode",
+      "future",
+      null,
+    ]) {
+      expect(decideStallAction(ran("failed", { harnessId }))).toBe("none");
+    }
+  });
+
+  test("legacy Decopilot with no sandbox pin remains hosted", () => {
+    expect(
+      decideStallAction(ran("failed", { sandboxProviderKind: null })),
+    ).toBe("nudge");
+  });
+
+  test("retired Decopilot desktop rows are never nudged", () => {
+    expect(
+      decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
+    ).toBe("none");
   });
 });
 
