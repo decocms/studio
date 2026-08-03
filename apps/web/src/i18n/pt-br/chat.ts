@@ -173,6 +173,8 @@ export const chat = {
     "Tente outro provedor ou tente novamente.",
   "chat.dialogPromptArguments.cancel": "Cancelar",
   "chat.dialogPromptArguments.loading": "Carregando...",
+  "chat.dialogPromptArguments.optional": "(opcional)",
+  "chat.dialogPromptArguments.required": "Obrigatório",
   "chat.dialogPromptArguments.usePrompt": "Usar prompt",
   "chat.generateImage.failed": "Falhou",
   "chat.generateImage.generatedImage": "Imagem gerada",
