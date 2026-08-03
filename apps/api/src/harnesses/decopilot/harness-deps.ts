@@ -135,9 +135,8 @@ export function buildClusterEnvironmentTools(args: {
         toolOutputMap,
         pendingImages,
         threadId: streamInput.threadId,
-        // Cluster MCP tool-call hooks: storage-ref resolution + posthog
-        // analytics. The portable assembly forwards these as-is; the
-        // desktop daemon omits them.
+        // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
+        // analytics. The portable assembly forwards these as-is.
         resolveArgs,
         onToolCalled,
         onPrOpened,

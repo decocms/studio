@@ -1,21 +1,13 @@
-//! CLI availability detection — GROW-ONLY cache mirroring
-//! `apps/api/src/link-daemon/capabilities.ts`'s semantics EXACTLY:
-//! `mergeProbedCapabilities` there never un-advertises a capability once
-//! seen ("a transient probe failure (CLI busy, SDK hiccup) must never
-//! un-advertise a capability mid-run — dispatch routing would start
-//! bouncing threads that are actively streaming"). This module ports that
-//! same invariant to Rust: once a harness flips to `true`, no later probe
-//! — however it fails — can flip it back.
+//! Native coding-agent CLI availability detection with a grow-only cache.
+//! Once a CLI is confirmed usable, a later transient probe failure never
+//! removes it from the picker during the same app process.
 //!
 //! "Detected" means the CLI is installed, new enough for Studio Native's
 //! complete tested contract, AND has a confirmed logged-in session —
 //! FAIL-CLOSED: an installed-but-unsupported or installed-but-not-logged-in
 //! CLI is not usable, so it does NOT count as detected. `probe()` requires
 //! BOTH a supported parsed `--version` and a passing auth probe (logged in):
-//!   - claude via `<bin> auth status --json`'s `"loggedIn":true` (mirrors
-//!     `capabilities.ts::detectClaudeCode`'s account-email check, adapted
-//!     since this crate drives the CLI's own surface rather than the
-//!     `@anthropic-ai/claude-agent-sdk`),
+//!   - claude via `<bin> auth status --json`'s `"loggedIn":true`,
 //!   - codex via `<bin> login status`'s "Logged in" text — which the codex
 //!     CLI prints to STDERR with an empty stdout, so the auth probe merges
 //!     stdout+stderr before parsing (see `run_probe_capture`).
@@ -26,13 +18,8 @@
 //! `true`, no later probe flips it back — but a CLI never reaches `true`
 //! in the first place until login is confirmed.
 //!
-//! Because detection is now auth-gated, the SHARED CONTRACT surface
-//! `apps/native/e2e/fixtures/stub-harness.mjs` answers the auth probe as
-//! logged-in too (claude: `{"loggedIn":true}` on stdout for `auth status
-//! --json`; codex: "Logged in using ChatGPT" on stderr for `login status`)
-//! in ADDITION to `--version`, so the differential/parity tests still see
-//! it as detected. Both probes are independently swappable via
-//! [`resolve::resolve_argv`] (the SHARED CONTRACT env overrides).
+//! Both probes are independently swappable through [`resolve::resolve_argv`]
+//! so native black-box tests can supply deterministic CLI fixtures.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -89,17 +76,35 @@ impl Detection {
     }
 }
 
-static CACHE: OnceLock<RwLock<Detection>> = OnceLock::new();
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct DetectionCache {
+    detection: Detection,
+    initial_probe_completed: bool,
+}
+
+impl DetectionCache {
+    fn should_probe_synchronously(self) -> bool {
+        !self.initial_probe_completed
+    }
+
+    fn complete_initial_probe(&mut self, probed: Detection) -> Detection {
+        self.detection.merge(probed);
+        self.initial_probe_completed = true;
+        self.detection
+    }
+}
+
+static CACHE: OnceLock<RwLock<DetectionCache>> = OnceLock::new();
 static REFRESH_STARTED: OnceLock<()> = OnceLock::new();
 
-fn cache_lock() -> &'static RwLock<Detection> {
-    CACHE.get_or_init(|| RwLock::new(Detection::default()))
+fn cache_lock() -> &'static RwLock<DetectionCache> {
+    CACHE.get_or_init(|| RwLock::new(DetectionCache::default()))
 }
 
 /// Read the cache without probing. `Detection::default()` (nothing
 /// detected) if nothing has probed yet.
 pub async fn cached() -> Detection {
-    *cache_lock().read().await
+    cache_lock().read().await.detection
 }
 
 /// Ensures the cache has been populated at least once, paying for a
@@ -108,19 +113,17 @@ pub async fn cached() -> Detection {
 /// reads the warm cache instantly — a request never blocks on a probe it
 /// didn't cause. Concurrent cold-start callers all pay for their own probe
 /// (idempotent — the grow-only merge makes redundant probing harmless,
-/// just slightly wasteful), same tradeoff the Phase 1 `routes/models.rs`
-/// bootstrap already made.
+/// just slightly wasteful).
 pub async fn ensure_detected() -> Detection {
-    let current = cached().await;
-    if current.all_detected() {
+    let snapshot = *cache_lock().read().await;
+    if !snapshot.should_probe_synchronously() {
         start_background_reprobe();
-        return current;
+        return snapshot.detection;
     }
-    let probed = probe_missing(current).await;
+    let probed = probe_missing(snapshot.detection).await;
     let merged = {
         let mut guard = cache_lock().write().await;
-        guard.merge(probed);
-        *guard
+        guard.complete_initial_probe(probed)
     };
     start_background_reprobe();
     merged
@@ -144,7 +147,7 @@ fn start_background_reprobe() {
             }
             let probed = probe_missing(current).await;
             let mut guard = cache_lock().write().await;
-            guard.merge(probed);
+            guard.detection.merge(probed);
         }
     });
 }
@@ -431,6 +434,26 @@ mod tests {
         });
         assert!(!grew);
         assert!(current.all_detected());
+    }
+
+    #[test]
+    fn completed_initial_probe_is_cache_only_when_a_cli_is_absent() {
+        let mut cache = DetectionCache::default();
+        assert!(cache.should_probe_synchronously());
+
+        let detected = cache.complete_initial_probe(Detection {
+            claude_code: true,
+            codex: false,
+        });
+
+        assert_eq!(
+            detected,
+            Detection {
+                claude_code: true,
+                codex: false,
+            }
+        );
+        assert!(!cache.should_probe_synchronously());
     }
 
     #[test]

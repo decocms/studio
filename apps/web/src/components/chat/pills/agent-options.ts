@@ -42,7 +42,10 @@ export function agentOptionFor(
   const normalizedSandbox = sandbox
     ? normalizeSandboxProviderKind(sandbox)
     : null;
-  if (harness === "decopilot" && normalizedSandbox === null) {
+  if (
+    harness === "decopilot" &&
+    (normalizedSandbox === null || normalizedSandbox === "user-desktop")
+  ) {
     return "decopilot";
   }
   for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
@@ -57,35 +60,6 @@ export function agentOptionFor(
 }
 
 /**
- * Runtime availability of each agent option for the current org/session,
- * derived from the public config (`agentSandbox`) and the user's desktop link.
- * This is advisory UI metadata only: it annotates rows with "not detected" or
- * "connect desktop" hints, but it must not prevent selection or rewrite the
- * runtime sent on submit.
- */
-export interface AgentOptionAvailability {
-  agentSandbox: boolean;
-  userDesktop: boolean;
-  claudeCode: boolean;
-  codex: boolean;
-}
-
-/**
- * The local desktop `AgentOption` to default to for the current availability —
- * Claude Code wins when both CLIs are present. Null when no local CLI is
- * available. One canonical home for the "which local runtime" precedence, so
- * the model-selector runtime toggle and the preview runtime switcher can't
- * drift apart.
- */
-export function preferredLocalAgentOption(
-  availability: AgentOptionAvailability,
-): LocalAgentOption | null {
-  if (availability.claudeCode) return "claude-code-desktop";
-  if (availability.codex) return "codex-desktop";
-  return null;
-}
-
-/**
  * Resolve the only agent options a native build may expose.
  *
  * Native has no cloud runtime, so a stale persisted Decopilot pick must never
@@ -94,60 +68,19 @@ export function preferredLocalAgentOption(
  * available, and requiring the full tuple would misclassify that local thread
  * as cloud.
  *
- * Returns null while CLI detection is still unresolved and there is no prior
- * local choice. The native model selector treats that as local-pending rather
- * than falling back to provider models.
+ * Returns null until the user makes an explicit local choice. CLI detection
+ * annotates the picker but never chooses an agent on the user's behalf.
  */
 export function resolveNativeAgentOption({
   pendingOption,
   lockedHarness,
-  availability,
 }: {
   pendingOption: AgentOption | null;
   lockedHarness: HarnessId | null;
-  availability: AgentOptionAvailability;
 }): LocalAgentOption | null {
   if (lockedHarness === "claude-code") return "claude-code-desktop";
   if (lockedHarness === "codex") return "codex-desktop";
   if (pendingOption === "claude-code-desktop") return pendingOption;
   if (pendingOption === "codex-desktop") return pendingOption;
-  return preferredLocalAgentOption(availability);
-}
-
-/**
- * Auto-switch a desktop pick to cloud when its link is confirmed offline. A
- * `user-desktop` option can't run anywhere while the link is down and nothing
- * prompts the user to reconnect, so it strands them on an impossible "This
- * device" state. Non-desktop picks (and a live/unknown link) pass through
- * unchanged. `desktopOffline` MUST come from a resolved probe (`link.ready`),
- * never the initial unresolved state — otherwise a genuinely-linked user is
- * briefly demoted on load.
- */
-export function resolveOfflineAgentOption(
-  option: AgentOption | null,
-  desktopOffline: boolean,
-): AgentOption | null {
-  if (
-    desktopOffline &&
-    option &&
-    AGENT_OPTION_PINS[option].sandbox === "user-desktop"
-  ) {
-    return "decopilot";
-  }
-  return option;
-}
-
-/** Whether `option` can run given the current `availability`. */
-export function agentOptionIsAvailable(
-  option: AgentOption,
-  availability: AgentOptionAvailability,
-): boolean {
-  switch (option) {
-    case "decopilot":
-      return availability.agentSandbox;
-    case "claude-code-desktop":
-      return availability.userDesktop && availability.claudeCode;
-    case "codex-desktop":
-      return availability.userDesktop && availability.codex;
-  }
+  return null;
 }

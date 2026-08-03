@@ -13,7 +13,7 @@
 //!
 //! 1. Public zone — `GET /health`; in embedded mode also exact UI assets,
 //!    HTML-navigation SPA fallback, and one-time `/_local/session/bootstrap`.
-//! 2. `/_sandbox/*`, `/threads*`, `/models` — nested sub-routers, each
+//! 2. `/_sandbox/*` — the guarded sandbox control surface
 //!    wrapped in [`guard`] (standalone Origin + bearer, or embedded exact
 //!    Host/unsafe-Origin + HttpOnly session cookie)
 //!    and each with its own JSON-404 fallback so an unmatched path WITHIN
@@ -68,7 +68,7 @@ use axum::extract::{Extension, OriginalUri, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::client_auth::ClientAuth;
@@ -165,37 +165,12 @@ pub fn build(
         .route("/exec/:name", post(routes::scripts::exec))
         .route("/exec/:name/kill", post(routes::scripts::exec_kill))
         .route("/events", get(routes::events::events))
-        .route("/dispatch", post(routes::dispatch::dispatch))
-        .route("/runs/:id", delete(routes::dispatch::cancel_run))
         .route("/preview-handle", post(routes::proxy::set_preview_handle))
         // GET /_sandbox/repo-dir — see routes::repo_dir's module doc (a
         // git-backed sandbox's absolute workdir, for the webview's
         // "Open in VS Code/Cursor" deep link).
         .route("/repo-dir", get(routes::repo_dir::get))
         .fallback(sandbox_not_found)
-        .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
-
-    let threads = Router::new()
-        .route(
-            "/",
-            get(routes::threads::list).post(routes::threads::create),
-        )
-        .route(
-            "/:id",
-            get(routes::threads::get)
-                .patch(routes::threads::update)
-                .delete(routes::threads::delete),
-        )
-        .route(
-            "/:id/messages",
-            get(routes::threads::messages_list).post(routes::threads::messages_create),
-        )
-        .route("/:id/runs", get(routes::threads::runs_list))
-        .fallback(sandbox_not_found)
-        .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
-
-    let models = Router::new()
-        .route("/", get(routes::models::list))
         .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     // Literal internal app-API routes. The general app-API catchall is owned
@@ -222,6 +197,10 @@ pub fn build(
         // `routes/upstream.rs::logout`'s doc comment. Renamed from
         // `/upstream/_logout`.
         .route("/_auth/logout", post(routes::upstream::logout))
+        .route(
+            "/_local/agent-capabilities",
+            get(routes::agent_capabilities::get),
+        )
         .route(
             "/api/:org/threads/:thread_id/terminal",
             get(routes::terminal::get)
@@ -272,8 +251,6 @@ pub fn build(
             cors_only,
         ))
         .nest("/_sandbox", sandbox)
-        .nest("/threads", threads)
-        .nest("/models", models)
         // `.merge()`, not `.nest()`: these literal routes live at the root.
         .merge(app_api)
         // Registered OUTSIDE `guard`, deliberately. This is where an MCP
@@ -474,8 +451,8 @@ async fn sandbox_not_found(OriginalUri(uri): OriginalUri) -> ApiError {
 
 /// Standalone: Origin allowlist then bearer auth. Embedded: exact Host,
 /// exact Origin on unsafe methods, then the per-launch session cookie.
-/// Applied to every zone-2 sub-router (`/_sandbox`, `/threads`, `/models`)
-/// AND to `app_api` (the merged-in, no-prefix app-API fallback + its
+/// Applied to the zone-2 local routers (`/_sandbox`, `/_local`) AND to
+/// `app_api` (the merged-in, no-prefix app-API fallback + its
 /// `/_auth/*` literal routes), including their own 404 fallbacks, via
 /// `.layer()` (not `.route_layer()`, which would skip the fallback and let
 /// an unauthenticated caller enumerate unmatched routes without ever
@@ -635,7 +612,7 @@ fn full_request_path(req: &Request) -> &str {
 /// The org-filesystem WebDAV prefix, judged on the FULL request path.
 ///
 /// `guard` runs inside each `nest()`, where `req.uri()` has already had the
-/// prefix stripped — so a `/threads` route could otherwise be reached at the
+/// prefix stripped — so another guarded route could otherwise be reached at the
 /// nest-relative `/orgfs/…`. `OriginalUri` (which `nest` always inserts) is
 /// the pre-strip path; the fallback covers the un-nested `app_api` merge,
 /// where no stripping happened and the two are the same.
@@ -786,8 +763,6 @@ fn is_reserved_api_path(path: &str) -> bool {
         "/_auth",
         "/_local",
         "/_sandbox",
-        "/threads",
-        "/models",
         "/health",
         "/metrics",
     ];
@@ -1134,7 +1109,7 @@ mod tests {
             "/_sandbox/bash",
             "/_sandbox/read",
             "/_sandbox/git/publish",
-            "/threads",
+            "/_local/agent-capabilities",
             "/api/acme/tools/ANYTHING",
             // Not under `orgfs` despite naming it — a prefix, not a substring.
             "/_sandbox/orgfs-config",

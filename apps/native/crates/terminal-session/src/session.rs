@@ -13,7 +13,7 @@ use tokio::sync::{broadcast, oneshot, watch};
 use uuid::Uuid;
 
 #[cfg(unix)]
-use harness::spawn::Signal as WatchdogSignal;
+use harness::watchdog::Signal as WatchdogSignal;
 
 use crate::replay::ReplayBuffer;
 use crate::{

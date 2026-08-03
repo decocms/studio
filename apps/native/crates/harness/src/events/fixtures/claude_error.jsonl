@@ -1,2 +1,0 @@
-{"type":"system","subtype":"init","cwd":"/private/tmp","session_id":"error-session","tools":["Bash"],"model":"claude-fable-5"}
-{"type":"result","subtype":"error_during_execution","is_error":true,"result":"API Error: 529 overloaded","session_id":"error-session"}

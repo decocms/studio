@@ -20,13 +20,7 @@ export const chat = {
   "chat.agentList.unavailable": "Agent list unavailable",
   "chat.agentModels.balancedQuality": "Balanced quality",
   "chat.agentModels.deeperReasoning": "Deeper reasoning",
-  "chat.agentModels.gptLunaLabel": "GPT-5.6 Luna",
-  "chat.agentModels.gptSolLabel": "GPT-5.6 Sol",
-  "chat.agentModels.gptTerraLabel": "GPT-5.6 Terra",
-  "chat.agentModels.haikuLabel": "Haiku 4.5",
-  "chat.agentModels.opusLabel": "Opus 5 1M",
   "chat.agentModels.quickerResponses": "Quicker responses",
-  "chat.agentModels.sonnetLabel": "Sonnet 5",
   "chat.approval.acceptButton": "Accept",
   "chat.approval.batchedLabel": "{count} approvals pending",
   "chat.approval.defaultDenyReason":
@@ -89,21 +83,6 @@ export const chat = {
     "useChatTask must be used within ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Close",
   "chat.collapsibleHighlight.closeTitle": "Close",
-  "chat.connectDesktopDialog.agentClaudeCodeDescription":
-    "Runs through the Claude Code CLI",
-  "chat.connectDesktopDialog.agentClaudeCodeLabel": "Claude Code",
-  "chat.connectDesktopDialog.agentCodexDescription":
-    "Runs through the Codex CLI",
-  "chat.connectDesktopDialog.agentCodexLabel": "Codex",
-  "chat.connectDesktopDialog.connectYourDesktop": "Connect your desktop",
-  "chat.connectDesktopDialog.connectedTo": "Connected to {desktopName}",
-  "chat.connectDesktopDialog.machineAgentsDescription":
-    "This machine provides the following local agents.",
-  "chat.connectDesktopDialog.notDetected": "Not detected",
-  "chat.connectDesktopDialog.runCommandDescription":
-    "Run this command in your desktop terminal. The dialog will close once your desktop is online.",
-  "chat.connectDesktopDialog.waitingForDesktop": "Waiting for desktop…",
-  "chat.connectDesktopDialog.yourDesktop": "Your desktop",
   "chat.connectionList.connectionNoun": "connections",
   "chat.connectionList.emptySummary":
     "This organization hasn't connected any MCPs.",
@@ -185,15 +164,6 @@ export const chat = {
   "chat.decopilot.tierOther": "Other",
   "chat.decopilot.tierSmarter": "Smarter",
   "chat.decopilot.tryAnotherProviderOrRetry": "Try another provider or retry.",
-  "chat.desktopCli.tierFastDescription": "Quicker responses",
-  "chat.desktopCli.tierSmartDescription": "Balanced quality",
-  "chat.desktopCli.tierThinkingDescription": "Deeper reasoning",
-  "chat.desktopOfflineBanner.instructions":
-    "Run bunx decocms@latest link in a terminal on that machine to bring it back. Messages you send while it's offline will fail.",
-  "chat.desktopOfflineBanner.label": "Your desktop is offline",
-  "chat.desktopOfflineBanner.reconnectButton": "Reconnect desktop",
-  "chat.desktopOfflineBanner.title":
-    "This chat runs on your desktop, which isn't connected right now.",
   "chat.generateImage.failed": "Failed",
   "chat.generateImage.generatedImage": "Generated image",
   "chat.generateImage.generatedImageAlt": "Generated image",
@@ -336,18 +306,10 @@ export const chat = {
   "chat.nativeTerminal.unexpectedExit": "Coding agent exited unexpectedly.",
   "chat.nativeTerminal.waitingForInput": "Waiting for your input",
   "chat.nativeTerminal.working": "Agent is working",
-  "chat.noAiProviderEmptyState.connectDesktopLabel": "Connect your desktop",
-  "chat.noAiProviderEmptyState.desktopLinkedLabel": "Desktop linked",
   "chat.noAiProviderEmptyState.headingDefault": "Your agents are almost ready",
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for agents",
-  "chat.noAiProviderEmptyState.orConnectProvider":
-    "or connect a cloud provider",
   "chat.noAiProviderEmptyState.subtitleDefault":
-    "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.",
-  "chat.noAiProviderEmptyState.subtitleLocalMode":
-    "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files.",
-  "chat.noAiProviderEmptyState.subtitleWithDesktop":
-    "Your desktop is linked — start now with a local coding agent, or connect a cloud provider for hosted models.",
+    "Connect an AI provider to start chatting.",
   "chat.noAiProviderEmptyState.useLabel": "Use {label}",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
@@ -466,10 +428,6 @@ export const chat = {
   "chat.thinkingIndicator.thinkingLabel": "Thinking",
   "chat.thinkingIndicator.thought": "Thought",
   "chat.thinkingIndicator.thoughtFor": "Thought for {duration}",
-  "chat.tierTrigger.runtimeClaudeCode": "Claude Code",
-  "chat.tierTrigger.runtimeCloud": "Cloud",
-  "chat.tierTrigger.runtimeCodex": "Codex",
-  "chat.tierTrigger.runtimeThisDevice": "This device",
   "chat.tierTrigger.selected": "Selected",
   "chat.tierTrigger.tierFast": "Fast",
   "chat.tierTrigger.tierSmart": "Smart",

@@ -1,8 +1,10 @@
-//! SQLite storage layer for `/threads*` — no daemon precedent, full shape
-//! pinned in the native local-API contract.
-//! Kept separate from `routes/threads.rs` (the HTTP layer) so the CRUD/
-//! query logic is unit-testable against an in-memory SQLite connection
-//! without spinning up axum.
+//! SQLite storage for the production-compatible intercepted thread catalog
+//! and interactive terminal lifecycle.
+//!
+//! The migration ladder also preserves tables and rows written by retired
+//! native chat transports. Those historical tables stay readable to migration
+//! tests, but no runtime API in this module writes them after the terminal
+//! cutover.
 //!
 //! One `Mutex<rusqlite::Connection>` per process (see `ensure_db` in the
 //! parent module). This remains one local app process even though the durable
@@ -65,16 +67,15 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON messages(thread_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_runs_thread_created ON runs(thread_id, created_at);
 
--- `rt_*` ("real-UI threads") — a SEPARATE table pair from `threads`/
--- `messages`/`runs` above. Those tables back the mini-app's now-dead
--- `/threads*` HTTP surface AND the daemon-parity `/_sandbox/dispatch`
--- family (`routes/dispatch.rs`) — byte-parity-gated, never touched by this
--- change. `rt_threads`/`rt_messages` back `routes/intercept/*`'s emulation
--- of the REAL production shell's wire contract instead: `ThreadEntity`
+-- `threads`/`messages`/`runs` above are the retired native mini-chat store.
+-- Keep them in the historical schema so opening an existing database remains
+-- nondestructive; no current runtime route reads or writes them.
+-- `rt_threads`/`rt_messages` back `routes/intercept/*`'s emulation of the REAL
+-- production shell's wire contract instead: `ThreadEntity`
 -- (`packages/shared/src/thread/schema.ts::ThreadEntitySchema`) and
 -- `ThreadMessageEntity`, per the native interception contract
 -- §3.1. Same db file, same connection/lock, independent tables — keeps the
--- daemon-parity-critical old schema completely unmodified while the new
+-- historical schema completely unmodified while the newer
 -- interception layer gets the richer shape the real UI's tools expect.
 CREATE TABLE IF NOT EXISTS rt_threads (
     id TEXT PRIMARY KEY,
@@ -753,38 +754,9 @@ impl From<std::io::Error> for DbError {
 
 pub type DbResult<T> = Result<T, DbError>;
 
-#[derive(Debug, Clone, Serialize)]
-pub struct Thread {
-    pub id: String,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Message {
-    pub id: String,
-    pub thread_id: String,
-    pub role: String,
-    pub parts: Value,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Run {
-    pub id: String,
-    pub thread_id: String,
-    pub harness_id: String,
-    pub status: String,
-    pub created_at: String,
-    pub ended_at: Option<String>,
-    pub error: Option<String>,
-}
-
 // --- native_scoped_threads / native_scoped_messages — the REAL production shell's wire shape ----
 //
-// See migration 1's schema comment for why these are a separate table
-// pair from `Thread`/`Message`/`Run` above. Field names/shapes mirror
+// Field names/shapes mirror
 // `packages/shared/src/thread/schema.ts::ThreadEntitySchema` /
 // `ThreadMessageEntitySchema` closely enough that `routes/intercept/
 // thread_tools.rs` can serialize a `RtThread`/`RtMessage` directly as the
@@ -1064,13 +1036,6 @@ pub enum RtTerminalResumeDecision {
     Resume(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RtTerminalSessionDeleteOutcome {
-    Deleted,
-    Live,
-    Missing,
-}
-
 /// The title every thread starts with, and the one an auto-title is allowed
 /// to replace. Byte-parity with `packages/harness/src/thread-title.ts`.
 pub const DEFAULT_THREAD_TITLE: &str = "New chat";
@@ -1107,8 +1072,8 @@ pub fn is_thread_status(value: &str) -> bool {
 /// implementers don't edit) via the standard civil-from-days algorithm
 /// (Howard Hinnant's `civil_from_days`, the same one libc++'s `<chrono>`
 /// uses). Millisecond precision (rather than seconds) keeps same-tick
-/// creates orderable in `list_threads`'s `ORDER BY updated_at DESC` without
-/// a secondary sort key doing all the work.
+/// creates orderable in the scoped thread list's `ORDER BY updated_at DESC`
+/// without a secondary sort key doing all the work.
 pub(crate) fn now_rfc3339() -> String {
     format_rfc3339(
         SystemTime::now()
@@ -1287,7 +1252,7 @@ impl ThreadsDb {
         // read and write — thread lists and message pages — and the
         // IMMEDIATE transaction below takes SQLite's writer lock and commits
         // (an fsync) even when there is nothing to adopt, which on a hot
-        // chat serialized every reader behind a per-request write. Adoption
+        // request path serialized every reader behind a per-request write. Adoption
         // is a migration: once this process has claimed a pair, re-running it
         // can find nothing new (legacy rows are only ever CONSUMED), so the
         // guard makes every later call free. A second process instance would
@@ -1325,382 +1290,12 @@ impl ThreadsDb {
         Ok(())
     }
 
-    /// Startup variant of legacy adoption. It runs only after the Keychain has
-    /// yielded an authenticated subject and claims every attributable org for
-    /// that account before terminal restoration. Signed-out startup performs
-    /// no adoption.
-    pub fn prepare_account_scope(&self, scope: &RtAccountScope) -> DbResult<()> {
-        if scope.user_id == "local-desktop-user" {
-            return Ok(());
-        }
-        let account_scope = scope.storage_key();
-        let mut conn = self.lock();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        tx.execute(
-            "UPDATE native_scoped_threads SET account_scope = ?1 \
-             WHERE account_scope = '' AND created_by = ?2 \
-               AND created_by <> 'local-desktop-user'",
-            params![account_scope, scope.user_id],
-        )?;
-        tx.execute(
-            "UPDATE native_legacy_turn_queue_v10 SET account_scope = ?1 \
-             WHERE account_scope = '' AND EXISTS (\
-                 SELECT 1 FROM native_scoped_threads t \
-                 WHERE t.id = native_legacy_turn_queue_v10.thread_id \
-                   AND t.organization_id = native_legacy_turn_queue_v10.organization_id \
-                   AND t.generation = native_legacy_turn_queue_v10.thread_generation \
-                   AND t.account_scope = ?1\
-             )",
-            params![account_scope],
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-
-    pub fn list_threads(&self) -> DbResult<Vec<Thread>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at FROM threads \
-             ORDER BY updated_at DESC, rowid DESC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(Thread {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                created_at: row.get(2)?,
-                updated_at: row.get(3)?,
-            })
-        })?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        Ok(out)
-    }
-
-    pub fn create_thread(&self, title: String) -> DbResult<Thread> {
-        let id = Uuid::new_v4().to_string();
-        let ts = now_rfc3339();
-        let conn = self.lock();
-        conn.execute(
-            "INSERT INTO threads (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-            params![id, title, ts],
-        )?;
-        Ok(Thread {
-            id,
-            title,
-            created_at: ts.clone(),
-            updated_at: ts,
-        })
-    }
-
-    /// Idempotent variant of [`Self::create_thread`] for a CALLER-CHOSEN
-    /// `id` — `INSERT OR IGNORE`, then read back whichever row is current.
-    /// Phase 2's dispatch route (`routes/dispatch.rs`) is the one caller:
-    /// `input.threadId` is caller-supplied (the desktop frontend mints
-    /// it, not this store), and dispatch has no separate "create the
-    /// thread first" step to depend on — the FIRST dispatch for a given
-    /// `threadId` implicitly creates it (empty title), and every
-    /// subsequent dispatch for the same id is a harmless no-op here.
-    pub fn create_thread_with_id(&self, id: &str, title: &str) -> DbResult<Thread> {
-        let ts = now_rfc3339();
-        let conn = self.lock();
-        conn.execute(
-            "INSERT OR IGNORE INTO threads (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-            params![id, title, ts],
-        )?;
-        conn.query_row(
-            "SELECT id, title, created_at, updated_at FROM threads WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Thread {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    created_at: row.get(2)?,
-                    updated_at: row.get(3)?,
-                })
-            },
-        )
-        .map_err(DbError::from)
-    }
-
-    pub fn get_thread(&self, id: &str) -> DbResult<Option<Thread>> {
-        let conn = self.lock();
-        conn.query_row(
-            "SELECT id, title, created_at, updated_at FROM threads WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Thread {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    created_at: row.get(2)?,
-                    updated_at: row.get(3)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(DbError::from)
-    }
-
-    pub fn thread_exists(&self, id: &str) -> DbResult<bool> {
-        let conn = self.lock();
-        let hit: Option<i64> = conn
-            .query_row("SELECT 1 FROM threads WHERE id = ?1", params![id], |r| {
-                r.get(0)
-            })
-            .optional()?;
-        Ok(hit.is_some())
-    }
-
-    /// `None` if `id` doesn't exist. Reads the row back under the SAME lock
-    /// acquisition as the write (never re-enters `self.lock()` — the
-    /// underlying `std::sync::Mutex` isn't reentrant) so a concurrent
-    /// delete can't race between the `UPDATE` and the follow-up `SELECT`.
-    pub fn update_thread_title(&self, id: &str, title: &str) -> DbResult<Option<Thread>> {
-        let ts = now_rfc3339();
-        let conn = self.lock();
-        let changed = conn.execute(
-            "UPDATE threads SET title = ?1, updated_at = ?2 WHERE id = ?3",
-            params![title, ts, id],
-        )?;
-        if changed == 0 {
-            return Ok(None);
-        }
-        conn.query_row(
-            "SELECT id, title, created_at, updated_at FROM threads WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Thread {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    created_at: row.get(2)?,
-                    updated_at: row.get(3)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(DbError::from)
-    }
-
-    /// Idempotent by design of a bare `DELETE ... WHERE id = ?1` — zero rows
-    /// affected on an already-gone id is not an error. Cascades to
-    /// `messages`/`runs` via the schema's `ON DELETE CASCADE` (requires the
-    /// `foreign_keys` pragma, set in `init`).
-    pub fn delete_thread(&self, id: &str) -> DbResult<()> {
-        let conn = self.lock();
-        conn.execute("DELETE FROM threads WHERE id = ?1", params![id])?;
-        Ok(())
-    }
-
-    pub fn list_messages(&self, thread_id: &str) -> DbResult<Vec<Message>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT id, thread_id, role, parts, created_at FROM messages \
-             WHERE thread_id = ?1 ORDER BY created_at ASC, rowid ASC",
-        )?;
-        let rows = stmt.query_map(params![thread_id], |row| {
-            let parts_raw: String = row.get(3)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                parts_raw,
-                row.get::<_, String>(4)?,
-            ))
-        })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (id, thread_id, role, parts_raw, created_at) = r?;
-            out.push(Message {
-                id,
-                thread_id,
-                role,
-                parts: serde_json::from_str(&parts_raw)?,
-                created_at,
-            });
-        }
-        Ok(out)
-    }
-
-    /// Inserts the message AND bumps the parent thread's `updated_at` to the
-    /// SAME timestamp, atomically (a single SQL transaction) — so a reader
-    /// can never observe the new message without the thread's `updated_at`
-    /// reflecting it.
-    pub fn create_message(&self, thread_id: &str, role: &str, parts: &Value) -> DbResult<Message> {
-        let id = Uuid::new_v4().to_string();
-        let ts = now_rfc3339();
-        let parts_str = serde_json::to_string(parts)?;
-        let mut conn = self.lock();
-        let tx = conn.transaction()?;
-        tx.execute(
-            "INSERT INTO messages (id, thread_id, role, parts, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, thread_id, role, parts_str, ts],
-        )?;
-        tx.execute(
-            "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
-            params![ts, thread_id],
-        )?;
-        tx.commit()?;
-        Ok(Message {
-            id,
-            thread_id: thread_id.to_string(),
-            role: role.to_string(),
-            parts: parts.clone(),
-            created_at: ts,
-        })
-    }
-
-    /// Idempotent variant of [`Self::create_message`] for a CALLER-CHOSEN
-    /// `id` (rather than a freshly generated UUID): `INSERT OR IGNORE`,
-    /// then read back whichever row is now current — the one THIS call
-    /// inserted, or an identical one a PRIOR call (with the same `id`)
-    /// already inserted. Only bumps the parent thread's `updated_at` when
-    /// this call is the one that actually performed the insert (a no-op
-    /// re-poll must not keep bumping a thread to the top of the
-    /// most-recently-updated list).
-    ///
-    /// Phase 2's dispatch route (`routes/dispatch.rs`) is the one caller:
-    /// it derives a deterministic id per run (`run-<runId>-user` /
-    /// `run-<runId>-assistant`) so a dispatch that's retried/re-polled
-    /// with the SAME `runId` can call this again without duplicating the
-    /// thread's message history — see that file's module doc.
-    pub fn create_message_with_id(
-        &self,
-        id: &str,
-        thread_id: &str,
-        role: &str,
-        parts: &Value,
-    ) -> DbResult<Message> {
-        let ts = now_rfc3339();
-        let parts_str = serde_json::to_string(parts)?;
-        let mut conn = self.lock();
-        let tx = conn.transaction()?;
-        let inserted = tx.execute(
-            "INSERT OR IGNORE INTO messages (id, thread_id, role, parts, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, thread_id, role, parts_str, ts],
-        )?;
-        if inserted > 0 {
-            tx.execute(
-                "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
-                params![ts, thread_id],
-            )?;
-        }
-        let row = tx.query_row(
-            "SELECT id, thread_id, role, parts, created_at FROM messages WHERE id = ?1",
-            params![id],
-            |row| {
-                let parts_raw: String = row.get(3)?;
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    parts_raw,
-                    row.get::<_, String>(4)?,
-                ))
-            },
-        )?;
-        tx.commit()?;
-        let (id, thread_id, role, parts_raw, created_at) = row;
-        Ok(Message {
-            id,
-            thread_id,
-            role,
-            parts: serde_json::from_str(&parts_raw)?,
-            created_at,
-        })
-    }
-
-    /// Idempotent run creation: `INSERT OR IGNORE` keyed by `id` (dispatch's
-    /// `runId` — the contract's "`Run.id` MUST equal the dispatch route's
-    /// `runId`" coupling), then read back the current row regardless of
-    /// which call (this one, or an earlier re-poll of the same `runId`)
-    /// performed the insert. New rows always start `status:"running"` —
-    /// local-api's dispatch flow is synchronous (spawn → stream
-    /// immediately, no queue), so there's no observable `"pending"`
-    /// window worth persisting.
-    pub fn create_run(&self, id: &str, thread_id: &str, harness_id: &str) -> DbResult<Run> {
-        let ts = now_rfc3339();
-        let conn = self.lock();
-        conn.execute(
-            "INSERT OR IGNORE INTO runs (id, thread_id, harness_id, status, created_at) \
-             VALUES (?1, ?2, ?3, 'running', ?4)",
-            params![id, thread_id, harness_id, ts],
-        )?;
-        conn.query_row(
-            "SELECT id, thread_id, harness_id, status, created_at, ended_at, error FROM runs WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Run {
-                    id: row.get(0)?,
-                    thread_id: row.get(1)?,
-                    harness_id: row.get(2)?,
-                    status: row.get(3)?,
-                    created_at: row.get(4)?,
-                    ended_at: row.get(5)?,
-                    error: row.get(6)?,
-                })
-            },
-        )
-        .map_err(DbError::from)
-    }
-
-    /// Writes a TERMINAL status (`"completed"|"failed"|"cancelled"`) for
-    /// run `id` — idempotent AND one-way: the `WHERE status NOT IN
-    /// (...)` guard means a run already in a terminal status is left
-    /// completely untouched by a later call (byte-parity with the
-    /// contract's "once set, a run row is never mutated again"), so a
-    /// re-poll/retry that calls this twice for the same run is always
-    /// safe. `None` (no row matched — either `id` doesn't exist, or it
-    /// was already terminal) vs `Some` (this call performed the
-    /// transition) is NOT distinguished in the return value — callers
-    /// that need to know don't exist yet in this crate, and the
-    /// idempotency guarantee is symmetric either way.
-    pub fn set_run_terminal_status(
-        &self,
-        id: &str,
-        status: &str,
-        error: Option<&str>,
-    ) -> DbResult<()> {
-        let ts = now_rfc3339();
-        let conn = self.lock();
-        conn.execute(
-            "UPDATE runs SET status = ?1, ended_at = ?2, error = ?3 \
-             WHERE id = ?4 AND status NOT IN ('completed', 'failed', 'cancelled')",
-            params![status, ts, error, id],
-        )?;
-        Ok(())
-    }
-
-    pub fn list_runs(&self, thread_id: &str) -> DbResult<Vec<Run>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT id, thread_id, harness_id, status, created_at, ended_at, error FROM runs \
-             WHERE thread_id = ?1 ORDER BY created_at DESC, rowid DESC",
-        )?;
-        let rows = stmt.query_map(params![thread_id], |row| {
-            Ok(Run {
-                id: row.get(0)?,
-                thread_id: row.get(1)?,
-                harness_id: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                ended_at: row.get(5)?,
-                error: row.get(6)?,
-            })
-        })?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        Ok(out)
-    }
-
     // --- native_scoped_threads / native_scoped_messages ---
     // See migration 1's schema comment.
 
-    /// Idempotent-by-id creation (mirrors [`Self::create_thread_with_id`]):
-    /// `INSERT OR IGNORE`, then read back whichever row is current — the one
-    /// THIS call inserted, or a prior call with the SAME `id` (for example,
+    /// Idempotent-by-id scoped creation: `INSERT OR IGNORE`, then read back
+    /// whichever row is current — the one this call inserted, or a prior call
+    /// with the same `id` (for example,
     /// a retried `COLLECTION_THREADS_CREATE`). `id` defaults to a
     /// fresh UUID when the caller doesn't supply one (mirrors
     /// `ThreadCreateData.id?`'s "auto-generated if not provided" contract —
@@ -2471,6 +2066,7 @@ impl ThreadsDb {
         rt_terminal_session_by_id_fenced(&conn, fence, session_id)
     }
 
+    #[cfg(test)]
     pub fn rt_get_terminal_session_in_scope(
         &self,
         scope: &RtAccountScope,
@@ -2490,18 +2086,6 @@ impl ThreadsDb {
     ) -> DbResult<Option<RtTerminalSession>> {
         let conn = self.lock();
         rt_live_terminal_session_fenced(&conn, fence)
-    }
-
-    pub fn rt_get_live_terminal_session_in_scope(
-        &self,
-        scope: &RtAccountScope,
-        organization_id: &str,
-        thread_id: &str,
-    ) -> DbResult<Option<RtTerminalSession>> {
-        let Some(fence) = self.rt_thread_fence_in_scope(scope, organization_id, thread_id)? else {
-            return Ok(None);
-        };
-        self.rt_get_live_terminal_session_fenced(&fence)
     }
 
     /// Newest process attempt, including exited rows. Launchers use this to
@@ -2790,45 +2374,6 @@ impl ThreadsDb {
         Ok(RtTerminalProviderCheckpointOutcome::Stored(stored))
     }
 
-    /// Deletes one exited attempt. Live rows require process quiescence first
-    /// and are deliberately refused; deleting the parent thread remains the
-    /// generation-fenced, cascading lifecycle for an entire conversation.
-    pub fn rt_delete_terminal_session_fenced(
-        &self,
-        fence: &RtThreadFence,
-        session_id: &str,
-    ) -> DbResult<RtTerminalSessionDeleteOutcome> {
-        let mut conn = self.lock();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let Some(current) = rt_terminal_session_by_id_fenced(&tx, fence, session_id)? else {
-            tx.commit()?;
-            return Ok(RtTerminalSessionDeleteOutcome::Missing);
-        };
-        if current.physical_state.is_live() {
-            tx.commit()?;
-            return Ok(RtTerminalSessionDeleteOutcome::Live);
-        }
-        let deleted = tx.execute(
-            "DELETE FROM native_terminal_sessions \
-             WHERE id = ?1 AND account_scope = ?2 AND organization_id = ?3 \
-               AND thread_id = ?4 AND thread_generation = ?5 \
-               AND physical_state = 'exited'",
-            params![
-                session_id,
-                fence.account_scope,
-                fence.organization_id,
-                fence.thread_id,
-                fence.generation,
-            ],
-        )?;
-        tx.commit()?;
-        Ok(if deleted == 1 {
-            RtTerminalSessionDeleteOutcome::Deleted
-        } else {
-            RtTerminalSessionDeleteOutcome::Missing
-        })
-    }
-
     /// A process cannot survive application boot as an owned terminal. Close
     /// every persisted live attempt in one transaction, retain any provider
     /// checkpoint for explicit resume, and atomically mark each owning thread
@@ -3050,10 +2595,7 @@ impl ThreadsDb {
         Ok((out, total))
     }
 
-    /// Reads a deterministic message id before dispatch starts side effects.
-    /// Callers must compare the returned thread/role/parts/metadata with their
-    /// intended append (the same exact-identity rule enforced by
-    /// [`Self::rt_append_message`]) rather than treating any id hit as a match.
+    /// Test helper for asserting the exact identity of a persisted message.
     #[cfg(test)]
     pub fn rt_get_message(&self, id: &str) -> DbResult<Option<RtMessage>> {
         let conn = self.lock();
@@ -3084,32 +2626,6 @@ impl ThreadsDb {
         .map_err(DbError::from)
     }
 
-    pub fn rt_get_message_fenced(
-        &self,
-        fence: &RtThreadFence,
-        id: &str,
-    ) -> DbResult<Option<RtMessage>> {
-        let conn = self.lock();
-        conn.query_row(
-            "SELECT id, thread_id, role, parts, metadata, created_at, updated_at, seq \
-             FROM native_scoped_messages \
-             WHERE id = ?1 AND EXISTS (\
-                 SELECT 1 FROM native_scoped_threads \
-                 WHERE id = native_scoped_messages.thread_id AND account_scope = ?2 \
-                   AND organization_id = ?3 AND generation = ?4\
-             )",
-            params![
-                id,
-                fence.account_scope,
-                fence.organization_id,
-                fence.generation,
-            ],
-            row_to_rt_message,
-        )
-        .optional()
-        .map_err(DbError::from)
-    }
-
     #[cfg(test)]
     pub fn rt_get_message_in_org(
         &self,
@@ -3119,16 +2635,12 @@ impl ThreadsDb {
         self.rt_get_message_in_scope(&RtAccountScope::test_default(), organization_id, id)
     }
 
-    /// Appends a message and bumps the parent thread's `updated_at`
-    /// atomically, same pattern as [`Self::create_message`]. `id` is
-    /// caller-chosen (not auto-generated) so dispatch can mint deterministic
-    /// ids (`msg-<taskId>-user` / `msg-<taskId>-assistant`). Repeating an id is
-    /// idempotent only when thread/role/parts/metadata are semantically equal:
-    /// the original row is returned, its `seq` is not consumed again, and the
-    /// parent thread is not bumped a second time. Reusing an id for different
-    /// content is an explicit [`DbError::IdempotencyConflict`].
-    /// Test-only compatibility entry point without an organization or
-    /// generation fence. Production callers use the scoped variants.
+    /// Test helper that appends a message and bumps the parent thread's
+    /// `updated_at` atomically. Repeating an id is idempotent only when
+    /// thread/role/parts/metadata are semantically equal: the original row is
+    /// returned, its `seq` is not consumed again, and the parent thread is not
+    /// bumped a second time. Reusing an id for different content is an explicit
+    /// [`DbError::IdempotencyConflict`].
     #[cfg(test)]
     pub fn rt_append_message(
         &self,
@@ -3335,126 +2847,6 @@ impl ThreadsDb {
             params![status, ts, id, organization_id],
         )?;
         Ok(())
-    }
-
-    /// Scans assistant messages newest-first for the most recent valid
-    /// `data-harness-session` resume-token pseudo-part `harness::parts`
-    /// appends (see that crate's module doc's "Resume token convention").
-    ///
-    /// A failed/cancelled turn may persist an assistant row before the CLI
-    /// reports a session id. That row must not hide the previous valid resume
-    /// token: the CLI still owns the earlier on-disk conversation and the next
-    /// turn must continue it rather than silently starting a new session.
-    #[cfg(test)]
-    pub fn rt_last_assistant_session_in_org(
-        &self,
-        organization_id: &str,
-        thread_id: &str,
-    ) -> DbResult<Option<(String, String)>> {
-        self.rt_last_assistant_session_inner(organization_id, thread_id, None, None, None)
-    }
-
-    #[cfg(test)]
-    pub fn rt_last_assistant_session_for_harness_in_org(
-        &self,
-        organization_id: &str,
-        thread_id: &str,
-        harness_id: &str,
-    ) -> DbResult<Option<(String, String)>> {
-        self.rt_last_assistant_session_inner(
-            organization_id,
-            thread_id,
-            None,
-            None,
-            Some(harness_id),
-        )
-    }
-
-    pub fn rt_last_assistant_session_fenced(
-        &self,
-        fence: &RtThreadFence,
-        harness_id: &str,
-    ) -> DbResult<Option<(String, String)>> {
-        self.rt_last_assistant_session_inner(
-            &fence.organization_id,
-            &fence.thread_id,
-            Some(&fence.generation),
-            Some(&fence.account_scope),
-            Some(harness_id),
-        )
-    }
-
-    fn rt_last_assistant_session_inner(
-        &self,
-        organization_id: &str,
-        thread_id: &str,
-        generation: Option<&str>,
-        account_scope: Option<&str>,
-        expected_harness_id: Option<&str>,
-    ) -> DbResult<Option<(String, String)>> {
-        let conn = self.lock();
-        let mut statement = match generation {
-            Some(_) => conn.prepare(
-                "SELECT parts FROM native_scoped_messages \
-                     WHERE thread_id = ?1 AND role = 'assistant' AND EXISTS (\
-                         SELECT 1 FROM native_scoped_threads \
-                         WHERE id = native_scoped_messages.thread_id AND organization_id = ?2 \
-                           AND generation = ?3 AND account_scope = ?4\
-                     ) \
-                     ORDER BY seq DESC",
-            )?,
-            None => conn.prepare(
-                "SELECT parts FROM native_scoped_messages \
-                     WHERE thread_id = ?1 AND role = 'assistant' AND EXISTS (\
-                         SELECT 1 FROM native_scoped_threads \
-                         WHERE id = native_scoped_messages.thread_id AND organization_id = ?2\
-                     ) \
-                     ORDER BY seq DESC",
-            )?,
-        };
-        let mut rows = match generation {
-            Some(generation) => statement.query(params![
-                thread_id,
-                organization_id,
-                generation,
-                account_scope
-            ])?,
-            None => statement.query(params![thread_id, organization_id])?,
-        };
-
-        while let Some(row) = rows.next()? {
-            let parts_json: String = row.get(0)?;
-            let parts: Value = serde_json::from_str(&parts_json)?;
-            let Some(parts) = parts.as_array() else {
-                continue;
-            };
-            for part in parts.iter().rev() {
-                if part.get("type").and_then(Value::as_str) != Some("data-harness-session") {
-                    continue;
-                }
-                let Some(harness_id) = part
-                    .get("harnessId")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                else {
-                    continue;
-                };
-                if expected_harness_id.is_some_and(|expected| expected != harness_id) {
-                    continue;
-                }
-                let Some(session_id) = part
-                    .get("sessionId")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                else {
-                    continue;
-                };
-                return Ok(Some((harness_id.to_string(), session_id.to_string())));
-            }
-        }
-        Ok(None)
     }
 }
 
@@ -4412,7 +3804,13 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "kept"
         );
         assert_eq!(
-            db.get_thread("legacy-mini-thread").unwrap().unwrap().title,
+            db.lock()
+                .query_row(
+                    "SELECT title FROM threads WHERE id = 'legacy-mini-thread'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
             "also kept"
         );
         let (messages, total) = db.rt_list_messages("legacy-thread", 100, 0, false).unwrap();
@@ -5352,7 +4750,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
         let db = ThreadsDb::open(&app_root).unwrap();
-        db.create_thread("permission check".to_string()).unwrap();
+        create_rt_thread(&db, "permission-check-org", "permission-check-thread");
         // The db sits at the app root now, and the app root is the USER'S
         // directory — open() secures the database files themselves and must
         // not chmod the directory around them.
@@ -5386,17 +4784,13 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "user-a",
         )
         .unwrap();
-        let session_part = serde_json::json!([{
-            "type": "data-harness-session",
-            "harnessId": "claude-code",
-            "sessionId": "session-a"
-        }]);
+        let message_parts = serde_json::json!([{"type": "text", "text": "kept"}]);
         db.rt_append_message_in_org(
             "org-a",
             "assistant-a",
             "thread-a",
             "assistant",
-            &session_part,
+            &message_parts,
             None,
         )
         .unwrap();
@@ -5413,11 +4807,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 .unwrap()
                 .1,
             0
-        );
-        assert_eq!(
-            db.rt_last_assistant_session_in_org("org-b", "thread-a")
-                .unwrap(),
-            None
         );
         let patch = RtThreadPatch {
             title: Some("cross-tenant overwrite".to_string()),
@@ -5458,120 +4847,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(unchanged.harness_id, None);
         assert_eq!(unchanged.branch, None);
         assert!(db.rt_get_message("cross-org-message").unwrap().is_none());
-        assert_eq!(
-            db.rt_last_assistant_session_in_org("org-a", "thread-a")
-                .unwrap(),
-            Some(("claude-code".to_string(), "session-a".to_string()))
-        );
-    }
-
-    #[test]
-    fn rt_session_lookup_skips_failed_rows_invalid_tokens_and_other_harnesses() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        create_rt_thread(&db, "org", "thread");
-
-        db.rt_append_message_in_org(
-            "org",
-            "assistant-claude-1",
-            "thread",
-            "assistant",
-            &serde_json::json!([{
-                "type": "data-harness-session",
-                "harnessId": "claude-code",
-                "sessionId": "claude-session-1",
-            }]),
-            None,
-        )
-        .unwrap();
-        // A pre-spawn failure persists an assistant row with no token. It must
-        // not erase the last known-good on-disk CLI conversation.
-        db.rt_append_message_in_org(
-            "org",
-            "assistant-failed",
-            "thread",
-            "assistant",
-            &serde_json::json!([]),
-            Some(&serde_json::json!({"finishReason": "error"})),
-        )
-        .unwrap();
-        // Wrong-provider and whitespace-only tokens are not valid anchors for
-        // the thread's pinned harness.
-        db.rt_append_message_in_org(
-            "org",
-            "assistant-codex",
-            "thread",
-            "assistant",
-            &serde_json::json!([{
-                "type": "data-harness-session",
-                "harnessId": "codex",
-                "sessionId": "codex-session-1",
-            }]),
-            None,
-        )
-        .unwrap();
-        db.rt_append_message_in_org(
-            "org",
-            "assistant-invalid",
-            "thread",
-            "assistant",
-            &serde_json::json!([
-                {
-                    "type": "data-harness-session",
-                    "harnessId": "claude-code",
-                    "sessionId": " \t ",
-                },
-                {
-                    "type": "data-harness-session",
-                    "harnessId": " ",
-                    "sessionId": "not-valid",
-                },
-            ]),
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(
-            db.rt_last_assistant_session_for_harness_in_org("org", "thread", "claude-code")
-                .unwrap(),
-            Some(("claude-code".to_string(), "claude-session-1".to_string()))
-        );
-        assert_eq!(
-            db.rt_last_assistant_session_for_harness_in_org("org", "thread", "codex")
-                .unwrap(),
-            Some(("codex".to_string(), "codex-session-1".to_string()))
-        );
-
-        db.rt_append_message_in_org(
-            "org",
-            "assistant-claude-2",
-            "thread",
-            "assistant",
-            &serde_json::json!([{
-                "type": "data-harness-session",
-                "harnessId": "claude-code",
-                "sessionId": " claude-session-2 ",
-            }]),
-            None,
-        )
-        .unwrap();
-        assert_eq!(
-            db.rt_last_assistant_session_for_harness_in_org("org", "thread", "claude-code")
-                .unwrap(),
-            Some(("claude-code".to_string(), "claude-session-2".to_string()))
-        );
-
-        db.lock()
-            .execute(
-                "UPDATE native_scoped_messages SET parts = '{broken-json' \
-                 WHERE id = 'assistant-claude-2'",
-                [],
-            )
-            .unwrap();
-        assert!(
-            db.rt_last_assistant_session_for_harness_in_org("org", "thread", "claude-code")
-                .is_err(),
-            "corrupt durable session history must fail closed instead of starting a fresh CLI session"
-        );
     }
 
     #[test]
@@ -5666,11 +4941,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert!(!db
             .rt_pin_harness_if_unset_fenced(&old_fence, "claude-code", Some("user-desktop"), None,)
             .unwrap());
-        assert_eq!(
-            db.rt_last_assistant_session_fenced(&old_fence, "claude-code")
-                .unwrap(),
-            None
-        );
         assert!(!db
             .rt_delete_thread_in_org_if_generation(&old_fence)
             .unwrap());
@@ -6056,214 +5326,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             format_rfc3339(Duration::from_millis(1_704_067_200_123)),
             "2024-01-01T00:00:00.123Z"
         );
-    }
-
-    #[test]
-    fn create_and_get_thread_roundtrip() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("hello".to_string()).unwrap();
-        assert_eq!(t.title, "hello");
-        assert_eq!(t.created_at, t.updated_at);
-        let fetched = db.get_thread(&t.id).unwrap().unwrap();
-        assert_eq!(fetched.id, t.id);
-        assert_eq!(fetched.title, "hello");
-    }
-
-    #[test]
-    fn get_unknown_thread_is_none() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        assert!(db.get_thread("nope").unwrap().is_none());
-    }
-
-    #[test]
-    fn list_threads_orders_newest_updated_first() {
-        // Millisecond-resolution timestamps: sleep between steps so this
-        // assertion can't tie-break on `rowid` instead of `updated_at` on a
-        // fast machine that completes two ops within the same millisecond.
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let a = db.create_thread("a".to_string()).unwrap();
-        std::thread::sleep(Duration::from_millis(5));
-        let b = db.create_thread("b".to_string()).unwrap();
-        std::thread::sleep(Duration::from_millis(5));
-        // Bump `a`'s updated_at past `b`'s by appending a message to it.
-        db.create_message(&a.id, "user", &Value::Array(vec![]))
-            .unwrap();
-        let listed = db.list_threads().unwrap();
-        assert_eq!(listed[0].id, a.id);
-        assert_eq!(listed[1].id, b.id);
-    }
-
-    #[test]
-    fn update_title_bumps_updated_at() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        let updated = db.update_thread_title(&t.id, "renamed").unwrap().unwrap();
-        assert_eq!(updated.title, "renamed");
-        assert!(updated.updated_at >= t.updated_at);
-    }
-
-    #[test]
-    fn update_unknown_thread_is_none() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        assert!(db.update_thread_title("nope", "x").unwrap().is_none());
-    }
-
-    #[test]
-    fn delete_thread_is_idempotent_and_cascades() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        db.create_message(&t.id, "user", &Value::Array(vec![]))
-            .unwrap();
-        db.delete_thread(&t.id).unwrap();
-        assert!(db.get_thread(&t.id).unwrap().is_none());
-        assert!(db.list_messages(&t.id).unwrap().is_empty());
-        // Deleting again must not error.
-        db.delete_thread(&t.id).unwrap();
-    }
-
-    #[test]
-    fn create_message_bumps_thread_updated_at_and_round_trips_parts() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        let parts = serde_json::json!([{"type": "text", "text": "hi"}]);
-        let m = db.create_message(&t.id, "user", &parts).unwrap();
-        assert_eq!(m.parts, parts);
-        let refreshed = db.get_thread(&t.id).unwrap().unwrap();
-        assert!(refreshed.updated_at >= t.updated_at);
-        let messages = db.list_messages(&t.id).unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].parts, parts);
-    }
-
-    #[test]
-    fn list_runs_empty_for_fresh_thread() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        assert!(db.list_runs(&t.id).unwrap().is_empty());
-    }
-
-    #[test]
-    fn thread_exists_true_and_false() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        assert!(db.thread_exists(&t.id).unwrap());
-        assert!(!db.thread_exists("nope").unwrap());
-    }
-
-    #[test]
-    fn create_thread_with_id_is_idempotent_and_uses_the_given_id() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let first = db.create_thread_with_id("thread-abc", "").unwrap();
-        assert_eq!(first.id, "thread-abc");
-        let second = db
-            .create_thread_with_id("thread-abc", "ignored title")
-            .unwrap();
-        assert_eq!(second.id, "thread-abc");
-        assert_eq!(
-            second.title, "",
-            "a repeated create must not overwrite the original title"
-        );
-        assert_eq!(db.list_threads().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn create_message_with_id_is_idempotent_on_repeated_calls() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        let parts = serde_json::json!([{"type": "text", "text": "hi"}]);
-        let first = db
-            .create_message_with_id("run-1-user", &t.id, "user", &parts)
-            .unwrap();
-        let second = db
-            .create_message_with_id("run-1-user", &t.id, "user", &parts)
-            .unwrap();
-        assert_eq!(first.id, second.id);
-        assert_eq!(first.created_at, second.created_at);
-        // Only ONE row — a re-poll must not duplicate the message.
-        let messages = db.list_messages(&t.id).unwrap();
-        assert_eq!(messages.len(), 1);
-    }
-
-    #[test]
-    fn create_message_with_id_only_bumps_updated_at_on_the_actual_insert() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        let parts = serde_json::json!([]);
-        db.create_message_with_id("run-1-user", &t.id, "user", &parts)
-            .unwrap();
-        let after_first = db.get_thread(&t.id).unwrap().unwrap().updated_at;
-        std::thread::sleep(Duration::from_millis(5));
-        db.create_message_with_id("run-1-user", &t.id, "user", &parts)
-            .unwrap();
-        let after_second = db.get_thread(&t.id).unwrap().unwrap().updated_at;
-        assert_eq!(
-            after_first, after_second,
-            "a re-poll's ignored insert must not re-bump updated_at"
-        );
-    }
-
-    #[test]
-    fn create_run_is_idempotent_and_starts_running() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        let first = db.create_run("run-1", &t.id, "claude-code").unwrap();
-        assert_eq!(first.status, "running");
-        assert_eq!(first.harness_id, "claude-code");
-        let second = db.create_run("run-1", &t.id, "claude-code").unwrap();
-        assert_eq!(first.created_at, second.created_at);
-        let runs = db.list_runs(&t.id).unwrap();
-        assert_eq!(runs.len(), 1, "a re-poll must not duplicate the run row");
-    }
-
-    #[test]
-    fn set_run_terminal_status_transitions_from_running() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        db.create_run("run-1", &t.id, "codex").unwrap();
-        db.set_run_terminal_status("run-1", "completed", None)
-            .unwrap();
-        let runs = db.list_runs(&t.id).unwrap();
-        assert_eq!(runs[0].status, "completed");
-        assert!(runs[0].ended_at.is_some());
-        assert_eq!(runs[0].error, None);
-    }
-
-    #[test]
-    fn set_run_terminal_status_records_the_error_on_failure() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        db.create_run("run-1", &t.id, "codex").unwrap();
-        db.set_run_terminal_status("run-1", "failed", Some("boom"))
-            .unwrap();
-        let runs = db.list_runs(&t.id).unwrap();
-        assert_eq!(runs[0].status, "failed");
-        assert_eq!(runs[0].error.as_deref(), Some("boom"));
-    }
-
-    #[test]
-    fn set_run_terminal_status_is_one_way_once_terminal() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        let t = db.create_thread("a".to_string()).unwrap();
-        db.create_run("run-1", &t.id, "codex").unwrap();
-        db.set_run_terminal_status("run-1", "completed", None)
-            .unwrap();
-        let completed_ended_at = db.list_runs(&t.id).unwrap()[0].ended_at.clone();
-        // A second terminal write (e.g. a racing cancel) must NOT
-        // overwrite the already-terminal row.
-        db.set_run_terminal_status("run-1", "cancelled", Some("late cancel"))
-            .unwrap();
-        let runs = db.list_runs(&t.id).unwrap();
-        assert_eq!(runs[0].status, "completed");
-        assert_eq!(runs[0].error, None);
-        assert_eq!(runs[0].ended_at, completed_ended_at);
-    }
-
-    #[test]
-    fn set_run_terminal_status_on_an_unknown_run_id_is_a_harmless_no_op() {
-        let db = ThreadsDb::open_in_memory().unwrap();
-        // No panic, no error — just nothing to update.
-        db.set_run_terminal_status("nope", "completed", None)
-            .unwrap();
     }
 
     #[test]
@@ -6967,16 +6029,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             RtTerminalProviderCheckpointOutcome::NotLive(ref session)
                 if session.physical_state == RtTerminalPhysicalState::Exited
         ));
-        assert_eq!(
-            db.rt_delete_terminal_session_fenced(&first_fence, "checkpoint-terminal")
-                .unwrap(),
-            RtTerminalSessionDeleteOutcome::Deleted
-        );
-        assert_eq!(
-            db.rt_delete_terminal_session_fenced(&first_fence, "checkpoint-terminal")
-                .unwrap(),
-            RtTerminalSessionDeleteOutcome::Missing
-        );
     }
 
     #[test]
@@ -6988,12 +6040,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             db.rt_create_terminal_session_fenced(&fence, "delete-terminal", "codex")
                 .unwrap(),
         );
-        assert_eq!(
-            db.rt_delete_terminal_session_fenced(&fence, "delete-terminal")
-                .unwrap(),
-            RtTerminalSessionDeleteOutcome::Live
-        );
-
         let foreign_scope = RtAccountScope::new("other.example", "user").unwrap();
         assert!(db
             .rt_get_terminal_session_in_scope(

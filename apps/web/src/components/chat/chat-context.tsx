@@ -47,12 +47,9 @@ import {
   AGENT_OPTION_PINS,
   agentOptionFor,
   resolveNativeAgentOption,
-  resolveOfflineAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
-import { useCurrentLink } from "@/hooks/use-current-link";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
@@ -67,7 +64,7 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
 
 import {
-  useAiProviderKeys,
+  useHostedAiProviderKeys,
   useAiProviderModels,
   type AiProviderModel,
 } from "../../hooks/collections/use-ai-providers";
@@ -223,7 +220,7 @@ export interface ChatPrefsContextValue {
   setModel: (model: AiProviderModel) => void;
   credentialId: string | null;
   setCredentialId: (id: string | null) => void;
-  allModelsConnections: ReturnType<typeof useAiProviderKeys>;
+  allModelsConnections: ReturnType<typeof useHostedAiProviderKeys>;
   isModelsLoading: boolean;
   selectedVirtualMcp: VirtualMCPInfo | null;
   /** Selected image generation model (null = no image models available) */
@@ -251,20 +248,9 @@ export interface ChatPrefsContextValue {
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
   /**
-   * The agent option the chat will use for the next first message
-   * (cloud org router / Claude Code on desktop / Codex on desktop). Single
-   * source of truth for the (harness, sandbox) pair — see `AGENT_OPTION_PINS`
-   * in `./pills/agent-options`. Chosen inside the model selector.
-   *
-   * This is the **effective** value: the user's persisted pick filtered
-   * through what the active agent can actually run. If the user picked a
-   * desktop variant but the current agent has no clonable source
-   * (Decopilot-only / ephemeral), this falls back to plain Decopilot.
-   * The persisted pick is unchanged and returns when navigating back to
-   * an agent with a checkout. The setter writes to the raw underlying state.
-   *
-   * Null = server picks the default. Persisted to localStorage so the
-   * choice survives page reloads.
+   * Effective runtime option for the current surface. Hosted web resolves to
+   * Decopilot; native resolves a local terminal agent. Persisted per org so a
+   * native choice survives reloads.
    */
   pendingAgentOption: AgentOption | null;
   setPendingAgentOption: (option: AgentOption | null) => void;
@@ -374,27 +360,38 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const activeTier = resolveActiveTier(storedTier);
 
   // AI provider keys + models
-  const keys = useAiProviderKeys();
+  const keys = useHostedAiProviderKeys();
   const activeChatSlot = simpleMode.tiers[activeTier];
+  const activeChatKeyId = keys.some((key) => key.id === activeChatSlot?.keyId)
+    ? activeChatSlot?.keyId
+    : undefined;
   const effectiveKeyId =
     sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
       ? sessionCredentialId
-      : (activeChatSlot?.keyId ?? keys[0]?.id ?? null);
+      : (activeChatKeyId ?? keys[0]?.id ?? null);
   const { models: allKeyModels, isLoading: isModelsQueryLoading } =
     useAiProviderModels(effectiveKeyId ?? undefined);
 
-  const { models: simpleChatModels } = useAiProviderModels(
-    activeChatSlot?.keyId,
-  );
-  const { models: simpleImageModels } = useAiProviderModels(
-    simpleMode.tiers.image?.keyId,
-  );
-  const { models: simpleWebSearchModels } = useAiProviderModels(
-    simpleMode.tiers.web_search?.keyId,
-  );
-  const { models: simpleDeepResearchModels } = useAiProviderModels(
-    simpleMode.tiers.deep_research?.keyId,
-  );
+  const { models: simpleChatModels } = useAiProviderModels(activeChatKeyId);
+  const imageKeyId = keys.some(
+    (key) => key.id === simpleMode.tiers.image?.keyId,
+  )
+    ? simpleMode.tiers.image?.keyId
+    : undefined;
+  const { models: simpleImageModels } = useAiProviderModels(imageKeyId);
+  const webSearchKeyId = keys.some(
+    (key) => key.id === simpleMode.tiers.web_search?.keyId,
+  )
+    ? simpleMode.tiers.web_search?.keyId
+    : undefined;
+  const { models: simpleWebSearchModels } = useAiProviderModels(webSearchKeyId);
+  const deepResearchKeyId = keys.some(
+    (key) => key.id === simpleMode.tiers.deep_research?.keyId,
+  )
+    ? simpleMode.tiers.deep_research?.keyId
+    : undefined;
+  const { models: simpleDeepResearchModels } =
+    useAiProviderModels(deepResearchKeyId);
 
   const selectedModel: AiProviderModel | null =
     findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
@@ -503,19 +500,13 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     });
   };
 
-  // Pending agent — single source of truth for the user's pre-message
-  // pick (cloud org router / Claude Code on desktop / Codex on desktop).
-  // Persisted to localStorage so the choice survives page reloads.
+  // Pending agent — native's pre-launch coding-agent choice. The hosted web
+  // surface always resolves to Decopilot below. Persisted to localStorage so
+  // the native choice survives reloads.
   //
-  // Scoped per `locator` (like the image-model and tier prefs) so a desktop
-  // pick made in one org doesn't leak into another — runtime availability is
-  // org/link-specific, and a "Claude Code desktop" pick carried across orgs
-  // used to mis-route to an offline link. A fresh org starts with no pick
-  // (`null`), letting the server choose its default.
-  //
-  // Web derives the pending harness/sandbox pair from this value. Native
-  // filters it through its local-only resolver below. Both surfaces still read
-  // the same effective pair, so the pill display and submit cannot disagree.
+  // Scoped per `locator` (like the image-model and tier prefs) so a native
+  // choice made in one org doesn't leak into another. A fresh org starts with
+  // no pick and waits for an explicit coding-agent selection.
   const [pendingAgentOption, setPendingAgentOption] =
     useLocalStorage<AgentOption | null>(
       LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
@@ -540,41 +531,26 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Capability probes are advisory on web — we don't rewrite the harness for a
-  // missing CLI (cloud chat via the org router works even where the cloud
-  // *sandbox* doesn't). The one exception is a desktop pick whose link is
-  // *confirmed* offline: it can't run anywhere and nothing prompted the user to
-  // reconnect, so we auto-switch it to cloud. Derived (not persisted), so the
-  // desktop pick returns on its own once the link reconnects.
-  const link = useCurrentLink();
-
   const isDesktopApp = useIsDesktopApp();
-  const availability = useAgentOptionAvailability();
   // Native has no cloud/Decopilot surface. Ignore stale cloud prefs there and
   // recover early native threads that pinned a local harness without the
-  // expected sandbox tuple. While cold CLI detection is unresolved this stays
-  // null; TierTrigger renders that state as local-pending, never as cloud.
+  // expected sandbox tuple. A new chat stays unselected until the user picks
+  // an agent in the terminal empty state.
   const nativeAgentOption = resolveNativeAgentOption({
     pendingOption: pendingAgentOption,
     lockedHarness: taskCtxForLock?.isThreadLocked
       ? taskCtxForLock.lockedHarness
       : null,
-    availability,
   });
-  const webSelectedAgentOption = resolveOfflineAgentOption(
-    pendingAgentOption,
-    link.ready && !link.online,
-  );
-
-  // On web, a locked thread is dictated by its persisted (harness, sandbox)
-  // pair; an unknown tuple surfaces null instead of falling through to the
-  // global picker. Native is different: every runnable harness is local, and
-  // `nativeAgentOption` recovers older rows by their local harness alone.
+  // Hosted web has exactly one runnable chat runtime: Decopilot. A locked
+  // thread still reflects its persisted tuple so the hosted runtime guard can
+  // surface legacy/native rows as unavailable instead of relabelling them.
+  // Native recovers older rows by their local harness alone.
   const effectiveAgentOption: AgentOption | null = isDesktopApp
     ? nativeAgentOption
     : taskCtxForLock?.isThreadLocked
       ? lockedAgentOption
-      : webSelectedAgentOption;
+      : "decopilot";
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
@@ -830,8 +806,6 @@ export function ActiveTaskProvider({
     appContexts,
     setTiptapDoc,
     simpleModeTier: activeTier,
-    pendingSandboxProviderKind,
-    pendingHarnessId,
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
@@ -903,8 +877,8 @@ export function ActiveTaskProvider({
 
   // Race-free body reconcile for queued turns. When a message is sent behind a
   // running turn it's queued on the thread gate; the dequeued run's reply is
-  // NOT streamed to this thread's open /stream (a desktop run dispatches only
-  // after the gate slot frees, and its content lands only in the DB via the
+  // NOT streamed to this thread's open /stream (the queued hosted run starts
+  // only after the gate slot frees, and its content lands in the DB via the
   // projector). The projector/run-reactor emit `decopilot.thread.status` on the
   // shared /api/:org/watch pool STRICTLY AFTER that turn's thread_message_parts
   // are durably committed (projector path: enforced by DBOS step journaling —
@@ -1210,8 +1184,6 @@ export function ActiveTaskProvider({
           }
         : null,
       globals: {
-        harnessId: pendingHarnessId ?? undefined,
-        sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
         branch: currentBranch,
       },
     });
@@ -1221,20 +1193,10 @@ export function ActiveTaskProvider({
     // `/watch` (RowPatch carries it, the SSE event does not). Mirror the
     // harness into the store now so `findReusableNewChat` stops treating the
     // (now non-empty, often just-failed) thread as an empty "New chat" and
-    // dropping the user back onto it. When the user hasn't explicitly picked a
-    // runtime the client sends no harnessId and the server pins its default
-    // ("decopilot", per resolveHarnessId's fallback for non-CLI providers) —
-    // mirror that so this covers the common brand-new-thread case, not just
-    // explicit picks. LIST/GET is authoritative; this only keeps the live view
-    // correct meanwhile.
-    //
-    // `sandbox_provider_kind` is deliberately NOT mirrored: the server resolves
-    // it from state the client doesn't own (notably whether a desktop link is
-    // live), so the picker's value is a guess that the server routinely
-    // contradicts — it pins `user-desktop` for a linked desktop while the
-    // picker says `agent-sandbox`. Writing the guess made the preview's entry
-    // lookup miss a running sandbox, blanking a working preview and booting a
-    // competing one. Leave the field null until the authoritative row lands.
+    // dropping the user back onto it. Hosted web always sends Decopilot.
+    // LIST/GET is authoritative; this only keeps the live view correct while
+    // its row refresh is still in flight. Leave the sandbox field to that
+    // authoritative refresh too.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,

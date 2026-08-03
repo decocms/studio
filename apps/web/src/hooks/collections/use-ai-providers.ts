@@ -8,6 +8,7 @@
 import type { ModelCollectionEntitySchema } from "@decocms/bindings/llm";
 import {
   useProjectContext,
+  isHostedProviderId,
   pickSimpleModeDefaults,
   type AiProviderModel,
   type AiProviderKey,
@@ -66,6 +67,19 @@ export function useAiProviderKeys() {
     aiProviderKeysQueryOptions(org.slug, org.id),
   );
   return data?.keys ?? [];
+}
+
+/** Provider keys that can power hosted Decopilot runs.
+ *
+ * Native coding-agent credentials belong to their CLI processes and must
+ * never participate in hosted model selection. The raw hook remains available
+ * for provider-inventory code; the server API retains legacy list/delete
+ * compatibility independently.
+ */
+export function useHostedAiProviderKeys() {
+  return useAiProviderKeys().filter((key) =>
+    isHostedProviderId(key.providerId),
+  );
 }
 
 export function useAiProviderModels(keyId: string | undefined) {

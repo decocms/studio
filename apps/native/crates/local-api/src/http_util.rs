@@ -8,11 +8,8 @@
 //!   families (the app-API proxy, the preview proxy, the WebSocket bridge)
 //!   each carried their own copy; the WebSocket copy had silently dropped
 //!   `proxy-connection`. One list, one drift channel closed.
-//! - [`dispatch_sse_headers`] / [`event_stream_response`] — the TWO
-//!   deliberately different SSE header contracts (dispatch-lifecycle
-//!   `no-store` vs. the events-family `no-cache` + anti-buffering set). Each
-//!   was typed in two-plus route files; a route family picking headers by
-//!   hand is how it ends up on the wrong contract.
+//! - [`event_stream_response`] — the events-family SSE header contract,
+//!   centralized so event routes cannot drift from one another.
 //! - [`json_body`] / [`json_body_or_default`] — request-body JSON parsing
 //!   with the crate's pinned 400 messages. The per-family message wording is
 //!   wire contract (the fs family's daemon-parity oracle pins "Failed to
@@ -72,19 +69,6 @@ pub(crate) fn strip_hop_by_hop_headers(headers: &mut HeaderMap) {
     for name in HOP_BY_HOP_HEADER_NAMES {
         headers.remove(name);
     }
-}
-
-/// SSE headers pinned by the contract's Dispatch Lifecycle section —
-/// byte-parity with `daemon/routes/dispatch.ts`'s `SSE_HEADERS`, and
-/// DELIBERATELY different from [`event_stream_response`]'s events-family set
-/// (`no-store` here, not `no-cache`; no `X-Accel-Buffering`/
-/// `Content-Encoding`, since those aren't pinned for the dispatch routes).
-pub(crate) fn dispatch_sse_headers() -> [(HeaderName, &'static str); 3] {
-    [
-        (header::CONTENT_TYPE, "text/event-stream"),
-        (header::CACHE_CONTROL, "no-store"),
-        (header::CONNECTION, "keep-alive"),
-    ]
 }
 
 /// A `200 text/event-stream` response with the events-family header set the
@@ -215,18 +199,6 @@ mod tests {
         assert!(headers.get("x-remove-me").is_none());
         assert!(headers.get("x-remove-too").is_none());
         assert_eq!(headers.get("x-end-to-end").unwrap(), "keep");
-    }
-
-    /// The dispatch contract's set must stay `no-store` with NO anti-buffering
-    /// extras — picking up the events-family headers here would be the exact
-    /// cross-contract drift this module exists to prevent.
-    #[test]
-    fn dispatch_sse_headers_pin_the_no_store_contract() {
-        let headers = dispatch_sse_headers();
-        assert_eq!(headers.len(), 3);
-        assert_eq!(headers[0], (header::CONTENT_TYPE, "text/event-stream"));
-        assert_eq!(headers[1], (header::CACHE_CONTROL, "no-store"));
-        assert_eq!(headers[2], (header::CONNECTION, "keep-alive"));
     }
 
     #[test]

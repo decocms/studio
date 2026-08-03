@@ -44,6 +44,7 @@ import {
 import {
   resolveSpecificModel,
   resolveTier,
+  SpecificModelCredentialUnavailableError,
   tryResolveTier,
 } from "@/core/resolve-tier";
 import { isPermanentRunError } from "@/core/dispatch-errors";
@@ -241,6 +242,24 @@ async function prepareFireStep(
     );
   }
   const tier: SimpleModeTier = parsedModels.tier ?? "smart";
+  const resolveChatModel = async () => {
+    if (!pinned) return resolveTier(studioCtx, tier);
+    try {
+      return await resolveSpecificModel(
+        studioCtx,
+        pinned.credentialId,
+        pinned.modelId,
+      );
+    } catch (error) {
+      if (!(error instanceof SpecificModelCredentialUnavailableError)) {
+        throw error;
+      }
+      console.warn(
+        `[fireAutomationWorkflow] automation ${automation.id} has an unavailable specific-model credential; falling back to tier "${tier}"`,
+      );
+      return resolveTier(studioCtx, tier);
+    }
+  };
   // Match the chat POST /messages path: resolve the chat model strictly
   // (failure aborts the run), and optimistically resolve `image` and
   // `web_research` so the corresponding built-in tools (generate_image,
@@ -248,9 +267,7 @@ async function prepareFireStep(
   // these, the automation agent reports "I don't have a web_search tool"
   // even when the org has Perplexity/Gemini Deep Research configured.
   const [resolved, image, webSearch, deepResearch] = await Promise.all([
-    pinned
-      ? resolveSpecificModel(studioCtx, pinned.credentialId, pinned.modelId)
-      : resolveTier(studioCtx, tier),
+    resolveChatModel(),
     tryResolveTier(studioCtx, "image"),
     tryResolveTier(studioCtx, "web_search"),
     tryResolveTier(studioCtx, "deep_research"),

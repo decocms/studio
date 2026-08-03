@@ -3,9 +3,8 @@ export { DEFAULT_THREAD_TITLE } from "../thread-title";
 export const DEFAULT_WINDOW_SIZE = 50;
 export const PARENT_STEP_LIMIT = 60;
 
-/** Step budget for a delegated `subtask`/subagent run. Lives here (a `@/*`-free
- *  harnesses leaf) so the portable core + the daemon (Task 18 desktop subtask)
- *  can bundle it; re-exported from the route constants for the cluster. */
+/** Step budget for a delegated `subtask`/subagent run. Lives in this `@/*`-free
+ *  harness leaf so every hosted orchestration path shares the same limit. */
 export const SUBAGENT_STEP_LIMIT = 30;
 
 export function buildBasePlatformPrompt(): string {

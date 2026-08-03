@@ -24,7 +24,7 @@ pub enum HarnessId {
 }
 
 impl HarnessId {
-    /// Stable order pinned by the contract doc's `GET /models` example:
+    /// Stable order used by the native coding-agent picker:
     /// `claude-code` then `codex`.
     pub const ALL: [HarnessId; 2] = [HarnessId::ClaudeCode, HarnessId::Codex];
 

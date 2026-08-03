@@ -3,23 +3,22 @@
  *
  * The decopilot harness's streamText loop. The portable engine layer of the
  * shared Decopilot core: it builds the enable_tool / prepareStep / enabled-tool
- * state, drives the env engine through the injected `runEngine` adapter
- * (`runAgentLoop` on the cluster, `runNativeAgentLoopCore` on the desktop in
- * Task 15), and owns:
+ * state, drives the hosted engine through the injected `runEngine` adapter,
+ * and owns:
  *  - Background title generation with the harness fast model, kicked off in
  *    parallel with the main LLM stream.
  *  - `result.toUIMessageStream({ messageMetadata })` chunk producer that
  *    decorates chunks with start/step/finish metadata (model id, usage,
  *    cache token details).
  *  - LLM-call telemetry fired through the injected `telemetry` hooks
- *    (cluster: monitoring + metrics; desktop: no-op).
+ *    (monitoring + metrics).
  *  - Auto-title result emission (`data-title-result`) — yielded through the
  *    same async iterator as the main stream chunks.
  *  - Abort-time `message-metadata` re-emission so the UI keeps the accumulated
  *    usage that the SDK would otherwise reset.
  *
- * This module is `@/*`-free so the daemon can bundle it. Cluster-only
- * monitoring lives behind the `telemetry` hooks; ctx-coupled engine assembly
+ * This module is `@/*`-free so the hosted stream core stays independently
+ * testable. Monitoring lives behind `telemetry`; ctx-coupled engine assembly
  * lives behind `runEngine`.
  *
  * Side-channel chunks are pushed onto an internal queue: callbacks push chunks
@@ -77,8 +76,8 @@ export interface TelemetryUsage {
 
 /**
  * The LLM-call telemetry the loop fires at finish/error/abort. The cluster
- * implements these against `@/monitoring/*` (binding `ctx`, `requestId`,
- * `userAgent` in the closure); the desktop leaves them undefined (no sink).
+ * implements these against `@/monitoring/*` (binding `ctx`, `requestId`, and
+ * `userAgent` in the closure).
  *
  * The hook args are exactly the non-ctx fields the cluster's
  * `recordLlmCallMetrics` / `monitorLlmCall` need — derived from those call
@@ -181,7 +180,7 @@ export interface RunDecopilotStreamExtras {
   closeSideChunks?: () => void;
   onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
 
-  /** LLM-call telemetry hooks (cluster monitoring/metrics; undefined on desktop). */
+  /** Hosted LLM-call telemetry hooks. */
   telemetry?: DecopilotTelemetry;
 
   /** Top-level vs delegated subtask run. Gates title generation (Task 16) and,
@@ -381,9 +380,9 @@ export async function* runDecopilotStream(
   // it would never enable anything — `reconstructEnabledTools` returns ∅ and it
   // sees only the always-on built-ins (the "light toolset" bug). Give a subagent
   // its full toolset up front instead: every passthrough tool active from step 1.
-  // `extras.kind === "subtask"` is the reliable signal on the desktop subagent
-  // path (it runs through this loop); DecopilotRunContext carries the cluster
-  // top-level subagent flag without widening HarnessStreamInput.
+  // `extras.kind === "subtask"` identifies the delegated core path;
+  // DecopilotRunContext carries the hosted top-level subagent flag without
+  // widening HarnessStreamInput.
   const isDelegatedSubagent =
     extras.kind === "subtask" || runContext?.isSubagent === true;
   const enabledTools = isDelegatedSubagent

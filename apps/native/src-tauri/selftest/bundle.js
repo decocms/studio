@@ -13,7 +13,7 @@
 //   (b) Cookie auth: an explicit credential-less session probe is 401, while
 //       the normal credentialed probe is already 204. The latter proves the
 //       real native entry exchanged its one-time IPC capability before React
-//       mounted. Replaying that capability is rejected, and `/models`
+//       mounted. Replaying that capability is rejected, and `/_sandbox/tasks`
 //       succeeds with browser credentials and no `Authorization` header.
 //   (c) Native `EventSource` receives the initial sandbox `status` event.
 //       EventSource cannot carry a custom Authorization header, so this is a
@@ -258,7 +258,7 @@
   }
 
   try {
-    const { res, attempts } = await fetchNetworkRetry("/models", {
+    const { res, attempts } = await fetchNetworkRetry("/_sandbox/tasks", {
       credentials: "include",
       cache: "no-store",
     });

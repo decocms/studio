@@ -48,15 +48,23 @@ describe("hosted terminal-only runtime guard", () => {
     }
   });
 
-  test("blocks retired or unknown sandbox runtimes on hosted web", () => {
-    for (const sandboxProviderKind of ["user-desktop", "future-sandbox"]) {
-      expect(
-        shouldBlockHostedRuntime({
-          isDesktopApp: false,
-          harnessId: "decopilot",
-          sandboxProviderKind,
-        }),
-      ).toBeTrue();
-    }
+  test("keeps legacy Decopilot desktop pins readable as hosted", () => {
+    expect(
+      shouldBlockHostedRuntime({
+        isDesktopApp: false,
+        harnessId: "decopilot",
+        sandboxProviderKind: "user-desktop",
+      }),
+    ).toBeFalse();
+  });
+
+  test("blocks unknown sandbox runtimes on hosted web", () => {
+    expect(
+      shouldBlockHostedRuntime({
+        isDesktopApp: false,
+        harnessId: "decopilot",
+        sandboxProviderKind: "future-sandbox",
+      }),
+    ).toBeTrue();
   });
 });

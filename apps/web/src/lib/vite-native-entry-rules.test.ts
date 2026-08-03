@@ -45,8 +45,6 @@ describe("native Vite entry routing", () => {
     "/_auth/status",
     "/_local/session",
     "/_sandbox/events",
-    "/threads/thread-id",
-    "/models",
     "/health",
     "/metrics",
   ])("does not swallow reserved native path %s", (url) => {

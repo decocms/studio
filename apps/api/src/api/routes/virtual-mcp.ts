@@ -174,8 +174,8 @@ export async function handleVirtualMcpRequest(
             virtualMcp,
             ctx,
             false,
-            // Serves the agent's MCP (incl. the desktop daemon); surface the
-            // skill catalog in the instructions it reads.
+            // Serves the agent's MCP, including native coding-agent terminals;
+            // surface the skill catalog in the instructions they read.
             {
               includeSkillsCatalog: true,
               additionalConnections: devConnection ? [devConnection] : [],

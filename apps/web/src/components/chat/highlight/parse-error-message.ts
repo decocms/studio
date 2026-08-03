@@ -33,26 +33,6 @@ export function parseErrorMessage(message: string): {
     };
   }
 
-  // Desktop-link dispatch rejections: POST /messages answers 409 with a small
-  // JSON blob (`{"error":"link_unavailable","code":"user_desktop_link_…"}`)
-  // when the thread is pinned to the user's desktop and the link daemon is
-  // offline or lacks the CLI. Retrying won't help — the fix is on the user's
-  // desktop — so say exactly that instead of leaking raw JSON.
-  if (/link_unavailable|user_desktop_link_/i.test(trimmed)) {
-    if (/user_desktop_link_capability_missing/i.test(trimmed)) {
-      return {
-        summary:
-          "Your desktop is connected, but the CLI this chat uses wasn't detected there. Install it and sign in on your desktop, then try again.",
-        rawDetails: message,
-      };
-    }
-    return {
-      summary:
-        "Your desktop is offline. Run `bunx decocms@latest link` in a terminal on it, then try again.",
-      rawDetails: message,
-    };
-  }
-
   if (isCloudflare || (looksLikeHtml && isTooLong)) {
     return {
       summary:

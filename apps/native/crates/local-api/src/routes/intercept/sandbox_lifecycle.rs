@@ -7,13 +7,10 @@
 //! app THIS process is that machine, so the same call has to resolve against
 //! the local [`SandboxManager`] instead of a cluster.
 //!
-//! The frontend does not tell us which to use, and deliberately so: the desktop
-//! build defaults its agent option to a local CLI, which pins
-//! `sandbox_provider_kind = "user-desktop"` through `AGENT_OPTION_PINS`, and
-//! `local-api` answers every request from the webview anyway. So this module
-//! answers unconditionally and reports `user-desktop` back — the value is
-//! honest ("runs on the user's machine"); only the transport differs from the
-//! link daemon, and the shell cannot tell the difference.
+//! The frontend does not tell us which sandbox provider to use, and deliberately
+//! so: native coding agents always run on the user's machine, and `local-api`
+//! answers every request from the webview. This module therefore answers
+//! unconditionally and reports `user-desktop` back.
 //!
 //! ## Where the git config comes from
 //!
@@ -435,7 +432,7 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
         // restart) therefore told the shell someone was already serving, which
         // suppressed the very auto-start that would have revived it — the
         // sandbox stayed dead and the UI sat on its provisioning label until a
-        // chat message happened to reach `ensure` through the dispatch path.
+        // later sandbox ensure happened to revive it.
         //
         // Omitting a dead sandbox is self-correcting: the shell auto-starts,
         // `SANDBOX_START` ensures/adopts it here, and the next read publishes

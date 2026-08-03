@@ -27,6 +27,7 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
+import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemThreadRef } from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
@@ -53,9 +54,7 @@ export function decideStallAction(thread: {
   if (
     thread.status === "failed" &&
     thread.messageStorageVersion === 2 &&
-    thread.harnessId === "decopilot" &&
-    (thread.sandboxProviderKind === null ||
-      thread.sandboxProviderKind === "agent-sandbox")
+    isHostedDecopilotRuntime(thread)
   ) {
     return "nudge";
   }

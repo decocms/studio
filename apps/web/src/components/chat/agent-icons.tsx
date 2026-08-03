@@ -1,11 +1,4 @@
-/**
- * Brand identity (name + glyph) for the desktop-CLI agents shown in the
- * chat-input tier popover and the settings-flow model selector. Lifted out of
- * `select-model/agent-models.tsx` so the same paths can be reused by the tier
- * trigger without duplicating the SVG data.
- */
-import type { ReactNode } from "react";
-import type { HarnessId } from "@decocms/shared/harness/types";
+/** Glyphs used by the native coding-agent picker. */
 
 export function ClaudeCodeIcon({ size = 16 }: { size?: number }) {
   return (
@@ -43,40 +36,4 @@ export function CodexIcon({ size = 16 }: { size?: number }) {
       />
     </svg>
   );
-}
-
-/**
- * Product name + glyph for each desktop CLI harness — the one place these live,
- * so the tier trigger and popover can't drift on what a harness is called or
- * what it looks like. `Icon` is the component (not rendered JSX) so each call
- * site picks its own size.
- *
- * Keyed by the harnesses that *have* a brand: `decopilot` is deliberately
- * absent — it's the cloud runtime, described by where it runs rather than by a
- * CLI name, so callers fall back to their runtime glyph for it.
- */
-const LOCAL_HARNESS_BRAND_LABELS = {
-  "claude-code": "chat.agentIcons.claudeCode",
-  codex: "chat.agentIcons.codex",
-} as const;
-
-type HarnessLabelKey =
-  (typeof LOCAL_HARNESS_BRAND_LABELS)[keyof typeof LOCAL_HARNESS_BRAND_LABELS];
-
-const LOCAL_HARNESS_BRAND: Partial<
-  Record<
-    HarnessId,
-    { labelKey: HarnessLabelKey; Icon: (props: { size?: number }) => ReactNode }
-  >
-> = {
-  "claude-code": {
-    labelKey: "chat.agentIcons.claudeCode",
-    Icon: ClaudeCodeIcon,
-  },
-  codex: { labelKey: "chat.agentIcons.codex", Icon: CodexIcon },
-};
-
-/** Brand for a harness, or null when it has none (cloud / unknown / legacy). */
-export function localHarnessBrand(harness: HarnessId | null | undefined) {
-  return (harness && LOCAL_HARNESS_BRAND[harness]) ?? null;
 }

@@ -48,6 +48,7 @@ import {
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
+import { isRetiredLinkedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
@@ -352,8 +353,24 @@ function assertHostedRuntime(
   harnessId: string | null | undefined,
   sandboxProviderKind: string | null | undefined,
 ): void {
+  normalizeHostedSandboxProviderKind(harnessId, sandboxProviderKind);
+}
+
+/**
+ * `decopilot + user-desktop` is a readable legacy tuple from the retired link
+ * runtime. It now executes as hosted Decopilot, while every coding-agent
+ * harness remains native-only.
+ */
+export function normalizeHostedSandboxProviderKind(
+  harnessId: string | null | undefined,
+  sandboxProviderKind: string | null | undefined,
+): "agent-sandbox" | null | undefined {
   assertHostedDecopilotHarness(harnessId);
+  if (isRetiredLinkedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
+    return "agent-sandbox";
+  }
   assertHostedSandboxProvider(sandboxProviderKind);
+  return sandboxProviderKind;
 }
 
 /**
@@ -606,11 +623,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // The row may have changed between validate() and this canonical re-read.
       // Re-assert before the initial-pin branch so a persisted non-hosted
       // runtime cannot be mutated by this route before it returns 409.
-      assertHostedRuntime(pinnedHarness, pinnedKind);
+      pinnedKind =
+        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
 
       // A non-null harness is the runtime lock. Legacy Decopilot rows may have
-      // a null sandbox kind; that tuple means hosted agent-sandbox. An explicit
-      // user-desktop value is rejected above rather than silently migrated.
+      // either a null or retired user-desktop sandbox kind; both execute as the
+      // hosted agent sandbox without rewriting the historical row.
       if (!pinnedHarness) {
         pinnedKind = pinnedKind ?? input.sandboxProviderKind ?? "agent-sandbox";
         pinnedHarness = pinnedHarness ?? input.harnessId ?? "decopilot";
@@ -654,7 +672,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           messageStorageVersion = claimed.thread.message_storage_version;
         }
       }
-      assertHostedRuntime(pinnedHarness, pinnedKind);
+      pinnedKind =
+        normalizeHostedSandboxProviderKind(pinnedHarness, pinnedKind) ?? null;
 
       if (messageStorageVersion !== 2) {
         throw new HTTPException(409, {
@@ -1130,7 +1149,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // `bgtool:<threadId>:…` id for THIS thread — that scoping is the authz.
   app.get("/:org/decopilot/threads/:threadId/jobs/:jobId/stream", async (c) => {
     try {
-      const { taskId } = await validateThreadAccess(c);
+      const { taskId, thread } = await validateThreadAccess(c);
+      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
       const jobId = c.req.param("jobId");
       if (!jobId || !jobId.startsWith(`bgtool:${taskId}:`)) {
         return c.body(null, 404);

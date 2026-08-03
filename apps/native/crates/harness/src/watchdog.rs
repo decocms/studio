@@ -1,13 +1,13 @@
-//! The ONE home for parent-liveness watchdogs, shared by the plain-pipe
-//! process-group spawn path and interactive controlling-terminal sessions.
+//! The ONE home for parent-liveness watchdogs, shared by local-api background
+//! process groups and interactive controlling-terminal sessions.
 //!
-//! Plain-pipe workloads share the watcher's process group. PTY workloads have
+//! Background workloads share the watcher's process group. PTY workloads have
 //! foreground job-control groups, so their watcher instead records the
 //! controlling terminal and enumerates every process attached to that tty.
 //! Both watchers own the shared child-lifetime lock as an exec-inherited
 //! descriptor and release it only after their target is proven empty.
 //!
-//! Plain-pipe script contract (pinned by this module's tests):
+//! Process-group script contract (pinned by this module's tests):
 //! - ignores TERM itself, so graceful TERM reaches the workload while the
 //!   ownership anchor survives for a later KILL/reap;
 //! - blocks on its stdin liveness pipe; EOF starts TERM rounds, then KILL
@@ -32,7 +32,23 @@
 //! gate and independent PPID check ensure it can only exit, never start the
 //! CLI outside the old watcher's fence.
 
-use crate::spawn::Signal;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Signal {
+    Interrupt,
+    Term,
+    Kill,
+}
+
+impl Signal {
+    /// The `kill(1)` flag spelling — the one place this mapping lives.
+    fn flag(self) -> &'static str {
+        match self {
+            Signal::Interrupt => "-INT",
+            Signal::Term => "-TERM",
+            Signal::Kill => "-KILL",
+        }
+    }
+}
 
 #[cfg(unix)]
 const SESSION_REAPER: &str = r#"

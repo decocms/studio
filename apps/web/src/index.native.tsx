@@ -10,8 +10,8 @@
  * switcher, projects, settings, chat, everything), not a parallel mini-app.
  * The local Rust `local-api` process serves this page and stays the only thing
  * the webview talks to: it proxies almost every request upstream unchanged and
- * intercepts only the local concerns (threads, chat dispatch, model/CLI
- * availability, sandbox surfaces). The shell itself needs no desktop-specific
+ * intercepts only the local concerns (threads, terminal/capability discovery,
+ * and sandbox surfaces). The shell itself needs no desktop-specific
  * transport branch because its relative requests are genuinely same-origin.
  *
  * The ONE desktop-specific thing this entry does beyond that is gate on the

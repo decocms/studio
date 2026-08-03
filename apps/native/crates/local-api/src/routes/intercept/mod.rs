@@ -2,9 +2,9 @@
 //! proxy — the owner course-correction's central ask: the desktop app boots
 //! the REAL production web shell (`apps/web/src`), and this module is
 //! where local-api answers, LOCALLY, the specific narrow set of routes that
-//! shell's thread/chat/model surfaces need served from local SQLite + the
-//! native runtime instead of the (unmodified, possibly-production)
-//! upstream mesh. Every route below cites
+//! shell's thread, native-terminal, and sandbox surfaces need served from local
+//! SQLite + the native runtime instead of the (unmodified,
+//! possibly-production) upstream mesh. Every route below cites
 //! the native interception contract (the wire-contract recon)
 //! for the exact shape it emulates — this module is that recon turned into
 //! code, not a reinterpretation of it.
@@ -25,7 +25,6 @@
 //! | `POST /api/:org/tools/COLLECTION_THREADS_UPDATE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREADS_DELETE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREAD_MESSAGES_LIST` | §3.1 | [`thread_tools`] |
-//! | `POST /api/:org/tools/LINK_CURRENT_GET` | §3.4 | [`link_current`] |
 //! | `GET /api/:org/watch` | local thread lifecycle SSE | [`watch`] |
 //! | `POST /api/:org/sandbox/:virtualMcpId/:branch/{read,write,unlink,mkdir,rename,glob,grep}` | native sandbox filesystem bridge | [`sandbox_fs`] |
 //! | any `/api/:org/decopilot/*` | retired native chat transport | local `410`, never forwarded |
@@ -60,7 +59,6 @@
 mod agent_sessions;
 mod dev_server;
 mod git_assist;
-pub mod link_current;
 mod preview_invoke;
 mod sandbox_events;
 mod sandbox_fs;
@@ -173,7 +171,6 @@ pub async fn try_intercept(
             Some(watch::get(&scope, org, query))
         }
         Some("tools") if rest.len() == 2 && *method == Method::POST => match rest[1] {
-            "LINK_CURRENT_GET" => Some(link_current::get().await),
             tool_name @ ("COLLECTION_THREADS_LIST"
             | "COLLECTION_THREADS_GET"
             | "COLLECTION_THREADS_CREATE"
@@ -198,7 +195,7 @@ pub async fn try_intercept(
 }
 
 /// Test-only `AppState` fixture, shared by this module's own tests AND
-/// every sibling submodule's tests (`thread_tools`, `link_current`, etc.) —
+/// every sibling submodule's tests —
 /// one place to keep in sync with `AppState`'s fields
 /// rather than duplicating this boilerplate per file.
 #[cfg(test)]

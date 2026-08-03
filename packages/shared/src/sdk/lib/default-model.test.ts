@@ -7,9 +7,9 @@ import {
 } from "./default-model";
 
 const key: AiProviderKey = {
-  id: "codex-key",
-  providerId: "codex",
-  label: "Codex",
+  id: "anthropic-key",
+  providerId: "anthropic",
+  label: "Anthropic",
   presetId: null,
   createdBy: "user-1",
   createdAt: "2026-07-13T00:00:00.000Z",
@@ -17,7 +17,7 @@ const key: AiProviderKey = {
 
 function model(modelId: string, title: string): AiProviderModel {
   return {
-    providerId: "codex",
+    providerId: "anthropic",
     modelId,
     title,
     description: null,
@@ -28,44 +28,44 @@ function model(modelId: string, title: string): AiProviderModel {
   };
 }
 
-describe("Codex default model preferences", () => {
+describe("default model preferences", () => {
   const models = [
-    model("codex:gpt-5.6-sol", "GPT-5.6 Sol"),
-    model("codex:gpt-5.6-terra", "GPT-5.6 Terra"),
-    model("codex:gpt-5.6-luna", "GPT-5.6 Luna"),
+    model("claude-opus-4-8", "Claude Opus 4.8"),
+    model("claude-sonnet-5", "Claude Sonnet 5"),
+    model("claude-haiku-4-5", "Claude Haiku 4.5"),
   ];
 
-  it("uses GPT-5.6 Terra as the default Codex model", () => {
-    expect(selectDefaultModel(models, "codex", key.id)).toMatchObject({
-      keyId: "codex-key",
-      modelId: "codex:gpt-5.6-terra",
-      title: "GPT-5.6 Terra",
+  it("selects the provider's preferred default model", () => {
+    expect(selectDefaultModel(models, "anthropic", key.id)).toMatchObject({
+      keyId: "anthropic-key",
+      modelId: "claude-sonnet-5",
+      title: "Claude Sonnet 5",
     });
   });
 
-  it("uses GPT-5.6 Luna as the fast Codex model", () => {
-    expect(getFastModel("codex")).toBe("codex:gpt-5.6-luna");
+  it("returns the provider's preferred fast model", () => {
+    expect(getFastModel("anthropic")).toBe("claude-haiku-4-5");
   });
 
-  it("maps simple-mode Codex tiers to Luna, Terra, and Sol", () => {
+  it("maps simple-mode tiers to the provider's preferred models", () => {
     const defaults = pickSimpleModeDefaults([key], {
       [key.id]: models,
     });
 
     expect(defaults.chat.fast).toEqual({
       keyId: key.id,
-      modelId: "codex:gpt-5.6-luna",
-      title: "GPT-5.6 Luna",
+      modelId: "claude-haiku-4-5",
+      title: "Claude Haiku 4.5",
     });
     expect(defaults.chat.smart).toEqual({
       keyId: key.id,
-      modelId: "codex:gpt-5.6-terra",
-      title: "GPT-5.6 Terra",
+      modelId: "claude-sonnet-5",
+      title: "Claude Sonnet 5",
     });
     expect(defaults.chat.thinking).toEqual({
       keyId: key.id,
-      modelId: "codex:gpt-5.6-sol",
-      title: "GPT-5.6 Sol",
+      modelId: "claude-opus-4-8",
+      title: "Claude Opus 4.8",
     });
   });
 });

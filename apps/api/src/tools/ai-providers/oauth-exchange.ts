@@ -5,7 +5,7 @@ import {
   requireOrganization,
   getUserId,
 } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { providerKeyOutputSchema } from "./key-create";
 
@@ -14,7 +14,7 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
   description:
     "Exchange an OAuth authorization code for an API key. Completes the OAuth flow started by AI_PROVIDER_OAUTH_URL.",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
     code: z.string(),
     stateToken: z
       .string()

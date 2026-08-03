@@ -12,11 +12,10 @@
  * (`packages/sandbox/daemon-e2e/daemon.git.e2e.test.ts`).
  *
  * Proves, over HTTP only (no Rust-internal access):
- *   (a) dispatching on branch A clones the fixture repo into
+ *   (a) ensuring branch A clones the fixture repo into
  *       `<APP_ROOT>/sandboxes/<handleA>/repo`, checked out to branch A, and
- *       a file the harness writes (`SCENARIO:writefile`, see
- *       `fixtures/stub-harness.mjs`) lands in THAT directory;
- *   (b) dispatching on branch B (same repo) produces a SECOND, independent
+ *       a file written through the sandbox bridge lands in THAT directory;
+ *   (b) ensuring branch B (same repo) produces a SECOND, independent
  *       clone at `<handleB>` on branch B — branch A's directory/files are
  *       untouched;
  *   (c) each branch's `dev` script runs in ITS OWN workdir, the port is
@@ -44,16 +43,15 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
-  buildDispatchInput,
-  createThread,
+  authHeaders,
   describeLocalApi,
   HOOK_TIMEOUT_MS,
+  jsonAuthHeaders,
   previewUrl,
-  runDispatchToCompletion,
   startLocalApi,
   stopLocalApi,
-  stubClaudeBinEnv,
   type LocalApi,
+  url,
 } from "./helpers";
 
 function git(cwd: string, args: string[]): void {
@@ -125,39 +123,39 @@ function setupFixtureRepo(): { root: string; bareDir: string } {
   return { root, bareDir };
 }
 
-async function dispatchWriteFileRun(
+async function ensureAndWriteSandboxFile(
   a: LocalApi,
   virtualMcpId: string,
   cloneUrl: string,
   branch: string,
 ): Promise<void> {
-  const thread = await createThread(a, `git sandbox ${branch}`);
-  const input = buildDispatchInput({
-    threadId: thread.id,
-    prompt: "SCENARIO:writefile",
+  const ensure = await fetch(url(a, "/_sandbox/setup/ensure"), {
+    method: "POST",
+    headers: jsonAuthHeaders(),
+    body: JSON.stringify({
+      virtualMcpId,
+      repo: { cloneUrl, branch },
+      workload: { runtime: "bun", packageManager: "bun" },
+    }),
   });
-  input.agent = { id: virtualMcpId };
-  input.workspace = {
-    cwd: "/repo",
-    branch,
-    repo: {
-      owner: "local",
-      name: "fixture",
-      connectedGithub: false,
-      cloneUrl,
-    },
-  };
-  const result = await runDispatchToCompletion(
-    a,
-    {
-      runId: `git-sandbox-${branch}-${crypto.randomUUID()}`,
-      harnessId: "claude-code",
-      input,
-    },
-    { deadlineMs: 30_000 },
-  );
-  expect(result.res.status).toBe(200);
-  expect(result.frames.some((frame) => frame.type === "error")).toBe(false);
+  expect(ensure.status).toBe(200);
+  const expectedHandle = computeHandle(cloneUrl, branch);
+  const ensured = (await ensure.json()) as { handle: string };
+  expect(ensured.handle).toBe(expectedHandle);
+
+  const repoDir = repoDirFor(a.workdir, expectedHandle);
+  const write = await fetch(url(a, "/_sandbox/write"), {
+    method: "POST",
+    headers: authHeaders({
+      "content-type": "application/json",
+      "x-decocms-sandbox-handle": expectedHandle,
+    }),
+    body: JSON.stringify({
+      path: "bridge-wrote.txt",
+      content: `written through sandbox bridge in ${repoDir}\n`,
+    }),
+  });
+  expect(write.status).toBe(200);
 }
 
 /** Polls the PREVIEW listener's reverse-proxy fallback (its ONLY route,
@@ -199,7 +197,7 @@ describeLocalApi(
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      a = await startLocalApi(stubClaudeBinEnv());
+      a = await startLocalApi();
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -213,33 +211,43 @@ describeLocalApi(
       const repoA = repoDirFor(a.workdir, handleA);
       const repoB = repoDirFor(a.workdir, handleB);
 
-      // (a) Dispatch the retained daemon-parity harness route on branch A.
-      await dispatchWriteFileRun(a, virtualMcpId, fixture.bareDir, "branch-a");
+      // (a) Materialize branch A and write through its scoped bridge.
+      await ensureAndWriteSandboxFile(
+        a,
+        virtualMcpId,
+        fixture.bareDir,
+        "branch-a",
+      );
       expect(existsSync(join(repoA, ".git"))).toBe(true);
       expect(readFileSync(join(repoA, "BRANCH.txt"), "utf8").trim()).toBe("A");
-      expect(existsSync(join(repoA, "harness-wrote.txt"))).toBe(true);
-      expect(readFileSync(join(repoA, "harness-wrote.txt"), "utf8")).toContain(
+      expect(existsSync(join(repoA, "bridge-wrote.txt"))).toBe(true);
+      expect(readFileSync(join(repoA, "bridge-wrote.txt"), "utf8")).toContain(
         repoA,
       );
 
-      // (b) Dispatch on branch B — same repo, a SECOND independent handle.
-      await dispatchWriteFileRun(a, virtualMcpId, fixture.bareDir, "branch-b");
+      // (b) Ensure branch B — same repo, a SECOND independent handle.
+      await ensureAndWriteSandboxFile(
+        a,
+        virtualMcpId,
+        fixture.bareDir,
+        "branch-b",
+      );
       expect(handleB).not.toBe(handleA);
       expect(existsSync(join(repoB, ".git"))).toBe(true);
       expect(readFileSync(join(repoB, "BRANCH.txt"), "utf8").trim()).toBe("B");
-      expect(existsSync(join(repoB, "harness-wrote.txt"))).toBe(true);
-      expect(readFileSync(join(repoB, "harness-wrote.txt"), "utf8")).toContain(
+      expect(existsSync(join(repoB, "bridge-wrote.txt"))).toBe(true);
+      expect(readFileSync(join(repoB, "bridge-wrote.txt"), "utf8")).toContain(
         repoB,
       );
 
-      // Branch A's directory/files are UNTOUCHED by branch B's dispatch —
+      // Branch A's directory/files are UNTOUCHED by branch B's sandbox setup —
       // the "one pwd per branch" proof.
       expect(readFileSync(join(repoA, "BRANCH.txt"), "utf8").trim()).toBe("A");
-      expect(readFileSync(join(repoA, "harness-wrote.txt"), "utf8")).toContain(
+      expect(readFileSync(join(repoA, "bridge-wrote.txt"), "utf8")).toContain(
         repoA,
       );
       expect(
-        readFileSync(join(repoA, "harness-wrote.txt"), "utf8"),
+        readFileSync(join(repoA, "bridge-wrote.txt"), "utf8"),
       ).not.toContain(repoB);
 
       // (c) Each branch's own dev server, reached via the reverse proxy

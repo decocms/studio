@@ -1854,11 +1854,7 @@ dependencies = [
 name = "harness"
 version = "0.1.0"
 dependencies = [
- "bytes",
- "futures",
- "futures-util",
  "portable-pty",
- "serde",
  "serde_json",
  "tempfile",
  "tokio",
