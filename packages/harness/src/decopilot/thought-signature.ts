@@ -38,7 +38,7 @@ import type {
  * signature to a tool-call id: `call_<base>__thought__<signature>`.
  * See https://github.com/BerriAI/litellm/pull/18374.
  */
-export const THOUGHT_SIGNATURE_SEPARATOR = "__thought__";
+const THOUGHT_SIGNATURE_SEPARATOR = "__thought__";
 
 /**
  * Split a (possibly gateway-bloated) tool-call id into its base id and the

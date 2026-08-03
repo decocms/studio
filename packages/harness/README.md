@@ -64,11 +64,20 @@ Supported package exports:
 | `@decocms/harness/types` | Harness contracts and the secret-model source helper |
 | `@decocms/harness/registry` | Factory registration and lookup |
 | `@decocms/harness/sources` | MCP, model, object-storage, and sandbox source adapters |
-| `@decocms/harness/<module>` | A top-level `src/<module>.ts` or `src/<module>/index.ts` entry |
+| `@decocms/harness/decopilot/*` | Agent-loop internals and built-in tools |
+| `@decocms/harness/skills/skill-md` | Skill front-matter parsing |
 
-The wildcard export also permits nested paths that resolve to real source
-files, such as `@decocms/harness/decopilot/mode-config`. Treat those paths as
-internal contracts because the package is private.
+`package.json`'s `exports` map lists every reachable path explicitly. There is
+no wildcard: it used to end in `"./*"`, which made every file under `src/` look
+like a public entry point and left knip unable to report anything in this
+package as unused. Enumerating the paths is what makes dead code here visible.
+
+**Adding a module that another workspace imports means adding its `exports`
+entry too.** Skipping that step fails as `TS2307: Cannot find module` on `bun
+run check` — the file exists, it just is not exported. Modules used only inside
+this package need no entry; import them relatively.
+
+Treat every subpath as an internal contract: the package is private.
 
 ## Architecture
 
