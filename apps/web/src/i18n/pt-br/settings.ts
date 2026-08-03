@@ -398,7 +398,7 @@ export const settings = {
     "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o de revis\u00e3o",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",

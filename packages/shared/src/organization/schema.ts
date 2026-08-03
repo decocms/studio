@@ -153,7 +153,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+      "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
     ),
 });
 

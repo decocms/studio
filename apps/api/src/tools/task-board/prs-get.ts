@@ -10,6 +10,7 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { TaskBoardItemPrSchema } from "./schema";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { extractPrFromText } from "./pr-extract";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
@@ -101,6 +102,9 @@ type PrLiveState = {
   state: "open" | "closed" | null;
   draft: boolean | null;
   merged: boolean | null;
+  /** GitHub's `mergeable`: false = conflicts with base, true = clean, null =
+   *  not computed yet / unknown. */
+  mergeable: boolean | null;
   checksStatus: ChecksStatus;
   checks: PrCheck[];
   previewUrl: string | null;
@@ -112,6 +116,7 @@ const NO_LIVE_STATE: PrLiveState = {
   state: null,
   draft: null,
   merged: null,
+  mergeable: null,
   checksStatus: null,
   checks: [],
   previewUrl: null,
@@ -409,6 +414,60 @@ export async function fetchPrChecksStatus(
   }
 }
 
+/** Map a `pull_request_read get` response to whether the PR conflicts with its
+ *  base branch. `true` = conflicts (`mergeable === false`); `false` = mergeable,
+ *  OR the PR is not open (a merged/closed PR reports `mergeable: null` but is
+ *  never "conflicting"); `null` = GitHub hasn't computed mergeability yet (it's
+ *  async) or the read gave nothing — an unknown must NEVER read as a conflict,
+ *  so the caller only acts on an explicit `true`. Pure — unit-tested; the single
+ *  home for the `mergeable` polarity, so the two callers can't drift. */
+export function conflictFromPrGet(
+  obj: Record<string, unknown> | null,
+): boolean | null {
+  if (!obj) return null;
+  if (obj.state !== "open") return false;
+  return typeof obj.mergeable === "boolean" ? !obj.mergeable : null;
+}
+
+/** Whether the PR conflicts with its base branch — the definite "can't merge"
+ *  signal used to gate conflict auto-resolution. Reads the same `get` the
+ *  live-state fetch uses; best-effort (null on any failure). */
+export async function fetchPrConflict(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<boolean | null> {
+  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
+    owner: pr.repoOwner,
+    name: pr.repoName,
+  });
+  if (!conn) return null;
+  const client = await clientFromConnection(conn, ctx, true);
+  try {
+    return conflictFromPrGet(
+      toolResultJson(
+        await client.callTool(
+          {
+            name: "pull_request_read",
+            arguments: {
+              method: "get",
+              owner: pr.repoOwner,
+              repo: pr.repoName,
+              pullNumber: pr.number,
+            },
+          },
+          undefined,
+          { timeout: PR_FETCH_TIMEOUT_MS },
+        ),
+      ),
+    );
+  } catch {
+    return null;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 /** Fetch the PR's live CI + preview extras via the GitHub MCP
  *  `pull_request_read` tool: the combined Status API AND the Checks API (repos
  *  differ in which they post to), merged into one checks summary, plus the deco
@@ -523,6 +582,10 @@ async function fetchPrLiveState(
       state: rawState === "closed" ? "closed" : isOpen ? "open" : null,
       draft: typeof obj.draft === "boolean" ? obj.draft : null,
       merged: typeof obj.merged === "boolean" ? obj.merged : null,
+      // Mergeability only means something for an open PR (a merged/closed PR
+      // reports `mergeable: null`). Anything but a boolean is "unknown".
+      mergeable:
+        isOpen && typeof obj.mergeable === "boolean" ? obj.mergeable : null,
       // Checks/preview only mean something for an open PR.
       checksStatus: isOpen ? extras.checksStatus : null,
       checks: isOpen ? extras.checks : [],
@@ -637,6 +700,35 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     ) {
       await enqueueEnabledReviewers(ctx, item).catch((err) => {
         console.error("[task-board] reviewer auto-handoff failed", err);
+      });
+    }
+
+    // Auto-resolve a merge conflict on an approved PR: once every enabled
+    // reviewer approved but the PR can't merge because it conflicts with its
+    // base branch, hand it back to the Super Agent to resolve (gated on the
+    // org's `auto_merge` flag, checked inside the reaction). This is the
+    // poll-driven safety net — a conflict often appears AFTER approval (the base
+    // branch moved on), which the merge attempt at approval time can't see. Run
+    // the same `conflictFromPrGet` mapping the review-decision path uses (only an
+    // explicit conflict triggers; null/unknown never does). The reaction is
+    // idempotent (it bounces the task to In Progress, so the next poll skips).
+    const openPrConflict = openPr
+      ? conflictFromPrGet({ state: openPr.state, mergeable: openPr.mergeable })
+      : null;
+    if (
+      item &&
+      item.status === "in_review" &&
+      item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+      openPr &&
+      openPrConflict === true
+    ) {
+      // Act on the PR the conflict was detected on (`openPr`), not a re-derived
+      // "newest" — a task can have more than one linked PR.
+      await reactToApprovedPrConflict(ctx, organizationId, item, {
+        pr: { number: openPr.number, url: openPr.url },
+        conflict: true,
+      }).catch((err) => {
+        console.error("[task-board] conflict auto-resolve failed", err);
       });
     }
 

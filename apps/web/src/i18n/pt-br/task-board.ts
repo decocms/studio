@@ -85,6 +85,8 @@ export const taskBoard = {
     "{reviewer} pediu alterações e devolveu a tarefa ao Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} pediu alterações: {notes}",
+  "taskBoard.taskDialog.activityMergeConflictResolution":
+    "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
   "taskBoard.taskDialog.tagsButton": "Tags",
   "taskBoard.taskDialog.removeTagAriaLabel": "Remover tag {name}",
   "taskBoard.taskDialog.addTagButton": "Adicionar tag",

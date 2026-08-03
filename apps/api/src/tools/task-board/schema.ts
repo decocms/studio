@@ -56,6 +56,11 @@ export const TaskBoardItemPrSchema = z.object({
   state: z.enum(["open", "closed"]).nullable(),
   draft: z.boolean().nullable(),
   merged: z.boolean().nullable(),
+  /** GitHub's mergeability for the PR: `false` means it conflicts with its base
+   *  branch and can't be merged; `true` means it's clean. `null` when GitHub
+   *  hasn't computed it yet (it's async) or the fetch failed — an unknown must
+   *  never be read as "conflict". */
+  mergeable: z.boolean().nullable(),
   /** Combined CI check state for the PR's head commit, fetched live from GitHub.
    *  `null` when the PR has no checks or the fetch failed. Best-effort — reads
    *  the combined Status API, so a repo that only uses the Checks API may report
@@ -120,6 +125,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_requested",
   "review_approved",
   "review_changes_requested",
+  "merge_conflict_resolution",
 ] as const;
 
 export type TaskBoardActivityAction =

@@ -441,6 +441,7 @@ export interface StudioToolIO {
         state: "open" | "closed" | null;
         draft: boolean | null;
         merged: boolean | null;
+        mergeable: boolean | null;
         checksStatus: "pending" | "passing" | "failing" | null;
         checks: {
           name: string;
@@ -490,7 +491,8 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_requested"
           | "review_approved"
-          | "review_changes_requested";
+          | "review_changes_requested"
+          | "merge_conflict_resolution";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

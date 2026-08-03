@@ -13,6 +13,8 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { mergeLinkedPr } from "./merge-pr";
+import { fetchPrConflict } from "./prs-get";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /**
  * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
@@ -184,28 +186,58 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
       : false;
 
-    // A merge ships the task → Done. Without a merge, leave it In Review for a
-    // human to merge.
-    const updated = merged
-      ? await ctx.storage.taskBoard.update(
-          taskBoardItemId,
-          organizationId,
-          { status: "done" },
-          item.updatedBy,
-        )
-      : ((await ctx.storage.taskBoard.getById(
-          taskBoardItemId,
-          organizationId,
-        )) ?? item);
+    // A merge ships the task → Done.
     if (merged) {
+      const done = await ctx.storage.taskBoard.update(
+        taskBoardItemId,
+        organizationId,
+        { status: "done" },
+        item.updatedBy,
+      );
       await recordTaskActivity(ctx, {
         taskBoardItemId,
         action: "status_changed",
         actorId: null,
         data: { from: item.status, to: "done" },
       });
+      emitTaskBoardUpdated(organizationId, done);
+      return { status: done.status, merged: true };
     }
-    emitTaskBoardUpdated(organizationId, updated);
-    return { status: updated.status, merged };
+
+    // No merge — the task is still In Review (we only move it on a merge). When
+    // auto-merge is on and the merge was blocked by a conflict specifically (not
+    // pending CI, not a transient failure), hand the PR back to the Super Agent
+    // to resolve it — the headless counterpart to the poll path in `prs-get`.
+    // The conflict fetch is a GitHub round-trip, so only pay it when auto-merge
+    // is on. Otherwise leave it In Review for a human.
+    const current =
+      (await ctx.storage.taskBoard.getById(taskBoardItemId, organizationId)) ??
+      item;
+    if (autoMerge) {
+      const prs = await ctx.storage.taskBoard.listPrs(
+        taskBoardItemId,
+        organizationId,
+      );
+      // The newest linked PR is the one under review (the same one
+      // `mergeLinkedPr` just tried to merge) — detect and act on it.
+      const pr = prs[0];
+      const resolving = pr
+        ? await reactToApprovedPrConflict(ctx, organizationId, current, {
+            pr: { number: pr.number, url: pr.url },
+            conflict: await fetchPrConflict(ctx, organizationId, pr),
+          })
+        : false;
+      if (resolving) {
+        const bounced =
+          (await ctx.storage.taskBoard.getById(
+            taskBoardItemId,
+            organizationId,
+          )) ?? current;
+        // `reactToApprovedPrConflict` already emitted the update.
+        return { status: bounced.status, merged: false };
+      }
+    }
+    emitTaskBoardUpdated(organizationId, current);
+    return { status: current.status, merged: false };
   },
 });
