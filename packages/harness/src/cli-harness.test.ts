@@ -1,14 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { isCliHarness } from "./cli-harness";
+import { cliProviderName } from "./cli-harness";
 
-describe("isCliHarness", () => {
-  it("is true for codex", () => {
-    expect(isCliHarness("codex")).toBe(true);
+// These strings are a cross-language contract: `apps/native/crates/harness`
+// stamps `codingAgentProvider` on the Rust side, and the read side
+// (`resolveCliSessionRef` / `computeCliDelta`) matches on these exact values.
+// Renaming one here without the other silently breaks session resume.
+describe("cliProviderName", () => {
+  it("maps codex", () => {
+    expect(cliProviderName("codex")).toBe("codex");
   });
-  it("is true for claude-code", () => {
-    expect(isCliHarness("claude-code")).toBe(true);
+  it("maps claude-code", () => {
+    expect(cliProviderName("claude-code")).toBe("claude-code");
   });
-  it("is false for decopilot", () => {
-    expect(isCliHarness("decopilot")).toBe(false);
+  it("is undefined for decopilot, which has no on-disk session", () => {
+    expect(cliProviderName("decopilot")).toBeUndefined();
   });
 });

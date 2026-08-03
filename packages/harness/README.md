@@ -1,6 +1,6 @@
 # @decocms/harness
 
-Provides portable agent harnesses and stream contracts shared by Studio execution environments.
+Provides the Decopilot agent harness plus the stream contracts Studio's API, web client, and sandbox share.
 
 | Attribute | Value |
 | --- | --- |
@@ -12,20 +12,29 @@ Provides portable agent harnesses and stream contracts shared by Studio executio
 ## Overview
 
 A harness turns one normalized conversation request into an asynchronous stream
-of AI SDK `UIMessageChunk` values. Studio uses the same contracts for in-process
-API execution and desktop sandbox execution.
+of AI SDK `UIMessageChunk` values.
 
-The package contains Decopilot, Claude Code, and Codex harnesses plus portable
-prompt, source-adapter, stream-codec, title, heartbeat, and offload utilities.
-It is private because it depends on Studio's private shared package and evolves
-with the API and sandbox.
+The package contains the Decopilot harness plus prompt, source-adapter,
+stream-codec, title, heartbeat, and offload utilities. It is private because it
+depends on Studio's private shared package and evolves with the API.
+
+Decopilot is the only harness here, and `apps/api` is the only host that runs
+one. The CLI harnesses (`claude-code`, `codex`) were removed once the desktop
+link and the TypeScript sandbox daemon were deleted; the live CLI
+implementation is Rust, in `apps/native/crates/harness`. What survives of them
+here is `claude-code/model/agent-tiers.ts`, which the API and web client read
+to build the model picker.
+
+The package boundary now earns its keep for a different reason than
+portability: `apps/web` and `packages/sandbox` are lint-barred from importing
+`apps/api/src`, so the contracts all three share have to live outside the API.
 
 ## Responsibilities
 
 - Define the portable `Harness`, `HarnessFactory`, and `HarnessStreamInput`
   contracts.
 - Register and resolve harness factories by harness identifier.
-- Run native Decopilot agent loops and CLI-backed Claude Code or Codex loops.
+- Run the native Decopilot agent loop.
 - Normalize MCP, model, object-storage, and sandbox sources.
 - Preserve resumable session metadata, usage, titles, liveness heartbeats, and
   stream framing across process boundaries.
@@ -36,14 +45,14 @@ This is an internal workspace dependency. Consumers should use package exports,
 not relative paths into `src/`.
 
 ```ts
-import { codexHarnessFactory } from "@decocms/harness/codex";
+import { decopilotHarnessFactory } from "@decocms/harness/decopilot/index";
 import {
   getHarnessFactory,
   registerHarnessFactory,
 } from "@decocms/harness/registry";
 
-registerHarnessFactory(codexHarnessFactory);
-const factory = getHarnessFactory("codex");
+registerHarnessFactory(decopilotHarnessFactory);
+const factory = getHarnessFactory("decopilot");
 const harness = factory?.create(harnessContext);
 ```
 
@@ -54,14 +63,21 @@ Supported package exports:
 | `@decocms/harness` | Portable types, registry helpers, and offload constants and envelope types |
 | `@decocms/harness/types` | Harness contracts and the secret-model source helper |
 | `@decocms/harness/registry` | Factory registration and lookup |
-| `@decocms/harness/claude-code` | Claude Code harness |
-| `@decocms/harness/codex` | Codex harness |
 | `@decocms/harness/sources` | MCP, model, object-storage, and sandbox source adapters |
-| `@decocms/harness/<module>` | A top-level `src/<module>.ts` or `src/<module>/index.ts` entry |
+| `@decocms/harness/decopilot/*` | Agent-loop internals and built-in tools |
+| `@decocms/harness/skills/skill-md` | Skill front-matter parsing |
 
-The wildcard export also permits nested paths that resolve to real source
-files, such as `@decocms/harness/decopilot/mode-config`. Treat those paths as
-internal contracts because the package is private.
+`package.json`'s `exports` map lists every reachable path explicitly. There is
+no wildcard: it used to end in `"./*"`, which made every file under `src/` look
+like a public entry point and left knip unable to report anything in this
+package as unused. Enumerating the paths is what makes dead code here visible.
+
+**Adding a module that another workspace imports means adding its `exports`
+entry too.** Skipping that step fails as `TS2307: Cannot find module` on `bun
+run check` — the file exists, it just is not exported. Modules used only inside
+this package need no entry; import them relatively.
+
+Treat every subpath as an internal contract: the package is private.
 
 ## Architecture
 
@@ -69,14 +85,13 @@ internal contracts because the package is private.
 `src/registry.ts` stores factories rather than harness singletons so callers can
 bind request-local tracing and provider dependencies.
 
-`src/decopilot/` runs the native AI SDK agent loop and built-in tools.
-`src/claude-code/` and `src/codex/` adapt their respective CLI providers,
-including session resume and child-process cleanup. `src/sources.ts` opens
-in-process or HTTP-backed dependencies without importing application code.
+`src/decopilot/` runs the native AI SDK agent loop and built-in tools, and is
+roughly three quarters of the package. `src/sources.ts` opens in-process or
+HTTP-backed dependencies without importing application code.
 
-The API registers all available factories for cloud execution. The sandbox
-daemon registers the CLI factories available on the linked machine. Both
-consume the same stream and offload codecs.
+`apps/api` is the only host that registers a factory and runs a loop.
+`apps/web` and `packages/sandbox` consume contracts only — harness types, the
+stream and offload codecs, and a few tool/prompt constants.
 
 ## Development
 
@@ -91,22 +106,22 @@ bun run --cwd=packages/harness test
 Run one focused test with:
 
 ```bash
-bun test packages/harness/src/codex/index.test.ts
+bun test packages/harness/src/decopilot/conversation.test.ts
 ```
 
-Tests include import-boundary guards, harness conformance, provider cleanup,
-stream metadata, source adapters, prompt construction, and portable built-in
-tools.
+Tests include import-boundary guards, source adapters, prompt construction,
+stream framing, and portable built-in tools.
 
 ## Boundaries
 
-The package must remain portable between the API and sandbox daemon. It cannot
-import `@/` aliases, reach into any `apps/*` tree, or depend on
-`@decocms/sandbox`; `src/no-cross-tree.test.ts` enforces that boundary.
+The package cannot import `@/` aliases, reach into any `apps/*` tree, or depend
+on `@decocms/sandbox`; `src/no-cross-tree.test.ts` enforces that boundary. That
+is what lets `apps/web` (barred from `apps/api/src` by
+`plugins/ban-web-server-imports.js`) and `packages/sandbox` share these
+contracts at all.
 
-CLI harnesses must not import the Decopilot namespace. Shared CLI behavior
-belongs in top-level modules so Claude Code and Codex do not pull the native
-agent loop into their execution path.
+Anything `apps/web` imports must stay browser-safe: no `node:` builtins, no
+server-only dependencies pulled in transitively.
 
 Database access, authentication, tenant policy, HTTP routing, cluster-only
 tools, and UI behavior stay in their owning applications. Request-local

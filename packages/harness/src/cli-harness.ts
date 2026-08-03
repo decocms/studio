@@ -2,10 +2,12 @@ import type { HarnessId } from "./types";
 
 /**
  * Provider name persisted in assistant-message metadata
- * (`codingAgentProvider`) for a CLI harness. Single source of truth for the
- * `HarnessId → provider` map: both the WRITE side (cli stream metadata) and
- * the READ side (`resolveCliSessionRef` / `computeCliDelta`) derive from this,
- * so resume can never silently break on a map mismatch.
+ * (`codingAgentProvider`) for a CLI harness. The READ side
+ * (`resolveCliSessionRef` / `computeCliDelta`) derives from this map.
+ *
+ * The WRITE side is no longer here: CLI runs happen in the Tauri app, and
+ * `apps/native/crates/harness` stamps this metadata in Rust. This map and
+ * that crate must agree — a mismatch silently breaks session resume.
  */
 export type CliProvider = "claude-code" | "codex";
 
@@ -17,14 +19,4 @@ export function cliProviderName(harnessId: HarnessId): CliProvider | undefined {
   if (harnessId === "codex") return "codex";
   if (harnessId === "claude-code") return "claude-code";
   return undefined;
-}
-
-/**
- * True for harnesses that run an external CLI subprocess with its own
- * on-disk, resumable session (codex, claude-code). These harnesses receive
- * only the delta + a resume ref per turn instead of the full transcript.
- * `decopilot` runs in-process and keeps the full-transcript dispatch path.
- */
-export function isCliHarness(harnessId: HarnessId): boolean {
-  return cliProviderName(harnessId) !== undefined;
 }

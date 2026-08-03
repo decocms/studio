@@ -48,7 +48,7 @@ import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./studio-provider";
 import { genTitle } from "../title-generator";
-import { extractUserText } from "../cli-message-prep";
+import { extractUserText } from "../extract-user-text";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
 import type {

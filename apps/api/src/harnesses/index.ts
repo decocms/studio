@@ -1,17 +1,14 @@
 import type { OrganizationScope, StudioContext } from "../core/studio-context";
-import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import {
   decopilotHarnessFactory,
   registerClusterEnvironmentBuilder,
 } from "@decocms/harness/decopilot/index";
-import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import { buildClusterEnvironmentTools } from "./decopilot/harness-deps";
 import { registerHarnessFactory } from "@decocms/harness/registry";
 
 // Register the environment-deps builders for the unified decopilot factory.
 // This barrel is the sole in-process registration point for cluster Decopilot
-// dispatch. Desktop Decopilot is intentionally not registered; user-desktop
-// execution is reserved for CLI harnesses.
+// dispatch.
 registerClusterEnvironmentBuilder((args) => {
   const ctx = args.ctx as StudioContext;
   return buildClusterEnvironmentTools({
@@ -21,15 +18,19 @@ registerClusterEnvironmentBuilder((args) => {
   });
 });
 
-// Side-effect registration. Importing this module wires up the three
-// in-tree harnesses. Out-of-tree harnesses register themselves the same way.
+// Side-effect registration. Importing this module wires up the ONLY harness
+// the cluster can host. Out-of-tree harnesses register themselves the same way.
 //
-// CLI harnesses (claude-code, codex) are also imported by the desktop link
-// daemon; decopilot pulls in cluster-only modules (RunRegistry, run-stream,
-// studio tools) and is only usable on the cluster side.
+// Decopilot only, deliberately: the CLI harnesses (claude-code, codex) are
+// rejected before any factory lookup — `assertHarnessRunsInCluster`
+// (dispatch-queue/thread-gate-workflow.ts) throws at the gate, and
+// `dispatchRunAndWait` throws again on a non-decopilot id. Registering them
+// here could only ever produce a factory nobody can reach. Local CLI runs
+// happen in the Tauri desktop app (`apps/native`, its own Rust harness crate);
+// cloud-CLI is unimplemented. Wiring a CLI harness into the cluster means
+// giving it a real host in those two guards first — this registration was
+// never what was missing.
 registerHarnessFactory(decopilotHarnessFactory);
-registerHarnessFactory(claudeCodeHarnessFactory);
-registerHarnessFactory(codexHarnessFactory);
 
 export { localDispatch } from "./local-dispatch";
 export { createSecretModelSource } from "@decocms/harness/types";

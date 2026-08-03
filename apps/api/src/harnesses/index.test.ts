@@ -1,6 +1,4 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
-import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import {
   getHarnessFactory,
   registerHarnessFactory,
@@ -14,20 +12,10 @@ describe("harness registration", () => {
   // the module-load side-effect registrations done by `./index`.
   beforeAll(() => {
     registerHarnessFactory(decopilotHarnessFactory);
-    registerHarnessFactory(claudeCodeHarnessFactory);
-    registerHarnessFactory(codexHarnessFactory);
   });
 
   test("decopilot is registered", () => {
     expect(getHarnessFactory("decopilot")?.id).toBe("decopilot");
-  });
-
-  test("claude-code is registered", () => {
-    expect(getHarnessFactory("claude-code")?.id).toBe("claude-code");
-  });
-
-  test("codex is registered", () => {
-    expect(getHarnessFactory("codex")?.id).toBe("codex");
   });
 
   test("cluster harness registration does not register desktop Decopilot builder", async () => {
