@@ -235,8 +235,8 @@ test.describe("decopilot projection — requires_action", () => {
   test.skip(
     true,
     "requires_action is produced when resolveThreadStatus maps finishReason=" +
-      "'tool-calls' + an `approval-requested` part (or finishReason='stop' + a " +
-      "question in the text). Driving this deterministically from e2e requires " +
+      "'tool-calls' + an `approval-requested` part (or a pending `user_ask`). " +
+      "Driving this deterministically from e2e requires " +
       "either a real model that emits tool-calls with a pending approval, or a " +
       "test hook that injects a canned relay body whose finish-step chunk carries " +
       "finishReason='tool-calls' AND a synthesized approval-requested part so the " +
