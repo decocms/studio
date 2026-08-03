@@ -12,7 +12,6 @@ export type {
   SandboxProviderKind,
   Sandbox,
   SandboxId,
-  SandboxProvider,
   Workload,
 } from "./types";
 export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";
@@ -24,13 +23,6 @@ export {
 // Needed by studio callers (decopilot dispatch-run) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.
 export { computeHandle } from "./shared";
-export type {
-  RunnerStateRecord,
-  RunnerStateRecordWithId,
-  RunnerStatePut,
-  RunnerStateStore,
-  RunnerStateStoreOps,
-} from "./state-store";
 export {
   composeSandboxRef,
   type AgentSandboxRefInput,

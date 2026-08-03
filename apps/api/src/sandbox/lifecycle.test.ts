@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import type { ClaimPhase, SandboxProvider } from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   __resetSharedLifecyclesForTesting,
   subscribeLifecycle,
@@ -10,7 +11,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface FakeWatchableHandle {
-  runner: SandboxProvider;
+  runner: Pick<AgentSandboxProvider, "watchClaimLifecycle">;
   /** How many times the source generator has been started. */
   starts: () => number;
   /** Push a phase to the active source generator. */
@@ -20,10 +21,9 @@ interface FakeWatchableHandle {
 }
 
 /**
- * Synthesize a `SandboxProvider` whose `watchClaimLifecycle` is an async
- * generator we can drive frame-by-frame from the test. The other interface
- * methods are no-ops; only the watcher is exercised here. Tracks how many
- * times the generator has been instantiated (so we can prove dedup).
+ * Synthesize the one AgentSandbox lifecycle method as an async generator we
+ * can drive frame-by-frame. Tracks how many times the generator has been
+ * instantiated so the test can prove deduplication.
  */
 function makeFakeWatchable(): FakeWatchableHandle {
   let starts = 0;
@@ -54,15 +54,7 @@ function makeFakeWatchable(): FakeWatchableHandle {
     }
   }
 
-  const runner: SandboxProvider = {
-    kind: "agent-sandbox",
-    ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
-    delete: async () => {},
-    alive: async () => true,
-    getPreviewUrl: async () => null,
-    proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-    watchClaimLifecycle: gen,
-  };
+  const runner = { watchClaimLifecycle: gen };
 
   return {
     runner,

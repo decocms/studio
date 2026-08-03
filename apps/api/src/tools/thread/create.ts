@@ -5,13 +5,13 @@
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
  *   1. Honor `data.branch` when provided.
- *   2. Otherwise pick the most-recently-touched branch from the user's
- *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
+ *   2. Otherwise pick the most-recently-touched AgentSandbox branch from the
+ *      user's `sandboxMap[userId]` so a new task lands on a warm hosted sandbox.
  *   3. Fall back to `generateBranchName` (`<user-slug>-<timestamp>`) when the
- *      user has no sandboxMap entries for this vMCP.
+ *      user has no hosted sandboxMap entries for this vMCP.
  *
- * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
- * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
+ * Step 2 only sees sandboxes that finished provisioning — the AgentSandbox map
+ * writer runs after `provider.ensure` returns. So a SANDBOX_START in flight is
  * invisible here and step 3 mints a sibling branch; the frontend must never
  * auto-start without a branch (see `shouldAutoStart`).
  *
@@ -38,6 +38,7 @@ import {
   branchUserLabel,
   generateBranchName,
 } from "@decocms/shared/branch-name";
+import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -59,10 +60,9 @@ type SandboxMapMeta = {
 };
 
 /**
- * Pick the user's most-recently-touched branch from sandboxMap (3-level shape:
- * sandboxMap[userId][branch][sandboxProviderKind] → SandboxRecord). Returns
- * undefined when the user has no entries (caller falls back to
- * generateBranchName).
+ * Pick the user's most-recently-touched hosted branch. Legacy desktop cells
+ * remain in the stored 3-level map for compatibility but never select a hosted
+ * thread branch.
  */
 function pickWarmBranchFromSandboxMap(
   sandboxMap: SandboxMapMeta["sandboxMap"],
@@ -70,19 +70,12 @@ function pickWarmBranchFromSandboxMap(
 ): string | undefined {
   const branchMap = sandboxMap?.[userId];
   if (!branchMap) return undefined;
-  // For each branch, take the max createdAt across all sandboxProviderKind entries.
-  const sorted = Object.entries(branchMap).sort(([, aKinds], [, bKinds]) => {
-    const aMax = Math.max(
-      0,
-      ...Object.values(aKinds).map((e) => e.createdAt ?? 0),
-    );
-    const bMax = Math.max(
-      0,
-      ...Object.values(bKinds).map((e) => e.createdAt ?? 0),
-    );
-    return bMax - aMax;
+  const candidates = Object.entries(branchMap).flatMap(([branch, kinds]) => {
+    const entry = kinds[AGENT_SANDBOX_KIND];
+    return entry ? [{ branch, createdAt: entry.createdAt ?? 0 }] : [];
   });
-  return sorted[0]?.[0];
+  candidates.sort((a, b) => b.createdAt - a.createdAt);
+  return candidates[0]?.branch;
 }
 
 export const COLLECTION_THREADS_CREATE = defineTool({

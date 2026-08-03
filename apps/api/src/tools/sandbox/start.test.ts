@@ -5,7 +5,6 @@ import type {
   EnsureOptions,
   Sandbox,
   SandboxId,
-  SandboxProvider,
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
@@ -25,13 +24,13 @@ async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockRunner: SandboxProvider = {
-  kind: "agent-sandbox",
-  ensure: (id, opts) => mockEnsure(id, opts),
-  delete: (handle) => mockDelete(handle),
+const mockRunner = {
+  ensure: (id: SandboxId, opts?: EnsureOptions) => mockEnsure(id, opts),
+  delete: (handle: string) => mockDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
+  adoptLiveClaim: async () => false,
   watchClaimLifecycle: () => readyOnly(),
 };
 

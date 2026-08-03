@@ -280,9 +280,6 @@ export function TaskGroupsList({
       await studio.call("SANDBOX_DELETE", {
         virtualMcpId: target.virtualMcpId,
         branch: target.branch,
-        // The sidebar has no `vmEntry` for an arbitrary thread, and this path
-        // is desktop-gated, where this is the only possible provider.
-        sandboxProviderKind: "user-desktop",
         removeWorktree: true,
       });
     } catch {

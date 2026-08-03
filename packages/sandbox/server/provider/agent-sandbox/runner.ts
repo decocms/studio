@@ -54,13 +54,15 @@ import {
   gitCredentialRefreshPatch,
   withSandboxLock,
 } from "../shared";
-import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
+import type {
+  AgentSandboxStateStore,
+  AgentSandboxStateStoreOps,
+} from "../state-store";
 import type {
   EnsureOptions,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
-  SandboxProvider,
   Workload,
 } from "../types";
 import {
@@ -300,7 +302,7 @@ interface PersistedK8sState {
 }
 
 export interface AgentSandboxProviderOptions {
-  stateStore?: RunnerStateStore;
+  stateStore?: AgentSandboxStateStore;
   previewUrlPattern?: string;
   /** Defaults to `new KubeConfig().loadFromDefault()`. Tests pass a stub. */
   kubeConfig?: KubeConfig;
@@ -318,7 +320,7 @@ export interface AgentSandboxProviderOptions {
    *     sentinel and rotates to a per-claim token via
    *     `auth.rotateToken` on POST /_sandbox/config,
    *   - subsequent calls use the per-claim token (persisted in
-   *     RunnerStateStore.state.token).
+   *     AgentSandboxStateStore.state.token).
    *
    * When undefined, the runner falls back to env-injected per-claim tokens
    * with `warmpool: "none"` — the legacy cold-start path. Useful for
@@ -400,12 +402,10 @@ export interface AgentSandboxProviderOptions {
   ) => Promise<string | null>;
 }
 
-export class AgentSandboxProvider implements SandboxProvider {
-  readonly kind = RUNNER_KIND;
-
+export class AgentSandboxProvider {
   private readonly records = new Map<string, K8sRecord>();
   private readonly inflight = new Inflight<string, Sandbox>();
-  private readonly stateStore: RunnerStateStore | null;
+  private readonly stateStore: AgentSandboxStateStore | null;
   private readonly previewUrlPattern: string | null;
   private readonly kubeConfig: KubeConfig;
   private readonly portForward: PortForward;
@@ -493,7 +493,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     });
   }
 
-  // ---- SandboxProvider surface ------------------------------------------------
+  // ---- AgentSandbox surface ---------------------------------------------------
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     // Branch is the slug source. Prefer the explicit top-level `opts.branch`
@@ -508,7 +508,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       opts.branch ?? opts.repo?.branch ?? null,
     );
     return this.inflight.run(handle, () =>
-      withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+      withSandboxLock(this.stateStore, id, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
       ),
     );
@@ -538,8 +538,8 @@ export class AgentSandboxProvider implements SandboxProvider {
     });
     await deleteSandboxClaim(this.kubeConfig, this.namespace, handle);
     if (this.stateStore) {
-      if (rec) await this.stateStore.delete(rec.id, RUNNER_KIND);
-      else await this.stateStore.deleteByHandle(RUNNER_KIND, handle);
+      if (rec) await this.stateStore.delete(rec.id);
+      else await this.stateStore.deleteByHandle(handle);
     }
   }
 
@@ -588,7 +588,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
     // rehydrate failed (port-forward is pod-local); route via in-cluster Service instead.
     if (!rec && this.previewUrlPattern && this.stateStore) {
-      const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+      const row = await this.stateStore.getByHandle(handle);
       const state = row?.state as Partial<PersistedK8sState> | undefined;
       const token = state?.token;
       if (row && token) {
@@ -712,7 +712,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         if (cached) return this.toSandbox(cached);
         const adopted = await this.adopt(id, handle, existing);
         if (!adopted) throw new Error(`cannot adopt live claim ${handle}`);
-        return withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+        return withSandboxLock(this.stateStore, id, (ops) =>
           this.finish(
             adopted,
             ops,
@@ -794,7 +794,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     if (cached) return cached.adoptedSandboxName;
     if (this.stateStore) {
       const persisted = await this.stateStore
-        .getByHandle(RUNNER_KIND, handle)
+        .getByHandle(handle)
         .catch(() => null);
       const adoptedName = (
         persisted?.state as Partial<PersistedK8sState> | undefined
@@ -968,7 +968,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     id: SandboxId,
     handle: string,
     opts: EnsureOptions,
-    ops: RunnerStateStoreOps | null,
+    ops: AgentSandboxStateStoreOps | null,
   ): Promise<Sandbox> {
     if (opts.image) {
       console.warn(
@@ -978,7 +978,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
     // 1. State-store resume.
     if (ops) {
-      const persisted = await ops.get(id, RUNNER_KIND);
+      const persisted = await ops.get(id);
       if (persisted) {
         const rec = await this.rehydrate(id, handle, persisted);
         if (rec) {
@@ -995,7 +995,7 @@ export class AgentSandboxProvider implements SandboxProvider {
             "resume",
           );
         }
-        await ops.delete(id, RUNNER_KIND);
+        await ops.delete(id);
       }
     }
     // 2. Cluster-side adopt: state store empty but a claim with our
@@ -1070,7 +1070,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   private async finish(
     rec: K8sRecord,
-    ops: RunnerStateStoreOps | null,
+    ops: AgentSandboxStateStoreOps | null,
     persistNow: boolean,
     patchTtl: boolean,
     outcome: "fresh" | "resume" | "adopt",
@@ -1757,7 +1757,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // reactive-401 paths don't persist via finish). Non-fatal on failure —
       // worst case is a redundant re-bootstrap next time.
       await this.stateStore
-        ?.put(id, RUNNER_KIND, {
+        ?.put(id, {
           handle,
           state: { ...state, daemonBootId: live.bootId },
         })
@@ -1901,7 +1901,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     const cached = this.records.get(handle);
     if (cached) return cached;
     if (!this.stateStore) return null;
-    const persisted = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+    const persisted = await this.stateStore.getByHandle(handle);
     if (!persisted) return null;
     const rec = await this.rehydrate(persisted.id, handle, persisted);
     if (rec) this.records.set(handle, rec);
@@ -1924,7 +1924,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    */
   private async resurrectByHandle(handle: string): Promise<K8sRecord | null> {
     if (!this.stateStore) return null;
-    const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+    const row = await this.stateStore.getByHandle(handle);
     if (!row) return null;
     const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
     if (!persistedOpts) return null;
@@ -1939,8 +1939,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       : persistedOpts;
     // ensure() is idempotent + advisory-locked, so concurrent resurrections
     // for the same handle collapse to a single provision. The lock is keyed
-    // on (userId, projectRef, kind), the same identity our state-store row
-    // is keyed on.
+    // on the same (userId, projectRef) AgentSandbox identity as the state row.
     await this.ensure(row.id, opts);
     return this.records.get(handle) ?? null;
   }
@@ -2003,7 +2002,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   // ---- Persistence ----------------------------------------------------------
 
   private async persist(
-    ops: RunnerStateStoreOps | null,
+    ops: AgentSandboxStateStoreOps | null,
     rec: K8sRecord,
   ): Promise<void> {
     if (!ops) return;
@@ -2016,7 +2015,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       tenant: rec.tenant,
       ...(rec.ensureOpts ? { ensureOpts: rec.ensureOpts } : {}),
     };
-    await ops.put(rec.id, RUNNER_KIND, { handle: rec.handle, state });
+    await ops.put(rec.id, { handle: rec.handle, state });
   }
 
   // ---- TTL helpers ----------------------------------------------------------

@@ -34,10 +34,10 @@ export interface HtmlArtifactBuffer {
 export interface VmToolsParams {
   /**
    * Flat sandbox filesystem hooks (read/write/edit/bash/glob/grep + the
-   * `onProxy` escape hatch) over `SandboxProvider.proxyDaemonRequest`. The
+   * `onProxy` escape hatch) over the AgentSandbox daemon proxy. The
    * handle resolution, daemon-reachability detection, and auto-restart retry
    * layer all live inside these closures (built by `createSandboxFsHooks`),
-   * so the tools here never touch `SandboxProvider` — that import would
+   * so the tools here never touch the provider — that import would
    * re-introduce the harness→sandbox cycle (spec §4.3).
    */
   readonly fs: SandboxFsHooks;

@@ -145,12 +145,24 @@ describe("COLLECTION_THREADS_CREATE", () => {
                   previewUrl: null,
                   createdAt: 1000,
                 },
+                "user-desktop": {
+                  sandboxHandle: "desktop_newer_than_hosted",
+                  previewUrl: null,
+                  createdAt: 9000,
+                },
               },
               "deco/new-branch": {
                 "agent-sandbox": {
                   sandboxHandle: "vm_new",
                   previewUrl: null,
                   createdAt: 2000,
+                },
+              },
+              "deco/desktop-only": {
+                "user-desktop": {
+                  sandboxHandle: "desktop_newest",
+                  previewUrl: null,
+                  createdAt: 10000,
                 },
               },
             },
@@ -165,6 +177,46 @@ describe("COLLECTION_THREADS_CREATE", () => {
     );
 
     expect(result.item.branch).toBe("deco/new-branch");
+  });
+
+  it("does not treat a desktop-only sandboxMap entry as a warm hosted branch", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      {
+        title: "gh-vmcp-with-desktop-only-map",
+        connections: [],
+        status: "active",
+        pinned: false,
+        metadata: {
+          githubRepo: {
+            owner: "acme",
+            name: "repo",
+            url: "https://github.com/acme/repo",
+            installationId: 1,
+            connectionId: "conn_x",
+          },
+          sandboxMap: {
+            [env.userId]: {
+              "deco/desktop-only": {
+                "user-desktop": {
+                  sandboxHandle: "desktop",
+                  previewUrl: null,
+                  createdAt: 10000,
+                },
+              },
+            },
+          },
+        },
+      },
+    );
+
+    const result = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t" } },
+      env.ctx,
+    );
+
+    expect(result.item.branch).toMatch(/^t-[0-9a-z]+$/);
   });
 
   it("is idempotent: creating with the same id twice returns the same row", async () => {

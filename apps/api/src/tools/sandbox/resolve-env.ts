@@ -1,5 +1,5 @@
 import type { RuntimeEnvEntry } from "@decocms/shared/sdk";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   SecretAccessDeniedError,
   SecretNotFoundError,
@@ -12,7 +12,7 @@ const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 
 interface ResolveAndPushParams {
   ctx: StudioContext;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   handle: string;
   orgId: string;
   userId: string;

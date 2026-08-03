@@ -1,16 +1,9 @@
 /**
- * Lifecycle phase types for `SandboxProvider.watchClaimLifecycle`.
+ * Lifecycle phase types for `AgentSandboxProvider.watchClaimLifecycle`.
  *
- * Lives at the runner package root (rather than under `agent-sandbox/`) so the
- * runner abstraction can reference these without depending on a concrete impl.
- * Pure types — no runtime imports — so type-only consumers (notably the studio
- * web bundle) can pull them in without dragging `@kubernetes/client-node`
- * through the dependency graph.
- *
- * Most phases originate from agent-sandbox's K8s watcher (image pulls, node
- * provisioning, etc.). The other providers yield a single `ready` phase
- * because they have no equivalent pre-Ready window worth surfacing —
- * SANDBOX_START returns once the daemon's HTTP server is up, which is fast.
+ * Kept at the package root as a pure type module so browser consumers can
+ * import lifecycle events without dragging `@kubernetes/client-node` through
+ * their dependency graph. Phases originate from the AgentSandbox K8s watcher.
  */
 
 export type ClaimFailureReason =

@@ -1,7 +1,6 @@
 /** The one hosted sandbox provider, shared across every API request. */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type {
   ClaimPhase,
   AgentSandboxProvider,
@@ -10,7 +9,7 @@ import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
-import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
+import { KyselyAgentSandboxStateStore } from "@/storage/sandbox-runner-state";
 import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -123,7 +122,7 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
 async function instantiateAgentSandbox(
   db: Kysely<DatabaseSchema>,
 ): Promise<AgentSandboxProvider> {
-  const stateStore = new KyselySandboxProviderStateStore(db);
+  const stateStore = new KyselyAgentSandboxStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   // Dynamic import — @kubernetes/client-node is heavy and only needed when
   // hosted sandboxes are enabled. Local-only deployments never load it.
@@ -246,7 +245,7 @@ export interface LifecycleHandle {
  * observed (whichever comes first).
  */
 export function subscribeLifecycle(
-  runner: SandboxProvider,
+  runner: Pick<AgentSandboxProvider, "watchClaimLifecycle">,
   claimName: string,
   onPhase: (phase: ClaimPhase) => void,
 ): LifecycleHandle {
@@ -320,7 +319,7 @@ function makeUnsubscribeHandle(
 }
 
 async function pumpLifecycleSource(
-  runner: SandboxProvider,
+  runner: Pick<AgentSandboxProvider, "watchClaimLifecycle">,
   claimName: string,
   entry: SharedLifecycleEntry,
 ): Promise<void> {

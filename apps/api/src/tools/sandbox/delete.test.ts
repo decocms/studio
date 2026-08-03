@@ -1,10 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
-import type {
-  SandboxProvider,
-  SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 // Mock the one hosted runner BEFORE importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
@@ -13,17 +10,17 @@ async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockRunner: SandboxProvider = {
-  kind: "agent-sandbox",
+const mockRunner = {
   ensure: async () => ({
     handle: "_unused",
     workdir: "/app",
     previewUrl: null,
   }),
-  delete: (handle) => mockDelete(handle),
+  delete: (handle: string) => mockDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => null,
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
+  adoptLiveClaim: async () => false,
   watchClaimLifecycle: () => readyOnly(),
 };
 

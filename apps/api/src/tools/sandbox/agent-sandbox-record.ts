@@ -4,7 +4,11 @@ import {
   type SandboxRecord,
 } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
-import { readSandboxMap, removeSandboxMapEntry } from "./sandbox-map";
+import {
+  AGENT_SANDBOX_KIND,
+  readSandboxMap,
+  removeAgentSandboxMapEntry,
+} from "./sandbox-map";
 import {
   assertThreadSandboxMutationAuthority,
   getThreadSandboxMap,
@@ -12,7 +16,7 @@ import {
   threadIdFromBranch,
 } from "./thread-repo";
 
-export const AGENT_SANDBOX_KIND = "agent-sandbox" as const;
+export { AGENT_SANDBOX_KIND } from "./sandbox-map";
 
 function agentRecord(entry: SandboxRecord | null): SandboxRecord | null {
   if (
@@ -104,13 +108,12 @@ export async function removeAgentSandboxRecords(args: {
   }
 
   const removals = [
-    removeSandboxMapEntry(
+    removeAgentSandboxMapEntry(
       ctx.storage.virtualMcps,
       virtualMcpId,
       actingUserId,
       sandboxUserId,
       branch,
-      AGENT_SANDBOX_KIND,
     ),
   ];
 
@@ -123,7 +126,6 @@ export async function removeAgentSandboxRecords(args: {
         actingUserId,
         sandboxUserId,
         branch,
-        AGENT_SANDBOX_KIND,
       ),
     );
   }

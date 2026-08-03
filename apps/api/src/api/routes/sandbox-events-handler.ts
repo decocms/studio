@@ -9,11 +9,11 @@
 
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
-import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
+import { KyselyAgentSandboxStateStore } from "../../storage/sandbox-runner-state";
 import {
   isSandboxOwner,
   setThreadHeadRef,
@@ -21,7 +21,6 @@ import {
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
 import {
-  AGENT_SANDBOX_KIND,
   removeAgentSandboxRecords,
   resolveAgentSandboxRecord,
 } from "../../tools/sandbox/agent-sandbox-record";
@@ -62,7 +61,7 @@ const PROXY_BACKOFF_CAP_MS = 10_000;
 export interface VmEventsHandlerArgs {
   ctx: StudioContext;
   claimName: string;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   virtualMcpId: string;
   branch: string;
   actingUserId: string;
@@ -192,7 +191,7 @@ const HEAD_REF_RESPONSE_MAX_BYTES = 256 * 1024;
  */
 async function recordDaemonHeadRef(args: {
   ctx: StudioContext;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   branch: string;
   threadId: string | null;
@@ -252,7 +251,7 @@ async function recordDaemonHeadRef(args: {
 }
 
 async function isStaleHandle(
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   claimName: string,
 ): Promise<boolean> {
   try {
@@ -270,7 +269,7 @@ async function isStaleHandle(
 
 async function cleanupStaleEntry(args: {
   ctx: StudioContext;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   virtualMcpId: string;
   branch: string;
@@ -307,11 +306,11 @@ async function cleanupStaleEntry(args: {
     );
   }
   try {
-    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, AGENT_SANDBOX_KIND);
+    const stateStore = new KyselyAgentSandboxStateStore(ctx.db);
+    await stateStore.delete({ userId, projectRef });
   } catch (err) {
     console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${AGENT_SANDBOX_KIND}: ${
+      `[vm-events] agent-sandbox runner state delete failed for ${userId}/${projectRef}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -321,7 +320,7 @@ async function cleanupStaleEntry(args: {
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;
   claimName: string;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   signal: AbortSignal;
 }): Promise<boolean> {
   const { stream, claimName, runner, signal } = args;
@@ -365,7 +364,7 @@ async function emitLifecycle(args: {
 
 async function proxyDaemonEvents(args: {
   stream: import("hono/streaming").SSEStreamingApi;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   signal: AbortSignal;
 }): Promise<void> {

@@ -32,7 +32,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { isDecopilot } from "@decocms/shared/sdk";
 import {
-  mergeSandboxMapEntry,
+  mergeAgentSandboxMapEntry,
   readSandboxMap,
 } from "@/tools/sandbox/sandbox-map";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -207,9 +207,6 @@ export async function createLoadRepoTool(opts: {
       // 2. Eagerly provision the repo sandbox on the repo-specific branch.
       //    `ensureSandbox` reads the thread repo we just wrote (it prefers
       //    thread over agent). The hosted runtime has one sandbox provider;
-      //    the kind literal remains only in persisted/client compatibility
-      //    shapes until their migration is complete.
-      const kind = "agent-sandbox" as const;
       const entry = await ensureSandbox({ virtualMcpId, branch }, ctx);
 
       // 3. `ensureSandbox` already persisted the sandbox record on the thread
@@ -221,11 +218,10 @@ export async function createLoadRepoTool(opts: {
       //    turn. `previewUrl` is known the moment `ensureSandbox` returns.
       //    Send the merged map (snapshot + this entry, via the shared helper) so
       //    the client patches its local thread without dropping sibling repos.
-      const sandboxMap = mergeSandboxMapEntry(
+      const sandboxMap = mergeAgentSandboxMapEntry(
         readSandboxMap(thread?.metadata),
         userId,
         branch,
-        kind,
         entry,
       );
       // Open the Preview panel + patch the client's local thread row (branch +
@@ -239,7 +235,7 @@ export async function createLoadRepoTool(opts: {
           branch,
           githubRepo,
           sandboxMap,
-          sandboxProviderKind: kind,
+          sandboxProviderKind: "agent-sandbox",
         },
       } as Parameters<UIMessageStreamWriter["write"]>[0]);
 

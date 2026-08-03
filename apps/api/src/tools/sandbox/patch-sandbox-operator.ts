@@ -1,4 +1,4 @@
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
 import { readBoundedText } from "../../lib/bounded-text";
 import type { StudioContext } from "../../core/studio-context";
@@ -9,7 +9,7 @@ const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 /** Sync the authenticated Studio user into daemon tenant config for co-author. */
 export async function patchSandboxOperator(
   ctx: StudioContext,
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   handle: string,
 ): Promise<void> {
   const operator = coAuthorFromStudioContext(ctx);

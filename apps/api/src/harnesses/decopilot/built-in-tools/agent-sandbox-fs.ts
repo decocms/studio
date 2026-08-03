@@ -3,8 +3,8 @@
  *
  * Isolates the `@decocms/sandbox` builder + the hosted sandbox-provisioning
  * `@/` imports that the portable built-in tools must NOT carry. The harness VM
- * tools consume the flat `SandboxFsHooks` returned here and never see
- * `SandboxProvider` (spec §4.3).
+ * tools consume the flat `SandboxFsHooks` returned here and never see the
+ * hosted provider (spec §4.3).
  *
  * ASSEMBLER-GLUE: this module stays `@/`- and `@decocms/sandbox`-coupled and is
  * slated to relocate into the hosted assembler (`harness-deps.ts`) in the
@@ -13,10 +13,8 @@
  * `@decocms/sandbox`.
  */
 
-import {
-  createSandboxFsHooks,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
+import { createSandboxFsHooks } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { StudioContext } from "@/core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
@@ -38,7 +36,7 @@ import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm
  */
 async function syncToolsCatalog(
   ctx: StudioContext,
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   handle: string,
   vm: { virtualMcpId: string },
 ): Promise<void> {
@@ -80,7 +78,7 @@ async function syncToolsCatalog(
  * stays lazy behind the memoized `ensureHandle` closure — `ensureSandbox` only
  * runs on the first VM-tool invocation. The handle-resolution + auto-restart
  * retry layer lives inside `createSandboxFsHooks`, so the VM tools never touch
- * `SandboxProvider`.
+ * the hosted provider.
  */
 export async function buildAgentSandboxFs(
   ctx: StudioContext,
@@ -93,7 +91,7 @@ export async function buildAgentSandboxFs(
     syncTools?: boolean;
   },
 ): Promise<SandboxFsHooks> {
-  const runner: SandboxProvider = await getAgentSandboxProvider(ctx);
+  const runner = await getAgentSandboxProvider(ctx);
   let cached: Promise<string> | null = null;
   const ensureHandle = () => {
     if (!cached) {
@@ -129,9 +127,6 @@ export async function buildAgentSandboxFs(
   // proxy failure.
   const canAutoRestart = vm.branch === "ephemeral";
   const invalidateHandle = async (opts?: { force?: boolean }) => {
-    // Capture before clearing — we need the dead handle to flush the captured
-    // runner's cache below.
-    const lastHandlePromise = cached;
     cached = null;
     // `force` (set by the retry layer when the daemon reported the sandbox is
     // provably GONE — 404) reaps + respawns even for non-auto-restart branches:
@@ -158,16 +153,6 @@ export async function buildAgentSandboxFs(
       });
     } catch (err) {
       console.warn("[agent-sandbox-fs] failed to reap sandbox record", err);
-    }
-    // Flush the shared runner's in-process cache + state-store row so the retry
-    // cannot keep serving the dead URL from its records map.
-    if (lastHandlePromise && typeof runner.forgetHandle === "function") {
-      try {
-        const lastHandle = await lastHandlePromise;
-        await runner.forgetHandle(lastHandle);
-      } catch (err) {
-        console.warn("[agent-sandbox-fs] forgetHandle failed", err);
-      }
     }
   };
   return createSandboxFsHooks(runner, {

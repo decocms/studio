@@ -1,21 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxProvider } from "./types";
+import type { AgentSandboxProvider } from "./agent-sandbox";
 import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 
+type AgentSandboxDaemonProxy = Pick<AgentSandboxProvider, "proxyDaemonRequest">;
+
+function providerWithProxy(
+  proxyDaemonRequest: AgentSandboxProvider["proxyDaemonRequest"],
+): AgentSandboxDaemonProxy {
+  return { proxyDaemonRequest };
+}
+
 /**
- * A minimal fake `SandboxProvider` that only implements `proxyDaemonRequest`
- * (the sole surface the fs hooks build on). `captured` records the last
- * `(path, body)` so tests can assert the wire translation, and `response`
- * lets each test choose the daemon's JSON reply.
+ * `captured` records the last `(path, body)` so tests can assert the wire
+ * translation, and `response` lets each test choose the daemon's JSON reply.
  */
 function fakeProvider(
   captured: { path?: string; body?: unknown },
   response: unknown,
   init?: { status?: number },
-): SandboxProvider {
-  return {
-    kind: "agent-sandbox",
-    proxyDaemonRequest: async (
+): AgentSandboxDaemonProxy {
+  return providerWithProxy(
+    async (
       _handle: string,
       path: string,
       reqInit: { body: BodyInit | null },
@@ -27,7 +32,7 @@ function fakeProvider(
         headers: { "content-type": "application/json" },
       });
     },
-  } as unknown as SandboxProvider;
+  );
 }
 
 const lifecycle = {
@@ -139,10 +144,9 @@ describe("createSandboxFsHooks", () => {
     // wedge into a tool error the model can react to. It must NOT be treated
     // as daemon-unreachable — that path reaps + re-provisions the sandbox.
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: () => new Promise<Response>(() => {}), // never settles
-    } as unknown as SandboxProvider;
+    const provider = providerWithProxy(
+      () => new Promise<Response>(() => {}), // never settles
+    );
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -169,17 +173,10 @@ describe("createSandboxFsHooks", () => {
   test("cancelling the run aborts the in-flight op — no timeout wait, no restart retry", async () => {
     let invalidated = 0;
     let sawSignal: AbortSignal | undefined;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: (
-        _handle: string,
-        _path: string,
-        init: { signal?: AbortSignal },
-      ) => {
-        sawSignal = init.signal;
-        return new Promise<Response>(() => {}); // never settles on its own
-      },
-    } as unknown as SandboxProvider;
+    const provider = providerWithProxy((_handle, _path, init) => {
+      sawSignal = init.signal;
+      return new Promise<Response>(() => {}); // never settles on its own
+    });
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -198,7 +195,7 @@ describe("createSandboxFsHooks", () => {
     runAbort.abort(new Error("run cancelled"));
     await expect(pending).rejects.toThrow("run cancelled");
     expect(invalidated).toBe(0);
-    // The composed signal reaches the transport so honoring providers can
+    // The composed signal reaches the transport so an honoring proxy can
     // tear down the underlying request too.
     expect(sawSignal?.aborted).toBe(true);
   });
@@ -206,17 +203,14 @@ describe("createSandboxFsHooks", () => {
   test("retries once on daemon-unreachable when canAutoRestart is true", async () => {
     let attempts = 0;
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: async () => {
-        attempts++;
-        if (attempts === 1) throw new Error("connection refused");
-        return new Response(
-          JSON.stringify({ kind: "text", content: "ok", lineCount: 1 }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      },
-    } as unknown as SandboxProvider;
+    const provider = providerWithProxy(async () => {
+      attempts++;
+      if (attempts === 1) throw new Error("connection refused");
+      return new Response(
+        JSON.stringify({ kind: "text", content: "ok", lineCount: 1 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -237,22 +231,19 @@ describe("createSandboxFsHooks", () => {
     // so the map entry is reaped, not just the memoised handle cleared.
     let attempts = 0;
     let forced: boolean | undefined;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: async () => {
-        attempts++;
-        if (attempts === 1) {
-          return new Response(JSON.stringify({ error: "sandbox not found" }), {
-            status: 404,
-            headers: { "content-type": "application/json" },
-          });
-        }
-        return new Response(
-          JSON.stringify({ kind: "text", content: "recovered", lineCount: 1 }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      },
-    } as unknown as SandboxProvider;
+    const provider = providerWithProxy(async () => {
+      attempts++;
+      if (attempts === 1) {
+        return new Response(JSON.stringify({ error: "sandbox not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ kind: "text", content: "recovered", lineCount: 1 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async (opts) => {
@@ -272,13 +263,10 @@ describe("createSandboxFsHooks", () => {
     // conservative branch surfaces the sticky failure without a retry.
     let attempts = 0;
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: async () => {
-        attempts++;
-        throw new Error("connection refused");
-      },
-    } as unknown as SandboxProvider;
+    const provider = providerWithProxy(async () => {
+      attempts++;
+      throw new Error("connection refused");
+    });
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {

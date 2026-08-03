@@ -16,7 +16,7 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
@@ -61,7 +61,7 @@ interface VmClaim {
    *  `resolveSandboxUserId`). */
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance. */
-  runner: SandboxProvider | null;
+  runner: AgentSandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -193,7 +193,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
 
   // The hosted API has one runner. Disabled installations surface no runner;
   // native desktop sandboxes are handled by the native local API instead.
-  let runner: SandboxProvider | null;
+  let runner: AgentSandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
   } catch {
@@ -228,7 +228,7 @@ const requireSandboxOwner = createMiddleware<VmEnv>(async (c, next) => {
 });
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
+function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);
@@ -334,7 +334,7 @@ async function proxyDaemon(
       } catch {
         /* ignore */
       }
-      const adopted = await runner.adoptLiveClaim?.(
+      const adopted = await runner.adoptLiveClaim(
         { userId, projectRef },
         claimName,
       );
@@ -431,7 +431,7 @@ export function redactRepoDir(text: string): string {
 }
 
 async function fetchDaemonJson<T>(
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   claimName: string,
   daemonPath: string,
   method: "GET" | "POST" = "GET",
@@ -449,7 +449,7 @@ async function fetchDaemonJson<T>(
     } catch {
       /* ignore */
     }
-    const adopted = await runner.adoptLiveClaim?.(sandboxId, claimName);
+    const adopted = await runner.adoptLiveClaim(sandboxId, claimName);
     if (adopted) {
       upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
         method,

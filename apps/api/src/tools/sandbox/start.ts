@@ -54,7 +54,7 @@ import { pickGitBranch } from "../../sandbox/head-ref";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
-import { setSandboxMapEntry } from "./sandbox-map";
+import { setAgentSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 import {
   AGENT_SANDBOX_KIND,
@@ -540,13 +540,12 @@ async function provisionSandbox(
       },
     };
 
-    await setSandboxMapEntry(
+    await setAgentSandboxMapEntry(
       ctx.storage.virtualMcps,
       virtualMcpId,
       userId,
       sandboxUserId,
       branch,
-      AGENT_SANDBOX_KIND,
       entry,
     );
 
@@ -563,7 +562,6 @@ async function provisionSandbox(
         userId,
         sandboxUserId,
         branch,
-        AGENT_SANDBOX_KIND,
         entry,
       );
     }

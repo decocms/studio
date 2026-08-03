@@ -42,7 +42,7 @@ describe("harness tree is cross-tree-free", () => {
 // `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
 // not a layering violation — but we still keep that surface explicit and small.
 // Only `agent-sandbox-fs.ts` may bridge into sandbox: it constructs the
-// hosted `SandboxProvider` + fs hooks.
+// hosted AgentSandbox provider + fs hooks.
 // Every other production file consumes the harness-owned flat `SandboxFsHooks`
 // via DI and stays sandbox-free.
 const SANDBOX_GLUE = new Set(["decopilot/built-in-tools/agent-sandbox-fs.ts"]);

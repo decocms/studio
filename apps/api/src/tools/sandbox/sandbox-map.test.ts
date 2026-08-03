@@ -3,13 +3,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { SandboxRecord } from "@decocms/shared/sdk";
+import { parseBranchMap } from "@decocms/shared/sdk";
+import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 
 import {
-  deleteSandboxMapEntry,
-  mergeSandboxMapEntry,
+  deleteAgentSandboxMapEntry,
+  mergeAgentSandboxMapEntry,
   readSandboxMap,
-  resolveVm,
 } from "./sandbox-map";
 
 const ENTRY_A: SandboxRecord = {
@@ -20,6 +20,19 @@ const ENTRY_B: SandboxRecord = {
   sandboxHandle: "vm-2",
   previewUrl: "https://vm-2.deco.studio",
 };
+const CANONICAL_ENTRY_B: SandboxRecord = {
+  ...ENTRY_B,
+  sandboxProviderKind: "agent-sandbox",
+};
+
+function entryAt(
+  sandboxMap: SandboxMap,
+  userId: string,
+  branch: string,
+  kind: "agent-sandbox" | "user-desktop",
+): SandboxRecord | null {
+  return parseBranchMap(sandboxMap[userId]?.[branch])[kind] ?? null;
+}
 
 describe("readSandboxMap", () => {
   test("returns empty object when metadata is null", () => {
@@ -71,103 +84,38 @@ describe("readSandboxMap canonical reads", () => {
   });
 });
 
-describe("resolveVm", () => {
-  test("returns null when user is absent", () => {
-    expect(resolveVm({}, "user-1", "main", "agent-sandbox")).toBeNull();
-  });
-
-  test("returns null when branch is absent for that user", () => {
-    const sandboxMap = { "user-1": { main: { "agent-sandbox": ENTRY_A } } };
-    expect(
-      resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox"),
-    ).toBeNull();
-  });
-
-  test("returns the entry when userId, branch, and kind are all present", () => {
-    const sandboxMap = {
-      "user-1": {
-        main: { "agent-sandbox": ENTRY_A },
-        "feat/x": { "agent-sandbox": ENTRY_B },
-      },
-    };
-    expect(resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
-  });
-
-  test("isolates users from each other", () => {
-    const sandboxMap = {
-      "user-1": { main: { "agent-sandbox": ENTRY_A } },
-      "user-2": { main: { "agent-sandbox": ENTRY_B } },
-    };
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(sandboxMap, "user-2", "main", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
-  });
-
-  test("returns null when the kind is absent but another kind exists", () => {
-    const sandboxMap = {
-      "user-1": { main: { "user-desktop": ENTRY_A } },
-    };
-    // looking up "agent-sandbox" when only "user-desktop" exists → null
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toBeNull();
-  });
-
-  test("returns the entry for the requested kind when multiple kinds coexist", () => {
-    const sandboxMap = {
-      "user-1": { main: { "user-desktop": ENTRY_A, "agent-sandbox": ENTRY_B } },
-    };
-    expect(resolveVm(sandboxMap, "user-1", "main", "user-desktop")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
-  });
-});
-
-describe("mergeSandboxMapEntry", () => {
+describe("mergeAgentSandboxMapEntry", () => {
   test("preserves sibling branches when adding a new one (switch repos)", () => {
     // Regression: load_repo used to overwrite the whole map, wiping the first
     // repo's entry when a second repo was loaded on the same thread.
     const current = {
       u: { "thread:t/conn_a": { "agent-sandbox": ENTRY_A } },
     };
-    const next = mergeSandboxMapEntry(
+    const next = mergeAgentSandboxMapEntry(
       current,
       "u",
       "thread:t/conn_b",
-      "agent-sandbox",
       ENTRY_B,
     );
-    expect(resolveVm(next, "u", "thread:t/conn_a", "agent-sandbox")).toEqual(
+    expect(entryAt(next, "u", "thread:t/conn_a", "agent-sandbox")).toEqual(
       ENTRY_A,
     );
-    expect(resolveVm(next, "u", "thread:t/conn_b", "agent-sandbox")).toEqual(
-      ENTRY_B,
+    expect(entryAt(next, "u", "thread:t/conn_b", "agent-sandbox")).toEqual(
+      CANONICAL_ENTRY_B,
     );
   });
 
   test("preserves sibling kinds on the same branch", () => {
     const current = { u: { b: { "user-desktop": ENTRY_A } } };
-    const next = mergeSandboxMapEntry(
-      current,
-      "u",
-      "b",
-      "agent-sandbox",
-      ENTRY_B,
-    );
-    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_A);
-    expect(resolveVm(next, "u", "b", "agent-sandbox")).toEqual(ENTRY_B);
+    const next = mergeAgentSandboxMapEntry(current, "u", "b", ENTRY_B);
+    expect(entryAt(next, "u", "b", "user-desktop")).toEqual(ENTRY_A);
+    expect(entryAt(next, "u", "b", "agent-sandbox")).toEqual(CANONICAL_ENTRY_B);
   });
 
   test("does not mutate the input map", () => {
     const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
     const snapshot = JSON.stringify(current);
-    mergeSandboxMapEntry(current, "u", "b", "user-desktop", ENTRY_B);
+    mergeAgentSandboxMapEntry(current, "u", "b", ENTRY_B);
     expect(JSON.stringify(current)).toBe(snapshot);
   });
 
@@ -177,29 +125,34 @@ describe("mergeSandboxMapEntry", () => {
     // character-indexed keys ("0","1",...).
     const current = {
       u: { b: JSON.stringify({ "agent-sandbox": ENTRY_A }) },
-    } as unknown as Parameters<typeof mergeSandboxMapEntry>[0];
-    const next = mergeSandboxMapEntry(
-      current,
-      "u",
-      "b",
-      "user-desktop",
-      ENTRY_B,
-    );
-    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    } as unknown as Parameters<typeof mergeAgentSandboxMapEntry>[0];
+    const next = mergeAgentSandboxMapEntry(current, "u", "b", ENTRY_B);
+    expect(entryAt(next, "u", "b", "agent-sandbox")).toEqual(CANONICAL_ENTRY_B);
     expect(next.u?.b).not.toHaveProperty("0");
+  });
+
+  test("overwrites a conflicting embedded discriminator with the canonical kind", () => {
+    const mislabeled: SandboxRecord = {
+      ...ENTRY_B,
+      sandboxProviderKind: "user-desktop",
+    };
+
+    const next = mergeAgentSandboxMapEntry({}, "u", "b", mislabeled);
+
+    expect(entryAt(next, "u", "b", "agent-sandbox")).toEqual(CANONICAL_ENTRY_B);
   });
 });
 
-describe("deleteSandboxMapEntry", () => {
+describe("deleteAgentSandboxMapEntry", () => {
   test("returns null when the entry is absent (no-op write)", () => {
-    expect(deleteSandboxMapEntry({}, "u", "b", "agent-sandbox")).toBeNull();
+    expect(deleteAgentSandboxMapEntry({}, "u", "b")).toBeNull();
     const other = { u: { b: { "user-desktop": ENTRY_A } } };
-    expect(deleteSandboxMapEntry(other, "u", "b", "agent-sandbox")).toBeNull();
+    expect(deleteAgentSandboxMapEntry(other, "u", "b")).toBeNull();
   });
 
   test("removes the entry and prunes empty branch + user buckets", () => {
     const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
-    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    const next = deleteAgentSandboxMapEntry(current, "u", "b");
     expect(next).toEqual({});
   });
 
@@ -210,18 +163,18 @@ describe("deleteSandboxMapEntry", () => {
         other: { "agent-sandbox": ENTRY_A },
       },
     };
-    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
-    expect(resolveVm(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
-    expect(resolveVm(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
-    expect(resolveVm(next!, "u", "b", "agent-sandbox")).toBeNull();
+    const next = deleteAgentSandboxMapEntry(current, "u", "b");
+    expect(entryAt(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    expect(entryAt(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
+    expect(entryAt(next!, "u", "b", "agent-sandbox")).toBeNull();
   });
 });
 
-describe("setSandboxMapEntry", () => {
+describe("setAgentSandboxMapEntry", () => {
   // Setup: a fake storage adapter that captures the metadata blob written by
-  // setSandboxMapEntry so we can assert the new key carries the merged shape.
+  // the writer so we can assert the new key carries the merged shape.
   test("writes the entry under sandboxMap[user][branch][kind]", async () => {
-    const { setSandboxMapEntry } = await import("./sandbox-map");
+    const { setAgentSandboxMapEntry } = await import("./sandbox-map");
     const initialMetadata: Record<string, unknown> = {
       sandboxMap: {},
       otherField: "preserved",
@@ -247,13 +200,12 @@ describe("setSandboxMapEntry", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await setSandboxMapEntry(
+    await setAgentSandboxMapEntry(
       storage as unknown as import("../../storage/ports").VirtualMCPStoragePort,
       "vmcp_1",
       "u",
       "u",
       "b",
-      "agent-sandbox",
       newEntry,
     );
 

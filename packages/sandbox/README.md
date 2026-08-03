@@ -1,7 +1,7 @@
 # @decocms/sandbox
 
-Runs Studio coding workloads through an isolated daemon with provider-neutral
-lifecycle, filesystem, dispatch, and proxy contracts.
+Runs Studio coding workloads through AgentSandbox with lifecycle, filesystem,
+dispatch, and proxy contracts.
 
 | Attribute | Value |
 | --- | --- |
@@ -19,9 +19,9 @@ process, dispatch, and preview-proxy operations. It is the only daemon
 implementation; the TypeScript one it replaced is deleted, and its black-box
 contract now lives in `daemon-e2e/`.
 
-Studio addresses a sandbox by logical identity and talks to it through the
-`SandboxProvider` contract. Provider-specific transport and lifecycle behavior stay
-behind that contract, so API code does not depend on Kubernetes details.
+Studio addresses a sandbox by logical identity and talks to it through the one
+`AgentSandboxProvider`. Kubernetes transport and lifecycle behavior stay inside
+that class.
 
 A sandbox is isolated per user and project reference, so one user's workspace
 never becomes another user's execution context.
@@ -48,16 +48,14 @@ During the rolling compatibility window, deployments also set
 `STUDIO_SANDBOX_PROVIDER=agent-sandbox` so an older API image remains
 rollback-compatible.
 
-Code that works with a provider should depend on its interface:
+Code that works with the hosted provider names it directly:
 
 ```ts
-import type {
-  SandboxId,
-  SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { SandboxId } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 
 export async function ensureSandbox(
-  provider: SandboxProvider,
+  provider: AgentSandboxProvider,
   id: SandboxId,
 ) {
   return provider.ensure(id);
@@ -77,8 +75,8 @@ const input = harnessStreamInputSchema.parse(untrustedInput);
 
 The package has four major layers:
 
-1. **Provider layer** — `SandboxProvider` defines lifecycle and proxy operations.
-   The `agent-sandbox` implementation uses the Kubernetes agent-sandbox operator.
+1. **Provider layer** — `AgentSandboxProvider` owns lifecycle and proxy operations
+   through the Kubernetes agent-sandbox operator.
 2. **Daemon layer** — the Go daemon (`daemon-go/`) serves HTTP inside the sandbox
    on port `9000`. Authenticated routes perform project, process, Git,
    filesystem, and dispatch work.
@@ -88,15 +86,14 @@ The package has four major layers:
    servers, while organization filesystem helpers manage mounted Studio content.
 
 A logical sandbox is identified by `SandboxId`, which pairs a `userId` with an
-opaque `projectRef`. Providers map that identity to a deterministic, DNS-safe
-handle. The handle and preview URL are bearer-like links
-for the preview surface in current providers; daemon control requests still
-require separate authentication.
+opaque `projectRef`. AgentSandbox maps that identity to a deterministic,
+DNS-safe handle. The handle and preview URL are bearer-like links for the
+preview surface; daemon control requests still require separate authentication.
 
 The normal request path is:
 
 ```text
-Studio API -> SandboxProvider -> authenticated daemon -> process/filesystem/harness
+Studio API -> AgentSandboxProvider -> authenticated daemon -> process/filesystem/harness
 ```
 
 For `agent-sandbox`, the provider resolves the Kubernetes workload and its routed
@@ -149,8 +146,8 @@ bun run lint
 
 ## Boundaries
 
-- All Studio callers depend on `SandboxProvider`; provider-specific clients and
-  transports must not leak into business logic.
+- Studio callers name `AgentSandboxProvider`; its Kubernetes clients and
+  transport internals must not leak into business logic.
 - Daemon code is Go and lives in `daemon-go/`. Do not add a second daemon
   implementation, and do not reach into `daemon-go/` from TypeScript — the
   contract between them is HTTP, asserted in `daemon-e2e/`.

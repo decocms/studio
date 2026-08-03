@@ -16,11 +16,10 @@ import type {
   SandboxMap,
   SandboxRecord,
 } from "@decocms/shared/sdk";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { Thread } from "@/storage/types";
 import {
-  deleteSandboxMapEntry,
-  mergeSandboxMapEntry,
+  deleteAgentSandboxMapEntry,
+  mergeAgentSandboxMapEntry,
   readSandboxMap,
 } from "./sandbox-map";
 
@@ -222,7 +221,8 @@ export async function getThreadGithubRepo(
 
 /**
  * Persist a sandbox record on the THREAD's `metadata.sandboxMap`
- * ([userId][branch][kind]) via the shared {@link mergeSandboxMapEntry}. The
+ * ([userId][branch][agent-sandbox]) via the shared
+ * {@link mergeAgentSandboxMapEntry}. The
  * synthetic Decopilot agent's sandboxMap write is a no-op, so for thread-scoped
  * branches this is the only place the frontend reads the live `previewUrl`/
  * handle from. Called from `provisionSandbox` so every provisioning path
@@ -237,7 +237,6 @@ export async function setThreadSandboxMapEntry(
   actingUserId: string,
   sandboxUserId: string,
   branch: string,
-  kind: SandboxProviderKind,
   entry: SandboxRecord,
 ): Promise<void> {
   const thread = await ctx.storage.threads.get(threadId);
@@ -251,11 +250,10 @@ export async function setThreadSandboxMapEntry(
     throw new ThreadSandboxMutationDeniedError();
   }
   const meta = (thread.metadata as Record<string, unknown> | null) ?? {};
-  const next = mergeSandboxMapEntry(
+  const next = mergeAgentSandboxMapEntry(
     readSandboxMap(meta),
     sandboxUserId,
     branch,
-    kind,
     entry,
   );
   await ctx.storage.threads.update(threadId, {
@@ -303,7 +301,6 @@ export async function removeThreadSandboxMapEntryStrict(
   actingUserId: string,
   sandboxUserId: string,
   branch: string,
-  kind: SandboxProviderKind,
 ): Promise<void> {
   await assertThreadSandboxMutationAuthority(
     ctx,
@@ -314,11 +311,10 @@ export async function removeThreadSandboxMapEntryStrict(
   );
   const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
   if (!meta) throw new ThreadSandboxScopeError();
-  const next = deleteSandboxMapEntry(
+  const next = deleteAgentSandboxMapEntry(
     readSandboxMap(meta),
     sandboxUserId,
     branch,
-    kind,
   );
   if (!next) return;
   await ctx.storage.threads.update(threadId, {

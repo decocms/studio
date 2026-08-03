@@ -4,9 +4,10 @@
  *
  * Builds the flat filesystem hooks (`onRead`/`onWrite`/`onEdit`/`onBash`/
  * `onGlob`/`onGrep`) that the harness consumes through `HarnessDeps` (§5.1) over
- * a `SandboxProvider.proxyDaemonRequest`. The harness calls `deps.onRead(...)`
- * and never sees `SandboxProvider` — the lifecycle (handle resolution, daemon
- * reachability, auto-restart) is hidden behind these closures.
+ * `AgentSandboxProvider.proxyDaemonRequest`. The harness calls
+ * `deps.onRead(...)` and never sees the provider — the lifecycle (handle
+ * resolution, daemon reachability, auto-restart) is hidden behind these
+ * closures.
  *
  * The `DaemonUnreachableError` sentinel, the `daemonRequest` proxy wrapper, and
  * the call-level retry layer are moved verbatim from
@@ -22,7 +23,9 @@
  * (ban-cross-tree-imports).
  */
 
-import type { SandboxProvider } from "./types";
+import type { AgentSandboxProvider } from "./agent-sandbox/runner";
+
+type AgentSandboxDaemonProxy = Pick<AgentSandboxProvider, "proxyDaemonRequest">;
 
 export interface SandboxFsEdit {
   oldText: string;
@@ -193,7 +196,7 @@ class DaemonUnreachableError extends Error {
 }
 
 async function daemonRequest(
-  runner: SandboxProvider,
+  runner: AgentSandboxDaemonProxy,
   handle: string,
   path: string,
   body: Record<string, unknown> | null,
@@ -251,8 +254,7 @@ async function daemonRequest(
     json = JSON.parse(rawText);
   } catch {
     console.error(
-      "[sandbox-fs-hooks] Failed to parse JSON response runner=%s path=%s status=%d rawText=%s",
-      runner.kind,
+      "[sandbox-fs-hooks] Failed to parse JSON response provider=agent-sandbox path=%s status=%d rawText=%s",
       path,
       res.status,
       rawText.slice(0, 2000),
@@ -269,8 +271,7 @@ async function daemonRequest(
   }
   if (!res.ok) {
     console.error(
-      "[sandbox-fs-hooks] Non-OK response runner=%s path=%s status=%d body=%s",
-      runner.kind,
+      "[sandbox-fs-hooks] Non-OK response provider=agent-sandbox path=%s status=%d body=%s",
       path,
       res.status,
       rawText.slice(0, 2000),
@@ -316,12 +317,12 @@ function parseGrepResults(results: string): SandboxFsGrepHit[] {
 }
 
 /**
- * Build the flat fs hooks over `provider.proxyDaemonRequest`. Typing `provider`
- * as `SandboxProvider` enforces the §4.3 invariant (the harness depends on this
- * package's provider surface, never the other way round).
+ * Build the flat fs hooks over the one hosted provider's daemon proxy. The
+ * narrow method-level type keeps the harness dependency one-way without
+ * preserving a second, generic provider contract.
  */
 export function createSandboxFsHooks(
-  provider: SandboxProvider,
+  provider: AgentSandboxDaemonProxy,
   lifecycle: SandboxFsHooksLifecycle,
 ): SandboxFsHooks {
   const { ensureHandle, invalidateHandle, canAutoRestart } = lifecycle;

@@ -1481,7 +1481,7 @@ export interface KVTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
-export interface SandboxProviderStateTable {
+export interface AgentSandboxStateTable {
   user_id: string;
   project_ref: string;
   sandbox_provider_kind: string;
@@ -1938,5 +1938,5 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
-  sandbox_runner_state: SandboxProviderStateTable;
+  sandbox_runner_state: AgentSandboxStateTable;
 }

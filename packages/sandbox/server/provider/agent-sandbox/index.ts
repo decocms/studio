@@ -25,3 +25,10 @@ export type { AgentSandboxProviderOptions } from "./runner";
 // consumers — notably the studio web bundle — can import them safely.
 export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";
 export type { WatchClaimLifecycleOptions } from "./lifecycle-watcher";
+export type {
+  AgentSandboxStatePut,
+  AgentSandboxStateRecord,
+  AgentSandboxStateRecordWithId,
+  AgentSandboxStateStore,
+  AgentSandboxStateStoreOps,
+} from "../state-store";
