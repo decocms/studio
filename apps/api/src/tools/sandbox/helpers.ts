@@ -12,8 +12,6 @@ import {
   type SandboxRecord,
   type SubmoduleCredential,
 } from "@decocms/shared/sdk";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-
 import {
   requireAuth,
   requireOrganization,
@@ -22,8 +20,12 @@ import {
 } from "../../core/studio-context";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import type { PackageManager } from "@decocms/shared/runtime-defaults";
-import { readSandboxMap, resolveVm } from "./sandbox-map";
-import { resolveSandboxUserId } from "./thread-repo";
+import {
+  isSandboxOwner,
+  resolveSandboxUserId,
+  threadIdFromBranch,
+} from "./thread-repo";
+import { resolveAgentSandboxRecord } from "./agent-sandbox-record";
 
 export type RuntimeConfigMeta = {
   runtime?: {
@@ -104,18 +106,18 @@ export function readValidatedSubmoduleCredentials(
 /**
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
- * and returns the metadata and sandboxMap entry for the sandbox's OWNER on the
- * specified branch + kind. `entry` is null when no vm is registered for that triple.
+ * and returns the canonical hosted entry for the sandbox's OWNER. Thread-scoped
+ * records fall back to thread metadata. `entry` is null when no hosted sandbox
+ * is registered; legacy desktop records are never routed through this helper.
  *
  * `userId` is the caller (audit); `sandboxUserId` is who the sandbox is keyed by
- * — the same resolution SANDBOX_START uses, so a teammate's thread resolves that
- * thread's one sandbox rather than missing. See `resolveSandboxUserId`.
+ * — the same resolution SANDBOX_START uses. Mutating tool paths require those
+ * identities to match, so a teammate cannot change the owner's sandbox.
  */
 export async function requireVmEntry(
   input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: SandboxProviderKind;
   },
   ctx: StudioContext,
 ) {
@@ -129,14 +131,26 @@ export async function requireVmEntry(
     throw new Error("Virtual MCP not found");
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const sandboxMap = readSandboxMap(metadata);
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  const entry: SandboxRecord | null = resolveVm(
-    sandboxMap,
-    sandboxUserId,
+  const sandboxUserId = await resolveSandboxUserId(
+    ctx,
     input.branch,
-    input.sandboxProviderKind,
+    userId,
+    input.virtualMcpId,
   );
+  if (!sandboxUserId) throw new Error("Thread not found for Virtual MCP");
+  if (
+    threadIdFromBranch(input.branch) &&
+    !isSandboxOwner(userId, sandboxUserId)
+  ) {
+    throw new Error("Only the thread owner can change its sandbox");
+  }
+  const entry: SandboxRecord | null = await resolveAgentSandboxRecord({
+    ctx,
+    virtualMcpId: input.virtualMcpId,
+    virtualMcpMetadata: metadata,
+    sandboxUserId,
+    branch: input.branch,
+  });
   return { virtualMcp, metadata, userId, sandboxUserId, entry, organization };
 }
 

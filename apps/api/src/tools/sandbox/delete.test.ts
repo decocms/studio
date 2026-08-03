@@ -6,35 +6,38 @@ import type {
   SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 
-// Mock per-kind runner lookup BEFORE importing SANDBOX_DELETE.
+// Mock the one hosted runner BEFORE importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
-const lastRequestedKind: { value: string | null } = { value: null };
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-function makeMockRunner(kind: SandboxProviderKind): SandboxProvider {
-  return {
-    kind,
-    ensure: async () => ({
-      handle: "_unused",
-      workdir: "/app",
-      previewUrl: null,
-    }),
-    delete: (h) => mockDelete(h),
-    alive: async () => true,
-    getPreviewUrl: async () => null,
-    proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-    watchClaimLifecycle: () => readyOnly(),
-  };
-}
+const mockRunner: SandboxProvider = {
+  kind: "agent-sandbox",
+  ensure: async () => ({
+    handle: "_unused",
+    workdir: "/app",
+    previewUrl: null,
+  }),
+  delete: (handle) => mockDelete(handle),
+  alive: async () => true,
+  getPreviewUrl: async () => null,
+  proxyDaemonRequest: async () => new Response(null, { status: 204 }),
+  watchClaimLifecycle: () => readyOnly(),
+};
+
+const mockGetAgentSandboxProvider = mock(async (_ctx: unknown) => mockRunner);
+const mockGetAgentSandboxProviderForTeardown = mock(
+  async (_ctx: unknown) => mockRunner,
+);
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSandboxProviderByKind: (_ctx: unknown, kind: SandboxProviderKind) => {
-    lastRequestedKind.value = kind;
-    return makeMockRunner(kind);
-  },
+  getAgentSandboxProvider: mockGetAgentSandboxProvider,
+  getAgentSandboxProviderForTeardown: mockGetAgentSandboxProviderForTeardown,
+  getOrInitAgentSandboxProvider: async () => mockRunner,
+  subscribeLifecycle: () => ({ unsubscribe: () => {} }),
+  __resetSharedLifecyclesForTesting: () => {},
 }));
 
 const { SANDBOX_DELETE } = await import("./delete");
@@ -91,12 +94,20 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  thread?: {
+    virtual_mcp_id?: string;
+    created_by: string;
+    metadata: Record<string, unknown>;
+  } | null;
+  threadUpdateSpy?: ReturnType<typeof mock>;
 }): StudioContext {
   const {
     orgId = "org_1",
     userId = "user-1",
     virtualMcp,
     updateSpy = mock(async () => {}),
+    thread = null,
+    threadUpdateSpy = mock(async () => {}),
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -119,6 +130,17 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      threads: {
+        get: mock(async (_id: string) =>
+          thread
+            ? {
+                virtual_mcp_id: virtualMcp?.id ?? "vmcp_1",
+                ...thread,
+              }
+            : null,
+        ),
+        update: threadUpdateSpy,
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -158,10 +180,17 @@ describe("SANDBOX_DELETE", () => {
   beforeEach(() => {
     mockDelete.mockReset();
     mockDelete.mockImplementation(async () => {});
-    lastRequestedKind.value = null;
+    mockGetAgentSandboxProvider.mockReset();
+    mockGetAgentSandboxProvider.mockImplementation(async () => {
+      throw new Error("Agent sandbox is not enabled");
+    });
+    mockGetAgentSandboxProviderForTeardown.mockReset();
+    mockGetAgentSandboxProviderForTeardown.mockImplementation(
+      async () => mockRunner,
+    );
   });
 
-  it("calls runner.delete with the entry's handle and removes sandboxMap entry", async () => {
+  it("deletes the canonical agent sandbox with selectorless input", async () => {
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "user-1",
@@ -178,7 +207,6 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
         removeWorktree: false,
       },
       ctx,
@@ -187,7 +215,8 @@ describe("SANDBOX_DELETE", () => {
     expect(result).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalledTimes(1);
     expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
-    expect(lastRequestedKind.value).toBe("agent-sandbox");
+    expect(mockGetAgentSandboxProvider).not.toHaveBeenCalled();
+    expect(mockGetAgentSandboxProviderForTeardown).toHaveBeenCalledTimes(1);
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -197,33 +226,162 @@ describe("SANDBOX_DELETE", () => {
     expect(updated.sandboxMap["user-1"]).toBeUndefined();
   });
 
-  it("dispatches to the agent-sandbox runner when input.sandboxProviderKind is 'agent-sandbox'", async () => {
+  it("strips legacy provider selectors from the input contract", () => {
+    for (const sandboxProviderKind of [
+      "agent-sandbox",
+      "user-desktop",
+      "cluster",
+    ]) {
+      expect(
+        SANDBOX_DELETE.inputSchema.parse({
+          virtualMcpId: "vmcp_1",
+          branch: BRANCH,
+          sandboxProviderKind,
+        }),
+      ).toEqual({
+        virtualMcpId: "vmcp_1",
+        branch: BRANCH,
+        removeWorktree: false,
+      });
+    }
+  });
+
+  it("removes the canonical entry while preserving a desktop sibling", async () => {
     const metadata: Metadata = {
-      sandboxMap: makeSandboxMap(
-        "user-1",
-        BRANCH,
-        "agent-sandbox",
-        HOSTED_ENTRY,
-      ),
+      sandboxMap: {
+        "user-1": {
+          [BRANCH]: {
+            "agent-sandbox": HOSTED_ENTRY,
+            "user-desktop": DESKTOP_ENTRY,
+          },
+        },
+      },
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
-    const ctx = makeCtx({ virtualMcp });
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
     await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
         removeWorktree: false,
       },
       ctx,
     );
 
     expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
-    expect(lastRequestedKind.value).toBe("agent-sandbox");
+    expect(mockDelete).not.toHaveBeenCalledWith(DESKTOP_ENTRY.sandboxHandle);
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    const branchMap = updated.sandboxMap["user-1"]?.[BRANCH] as
+      | Record<string, SandboxRecord>
+      | undefined;
+    expect(branchMap?.["agent-sandbox"]).toBeUndefined();
+    expect(branchMap?.["user-desktop"]).toEqual(DESKTOP_ENTRY);
   });
 
-  it("tears down a legacy user-desktop entry through the hosted provider", async () => {
+  it("refuses to delete a teammate's thread sandbox", async () => {
+    const branch = "thread:t1/conn_a";
+    const virtualMcp = makeVirtualMcp("org_1", {});
+    const threadUpdateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      userId: "user-viewer",
+      threadUpdateSpy,
+      thread: {
+        created_by: "user-1",
+        metadata: {
+          sandboxMap: makeSandboxMap(
+            "user-1",
+            branch,
+            "agent-sandbox",
+            HOSTED_ENTRY,
+          ),
+        },
+      },
+    });
+
+    await expect(
+      SANDBOX_DELETE.handler(
+        { virtualMcpId: "vmcp_1", branch, removeWorktree: false },
+        ctx,
+      ),
+    ).rejects.toThrow("Only the thread owner can change its sandbox");
+
+    expect(mockGetAgentSandboxProviderForTeardown).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a thread from another Virtual MCP", async () => {
+    const branch = "thread:t1/conn_a";
+    const virtualMcp = makeVirtualMcp("org_1", {});
+    const threadUpdateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      threadUpdateSpy,
+      thread: {
+        virtual_mcp_id: "vmcp_other",
+        created_by: "user-1",
+        metadata: {
+          sandboxMap: makeSandboxMap(
+            "user-1",
+            branch,
+            "agent-sandbox",
+            HOSTED_ENTRY,
+          ),
+        },
+      },
+    });
+
+    await expect(
+      SANDBOX_DELETE.handler(
+        { virtualMcpId: "vmcp_1", branch, removeWorktree: false },
+        ctx,
+      ),
+    ).rejects.toThrow("Thread not found for Virtual MCP");
+
+    expect(mockGetAgentSandboxProviderForTeardown).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not delete the claim when clearing the thread record fails", async () => {
+    const branch = "thread:t1/conn_a";
+    const virtualMcp = makeVirtualMcp("org_1", {});
+    const threadUpdateSpy = mock(async () => {
+      throw new Error("thread update failed");
+    });
+    const ctx = makeCtx({
+      virtualMcp,
+      threadUpdateSpy,
+      thread: {
+        created_by: "user-1",
+        metadata: {
+          sandboxMap: makeSandboxMap(
+            "user-1",
+            branch,
+            "agent-sandbox",
+            HOSTED_ENTRY,
+          ),
+        },
+      },
+    });
+
+    await expect(
+      SANDBOX_DELETE.handler(
+        { virtualMcpId: "vmcp_1", branch, removeWorktree: false },
+        ctx,
+      ),
+    ).rejects.toThrow("Failed to clear agent sandbox records");
+
+    expect(mockGetAgentSandboxProviderForTeardown).toHaveBeenCalledTimes(1);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it("ignores a desktop-only record instead of sending its handle to the runner", async () => {
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "user-1",
@@ -240,89 +398,92 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "user-desktop",
         removeWorktree: false,
       },
       ctx,
     );
 
     expect(result).toEqual({ success: true });
-    // `user-desktop` no longer has a provider; the resolver serves it from the
-    // hosted one so old sandboxMap rows stay deletable.
-    expect(lastRequestedKind.value).toBe("agent-sandbox");
-    expect(mockDelete).toHaveBeenCalledWith(DESKTOP_ENTRY.sandboxHandle);
-    expect(updateSpy).toHaveBeenCalledTimes(1);
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    expect(updated.sandboxMap["user-1"]).toBeUndefined();
+    expect(mockGetAgentSandboxProvider).not.toHaveBeenCalled();
+    expect(mockGetAgentSandboxProviderForTeardown).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
-  it("normalizes legacy cluster input before lookup and provider dispatch", async () => {
+  it("ignores a desktop record stored under the agent-sandbox key", async () => {
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "user-1",
         BRANCH,
         "agent-sandbox",
-        HOSTED_ENTRY,
+        DESKTOP_ENTRY,
       ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    await SANDBOX_DELETE.handler(
+    const result = await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "cluster",
-      } as unknown as Parameters<typeof SANDBOX_DELETE.handler>[0],
+        removeWorktree: false,
+      },
       ctx,
     );
 
-    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
-    expect(lastRequestedKind.value).toBe("agent-sandbox");
-    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true });
+    expect(mockGetAgentSandboxProvider).not.toHaveBeenCalled();
+    expect(mockGetAgentSandboxProviderForTeardown).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
-  // Regression guard: a pod that flipped STUDIO_SANDBOX_PROVIDER between start
-  // and stop must still tear down the runner the entry was created against.
-  // The kind is now caller-supplied, so the env value is irrelevant.
-  it("dispatches on input.sandboxProviderKind even when STUDIO_SANDBOX_PROVIDER env disagrees", async () => {
-    const original = process.env.STUDIO_SANDBOX_PROVIDER;
-    // Env says user-desktop, but the entry was created against agent-sandbox.
-    process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
-    try {
-      const metadata: Metadata = {
-        sandboxMap: makeSandboxMap(
-          "user-1",
-          BRANCH,
-          "agent-sandbox",
-          HOSTED_ENTRY,
-        ),
-      };
-      const virtualMcp = makeVirtualMcp("org_1", metadata);
-      const ctx = makeCtx({ virtualMcp });
-
-      await SANDBOX_DELETE.handler(
-        {
-          virtualMcpId: "vmcp_1",
-          branch: BRANCH,
-          sandboxProviderKind: "agent-sandbox",
-          removeWorktree: false,
+  it("deletes a thread-only canonical record and preserves its desktop sibling", async () => {
+    const branch = "thread:t1/conn_a";
+    const virtualMcp = makeVirtualMcp("org_1", {});
+    const updateSpy = mock(async () => {});
+    const threadUpdateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      threadUpdateSpy,
+      thread: {
+        created_by: "user-1",
+        metadata: {
+          sandboxMap: {
+            "user-1": {
+              [branch]: {
+                "agent-sandbox": HOSTED_ENTRY,
+                "user-desktop": DESKTOP_ENTRY,
+              },
+            },
+          },
         },
-        ctx,
-      );
+      },
+    });
 
-      expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
-      expect(lastRequestedKind.value).toBe("agent-sandbox");
-    } finally {
-      if (original === undefined) delete process.env.STUDIO_SANDBOX_PROVIDER;
-      else process.env.STUDIO_SANDBOX_PROVIDER = original;
-    }
+    const result = await SANDBOX_DELETE.handler(
+      { virtualMcpId: "vmcp_1", branch, removeWorktree: false },
+      ctx,
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
+    expect(mockDelete).not.toHaveBeenCalledWith(DESKTOP_ENTRY.sandboxHandle);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).toHaveBeenCalledTimes(1);
+    const updateCall = (threadUpdateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[1] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    const branchMap = updated.sandboxMap["user-1"]?.[branch] as
+      | Record<string, SandboxRecord>
+      | undefined;
+    expect(branchMap?.["agent-sandbox"]).toBeUndefined();
+    expect(branchMap?.["user-desktop"]).toEqual(DESKTOP_ENTRY);
   });
 
-  it("skips runner.delete and DB update when no sandboxMap entry for (user, branch, kind)", async () => {
+  it("skips runner.delete and DB update when this user has no canonical entry", async () => {
     // Entry exists for a different user — this user has no entry.
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
@@ -340,13 +501,13 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
         removeWorktree: false,
       },
       ctx,
     );
 
     expect(result).toEqual({ success: true });
+    expect(mockGetAgentSandboxProvider).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
     expect(updateSpy).not.toHaveBeenCalled();
   });
@@ -358,13 +519,13 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_missing",
         branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
         removeWorktree: false,
       },
       ctx,
     );
 
     expect(result).toEqual({ success: true });
+    expect(mockGetAgentSandboxProvider).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
@@ -381,7 +542,6 @@ describe("SANDBOX_DELETE", () => {
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
-          sandboxProviderKind: "agent-sandbox",
           removeWorktree: false,
         },
         ctx,

@@ -1,21 +1,11 @@
-/**
- * SANDBOX_DELETE. Dispatches on the caller-supplied `sandboxProviderKind` (not
- * env), so a pod that flipped STUDIO_SANDBOX_PROVIDER between start and stop
- * still tears down the right kind of sandbox.
- */
-
 import { z } from "zod";
-import { normalizeSandboxProviderKind } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
+import { getAgentSandboxProviderForTeardown } from "../../sandbox/lifecycle";
+import {
+  AGENT_SANDBOX_KIND,
+  removeAgentSandboxRecords,
+} from "./agent-sandbox-record";
 import { requireVmEntry } from "./helpers";
-import { removeSandboxMapEntry } from "./sandbox-map";
-import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-
-const sandboxProviderKindInputSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-  "cluster",
-]);
 
 export const SANDBOX_DELETE = defineTool({
   name: "SANDBOX_DELETE",
@@ -36,9 +26,6 @@ export const SANDBOX_DELETE = defineTool({
       .describe(
         "Branch whose vm should be deleted (sandboxMap[userId][branch])",
       ),
-    sandboxProviderKind: sandboxProviderKindInputSchema.describe(
-      "Kind of sandbox provider the VM was started with. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. Used to locate the correct 3-level sandboxMap entry.",
-    ),
     removeWorktree: z
       .boolean()
       .optional()
@@ -52,53 +39,36 @@ export const SANDBOX_DELETE = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    // Normalize here too because direct unit tests call handler() without
-    // going through schema parsing.
-    const kind = normalizeSandboxProviderKind(input.sandboxProviderKind);
-
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {
-      vmEntry = await requireVmEntry(
-        { ...input, sandboxProviderKind: kind },
-        ctx,
-      );
+      vmEntry = await requireVmEntry(input, ctx);
     } catch (err) {
       if (err instanceof Error && err.message === "Virtual MCP not found") {
         return { success: true };
       }
       throw err;
     }
-    // `sandboxUserId` is the sandbox's owner (the thread's creator on a
-    // thread-scoped branch), `userId` the caller — so stopping a thread's
-    // sandbox reaches the one sandbox it has, from either side.
+
     const { entry, userId, sandboxUserId } = vmEntry;
+    if (!entry) return { success: true };
 
-    if (!entry) {
-      return { success: true };
-    }
+    const runner = await getAgentSandboxProviderForTeardown(ctx);
 
-    const { provider: runner } = await resolveSandboxProvider(ctx, {
-      userId: sandboxUserId,
-      branch: input.branch,
-      virtualMcpMetadata: vmEntry.metadata,
-      explicitKind: kind,
-    });
-
-    // Clear first so the UI returns to idle regardless of teardown outcome.
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      input.virtualMcpId,
-      userId,
+    // Clear both registrations first so the UI returns to idle even when the
+    // remote teardown is already complete. Legacy desktop siblings remain.
+    await removeAgentSandboxRecords({
+      ctx,
+      virtualMcpId: input.virtualMcpId,
+      actingUserId: userId,
       sandboxUserId,
-      input.branch,
-      kind,
-    );
+      branch: input.branch,
+    });
 
     await runner
       .delete(entry.sandboxHandle)
       .catch((err) =>
         console.error(
-          `[SANDBOX_DELETE] ${kind} ${entry.sandboxHandle}: ${
+          `[SANDBOX_DELETE] ${AGENT_SANDBOX_KIND} ${entry.sandboxHandle}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         ),

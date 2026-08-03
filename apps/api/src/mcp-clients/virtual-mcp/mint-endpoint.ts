@@ -1,19 +1,11 @@
 /**
  * Mint a 1h-TTL API key + return the MCP endpoint URL/headers a sandbox-side
- * consumer uses to talk to Studio's virtual-MCP gateway over HTTP. Two callers:
- * dispatch-run (CLI harnesses opening a real HTTP MCP connection) and the
- * cluster sandbox-fs layer (materializing the tool-scripting endpoint file
- * into a provisioned sandbox).
- *
- * `sandboxProviderKind` decides which base URL to mint:
- *   - `"agent-sandbox"` — `getInternalUrl()` (loopback; the consumer runs
- *     in hosted execution alongside the API).
- *   - `"user-desktop"` — `getPublicUrl()` (the consumer runs on the user's
- *     laptop and dials Studio back over the public network).
+ * consumer uses to talk to Studio's virtual-MCP gateway over HTTP. The hosted
+ * agent-sandbox filesystem layer materializes it as the tool-scripting endpoint
+ * in a provisioned sandbox, which reaches Studio over its internal URL.
  */
 
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
+import { getInternalUrl } from "@/core/server-constants";
 import type { StudioContext } from "@/core/studio-context";
 
 const MCP_KEY_TTL_SECONDS = 3600;
@@ -23,7 +15,6 @@ export async function mintMcpEndpoint(
   agentId: string,
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
-  sandboxProviderKind: SandboxProviderKind,
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -46,10 +37,8 @@ export async function mintMcpEndpoint(
       },
     },
   });
-  const baseUrl =
-    sandboxProviderKind === "user-desktop" ? getPublicUrl() : getInternalUrl();
   return {
-    url: `${baseUrl}/mcp/virtual-mcp/${agentId}`,
+    url: `${getInternalUrl()}/mcp/virtual-mcp/${agentId}`,
     headers: {
       Authorization: `Bearer ${apiKey.key}`,
       "x-org-id": organization.id,

@@ -40,7 +40,8 @@ chart-deco-studio:
       S3_SECRET_ACCESS_KEY: "minioadmin"
       S3_FORCE_PATH_STYLE: "true"
       # Sandbox: server-side (agent-sandbox), wired to sandbox-env's template.
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+      STUDIO_AGENT_SANDBOX_ENABLED: "true"
+      STUDIO_SANDBOX_PROVIDER: "agent-sandbox" # rollback compatibility
       STUDIO_ENV: "local"
       STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-local"
       # Shared sentinel token — MUST equal sandbox-env.sentinel.token below.

@@ -20,7 +20,6 @@ import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "@/api/routes/dev-connection";
-import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
 import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
@@ -149,17 +148,10 @@ export function buildClusterEnvironmentTools(args: {
           // the transport type widens the field to a loose bag so the
           // daemon can ship without the cluster's storage types.
           const vm = runContext.virtualMcp as VirtualMCPEntity;
-          // Surface the dev sandbox's tools when the user has a running sandbox
-          // for this agent. Cheap local pre-filter ("does the user have a
-          // sandbox entry?"), no repo/pairing flag — agents without a sandbox
-          // skip the resolver. resolveDevConnection then confirms the dev server
-          // actually speaks MCP (probe).
+          // Surface tools from the run's hosted dev sandbox when it actually
+          // speaks MCP. The resolver owns thread-scoped record lookup.
           let devConnection: ConnectionEntity | null = null;
-          if (
-            vm.id &&
-            streamInput.user.id &&
-            readSandboxMap(vm.metadata)[streamInput.user.id]
-          ) {
+          if (vm.id && streamInput.user.id) {
             devConnection = await resolveDevConnection(
               ctx,
               vm.id,

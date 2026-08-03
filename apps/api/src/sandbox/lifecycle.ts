@@ -1,15 +1,7 @@
-/**
- * Provider singletons, one per kind. SANDBOX_DELETE dispatches on the entry's
- * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_PROVIDER
- * between start and stop still tears down the right kind of sandbox.
- */
+/** The one hosted sandbox provider, shared across every API request. */
 
 import type { StudioContext } from "@/core/studio-context";
-import {
-  resolveSandboxProviderKindFromEnv,
-  type SandboxProviderKind,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type {
   ClaimPhase,
   AgentSandboxProvider,
@@ -27,47 +19,39 @@ import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
 // into the long-lived `Bun.serve` handlers, whose closures capture
-// `getOrInitSharedRunner` from whichever instance of this module was active
+// `getOrInitAgentSandboxProvider` from whichever module instance was active
 // at boot. Without the global anchor, post-reload preview requests would look
 // up runners in a stale module's empty map and re-provision needlessly.
 // Symbol.for keeps the same key across module instances.
-const RUNNERS_KEY = Symbol.for("decocms.sandbox.lifecycle.runners");
-const INFLIGHT_KEY = Symbol.for("decocms.sandbox.lifecycle.inflight");
+const RUNNER_KEY = Symbol.for("decocms.sandbox.lifecycle.runner");
+const INFLIGHT_KEY = Symbol.for("decocms.sandbox.lifecycle.agent-inflight");
 type LifecycleGlobal = {
-  [RUNNERS_KEY]?: Partial<Record<SandboxProviderKind, SandboxProvider>>;
-  [INFLIGHT_KEY]?: Partial<
-    Record<SandboxProviderKind, Promise<SandboxProvider>>
-  >;
+  [RUNNER_KEY]?: AgentSandboxProvider;
+  [INFLIGHT_KEY]?: Promise<AgentSandboxProvider>;
 };
 const lifecycleGlobal = globalThis as unknown as LifecycleGlobal;
 
-const runners: Partial<Record<SandboxProviderKind, SandboxProvider>> =
-  (lifecycleGlobal[RUNNERS_KEY] ??= {});
-// In-flight instantiate() promises, memoized per kind. Two concurrent
+// In-flight instantiate() promise. Two concurrent
 // callers on a cold studio would otherwise both miss the resolved-runner
 // cache and both call instantiate(); memoizing the promise (and only
-// promoting to `runners` once it resolves) collapses them to a single
+// promoting to `runner` once it resolves) collapses them to a single
 // build. Cleared on failure so a retry can take a fresh swing.
-const inflight: Partial<Record<SandboxProviderKind, Promise<SandboxProvider>>> =
-  (lifecycleGlobal[INFLIGHT_KEY] ??= {});
-
 function resolveOnce(
-  kind: SandboxProviderKind,
-  build: () => Promise<SandboxProvider>,
-): Promise<SandboxProvider> {
-  const cached = runners[kind];
+  build: () => Promise<AgentSandboxProvider>,
+): Promise<AgentSandboxProvider> {
+  const cached = lifecycleGlobal[RUNNER_KEY];
   if (cached) return Promise.resolve(cached);
-  const pending = inflight[kind];
+  const pending = lifecycleGlobal[INFLIGHT_KEY];
   if (pending) return pending;
   const promise = build()
     .then((runner) => {
-      runners[kind] = runner;
+      lifecycleGlobal[RUNNER_KEY] = runner;
       return runner;
     })
     .finally(() => {
-      delete inflight[kind];
+      delete lifecycleGlobal[INFLIGHT_KEY];
     });
-  inflight[kind] = promise;
+  lifecycleGlobal[INFLIGHT_KEY] = promise;
   return promise;
 }
 
@@ -136,108 +120,72 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
   return { name, namespace };
 }
 
-async function instantiate(
-  kind: SandboxProviderKind,
+async function instantiateAgentSandbox(
   db: Kysely<DatabaseSchema>,
-): Promise<SandboxProvider> {
+): Promise<AgentSandboxProvider> {
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
-  switch (kind) {
-    case "agent-sandbox": {
-      // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
-      // the hosted provider don't load it.
-      const { AgentSandboxProvider } = await import(
-        "@decocms/sandbox/provider/agent-sandbox"
+  // Dynamic import — @kubernetes/client-node is heavy and only needed when
+  // hosted sandboxes are enabled. Local-only deployments never load it.
+  const { AgentSandboxProvider } = await import(
+    "@decocms/sandbox/provider/agent-sandbox"
+  );
+  // `meter` is reassigned by initObservability() after sdk.start(); read it at
+  // construction time so we get the real instruments, not the no-op evaluated
+  // at module load.
+  const vault = new CredentialVault(getSettings().encryptionKey);
+  return new AgentSandboxProvider({
+    stateStore,
+    previewUrlPattern,
+    sandboxTemplateName: readSandboxTemplateName(),
+    envName: readEnvName(),
+    previewGateway: readPreviewGateway(),
+    sentinelToken: readSandboxSentinelToken(),
+    meter,
+    mintCloneUrl: async (repo, mintOpts) => {
+      if (!repo.connectionId) return null;
+      const parsed = parseGithubOwnerRepo(repo.cloneUrl);
+      if (!parsed) return null;
+      const { cloneUrl } = await buildCloneInfo(
+        repo.connectionId,
+        parsed.owner,
+        parsed.name,
+        db,
+        vault,
+        { bufferMs: mintOpts?.bufferMs },
       );
-      // `meter` is reassigned by initObservability() after sdk.start(); read
-      // it at provider construction (post-init) so we get the real instruments
-      // not the no-op evaluated at module load.
-      // Ambient vault (encryption key only, no request ctx) so the runner can
-      // re-mint a fresh clone credential on autonomous recovery instead of
-      // replaying the expired token baked into the persisted cloneUrl.
-      const vault = new CredentialVault(getSettings().encryptionKey);
-      return new AgentSandboxProvider({
-        stateStore,
-        previewUrlPattern,
-        sandboxTemplateName: readSandboxTemplateName(),
-        envName: readEnvName(),
-        previewGateway: readPreviewGateway(),
-        sentinelToken: readSandboxSentinelToken(),
-        meter,
-        mintCloneUrl: async (repo, mintOpts) => {
-          // Only connection-backed clones can be re-minted; buildCloneInfo
-          // refreshes standard OAuth GitHub connections from db + vault alone.
-          // Legacy repo-scoped tokens throw here (need an org-scoped ctx) and
-          // the runner falls back to the persisted URL.
-          if (!repo.connectionId) return null;
-          const parsed = parseGithubOwnerRepo(repo.cloneUrl);
-          if (!parsed) return null;
-          const { cloneUrl } = await buildCloneInfo(
-            repo.connectionId,
-            parsed.owner,
-            parsed.name,
-            db,
-            vault,
-            { bufferMs: mintOpts?.bufferMs },
-          );
-          return cloneUrl;
-        },
-      });
-    }
-    case "user-desktop": {
-      // user-desktop is never the ambient hosted default — there is no
-      // ambient link claim to bind to here. It is constructed per-run by
-      // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
-      // either the per-run ctx hint or the recorded sandboxMap kind, both of
-      // which carry the user's link. Hitting this branch means SANDBOX_DELETE
-      // was called for a `user-desktop` row without a live link context,
-      // which today should not happen (the user-desktop provider doesn't
-      // write to `sandbox_runner_state`).
-      throw new Error(
-        "user-desktop provider cannot be instantiated without a per-run link claim — call resolveSandboxProvider, which binds the link before constructing the provider.",
-      );
-    }
-    default: {
-      const exhaustive: never = kind;
-      throw new Error(`Unknown sandbox provider kind: ${String(exhaustive)}`);
-    }
-  }
+      return cloneUrl;
+    },
+  });
 }
 
-/** SANDBOX_DELETE uses this so teardown follows the entry's recorded sandboxProviderKind. */
-export function getSandboxProviderByKind(
+/** Resolve the hosted provider for a request path that requires it. */
+export function getAgentSandboxProvider(
   ctx: StudioContext,
-  kind: SandboxProviderKind,
-): Promise<SandboxProvider> {
-  return resolveOnce(kind, () => instantiate(kind, ctx.db));
+): Promise<AgentSandboxProvider> {
+  if (!getSettings().agentSandboxEnabled) {
+    throw new Error("Agent sandbox is not enabled");
+  }
+  return getAgentSandboxProviderForTeardown(ctx);
 }
 
 /**
- * Eager provider accessor for paths that need the provider before any user
- * request — preview-host proxying at the Bun.serve layer is the only caller
- * today. Reads the provider kind from env and constructs without a
- * StudioContext (the state store only needs a Kysely instance). Returns null
- * when no provider kind is configured.
- *
- * `instantiate()` only ever yields the hosted `AgentSandboxProvider` (the
- * sole env-instantiable provider — `user-desktop` is built per-run and
- * throws here), so the resolved provider is always an `AgentSandboxProvider`.
- * Typing it as such lets the preview proxy skip a redundant kind check + cast.
+ * Recorded hosted claims remain tear-downable after provisioning is disabled.
+ * Call only after resolving a canonical agent-sandbox record.
  */
-export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | null> {
-  let kind: SandboxProviderKind;
-  try {
-    kind = resolveSandboxProviderKindFromEnv();
-  } catch (err) {
-    console.warn(
-      "[lifecycle] cannot resolve sandbox runner:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return null;
-  }
-  const runner = await resolveOnce(kind, () => instantiate(kind, getDb().db));
-  return runner as AgentSandboxProvider;
+export function getAgentSandboxProviderForTeardown(
+  ctx: StudioContext,
+): Promise<AgentSandboxProvider> {
+  return resolveOnce(() => instantiateAgentSandbox(ctx.db));
+}
+
+/**
+ * Provider accessor for preview-host proxying, which runs outside a request
+ * StudioContext. Disabled deployments return null without importing Kubernetes.
+ */
+export function getOrInitAgentSandboxProvider(): Promise<AgentSandboxProvider | null> {
+  if (!getSettings().agentSandboxEnabled) return Promise.resolve(null);
+  return resolveOnce(() => instantiateAgentSandbox(getDb().db));
 }
 
 // ---------------------------------------------------------------------------
@@ -255,9 +203,6 @@ export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | nu
 // synchronously so they don't appear stuck on `claiming` while waiting for
 // the next watch event.
 //
-// For user-desktop the source generator yields a single `ready` and
-// returns; the dedup machinery still works (each subscriber gets the phase
-// replayed) at near-zero cost.
 // ---------------------------------------------------------------------------
 
 interface SharedLifecycleEntry {
@@ -271,7 +216,7 @@ interface SharedLifecycleEntry {
   abort: AbortController;
 }
 
-// Same `--hot` reload concern as `runners`/`inflight` above: an in-flight
+// Same `--hot` reload concern as `runner`/`inflight` above: an in-flight
 // lifecycle subscription must not be orphaned when the module re-evaluates,
 // or two SSE clients on the same claim would each open their own watch.
 const SHARED_LIFECYCLES_KEY = Symbol.for(

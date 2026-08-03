@@ -453,17 +453,6 @@ export interface StudioContext extends HarnessContext {
     orgId: string,
     userId: string,
   ) => Promise<FireAutomationOutcome>;
-
-  /**
-   * Sandbox dispatch preference for the in-flight run, populated by
-   * `prepareRun` from the resolved `DispatchTarget`:
-   *   - `"agent-sandbox"` — force hosted sandbox provider behavior for this run.
-   *   - `"cluster-default"` — legacy/env-default hint: use whichever sandbox
-   *     kind `STUDIO_SANDBOX_PROVIDER` resolves to.
-   *   - `"user-desktop"` — use the user's link daemon for sandbox provider
-   *     behavior.
-   */
-  sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
 }
 
 // ============================================================================

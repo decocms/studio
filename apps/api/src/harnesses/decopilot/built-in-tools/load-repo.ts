@@ -22,14 +22,13 @@
  * loops on an empty `/app/repo`. The returned root listing lets the model
  * confirm the repo without a same-turn `bash`.
  *
- * CLUSTER-GLUE: `@/`-coupled, same tier as `cluster-sandbox-fs.ts`.
+ * HOSTED-GLUE: `@/`-coupled, same tier as `agent-sandbox-fs.ts`.
  */
 
 import { sleep } from "@decocms/shared/std";
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { isDecopilot } from "@decocms/shared/sdk";
 import {
@@ -38,7 +37,7 @@ import {
 } from "@/tools/sandbox/sandbox-map";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
-import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { buildAgentSandboxFs } from "./agent-sandbox-fs";
 
 type RepoOption = {
   connectionId: string;
@@ -207,17 +206,11 @@ export async function createLoadRepoTool(opts: {
 
       // 2. Eagerly provision the repo sandbox on the repo-specific branch.
       //    `ensureSandbox` reads the thread repo we just wrote (it prefers
-      //    thread over agent). Resolve the kind so the frontend + fs tools bind
-      //    to the same sandbox.
-      const { kind } = await resolveSandboxProvider(ctx, {
-        userId,
-        branch,
-        virtualMcpMetadata: null,
-      });
-      const entry = await ensureSandbox(
-        { virtualMcpId, branch, sandboxProviderKind: kind },
-        ctx,
-      );
+      //    thread over agent). The hosted runtime has one sandbox provider;
+      //    the kind literal remains only in persisted/client compatibility
+      //    shapes until their migration is complete.
+      const kind = "agent-sandbox" as const;
+      const entry = await ensureSandbox({ virtualMcpId, branch }, ctx);
 
       // 3. `ensureSandbox` already persisted the sandbox record on the thread
       //    (provisionSandbox → setThreadSandboxMapEntry — the single writer), so
@@ -253,7 +246,7 @@ export async function createLoadRepoTool(opts: {
       // 4. Poll until the checkout is present, only to enrich the return
       //    message/listing. Provisioning starts the clone async in the daemon,
       //    so `ensureSandbox` returning isn't proof the files are there.
-      const fs = await buildClusterSandboxFs(ctx, {
+      const fs = await buildAgentSandboxFs(ctx, {
         virtualMcpId,
         branch,
         userId,

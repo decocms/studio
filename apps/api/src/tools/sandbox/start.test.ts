@@ -9,11 +9,7 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
-// Pin provider kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
-// reads it at handler time.
-process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
-
-// Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
+// Mock the one hosted runner BEFORE importing SANDBOX_START.
 
 const mockEnsure = mock(
   async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
@@ -23,29 +19,16 @@ const mockEnsure = mock(
   }),
 );
 
-const mockClusterDelete = mock(async (_handle: string) => {});
-const mockAgentSandboxDelete = mock(async (_handle: string) => {});
+const mockDelete = mock(async (_handle: string) => {});
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockClusterRunner: SandboxProvider = {
+const mockRunner: SandboxProvider = {
   kind: "agent-sandbox",
   ensure: (id, opts) => mockEnsure(id, opts),
-  delete: (handle) => mockClusterDelete(handle),
-  alive: async () => true,
-  getPreviewUrl: async () => "https://stub.preview/",
-  proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-  watchClaimLifecycle: () => readyOnly(),
-};
-
-const mockDesktopDelete = mock(async (_handle: string) => {});
-
-const mockDesktopRunner: SandboxProvider = {
-  kind: "user-desktop",
-  ensure: (id, opts) => mockEnsure(id, opts),
-  delete: (handle) => mockDesktopDelete(handle),
+  delete: (handle) => mockDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
@@ -53,28 +36,15 @@ const mockDesktopRunner: SandboxProvider = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  // Only ever invoked for the agent-sandbox kind — the desktop path goes through
-  // `buildDesktopProvider` (below); user-desktop is never instantiated here.
-  getSandboxProviderByKind: (
-    _ctx: unknown,
-    _kind: "agent-sandbox" | "user-desktop",
-  ) => mockClusterRunner,
-  // The unified resolver in `resolve-provider.ts` calls
-  // `buildDesktopProvider` directly (no ctx side-effects), so a mock
-  // is needed for SANDBOX_START's desktop path to construct the expected
-  // runner under test.
-  buildDesktopProvider: async () => mockDesktopRunner,
-  getOrInitSharedRunner: async () => mockClusterRunner,
+  getAgentSandboxProvider: async () => mockRunner,
+  getAgentSandboxProviderForTeardown: async () => mockRunner,
+  getOrInitAgentSandboxProvider: async () => mockRunner,
   // Bun's mock.module persists across test files in the same shard. Other
   // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
   // imports subscribeLifecycle from this module — keep the export shape
   // complete so subsequent loads don't hit "Export named ... not found".
   subscribeLifecycle: () => ({ unsubscribe: () => {} }),
   __resetSharedLifecyclesForTesting: () => {},
-}));
-
-mock.module("../../settings", () => ({
-  getSettings: () => ({ nodeEnv: "test" }),
 }));
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
@@ -153,7 +123,7 @@ mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
-const { SANDBOX_START } = await import("./start");
+const { SANDBOX_START, ensureSandbox } = await import("./start");
 
 const originalFetch = globalThis.fetch;
 
@@ -207,7 +177,12 @@ function makeCtx(overrides: {
   updateSpy?: ReturnType<typeof mock>;
   /** Row returned by `storage.threads.get` — set `created_by` to exercise the
    *  thread-owner keying (see resolveSandboxUserId). */
-  thread?: { created_by: string; metadata: Record<string, unknown> } | null;
+  thread?: {
+    virtual_mcp_id?: string;
+    created_by: string;
+    metadata: Record<string, unknown>;
+  } | null;
+  threadUpdateSpy?: ReturnType<typeof mock>;
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -215,6 +190,7 @@ function makeCtx(overrides: {
     virtualMcp,
     updateSpy = mock(async () => {}),
     thread = null,
+    threadUpdateSpy = mock(async () => {}),
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -244,12 +220,18 @@ function makeCtx(overrides: {
       connections: {
         findById: mock(async (_id: string) => ({ metadata: null })),
       },
-      // A `thread:` branch resolves the thread's creator + bound repo. Default
-      // is no thread, so provisioning falls back to the VM's own githubRepo and
-      // keys the sandbox by the caller.
+      // A `thread:` branch must resolve to an in-scope thread. Ordinary
+      // branches key the sandbox by the caller and use the VM's githubRepo.
       threads: {
-        get: mock(async (_id: string) => thread),
-        update: mock(async () => {}),
+        get: mock(async (_id: string) =>
+          thread
+            ? {
+                virtual_mcp_id: virtualMcp?.id ?? VMCP_ID,
+                ...thread,
+              }
+            : null,
+        ),
+        update: threadUpdateSpy,
       },
     } as never,
     timings: {
@@ -292,12 +274,8 @@ describe("SANDBOX_START", () => {
       async () => new Response("{}", { status: 404 }),
     ) as unknown as typeof fetch;
     mockEnsure.mockReset();
-    mockClusterDelete.mockReset();
-    mockAgentSandboxDelete.mockReset();
-    mockDesktopDelete.mockReset();
-    mockClusterDelete.mockImplementation(async () => {});
-    mockAgentSandboxDelete.mockImplementation(async () => {});
-    mockDesktopDelete.mockImplementation(async () => {});
+    mockDelete.mockReset();
+    mockDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
@@ -355,7 +333,10 @@ describe("SANDBOX_START", () => {
 
   it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const ctx = makeCtx({ virtualMcp });
+    const ctx = makeCtx({
+      virtualMcp,
+      thread: { created_by: USER_ID, metadata: {} },
+    });
     const synthetic = "thread:t1/conn_a";
 
     await SANDBOX_START.handler(
@@ -379,37 +360,80 @@ describe("SANDBOX_START", () => {
     );
   });
 
-  it("keys a thread-scoped sandbox by the thread's creator, not the caller", async () => {
-    // A teammate opening the thread must resume the ONE sandbox that thread has.
-    // Keyed by the caller they got a second sandbox on the same git branch —
-    // undrivable (its claim handle never existed for them) and a rival
-    // shutdown-force-push target. Audit fields stay the caller's.
+  it("refuses to start a teammate's thread sandbox before provisioning", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
+    const threadUpdateSpy = mock(async () => {});
     const ctx = makeCtx({
       virtualMcp,
       updateSpy,
+      threadUpdateSpy,
       userId: "user_viewer",
       thread: { created_by: USER_ID, metadata: {} },
     });
 
-    await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: "thread:t1/conn_a" },
-      ctx,
-    );
+    await expect(
+      SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: "thread:t1/conn_a" },
+        ctx,
+      ),
+    ).rejects.toThrow("Only the thread owner can start its sandbox");
 
-    const [id] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
-    expect(id.userId).toBe(USER_ID);
+    expect(mockEnsure).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
+  });
 
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    // Acting user (audit) is the caller...
-    expect(updateCall[1]).toBe("user_viewer");
-    // ...while the sandboxMap slot belongs to the thread's creator, which is
-    // what the sandbox-proxy's owner-keyed claim lookup resolves.
-    const updated = updateCall[2] as {
-      metadata: { sandboxMap: SandboxMap };
-    };
-    expect(Object.keys(updated.metadata.sandboxMap)).toEqual([USER_ID]);
+  it("refuses a thread from another Virtual MCP before provisioning", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const threadUpdateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      threadUpdateSpy,
+      thread: {
+        virtual_mcp_id: "vmcp_other",
+        created_by: USER_ID,
+        metadata: {},
+      },
+    });
+
+    await expect(
+      SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: "thread:t1/conn_a" },
+        ctx,
+      ),
+    ).rejects.toThrow("Thread not found for Virtual MCP");
+
+    expect(mockEnsure).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it("reaps a fresh claim when strict thread persistence fails", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const threadUpdateSpy = mock(async () => {
+      throw new Error("thread update failed");
+    });
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      threadUpdateSpy,
+      thread: { created_by: USER_ID, metadata: {} },
+    });
+
+    await expect(
+      SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: "thread:t1/conn_a" },
+        ctx,
+      ),
+    ).rejects.toThrow("thread update failed");
+
+    expect(mockEnsure).toHaveBeenCalledTimes(1);
+    expect(threadUpdateSpy).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith("vm_xyz");
   });
 
   it("persists sandboxMap entry with handle + previewUrl + sandboxProviderKind", async () => {
@@ -659,12 +683,7 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("an explicit user-desktop reuses the agent-sandbox entry instead of provisioning a second VM", async () => {
-    // `user-desktop` is legacy: the desktop link daemon that implemented it is
-    // gone, so the resolver normalizes it to `agent-sandbox` — provider AND
-    // kind. An explicit legacy override therefore looks up the hosted entry it
-    // will actually run on, rather than recording a sibling row under a kind
-    // with no runner (which would leave the handle and the runner mismatched).
+  it("strips legacy provider selectors and reuses the canonical agent sandbox", async () => {
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
@@ -688,171 +707,139 @@ describe("SANDBOX_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    const result = await SANDBOX_START.handler(
-      {
-        virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "user-desktop",
-      },
-      ctx,
-    );
+    for (const sandboxProviderKind of [
+      "agent-sandbox",
+      "user-desktop",
+      "cluster",
+    ]) {
+      expect(
+        SANDBOX_START.inputSchema.parse({
+          virtualMcpId: VMCP_ID,
+          branch: BRANCH,
+          sandboxProviderKind,
+        }),
+      ).toEqual({ virtualMcpId: VMCP_ID, branch: BRANCH });
+    }
 
-    expect(mockClusterDelete).not.toHaveBeenCalled();
+    const parsed = SANDBOX_START.inputSchema.parse({
+      virtualMcpId: VMCP_ID,
+      branch: BRANCH,
+      sandboxProviderKind: "user-desktop",
+    });
+    const result = await SANDBOX_START.handler(parsed, ctx);
+
+    expect(mockDelete).not.toHaveBeenCalled();
     expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.isNewVm).toBe(false);
   });
 
-  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind", async () => {
-    const agentSandboxEntry: SandboxRecord = {
-      sandboxHandle: "vm_agent-sandbox_existing",
-      previewUrl: "https://agent-sandbox.preview/",
-      sandboxProviderKind: "agent-sandbox",
+  it("ignores a desktop-only record and provisions the canonical sandbox", async () => {
+    const desktopEntry: SandboxRecord = {
+      sandboxHandle: "desktop-handle",
+      previewUrl: "http://desktop-handle.localhost:5174/",
+      sandboxProviderKind: "user-desktop",
       createdAt: 123,
     };
-    mockEnsure.mockImplementation(async () => ({
-      handle: agentSandboxEntry.sandboxHandle,
-      workdir: "/app",
-      previewUrl: agentSandboxEntry.previewUrl,
-    }));
     const metadata: Metadata = {
       ...BASE_METADATA,
       sandboxMap: {
         [USER_ID]: {
-          [BRANCH]: { "agent-sandbox": agentSandboxEntry },
-        },
-      },
-    };
-    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
-
-    const result = await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    expect(result.isNewVm).toBe(false);
-    expect(mockDesktopDelete).not.toHaveBeenCalled();
-    const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
-      (call) => {
-        const meta = (call[2] as { metadata?: { sandboxMap?: SandboxMap } })
-          .metadata;
-        return meta?.sandboxMap?.[USER_ID]?.[BRANCH] !== undefined;
-      },
-    );
-    expect(sandboxMapCall).toBeDefined();
-    const updated = (
-      sandboxMapCall![2] as { metadata: { sandboxMap: SandboxMap } }
-    ).metadata;
-    const branchMap = updated.sandboxMap[USER_ID]?.[BRANCH] as
-      | Record<string, unknown>
-      | undefined;
-    expect(branchMap?.["agent-sandbox"]).toMatchObject({
-      sandboxHandle: agentSandboxEntry.sandboxHandle,
-      sandboxProviderKind: "agent-sandbox",
-    });
-    expect(branchMap?.["user-desktop"]).toBeUndefined();
-  });
-
-  it("does not tear down anything when the existing entry is on the same runner", async () => {
-    const sameRunnerEntry: SandboxRecord = {
-      sandboxHandle: "vm_agent-sandbox_existing",
-      previewUrl: "https://agent-sandbox.preview/",
-      sandboxProviderKind: "agent-sandbox",
-    };
-    const metadata: Metadata = {
-      ...BASE_METADATA,
-      sandboxMap: {
-        [USER_ID]: {
-          [BRANCH]: { "agent-sandbox": sameRunnerEntry },
+          [BRANCH]: { "user-desktop": desktopEntry },
         },
       },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    const result = await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
 
-    expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
-    expect(mockClusterDelete).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      sandboxHandle: "vm_xyz",
+      sandboxProviderKind: "agent-sandbox",
+      isNewVm: true,
+    });
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockEnsure.mock.calls)).not.toContain(
+      desktopEntry.sandboxHandle,
+    );
   });
 
-  // -----------------------------------------------------------------------
-  // sandboxProviderKind default-resolution tests
-  // -----------------------------------------------------------------------
-
-  it("SANDBOX_START with no sandboxProviderKind picks the env kind (default policy is env-only)", async () => {
-    // Optimistic presence: the default no longer consults link liveness.
-    // STUDIO_SANDBOX_PROVIDER is "agent-sandbox" at module load time (top of
-    // file), so a fresh (user, branch) with no recorded kind resolves to it.
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
+  it("ignores a desktop record stored under the agent-sandbox key", async () => {
+    const mislabeledDesktopEntry: SandboxRecord = {
+      sandboxHandle: "desktop-handle-under-agent-key",
+      previewUrl: "http://desktop-handle.localhost:5174/",
+      sandboxProviderKind: "user-desktop",
+      createdAt: 123,
+    };
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      sandboxMap: {
+        [USER_ID]: {
+          [BRANCH]: { "agent-sandbox": mislabeledDesktopEntry },
+        },
+      },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const ctx = makeCtx({ virtualMcp });
 
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result).toMatchObject({
+      sandboxHandle: "vm_xyz",
+      sandboxProviderKind: "agent-sandbox",
+      isNewVm: true,
+    });
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockEnsure.mock.calls)).not.toContain(
+      mislabeledDesktopEntry.sandboxHandle,
+    );
   });
 
-  it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
+  it("reuses a canonical sandbox recorded only on the thread", async () => {
+    const branch = "thread:t1/conn_a";
+    const threadEntry: SandboxRecord = {
+      sandboxHandle: "vm_thread_existing",
+      previewUrl: "https://thread.preview/",
+      sandboxProviderKind: "agent-sandbox",
+      createdAt: 123,
+    };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
+    const threadUpdateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      threadUpdateSpy,
+      thread: {
+        created_by: USER_ID,
+        metadata: {
+          sandboxMap: {
+            [USER_ID]: {
+              [branch]: { "agent-sandbox": threadEntry },
+            },
+          },
+        },
+      },
+    });
 
-    const result = await SANDBOX_START.handler(
+    const result = await ensureSandbox(
       {
         virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
+        branch,
       },
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  it("normalizes legacy cluster input to agent-sandbox", async () => {
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
-
-    const result = await SANDBOX_START.handler(
-      {
-        virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "cluster",
-      } as unknown as Parameters<typeof SANDBOX_START.handler>[0],
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result).toEqual(threadEntry);
+    expect(mockEnsure).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {

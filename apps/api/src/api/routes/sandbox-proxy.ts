@@ -19,8 +19,11 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
-import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import {
+  isSandboxOwner,
+  resolveSandboxUserId,
+} from "../../tools/sandbox/thread-repo";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
 import {
   getUserId,
   requireAuth,
@@ -168,12 +171,19 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpId,
     branch,
   });
-  // Sandbox identity, NOT the caller: a thread-scoped branch keys by the
-  // thread's creator, so every org member viewing that thread resolves the same
-  // claim and reaches the one sandbox it has. Keyed by the caller, a viewer's
-  // handle never existed — /events reported `claiming` forever and every other
-  // route 404'd. See `resolveSandboxUserId`.
-  const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
+  // Sandbox identity, NOT authority: a thread-scoped branch keys by the
+  // thread's creator so viewers observe the same preview/lifecycle. The
+  // route-level owner guard below blocks filesystem, config, exec, and control
+  // access for those viewers.
+  const sandboxUserId = await resolveSandboxUserId(
+    ctx,
+    branch,
+    userId,
+    virtualMcpId,
+  );
+  if (!sandboxUserId) {
+    return c.json({ error: "Thread not found for Virtual MCP" }, 404);
+  }
   const claimName = computeClaimHandle(
     { userId: sandboxUserId, projectRef },
     branch,
@@ -181,32 +191,13 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // Source of truth: sandboxMap. If an entry exists for (user, branch) we use
-  // that recorded kind — a sandbox provisioned via `desktop` must
-  // remain addressable via `desktop` even on a cluster whose env kind
-  // is `agent-sandbox` / `docker`. Pre-provision callers fall through to
-  // the link-or-env default policy inside `resolveSandboxProvider`.
-  //
-  // On failure (e.g. the recorded kind is `desktop` but the user's
-  // link daemon is offline) we surface `null` rather than falling back
-  // to the env singleton: rebinding a `desktop`-provisioned VM onto
-  // a different provider kind (say `agent-sandbox`) would forward traffic
-  // to a sandbox that doesn't host this VM. The events handler streams a
-  // `failed` phase from null; other handlers 503 via `requireRunner`.
+  // The hosted API has one runner. Disabled installations surface no runner;
+  // native desktop sandboxes are handled by the native local API instead.
   let runner: SandboxProvider | null;
   try {
-    const resolved = await resolveSandboxProvider(ctx, {
-      userId: sandboxUserId,
-      branch,
-      virtualMcpMetadata,
-    });
-    runner = resolved.provider;
+    runner = await getAgentSandboxProvider(ctx);
   } catch {
     runner = null;
-  }
-
-  if (!runner) {
-    return c.json({ error: "No sandbox runner found" }, 404);
   }
 
   c.set("vmClaim", {
@@ -221,6 +212,18 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     connectionIds:
       virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
   });
+  return next();
+});
+
+/** Thread viewers may inspect the owner's sandbox, but never mutate it. */
+const requireSandboxOwner = createMiddleware<VmEnv>(async (c, next) => {
+  const { callerUserId, userId } = c.get("vmClaim");
+  if (!isSandboxOwner(callerUserId, userId)) {
+    return c.json(
+      { error: "Only the thread owner can change its sandbox" },
+      403,
+    );
+  }
   return next();
 });
 
@@ -282,16 +285,8 @@ async function proxyDaemon(
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
-    /**
-     * Null out `repoDir` in the JSON response unless the resolved runner is
-     * `user-desktop`. Every daemon reports `repoDir` as its own
-     * container-internal path (`/app/repo` on agent-sandbox); only a desktop
-     * link daemon's path exists on the user's machine. The frontend uses this
-     * to build `vscode://file<repoDir>` deep links — surfacing a container path
-     * pops a "Path does not exist" error. Authoritative because it keys off the
-     * resolved runner, immune to a stale/racing frontend provider-kind.
-     */
-    redactRepoDirUnlessDesktop?: boolean;
+    /** Null out the hosted daemon's container-internal `repoDir`. */
+    redactRepoDir?: boolean;
   },
 ) {
   const runner = requireRunner(c);
@@ -373,10 +368,7 @@ async function proxyDaemon(
     }
 
     const rawText = await upstream.text();
-    const text =
-      opts?.redactRepoDirUnlessDesktop && runner.kind !== "user-desktop"
-        ? redactRepoDir(rawText)
-        : rawText;
+    const text = opts?.redactRepoDir ? redactRepoDir(rawText) : rawText;
     const contentType =
       upstream.headers.get("content-type") ?? "application/json";
     return new Response(text, {
@@ -510,43 +502,43 @@ export const createSandboxRoutes = () => {
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
 
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:virtualMcpId/:branch/write", (c) =>
+  app.post("/:virtualMcpId/:branch/write", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/write", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/unlink", (c) =>
+  app.post("/:virtualMcpId/:branch/unlink", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/unlink", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/mkdir", (c) =>
+  app.post("/:virtualMcpId/:branch/mkdir", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/mkdir", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/rename", (c) =>
+  app.post("/:virtualMcpId/:branch/rename", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/rename", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/read", (c) =>
+  app.post("/:virtualMcpId/:branch/read", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/read", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/glob", (c) =>
+  app.post("/:virtualMcpId/:branch/glob", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/glob", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/grep", (c) =>
+  app.post("/:virtualMcpId/:branch/grep", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
@@ -554,83 +546,98 @@ export const createSandboxRoutes = () => {
   );
 
   // -- Script exec/kill -----------------------------------------------------
-  app.post("/:virtualMcpId/:branch/exec/:script", async (c) => {
-    const script = c.req.param("script");
-    if (!script) return c.json({ error: "missing script name" }, 400);
-    return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}`);
-  });
+  app.post(
+    "/:virtualMcpId/:branch/exec/:script",
+    requireSandboxOwner,
+    async (c) => {
+      const script = c.req.param("script");
+      if (!script) return c.json({ error: "missing script name" }, 400);
+      return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}`);
+    },
+  );
 
-  app.post("/:virtualMcpId/:branch/exec/:script/kill", async (c) => {
-    const script = c.req.param("script");
-    if (!script) return c.json({ error: "missing script name" }, 400);
-    return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
-  });
+  app.post(
+    "/:virtualMcpId/:branch/exec/:script/kill",
+    requireSandboxOwner,
+    async (c) => {
+      const script = c.req.param("script");
+      if (!script) return c.json({ error: "missing script name" }, 400);
+      return proxyDaemon(
+        c,
+        `/_sandbox/exec/${encodeURIComponent(script)}/kill`,
+      );
+    },
+  );
 
   // -- Tenant config --------------------------------------------------------
-  app.get("/:virtualMcpId/:branch/config", (c) =>
+  app.get("/:virtualMcpId/:branch/config", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
       // A container path (`/app/repo`) is never openable on the user's
       // machine — only surface `repoDir` for the desktop link daemon.
-      redactRepoDirUnlessDesktop: true,
+      redactRepoDir: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", (c) =>
+  app.put("/:virtualMcpId/:branch/config", requireSandboxOwner, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
       map404to410: true,
-      // No `redactRepoDirUnlessDesktop` here: the PUT response echoes the
+      // No `redactRepoDir` here: the PUT response echoes the
       // written TenantConfig (git/operator/application), which carries no
       // `repoDir` — only the GET read handler surfaces it.
     }),
   );
 
   // -- Setup retry ----------------------------------------------------------
-  app.post("/:virtualMcpId/:branch/setup/:step", async (c) => {
-    const step = c.req.param("step");
-    if (!step || !isSetupStep(step)) {
-      return c.json(
-        { error: `step must be one of: ${SETUP_STEPS.join(", ")}` },
-        400,
-      );
-    }
-    // On "start", refresh the daemon's env from the virtual MCP's current
-    // `metadata.runtime.env`. The dev script inherits env at spawn time, so
-    // edits made after the last SANDBOX_START don't reach a running process
-    // unless we push the freshly-resolved env to /config before the
-    // orchestrator restarts it.
-    if (step === "start") {
-      const claim = c.get("vmClaim");
-      if (claim.runner) {
-        const organization = requireOrganization(c.var.studioContext);
-        const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
-        try {
-          await resolveAndPushEnv({
-            ctx: c.var.studioContext,
-            runner: claim.runner,
-            handle: claim.claimName,
-            orgId: organization.id,
-            // Secrets resolve as the CALLER — viewing a teammate's thread must
-            // never mint their private secrets into the sandbox.
-            userId: claim.callerUserId,
-            entries,
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return c.json(
-            { error: `Failed to push env to daemon: ${message}` },
-            502,
-          );
+  app.post(
+    "/:virtualMcpId/:branch/setup/:step",
+    requireSandboxOwner,
+    async (c) => {
+      const step = c.req.param("step");
+      if (!step || !isSetupStep(step)) {
+        return c.json(
+          { error: `step must be one of: ${SETUP_STEPS.join(", ")}` },
+          400,
+        );
+      }
+      // On "start", refresh the daemon's env from the virtual MCP's current
+      // `metadata.runtime.env`. The dev script inherits env at spawn time, so
+      // edits made after the last SANDBOX_START don't reach a running process
+      // unless we push the freshly-resolved env to /config before the
+      // orchestrator restarts it.
+      if (step === "start") {
+        const claim = c.get("vmClaim");
+        if (claim.runner) {
+          const organization = requireOrganization(c.var.studioContext);
+          const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
+          try {
+            await resolveAndPushEnv({
+              ctx: c.var.studioContext,
+              runner: claim.runner,
+              handle: claim.claimName,
+              orgId: organization.id,
+              // This route is owner-gated above; resolve the owner's current
+              // secrets immediately before restarting the process.
+              userId: claim.callerUserId,
+              entries,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return c.json(
+              { error: `Failed to push env to daemon: ${message}` },
+              502,
+            );
+          }
         }
       }
-    }
-    return proxyDaemon(c, `/_sandbox/setup/${step}`, {
-      signal: c.req.raw.signal,
-      map404to410: true,
-    });
-  });
+      return proxyDaemon(c, `/_sandbox/setup/${step}`, {
+        signal: c.req.raw.signal,
+        map404to410: true,
+      });
+    },
+  );
 
   // -- SSE events -----------------------------------------------------------
   app.get("/:virtualMcpId/:branch/events", (c) => {
@@ -657,6 +664,7 @@ export const createSandboxRoutes = () => {
       runner: claim.runner,
       virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
+      actingUserId: claim.callerUserId,
       userId: claim.userId,
       projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
@@ -689,47 +697,51 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/git/publish",
+    requireSandboxOwner,
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
+      const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
 
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-        const githubRepo = parseGithubRepoFromMetadata(
-          virtualMcpMetadata,
-          connectionIds,
-        );
-        if (githubRepo) {
-          await refreshSandboxGitCredentials(
-            ctx,
-            runner,
-            claimName,
-            githubRepo,
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+          const githubRepo = parseGithubRepoFromMetadata(
+            virtualMcpMetadata,
+            connectionIds,
           );
+          if (githubRepo) {
+            await refreshSandboxGitCredentials(
+              ctx,
+              runner,
+              claimName,
+              githubRepo,
+            );
+          }
+        } catch (err) {
+          if (err instanceof GitPushAuthError) {
+            return c.json(
+              { error: err.message },
+              403,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
         }
-      } catch (err) {
-        if (err instanceof GitPushAuthError) {
-          return c.json(
-            { error: err.message },
-            403,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
 
-      return proxyDaemon(c, "/_sandbox/git/publish", {
-        forwardJsonBody: true,
-        map404to410: true,
+        return proxyDaemon(c, "/_sandbox/git/publish", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
-  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
+    },
+  );
+  app.post("/:virtualMcpId/:branch/git/discard", requireSandboxOwner, (c) => {
     const { claimName } = c.get("vmClaim");
     return withClaimGitLock(claimName, () =>
       proxyDaemon(c, "/_sandbox/git/discard", {
@@ -738,29 +750,34 @@ export const createSandboxRoutes = () => {
       }),
     );
   });
-  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/git/rebase",
+    requireSandboxOwner,
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
+      const { claimName } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
 
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        }
 
-      return proxyDaemon(c, "/_sandbox/git/rebase", {
-        forwardJsonBody: true,
-        map404to410: true,
+        return proxyDaemon(c, "/_sandbox/git/rebase", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
+    },
+  );
   app.post(
     "/:virtualMcpId/:branch/git/suggest-commit",
+    requireSandboxOwner,
     bodyLimit({
       maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
       onError: (c) =>
@@ -835,6 +852,7 @@ export const createSandboxRoutes = () => {
   // verdict (requiresReview: false) so the AI's absence never blocks publish.
   app.post(
     "/:virtualMcpId/:branch/git/judge-review",
+    requireSandboxOwner,
     bodyLimit({
       maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
       onError: (c) =>
@@ -976,6 +994,7 @@ export const createSandboxRoutes = () => {
   // -- Preview invoke (loader/action resolution) ------------------------------
   app.post(
     "/:virtualMcpId/:branch/preview-invoke",
+    requireSandboxOwner,
     bodyLimit({
       maxSize: PREVIEW_INVOKE_MAX_BODY_BYTES,
       onError: (c) => c.json({ error: "Payload too large" }, 413),

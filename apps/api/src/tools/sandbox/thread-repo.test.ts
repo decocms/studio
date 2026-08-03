@@ -1,9 +1,22 @@
 import { expect, test } from "bun:test";
 import {
+  isSandboxOwner,
   syntheticBranchToGitRef,
   threadBranch,
+  threadBelongsToVirtualMcp,
   threadIdFromBranch,
 } from "./thread-repo";
+
+test("only the resolved sandbox owner has mutation authority", () => {
+  expect(isSandboxOwner("user_1", "user_1")).toBe(true);
+  expect(isSandboxOwner("user_viewer", "user_1")).toBe(false);
+});
+
+test("thread sandbox authority is scoped to its Virtual MCP", () => {
+  const thread = { virtual_mcp_id: "vmcp_a", created_by: "user_1" };
+  expect(threadBelongsToVirtualMcp(thread, "vmcp_a")).toBe(true);
+  expect(threadBelongsToVirtualMcp(thread, "vmcp_b")).toBe(false);
+});
 
 test("threadBranch round-trips through threadIdFromBranch", () => {
   const id = "f3ef4465-b187-4e8d-b71a-a36cf4035046";

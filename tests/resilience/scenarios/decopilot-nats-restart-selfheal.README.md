@@ -18,24 +18,23 @@ runnable.
 A v2 streaming turn requires the full decopilot dispatch pipeline:
 `POST /:org/decopilot/threads/:threadId/messages` → `enqueueThreadRun` →
 `dispatch-run.ts` (`streamText` against a model) → `onStepFinish`/`onFinish` →
-`PartEmitter` writes `thread_message_parts` rows. Three things block that in
+`PartEmitter` writes `thread_message_parts` rows. Two things block that in
 `tests/resilience/`:
 
 | # | Gap | Where | Fix |
 |---|-----|-------|-----|
 | 1 | **No model provider.** `streamText` and tier resolution need an OpenAI-compatible endpoint. The resilience `docker-compose.yml` has no `mock-ai` service. | `tests/resilience/docker-compose.yml` | Port the `mock-ai` service from `tests/multi-pod/docker-compose.yml` (build context `./mock-ai`, copy `tests/multi-pod/mock-ai/`). It already supports `slow:<n>x<ms>` hints, which is exactly what this scenario needs to keep a stream open while NATS is severed. |
 | 2 | **v2 is off.** No `STREAM_OF_RECORD_V2_PERCENT`, so every new thread stays `message_storage_version=1` and **no parts are ever written**. | `studio` service env in the compose | Add `STREAM_OF_RECORD_V2_PERCENT: "100"` so the new thread is pinned v2 at its first-message site (see `apps/api/src/api/routes/decopilot/v2-canary.ts`). |
-| 3 | **Dispatch 409s.** `studio` runs `STUDIO_SANDBOX_PROVIDER=user-desktop` and the `link-daemon` is behind a compose profile (not started by `up --wait`). With no link claim, `resolveDispatchTarget` returns `user_desktop_link_offline` → `POST /messages` 409s before dispatch. | `studio` service env in the compose | Run the turn with `STUDIO_SANDBOX_PROVIDER=agent-sandbox` (as multi-pod does) so dispatch short-circuits to hosted execution. The mock-ai stream never emits tool calls, so no sandbox is provisioned (`ensureSandbox` is lazy). |
 
-> ⚠️ Changing the shared `studio` service env (#2, #3) would alter behaviour for
+> ⚠️ Changing the shared `studio` service env (#2) would alter behaviour for
 > **every** resilience scenario in the suite (they all reuse the one `studio`
 > container via `registerTestHooks`). Two clean options:
 >
 > - **Dedicated service.** Add a second studio service (e.g. `studio-v2`) with
->   `STREAM_OF_RECORD_V2_PERCENT=100` + `STUDIO_SANDBOX_PROVIDER=agent-sandbox` + the
+>   `STREAM_OF_RECORD_V2_PERCENT=100` + the
 >   `mock-ai` dependency, on its own host port, and point this scenario at it.
 >   Keeps the existing scenarios byte-for-byte unchanged. **Preferred.**
-> - **Flip the shared env.** Set the two vars on the shared `studio` service and
+> - **Flip the shared env.** Set the v2 var on the shared `studio` service and
 >   re-validate the whole suite. Simpler compose, but couples this scenario's
 >   needs to every other scenario.
 

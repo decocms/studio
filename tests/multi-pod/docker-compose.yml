@@ -117,13 +117,10 @@ services:
       S3_BUCKET: studio-dev
       S3_ACCESS_KEY_ID: minioadmin
       S3_SECRET_ACCESS_KEY: minioadmin
-      # Pin the sandbox provider so POST /decopilot/messages doesn't default
-      # to "user-desktop" — there's no link daemon in this cluster, and
-      # resolveDispatchTarget would 409 with link_offline. "agent-sandbox"
-      # makes resolveDispatchTarget short-circuit to hosted execution;
-      # no sandbox is actually provisioned because ensureSandbox is lazy
-      # (built-in-tools/index.ts) and the mock-ai test never emits tool calls.
-      STUDIO_SANDBOX_PROVIDER: agent-sandbox
+      # Hosted sandbox infrastructure is available. No sandbox is provisioned
+      # in these scenarios because the mock AI never emits sandbox tool calls.
+      STUDIO_AGENT_SANDBOX_ENABLED: "true"
+      STUDIO_SANDBOX_PROVIDER: agent-sandbox # rollback compatibility only
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name

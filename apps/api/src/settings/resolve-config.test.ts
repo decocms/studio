@@ -13,21 +13,67 @@ const flags: CliFlags = {
   skipMigrations: false,
 };
 
-describe("resolveConfig sandbox provider kind", () => {
-  it("accepts canonical agent-sandbox", () => {
+describe("resolveConfig agent-sandbox capability", () => {
+  it("defaults to disabled when neither env is configured", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.agentSandboxEnabled).toBe(false);
+  });
+
+  it("reads the canonical capability flag", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_AGENT_SANDBOX_ENABLED: "true",
+    });
+
+    expect(result.settings.agentSandboxEnabled).toBe(true);
+  });
+
+  it("prefers the canonical capability flag over the legacy provider env", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_AGENT_SANDBOX_ENABLED: "false",
+      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
+    });
+
+    expect(result.settings.agentSandboxEnabled).toBe(false);
+  });
+
+  it("rejects an invalid canonical capability flag", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_AGENT_SANDBOX_ENABLED: "enabled" }),
+    ).toThrow(/Invalid STUDIO_AGENT_SANDBOX_ENABLED/);
+  });
+
+  it("falls back from an empty canonical flag to the legacy provider env", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_AGENT_SANDBOX_ENABLED: "",
+      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
+    });
+
+    expect(result.settings.agentSandboxEnabled).toBe(true);
+  });
+
+  it("accepts the legacy canonical provider kind", () => {
     const result = resolveConfig(flags, {
       STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
     });
 
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.settings.agentSandboxEnabled).toBe(true);
   });
 
-  it("normalizes legacy cluster to agent-sandbox", () => {
+  it("enables the capability for legacy cluster", () => {
     const result = resolveConfig(flags, {
       STUDIO_SANDBOX_PROVIDER: "cluster",
     });
 
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.settings.agentSandboxEnabled).toBe(true);
+  });
+
+  it("keeps the capability disabled for legacy user-desktop", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_SANDBOX_PROVIDER: "user-desktop",
+    });
+
+    expect(result.settings.agentSandboxEnabled).toBe(false);
   });
 
   it("trims surrounding whitespace/newlines instead of throwing", () => {
@@ -35,7 +81,7 @@ describe("resolveConfig sandbox provider kind", () => {
       STUDIO_SANDBOX_PROVIDER: "agent-sandbox\n",
     });
 
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.settings.agentSandboxEnabled).toBe(true);
   });
 
   it("still throws for a genuinely unknown value", () => {

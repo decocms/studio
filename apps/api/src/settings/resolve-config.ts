@@ -7,8 +7,6 @@
 import { homedir } from "os";
 import type { CliFlags, DispatchRole, Settings } from "./types";
 
-type SandboxProviderKind = Settings["sandboxProviderKind"];
-
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
 /** Normalize `STUDIO_DISPATCH_ROLE`; anything unknown coerces to safe "all". */
@@ -158,26 +156,26 @@ function resolveAliasedEnv(
   return value || legacyValue;
 }
 
-const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
-  "agent-sandbox",
-  "user-desktop",
-]);
-type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-function resolveSandboxProviderKind(
-  raw: string | undefined,
-): SandboxProviderKind {
-  const trimmed = (raw ?? "").trim();
-  const kind = (trimmed.length > 0 ? trimmed : "user-desktop") as
-    | LegacySandboxProviderKind
-    | string;
-  if (kind === "cluster") return "agent-sandbox";
-  if (!SANDBOX_PROVIDER_KINDS.has(kind as SandboxProviderKind)) {
+function resolveAgentSandboxEnabled(
+  rawEnabled: string | undefined,
+  legacyProvider: string | undefined,
+): boolean {
+  const explicit = rawEnabled?.trim();
+  if (explicit === "true" || explicit === "1") return true;
+  if (explicit === "false" || explicit === "0") return false;
+  if (explicit) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
+      `Invalid STUDIO_AGENT_SANDBOX_ENABLED="${rawEnabled}" — expected "true", "false", "1", or "0".`,
     );
   }
-  return kind as SandboxProviderKind;
+
+  const legacy = (legacyProvider ?? "").trim();
+  if (legacy === "" || legacy === "user-desktop") return false;
+  if (legacy === "agent-sandbox" || legacy === "cluster") return true;
+
+  throw new Error(
+    `Unknown STUDIO_SANDBOX_PROVIDER="${legacyProvider}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
+  );
 }
 
 export interface ResolvedConfig {
@@ -352,7 +350,8 @@ export function resolveConfig(
         envVars.MESH_DISPATCH_ROLE,
       ),
     ),
-    sandboxProviderKind: resolveSandboxProviderKind(
+    agentSandboxEnabled: resolveAgentSandboxEnabled(
+      envVars.STUDIO_AGENT_SANDBOX_ENABLED,
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),

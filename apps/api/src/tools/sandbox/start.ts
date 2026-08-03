@@ -1,27 +1,17 @@
 /**
- * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual
+ * SANDBOX_START. Keyed by (userId, branch, "agent-sandbox") in the Virtual
  * MCP's `sandboxMap`, where `userId` is the sandbox's OWNER — the thread's
- * creator on a thread-scoped branch, so a member opening a teammate's thread
- * resumes that thread's single sandbox instead of booting a private copy of the
- * same git branch (see `resolveSandboxUserId`).
- * Provider-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `sandboxMap` bookkeeping. Branch is minted from the caller's
+ * creator on a thread-scoped branch. A teammate resolves that identity for
+ * read-only preview surfaces but cannot start or mutate it.
+ * Branch is minted from the caller's
  * slug + a timestamp (`generateBranchName`) when omitted — a fresh identity, so
  * callers that have a branch must pass it or they get a second sandbox.
- *
- * Different sandbox provider kinds coexist as siblings under the same
- * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
-import {
-  composeSandboxRef,
-  normalizeSandboxProviderKind,
-  type SandboxProvider,
-  type SandboxProviderKind,
-  type Workload,
-} from "@decocms/sandbox/provider";
+import { composeSandboxRef, type Workload } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -37,11 +27,6 @@ import {
 import { resolveAndPushEnv } from "./resolve-env";
 import { resolveSubmoduleCredentials } from "./resolve-submodule-creds";
 import {
-  readSandboxMap,
-  removeSandboxMapEntry,
-  resolveVm,
-} from "./sandbox-map";
-import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -55,22 +40,26 @@ import {
   generateBranchName,
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
-import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
+  isSandboxOwner,
   resolveSandboxUserId,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "./thread-repo";
 import { pickGitBranch } from "../../sandbox/head-ref";
-import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
+import {
+  AGENT_SANDBOX_KIND,
+  resolveAgentSandboxRecord,
+} from "./agent-sandbox-record";
 
 type GithubRepo = {
   owner: string;
@@ -81,12 +70,6 @@ type GithubRepo = {
 type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
-
-const sandboxProviderKindInputSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-  "cluster",
-]);
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
@@ -108,11 +91,6 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
       ),
-    sandboxProviderKind: sandboxProviderKindInputSchema
-      .optional()
-      .describe(
-        "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
-      ),
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
@@ -129,21 +107,25 @@ export const SANDBOX_START = defineTool({
     const resolvedBranch =
       input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));
 
-    // Resolve kind after loading metadata so recorded sandboxMap entries can
-    // pin the provider when the caller did not pass an explicit kind.
     const userId = getUserId(ctx);
     if (!userId) throw new Error("User ID required");
 
-    // Whose sandbox this is: the thread's creator for a thread-scoped branch, so
-    // a member opening a teammate's thread resumes the ONE sandbox that thread
-    // has instead of booting a private copy of the same git branch. `userId`
-    // stays the caller for credential resolution + audit — see
-    // resolveSandboxUserId.
+    // Resolve thread identity before provisioning, then require its owner. This
+    // prevents a teammate from booting a competing claim against the same git
+    // branch. `userId` stays the caller for credentials and audit.
     const sandboxUserId = await resolveSandboxUserId(
       ctx,
       resolvedBranch,
       userId,
+      input.virtualMcpId,
     );
+    if (!sandboxUserId) throw new Error("Thread not found for Virtual MCP");
+    if (
+      threadIdFromBranch(resolvedBranch) &&
+      !isSandboxOwner(userId, sandboxUserId)
+    ) {
+      throw new Error("Only the thread owner can start its sandbox");
+    }
 
     const virtualMcp = await ctx.storage.virtualMcps.findById(
       input.virtualMcpId,
@@ -153,29 +135,14 @@ export const SANDBOX_START = defineTool({
     }
     const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
 
-    // Resolve the runner once. `resolveSandboxProvider` returns the
-    // existing kind when sandboxMap already has an entry for (user, branch),
-    // honors `input.sandboxProviderKind` as a caller override, and
-    // otherwise applies the link-or-env default policy. We bind the
-    // provider here so the kind we record in sandboxMap matches the runner
-    // that actually `ensure`d the sandbox.
-    const explicitKind = input.sandboxProviderKind
-      ? normalizeSandboxProviderKind(input.sandboxProviderKind)
-      : undefined;
-    const { provider: runner, kind: providerKind } =
-      await resolveSandboxProvider(ctx, {
-        userId: sandboxUserId,
-        branch: resolvedBranch,
-        virtualMcpMetadata: metadata,
-        explicitKind,
-      });
-
-    const existing: SandboxRecord | null = resolveVm(
-      readSandboxMap(metadata),
+    const runner = await getAgentSandboxProvider(ctx);
+    const existing = await resolveAgentSandboxRecord({
+      ctx,
+      virtualMcpId: input.virtualMcpId,
+      virtualMcpMetadata: metadata,
       sandboxUserId,
-      resolvedBranch,
-      providerKind,
-    );
+      branch: resolvedBranch,
+    });
 
     // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
     // same rule as `ensureSandbox`. Without this the frontend's auto-start
@@ -186,6 +153,7 @@ export const SANDBOX_START = defineTool({
     const threadRepo = await getThreadGithubRepo(
       ctx,
       threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
+      input.virtualMcpId,
     );
     const githubRepo =
       threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
@@ -200,14 +168,13 @@ export const SANDBOX_START = defineTool({
       metadata,
       githubRepo,
       existing,
-      providerKind,
       runner,
     });
     return {
       ...entry,
       branch: resolvedBranch,
       isNewVm,
-      sandboxProviderKind: providerKind,
+      sandboxProviderKind: AGENT_SANDBOX_KIND,
     };
   },
 });
@@ -215,18 +182,14 @@ export const SANDBOX_START = defineTool({
 /**
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
  * flow but: (a) tolerates a missing GitHub repo (boots a blank sandbox),
- * and (b) takes a fast path when the existing sandboxMap entry already
- * matches the requested kind — avoiding a full `provider.ensure` round-trip
+ * and (b) takes a fast path when the existing sandboxMap entry is present —
+ * avoiding a full `provider.ensure` round-trip
  * on every fresh stream when the sandbox is already registered.
- *
- * Unlike SANDBOX_START, `sandboxProviderKind` is required — callers (e.g. POST
- * /messages) must resolve the kind before calling this function.
  */
 export async function ensureSandbox(
   input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: SandboxProviderKind;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -245,49 +208,29 @@ export async function ensureSandbox(
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  const existing: SandboxRecord | null = resolveVm(
-    readSandboxMap(metadata),
-    sandboxUserId,
+  const sandboxUserId = await resolveSandboxUserId(
+    ctx,
     input.branch,
-    input.sandboxProviderKind,
+    userId,
+    input.virtualMcpId,
   );
-
-  const providerKind = input.sandboxProviderKind;
-
-  // Resolve the runner up front: for user-desktop we must verify the cached
-  // entry against the live daemon before trusting it (the daemon may have
-  // restarted via `deco link` relink, leaving the sandboxMap pointing at a
-  // dead handle). resolveSandboxProvider is cheap and idempotent.
-  const { provider: runner } = await resolveSandboxProvider(ctx, {
-    userId: sandboxUserId,
-    branch: input.branch,
-    virtualMcpMetadata: metadata,
-    explicitKind: providerKind,
-  });
-
-  // Fast path: trust an agent-sandbox entry directly. For user-desktop, probe the
-  // daemon first — a relinked daemon has an empty sandbox map and answers the
-  // liveness probe with 404, which means we must reap the stale entry and
-  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
-  if (existing) {
-    if (providerKind !== "user-desktop") return existing;
-    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
-    if (alive) return existing;
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      input.virtualMcpId,
-      userId,
-      sandboxUserId,
-      input.branch,
-      providerKind,
-    ).catch((err) => {
-      console.warn(
-        "[ensureSandbox] failed to reap stale user-desktop entry",
-        err,
-      );
-    });
+  if (!sandboxUserId) throw new Error("Thread not found for Virtual MCP");
+  if (
+    threadIdFromBranch(input.branch) &&
+    !isSandboxOwner(userId, sandboxUserId)
+  ) {
+    throw new Error("Only the thread owner can start its sandbox");
   }
+  const existing = await resolveAgentSandboxRecord({
+    ctx,
+    virtualMcpId: input.virtualMcpId,
+    virtualMcpMetadata: metadata,
+    sandboxUserId,
+    branch: input.branch,
+  });
+  const runner = await getAgentSandboxProvider(ctx);
+
+  if (existing) return existing;
 
   // Thread-scoped repo wins over the agent's own repo: `load_repo` binds a repo
   // to the thread (the only place it can persist for the synthetic Decopilot
@@ -298,6 +241,7 @@ export async function ensureSandbox(
   const threadRepo = await getThreadGithubRepo(
     ctx,
     threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId,
+    input.virtualMcpId,
   );
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
@@ -311,7 +255,6 @@ export async function ensureSandbox(
     metadata,
     githubRepo,
     existing: null,
-    providerKind,
     runner,
   });
   return entry;
@@ -332,8 +275,7 @@ type StartParams = {
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
   existing: SandboxRecord | null;
-  providerKind: SandboxProviderKind;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
 };
 
 async function provisionSandbox(
@@ -454,7 +396,7 @@ async function provisionSandbox(
       branch,
       derivedRef: syntheticBranchToGitRef(branch),
       recordedHeadRef: stickyHeadRef
-        ? await getThreadHeadRef(ctx, threadIdFromBranch(branch))
+        ? await getThreadHeadRef(ctx, threadIdFromBranch(branch), virtualMcpId)
         : null,
       sticky: stickyHeadRef,
     });
@@ -483,11 +425,8 @@ async function provisionSandbox(
     };
   }
 
-  // Missing workload = clone-only; the runner picks its default.
-  // `devPort` is omitted unless the user explicitly pinned one — leaves
-  // runners free to assign a unique dynamic port (user-desktop needs this;
-  // multiple sandboxes on the user's machine share the host network and
-  // can't all bind 3000).
+  // Missing workload = clone-only; the runner picks its default. `devPort` is
+  // omitted unless the user explicitly pinned one.
   const workload: Workload | undefined =
     runtime && packageManager
       ? {
@@ -504,33 +443,17 @@ async function provisionSandbox(
     branch,
   });
 
-  // Message-offload SSRF allowlist. The user-desktop daemon fails closed
-  // (empty allowlist) unless the control plane pushes the object-storage host
-  // it mints presigned offload URLs against. Derive it from the control
-  // plane's OWN trusted S3 config (never a request frame) and pass it through
-  // the ensure control channel so it lands in the spawned daemon's boot env.
-  // Only relevant for `user-desktop`; hosted execution reads its own S3 env.
-  const offload =
-    runner.kind === "user-desktop"
-      ? await deriveOffloadAllowlist(ctx.objectStorage, {
-          isProduction: getSettings().nodeEnv === "production",
-        })
-      : null;
-
   // Org-fs mounts: mint an fs-scoped token + build the daemon's ORGFS_CONFIG.
-  // org-fs is the universal substrate now — both desktop links and hosted
-  // pods always mount (hosted relies on the privileged org-fs sidecar
-  // shipping in the default deploy). Guarded inside the helper: a mint
-  // failure → undefined → no mounting, never breaks provisioning.
+  // Hosted pods rely on the privileged org-fs sidecar in the default deploy.
+  // Guarded inside the helper: a mint failure means no mounting and never
+  // breaks provisioning.
   //
   // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
   // skips provisioning the mount so a sandbox boots without org-fs, for
   // low-level mount debugging. NOT a supported "org-fs-off" product mode —
   // the prompt/tools still assume org-fs, so the agent's `org/` paths just
   // won't exist while it's set.
-  const wantsOrgFs =
-    (runner.kind === "user-desktop" || runner.kind === "agent-sandbox") &&
-    !getSettings().orgFsMountsDisabled;
+  const wantsOrgFs = !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
   // so chat-ephemeral sandboxes get mounts too.
@@ -575,81 +498,137 @@ async function provisionSandbox(
         ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
         ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
       },
-      ...(offload
-        ? {
-            offloadAllowedHosts: offload.hosts,
-            offloadAllowSameHostDev: offload.allowSameHostDev,
-          }
-        : {}),
       ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
     },
   );
 
-  // Resolve declared env (literals + secret refs) and push to the daemon
-  // *before* it can start install/dev. Daemon deep-merges, so resuming an
-  // already-claimed sandbox stays idempotent.
-  const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
-  await resolveAndPushEnv({
-    ctx,
-    runner,
-    handle: sandbox.handle,
-    orgId,
-    userId,
-    entries: envEntries,
-  });
-
-  // Preserve `createdAt` across resumes so the booting overlay's elapsed
-  // timer doesn't reset on re-run.
   const isResume = !!existing && existing.sandboxHandle === sandbox.handle;
-  const createdAt =
-    isResume && existing?.createdAt ? existing.createdAt : Date.now();
-
-  const runtimeSelected =
-    (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
-  const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
-  const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
-
-  const entry: SandboxRecord = {
-    sandboxHandle: sandbox.handle,
-    previewUrl: sandbox.previewUrl,
-    sandboxApiUrl: sandbox.previewUrl, // for desktop the two are equal
-    sandboxProviderKind: runner.kind,
-    createdAt,
-    startedWith: {
-      packageManager: runtimeSelected,
-      port: runtimePort,
-      path: runtimePath,
-    },
-  };
-
-  await setSandboxMapEntry(
-    ctx.storage.virtualMcps,
-    virtualMcpId,
-    userId,
-    sandboxUserId,
-    branch,
-    params.providerKind,
-    entry,
-  );
-  // Thread-scoped branch: the agent write above is a no-op for the synthetic
-  // Decopilot agent, so also persist the record on the thread — the only place
-  // the frontend reads previewUrl/handle from for these sandboxes. Applies to
-  // EVERY provisioning path (load_repo, SANDBOX_START auto-start, fs tools).
-  const threadId = threadIdFromBranch(branch);
-  if (threadId) {
-    await setThreadSandboxMapEntry(
+  try {
+    // Resolve declared env (literals + secret refs) and push to the daemon
+    // *before* it can start install/dev. Daemon deep-merges, so resuming an
+    // already-claimed sandbox stays idempotent.
+    const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
+    await resolveAndPushEnv({
       ctx,
-      threadId,
+      runner,
+      handle: sandbox.handle,
+      orgId,
+      userId,
+      entries: envEntries,
+    });
+
+    // Preserve `createdAt` across resumes so the booting overlay's elapsed
+    // timer doesn't reset on re-run.
+    const createdAt =
+      isResume && existing?.createdAt ? existing.createdAt : Date.now();
+
+    const runtimeSelected =
+      (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
+    const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
+    const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
+
+    const entry: SandboxRecord = {
+      sandboxHandle: sandbox.handle,
+      previewUrl: sandbox.previewUrl,
+      sandboxApiUrl: sandbox.previewUrl,
+      sandboxProviderKind: AGENT_SANDBOX_KIND,
+      createdAt,
+      startedWith: {
+        packageManager: runtimeSelected,
+        port: runtimePort,
+        path: runtimePath,
+      },
+    };
+
+    await setSandboxMapEntry(
+      ctx.storage.virtualMcps,
+      virtualMcpId,
+      userId,
       sandboxUserId,
       branch,
-      params.providerKind,
+      AGENT_SANDBOX_KIND,
       entry,
     );
+
+    // Thread-scoped branch: the agent write above is a no-op for the synthetic
+    // Decopilot agent, so also persist the record on the thread — the only place
+    // the frontend reads previewUrl/handle from for these sandboxes. Applies to
+    // EVERY provisioning path (load_repo, SANDBOX_START auto-start, fs tools).
+    const threadId = threadIdFromBranch(branch);
+    if (threadId) {
+      await setThreadSandboxMapEntry(
+        ctx,
+        threadId,
+        virtualMcpId,
+        userId,
+        sandboxUserId,
+        branch,
+        AGENT_SANDBOX_KIND,
+        entry,
+      );
+    }
+
+    return { entry, isNewVm: !isResume };
+  } catch (err) {
+    if (!isResume) {
+      await rollbackUnrecordedSandbox({
+        ctx,
+        runner,
+        virtualMcpId,
+        sandboxUserId,
+        branch,
+        sandboxHandle: sandbox.handle,
+      });
+    }
+    throw err;
+  }
+}
+
+/**
+ * Reap a freshly ensured claim only when a post-ensure failure left no
+ * authoritative record. A concurrent request may have persisted the same
+ * deterministic handle, so verify current storage before deleting it. If the
+ * verification itself fails, keep the claim: deleting a possibly-recorded
+ * sandbox is worse than leaving an unregistered claim for the idle reaper.
+ */
+async function rollbackUnrecordedSandbox(args: {
+  ctx: StudioContext;
+  runner: AgentSandboxProvider;
+  virtualMcpId: string;
+  sandboxUserId: string;
+  branch: string;
+  sandboxHandle: string;
+}): Promise<void> {
+  const { ctx, runner, virtualMcpId, sandboxUserId, branch, sandboxHandle } =
+    args;
+
+  try {
+    const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+    const recorded = await resolveAgentSandboxRecord({
+      ctx,
+      virtualMcpId,
+      virtualMcpMetadata:
+        (virtualMcp?.metadata as Record<string, unknown> | null) ?? null,
+      sandboxUserId,
+      branch,
+    });
+    if (recorded?.sandboxHandle === sandboxHandle) return;
+  } catch (err) {
+    console.warn(
+      `[SANDBOX_START] could not verify rollback for ${sandboxHandle}; leaving it for the idle reaper`,
+      err,
+    );
+    return;
   }
 
-  // Different handle = new sandbox (stale entry / orphan recovery / state miss).
-  const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
-  return { entry, isNewVm };
+  await runner
+    .delete(sandboxHandle)
+    .catch((err) =>
+      console.warn(
+        `[SANDBOX_START] rollback failed for unrecorded sandbox ${sandboxHandle}`,
+        err,
+      ),
+    );
 }
 
 /**

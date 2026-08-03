@@ -188,8 +188,13 @@ Core settings include:
 | `ENCRYPTION_KEY` | Stable credential-vault key | Set explicitly in production |
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |
 | `STUDIO_DISPATCH_ROLE` | Queue role: `all`, `api`, or `worker` | `all` |
-| `STUDIO_SANDBOX_PROVIDER` | Sandbox provider: `user-desktop` or `agent-sandbox` | `user-desktop` |
+| `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted agent-sandbox infrastructure (`STUDIO_SANDBOX_PROVIDER` remains a temporary compatibility alias) | `false` |
 | `CLICKHOUSE_URL` | Optional ClickHouse monitoring endpoint | Local monitoring backend |
+
+During the compatibility rollout, hosted deployments should set both
+`STUDIO_AGENT_SANDBOX_ENABLED=true` and
+`STUDIO_SANDBOX_PROVIDER=agent-sandbox`. The latter is read only by older API
+revisions and keeps rollback safe.
 
 Authentication providers use `AUTH_*` variables. The validated list lives in
 `src/auth/auth-env.ts`. `config.json` no longer configures authentication; its

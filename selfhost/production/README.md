@@ -127,8 +127,9 @@ helm install sandbox-env-prod deploy/helm/sandbox-env \
   -n agent-sandbox-system -f selfhost/production/values-sandbox-env-prod.yaml
 ```
 
-Then wire Studio: `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
-`STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`, and the preview URL pattern
-pointing at your wildcard domain.
+Then wire Studio: `STUDIO_AGENT_SANDBOX_ENABLED=true`, the temporary rollback
+alias `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
+`STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`, and the preview URL
+pattern pointing at your wildcard domain.
 
 See the top-level [`selfhost/README.md`](../README.md) for the full model.

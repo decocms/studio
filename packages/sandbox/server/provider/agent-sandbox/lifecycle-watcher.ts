@@ -767,7 +767,7 @@ async function runWatch<T>(opts: RunWatchOpts<T>): Promise<void> {
           console.warn(
             `[lifecycle-watcher] ${label} stopped: watch denied (${resp.status} ${resp.statusText}). ` +
               "The kubeconfig in use cannot watch SandboxClaims — if you are running locally, " +
-              "this provider should not be active (check STUDIO_SANDBOX_PROVIDER / your sandbox preference).",
+              "this provider should not be active (check STUDIO_AGENT_SANDBOX_ENABLED).",
           );
           return;
         }

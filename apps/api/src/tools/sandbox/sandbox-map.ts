@@ -106,7 +106,7 @@ export async function setSandboxMapEntry(
  * [kind]. Prunes the branch bucket when no kinds remain and the user bucket when
  * no branches remain. Returns `null` when the entry wasn't present (so callers
  * can skip a no-op write). Shared by the agent-scoped (`removeSandboxMapEntry`)
- * and thread-scoped (`removeThreadSandboxMapEntry`) removers.
+ * and thread-scoped (`removeThreadSandboxMapEntryStrict`) removers.
  */
 export function deleteSandboxMapEntry(
   current: SandboxMap,

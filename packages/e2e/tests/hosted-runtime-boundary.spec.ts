@@ -444,6 +444,69 @@ test.describe("hosted runtime boundary", () => {
         member.email,
       );
 
+      const sandboxBranch = `thread:${threadId}`;
+      const sandboxBase = `/api/${orgSlug}/sandbox/${agentId}/${encodeURIComponent(
+        sandboxBranch,
+      )}`;
+      const ownerOnlySandboxRequests = [
+        { method: "POST", path: "/write" },
+        { method: "POST", path: "/unlink" },
+        { method: "POST", path: "/mkdir" },
+        { method: "POST", path: "/rename" },
+        { method: "POST", path: "/read" },
+        { method: "POST", path: "/glob" },
+        { method: "POST", path: "/grep" },
+        { method: "POST", path: "/exec/e2e-script" },
+        { method: "POST", path: "/exec/e2e-script/kill" },
+        { method: "GET", path: "/config" },
+        { method: "PUT", path: "/config" },
+        { method: "POST", path: "/setup/start" },
+        { method: "POST", path: "/git/publish" },
+        { method: "POST", path: "/git/discard" },
+        { method: "POST", path: "/git/rebase" },
+        { method: "POST", path: "/git/suggest-commit" },
+        { method: "POST", path: "/git/judge-review" },
+        { method: "POST", path: "/preview-invoke" },
+      ] as const;
+
+      for (const request of ownerOnlySandboxRequests) {
+        const response = await memberApi.fetch(
+          `${sandboxBase}${request.path}`,
+          {
+            method: request.method,
+            ...(request.method === "GET" ? {} : { data: {} }),
+          },
+        );
+        expect(
+          response.status(),
+          `${request.method} ${request.path} must stay owner-only`,
+        ).toBe(403);
+        expect(await response.json()).toEqual({
+          error: "Only the thread owner can change its sandbox",
+        });
+      }
+
+      // Teammates may still inspect viewer-safe lifecycle and git state. This
+      // suite has no hosted runner, so a request that passed the owner-only gate
+      // reaches the normal runner-unavailable response instead of the mutation
+      // 403.
+      const statusResponse = await memberApi.get(`${sandboxBase}/git/status`);
+      expect(statusResponse.status()).toBe(503);
+      expect(await statusResponse.json()).toEqual({
+        error: "No sandbox runner configured",
+      });
+
+      const eventsResponse = await memberApi.get(`${sandboxBase}/events`, {
+        headers: { Accept: "text/event-stream" },
+      });
+      expect(eventsResponse.status()).toBe(200);
+      expect(eventsResponse.headers()["content-type"]).toContain(
+        "text/event-stream",
+      );
+      expect(await eventsResponse.text()).toContain(
+        "No sandbox runner configured on this studio instance.",
+      );
+
       const messageResponse = await postMessage(memberApi, {
         orgSlug,
         threadId,

@@ -119,8 +119,10 @@ removed values key won't error — `helm template` after big `deploy/` changes).
 
 The sandbox is a separate layer — the `sandbox-operator` (agent-sandbox operator
 + CRDs) and `sandbox-env` charts under [`deploy/helm`](../deploy/helm), plus
-Studio wiring (`STUDIO_SANDBOX_PROVIDER=agent-sandbox`). Core Studio (agents,
+Studio wiring (`STUDIO_AGENT_SANDBOX_ENABLED=true`). Core Studio (agents,
 connections, MCP proxy) runs fine without it; enable it for the *full* install.
+Set `STUDIO_SANDBOX_PROVIDER=agent-sandbox` alongside it during the rolling
+compatibility window so an older Studio image can still be restored.
 
 The umbrella installs the sandbox layer as part of the one `helm install`: the
 operator, `sandbox-env` (wired inline in [`examples/k8s-local/values.yaml`](examples/k8s-local/values.yaml)),

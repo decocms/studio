@@ -93,11 +93,11 @@ describe("GET /api/config", () => {
     expect(body.config.googleMapsApiKey).toBeNull();
   });
 
-  it("reports agent-sandbox runtime availability when agent-sandbox provider is configured", async () => {
+  it("reports agent-sandbox runtime availability when the capability is enabled", async () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: false,
-      sandboxProviderKind: "agent-sandbox",
+      agentSandboxEnabled: true,
     });
 
     const res = await publicConfigRoutes.request("/");
@@ -106,11 +106,11 @@ describe("GET /api/config", () => {
     expect(body.config.runtime).toEqual({ agentSandbox: true });
   });
 
-  it("does not report agent-sandbox runtime availability for user-desktop provider", async () => {
+  it("does not report agent-sandbox runtime availability when the capability is disabled", async () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: false,
-      sandboxProviderKind: "user-desktop",
+      agentSandboxEnabled: false,
     });
 
     const res = await publicConfigRoutes.request("/");
@@ -119,11 +119,11 @@ describe("GET /api/config", () => {
     expect(body.config.runtime).toEqual({ agentSandbox: false });
   });
 
-  it("does not report agent-sandbox in local mode even with the agent-sandbox provider", async () => {
+  it("does not report agent-sandbox in local mode even with the capability enabled", async () => {
     setGlobalSettings({
       ...originalSettings,
       localMode: true,
-      sandboxProviderKind: "agent-sandbox",
+      agentSandboxEnabled: true,
     });
 
     const res = await publicConfigRoutes.request("/");

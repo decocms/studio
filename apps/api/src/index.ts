@@ -151,17 +151,14 @@ const {
   previewWebSocketHandler,
   isPreviewWsData,
 } = await import("./sandbox/preview-proxy");
-const { getOrInitSharedRunner: getOrInitRunnerForPreview } = await import(
-  "./sandbox/lifecycle"
-);
+const { getOrInitAgentSandboxProvider: getOrInitRunnerForPreview } =
+  await import("./sandbox/lifecycle");
 const previewBaseDomain = parsePreviewBaseDomain(
   process.env.STUDIO_SANDBOX_PREVIEW_URL_PATTERN,
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  // getOrInitSharedRunner resolves to the cluster AgentSandboxProvider (the
-  // only env-instantiable provider) or null — exactly what PreviewProxyDeps
-  // wants, so no kind check or cast is needed.
+  // Disabled deployments resolve null without loading Kubernetes.
   getRunner: getOrInitRunnerForPreview,
 };
 

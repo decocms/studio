@@ -35,7 +35,7 @@
  *
  * ── unified-control-plane T9 extension ────────────────────────────────
  * This cluster's `docker-compose.yml` pins every Studio pod to
- * `STUDIO_SANDBOX_PROVIDER=agent-sandbox` (see that file's comment on the
+ * `STUDIO_AGENT_SANDBOX_ENABLED=true` (see that file's comment on the
  * the first service), so `resolveDispatchTarget` short-circuits every
  * dispatch in this suite to HOSTED execution — this test already drives a
  * hosted streaming turn through the (now v4) gate: dispatch →

@@ -9,27 +9,22 @@
 
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import {
-  resolveSandboxProviderKindFromEnv,
-  type SandboxProviderKind,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import {
-  readSandboxMap,
-  removeSandboxMapEntry,
-  resolveVm,
-} from "../../tools/sandbox/sandbox-map";
-import {
-  getThreadSandboxMap,
-  removeThreadSandboxMapEntry,
+  isSandboxOwner,
   setThreadHeadRef,
   syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
+import {
+  AGENT_SANDBOX_KIND,
+  removeAgentSandboxRecords,
+  resolveAgentSandboxRecord,
+} from "../../tools/sandbox/agent-sandbox-record";
 import {
   pickRecordableHeadRef,
   type DaemonHeadStatus,
@@ -70,6 +65,7 @@ export interface VmEventsHandlerArgs {
   runner: SandboxProvider;
   virtualMcpId: string;
   branch: string;
+  actingUserId: string;
   userId: string;
   projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
@@ -82,12 +78,11 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     runner,
     virtualMcpId,
     branch,
+    actingUserId,
     userId,
     projectRef,
     virtualMcpMetadata,
   } = args;
-  const providerKind = resolveSandboxProviderKindFromEnv();
-
   // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
   // its records live on the THREAD (see `setThreadSandboxMapEntry`). Resolve the
   // thread id from the branch so the stale-handle check below covers thread-
@@ -111,41 +106,29 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     });
 
     try {
-      // Prefer the agent entry; fall back to the thread entry (thread-scoped
-      // branches). `fromThread` steers cleanup to the right store.
-      let vmEntry = resolveVm(
-        readSandboxMap(virtualMcpMetadata),
-        userId,
+      const vmEntry = await resolveAgentSandboxRecord({
+        ctx,
+        virtualMcpId,
+        virtualMcpMetadata,
+        sandboxUserId: userId,
         branch,
-        providerKind,
-      );
-      let fromThread = false;
-      if (!vmEntry && threadId) {
-        vmEntry = resolveVm(
-          await getThreadSandboxMap(ctx, threadId),
-          userId,
-          branch,
-          providerKind,
-        );
-        fromThread = !!vmEntry;
-      }
-      const existingProviderKind: SandboxProviderKind | null =
-        vmEntry?.sandboxProviderKind ?? null;
+      });
 
       if (vmEntry?.sandboxHandle === claimName) {
         const stale = await isStaleHandle(runner, claimName);
         if (stale) {
-          await cleanupStaleEntry({
-            ctx,
-            runner,
-            claimName,
-            virtualMcpId,
-            branch,
-            userId,
-            projectRef,
-            sandboxProviderKind: existingProviderKind ?? providerKind,
-            threadId: fromThread ? threadId : null,
-          });
+          if (isSandboxOwner(actingUserId, userId)) {
+            await cleanupStaleEntry({
+              ctx,
+              runner,
+              claimName,
+              virtualMcpId,
+              branch,
+              actingUserId,
+              userId,
+              projectRef,
+            });
+          }
           await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
           return;
         }
@@ -166,14 +149,19 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       // that ref or it forks from the repo default and the preview serves
       // pre-change code. Fire-and-forget — one request that must never delay or
       // fail the stream. See `sandbox/head-ref.ts`.
-      void recordDaemonHeadRef({
-        ctx,
-        runner,
-        claimName,
-        branch,
-        threadId,
-        signal: abortCtl.signal,
-      });
+      if (isSandboxOwner(actingUserId, userId)) {
+        void recordDaemonHeadRef({
+          ctx,
+          runner,
+          claimName,
+          branch,
+          threadId,
+          virtualMcpId,
+          actingUserId,
+          sandboxUserId: userId,
+          signal: abortCtl.signal,
+        });
+      }
 
       // ---- Phase 2: daemon SSE proxy --------------------------------------
       await proxyDaemonEvents({
@@ -208,9 +196,22 @@ async function recordDaemonHeadRef(args: {
   claimName: string;
   branch: string;
   threadId: string | null;
+  virtualMcpId: string;
+  actingUserId: string;
+  sandboxUserId: string;
   signal: AbortSignal;
 }): Promise<void> {
-  const { ctx, runner, claimName, branch, threadId, signal } = args;
+  const {
+    ctx,
+    runner,
+    claimName,
+    branch,
+    threadId,
+    virtualMcpId,
+    actingUserId,
+    sandboxUserId,
+    signal,
+  } = args;
   if (!threadId || !branch.startsWith("thread:")) return;
   try {
     const res = await runner.proxyDaemonRequest(
@@ -237,7 +238,14 @@ async function recordDaemonHeadRef(args: {
       requestedRef: syntheticBranchToGitRef(branch),
     });
     if (!headRef) return;
-    await setThreadHeadRef(ctx, threadId, headRef);
+    await setThreadHeadRef(
+      ctx,
+      threadId,
+      virtualMcpId,
+      actingUserId,
+      sandboxUserId,
+      headRef,
+    );
   } catch {
     // Daemon unreachable / bad JSON / aborted — the hint is optional.
   }
@@ -266,12 +274,9 @@ async function cleanupStaleEntry(args: {
   claimName: string;
   virtualMcpId: string;
   branch: string;
+  actingUserId: string;
   userId: string;
   projectRef: string;
-  sandboxProviderKind: SandboxProviderKind;
-  /** Set when the stale entry was found on the thread (synthetic agent) — clear
-   *  it there instead of / in addition to the agent row. */
-  threadId: string | null;
 }): Promise<void> {
   const {
     ctx,
@@ -279,51 +284,19 @@ async function cleanupStaleEntry(args: {
     claimName,
     virtualMcpId,
     branch,
+    actingUserId,
     userId,
     projectRef,
-    sandboxProviderKind,
-    threadId,
   } = args;
-  // Drop the thread's sandboxMap entry first. A dangling `sandboxHandle` left
-  // in thread metadata makes every client SSE reconnect re-enter this stale
-  // path and re-issue a DELETE against the already-gone claim — a 404 flood
-  // that only stops when the tab closes.
-  if (threadId) {
-    try {
-      await removeThreadSandboxMapEntry(
-        ctx,
-        threadId,
-        userId,
-        branch,
-        sandboxProviderKind,
-      );
-    } catch (err) {
-      console.warn(
-        `[vm-events] thread sandboxMap cleanup failed for ${threadId}/${branch}/${sandboxProviderKind}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  }
-  // Same reasoning for the agent row. Mirrors SANDBOX_DELETE.
-  try {
-    if (!threadId) {
-      await removeSandboxMapEntry(
-        ctx.storage.virtualMcps,
-        virtualMcpId,
-        userId,
-        userId,
-        branch,
-        sandboxProviderKind,
-      );
-    }
-  } catch (err) {
-    console.warn(
-      `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${sandboxProviderKind}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
+  // The persisted record is authoritative. If clearing it fails, propagate and
+  // leave the live claim/state untouched so a retry can complete atomically.
+  await removeAgentSandboxRecords({
+    ctx,
+    virtualMcpId,
+    actingUserId,
+    sandboxUserId: userId,
+    branch,
+  });
   try {
     await runner.delete(claimName);
   } catch (err) {
@@ -335,10 +308,10 @@ async function cleanupStaleEntry(args: {
   }
   try {
     const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, sandboxProviderKind);
+    await stateStore.delete({ userId, projectRef }, AGENT_SANDBOX_KIND);
   } catch (err) {
     console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${sandboxProviderKind}: ${
+      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${AGENT_SANDBOX_KIND}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

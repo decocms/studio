@@ -152,7 +152,10 @@ export interface Settings {
   podName: string;
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
-  sandboxProviderKind: "agent-sandbox" | "user-desktop";
+  /** Whether this deployment has hosted agent-sandbox infrastructure.
+   *  This is a capability flag, not a provider selector: hosted API paths
+   *  always use agent-sandbox when the capability is enabled. */
+  agentSandboxEnabled: boolean;
   /** Sticky HEAD ref for thread-scoped sandboxes (SANDBOX_STICKY_HEAD_REF).
    *  Off by default — see `sandbox/head-ref.ts` for the boot-path change this
    *  gates and why it ships behind its own flag. */

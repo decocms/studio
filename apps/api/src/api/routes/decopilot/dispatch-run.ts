@@ -787,14 +787,6 @@ async function prepareRun(
     const clientModels = input.models;
     rootSpan.setAttribute("decopilot.harnessId", "decopilot");
 
-    // Every run is hosted. Stash it on the context so downstream sandbox tools
-    // resolve the hosted provider without re-querying the registry.
-    ctx.sandboxPreference = "agent-sandbox";
-    rootSpan.setAttribute(
-      "decopilot.dispatchTarget.sandboxProviderKind",
-      "agent-sandbox",
-    );
-
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission
     // check and slot resolution below read the per-slot credential. See

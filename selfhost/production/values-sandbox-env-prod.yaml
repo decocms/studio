@@ -88,7 +88,8 @@ previewGateway:
 # Then wire the Studio release (chart-deco-studio values):
 #   configMap:
 #     meshConfig:
-#       STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+#       STUDIO_AGENT_SANDBOX_ENABLED: "true"
+#       STUDIO_SANDBOX_PROVIDER: "agent-sandbox" # rollback compatibility
 #       STUDIO_ENV: "prod"
 #       STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-prod"
 #       STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.example.com"

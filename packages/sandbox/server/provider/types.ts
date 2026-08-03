@@ -116,26 +116,9 @@ export interface EnsureOptions {
     userName?: string;
   };
   /**
-   * Message-offload SSRF allowlist for the spawned daemon. When the cluster
-   * offloads an oversized dispatch body to object storage, the daemon
-   * re-inflates it by fetching a presigned URL — but ONLY if the URL's host is
-   * in this allowlist. The cluster derives these from its OWN trusted S3 config
-   * and pushes them down at spawn so the daemon can fail closed by default
-   * (empty allowlist = every offload fetch rejected). NEVER sourced from a
-   * request frame — that is the SSRF guarantee.
-   *
-   * Only the `user-desktop` runner consumes these (it spawns the daemon with
-   * the matching env). Other runners MUST ignore them (the cluster daemon
-   * shares the cluster's network and reads its own S3 env directly).
-   */
-  offloadAllowedHosts?: string[];
-  /** Permit http:// loopback offload refs (dev MinIO). false in production. */
-  offloadAllowSameHostDev?: boolean;
-  /**
-   * org-fs mount config (a JSON `OrgFsMountConfig`) for the spawned daemon, set
-   * as its `ORGFS_CONFIG` boot env so it mounts the configured volumes
-   * kext-free. Only the `user-desktop` runner consumes it (hosted pods can't
-   * mount — that's the privileged-sidecar path). Absent → no mounting.
+   * org-fs mount config (a JSON `OrgFsMountConfig`) passed to the hosted
+   * AgentSandbox daemon. The pod's privileged sidecar performs the mounts.
+   * Absent means no org-fs mounts.
    */
   orgFsConfigJson?: string;
 }

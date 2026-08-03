@@ -296,7 +296,11 @@ export async function assembleDecopilotTools(
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
-    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    const threadRepo = await getThreadGithubRepo(
+      ctx,
+      extras.threadId,
+      input.agent.id,
+    );
     const effectiveRepo = threadRepo ?? vmMetadata.githubRepo;
     const isEphemeralAgent = !effectiveRepo;
     const vmContext: VmContext | null = input.user.id

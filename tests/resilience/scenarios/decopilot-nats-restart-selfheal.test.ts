@@ -35,7 +35,7 @@
  * Driving an end-to-end v2 streaming chat turn requires harness scaffolding
  * the resilience compose does NOT have today. See
  * `decopilot-nats-restart-selfheal.README.md` for the full gap list and the
- * port plan. In short, three things are missing:
+ * port plan. In short, two things are missing:
  *
  *   1. **No model provider.** The resilience `docker-compose.yml` has no
  *      `mock-ai` service. `streamText` (and tier resolution) need an
@@ -44,14 +44,6 @@
  *   2. **No v2 env.** The `studio` service has no `STREAM_OF_RECORD_V2_PERCENT`,
  *      so every new thread stays `message_storage_version=1` and NO parts are
  *      ever written. The turn must run with `STREAM_OF_RECORD_V2_PERCENT=100`.
- *   3. **Dispatch 409s.** `studio` runs with `STUDIO_SANDBOX_PROVIDER=user-desktop`
- *      and the `link-daemon` is behind a compose profile (not started by
- *      `up --wait`). With no link claim, `resolveDispatchTarget` returns
- *      `user_desktop_link_offline` and `POST /messages` 409s before any
- *      dispatch. The turn must run with `STUDIO_SANDBOX_PROVIDER=agent-sandbox`
- *      (as the multi-pod suite does) so dispatch short-circuits to hosted
- *      execution and the mock-ai stream runs without a sandbox.
- *
  * The toxiproxy / poll / Postgres-query wiring below is REAL and runnable —
  * `dbQuery` shells into the compose `postgres` service exactly like
  * `tests/multi-pod/lib/db.ts`, and the fold-and-assert helper imports the
@@ -169,15 +161,15 @@ describe("decopilot — stream-of-record self-heal across NATS restart", () => {
   // The actual self-heal proof. SKIPPED until the harness can drive a v2
   // streaming chat turn (see file header + README for the three missing
   // pieces). The body is intentionally complete so that un-skipping it — once
-  // `mock-ai` + `STREAM_OF_RECORD_V2_PERCENT=100` + `STUDIO_SANDBOX_PROVIDER=agent-sandbox`
-  // are wired — runs the real assertion with no further edits beyond
+  // `mock-ai` + `STREAM_OF_RECORD_V2_PERCENT=100` are wired — runs the real
+  // assertion with no further edits beyond
   // implementing `driveV2Turn` (outlined in the README).
   // ────────────────────────────────────────────────────────────────────────
   test.skip("NATS drops mid-stream → result survives in thread_message_parts → reconnect renders COMPLETE message", async () => {
     // TODO(task-10-harness): requires (a) a `mock-ai` service in
     // tests/resilience/docker-compose.yml, (b) `STREAM_OF_RECORD_V2_PERCENT=100`
-    // and `STUDIO_SANDBOX_PROVIDER=agent-sandbox` on the `studio` service, and
-    // (c) a `driveV2Turn` helper that bootstraps a provider/agent/thread and
+    // on the `studio` service, and (c) a `driveV2Turn` helper that bootstraps a
+    // provider/agent/thread and
     // POSTs a streaming message. See the README for the full port plan and
     // the `driveV2Turn` signature.
     //

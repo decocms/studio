@@ -6592,15 +6592,7 @@ export interface StudioToolIO {
     output: { success: boolean };
   };
   SANDBOX_START: {
-    input: {
-      virtualMcpId: string;
-      branch?: string | undefined;
-      sandboxProviderKind?:
-        | "agent-sandbox"
-        | "user-desktop"
-        | "cluster"
-        | undefined;
-    };
+    input: { virtualMcpId: string; branch?: string | undefined };
     output: {
       previewUrl: string | null;
       sandboxHandle: string;
@@ -6613,7 +6605,6 @@ export interface StudioToolIO {
     input: {
       virtualMcpId: string;
       branch: string;
-      sandboxProviderKind: "agent-sandbox" | "user-desktop" | "cluster";
       removeWorktree?: boolean | undefined;
     };
     output: { success: boolean };

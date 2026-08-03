@@ -73,7 +73,8 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BASE_URL: http://localhost:3000
       DECOCMS_LOCAL_MODE: "true"
-      STUDIO_SANDBOX_PROVIDER: user-desktop
+      STUDIO_AGENT_SANDBOX_ENABLED: "false"
+      STUDIO_SANDBOX_PROVIDER: user-desktop # rollback compatibility only
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       # org-fs mounts can't work in these containers (no FUSE / rclone mount
       # fails), and this suite exercises tunnel/WS resilience, not org-fs. With
@@ -105,4 +106,3 @@ services:
       retries: 20
     volumes:
       - ./nats-config/cluster.creds:/nats-creds/cluster.creds:ro
-

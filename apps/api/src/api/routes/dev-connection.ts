@@ -7,10 +7,9 @@
  * proxy chokepoints call this instead of `connections.findById` when they see a
  * `dev_` id (mirrors the `_self` synthetic-id bypass).
  *
- * Per-acting-user by construction: the previewUrl is read from
- * `sandboxMap[actingUserId]`, so each member only ever reaches their own
- * sandbox — there is no shared row to leak across users. No sandbox running for
- * the user → `null` (callers render a "start dev server" state).
+ * Sandbox identity follows the same owner rule as the proxy and lifecycle: a
+ * thread branch belongs to the thread creator, while ordinary branches belong
+ * to the acting user. No hosted sandbox running → `null`.
  *
  * Returns `null` unless the agent is the dev side of a dev/live pair (the
  * MCP-app signal — see the gate below), so plain website/Hydrogen sandbox
@@ -25,8 +24,8 @@
 
 import {
   getDevConnectionId,
-  parseBranchMap,
   type SandboxMap,
+  type SandboxRecord,
 } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
@@ -37,9 +36,14 @@ import {
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
 import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import {
-  type BranchMapEntryLike,
-  selectVmEntry,
-} from "@decocms/shared/sandbox/select-vm-entry";
+  resolveAgentSandboxRecord,
+  selectAgentSandboxBranchRecord,
+} from "../../tools/sandbox/agent-sandbox-record";
+import {
+  isSandboxOwner,
+  resolveSandboxUserId,
+} from "../../tools/sandbox/thread-repo";
+import { getSettings } from "../../settings";
 
 /** Env var the dev MCP app gates `/mcp` behind (matches the prod connection). */
 const MCP_AUTH_TOKEN_KEY = "MCP_AUTH_TOKEN";
@@ -109,6 +113,7 @@ export async function resolveDevConnection(
   actingUserId: string,
   branch?: string,
 ): Promise<ConnectionEntity | null> {
+  if (!getSettings().agentSandboxEnabled) return null;
   const orgId = ctx.organization?.id;
   if (!orgId) return null;
 
@@ -116,12 +121,9 @@ export async function resolveDevConnection(
   if (!vm || vm.organization_id !== orgId) return null;
 
   const metadata = (vm.metadata ?? {}) as Record<string, unknown>;
-  const userMap = readSandboxMap(metadata)[actingUserId];
-  if (!userMap) return null;
-
   const picked = branch
-    ? pickEntryForBranch(userMap, branch)
-    : pickMostRecentEntry(userMap);
+    ? await pickEntryForBranch(ctx, agentId, metadata, actingUserId, branch)
+    : pickMostRecentEntry(readSandboxMap(metadata)[actingUserId]);
   if (!picked?.entry.previewUrl) return null;
 
   // Authless by default — most dev servers run open. If the app gates /mcp
@@ -176,13 +178,28 @@ export async function resolveDevConnection(
   };
 }
 
-function pickEntryForBranch(
-  userMap: SandboxMap[string],
+async function pickEntryForBranch(
+  ctx: StudioContext,
+  virtualMcpId: string,
+  virtualMcpMetadata: Record<string, unknown>,
+  actingUserId: string,
   branch: string,
-): { branch: string; entry: BranchMapEntryLike } | null {
-  const entry = selectVmEntry(
-    parseBranchMap(userMap[branch]) as Record<string, BranchMapEntryLike>,
+): Promise<{ branch: string; entry: SandboxRecord } | null> {
+  const sandboxUserId = await resolveSandboxUserId(
+    ctx,
+    branch,
+    actingUserId,
+    virtualMcpId,
   );
+  if (!sandboxUserId) return null;
+  if (!isSandboxOwner(actingUserId, sandboxUserId)) return null;
+  const entry = await resolveAgentSandboxRecord({
+    ctx,
+    virtualMcpId,
+    virtualMcpMetadata,
+    sandboxUserId,
+    branch,
+  });
   return entry ? { branch, entry } : null;
 }
 
@@ -192,13 +209,12 @@ function pickEntryForBranch(
  * explicit `?branch=` override (follow-up) disambiguates.
  */
 function pickMostRecentEntry(
-  userMap: SandboxMap[string],
-): { branch: string; entry: BranchMapEntryLike } | null {
-  let best: { branch: string; entry: BranchMapEntryLike } | null = null;
-  for (const [branch, raw] of Object.entries(userMap)) {
-    const entry = selectVmEntry(
-      parseBranchMap(raw) as Record<string, BranchMapEntryLike>,
-    );
+  userMap: SandboxMap[string] | undefined,
+): { branch: string; entry: SandboxRecord } | null {
+  if (!userMap) return null;
+  let best: { branch: string; entry: SandboxRecord } | null = null;
+  for (const branch of Object.keys(userMap)) {
+    const entry = selectAgentSandboxBranchRecord(userMap[branch]);
     if (!entry) continue;
     if (!best || (entry.createdAt ?? 0) > (best.entry.createdAt ?? 0)) {
       best = { branch, entry };

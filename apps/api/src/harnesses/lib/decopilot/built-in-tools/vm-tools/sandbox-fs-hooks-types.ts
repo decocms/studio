@@ -12,8 +12,8 @@
  *
  * The two definitions MUST stay structurally identical until the package move
  * (spec Phase 5) collapses them to one. `tsc` enforces this at the glue seams
- * (`cluster-sandbox-fs.ts` / `desktop-sandbox-fs.ts`, which annotate their
- * return as this type while calling the sandbox builder) plus a compile-time
+ * (`agent-sandbox-fs.ts`, which annotates its return as this type while calling
+ * the sandbox builder) plus a compile-time
  * drift assertion in `sandbox-fs-hooks-types.test.ts`.
  */
 

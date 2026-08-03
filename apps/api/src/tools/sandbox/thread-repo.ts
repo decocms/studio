@@ -17,6 +17,7 @@ import type {
   SandboxRecord,
 } from "@decocms/shared/sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { Thread } from "@/storage/types";
 import {
   deleteSandboxMapEntry,
   mergeSandboxMapEntry,
@@ -77,6 +78,37 @@ export function threadIdFromBranch(
   return id || null;
 }
 
+type ThreadSandboxAuthority = Pick<Thread, "virtual_mcp_id" | "created_by">;
+
+export function threadBelongsToVirtualMcp(
+  thread: ThreadSandboxAuthority,
+  virtualMcpId: string,
+): boolean {
+  return thread.virtual_mcp_id === virtualMcpId;
+}
+
+/** Whether the authenticated caller owns the resolved sandbox identity. */
+export function isSandboxOwner(
+  callerUserId: string,
+  sandboxUserId: string,
+): boolean {
+  return callerUserId === sandboxUserId;
+}
+
+class ThreadSandboxScopeError extends Error {
+  constructor() {
+    super("Thread does not belong to the requested Virtual MCP");
+    this.name = "ThreadSandboxScopeError";
+  }
+}
+
+class ThreadSandboxMutationDeniedError extends Error {
+  constructor() {
+    super("Only the thread owner can change its sandbox");
+    this.name = "ThreadSandboxMutationDeniedError";
+  }
+}
+
 /**
  * The user a sandbox is KEYED by: a thread-scoped branch (`thread:<id>[/<conn>]`)
  * keys by the thread's creator, everything else by the caller.
@@ -88,52 +120,59 @@ export function threadIdFromBranch(
  * nobody can prompt (the chat is read-only for them) and whose shutdown
  * force-push races the owner's on that one branch. Keyed by the thread's
  * creator there is exactly one sandbox per thread, and every member resolves it
- * identically — a viewer's `/events`, `/read`, git and exec reach the live
- * daemon, and SANDBOX_START on an evicted one resumes it instead of forking a
- * copy.
+ * identically. Viewers may observe the preview, lifecycle, and safe git status
+ * surfaces; the proxy separately owner-gates filesystem, config, exec, and
+ * control routes. SANDBOX_START on an evicted sandbox is owner-only.
  *
  * This is sandbox IDENTITY only. Credential resolution (env secrets, submodule
  * PATs) and audit fields stay keyed to the CALLER, so viewing a thread never
  * mints someone else's secrets into a sandbox: a secret the caller can't read is
  * skipped, exactly as it is today.
  *
- * Never throws; an absent thread falls back to the caller.
+ * A missing thread or Virtual MCP mismatch returns null. Callers must fail
+ * closed instead of treating a forged `thread:*` key as a caller-owned branch.
  */
 export async function resolveSandboxUserId(
   ctx: StudioContext,
   branch: string | null | undefined,
   callerUserId: string,
-): Promise<string> {
+  virtualMcpId: string,
+): Promise<string | null> {
   const threadId = threadIdFromBranch(branch);
   if (!threadId) return callerUserId;
-  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
-  return thread?.created_by ?? callerUserId;
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread || !threadBelongsToVirtualMcp(thread, virtualMcpId)) return null;
+  return thread.created_by;
 }
 
-/** Read a thread's metadata JSON. Returns `null` only when the thread is
- *  absent (so writers can skip a non-existent row); an existing thread with a
- *  null metadata column returns `{}`. Never throws. `ctx.storage.threads` is
- *  already org-scoped, so only the thread id is needed. */
+/** Read a thread's metadata JSON. Returns `null` when the row is absent or its
+ *  Virtual MCP does not match; an existing in-scope thread with null metadata
+ *  returns `{}`. Storage is already organization-scoped. */
 async function getThreadMeta(
   ctx: StudioContext,
   threadId: string | undefined | null,
+  virtualMcpId: string,
 ): Promise<Record<string, unknown> | null> {
   if (!threadId) return null;
-  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
+  const thread = await ctx.storage.threads.get(threadId);
   if (!thread) return null;
+  if (!threadBelongsToVirtualMcp(thread, virtualMcpId)) {
+    return null;
+  }
   return (thread.metadata as Record<string, unknown> | null) ?? {};
 }
 
 /**
  * Read the branch the thread's sandbox was last actually on
  * (`metadata.headRef`), or null. See `sandbox/head-ref.ts` for why the derived
- * ref isn't enough. Never throws.
+ * ref isn't enough.
  */
 export async function getThreadHeadRef(
   ctx: StudioContext,
   threadId: string | undefined | null,
+  virtualMcpId: string,
 ): Promise<string | null> {
-  const meta = await getThreadMeta(ctx, threadId);
+  const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
   const ref = (meta as { headRef?: unknown } | null)?.headRef;
   return typeof ref === "string" && ref.length > 0 ? ref : null;
 }
@@ -148,22 +187,36 @@ export async function getThreadHeadRef(
 export async function setThreadHeadRef(
   ctx: StudioContext,
   threadId: string,
+  virtualMcpId: string,
+  actingUserId: string,
+  sandboxUserId: string,
   headRef: string,
 ): Promise<void> {
-  const meta = await getThreadMeta(ctx, threadId);
-  if (!meta) return;
-  if (meta.headRef === headRef) return;
-  await ctx.storage.threads
-    .update(threadId, { metadata: { ...meta, headRef } })
-    .catch((err) => console.warn("[thread-repo] setThreadHeadRef failed", err));
+  try {
+    await assertThreadSandboxMutationAuthority(
+      ctx,
+      threadId,
+      virtualMcpId,
+      actingUserId,
+      sandboxUserId,
+    );
+    const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
+    if (!meta || meta.headRef === headRef) return;
+    await ctx.storage.threads.update(threadId, {
+      metadata: { ...meta, headRef },
+    });
+  } catch (err) {
+    console.warn("[thread-repo] setThreadHeadRef failed", err);
+  }
 }
 
-/** Read the repo bound to a thread, or null. Never throws. */
+/** Read the repo bound to an in-scope thread, or null when it is absent. */
 export async function getThreadGithubRepo(
   ctx: StudioContext,
   threadId: string | undefined | null,
+  virtualMcpId: string,
 ): Promise<GithubRepo | null> {
-  const meta = await getThreadMeta(ctx, threadId);
+  const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
   return (meta as { githubRepo?: GithubRepo } | null)?.githubRepo ?? null;
 }
 
@@ -174,65 +227,101 @@ export async function getThreadGithubRepo(
  * branches this is the only place the frontend reads the live `previewUrl`/
  * handle from. Called from `provisionSandbox` so every provisioning path
  * (load_repo, the frontend's SANDBOX_START auto-start, the fs tools) persists
- * it — not just `load_repo`. Never throws.
+ * it — not just `load_repo`. Scope, ownership, and storage failures propagate
+ * so callers cannot provision a sandbox whose authoritative record was lost.
  */
 export async function setThreadSandboxMapEntry(
   ctx: StudioContext,
   threadId: string,
-  userId: string,
+  virtualMcpId: string,
+  actingUserId: string,
+  sandboxUserId: string,
   branch: string,
   kind: SandboxProviderKind,
   entry: SandboxRecord,
 ): Promise<void> {
-  const meta = await getThreadMeta(ctx, threadId);
-  if (!meta) return;
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread || !threadBelongsToVirtualMcp(thread, virtualMcpId)) {
+    throw new ThreadSandboxScopeError();
+  }
+  if (
+    !isSandboxOwner(actingUserId, thread.created_by) ||
+    !isSandboxOwner(sandboxUserId, thread.created_by)
+  ) {
+    throw new ThreadSandboxMutationDeniedError();
+  }
+  const meta = (thread.metadata as Record<string, unknown> | null) ?? {};
   const next = mergeSandboxMapEntry(
     readSandboxMap(meta),
-    userId,
+    sandboxUserId,
     branch,
     kind,
     entry,
   );
-  await ctx.storage.threads
-    .update(threadId, { metadata: { ...meta, sandboxMap: next } })
-    .catch((err) =>
-      console.warn("[thread-repo] setThreadSandboxMapEntry failed", err),
-    );
+  await ctx.storage.threads.update(threadId, {
+    metadata: { ...meta, sandboxMap: next },
+  });
 }
 
-/** The thread's sandboxMap ([userId][branch][kind]). `{}` when absent. Never
- *  throws. This is where the synthetic Decopilot agent's sandbox records live,
- *  so backend existence checks (the events handler) must read it here — the
- *  agent row is a no-op store for those. */
+/** The thread's sandboxMap ([userId][branch][kind]), or null when the thread is
+ *  absent or outside the requested Virtual MCP. This is where the synthetic
+ *  Decopilot agent's sandbox records live, so backend existence checks must
+ *  read it here — the agent row is a no-op store for those. */
 export async function getThreadSandboxMap(
   ctx: StudioContext,
   threadId: string | undefined | null,
-): Promise<SandboxMap> {
-  return readSandboxMap(await getThreadMeta(ctx, threadId));
+  virtualMcpId: string,
+): Promise<SandboxMap | null> {
+  const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
+  return meta ? readSandboxMap(meta) : null;
 }
 
-/** Remove sandboxMap[userId][branch][kind] from the thread via the shared
- *  {@link deleteSandboxMapEntry}. No-op when the thread or entry is absent.
- *  Never throws. Mirrors the agent-scoped `removeSandboxMapEntry`. */
-export async function removeThreadSandboxMapEntry(
+/** Fail closed unless the acting user and sandbox owner are the thread owner. */
+export async function assertThreadSandboxMutationAuthority(
   ctx: StudioContext,
   threadId: string,
-  userId: string,
+  virtualMcpId: string,
+  actingUserId: string,
+  sandboxUserId: string,
+): Promise<void> {
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread || !threadBelongsToVirtualMcp(thread, virtualMcpId)) {
+    throw new ThreadSandboxScopeError();
+  }
+  if (
+    !isSandboxOwner(actingUserId, thread.created_by) ||
+    !isSandboxOwner(sandboxUserId, thread.created_by)
+  ) {
+    throw new ThreadSandboxMutationDeniedError();
+  }
+}
+
+export async function removeThreadSandboxMapEntryStrict(
+  ctx: StudioContext,
+  threadId: string,
+  virtualMcpId: string,
+  actingUserId: string,
+  sandboxUserId: string,
   branch: string,
   kind: SandboxProviderKind,
 ): Promise<void> {
-  const meta = await getThreadMeta(ctx, threadId);
-  if (!meta) return;
+  await assertThreadSandboxMutationAuthority(
+    ctx,
+    threadId,
+    virtualMcpId,
+    actingUserId,
+    sandboxUserId,
+  );
+  const meta = await getThreadMeta(ctx, threadId, virtualMcpId);
+  if (!meta) throw new ThreadSandboxScopeError();
   const next = deleteSandboxMapEntry(
     readSandboxMap(meta),
-    userId,
+    sandboxUserId,
     branch,
     kind,
   );
   if (!next) return;
-  await ctx.storage.threads
-    .update(threadId, { metadata: { ...meta, sandboxMap: next } })
-    .catch((err) =>
-      console.warn("[thread-repo] removeThreadSandboxMapEntry failed", err),
-    );
+  await ctx.storage.threads.update(threadId, {
+    metadata: { ...meta, sandboxMap: next },
+  });
 }
