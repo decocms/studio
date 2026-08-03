@@ -156,6 +156,22 @@ describe("Credential Vault Routes", () => {
           created_at: now,
           updated_at: now,
         },
+        {
+          id: "conn_static_token_target",
+          organization_id: "org_1",
+          created_by: "user_1",
+          title: "Static Token Target",
+          connection_type: "HTTP",
+          connection_url: "https://static-token.example.test/mcp",
+          // Token-auth MCP (e.g. Shopify): bearer on the connection only.
+          connection_token: await new CredentialVault(
+            getSettings().encryptionKey,
+          ).encrypt("static-admin-api-token"),
+          status: "active",
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        },
       ])
       .execute();
 
@@ -181,6 +197,10 @@ describe("Credential Vault Routes", () => {
         },
         {
           targetConnectionId: "conn_inactive_granted",
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        },
+        {
+          targetConnectionId: "conn_static_token_target",
           scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
         },
         {
@@ -269,6 +289,37 @@ describe("Credential Vault Routes", () => {
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
     );
     expect(body.scope).toBe("read write");
+  });
+
+  it("falls back to the connection's static bearer token when there is no OAuth token", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_static_token_target/access-token",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Pragma")).toBe("no-cache");
+    const body = (await res.json()) as {
+      type: string;
+      tokenType: string;
+      accessToken: string;
+      expiresAt: string | null;
+      scope: string | null;
+    };
+    expect(Object.keys(body).sort()).toEqual(
+      ["accessToken", "expiresAt", "scope", "tokenType", "type"].sort(),
+    );
+    expect(body.type).toBe("static_token");
+    expect(body.tokenType).toBe("Bearer");
+    expect(body.accessToken).toBe("static-admin-api-token");
+    expect(body.expiresAt).toBeNull();
+    expect(body.scope).toBeNull();
   });
 
   it("exchanges a workload token for a granted downstream MCP configuration", async () => {

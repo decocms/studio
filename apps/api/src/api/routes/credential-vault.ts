@@ -147,6 +147,18 @@ export const createCredentialVaultRoutes = () => {
     });
 
     if (result.state === "missing") {
+      // Static-token MCPs (e.g. Shopify): the bearer lives on connection_token.
+      if (target.connection_token) {
+        c.header("Cache-Control", "no-store");
+        c.header("Pragma", "no-cache");
+        return c.json({
+          type: "static_token",
+          tokenType: "Bearer",
+          accessToken: target.connection_token,
+          expiresAt: null,
+          scope: null,
+        });
+      }
       return c.json({ error: "Downstream token not found" }, 409);
     }
     if (
