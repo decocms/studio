@@ -90,6 +90,8 @@ The choice is permanent for that thread: reopening it reattaches to the running 
   This picker only appears in the Studio Native desktop app, and only for a brand-new thread — it is unrelated to the managed **Decopilot** runtime described above, which is available in both the desktop app and the web app.
 </Callout>
 
+In Studio Native, opening a branch clones a local working tree for it on disk, which stays there as long as at least one thread on that branch is open. Archiving the **last** open thread on a branch now offers to reclaim it — stopping everything running on that branch and deleting its files from your computer. This is opt-in per archive, only affects the local clone, and does not touch the branch itself or anything already pushed to the remote.
+
 ## An agent is a virtual MCP
 
 Each agent in Studio is exposed as its own **MCP endpoint**: a curated bundle of tools, resources, and instructions that any MCP-compatible client can connect to. You can think of an agent as a "virtual MCP server" that you assemble visually — pick a few tools from your connections, layer on instructions, and you've published a focused MCP endpoint your team (or your other agents) can use.
