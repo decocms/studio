@@ -47,6 +47,16 @@ import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { findArchiveFallback } from "./archive-fallback";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
+import { toast } from "sonner";
+import { useStudioTools } from "@/lib/studio-tools";
+import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
+import { ArchiveWorktreeDialog } from "./archive-worktree-dialog";
+import {
+  archiveConfirmSteps,
+  hasOpenSiblingOnBranch,
+  worktreeReclaimTarget,
+  type WorktreeReclaimTarget,
+} from "./worktree-reclaim";
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
@@ -149,6 +159,7 @@ export function TaskGroupsList({
   const { hide, setScope } = useThreadActions();
 
   const navigate = useNavigate();
+  const studio = useStudioTools();
   const { setTaskId, createNewTask } = usePanelActions();
   const params = useParams({ strict: false }) as {
     taskId?: string;
@@ -178,6 +189,13 @@ export function TaskGroupsList({
   );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
+  // Desktop only: the pending "archive the last chat on this branch and delete
+  // its worktree?" confirm. Non-null ⇒ the dialog is up and the archive has
+  // NOT happened yet.
+  const [reclaimPrompt, setReclaimPrompt] = useState<{
+    task: Task;
+    target: WorktreeReclaimTarget;
+  } | null>(null);
 
   // `filters` drives the per-status / per-group server pagination (status mode),
   // where `member: "mine"` scopes the query to the current user.
@@ -228,19 +246,19 @@ export function TaskGroupsList({
   // threads live on its home view.
   const visibleScopedThreads = showAll ? allThreadsFiltered : myThreads;
 
-  const handleArchive = (task: Task) => {
-    // Archiving hides a thread org-wide, so it must be owner-only — the UI
-    // withholds the affordance on teammates' rows, but guard here too in case
-    // a caller ever wires it up without that check.
-    if (currentUserId && task.created_by && task.created_by !== currentUserId) {
-      return;
-    }
+  /** The archive itself. Nothing here runs until the reclaim confirm (if any)
+   * has been answered — cancel must perform NONE of it. */
+  /** Resolves once the archive has actually landed on the server. Navigation
+   *  below stays optimistic; only the returned promise reflects the write, and
+   *  it rejects (restoring the row) if the server refused — which is what the
+   *  worktree-reclaim path must wait on before deleting anything. */
+  const archiveNow = (task: Task): Promise<void> => {
     const wasActive = task.id === activeTaskId;
-    hide(task.id);
+    const archived = hide(task.id);
     // Drop the archived thread's remembered layout so it can't resurface if a
     // new thread ever reuses the id within this session.
     forgetThreadLayout(task.id);
-    if (!wasActive) return;
+    if (!wasActive) return archived;
     // Follow the sidebar's current filtered order across agents, while keeping
     // teammate threads opt-in even when Team scope renders them.
     const next = findArchiveFallback(
@@ -254,7 +272,86 @@ export function TaskGroupsList({
     } else {
       navigate({ to: "/$org", params: { org: org.slug } });
     }
+    return archived;
   };
+
+  const reclaimWorktree = async (target: WorktreeReclaimTarget) => {
+    try {
+      await studio.call("SANDBOX_DELETE", {
+        virtualMcpId: target.virtualMcpId,
+        branch: target.branch,
+        // The sidebar has no `vmEntry` for an arbitrary thread, and this path
+        // is desktop-gated, where this is the only possible provider.
+        sandboxProviderKind: "user-desktop",
+        removeWorktree: true,
+      });
+    } catch {
+      // The thread is already archived — a failed reclaim is a recoverable
+      // disk leak, not a broken UI state. Say so rather than swallowing it.
+      toast.error(
+        t("sidebar.archiveWorktreeDialog.reclaimFailed", {
+          branch: target.branch,
+        }),
+      );
+    }
+  };
+
+  const handleArchive = (task: Task) => {
+    // Archiving hides a thread org-wide, so it must be owner-only — the UI
+    // withholds the affordance on teammates' rows, but guard here too in case
+    // a caller ever wires it up without that check.
+    if (currentUserId && task.created_by && task.created_by !== currentUserId) {
+      return;
+    }
+    const target = worktreeReclaimTarget(task, isDesktopAppEnvironment());
+    // No branch, or someone else is still on this one, so there is no worktree
+    // to reclaim. Plain archive: nothing destructive follows, so the write is
+    // fire-and-forget exactly as it was before the reclaim flow existed.
+    //
+    // `allThreads` is authoritative here, not a sample: on the desktop the
+    // thread list is answered in full by the local intercept (see `list()` in
+    // `intercept::thread_tools`), and kept live by SSE. That is what lets this
+    // stay a synchronous local decision with no query behind it.
+    if (!target || hasOpenSiblingOnBranch(allThreads, target)) {
+      void archiveNow(task);
+      return;
+    }
+    setReclaimPrompt({ task, target });
+  };
+
+  const handleReclaimOutcome = (outcome: "cancel" | "confirm") => {
+    const prompt = reclaimPrompt;
+    if (!prompt) return;
+    setReclaimPrompt(null);
+    // Archive first, then reclaim — and only if the archive actually landed.
+    // A failed reclaim leaves an archived thread and a live worktree
+    // (recoverable). The reverse would leave a visible chat whose worktree is
+    // gone, so a rejected archive (optimisticHide restores the row and
+    // rethrows) must abort the sequence before anything is deleted.
+    void (async () => {
+      for (const step of archiveConfirmSteps(outcome)) {
+        if (step === "archive") {
+          try {
+            await archiveNow(prompt.task);
+          } catch {
+            return;
+          }
+        } else {
+          await reclaimWorktree(prompt.target);
+        }
+      }
+    })();
+  };
+
+  // Rendered in every layout branch: once the confirm is up it must survive a
+  // sidebar collapse or a viewport change, since dismissing it silently would
+  // read as "cancelled" while leaving the user no way back to the decision.
+  const reclaimDialog = reclaimPrompt ? (
+    <ArchiveWorktreeDialog
+      branch={reclaimPrompt.target.branch}
+      onOutcome={handleReclaimOutcome}
+    />
+  ) : null;
 
   const handleSelectTask = (t: Task) => {
     closeAfterNavigation();
@@ -335,6 +432,7 @@ export function TaskGroupsList({
         {searchEverOpened && (
           <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
         )}
+        {reclaimDialog}
       </div>
     );
   }
@@ -475,6 +573,7 @@ export function TaskGroupsList({
         {searchEverOpened && (
           <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
         )}
+        {reclaimDialog}
       </div>
     );
   }
@@ -504,6 +603,7 @@ export function TaskGroupsList({
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
+      {reclaimDialog}
     </div>
   );
 }

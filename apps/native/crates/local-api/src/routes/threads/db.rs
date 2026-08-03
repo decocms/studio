@@ -902,9 +902,12 @@ impl RtAccountScope {
     }
 }
 
-/// Filters and pagination for a scoped native thread listing. Keeping these in
-/// one typed value prevents the storage API from growing another positional
-/// argument every time the production collection adds a filter.
+/// Filters for a scoped native thread listing. Keeping these in one typed value
+/// prevents the storage API from growing another positional argument every time
+/// the production collection adds a filter.
+///
+/// No `limit`/`offset`: the local list is answered in full (see `list()` in
+/// `intercept::thread_tools` for why), so every caller gets every matching row.
 #[derive(Debug, Clone, Copy)]
 pub struct RtThreadListOptions<'a> {
     pub created_by: Option<&'a str>,
@@ -917,8 +920,6 @@ pub struct RtThreadListOptions<'a> {
     pub end_date: Option<&'a str>,
     pub status: Option<&'a str>,
     pub agent_id: Option<&'a str>,
-    pub limit: i64,
-    pub offset: i64,
 }
 
 /// Durable identity for one live incarnation of a local thread. `generation`
@@ -1556,8 +1557,10 @@ impl ThreadsDb {
     /// wins over the legacy `agent_id` fallback and the remaining predicates
     /// compose normally. `search` is a case-insensitive literal substring
     /// match on `title`.
-    /// Returns `(items, total_count)` so the caller can compute `hasMore`
-    /// (`offset + limit < total_count`) without a second round trip.
+    ///
+    /// Returns EVERY matching row — there is no pagination here — plus the
+    /// count, which is consequently always `items.len()`. The count is still
+    /// returned so callers report `totalCount` from one place.
     pub fn rt_list_threads_scoped(
         &self,
         scope: &RtAccountScope,
@@ -1636,14 +1639,13 @@ impl ThreadsDb {
             |row| row.get(0),
         )?;
 
+        // No LIMIT/OFFSET: every matching row, every time. `total` above and
+        // `out.len()` below are therefore always equal — the count query is kept
+        // only so the response's `totalCount` stays a single source of truth.
         let list_sql = format!(
             "SELECT {RT_THREAD_COLUMNS} FROM native_scoped_threads WHERE {where_sql} \
-             ORDER BY updated_at DESC, rowid DESC LIMIT ?{} OFFSET ?{}",
-            sql_params.len() + 1,
-            sql_params.len() + 2,
+             ORDER BY updated_at DESC, rowid DESC"
         );
-        sql_params.push(Box::new(options.limit));
-        sql_params.push(Box::new(options.offset));
         let mut stmt = conn.prepare(&list_sql)?;
         let rows = stmt.query_map(
             rusqlite::params_from_iter(sql_params.iter().map(|b| b.as_ref())),
@@ -5525,8 +5527,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                     end_date: None,
                     status: None,
                     agent_id: None,
-                    limit: 50,
-                    offset: 0,
                 },
             )
             .unwrap();
@@ -5623,8 +5623,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                     // Production uses virtual_mcp_id first and only falls
                     // back to agentId when it is absent.
                     agent_id: Some("vm-agent"),
-                    limit: 100,
-                    offset: 0,
                 },
             )
             .unwrap();
@@ -5647,8 +5645,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                     end_date: None,
                     status: Some("completed"),
                     agent_id: Some("vm-agent"),
-                    limit: 100,
-                    offset: 0,
                 },
             )
             .unwrap();
@@ -5674,14 +5670,23 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                     end_date: Some("2999-01-02T00:00:00.000Z"),
                     status: Some("in_progress"),
                     agent_id: Some("missing-agent"),
-                    limit: 1,
-                    offset: 0,
                 },
             )
             .unwrap();
+        // Unpaginated: the count and the returned rows are now always the same
+        // set. The old expectation of 1 item out of 2 was a `limit: 1` slice,
+        // not a filter result.
         assert_eq!(trigger_total, 2);
-        assert_eq!(trigger_items.len(), 1);
-        assert_eq!(trigger_items[0].id, "normal-other");
+        assert_eq!(trigger_items.len(), 2);
+        let mut ids = trigger_items
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec!["normal-match".to_string(), "normal-other".to_string()]
+        );
         assert!(trigger_items.iter().all(|item| !item.hidden));
     }
 
