@@ -1,18 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { Glob } from "bun";
 
-// Step-2 exit gate: the portable to-move set must not reach the cluster tree
-// via relative imports. The guard targets the three cluster-only trees the
-// extraction is severing — `api/routes/decopilot`, `ai-providers`, `shared`
-// (see plan §H Task 9, "no production harness source reaches
-// ../../api/routes/decopilot/*, ../../ai-providers/*, or ../../shared/*").
-//
-// `core`/`storage`/`tools` are intentionally NOT in the pattern: the
-// cluster-side DI assemblers (`decopilot/harness-deps.ts`,
-// `decopilot/index.ts`) legitimately keep
-// `StudioContext`/`HarnessContext` type reaches (`../core/studio-context`,
-// `../../core/harness-context`) — that DI surface is rewritten to
-// harness-lib specifiers when the package moved, and stays that way.
+// Keep the reusable harness sources from reaching into route, provider, or
+// shared app internals through relative imports. Hosted adapters may depend on
+// StudioContext and the explicit environment builder.
 //
 // Excludes:
 //  - *.integration.test.ts (DB-backed; stays studio-side, not packaged)
@@ -22,7 +13,7 @@ const CROSS_TREE =
   /from\s+["'](?:\.\.\/)+(?:api\/routes\/decopilot|ai-providers|shared)\//;
 
 describe("harness tree is cross-tree-free", () => {
-  it("has no portable source reaching the cluster tree", async () => {
+  it("keeps reusable sources out of route and provider internals", async () => {
     const root = new URL("./", import.meta.url).pathname;
     const offenders: string[] = [];
     for await (const rel of new Glob("**/*.ts").scan(root)) {
@@ -36,11 +27,7 @@ describe("harness tree is cross-tree-free", () => {
   });
 });
 
-// Option-b sandbox decoupling: the portable harness was extracted to
-// `@/harnesses/lib` (guarded there by apps/api/src/harnesses/lib/no-cross-tree.test.ts).
-// What remains in this directory is the cluster island, which sits ABOVE
-// `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
-// not a layering violation — but we still keep that surface explicit and small.
+// Keep the direct @decocms/sandbox dependency explicit and small.
 // Only `agent-sandbox-fs.ts` may bridge into sandbox: it constructs the
 // hosted AgentSandbox provider + fs hooks.
 // Every other production file consumes the harness-owned flat `SandboxFsHooks`
@@ -49,7 +36,7 @@ const SANDBOX_GLUE = new Set(["decopilot/built-in-tools/agent-sandbox-fs.ts"]);
 const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;
 
 describe("harness tree is @decocms/sandbox-free", () => {
-  it("has no portable source importing @decocms/sandbox (only the glue + tests)", async () => {
+  it("keeps @decocms/sandbox imports in the hosted glue", async () => {
     const root = new URL("./", import.meta.url).pathname;
     const offenders: string[] = [];
     for await (const rel of new Glob("**/*.ts").scan(root)) {

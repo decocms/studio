@@ -16,7 +16,6 @@ import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
-import type { HarnessContext } from "./harness-context";
 export type { BetterAuthInstance } from "@/auth";
 // Re-export for consumers
 export type { AccessControl, CredentialVault };
@@ -375,7 +374,7 @@ export interface Timings {
  * This provides access to all necessary services without coupling
  * to implementation details.
  */
-export interface StudioContext extends HarnessContext {
+export interface StudioContext {
   // Connection ID (from url)
   connectionId?: string;
 

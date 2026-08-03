@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type { ToolSet, UIMessageChunk } from "ai";
 import {
   runDecopilotCore,
@@ -136,7 +137,7 @@ const baseInput = {
 } as RunDecopilotCoreDeps["input"];
 
 const baseRunContext: RunDecopilotCoreDeps["runContext"] = {
-  virtualMcp: { id: "vir_1", metadata: {} },
+  virtualMcp: { id: "vir_1", metadata: {} } as VirtualMCPEntity,
 };
 
 const modelRuntime = {
@@ -278,7 +279,7 @@ describe("runDecopilotCore conversation input", () => {
       },
     };
     const runContext: RunDecopilotCoreDeps["runContext"] = {
-      virtualMcp: { id: "vir_1", metadata: {} },
+      virtualMcp: { id: "vir_1", metadata: {} } as VirtualMCPEntity,
       messages: [
         {
           id: "previous",

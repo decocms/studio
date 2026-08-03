@@ -1,11 +1,10 @@
 /**
- * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
+ * Hosted Decopilot environment.
  *
  * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`). The
- * package factory gets its StudioContext-backed `DecopilotToolRuntime` +
- * `telemetry` through this registered cluster assembler:
+ * This builds the StudioContext-backed `DecopilotToolRuntime` and telemetry:
  *
- *   - the in-process virtual-MCP passthrough client + the full cluster tool set
+ *   - the in-process virtual-MCP passthrough client + the full hosted tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
  *     HTML-artifact buffer/watcher, plus the ctx-coupled `runAgentLoop` engine.
  */
@@ -16,13 +15,12 @@ import type {
 } from "../../core/studio-context";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "@/api/routes/dev-connection";
 import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
-import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
+import { buildHostedMcpToolHooks } from "@/api/routes/decopilot/mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
 import { createHtmlArtifactWatcher } from "./built-in-tools/vm-tools/html-artifact-watcher";
 import type { PendingImage } from "./built-in-tools";
@@ -40,13 +38,11 @@ import type { DecopilotTelemetry } from "@/harnesses/lib/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
 
 /**
- * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
+ * Hosted engine adapter: maps `RunEngineArgs` onto the ctx-coupled
  * `runAgentLoop` (which owns system-prompt assembly + tool assembly + the
- * native streamText loop). Closes over `ctx` + `organization`. No behavior
- * change — the same `runAgentLoop` call the cluster factory made before the
- * unification, with the parent-supplied args threaded through.
+ * native streamText loop). It closes over `ctx` and `organization`.
  */
-async function runClusterEngine(
+async function runHostedEngine(
   ctx: StudioContext,
   organization: OrganizationScope,
   args: RunEngineArgs,
@@ -96,20 +92,23 @@ async function runClusterEngine(
 }
 
 /**
- * Build the CLUSTER environment deps: the StudioContext-backed tool runtime
- * (in-process virtual-MCP passthrough + full cluster built-ins + the per-run
- * HTML-artifact buffer) and the cluster telemetry sink. `cleanup.close` is assigned
+ * Build the hosted environment: the StudioContext-backed tool runtime
+ * (in-process virtual-MCP passthrough + hosted built-ins + the per-run
+ * HTML-artifact buffer) and telemetry sink. `cleanup.close` is assigned
  * inside `buildEnvironmentTools` so the factory's `finally` can close the live
  * passthrough client even if the core throws mid-stream.
  */
-export function buildClusterEnvironmentTools(args: {
+export function buildHostedDecopilotEnvironment(args: {
   ctx: StudioContext;
-  organization: OrganizationScope;
   modelRuntime: ModelRuntime;
   sideChannel: SideChannelWriter;
   cleanup: { close?: () => Promise<void> };
 }): { toolRuntime: DecopilotToolRuntime; telemetry: DecopilotTelemetry } {
-  const { ctx, organization, modelRuntime, sideChannel, cleanup } = args;
+  const { ctx, modelRuntime, sideChannel, cleanup } = args;
+  const organization = ctx.organization;
+  if (!organization) {
+    throw new Error("[decopilot] organization context is required");
+  }
   // Live HTML-artifact previews: change-feed watcher emitting `data-deck-updated`
   // parts for `decks/`|`pages/` writes in the org home volume, plus the
   // write/edit fast-path mirror that lands tool content in org-fs at step end
@@ -128,8 +127,10 @@ export function buildClusterEnvironmentTools(args: {
     }) => {
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
-      const { resolveArgs, onToolCalled, onPrOpened } =
-        buildClusterMcpToolHooks(ctx, streamInput.threadId);
+      const { resolveArgs, onToolCalled, onPrOpened } = buildHostedMcpToolHooks(
+        ctx,
+        streamInput.threadId,
+      );
 
       const assembled = await assembleDecopilotTools(
         streamInput,
@@ -141,7 +142,7 @@ export function buildClusterEnvironmentTools(args: {
           pendingImages,
           threadId: streamInput.threadId,
           // Hosted MCP tool-call hooks: storage-ref resolution + PostHog
-          // analytics. The portable assembly forwards these as-is.
+          // analytics. Tool assembly forwards these as-is.
           resolveArgs,
           onToolCalled,
           onPrOpened,
@@ -149,10 +150,8 @@ export function buildClusterEnvironmentTools(args: {
           // Virtual MCP in DecopilotRunContext. superUser/listTimeout come
           // from the caller (assembleDecopilotTools).
           openMcp: async (opts) => {
-            // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
-            // the transport type widens the field to a loose bag so the
-            // daemon can ship without the cluster's storage types.
-            const vm = runContext.virtualMcp as VirtualMCPEntity;
+            // The run context carries the complete persisted Virtual MCP.
+            const vm = runContext.virtualMcp;
             // Surface tools from the run's hosted dev sandbox when it actually
             // speaks MCP. The resolver owns thread-scoped record lookup.
             let devConnection: ConnectionEntity | null = null;
@@ -178,7 +177,7 @@ export function buildClusterEnvironmentTools(args: {
           deepResearchProvider:
             modelRuntime.deepResearch?.provider ??
             modelRuntime.thinking.provider,
-          // Hosted cluster runs get a DBOS-backed background dispatcher so slow
+          // Hosted runs get a DBOS-backed background dispatcher so slow
           // built-ins (generate_image) don't freeze the turn. The reaction turn
           // is rebuilt on any pod from this serializable snapshot.
           backgroundDispatcher: createBackgroundToolDispatcher({
@@ -222,7 +221,7 @@ export function buildClusterEnvironmentTools(args: {
       cleanup.close = assembled.close;
       return bundle;
     },
-    runEngine: (engineArgs) => runClusterEngine(ctx, organization, engineArgs),
+    runEngine: (engineArgs) => runHostedEngine(ctx, organization, engineArgs),
   };
 
   const telemetry: DecopilotTelemetry = {

@@ -1,16 +1,15 @@
 /**
- * Cluster adapter — MCP tool-call hooks built from a StudioContext.
+ * Hosted MCP tool-call hooks built from a StudioContext.
  *
- * The portable tool assembly (`harnesses/decopilot/mcp-tools.ts` and its
- * callers `tools.ts` / `assemble-agent-tools.ts`) takes `resolveArgs` and
- * `onToolCalled` as injected, ctx-free hooks. This module builds the cluster
- * implementations of those hooks from a `StudioContext`:
+ * Decopilot tool assembly takes `resolveArgs` and `onToolCalled` as injected,
+ * context-free hooks. This module builds their hosted implementations from a
+ * `StudioContext`:
  *
  *   - `resolveArgs`  → resolve `studio-storage:` refs to presigned URLs.
  *   - `onToolCalled` → emit per-tool-call analytics to PostHog.
  *
- * Lives in the cluster layer (not the portable harness tree) so the harness
- * leaves stay free of `@/posthog` / `file-materializer` reaches.
+ * Kept at the API boundary so core tool assembly stays free of PostHog and
+ * file-materializer dependencies.
  */
 
 import type { StudioContext } from "@/core/studio-context";
@@ -26,7 +25,7 @@ import {
   isPrCreateMcpTool,
 } from "@/tools/task-board/run-reactions";
 
-export interface ClusterMcpToolHooks {
+export interface HostedMcpToolHooks {
   resolveArgs: (
     input: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
@@ -35,18 +34,16 @@ export interface ClusterMcpToolHooks {
 }
 
 /**
- * Build the cluster `resolveArgs` + `onToolCalled` hooks from a
- * StudioContext. The closures are byte-equivalent to the originals that
- * lived in `helpers.ts`'s `toolsFromMCP` wrapper.
+ * Build the hosted `resolveArgs` and analytics hooks from StudioContext.
  *
  * `threadId` is passed through to the PR-open task-board reaction so it can
  * resolve a linked task via `task_board_item_threads` when the run carries no
  * `runMetadata.taskBoardItemId` (a re-prompted, repo-backed task's PR).
  */
-export function buildClusterMcpToolHooks(
+export function buildHostedMcpToolHooks(
   ctx: StudioContext,
   threadId?: string,
-): ClusterMcpToolHooks {
+): HostedMcpToolHooks {
   return {
     resolveArgs: (input) => resolveArgsStorageRefs(input, ctx),
     onToolCalled: (event) => {

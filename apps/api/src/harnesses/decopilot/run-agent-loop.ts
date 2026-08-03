@@ -42,7 +42,7 @@ import {
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { BuiltinToolParams } from "./built-in-tools";
-import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
+import { buildHostedMcpToolHooks } from "@/api/routes/decopilot/mcp-tool-hooks";
 import {
   advanceTaskBoardForRun,
   capturePrForRun,
@@ -194,7 +194,7 @@ export async function runAgentLoop(
   // ── Tools ─────────────────────────────────────────────────────────
   // Cluster MCP tool-call hooks: storage-ref resolution + posthog
   // analytics, built from ctx. The portable assembler forwards them as-is.
-  const { resolveArgs, onToolCalled, onPrOpened } = buildClusterMcpToolHooks(
+  const { resolveArgs, onToolCalled, onPrOpened } = buildHostedMcpToolHooks(
     opts.ctx,
     opts.currentThreadId,
   );

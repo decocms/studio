@@ -11,16 +11,11 @@
  *  - VM file-tool binding context (`vmContext`) keyed on whether the
  *    agent is GitHub-linked or ephemeral.
  *
- * Today this code lives inline inside `stream-core.ts` (~lines 530–660);
- * the helper here is unused until Task 12 wires it through the harness
- * factory. Behavior is intended to be byte-for-byte the same as the
- * inline version, modulo the CLI-agent branch (claude-code / codex)
- * which is removed because the decopilot harness never runs against
- * those providers — they have their own harnesses.
+ * This is the one hosted tool-assembly path. Local terminal agents do not run
+ * through it.
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { GithubRepo } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import { getThreadGithubRepo, threadBranch } from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
@@ -286,9 +281,7 @@ export async function assembleDecopilotTools(
     //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
     //   parallel writes to overlapping filenames can race. Fine for
     //   reads and scoped outputs; revisit if it bites.
-    const vmMetadata = runContext.virtualMcp.metadata as {
-      githubRepo?: GithubRepo | null;
-    };
+    const vmMetadata = runContext.virtualMcp.metadata;
     // A thread-scoped repo (set by `load_repo`, super-agent-only) wins: it's the
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a

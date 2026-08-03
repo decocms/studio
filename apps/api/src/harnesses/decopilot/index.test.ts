@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import { streamDecopilot } from "./index";
-import type { DecopilotStreamInput } from "../types";
-import type { DecopilotRunContext } from "./run-context";
+import type { DecopilotStreamInput } from "@/harnesses/lib/types";
+import type { DecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 
 const RUN_CONTEXT: DecopilotRunContext = {
-  virtualMcp: { id: "agent-1", metadata: {} },
+  virtualMcp: { id: "agent-1", metadata: {} } as VirtualMCPEntity,
 };
 
 function makeInput(
@@ -47,6 +48,27 @@ describe("streamDecopilot", () => {
 
     await expect(iterator.next()).rejects.toThrow(
       /secret thinking model source/,
+    );
+  });
+
+  it("builds the hosted environment directly from StudioContext", async () => {
+    const runContext: DecopilotRunContext = {
+      ...RUN_CONTEXT,
+      modelSources: {
+        thinking: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "test-key",
+          modelId: "claude-test",
+        },
+      },
+    };
+    const iterator = streamDecopilot({} as never, makeInput({}), runContext)[
+      Symbol.asyncIterator
+    ]();
+
+    await expect(iterator.next()).rejects.toThrow(
+      /organization context is required/,
     );
   });
 });

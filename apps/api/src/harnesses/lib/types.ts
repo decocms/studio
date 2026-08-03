@@ -32,29 +32,3 @@ export type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
 } from "./sources";
-
-/** Narrow context interface the hosted Decopilot stream takes. Cluster-specific
- *  surface (DB, vault, auth, MCP gateway internals) lives on the wider
- *  StudioContext; cluster-only services are supplied by the registered
- *  environment builder, not through
- *  `DecopilotStreamInput`.
- *
- *  Re-declared here (mirroring `apps/api/src/core/harness-context.ts`) so
- *  the package stays portable. The cluster's richer `StudioContext` is
- *  structurally assignable to this shape. */
-export interface HarnessContext {
-  tracer: import("@opentelemetry/api").Tracer;
-  meter: import("@opentelemetry/api").Meter;
-  metadata: {
-    threadId?: string;
-    orgId?: string;
-    userId?: string;
-  };
-  /** Optional provider activation seam used by hosted Decopilot. */
-  aiProviders?: {
-    activate(
-      credentialId: string,
-      organizationId: string,
-    ): Promise<unknown | null>;
-  };
-}

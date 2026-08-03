@@ -443,18 +443,13 @@ export async function* runDecopilotStream(
   //   - `extraTools`         → built-ins + enable_tool (state-dependent)
   //   - `prepareStep`        → image injection + plan-mode filter
   //   - `additionalSystemMessages` → per-request inline <system> blocks
-  const vmMetadata = runContext.virtualMcp.metadata as
-    | {
-        githubRepo?: import("@decocms/shared/sdk").GithubRepo | null;
-        subAgents?: string[] | null;
-      }
-    | undefined;
+  const vmMetadata = runContext.virtualMcp.metadata;
   const handle: AssembledEngineHandle = await runEngine({
     kind: runContext.isSubagent ? "subagent" : "agent",
     virtualMcp: {
       id: agentId,
-      repo: vmMetadata?.githubRepo ?? undefined,
-      delegationTargetIds: vmMetadata?.subAgents,
+      repo: vmMetadata.githubRepo ?? undefined,
+      delegationTargetIds: vmMetadata.subAgents,
     },
     mcpClient: tools.passthroughClient,
     provider,

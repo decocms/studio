@@ -1,3 +1,4 @@
+import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSources,
   ChatMessage,
@@ -8,10 +9,7 @@ export interface DecopilotRunContext {
   isSubagent?: boolean;
   subtaskJobId?: string;
   resumedFromBackground?: boolean;
-  virtualMcp: {
-    id: string;
-    metadata?: unknown;
-  };
+  virtualMcp: VirtualMCPEntity;
   branch?: string | null;
   messages?: ChatMessage[];
   modelSources?: DecopilotSecretModelSources;
