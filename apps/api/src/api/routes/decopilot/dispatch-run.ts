@@ -34,6 +34,12 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
+import {
+  harnessRunsInSandbox,
+  SandboxDispatchClient,
+} from "@/harnesses/sandbox-dispatch-client";
+import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
@@ -327,8 +333,8 @@ export interface DispatchRunInput {
   branch?: string | null;
   /** Hosted runs always use the managed agent sandbox. */
   sandboxProviderKind: "agent-sandbox";
-  /** Hosted dispatch accepts only the explicit Decopilot harness. */
-  harnessId: "decopilot";
+  /** Hosted dispatch accepts an explicit hosted harness — never a default. */
+  harnessId: HostedHarnessId;
   /**
    * Single-writer fence token for this run. Durable submit callers mint and
    * persist it before starting DBOS, then thread it down here so `prepareRun`
@@ -357,7 +363,7 @@ export interface FrozenRunSnapshot {
   runMetadata?: Record<string, string>;
   branch?: string | null;
   sandboxProviderKind: "agent-sandbox";
-  harnessId: "decopilot";
+  harnessId: HostedHarnessId;
   /**
    * Per-turn system context the client attached to this user turn (the
    * `role:"system"` message in the POST body — e.g. the currently-open file,
@@ -386,14 +392,47 @@ export type DispatchRunRuntimeInput =
   | DispatchRunInput
   | DurableDispatchRunInput;
 
+/**
+ * Harnesses hosted dispatch can run.
+ *
+ * `decopilot` runs in this process; `claude-code` runs inside the sandbox via
+ * `SandboxDispatchClient`. Both are dispatched through the same pipeline, and
+ * both are named explicitly — an unknown or future harness must never fall
+ * through to whichever loop happens to be first.
+ */
+const HOSTED_HARNESS_IDS = ["decopilot", "claude-code"] as const;
+
+export type HostedHarnessId = (typeof HOSTED_HARNESS_IDS)[number];
+
 export function assertHostedDispatchHarness(
   harnessId: string | null | undefined,
-): asserts harnessId is "decopilot" {
-  if (harnessId !== "decopilot") {
+): asserts harnessId is HostedHarnessId {
+  if (!HOSTED_HARNESS_IDS.includes(harnessId as HostedHarnessId)) {
     throw new Error(
-      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
+      `hosted dispatch requires one of ${HOSTED_HARNESS_IDS.join(", ")}; got ${JSON.stringify(harnessId)}`,
     );
   }
+}
+
+/**
+ * Sandbox-hosted harnesses are gated per-org and default off.
+ *
+ * The gate lives here rather than at the HTTP entry because every entry point
+ * (POST, resume, automation fire, background tool) funnels through
+ * `prepareRun` — this is the one place that cannot be bypassed.
+ */
+async function assertHarnessEnabledForOrg(
+  harnessId: HostedHarnessId,
+  organizationId: string,
+  ctx: StudioContext,
+): Promise<void> {
+  if (harnessId === "decopilot") return;
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  if (settings?.flags?.claude_code_sandbox_enabled === true) return;
+  throw new Error(
+    `the ${harnessId} harness is not enabled for this organization ` +
+      `(set the claude_code_sandbox_enabled flag to allow it)`,
+  );
 }
 
 function isDurableDispatchRunInput(
@@ -749,6 +788,7 @@ async function prepareRun(
   const { runRegistry, streamBuffer } = deps;
   assertHostedDispatchHarness(input.harnessId);
   const harnessId = input.harnessId;
+  await assertHarnessEnabledForOrg(harnessId, input.organizationId, ctx);
 
   // Legacy/direct callers may still provide raw messages. Durable workflow
   // callers pass only a messageId and reload the already-persisted user turn.
@@ -1265,8 +1305,9 @@ async function prepareRun(
         };
         setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // The in-process SandboxClient returns the Decopilot chunk iterable;
-        // consumeHarnessStream consumes it verbatim.
+        // Either SandboxClient returns the same chunk iterable, and
+        // consumeHarnessStream consumes it verbatim: Decopilot's comes from an
+        // in-process call, claude-code's from the sandbox daemon over SSE.
         if (shouldPublishRunStatus) {
           await publishRunStatusStage(
             streamBuffer,
@@ -1274,7 +1315,36 @@ async function prepareRun(
             PREPARE_RUN_STATUS_STAGES[3],
           );
         }
-        const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
+        const sandboxClient = harnessRunsInSandbox(harnessId)
+          ? new SandboxDispatchClient({
+              ctx,
+              harnessId,
+              virtualMcpId: effectiveVirtualMcp.id,
+              // The one branch derivation every sandbox consumer shares. The
+              // sandbox proxy derives the claim handle from it too, so a
+              // divergence here provisions a second pod (or 404s the proxy).
+              branch: await resolveSandboxBranchForThread(ctx, {
+                threadId: mem.thread.id,
+                agentRepo: (
+                  effectiveVirtualMcp.metadata as {
+                    githubRepo?: GithubRepo | null;
+                  } | null
+                )?.githubRepo,
+                runBranch: input.branch,
+              }),
+              // The already-resolved thinking-slot credential becomes the
+              // sandbox's model env — resolved once, here, not again inside.
+              credential: thinkingSource
+                ? {
+                    providerId: thinkingSource.providerId,
+                    apiKey: thinkingSource.apiKey,
+                    ...(thinkingSource.baseUrl
+                      ? { baseUrl: thinkingSource.baseUrl }
+                      : {}),
+                  }
+                : null,
+            })
+          : new InProcessSandboxClient({ ctx, harnessId });
         const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
         yield* rawHarnessChunks;
       };

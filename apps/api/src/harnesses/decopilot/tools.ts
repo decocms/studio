@@ -22,7 +22,10 @@
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { GithubRepo } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
-import { getThreadGithubRepo, threadBranch } from "@/tools/sandbox/thread-repo";
+import {
+  getThreadGithubRepo,
+  resolveSandboxBranch,
+} from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { StudioProvider } from "@/ai-providers/types";
 import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
@@ -297,16 +300,18 @@ export async function assembleDecopilotTools(
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
     const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
-    const effectiveRepo = threadRepo ?? vmMetadata.githubRepo;
-    const isEphemeralAgent = !effectiveRepo;
     const vmContext: VmContext | null = input.user.id
       ? {
           virtualMcpId: input.agent.id,
-          branch: threadRepo
-            ? threadBranch(extras.threadId, threadRepo.connectionId)
-            : isEphemeralAgent
-              ? "ephemeral"
-              : (runContext.branch ?? `thread:${extras.threadId}`),
+          // Shared with the sandbox-hosted dispatch path — see
+          // `resolveSandboxBranch`. Two derivations that drift provision two
+          // pods for one thread.
+          branch: resolveSandboxBranch({
+            threadId: extras.threadId,
+            threadRepo,
+            agentRepo: vmMetadata.githubRepo,
+            runBranch: runContext.branch,
+          }),
           userId: input.user.id,
           // Used by share_with_user to scope artifacts under
           // model-outputs/<threadId>/. Cannot be derived from the

@@ -192,18 +192,23 @@ describe("buildDurableDispatchInput", () => {
 });
 
 describe("assertHostedDispatchHarness", () => {
-  test("accepts only explicit Decopilot", () => {
+  test("accepts the hosted harnesses", () => {
     expect(() => assertHostedDispatchHarness("decopilot")).not.toThrow();
+    // claude-code was rejected here until it became sandbox-hosted; the
+    // per-org gate for it is `prepareRun`'s flag check, not this one.
+    expect(() => assertHostedDispatchHarness("claude-code")).not.toThrow();
+  });
+
+  test("rejects desktop-only, unknown and missing harnesses", () => {
     for (const harnessId of [
       null,
       undefined,
-      "claude-code",
       "codex",
       "opencode",
       "future",
     ] as const) {
       expect(() => assertHostedDispatchHarness(harnessId)).toThrow(
-        /explicit Decopilot/,
+        /hosted dispatch requires/,
       );
     }
   });

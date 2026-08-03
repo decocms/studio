@@ -1,0 +1,29 @@
+{
+  "name": "@decocms/harness-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "In-sandbox harness runner: drives the Claude Agent SDK for Studio's claude-code harness",
+  "bin": {
+    "decocms-harness-runner": "./main.ts"
+  },
+  "files": [
+    "main.ts",
+    "claude-code.ts",
+    "session-id.ts",
+    "to-ui-chunks.ts"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220"
+  },
+  "devDependencies": {
+    "@decocms/sandbox": "workspace:*",
+    "@types/bun": "latest",
+    "ai": "^6.0.208",
+    "typescript": "^7.0.2"
+  }
+}

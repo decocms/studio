@@ -26,6 +26,7 @@ import type {
   DispatchRunInput,
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
+import { assertHostedDispatchHarness } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import {
@@ -47,19 +48,16 @@ import { startHostedHarness } from "./hosted-harness-workflow";
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
 /**
- * Guard: hosted dispatch is Decopilot-only.
+ * Guard: only harnesses hosted by the cluster may use this gate.
  *
- * Coding-agent loops run entirely inside the Tauri desktop app (`apps/native`,
- * which owns its Rust `local-api` and never enqueues onto this gate). Use a
- * positive allowlist so an unknown or future native harness cannot silently
- * fall through to the hosted Decopilot loop.
+ * `decopilot` runs in-process; `claude-code` runs inside the managed sandbox
+ * (and is additionally gated per-org in `prepareRun`). Desktop-only coding
+ * agents run in the Tauri app, which owns its Rust `local-api` and never
+ * enqueues here. This stays a positive allowlist so an unknown or future
+ * harness cannot silently fall through to whichever loop runs first.
  */
 export function assertHarnessRunsInCluster(harnessId?: string | null): void {
-  if (harnessId !== "decopilot") {
-    throw new Error(
-      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
-    );
-  }
+  assertHostedDispatchHarness(harnessId);
 }
 
 /**
