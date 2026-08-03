@@ -784,9 +784,9 @@ export class TerminalController {
       );
       this.pendingCapabilityReplyAuthority = null;
     }
-    let pendingCapabilityReplyAuthorityId: number | null = null;
     if (pendingQuery?.repliesAllowed && !this.pendingCapabilityReplyAuthority) {
-      pendingCapabilityReplyAuthorityId = this.nextCapabilityReplyAuthorityId++;
+      const pendingCapabilityReplyAuthorityId = this
+        .nextCapabilityReplyAuthorityId++;
       this.capabilityReplyAuthorities.set(
         pendingCapabilityReplyAuthorityId,
         null,
@@ -796,6 +796,12 @@ export class TerminalController {
         id: pendingCapabilityReplyAuthorityId,
       };
     }
+    // Every retained chunk that belongs to the same incomplete query carries
+    // its authority id. During remount replay each chunk is observed with
+    // `allowCapabilityReplies: false`, so the renderer must restore the
+    // pending authority after every observation until the query completes.
+    const pendingCapabilityReplyAuthorityId =
+      this.pendingCapabilityReplyAuthority?.id ?? null;
     const capabilityReplyAuthorityId = frame.allowCapabilityReplies
       ? this.nextCapabilityReplyAuthorityId++
       : null;
@@ -857,8 +863,12 @@ export class TerminalController {
     const restorePendingCapabilityReplies =
       pendingAuthorityId !== null &&
       this.capabilityReplyAuthorities.has(pendingAuthorityId) &&
-      this.capabilityReplyAuthorities.get(pendingAuthorityId) === null;
-    if (restorePendingCapabilityReplies) {
+      (this.capabilityReplyAuthorities.get(pendingAuthorityId) === null ||
+        this.capabilityReplyAuthorities.get(pendingAuthorityId) === listener);
+    if (
+      restorePendingCapabilityReplies &&
+      this.capabilityReplyAuthorities.get(pendingAuthorityId) === null
+    ) {
       this.capabilityReplyAuthorities.set(pendingAuthorityId, listener);
     }
     listener(

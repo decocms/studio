@@ -35,9 +35,7 @@ describe("agentOptionFor", () => {
   });
 
   test("maps opencode + user-desktop to opencode-desktop", () => {
-    expect(agentOptionFor("opencode", "user-desktop")).toBe(
-      "opencode-desktop",
-    );
+    expect(agentOptionFor("opencode", "user-desktop")).toBe("opencode-desktop");
   });
 
   test("returns null for unknown harness", () => {

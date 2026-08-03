@@ -987,12 +987,6 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           }
           await waitForProviderCheckpoint(api, threadId, privateHeaders);
           if (provider === "opencode") {
-            await waitForThreadTitle(
-              api,
-              threadId,
-              privateHeaders,
-              "Stub opencode chat",
-            );
             expect(titleRecords(launchLog, provider)).toEqual([]);
           } else {
             expect(await waitForTitleRecord(launchLog, provider)).toEqual({
@@ -1003,6 +997,12 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
               managedCodexHome: provider === "codex" ? true : null,
             });
           }
+          await waitForThreadTitle(
+            api,
+            threadId,
+            privateHeaders,
+            `Stub ${provider} chat`,
+          );
           const expectedCwd = realpathSync(
             repoDirFor(
               api.workdir,

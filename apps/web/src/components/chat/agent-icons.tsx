@@ -84,8 +84,6 @@ const LOCAL_HARNESS_BRAND: Partial<
 };
 
 /** Native brand metadata for a coding-agent harness. */
-export function localHarnessBrand(
-  harness: NativeHarnessId | null | undefined,
-) {
+export function localHarnessBrand(harness: NativeHarnessId | null | undefined) {
   return (harness && LOCAL_HARNESS_BRAND[harness]) ?? null;
 }
