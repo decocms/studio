@@ -65,6 +65,7 @@ import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { resolveComposerAction } from "./composer-action";
+import { canRespondToThread } from "@decocms/shared/thread/access";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -559,7 +560,16 @@ export function ChatInput({
     }
   };
 
-  if (userId && task?.created_by && task.created_by !== userId) {
+  // Read-only when viewing a thread you don't own — except while it's paused
+  // awaiting input (requires_action, e.g. a QA Agent / Code Reviewer question),
+  // where any org member may answer so the run isn't stuck on one person.
+  if (
+    !canRespondToThread({
+      createdBy: task?.created_by,
+      userId,
+      status: task?.status,
+    })
+  ) {
     return (
       <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
     );

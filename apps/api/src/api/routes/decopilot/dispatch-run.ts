@@ -99,6 +99,7 @@ import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
 import { sleep } from "@decocms/shared/std";
+import { canRespondToThread } from "@decocms/shared/thread/access";
 
 // Attributes onFinish event-loop cost by phase (settle = awaiting the
 // accumulated pendingOps; save = the synchronous message-serialization +
@@ -962,10 +963,28 @@ async function prepareRun(
     ctx.metadata.threadId = mem.thread.id;
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
 
-    if (mem.thread.created_by !== input.userId) {
+    if (
+      !canRespondToThread({
+        createdBy: mem.thread.created_by,
+        userId: input.userId,
+        status: mem.thread.status,
+      })
+    ) {
       throw new Error(
         "You are not allowed to write to this thread because you are not the owner",
       );
+    }
+
+    // A non-owner answering a `requires_action` pause (e.g. a teammate clearing
+    // a QA Agent / Code Reviewer question) keeps the original owner in
+    // `created_by`, but record who actually responded in `updated_by` so the
+    // trail isn't lost. Best-effort — a failure here must never block the run.
+    if (mem.thread.created_by !== input.userId) {
+      await ctx.storage.threads
+        .update(mem.thread.id, { updated_by: input.userId })
+        .catch((err: unknown) =>
+          console.warn("[decopilot] failed to record thread responder", err),
+        );
     }
 
     // Guard: async-research-only models (e.g. Gemini Deep Research) cannot
