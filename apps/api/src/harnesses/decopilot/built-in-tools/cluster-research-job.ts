@@ -34,14 +34,14 @@ import {
 } from "@/ai-providers/types";
 import type { StudioContext } from "@/core/studio-context";
 import { sanitizeProviderMetadata } from "@decocms/shared/sdk";
-import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
-import { toStudioStorageUri } from "@decocms/harness/decopilot/studio-storage-uri";
+import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
+import { toStudioStorageUri } from "@/harnesses/lib/decopilot/studio-storage-uri";
 import type {
   ResearchParams,
   ResearchResult,
-} from "@decocms/harness/harness-deps";
-import { createOutputPreview } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
-import { LARGE_RESULT_TOKEN_THRESHOLD } from "@decocms/harness/decopilot/built-in-tools/constants";
+} from "@/harnesses/lib/harness-deps";
+import { createOutputPreview } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
+import { LARGE_RESULT_TOKEN_THRESHOLD } from "@/harnesses/lib/decopilot/built-in-tools/constants";
 
 /**
  * Single grep-friendly log prefix for the async path. Combined with

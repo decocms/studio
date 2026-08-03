@@ -14,7 +14,7 @@
  * cached process-wide; the home portion is two batch probes per call.
  */
 
-import { parseSkillMd } from "@decocms/harness/skills/skill-md";
+import { parseSkillMd } from "@/harnesses/lib/skills/skill-md";
 import type { StudioContext } from "../core/studio-context";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";

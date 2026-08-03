@@ -11,7 +11,7 @@ import type { ToolSet, UIMessageStreamWriter } from "ai";
 import {
   toolNeedsApproval,
   type ToolApprovalLevel,
-} from "@decocms/harness/decopilot/mcp-tools";
+} from "@/harnesses/lib/decopilot/mcp-tools";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter
@@ -38,35 +38,35 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
 };
-import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
-import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
-import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
+import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
+import { createVmTools } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/index";
+import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSwappableFs } from "./swappable-fs";
 import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
-import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
-import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
-import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
-import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
+import { userAskTool } from "@/harnesses/lib/decopilot/built-in-tools/user-ask";
+import { todoWriteTool } from "@/harnesses/lib/decopilot/built-in-tools/todo-write";
+import { createUpdateInterestsTool } from "@/harnesses/lib/decopilot/built-in-tools/update-interests";
+import { proposePlanTool } from "@/harnesses/lib/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
-import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import { makeBackgroundable } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import { registerFlip } from "@/harnesses/decopilot/flip-registry";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
-import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
-import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
+import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
+import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
+import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
   createTakeScreenshotTool,
   type PendingImage,
-} from "@decocms/harness/decopilot/built-in-tools/take-screenshot";
-import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
-import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
-import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+} from "@/harnesses/lib/decopilot/built-in-tools/take-screenshot";
+import { createScrapeUrlTool } from "@/harnesses/lib/decopilot/built-in-tools/scrape-url";
+import { createInspectPageTool } from "@/harnesses/lib/decopilot/built-in-tools/inspect-page";
+import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
-import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
-import type { ModelsConfig } from "@decocms/harness/types";
+import { BROWSERLESS_BASE_URL } from "@/harnesses/lib/decopilot/built-in-tools/constants";
+import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
 

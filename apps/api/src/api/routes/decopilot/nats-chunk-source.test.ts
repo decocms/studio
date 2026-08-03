@@ -13,7 +13,7 @@ import {
   reassembleFragments,
   type DecodedEvent,
   type RawMsg,
-} from "@decocms/harness/run-stream-codec";
+} from "@/harnesses/lib/run-stream-codec";
 
 const enc = new TextEncoder();
 

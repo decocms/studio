@@ -96,7 +96,7 @@ export interface OpenedMcpSource {
  * Object-storage surface a harness source exposes — the portable subset of the
  * cluster's `BoundObjectStorage` that the HTTP-backed source implements.
  * Declared locally (no `@/object-storage` import) so this file stays portable
- * to `@decocms/harness`; a concrete `BoundObjectStorage` is structurally
+ * to the harness lib; a concrete `BoundObjectStorage` is structurally
  * assignable to it.
  */
 export interface ObjectStorageGetResult {
@@ -388,7 +388,7 @@ function withHeaders(
 }
 
 // Inlined from `@/object-storage/key-utils` so this file stays portable to
-// `@decocms/harness` (kept in sync with the cluster copy; both decide whether a
+// the harness lib (kept in sync with the cluster copy; both decide whether a
 // stored object is decoded as UTF-8 text vs base64).
 const TEXT_CONTENT_TYPES = new Set([
   "application/json",

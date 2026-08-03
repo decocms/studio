@@ -18,11 +18,11 @@ import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
-} from "@decocms/harness/decopilot/prompt-constants";
+} from "@/harnesses/lib/decopilot/prompt-constants";
 import {
   buildCodingWorkspacePrompt,
   type CodingWorkspacePromptInput,
-} from "@decocms/harness/coding-workspace-prompt";
+} from "@/harnesses/lib/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
 import { sandboxIsDecoSite } from "./built-in-tools/cluster-sandbox-fs";
 import type { GithubRepo } from "@decocms/shared/sdk";
@@ -30,12 +30,12 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildSystemMessages,
   type SystemMessage,
-} from "@decocms/harness/decopilot/system-prompt";
+} from "@/harnesses/lib/decopilot/system-prompt";
 import { listPromptsBlock, listConnectionsBlock } from "./prompt";
-import { buildAgentsBlock } from "@decocms/harness/decopilot/agents-block";
-import { renderUserContextBlock } from "@decocms/harness/decopilot/user-context-block";
-import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
-import type { HarnessUserContext } from "@decocms/harness/types";
+import { buildAgentsBlock } from "@/harnesses/lib/decopilot/agents-block";
+import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
+import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
+import type { HarnessUserContext } from "@/harnesses/lib/types";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -128,7 +128,7 @@ export async function buildAgentSystemPrompt(
   if (opts.kind === "agent" && opts.planMode) {
     // Re-use the plan-mode prompt from mode-config (non-CLI variant).
     const { resolveModeConfig } = await import(
-      "@decocms/harness/decopilot/mode-config"
+      "@/harnesses/lib/decopilot/mode-config"
     );
     const modeConfig = resolveModeConfig("plan", { isCliAgent: false });
     add("planMode", modeConfig.planPrompt);

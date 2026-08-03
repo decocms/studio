@@ -14,7 +14,7 @@ import type { UIMessageChunk } from "ai";
 import {
   makeTitleInputChunk,
   makeTitleResultChunk,
-} from "@decocms/harness/title-chunk";
+} from "@/harnesses/lib/title-chunk";
 import {
   interceptTitleChunks,
   type TitleInterceptorDeps,

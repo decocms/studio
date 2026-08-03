@@ -44,7 +44,7 @@ import {
   serializeUnfencedDone,
   streamSubject,
   type RawMsg,
-} from "@decocms/harness/run-stream-codec";
+} from "@/harnesses/lib/run-stream-codec";
 import { meter } from "@/observability";
 import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
 

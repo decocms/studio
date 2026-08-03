@@ -5,7 +5,7 @@
  * Each slot carries its own credentialId (decision D14), defaulting to the
  * chat credential when the client doesn't pin one. `coding` is dropped (D11).
  */
-import type { ModelSelection, ModelsConfig } from "@decocms/harness/types";
+import type { ModelSelection, ModelsConfig } from "@/harnesses/lib/types";
 import type { ModelInfo, ModelsConfig as ClientModelsConfig } from "./types";
 
 /**

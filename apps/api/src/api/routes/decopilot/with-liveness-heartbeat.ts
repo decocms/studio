@@ -58,7 +58,7 @@ import {
   HeartbeatEmitter,
   type HeartbeatEmitterOptions,
   buildLivenessChunk as buildSharedLivenessChunk,
-} from "@decocms/harness/liveness-heartbeat";
+} from "@/harnesses/lib/liveness-heartbeat";
 
 export type DataLivenessChunk = Extract<
   UIMessageChunk,

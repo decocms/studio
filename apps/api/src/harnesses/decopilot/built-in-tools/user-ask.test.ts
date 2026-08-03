@@ -16,7 +16,7 @@ import {
   UserAskInputSchema,
   UserAskOutputSchema,
   userAskTool,
-} from "@decocms/harness/decopilot/built-in-tools/user-ask";
+} from "@/harnesses/lib/decopilot/built-in-tools/user-ask";
 
 const mockProvider = { thinkingModel: {} as never } as never;
 const mockParams: BuiltinToolParams = {

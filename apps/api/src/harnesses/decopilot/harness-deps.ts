@@ -21,7 +21,7 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "@/api/routes/dev-connection";
 import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
-import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
+import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
@@ -30,16 +30,16 @@ import type { PendingImage } from "./built-in-tools";
 import type {
   DecopilotToolRuntime,
   ModelRuntime,
-} from "@decocms/harness/decopilot/run-core";
+} from "@/harnesses/lib/decopilot/run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
   RunEngineArgs,
-} from "@decocms/harness/decopilot/engine";
+} from "@/harnesses/lib/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
-import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
+import type { DecopilotTelemetry } from "@/harnesses/lib/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
-import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
+import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled

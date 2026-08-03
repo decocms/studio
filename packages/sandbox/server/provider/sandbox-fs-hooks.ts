@@ -16,7 +16,7 @@
  * harness and call these flat hooks.
  *
  * The hook payload shapes mirror `HarnessDeps`'s `EditOp`/`BashOpts`/
- * `BashResult`/`GrepOpts`/`GrepHit` (`packages/harness/src/harness-deps.ts`) so
+ * `BashResult`/`GrepOpts`/`GrepHit` (`apps/api/src/harnesses/lib/harness-deps.ts`) so
  * the cluster bag can wire `deps.onRead = hooks.onRead`, etc. They are declared
  * locally here because packages may not import an `apps/*` tree
  * (ban-cross-tree-imports).

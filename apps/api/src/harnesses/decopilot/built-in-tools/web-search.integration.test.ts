@@ -43,9 +43,9 @@ import {
   AsyncResearchTerminalError,
   type StudioProvider,
 } from "@/ai-providers/types";
-import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
+import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
 import type { UIMessageStreamWriter } from "ai";
-import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
+import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 
 /**

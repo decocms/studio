@@ -61,9 +61,9 @@ describe("ban-cross-tree-imports", () => {
     expect(msgs[0]).toContain("apps/api");
   });
 
-  test("bans @aws-sdk/* only inside packages/harness/", async () => {
+  test("bans @aws-sdk/* only inside the harness lib dir", async () => {
     const f = fixture(
-      "packages/harness/s3.ts",
+      "apps/api/src/harnesses/lib/s3.ts",
       `import { S3 } from "@aws-sdk/client-s3";\nexport const c = S3;\n`,
     );
     const msgs = await lint(f);
@@ -87,9 +87,9 @@ describe("ban-cross-tree-imports", () => {
     expect(await lint(f)).toEqual([]);
   });
 
-  test("uses the dedicated harness message for @/core/studio-context inside packages/harness/", async () => {
+  test("uses the dedicated harness message for @/core/studio-context inside the harness lib dir", async () => {
     const f = fixture(
-      "packages/harness/studio-context.ts",
+      "apps/api/src/harnesses/lib/studio-context.ts",
       `import { S } from "@/core/studio-context";\nexport const h = S;\n`,
     );
     const msgs = await lint(f);

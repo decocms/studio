@@ -11,13 +11,13 @@ import type { StudioContextFactory } from "@/automations/fire";
 import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
-import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
-import type { HarnessId } from "@decocms/harness/types";
+import { SUBAGENT_STEP_LIMIT } from "@/harnesses/lib/decopilot/prompt-constants";
+import type { HarnessId } from "@/harnesses/lib/types";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import type { AnyMessage } from "@/api/routes/decopilot/part-row-builder";
 import { getSettings } from "@/settings";
-import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type { ToolApprovalLevel } from "@/harnesses/lib/decopilot/mcp-tools";
+import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import {
   registerBackgroundAbort,
   unregisterBackgroundAbort,
@@ -26,10 +26,10 @@ import {
   generateImageCore,
   type GenerateImageInput,
   type GenerateImageResult,
-} from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
+} from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { runAgentLoop } from "./run-agent-loop";
 import { resolveSubagent } from "./resolve-subagent";
-import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
+import { createSideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { ingestRun } from "@/api/routes/decopilot/ingest-run";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { UIMessageChunk } from "ai";

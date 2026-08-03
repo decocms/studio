@@ -40,7 +40,7 @@ import type { LanguageModelUsage } from "ai";
 
 /**
  * Per-step cache-token accumulator. Mirrors
- * `packages/harness/src/decopilot/cache-instrumentation.ts:addCacheStep` —
+ * `apps/api/src/harnesses/lib/decopilot/cache-instrumentation.ts:addCacheStep` —
  * inlined here so the accumulator stays independent of dispatch telemetry.
  * Both implementations must stay in sync; the decopilot version is also the
  * source of truth for OTel attribute emission on the dispatch-run path.

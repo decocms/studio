@@ -3,7 +3,7 @@
  * Maps mode to system prompts and first-step tool forcing.
  */
 
-export const CHAT_MODES = [
+const CHAT_MODES = [
   "default",
   "plan",
   "web-search",

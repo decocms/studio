@@ -1,12 +1,9 @@
-import type { HarnessId } from "@decocms/harness/types";
-import {
-  type CliProvider,
-  cliProviderName,
-} from "@decocms/harness/cli-harness";
+import type { HarnessId } from "@/harnesses/lib/types";
+import { type CliProvider, cliProviderName } from "@/harnesses/lib/cli-harness";
 import type { ChatMessage } from "./types";
 
 // `cliProviderName` is the single source of truth for the `HarnessId → provider`
-// map (shared with the harness write side via `@decocms/harness/cli-harness`).
+// map (shared with the harness write side via `@/harnesses/lib/cli-harness`).
 // Re-exported so this module stays the one-stop place for CLI session-ref/delta
 // helpers.
 export { cliProviderName };

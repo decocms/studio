@@ -19,11 +19,11 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildPromptsBlock,
   type PromptsBlockEntry,
-} from "@decocms/harness/decopilot/prompts-block";
+} from "@/harnesses/lib/decopilot/prompts-block";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
-} from "@decocms/harness/decopilot/connections-block";
+} from "@/harnesses/lib/decopilot/connections-block";
 
 /**
  * listPromptsBlock — fetches the MCP's prompt catalog via the passthrough

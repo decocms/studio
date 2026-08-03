@@ -65,7 +65,7 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              packages/sandbox/*|packages/typegen/*|packages/shared/*|packages/harness/*) relevant=true; break ;;
+              packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"

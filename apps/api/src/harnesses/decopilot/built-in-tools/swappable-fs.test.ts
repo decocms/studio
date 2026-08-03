@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
+import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 import { createSwappableFs } from "./swappable-fs";
 
 /** A stub fs whose every hook resolves a value tagged with `label`, so a test
