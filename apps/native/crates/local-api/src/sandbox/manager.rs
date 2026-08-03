@@ -612,6 +612,16 @@ impl SandboxManager {
         }
         let handle_lock = self.handle_lock(handle);
         let _permit = handle_lock.lock().await;
+        self.stop_locked(handle).await.map(Some)
+    }
+
+    /// The stop itself, with this handle's operation lock ALREADY held.
+    ///
+    /// Split out so [`Self::remove_registered`] can stop and then delete under
+    /// ONE acquisition: the per-handle lock is not reentrant, and releasing it
+    /// between the two would let an `ensure` re-clone the worktree into the
+    /// directory about to be removed.
+    async fn stop_locked(&self, handle: &str) -> Result<usize, String> {
         let Some(sandbox) = self.get(handle) else {
             let record = self
                 .registry
@@ -624,7 +634,7 @@ impl SandboxManager {
             };
             self.registry
                 .mark_state(handle, "stopped", observed, record.error.as_deref())?;
-            return Ok(Some(0));
+            return Ok(0);
         };
 
         // The close flag is the generation fence checked between every
@@ -657,6 +667,71 @@ impl SandboxManager {
         self.publish_generation(handle, None);
         self.registry
             .mark_state(handle, "stopped", "stopped", None)?;
+        Ok(killed)
+    }
+
+    /// Reclaim a durable sandbox: stop it, delete its worktree directory, and
+    /// forget it — the only path in this process that removes a worktree a user
+    /// asked for.
+    ///
+    /// **This never refuses.** A worktree with uncommitted or unpushed work is
+    /// removed exactly like a clean one: the decision belongs to the confirm
+    /// the caller already collected, which is the only place that can state
+    /// what is about to be lost. A primitive that sometimes declined would
+    /// split that policy across two layers and make the outcome depend on state
+    /// the caller cannot see. The errors below are all infrastructure failures
+    /// (a stop that cannot reap its children, a directory that cannot be
+    /// unlinked), never a judgment about the worktree's contents.
+    ///
+    /// `Ok(None)` for an unknown handle, like [`Self::stop_registered`], so a
+    /// repeated reclaim stays idempotent.
+    pub async fn remove_registered(&self, handle: &str) -> Result<Option<usize>, String> {
+        let Some(record) = self.registry.record(handle)? else {
+            return Ok(None);
+        };
+        let handle_lock = self.handle_lock(handle);
+        let _permit = handle_lock.lock().await;
+
+        let killed = self.stop_locked(handle).await?;
+
+        let root = crate::sandbox::worktree_root(&self.app_root, handle);
+        match tokio::fs::remove_dir_all(&root).await {
+            Ok(()) => {}
+            // Already gone is the outcome that was asked for.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "failed to remove sandbox worktree {root:?}: {error}"
+                ));
+            }
+        }
+
+        // NOT cleanup — a required step. This workdir is a worktree of the
+        // shared canonical repo (see `sandbox::repo_store`), which keeps
+        // listing it after the directory is gone and then refuses to re-add a
+        // worktree at that path. Without this prune the branch could never be
+        // re-created.
+        super::repo_store::prune_worktrees(&self.app_root, &record.config.clone_url).await;
+
+        self.registry.remove(handle)?;
+        self.invalidate_preview_labels();
+        // The durable active pointer went with the row; clear the in-memory
+        // one too, or `active()` keeps naming a sandbox that no longer exists.
+        let was_active = {
+            let mut active = self
+                .active_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let was_active = active.as_deref() == Some(handle);
+            if was_active {
+                *active = None;
+            }
+            was_active
+        };
+        if was_active {
+            let _ = self.active_watch.send(None);
+        }
+        tracing::info!(handle, killed, "sandbox reclaimed: worktree removed");
         Ok(Some(killed))
     }
 
@@ -1967,6 +2042,99 @@ mod tests {
             git_tasks_after_second, git_tasks_after_first,
             "an unchanged checkout must not rerun the registered clone/checkout path"
         );
+    }
+
+    /// Reclaim removes the worktree from disk, drops the registry row, clears
+    /// the active pointer — and leaves the canonical repo able to cut the SAME
+    /// branch again. That last assertion is the `prune_worktrees` regression:
+    /// git keeps listing a worktree whose directory is gone and refuses to
+    /// re-add one at that path, so without the prune the branch could never be
+    /// re-created.
+    #[tokio::test]
+    async fn remove_registered_reclaims_the_worktree_and_lets_the_branch_be_recreated() {
+        let (_root, clone_url) = setup_two_branch_repo();
+        let app_root = tempfile::tempdir().unwrap();
+        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let cfg = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-reclaim".to_string(),
+            clone_url: clone_url.clone(),
+            branch: Some("work".to_string()),
+            ..Default::default()
+        };
+
+        let sandbox = manager.ensure(&cfg).await.expect("ensure succeeds");
+        let handle = sandbox.handle.clone();
+        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        // Let the queued install/start cascade settle, so the removal below is
+        // not racing a setup child that is still writing into the workdir.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while sandbox.setup.is_running() || sandbox.setup.pending_count() > 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the setup pipeline settles");
+        assert!(worktree.is_dir());
+        assert!(sandbox.workdir.join("BRANCH.txt").is_file());
+        // Uncommitted work is NOT a veto — the primitive removes it anyway.
+        std::fs::write(sandbox.workdir.join("uncommitted.txt"), "unsaved\n").unwrap();
+        assert_eq!(
+            manager.registered_active_handle().unwrap().as_deref(),
+            Some(handle.as_str()),
+            "ensure activates the handle it provisioned"
+        );
+        drop(sandbox);
+
+        manager
+            .remove_registered(&handle)
+            .await
+            .expect("reclaim succeeds whatever the worktree contains")
+            .expect("a registered handle is not unknown");
+
+        assert!(!worktree.exists(), "the worktree directory must be gone");
+        assert!(!manager.is_registered(&handle).unwrap());
+        assert!(manager.registry_record(&handle).unwrap().is_none());
+        assert!(manager.registered_active_handle().unwrap().is_none());
+        assert!(manager.active().is_none());
+        assert!(manager.get(&handle).is_none());
+        assert!(manager
+            .handle_for_agent(&cfg.virtual_mcp_id, "work")
+            .unwrap()
+            .is_none());
+
+        let canonical = crate::sandbox::repo_store::canonical_repo_dir(app_root.path(), &clone_url)
+            .expect("keyable clone url");
+        let listed = git_stdout(&canonical, &["worktree", "list"]);
+        assert!(
+            !listed.contains(worktree.to_str().unwrap()),
+            "the removed worktree must not stay registered: {listed}"
+        );
+
+        // The whole point: the branch can be started again.
+        let again = manager
+            .ensure(&cfg)
+            .await
+            .expect("the same branch can be provisioned again after a reclaim");
+        assert_eq!(again.handle, handle);
+        assert_eq!(
+            std::fs::read_to_string(again.workdir.join("BRANCH.txt"))
+                .unwrap()
+                .trim(),
+            "main"
+        );
+        assert!(
+            !again.workdir.join("uncommitted.txt").exists(),
+            "a reclaim is a delete, not a stash"
+        );
+    }
+
+    /// Mirrors `stop_registered`: nothing registered means nothing to reclaim,
+    /// which is a success, not an error.
+    #[tokio::test]
+    async fn remove_registered_reports_an_unknown_handle_as_unknown() {
+        let app_root = tempfile::tempdir().unwrap();
+        let manager = SandboxManager::new(app_root.path().to_path_buf());
+        assert_eq!(manager.remove_registered("acme/repo/nope").await, Ok(None));
     }
 
     #[tokio::test]

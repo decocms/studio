@@ -179,6 +179,7 @@ describe("SANDBOX_DELETE", () => {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
         sandboxProviderKind: "agent-sandbox",
+        removeWorktree: false,
       },
       ctx,
     );
@@ -213,6 +214,7 @@ describe("SANDBOX_DELETE", () => {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
         sandboxProviderKind: "agent-sandbox",
+        removeWorktree: false,
       },
       ctx,
     );
@@ -239,6 +241,7 @@ describe("SANDBOX_DELETE", () => {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
         sandboxProviderKind: "user-desktop",
+        removeWorktree: false,
       },
       ctx,
     );
@@ -306,6 +309,7 @@ describe("SANDBOX_DELETE", () => {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
           sandboxProviderKind: "agent-sandbox",
+          removeWorktree: false,
         },
         ctx,
       );
@@ -337,6 +341,7 @@ describe("SANDBOX_DELETE", () => {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
         sandboxProviderKind: "agent-sandbox",
+        removeWorktree: false,
       },
       ctx,
     );
@@ -354,6 +359,7 @@ describe("SANDBOX_DELETE", () => {
         virtualMcpId: "vmcp_missing",
         branch: BRANCH,
         sandboxProviderKind: "agent-sandbox",
+        removeWorktree: false,
       },
       ctx,
     );
@@ -376,6 +382,7 @@ describe("SANDBOX_DELETE", () => {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
           sandboxProviderKind: "agent-sandbox",
+          removeWorktree: false,
         },
         ctx,
       ),

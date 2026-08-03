@@ -39,6 +39,13 @@ export const SANDBOX_DELETE = defineTool({
     sandboxProviderKind: sandboxProviderKindInputSchema.describe(
       "Kind of sandbox provider the VM was started with. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. Used to locate the correct 3-level sandboxMap entry.",
     ),
+    removeWorktree: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Also reclaim the sandbox's workspace (local worktree + disk). Ignored by providers whose teardown already destroys the filesystem.",
+      ),
   }),
   outputSchema: z.object({
     success: z.boolean(),

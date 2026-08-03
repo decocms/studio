@@ -499,11 +499,16 @@ fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Va
     }
 }
 
-/// `SANDBOX_DELETE` — stop the local sandbox behind `(virtualMcpId, branch)`.
+/// `SANDBOX_DELETE` — stop the local sandbox behind `(virtualMcpId, branch)`,
+/// and — only when the caller asks — reclaim its worktree.
 ///
 /// Needs no upstream read: the handle is derived from the input alone. Deleting
 /// an unknown handle is a success, matching the tool's idempotent `{ success }`
 /// contract — the caller asked for it to be gone, and it is.
+///
+/// `removeWorktree` defaults to `false`, and absent means false: the shell's
+/// Restart is `await stop(); start()`, so a flipped default would delete the
+/// repository — and any uncommitted work in it — on every restart.
 async fn delete(state: &AppState, body: &Bytes) -> Response {
     let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
@@ -519,6 +524,10 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
     else {
         return ApiError::bad_request("branch is required").into_response();
     };
+    let remove_worktree = input
+        .get("removeWorktree")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     let Ok(Some(handle)) = state
         .sandbox_manager
@@ -528,8 +537,17 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
         // not an error, so a repeated delete stays idempotent.
         return Json(json!({ "success": true })).into_response();
     };
-    match state.sandbox_manager.stop_registered(&handle).await {
+    let outcome = if remove_worktree {
+        state.sandbox_manager.remove_registered(&handle).await
+    } else {
+        state.sandbox_manager.stop_registered(&handle).await
+    };
+    match outcome {
         Ok(_) => Json(json!({ "success": true })).into_response(),
+        Err(error) if remove_worktree => {
+            ApiError::internal(format!("could not reclaim the local sandbox: {error}"))
+                .into_response()
+        }
         Err(error) => {
             ApiError::internal(format!("could not stop the local sandbox: {error}")).into_response()
         }
@@ -789,6 +807,96 @@ mod tests {
         );
         assert_eq!(preview_url("alpha"), preview_url("beta"));
         set_preview_port(0);
+    }
+
+    /// A registered handle plus the worktree directory the reclaim path
+    /// operates on. No clone: these tests are about the dispatch decision, not
+    /// about git.
+    fn registered_sandbox(root: &std::path::Path) -> (AppState, String, std::path::PathBuf) {
+        let state = super::super::test_state(root);
+        let handle = state
+            .sandbox_manager
+            .register_for_test("https://github.com/acme/site.git", "feature-x");
+        let worktree = crate::sandbox::worktree_root(root, &handle);
+        std::fs::create_dir_all(worktree.join("repo")).unwrap();
+        (state, handle, worktree)
+    }
+
+    async fn delete_body(state: &AppState, body: Value) -> (StatusCode, Value) {
+        let response = delete(state, &Bytes::from(body.to_string())).await;
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    /// The default is `false`, and absent means false: the shell's Restart is
+    /// `await stop(); start()`, so anything else would delete the repository on
+    /// every restart.
+    #[tokio::test]
+    async fn delete_keeps_the_worktree_unless_the_caller_asks_for_it_to_go() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, handle, worktree) = registered_sandbox(root.path());
+
+        for body in [
+            json!({ "virtualMcpId": "test-agent", "branch": "feature-x" }),
+            json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": false }),
+            // A non-boolean is not a yes.
+            json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": "true" }),
+        ] {
+            let (status, answer) = delete_body(&state, body.clone()).await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            assert_eq!(answer, json!({ "success": true }), "{body}");
+            assert!(worktree.is_dir(), "stop must never remove the worktree");
+            assert!(state.sandbox_manager.is_registered(&handle).unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_with_remove_worktree_reclaims_the_directory_and_the_row() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, handle, worktree) = registered_sandbox(root.path());
+
+        let (status, answer) = delete_body(
+            &state,
+            json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": true }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(answer, json!({ "success": true }));
+        assert!(!worktree.exists());
+        assert!(!state.sandbox_manager.is_registered(&handle).unwrap());
+
+        // And it stays idempotent: the second call finds nothing to do.
+        let (status, answer) = delete_body(
+            &state,
+            json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": true }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(answer, json!({ "success": true }));
+    }
+
+    /// The documented idempotent contract, on both branches of the dispatch.
+    #[tokio::test]
+    async fn deleting_an_unknown_handle_is_a_success_either_way() {
+        let root = tempfile::tempdir().unwrap();
+        let state = super::super::test_state(root.path());
+        for remove_worktree in [false, true] {
+            let (status, answer) = delete_body(
+                &state,
+                json!({
+                    "virtualMcpId": "never-registered",
+                    "branch": "feature-x",
+                    "removeWorktree": remove_worktree,
+                }),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(answer, json!({ "success": true }));
+        }
     }
 
     #[test]

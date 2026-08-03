@@ -443,6 +443,42 @@ impl SandboxRegistry {
         self.secure_database_files()
     }
 
+    /// Forget a sandbox: its row, the agent claims that hang off it, and the
+    /// active pointer when it named this handle.
+    ///
+    /// Unknown handles are a no-op success — the caller asked for the row to be
+    /// gone, and it is. `sandbox_agents` rows go with it through the schema's
+    /// `ON DELETE CASCADE` (foreign keys are enabled per connection).
+    ///
+    /// The active-pointer clear mirrors `reconcile_after_process_start`, which
+    /// drops the pointer when the sandbox it names is no longer usable: a
+    /// pointer to a row that does not exist resolves to nothing, and
+    /// `set_active` refuses to re-create it.
+    pub(crate) fn remove(&self, handle: &str) -> Result<(), String> {
+        let mut connection = self.connection();
+        // IMMEDIATE for the same reason as `set_active`: this transaction
+        // writes twice and must not be handed SQLITE_BUSY without the busy
+        // timeout applying.
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| format!("failed to begin sandbox removal: {error}"))?;
+        transaction
+            .execute("DELETE FROM sandboxes WHERE handle = ?1", [handle])
+            .map_err(|error| format!("failed to remove sandbox {handle}: {error}"))?;
+        transaction
+            .execute(
+                "DELETE FROM sandbox_metadata WHERE key = 'active_handle' AND value = ?1",
+                [handle],
+            )
+            .map_err(|error| {
+                format!("failed to clear the active pointer for sandbox {handle}: {error}")
+            })?;
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit sandbox removal: {error}"))?;
+        self.secure_database_files()
+    }
+
     fn import_legacy_sidecars(&self) -> Result<(), String> {
         let sandboxes_root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
         for handle in super::persist::handles_with_sidecars(&self.app_root) {
@@ -1064,6 +1100,91 @@ mod tests {
             reopened.record(&handle).unwrap().unwrap().observed_status,
             "absent"
         );
+    }
+
+    /// Reclaim drops the row, the agent claims that hang off it, and — because
+    /// this handle was the active one — the active pointer too. A pointer left
+    /// naming a removed handle is exactly what
+    /// `reconcile_after_process_start` exists to clear on the next boot.
+    #[test]
+    fn remove_drops_the_row_its_agents_and_the_active_pointer() {
+        let root = tempfile::tempdir().unwrap();
+        let cfg = config();
+        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+            .expect("scopeable clone url");
+        let sandbox_path = root
+            .path()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle);
+        let workdir_path = sandbox_path.join("repo");
+        create_git_checkout(&workdir_path);
+
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry
+            .upsert_config(&handle, &cfg, &sandbox_path, &workdir_path)
+            .unwrap();
+        registry.set_active(&handle).unwrap();
+
+        registry.remove(&handle).unwrap();
+
+        assert!(!registry.contains(&handle).unwrap());
+        assert!(registry.record(&handle).unwrap().is_none());
+        assert!(registry.active_handle().unwrap().is_none());
+        assert!(registry
+            .handle_for_agent(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap())
+            .unwrap()
+            .is_none());
+        let agent_rows: i64 = registry
+            .connection()
+            .query_row("SELECT COUNT(*) FROM sandbox_agents", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(agent_rows, 0, "agent claims must cascade with the sandbox");
+    }
+
+    /// Removing one sandbox must not disturb another's active pointer.
+    #[test]
+    fn remove_leaves_a_different_sandboxs_active_pointer_alone() {
+        let root = tempfile::tempdir().unwrap();
+        let kept = config();
+        let mut removed = config();
+        removed.branch = Some("feature/other".to_string());
+
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        let mut handles = Vec::new();
+        for cfg in [&kept, &removed] {
+            let handle =
+                SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
+                    .expect("scopeable clone url");
+            let sandbox_path = root
+                .path()
+                .join(crate::sandbox::WORKTREES_DIR)
+                .join(&handle);
+            let workdir_path = sandbox_path.join("repo");
+            create_git_checkout(&workdir_path);
+            registry
+                .upsert_config(&handle, cfg, &sandbox_path, &workdir_path)
+                .unwrap();
+            handles.push(handle);
+        }
+        registry.set_active(&handles[0]).unwrap();
+
+        registry.remove(&handles[1]).unwrap();
+
+        assert_eq!(
+            registry.active_handle().unwrap().as_deref(),
+            Some(handles[0].as_str())
+        );
+        assert!(registry.contains(&handles[0]).unwrap());
+    }
+
+    /// The idempotent contract the delete intercept promises: asking for a
+    /// handle that was never registered to be gone succeeds, because it is.
+    #[test]
+    fn removing_an_unknown_handle_is_a_no_op_success() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry.remove("phantom").unwrap();
+        assert!(!registry.contains("phantom").unwrap());
     }
 
     #[test]

@@ -411,10 +411,24 @@ fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Re
         Ok(input) => input,
         Err(error) => return error.into_response(),
     };
-    let (limit, offset) = match pagination(input, 100) {
-        Ok(pagination) => pagination,
-        Err(error) => return error.into_response(),
-    };
+    // Deliberate divergence from the tool contract: the thread list is NOT
+    // paginated here, and a caller-supplied `limit`/`offset` is ignored.
+    //
+    // The store is local SQLite holding one account's threads, so "every open
+    // thread" is a few hundred rows at most and costs a few milliseconds — far
+    // less than the round-trips the client would otherwise make walking pages.
+    // Answering in full is what lets the desktop UI treat its in-memory list as
+    // COMPLETE rather than as a paginated sample, which turns "is anyone else
+    // on this branch" from a server query into a local predicate. `hasMore` is
+    // therefore always false and `totalCount` always equals `items.len()`, so a
+    // client paging loop terminates immediately instead of spinning.
+    //
+    // `limit`/`offset` are still PARSED, so a malformed value is still a 400 —
+    // silently accepting garbage because we no longer use it would be a
+    // contract regression of a different kind.
+    if let Err(error) = pagination(input, 100) {
+        return error.into_response();
+    }
     if let Err(error) = validate_order_by(input) {
         return error.into_response();
     }
@@ -535,19 +549,14 @@ fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Re
             end_date,
             status,
             agent_id,
-            limit,
-            offset,
         },
     ) {
-        Ok((items, total_count)) => {
-            let has_more = offset + limit < total_count;
-            Json(json!({
-                "items": items,
-                "totalCount": total_count,
-                "hasMore": has_more,
-            }))
-            .into_response()
-        }
+        Ok((items, total_count)) => Json(json!({
+            "items": items,
+            "totalCount": total_count,
+            "hasMore": false,
+        }))
+        .into_response(),
         Err(e) => ApiError::internal(format!("thread database error: {e}")).into_response(),
     }
 }
@@ -1181,7 +1190,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_defaults_to_visible_threads_and_a_page_of_one_hundred() {
+    async fn list_returns_every_visible_thread_unpaginated() {
         let state = persistent_test_state();
         let database = shared_db(&state).unwrap();
         let org = "thread-tools-default-visible-limit";
@@ -1231,9 +1240,13 @@ mod tests {
         .await
         .unwrap();
         let visible = body_json(visible).await;
+        // Inverted from the old paged behavior (100 items / hasMore: true):
+        // the local list now answers in FULL so the desktop UI can treat its
+        // in-memory copy as complete. 101 visible rows means 101 items, and a
+        // client paging loop must terminate on the first response.
         assert_eq!(visible["totalCount"], 101);
-        assert_eq!(visible["items"].as_array().unwrap().len(), 100);
-        assert_eq!(visible["hasMore"], true);
+        assert_eq!(visible["items"].as_array().unwrap().len(), 101);
+        assert_eq!(visible["hasMore"], false);
         assert!(visible["items"]
             .as_array()
             .unwrap()
@@ -1401,6 +1414,62 @@ mod tests {
         .unwrap();
         assert_eq!(empty_trigger_ids.status(), StatusCode::OK);
         assert_eq!(body_json(empty_trigger_ids).await["totalCount"], 1);
+    }
+
+    /// The local list ignores `limit`/`offset` on purpose — the desktop UI
+    /// depends on its in-memory copy being COMPLETE, so a client asking for one
+    /// row still gets all of them and is told there is no next page. A
+    /// malformed value is still rejected, because "ignored" must not degrade
+    /// into "unvalidated".
+    #[tokio::test]
+    async fn list_ignores_caller_pagination_but_still_validates_it() {
+        let state = persistent_test_state();
+        let org = "thread-tools-ignores-pagination";
+        for _ in 0..3 {
+            let body =
+                Bytes::from(json!({"data": {"title": "t", "virtual_mcp_id": "v"}}).to_string());
+            dispatch(&state, org, "COLLECTION_THREADS_CREATE", &body)
+                .await
+                .unwrap();
+        }
+
+        let one = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_LIST",
+            &Bytes::from_static(br#"{"limit":1,"offset":0}"#),
+        )
+        .await
+        .unwrap();
+        let one = body_json(one).await;
+        assert_eq!(one["items"].as_array().unwrap().len(), 3);
+        assert_eq!(one["totalCount"], 3);
+        assert_eq!(one["hasMore"], false);
+
+        // An offset past the end would have emptied a paged response; here it
+        // changes nothing, which is what makes the client's loop terminate.
+        let offset = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_LIST",
+            &Bytes::from_static(br#"{"offset":99}"#),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            body_json(offset).await["items"].as_array().unwrap().len(),
+            3
+        );
+
+        let malformed = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_LIST",
+            &Bytes::from_static(br#"{"limit":0}"#),
+        )
+        .await
+        .unwrap();
+        assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
