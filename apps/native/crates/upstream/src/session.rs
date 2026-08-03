@@ -40,10 +40,11 @@
 //! problem, not a missing plugin — and why a genuine mesh-side
 //! bearer-to-session bridge was the actual fix).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch, OwnedMutexGuard};
 
 use crate::bridge::{self, BridgeError};
 use crate::cookie_jar::CookieJar;
@@ -114,6 +115,18 @@ pub struct StatusResult {
     pub storage_state: AuthStorageState,
 }
 
+/// A monotonic change to the authenticated subject visible process-wide.
+///
+/// This is deliberately separate from [`StatusResult`]'s watch channel:
+/// `watch` coalesces equal values, while consumers that own account-scoped
+/// child processes must observe every hard sign-out even when no prior status
+/// call published the corresponding signed-in value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionIdentityEvent {
+    pub generation: u64,
+    pub user_sub: Option<String>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
     #[error(transparent)]
@@ -163,6 +176,11 @@ struct Inner {
     session_cache: RwLock<Option<Option<StoredSession>>>,
     session_load_lock: tokio::sync::Mutex<()>,
     watch_tx: watch::Sender<StatusResult>,
+    /// Serializes the short commit/sign-out boundary with account-scoped
+    /// process admission. Long-running login preparation happens outside it.
+    transition_gate: Arc<tokio::sync::Mutex<()>>,
+    identity_generation: AtomicU64,
+    identity_tx: broadcast::Sender<SessionIdentityEvent>,
 }
 
 /// Cheap to clone (one `Arc` bump) — every call site (IPC commands, the
@@ -170,6 +188,25 @@ struct Inner {
 /// to the same underlying state.
 #[derive(Clone)]
 pub struct UpstreamSession(Arc<Inner>);
+
+/// A fully obtained session that has not yet been installed into the
+/// process-global cache or durable store. Keeping this opaque lets the native
+/// shell stop account-A child processes before account B becomes usable.
+pub struct PreparedSession(StoredSession);
+
+impl PreparedSession {
+    pub fn user_sub(&self) -> &str {
+        &self.0.user.sub
+    }
+}
+
+/// Exclusive guard for an authenticated-subject transition. Terminal spawn
+/// holds the same gate across process creation and registration, so either a
+/// start belongs wholly to the old generation or the transition wins first.
+pub struct SessionTransitionGuard {
+    session: UpstreamSession,
+    _guard: OwnedMutexGuard<()>,
+}
 
 impl UpstreamSession {
     pub fn new(target: String, store: Arc<dyn TokenStore>) -> Self {
@@ -181,6 +218,7 @@ impl UpstreamSession {
             upstream_url: target.clone(),
             storage_state: AuthStorageState::Available,
         });
+        let (identity_tx, _) = broadcast::channel(32);
         Self(Arc::new(Inner {
             target,
             host,
@@ -193,6 +231,9 @@ impl UpstreamSession {
             session_cache: RwLock::new(None),
             session_load_lock: tokio::sync::Mutex::new(()),
             watch_tx,
+            transition_gate: Arc::new(tokio::sync::Mutex::new(())),
+            identity_generation: AtomicU64::new(0),
+            identity_tx,
         }))
     }
 
@@ -294,6 +335,19 @@ impl UpstreamSession {
     /// hard sign-outs through the same channel.
     pub fn subscribe(&self) -> watch::Receiver<StatusResult> {
         self.0.watch_tx.subscribe()
+    }
+
+    /// Subscribe to non-coalescing authenticated-subject transitions.
+    pub fn subscribe_identity(&self) -> broadcast::Receiver<SessionIdentityEvent> {
+        self.0.identity_tx.subscribe()
+    }
+
+    /// Acquire the process-wide authenticated-subject transition gate.
+    pub async fn begin_transition(&self) -> SessionTransitionGuard {
+        SessionTransitionGuard {
+            session: self.clone(),
+            _guard: self.0.transition_gate.clone().lock_owned().await,
+        }
     }
 
     /// `auth_status()`. Re-validates against upstream at most once per
@@ -453,16 +507,19 @@ impl UpstreamSession {
     /// way; the shell's own `organization.list`/last-visited-org logic and
     /// org-creation flow take it from there, with no client-side org logic
     /// in this crate.
-    pub async fn login(&self) -> Result<StatusResult, SessionError> {
+    pub async fn prepare_login(&self) -> Result<PreparedSession, SessionError> {
         let stored = login::perform_interactive_login(
             &self.0.http,
             &self.0.target,
             login::open_system_browser,
         )
         .await?;
-        self.0.store.save(&self.0.host, stored.clone()).await?;
-        self.cache_session(Some(stored.clone()));
-        Ok(self.publish_signed_in(&stored))
+        Ok(PreparedSession(stored))
+    }
+
+    pub async fn login(&self) -> Result<StatusResult, SessionError> {
+        let prepared = self.prepare_login().await?;
+        self.begin_transition().await.install(prepared).await
     }
 
     /// `auth_logout()`. Best-effort upstream revoke THEN Keychain clear, in
@@ -479,6 +536,10 @@ impl UpstreamSession {
     /// doc) — a signed-out app has no business holding onto an
     /// in-flight-captured Better Auth session cookie either.
     pub async fn logout(&self) -> StatusResult {
+        self.begin_transition().await.logout().await
+    }
+
+    async fn logout_unlocked(&self) -> StatusResult {
         let current = self.load().await;
         if let Some(session) = current.as_ref() {
             revoke_upstream_best_effort(&self.0.http, session).await;
@@ -496,6 +557,7 @@ impl UpstreamSession {
         self.mark_validated(false);
         let result = self.signed_out();
         self.publish(result.clone());
+        self.publish_identity(None);
         result
     }
 
@@ -507,16 +569,23 @@ impl UpstreamSession {
     /// to revoke). Also purges the cookie jar, for the same reason
     /// `logout()` does.
     pub async fn hard_sign_out(&self, reason: &str) -> StatusResult {
+        self.begin_transition().await.hard_sign_out(reason).await
+    }
+
+    async fn hard_sign_out_unlocked(&self, reason: &str) -> StatusResult {
         tracing::warn!(reason, target = %self.0.target, "upstream session invalidated — clearing local credentials");
         if let Err(err) = self.0.store.clear(&self.0.host).await {
             tracing::warn!(error = %err, "failed to clear upstream Keychain entry during hard sign-out");
-        } else {
-            self.cache_session(None);
         }
+        // A hard invalidation is authoritative for this process even if the
+        // durable delete failed. Never leave the rejected credential usable
+        // until restart; the next launch may retry cleanup independently.
+        self.cache_session(None);
         self.0.cookie_jar.clear(&self.0.host);
         self.mark_validated(false);
         let result = self.signed_out();
         self.publish(result.clone());
+        self.publish_identity(None);
         result
     }
 
@@ -550,7 +619,7 @@ impl UpstreamSession {
     /// unconditional-clear posture: this crate treats "purge on any
     /// terminal outcome" as the safer default throughout, never "keep
     /// retrying with stale credentials."
-    pub async fn complete_session(&self) -> Result<StatusResult, SessionError> {
+    pub async fn prepare_complete_session(&self) -> Result<PreparedSession, SessionError> {
         let outcome = bridge::complete_via_cookie_jar(
             &self.0.http_no_redirect,
             &self.0.target,
@@ -561,9 +630,12 @@ impl UpstreamSession {
         self.0.cookie_jar.clear(&self.0.host);
 
         let stored = outcome?;
-        self.0.store.save(&self.0.host, stored.clone()).await?;
-        self.cache_session(Some(stored.clone()));
-        Ok(self.publish_signed_in(&stored))
+        Ok(PreparedSession(stored))
+    }
+
+    pub async fn complete_session(&self) -> Result<StatusResult, SessionError> {
+        let prepared = self.prepare_complete_session().await?;
+        self.begin_transition().await.install(prepared).await
     }
 
     /// The access token `routes/upstream.rs` attaches to a forwarded
@@ -711,6 +783,21 @@ impl UpstreamSession {
         });
     }
 
+    fn publish_identity(&self, user_sub: Option<String>) {
+        let previous = self
+            .0
+            .identity_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
+                Some(generation.saturating_add(1))
+            })
+            .unwrap_or_else(|generation| generation);
+        let generation = previous.saturating_add(1);
+        let _ = self.0.identity_tx.send(SessionIdentityEvent {
+            generation,
+            user_sub,
+        });
+    }
+
     /// Probes `PROBE_PATH` with `access_token` — see `PROBE_PATH`'s doc
     /// comment for why this endpoint specifically. Only a genuine `401`
     /// (bearer resolution failure) is treated as "unauthenticated"; every
@@ -840,6 +927,47 @@ impl UpstreamSession {
                 }
             }
         }
+    }
+}
+
+impl SessionTransitionGuard {
+    pub fn generation(&self) -> u64 {
+        self.session.0.identity_generation.load(Ordering::Acquire)
+    }
+
+    pub async fn current_user_sub_result(&self) -> Result<Option<String>, TokenStoreError> {
+        self.session.current_user_sub_result().await
+    }
+
+    /// Make a prepared identity process-global while this guard excludes
+    /// terminal admission and every other identity transition.
+    pub async fn install(&self, prepared: PreparedSession) -> Result<StatusResult, SessionError> {
+        let previous_user_sub = self
+            .session
+            .load_result()
+            .await?
+            .map(|stored| stored.user.sub);
+        let stored = prepared.0;
+        let next_user_sub = stored.user.sub.clone();
+        self.session
+            .0
+            .store
+            .save(&self.session.0.host, stored.clone())
+            .await?;
+        self.session.cache_session(Some(stored.clone()));
+        let status = self.session.publish_signed_in(&stored);
+        if previous_user_sub.as_deref() != Some(next_user_sub.as_str()) {
+            self.session.publish_identity(Some(next_user_sub));
+        }
+        Ok(status)
+    }
+
+    pub async fn logout(&self) -> StatusResult {
+        self.session.logout_unlocked().await
+    }
+
+    pub async fn hard_sign_out(&self, reason: &str) -> StatusResult {
+        self.session.hard_sign_out_unlocked(reason).await
     }
 }
 
@@ -1533,6 +1661,80 @@ mod tests {
 
         session.hard_sign_out("test").await;
         assert!(session.cookie_jar().is_empty(session.host()));
+    }
+
+    #[tokio::test]
+    async fn transition_gate_linearizes_terminal_admission_with_hard_sign_out() {
+        let target = "http://example.invalid".to_string();
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target, store);
+        let admission = session.begin_transition().await;
+        let mut identity_events = session.subscribe_identity();
+
+        let sign_out = {
+            let session = session.clone();
+            tokio::spawn(async move { session.hard_sign_out("test invalidation").await })
+        };
+        tokio::task::yield_now().await;
+        assert!(
+            !sign_out.is_finished(),
+            "hard sign-out must wait for an in-flight terminal admission"
+        );
+
+        drop(admission);
+        assert!(!sign_out.await.unwrap().signed_in);
+        let event = identity_events.recv().await.unwrap();
+        assert_eq!(event.user_sub, None);
+        assert_eq!(event.generation, 1);
+        assert_eq!(session.current_user_sub().await, None);
+    }
+
+    #[tokio::test]
+    async fn identity_generation_changes_for_replacement_but_not_same_subject_refresh() {
+        let target = "http://example.invalid".to_string();
+        let store = seeded_store(&target, valid_session(&target));
+        let session = UpstreamSession::new(target.clone(), store);
+        let mut events = session.subscribe_identity();
+
+        let mut refreshed = valid_session(&target);
+        refreshed.access_token = "refreshed-token".to_string();
+        let transition = session.begin_transition().await;
+        transition
+            .install(PreparedSession(refreshed))
+            .await
+            .unwrap();
+        assert_eq!(transition.generation(), 0);
+        assert!(events.try_recv().is_err());
+
+        let mut replacement = valid_session(&target);
+        replacement.user.sub = "user_2".to_string();
+        replacement.user.email = Some("second@example.com".to_string());
+        transition
+            .install(PreparedSession(replacement))
+            .await
+            .unwrap();
+        assert_eq!(transition.generation(), 1);
+        let event = events.recv().await.unwrap();
+        assert_eq!(event.generation, 1);
+        assert_eq!(event.user_sub.as_deref(), Some("user_2"));
+    }
+
+    #[tokio::test]
+    async fn hard_sign_out_drops_the_process_cache_even_when_durable_clear_fails() {
+        let target = "http://example.invalid".to_string();
+        let stored = valid_session(&target);
+        let session = UpstreamSession::new(
+            target,
+            Arc::new(RejectingClearStore {
+                stored: stored.clone(),
+            }),
+        );
+        assert_eq!(session.current_user_sub().await.as_deref(), Some("user_1"));
+
+        let status = session.hard_sign_out("server rejected credentials").await;
+
+        assert!(!status.signed_in);
+        assert_eq!(session.current_user_sub().await, None);
     }
 
     /// Logout ordering: the best-effort upstream revoke MUST fire (with the

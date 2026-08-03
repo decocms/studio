@@ -383,6 +383,7 @@ mod tests {
             shutdown: Arc::new(crate::shutdown::ShutdownCoordinator::new()),
             setup,
             sandbox_manager: manager,
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
         }
     }
 

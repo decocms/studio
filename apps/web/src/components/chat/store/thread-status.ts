@@ -2,21 +2,18 @@ import type { Task } from "../task/types";
 
 type ResponsePart = {
   type?: string;
-  text?: string;
   state?: string;
 };
 
+// Client mirror of the server's `resolveThreadStatus` (status.ts) — keep in sync.
 export function deriveTerminalThreadStatus(
   finishReason: string | undefined,
   responseParts: ResponsePart[] = [],
 ): Exclude<Task["status"], "in_progress"> {
   if (finishReason === "stop") {
-    const text = responseParts
-      .filter((part) => part.type === "text" && part.text)
-      .map((part) => part.text!)
-      .join("\n");
-    const textWithoutUrls = text.replace(/https?:\/\/[^\s)>\]]+/g, "");
-    return textWithoutUrls.includes("?") ? "requires_action" : "completed";
+    // Finished turn. "Needs input" comes only from the structured `tool-calls`
+    // signals below (user_ask / approval), never from a `?` in the prose.
+    return "completed";
   }
 
   if (finishReason === "tool-calls") {

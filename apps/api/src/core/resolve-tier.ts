@@ -4,6 +4,7 @@ import {
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 import {
+  isHostedProviderId,
   pickSimpleModeDefaults,
   type AiProviderKey,
   type AiProviderModel,
@@ -17,6 +18,13 @@ export class TierUnavailableError extends Error {
       `No model available for tier "${tier}". Connect a provider or configure the tier in organization settings.`,
     );
     this.name = "TierUnavailableError";
+  }
+}
+
+export class SpecificModelCredentialUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SpecificModelCredentialUnavailableError";
   }
 }
 
@@ -132,7 +140,9 @@ export async function resolveTier(
         ] ?? null)
       : null;
 
-  const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
+  const keys = (
+    await ctx.storage.aiProviderKeys.list({ organizationId: orgId })
+  ).filter((key) => isHostedProviderId(key.providerId));
 
   // Prefer the user override, then the org slot; take the first whose key is
   // still live. A slot pointing at a deleted key is skipped so resolution
@@ -195,7 +205,8 @@ export async function resolveTier(
  * enriching it with catalog metadata when available. Used by automations that
  * pin a specific model instead of an org tier preset. Unlike `resolveTier`
  * this never consults org settings or default-picks — the caller has already
- * chosen the exact model + credential.
+ * chosen the exact model + credential. The credential must still exist and
+ * belong to a hosted provider; native coding agents cannot run automations.
  */
 export async function resolveSpecificModel(
   ctx: StudioContext,
@@ -206,6 +217,27 @@ export async function resolveSpecificModel(
   if (!orgId) {
     throw new Error("resolveSpecificModel called without an organization");
   }
+
+  const key = await ctx.storage.aiProviderKeys
+    .findById(credentialId, orgId)
+    .catch((error: unknown) => {
+      if (
+        error instanceof Error &&
+        error.message === "Provider key not found"
+      ) {
+        throw new SpecificModelCredentialUnavailableError(
+          `AI provider credential "${credentialId}" was not found`,
+          { cause: error },
+        );
+      }
+      throw error;
+    });
+  if (!isHostedProviderId(key.providerId)) {
+    throw new SpecificModelCredentialUnavailableError(
+      `AI provider credential "${credentialId}" uses native-only provider "${key.providerId}" and cannot run a hosted model`,
+    );
+  }
+
   const catalog = await fetchModelList(ctx, credentialId, orgId).catch(
     () => [] as AiProviderModel[],
   );

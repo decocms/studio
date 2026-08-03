@@ -30,25 +30,6 @@ describe("parseErrorMessage", () => {
     expect(result.summary).toBe("That took longer than expected. Try again.");
   });
 
-  test("classifies a desktop-link-offline 409 body with a re-link CTA", () => {
-    // Shape POST /messages returns when the thread is pinned to user-desktop
-    // and resolveDispatchTarget finds no live link claim.
-    const raw =
-      '{"error":"link_unavailable","code":"user_desktop_link_offline"}';
-    const result = parseErrorMessage(raw);
-    expect(result.summary).toContain("desktop is offline");
-    expect(result.summary).toContain("bunx decocms@latest link");
-    expect(result.rawDetails).toBe(raw);
-  });
-
-  test("classifies a capability-missing 409 body with install guidance", () => {
-    const raw =
-      '{"error":"link_unavailable","code":"user_desktop_link_capability_missing","activeCapabilities":["decopilot-sandbox"]}';
-    const result = parseErrorMessage(raw);
-    expect(result.summary).toContain("wasn't detected");
-    expect(result.rawDetails).toBe(raw);
-  });
-
   test("passes through a plain, short error message unchanged", () => {
     const result = parseErrorMessage("Something broke");
     expect(result.summary).toBe("Something broke");

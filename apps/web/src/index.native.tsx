@@ -10,8 +10,8 @@
  * switcher, projects, settings, chat, everything), not a parallel mini-app.
  * The local Rust `local-api` process serves this page and stays the only thing
  * the webview talks to: it proxies almost every request upstream unchanged and
- * intercepts only the local concerns (threads, chat dispatch, model/CLI
- * availability, sandbox surfaces). The shell itself needs no desktop-specific
+ * intercepts only the local concerns (threads, terminal/capability discovery,
+ * and sandbox surfaces). The shell itself needs no desktop-specific
  * transport branch because its relative requests are genuinely same-origin.
  *
  * The ONE desktop-specific thing this entry does beyond that is gate on the
@@ -37,6 +37,7 @@ import { SignInScreen } from "@/desktop/sign-in-screen";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { StatusColumn } from "@/desktop/status-column";
 import { KeychainUnavailableScreen } from "@/desktop/keychain-unavailable-screen";
+import { NativeAgentRuntimeProvider } from "@/desktop/agent-terminal/runtime-provider";
 
 import "../index.css";
 
@@ -75,7 +76,9 @@ function DesktopEntry() {
   // inside the QueryClient too, exactly as `index.web.tsx` mounts it.
   return (
     <Providers>
-      <RouterProvider router={router} />
+      <NativeAgentRuntimeProvider>
+        <RouterProvider router={router} />
+      </NativeAgentRuntimeProvider>
     </Providers>
   );
 }

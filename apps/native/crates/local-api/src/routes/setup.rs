@@ -42,7 +42,7 @@
 //! while the workdir + git history persist on disk, see `sandbox::manager`'s
 //! module doc) used to 404 loudly (correct — never silently restart the
 //! wrong target) but left the caller with NO way to make Restart actually
-//! work again short of a fresh chat dispatch. [`resolve_for_start`] closes
+//! work again short of another sandbox ensure. [`resolve_for_start`] closes
 //! that gap: before giving up, it tries
 //! [`crate::sandbox::SandboxManager::resurrect`]/`resurrect_active`, which
 //! re-`ensure()`s the handle from its persisted `GitSandboxConfig` sidecar
@@ -107,7 +107,7 @@ struct EnsureWorkload {
 }
 
 /// Establish a durable, explicitly-addressable git sandbox from the same
-/// `DesktopSandboxBlock` shape carried by local chat dispatch. Returns as
+/// `DesktopSandboxBlock` shape carried by the native sandbox setup flow. Returns as
 /// soon as the setup worker accepts clone/start so the UI can attach SSE and
 /// render clone/install output live; lifecycle failures arrive on that stream
 /// and are also persisted in the registry.
@@ -399,6 +399,7 @@ mod tests {
             token: "test-token".into(),
             boot_id: "test-boot".into(),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

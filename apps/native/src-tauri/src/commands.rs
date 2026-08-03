@@ -75,9 +75,18 @@ pub async fn auth_status() -> AuthStatusWire {
 }
 
 #[tauri::command]
-pub async fn auth_login() -> Result<AuthResultWire, String> {
+pub async fn auth_login(state: State<'_, LocalApiState>) -> Result<AuthResultWire, String> {
     tracing::info!("IPC: auth_login invoked");
-    let result = upstream::global().login().await;
+    let app_state = state
+        .app_state()
+        .ok_or_else(|| "local-api is not running (already shut down)".to_string())?;
+    let session = upstream::global();
+    let result = match session.prepare_login().await {
+        Ok(prepared) => local_api::install_upstream_session(&app_state, prepared)
+            .await
+            .map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
     match &result {
         Ok(_) => tracing::info!("IPC: auth_login succeeded"),
         Err(e) => tracing::error!(error = %e, "IPC: auth_login failed"),
@@ -86,8 +95,12 @@ pub async fn auth_login() -> Result<AuthResultWire, String> {
 }
 
 #[tauri::command]
-pub async fn auth_logout() -> AuthResultWire {
-    upstream::global().logout().await.into()
+pub async fn auth_logout(state: State<'_, LocalApiState>) -> Result<AuthResultWire, String> {
+    let status = match state.app_state() {
+        Some(app_state) => local_api::logout_upstream_session(&app_state).await,
+        None => upstream::global().logout().await,
+    };
+    Ok(status.into())
 }
 
 /// The hybrid-login bridge (post-v1 owner feedback — see
@@ -105,9 +118,20 @@ pub async fn auth_logout() -> AuthResultWire {
 /// `UpstreamSession::complete_session`'s doc comment), so the frontend
 /// must re-drive the sign-in proxy call before retrying.
 #[tauri::command]
-pub async fn auth_complete_session() -> Result<AuthResultWire, String> {
+pub async fn auth_complete_session(
+    state: State<'_, LocalApiState>,
+) -> Result<AuthResultWire, String> {
     tracing::info!("IPC: auth_complete_session invoked");
-    let result = upstream::global().complete_session().await;
+    let app_state = state
+        .app_state()
+        .ok_or_else(|| "local-api is not running (already shut down)".to_string())?;
+    let session = upstream::global();
+    let result = match session.prepare_complete_session().await {
+        Ok(prepared) => local_api::install_upstream_session(&app_state, prepared)
+            .await
+            .map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
     match &result {
         Ok(_) => tracing::info!("IPC: auth_complete_session succeeded"),
         Err(e) => tracing::error!(error = %e, "IPC: auth_complete_session failed"),

@@ -47,23 +47,17 @@ import { startHostedHarness } from "./hosted-harness-workflow";
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
 /**
- * Guard: every harness agent loop runs in the cluster worker.
+ * Guard: hosted dispatch is Decopilot-only.
  *
- * Decopilot always did. CLI harnesses (claude-code, codex) used to run their
- * loop ON the sandbox — but the only sandbox that could host one was the
- * desktop daemon reached over the link tunnel, and that path is gone: local
- * CLI runs now happen entirely inside the Tauri desktop app (`apps/native`,
- * which owns its own Rust `local-api` and never enqueues onto this gate).
- *
- * The `(CLI, agent-sandbox)` cloud-CLI corner was never wired and still isn't,
- * so it keeps throwing rather than falling through to a cluster-hosted loop
- * that would silently ignore the requested sandbox. That behavior is unchanged
- * by the link removal — it already threw for every agent-sandbox target.
+ * Coding-agent loops run entirely inside the Tauri desktop app (`apps/native`,
+ * which owns its Rust `local-api` and never enqueues onto this gate). Use a
+ * positive allowlist so an unknown or future native harness cannot silently
+ * fall through to the hosted Decopilot loop.
  */
 export function assertHarnessRunsInCluster(harnessId?: string | null): void {
-  if (harnessId === "claude-code" || harnessId === "codex") {
+  if (harnessId !== "decopilot") {
     throw new Error(
-      `not implemented: CLI harness "${harnessId}" has no cluster host (cloud-CLI is a planned follow-up; local CLI runs in the Tauri desktop app)`,
+      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
     );
   }
 }
@@ -132,14 +126,12 @@ function requireRuntime(): ThreadGateRuntime {
 type HostedEnqueueDescriptor = Parameters<typeof startHostedHarness>[0];
 
 /**
- * Result of `dispatchRunAndWaitStep`.
- * - `{ hostedEnqueue: ... }`: hosted path taken; workflow body must call
- *   `startHostedHarness` with this descriptor (DBOS step restriction).
- * - `null`: desktop path taken (work item published) — no hosted enqueue needed.
+ * Result of `dispatchRunAndWaitStep`. The workflow body must call
+ * `startHostedHarness` with this descriptor (DBOS step restriction).
  */
 type DispatchStepResult = {
   runFenceToken: string;
-  hostedEnqueue?: HostedEnqueueDescriptor;
+  hostedEnqueue: HostedEnqueueDescriptor;
 };
 
 export function claimRunFenceForDispatch(
@@ -194,8 +186,7 @@ async function dispatchRunAndWaitStep(
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Every harness loop runs here in the cluster worker; CLI harnesses have no
-  // cluster host and throw (see `assertHarnessRunsInCluster`).
+  // Defense in depth for replayed workflow payloads and direct callers.
   assertHarnessRunsInCluster(request.harnessId);
 
   // The run fence is minted and persisted HERE, inside the dispatch step —
@@ -270,8 +261,8 @@ async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
  * thread-ownership check, etc. — see `prepareRun`). In-flight stream errors
  * (once `streamText` is running) are NOT emitted here — the durable projector's
  * `recordFailed` is the sole `chat_message_failed` source for those, fired
- * once the run's fenced terminal is materialized on the stream (both hosted
- * and desktop). This step only covers the pre-stream gap: a `dispatchRunAndWait`
+ * once the run's fenced terminal is materialized on the stream. This step
+ * only covers the pre-stream gap: a `dispatchRunAndWait`
  * throw here means setup failed before any run/stream existed for the
  * projector to fold, so nothing else will ever emit the balancing event.
  *
@@ -318,17 +309,16 @@ async function trackMessageFailedStep(
 export async function runDispatchSteps(
   ctx: ThreadGateContext,
 ): Promise<ThreadGateOutcome> {
+  assertHarnessRunsInCluster(ctx.request.harnessId);
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
   let dispatchResult: DispatchStepResult;
   try {
-    // Retriable: every run is now hosted in-process, so a DBOS replay on another
-    // executor has no external daemon to race against. (The desktop link used to
-    // make this conditional — a laptop daemon outlives the pod, so a replay would
-    // open a SECOND dispatch against the same workdir. That path is gone.) The
-    // thread-gate queue (concurrency=1 per threadId) still guarantees a single
-    // in-flight dispatch per thread.
+    // Retriable: every run is hosted in-process, so a DBOS replay on another
+    // executor has no external process to race. The thread-gate queue
+    // (concurrency=1 per threadId) still guarantees one in-flight dispatch per
+    // thread.
     dispatchResult = await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
       retriesAllowed: true,
@@ -346,8 +336,8 @@ export async function runDispatchSteps(
     // never awaited to completion — the child is a fully detached,
     // self-terminating executor (T1's contract: it publishes its own
     // fence-scoped terminal for a clean finish AND for every caught failure),
-    // and the consume step below remains the sole completion authority for
-    // BOTH topologies once the child has actually started.
+    // and the consume step below remains the sole completion authority once
+    // the child has actually started.
     //
     // The START itself failing, though, is a setup failure like any other
     // throw in this try block — NOT swallowed. A `DBOS.startWorkflow` fault
@@ -365,12 +355,10 @@ export async function runDispatchSteps(
     // self-heal (the deterministic child workflow ID dedupes any child that
     // did actually start, on replay), persistent faults fail fast with
     // correct categorization instead of being swallowed.
-    if (dispatchResult.hostedEnqueue) {
-      await startHostedHarness(dispatchResult.hostedEnqueue);
-    }
+    await startHostedHarness(dispatchResult.hostedEnqueue);
   } catch (err) {
-    // Setup errors (prepareRun / link-work preparation, or — as of this fix —
-    // a hosted child failing to even START just above) propagate out BEFORE
+    // Setup errors (prepareRun, or a hosted child failing to START just above)
+    // propagate out BEFORE
     // any run/child/stream exists — there is nothing for the consume step to
     // fold, so trackMessageFailed + rethrow is complete: it balances the
     // started-analytics event and lets DBOS record the workflow failure. A
@@ -389,27 +377,11 @@ export async function runDispatchSteps(
     throw err;
   }
 
-  // Consume step: the sole terminal-status writer for BOTH topologies, and —
-  // as of T3 — the sole COMPLETION authority too (the gate no longer awaits
-  // the hosted child above). `dispatchRunAndWaitStep` above only STARTS the
-  // run (hosted: returns a descriptor, started just above; desktop: publishes
-  // the work item to the daemon over the tunnel). The actual completion —
-  // live-tailing the run's durable JetStream consumer, projecting the final
-  // parts/title, and writing terminal status — happens here, for both
-  // topologies via one code path.
-  //
-  // Live-tail timing is now IDENTICAL for hosted and desktop: this step opens
-  // `createProjectorChunkStream`'s `DeliverPolicy.All` consumer immediately
-  // after dispatch, with no guarantee the producer (hosted child / desktop
-  // daemon) has published chunk 1 yet — desktop has ALWAYS worked this way
-  // (`dispatchRunAndWaitStep`'s sandbox branch returns as soon as the work
-  // item is durably published, well before the remote daemon streams
-  // anything back), so this is a pattern already proven in production, not a
-  // new race introduced here. See `nats-chunk-source.ts`'s `natsChunkSource`:
-  // a pull with nothing yet retained simply awaits the next published message
-  // (or the idle timeout, as a backstop) — there is no "stream must already
-  // be complete/retained" assumption anywhere in this path for either
-  // topology.
+  // The consume step is the sole completion authority and terminal-status
+  // writer; the gate does not await the hosted child directly. It opens the
+  // durable JetStream consumer immediately after dispatch, then projects the
+  // final parts/title and status. If the child has not published chunk 1 yet,
+  // the pull waits for the next message (or the idle-timeout backstop).
   //
   // Recovery-safe: `consumeRunProjection` has an entry guard that returns early
   // on a terminal status (the run already finished).
@@ -450,8 +422,8 @@ const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
   // A gate now spans the whole run (no 1 h cap), so a multi-hour run can
   // survive many rolling deploys; each pod recycle the gate lives through costs
   // one recovery attempt. The default (100) could dead-letter a legitimately
-  // long run mid-flight, which would free the slot while the daemon still runs
-  // (a second-dispatch hazard). 1000 gives generous headroom.
+  // long run mid-flight, which would free the slot while its hosted child is
+  // still running. 1000 gives generous headroom.
   maxRecoveryAttempts: 1000,
 });
 
@@ -470,6 +442,10 @@ export async function enqueueThreadRun(
   ctx: ThreadGateContext,
   opts?: { workflowID?: string },
 ): Promise<{ workflowID: string }> {
+  // Reject before DBOS persists or starts any workflow. Background callers
+  // must resolve and pass the thread's explicit hosted runtime before writing
+  // their own request message.
+  assertHarnessRunsInCluster(ctx.request.harnessId);
   const handle = await DBOS.startWorkflow(threadGateWorkflow, {
     queueName: THREAD_GATE_QUEUE,
     enqueueOptions: { queuePartitionKey: ctx.threadId },

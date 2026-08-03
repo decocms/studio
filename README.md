@@ -197,7 +197,6 @@ Every tool call gets input/output validation, access control, audit logging, and
 | [`packages/runtime`](./packages/runtime/README.md) | Runtime helpers for MCP servers, OAuth, tools, and triggers |
 | [`packages/sandbox`](./packages/sandbox/README.md) | Agent sandbox lifecycle, daemon, dispatch, and proxy implementation |
 | [`packages/shared`](./packages/shared/README.md) | Private isomorphic contracts, SDK utilities, and async primitives |
-| [`packages/tunnel`](./packages/tunnel/README.md) | NATS-backed streaming HTTP transport |
 | [`packages/typegen`](./packages/typegen/README.md) | Typed client generator for Studio Virtual MCPs |
 | [`packages/ui`](./packages/ui/README.md) | Internal React design system |
 

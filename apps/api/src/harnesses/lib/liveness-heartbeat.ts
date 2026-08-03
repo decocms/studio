@@ -1,17 +1,10 @@
 /**
- * Liveness heartbeat scheduler (unified-control-plane T5/T6).
+ * Hosted liveness heartbeat scheduler.
  *
- * Shared between the hosted executor (apps/api's decopilot dispatch, T5)
- * and the desktop daemon's relay pump (T6 — wired into
- * `apps/api/src/link-daemon/chunk-relay.ts`, which is the file that
- * actually pumps a sandbox's raw SSE into seq-numbered relay lines; that
- * file lives in the `apps/api` workspace, which already depends on
- * the harness lib, same as `packages/sandbox`) — both need the exact same
- * "call `emit` after N ms of silence, reset the window on every real chunk,
- * never emit again after `stop()`" scheduler; only the wiring (what `emit`
- * actually publishes) differs per executor. Lives here so this is reachable
- * from both without a reverse dependency (the harness lib has no
- * dependency on apps/api in either direction).
+ * The hosted executor and parked-workflow monitor both need the same "call
+ * `emit` after N ms of silence, reset the window on every real chunk, never
+ * emit again after `stop()`" scheduler. It stays in the harness library so
+ * both hosted call sites share one implementation without a dependency cycle.
  *
  * Pure: no NATS/DBOS/StudioContext/relay-transport knowledge — just a timer
  * plus the shared `data-liveness` wire-shape builder below. Uses
@@ -19,13 +12,8 @@
  * `setTimeout` loop (see the repo's async-primitives rule in
  * AGENTS.md/CLAUDE.md — `@decocms/shared/std` is the one canonical home for this).
  *
- * Version-skew note (both T5 and T6): only executors built with this change
- * ever emit `data-liveness` chunks. An old, already-deployed hosted pod or
- * desktop daemon simply never emits them — the projector's own idle-window
- * enforcement (`RUN_IDLE_TIMEOUT_MS`, 10 minutes) is UNCHANGED by either
- * task; it stays where it was until fleet adoption of the emitting build is
- * complete. This module only ever ADDS emission, never changes the
- * threshold that consumes it.
+ * This module only emits heartbeats; it does not change the projector's
+ * independent idle-window enforcement.
  */
 import { sleep } from "@decocms/shared/std";
 
@@ -139,17 +127,9 @@ export class HeartbeatEmitter {
 // --- Wire shape -------------------------------------------------------------
 
 /**
- * Shape of the transient `data-liveness` chunk BOTH executors emit — single
- * source of truth for the wire format, so the desktop daemon's relay pump
- * (T6, `apps/api/src/link-daemon/chunk-relay.ts`) can't drift from the
- * hosted executor's wrapper (T5,
- * `apps/api/src/api/routes/decopilot/with-liveness-heartbeat.ts`).
- * Deliberately NOT typed against `ai`'s `UIMessageChunk`: this package pins
- * no `ai` version, and the desktop path only needs a plain object matching
- * `DispatchSSEEvent`'s `chunk: z.unknown()` field
- * (`packages/sandbox/dispatch/schemas.ts`). The hosted wrapper has a hard
- * `ai` dependency already and re-asserts the stronger `ai`-typed shape
- * locally — both MUST stay byte-for-byte identical on the wire.
+ * Shape of the transient `data-liveness` chunk used by hosted execution.
+ * Deliberately not typed against `ai`'s `UIMessageChunk`; the hosted wrapper
+ * reasserts the stronger type at its boundary.
  */
 export interface LivenessDataChunk {
   type: "data-liveness";

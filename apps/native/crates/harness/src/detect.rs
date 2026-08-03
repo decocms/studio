@@ -1,49 +1,44 @@
-//! CLI availability detection — GROW-ONLY cache mirroring
-//! `apps/api/src/link-daemon/capabilities.ts`'s semantics EXACTLY:
-//! `mergeProbedCapabilities` there never un-advertises a capability once
-//! seen ("a transient probe failure (CLI busy, SDK hiccup) must never
-//! un-advertise a capability mid-run — dispatch routing would start
-//! bouncing threads that are actively streaming"). This module ports that
-//! same invariant to Rust: once a harness flips to `true`, no later probe
-//! — however it fails — can flip it back.
+//! Native coding-agent CLI availability detection with a grow-only cache.
+//! Once a CLI is confirmed usable, a later transient probe failure never
+//! removes it from the picker during the same app process.
 //!
-//! "Detected" means the CLI is installed AND has a confirmed logged-in
-//! session — FAIL-CLOSED: an installed-but-not-logged-in CLI is not usable,
-//! so it does NOT count as detected. `probe()` requires BOTH a successful
-//! `--version` probe (installed) AND a passing auth probe (logged in):
-//!   - claude via `<bin> auth status --json`'s `"loggedIn":true` (mirrors
-//!     `capabilities.ts::detectClaudeCode`'s account-email check, adapted
-//!     since this crate drives the CLI's own surface rather than the
-//!     `@anthropic-ai/claude-agent-sdk`),
+//! For Claude and Codex, "detected" means the CLI is installed, new enough
+//! for Studio Native's complete tested contract, AND has a confirmed logged-in
+//! session. Their `probe()` requires BOTH a supported parsed `--version` and a
+//! passing auth probe:
+//!   - claude via `<bin> auth status --json`'s `"loggedIn":true`,
 //!   - codex via `<bin> login status`'s "Logged in" text — which the codex
 //!     CLI prints to STDERR with an empty stdout, so the auth probe merges
 //!     stdout+stderr before parsing (see `run_probe_capture`).
 //!
-//! A failed/unrecognized/unparseable auth check keeps `detected` at
-//! `false` (logged as a diagnostic). The grow-only cache invariant above
-//! still holds: once a confirmed-logged-in probe flips a harness to
-//! `true`, no later probe flips it back — but a CLI never reaches `true`
-//! in the first place until login is confirmed.
+//! OpenCode is the deliberate exception to the auth gate. Its TUI can resolve
+//! provider credentials from config, environment variables, and project
+//! `.env` files, while an auth-list probe sees only a subset of those. A
+//! supported OpenCode binary must still pass one credential-free, plugin-free
+//! database query: this catches a CLI whose version works but whose runtime or
+//! schema cannot initialize. Provider readiness remains interactive in the TUI.
 //!
-//! Because detection is now auth-gated, the SHARED CONTRACT surface
-//! `apps/native/e2e/fixtures/stub-harness.mjs` answers the auth probe as
-//! logged-in too (claude: `{"loggedIn":true}` on stdout for `auth status
-//! --json`; codex: "Logged in using ChatGPT" on stderr for `login status`)
-//! in ADDITION to `--version`, so the differential/parity tests still see
-//! it as detected. Both probes are independently swappable via
-//! [`resolve::resolve_argv`] (the SHARED CONTRACT env overrides).
+//! A failed/unrecognized/unparseable Claude or Codex auth check keeps its
+//! `detected` field at `false` (logged as a diagnostic). The grow-only cache
+//! invariant above still holds: once a successful probe flips a harness to
+//! `true`, no later probe flips it back.
+//!
+//! All provider probes are independently swappable through
+//! [`resolve::resolve_argv`] so native black-box tests can supply deterministic
+//! CLI fixtures.
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use crate::resolve::{self, HarnessId};
+use crate::resolve::{self, CliVersion, HarnessId, ResolveError};
 
 /// Wall-clock cap on a single probe subprocess (version OR auth check).
 /// Generous for a binary that's actually installed and responsive, bounded
 /// so a hung/misbehaving binary on someone's PATH can't wedge detection.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const OPENCODE_RUNTIME_PROBE_ARGS: &[&str] = &["--pure", "db", "SELECT 1", "--format", "json"];
 /// How often the background task re-probes while at least one harness is
 /// still undetected. Matches the order of magnitude of
 /// `capabilities.ts::startCapabilityReprobe`'s default (60s).
@@ -53,6 +48,7 @@ pub const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub struct Detection {
     pub claude_code: bool,
     pub codex: bool,
+    pub opencode: bool,
 }
 
 impl Detection {
@@ -60,6 +56,7 @@ impl Detection {
         match harness {
             HarnessId::ClaudeCode => self.claude_code,
             HarnessId::Codex => self.codex,
+            HarnessId::OpenCode => self.opencode,
         }
     }
 
@@ -67,11 +64,12 @@ impl Detection {
         match harness {
             HarnessId::ClaudeCode => self.claude_code = value,
             HarnessId::Codex => self.codex = value,
+            HarnessId::OpenCode => self.opencode = value,
         }
     }
 
     fn all_detected(self) -> bool {
-        self.claude_code && self.codex
+        self.claude_code && self.codex && self.opencode
     }
 
     /// Grow-only merge: `self ||= probed`, per-field. Never flips a `true`
@@ -88,17 +86,35 @@ impl Detection {
     }
 }
 
-static CACHE: OnceLock<RwLock<Detection>> = OnceLock::new();
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct DetectionCache {
+    detection: Detection,
+    initial_probe_completed: bool,
+}
+
+impl DetectionCache {
+    fn should_probe_synchronously(self) -> bool {
+        !self.initial_probe_completed
+    }
+
+    fn complete_initial_probe(&mut self, probed: Detection) -> Detection {
+        self.detection.merge(probed);
+        self.initial_probe_completed = true;
+        self.detection
+    }
+}
+
+static CACHE: OnceLock<RwLock<DetectionCache>> = OnceLock::new();
 static REFRESH_STARTED: OnceLock<()> = OnceLock::new();
 
-fn cache_lock() -> &'static RwLock<Detection> {
-    CACHE.get_or_init(|| RwLock::new(Detection::default()))
+fn cache_lock() -> &'static RwLock<DetectionCache> {
+    CACHE.get_or_init(|| RwLock::new(DetectionCache::default()))
 }
 
 /// Read the cache without probing. `Detection::default()` (nothing
 /// detected) if nothing has probed yet.
 pub async fn cached() -> Detection {
-    *cache_lock().read().await
+    cache_lock().read().await.detection
 }
 
 /// Ensures the cache has been populated at least once, paying for a
@@ -107,19 +123,17 @@ pub async fn cached() -> Detection {
 /// reads the warm cache instantly — a request never blocks on a probe it
 /// didn't cause. Concurrent cold-start callers all pay for their own probe
 /// (idempotent — the grow-only merge makes redundant probing harmless,
-/// just slightly wasteful), same tradeoff the Phase 1 `routes/models.rs`
-/// bootstrap already made.
+/// just slightly wasteful).
 pub async fn ensure_detected() -> Detection {
-    let current = cached().await;
-    if current.all_detected() {
+    let snapshot = *cache_lock().read().await;
+    if !snapshot.should_probe_synchronously() {
         start_background_reprobe();
-        return current;
+        return snapshot.detection;
     }
-    let probed = probe_missing(current).await;
+    let probed = probe_missing(snapshot.detection).await;
     let merged = {
         let mut guard = cache_lock().write().await;
-        guard.merge(probed);
-        *guard
+        guard.complete_initial_probe(probed)
     };
     start_background_reprobe();
     merged
@@ -143,7 +157,7 @@ fn start_background_reprobe() {
             }
             let probed = probe_missing(current).await;
             let mut guard = cache_lock().write().await;
-            guard.merge(probed);
+            guard.detection.merge(probed);
         }
     });
 }
@@ -153,7 +167,7 @@ fn start_background_reprobe() {
 /// actually missing, so a confirmed-detected CLI never pays for another
 /// probe subprocess.
 async fn probe_missing(current: Detection) -> Detection {
-    let (claude_code, codex) = tokio::join!(
+    let (claude_code, codex, opencode) = tokio::join!(
         async {
             if current.claude_code {
                 true
@@ -168,17 +182,32 @@ async fn probe_missing(current: Detection) -> Detection {
                 probe(HarnessId::Codex).await
             }
         },
+        async {
+            if current.opencode {
+                true
+            } else {
+                probe(HarnessId::OpenCode).await
+            }
+        },
     );
-    Detection { claude_code, codex }
+    Detection {
+        claude_code,
+        codex,
+        opencode,
+    }
 }
 
 async fn probe(harness: HarnessId) -> bool {
-    // Fail-CLOSED: detected == installed AND logged in. Short-circuit the
-    // auth probe when `--version` already failed (nothing to be logged in
-    // to).
-    if !version_ok(harness).await {
+    // Short-circuit provider auth when compatibility/runtime initialization
+    // already failed.
+    if !launch_ready(harness).await {
         return false;
     }
+    if harness == HarnessId::OpenCode {
+        return true;
+    }
+    // Claude/Codex remain fail-CLOSED: detected == installed AND supported
+    // AND logged in. OpenCode's documented exception is above.
     if !auth_ok(harness).await {
         tracing::debug!(
             harness = harness.wire_id(),
@@ -191,13 +220,88 @@ async fn probe(harness: HarnessId) -> bool {
     true
 }
 
-async fn version_ok(harness: HarnessId) -> bool {
-    let Ok(argv) = resolve::resolve_argv(harness) else {
-        return false;
+async fn launch_ready(harness: HarnessId) -> bool {
+    let argv = match resolve::resolve_argv(harness) {
+        Ok(argv) => argv,
+        Err(error) => {
+            tracing::warn!(
+                harness = harness.wire_id(),
+                %error,
+                "coding agent CLI could not be resolved and is unavailable"
+            );
+            return false;
+        }
     };
-    run_probe_capture(&argv, &["--version"], PROBE_TIMEOUT)
+    match require_launch_ready(harness, &argv).await {
+        Ok(version) => {
+            tracing::debug!(
+                harness = harness.wire_id(),
+                %version,
+                "coding agent CLI version and runtime are supported"
+            );
+            true
+        }
+        Err(error) => {
+            // This warning is intentionally actionable: an unsupported CLI
+            // must not look identical to an absent binary in native logs.
+            tracing::warn!(
+                harness = harness.wire_id(),
+                %error,
+                "coding agent CLI is unavailable because its compatibility or runtime readiness is unverifiable"
+            );
+            false
+        }
+    }
+}
+
+/// Probe the already-resolved argv prefix and require Studio Native's tested
+/// provider version baseline. Process-bound callers use
+/// [`require_launch_ready`] to add provider-specific runtime checks.
+pub async fn require_supported_version(
+    harness: HarnessId,
+    argv: &[String],
+) -> Result<CliVersion, ResolveError> {
+    let output = run_probe_capture(argv, &["--version"], PROBE_TIMEOUT)
         .await
-        .is_some()
+        .ok_or_else(|| {
+            ResolveError::VersionCheckFailed(format!(
+                "could not verify the installed {} version: `{} --version` did not complete \
+                 successfully within {} seconds; Studio Native requires {} {} or newer. \
+                 Upgrade with `{}` and try again",
+                harness.display_name(),
+                harness.default_binary_name(),
+                PROBE_TIMEOUT.as_secs(),
+                harness.display_name(),
+                harness.minimum_supported_version(),
+                harness.upgrade_command(),
+            ))
+        })?;
+    resolve::require_supported_version(harness, &output)
+}
+
+/// Require every process-bound compatibility check needed before spawning a
+/// real interactive CLI. OpenCode additionally initializes its plugin-free
+/// database runtime; this is credential-free and uses the same timeout as the
+/// version probe. Detection and the terminal launch boundary both call this.
+pub async fn require_launch_ready(
+    harness: HarnessId,
+    argv: &[String],
+) -> Result<CliVersion, ResolveError> {
+    let version = require_supported_version(harness, argv).await?;
+    if harness == HarnessId::OpenCode
+        && run_probe_capture(argv, OPENCODE_RUNTIME_PROBE_ARGS, PROBE_TIMEOUT)
+            .await
+            .is_none()
+    {
+        return Err(ResolveError::RuntimeCheckFailed(format!(
+            "could not initialize the installed OpenCode runtime: the plugin-free database probe \
+             did not complete successfully within {} seconds. Run `opencode --pure db 'SELECT 1'`, \
+             repair or upgrade OpenCode with `{}`, and try again",
+            PROBE_TIMEOUT.as_secs(),
+            harness.upgrade_command(),
+        )));
+    }
+    Ok(version)
 }
 
 async fn auth_ok(harness: HarnessId) -> bool {
@@ -220,6 +324,9 @@ async fn auth_ok(harness: HarnessId) -> bool {
                 return false;
             };
             codex_login_status_indicates_logged_in(&captured)
+        }
+        HarnessId::OpenCode => {
+            unreachable!("OpenCode readiness uses a credential-free runtime probe")
         }
     }
 }
@@ -267,6 +374,11 @@ fn codex_login_status_indicates_logged_in(text: &str) -> bool {
 /// non-UTF8-safe-decode issues are tolerated via lossy conversion, and the
 /// child is best-effort killed on timeout so it doesn't leak as a zombie.
 async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) -> Option<String> {
+    let child = spawn_probe(argv, args)?;
+    capture_probe_child(child, timeout).await
+}
+
+fn spawn_probe(argv: &[String], args: &[&str]) -> Option<tokio::process::Child> {
     let (program, rest) = argv.split_first()?;
     let mut cmd = tokio::process::Command::new(program);
     cmd.args(rest);
@@ -274,15 +386,25 @@ async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) ->
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
-    let mut child = match cmd.spawn() {
-        Ok(child) => child,
+    // A timeout drops `read_and_wait` below. Tokio otherwise leaves a dropped
+    // child running, which would leak one hung probe on every background
+    // refresh. The runtime reaper owns the process after issuing the kill.
+    cmd.kill_on_drop(true);
+    match cmd.spawn() {
+        Ok(child) => Some(child),
         Err(error) => {
             // ENOENT here is how a broken PATH (e.g. a GUI launch before the
             // shell's repair) manifests — never swallow it invisibly.
             tracing::debug!(%program, %error, "agent probe spawn failed");
-            return None;
+            None
         }
-    };
+    }
+}
+
+async fn capture_probe_child(
+    mut child: tokio::process::Child,
+    timeout: Duration,
+) -> Option<String> {
     let mut stdout = child.stdout.take()?;
     let mut stderr = child.stderr.take()?;
 
@@ -305,12 +427,9 @@ async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) ->
         }
         Ok(_) => None,
         Err(_) => {
-            // Timed out — best-effort reap so we don't leak a zombie. The
-            // owning `Command`/`Child` was moved into `read_and_wait`'s
-            // future, which was dropped by the timeout; nothing left to
-            // kill from here on most platforms (drop already sends
-            // SIGKILL for a tokio::process::Child with kill_on_drop, the
-            // default). Nothing further to do.
+            // Timed out. Dropping `read_and_wait` drops the child; the explicit
+            // `kill_on_drop(true)` above terminates it and hands it to Tokio's
+            // process reaper.
             None
         }
     }
@@ -319,16 +438,61 @@ async fn run_probe_capture(argv: &[String], args: &[&str], timeout: Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[cfg(unix)]
+    fn version_fixture(output: &str, exit_code: u8) -> (tempfile::TempDir, Vec<String>) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("version-fixture");
+        let output_path = directory.path().join("version-output");
+        std::fs::write(&output_path, format!("{output}\n")).unwrap();
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh").unwrap();
+        writeln!(file, "/bin/cat '{}'", output_path.display()).unwrap();
+        writeln!(file, "exit {exit_code}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let argv = vec![path.display().to_string()];
+        (directory, argv)
+    }
+
+    #[cfg(unix)]
+    fn opencode_fixture(runtime_exit: u8) -> (tempfile::TempDir, Vec<String>, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("opencode-fixture");
+        let log_path = directory.path().join("runtime-args");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh").unwrap();
+        writeln!(file, "if [ \"$1\" = \"--version\" ]; then").unwrap();
+        writeln!(file, "  /usr/bin/printf '1.18.10\\n'").unwrap();
+        writeln!(file, "  exit 0").unwrap();
+        writeln!(file, "fi").unwrap();
+        writeln!(
+            file,
+            "/usr/bin/printf '%s\\n' \"$@\" > '{}'",
+            log_path.display()
+        )
+        .unwrap();
+        writeln!(file, "exit {runtime_exit}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let argv = vec![path.display().to_string()];
+        (directory, argv, log_path)
+    }
 
     #[test]
     fn detection_merge_is_grow_only() {
         let mut current = Detection {
             claude_code: true,
             codex: false,
+            opencode: false,
         };
         let probed_a_failure = Detection {
             claude_code: false,
             codex: false,
+            opencode: false,
         };
         let grew = current.merge(probed_a_failure);
         assert!(!grew);
@@ -344,11 +508,13 @@ mod tests {
         let probed = Detection {
             claude_code: true,
             codex: false,
+            opencode: false,
         };
         let grew = current.merge(probed);
         assert!(grew);
         assert!(current.claude_code);
         assert!(!current.codex);
+        assert!(!current.opencode);
     }
 
     #[test]
@@ -356,13 +522,34 @@ mod tests {
         let mut current = Detection {
             claude_code: true,
             codex: true,
+            opencode: true,
         };
         let grew = current.merge(Detection {
             claude_code: true,
             codex: true,
+            opencode: true,
         });
         assert!(!grew);
         assert!(current.all_detected());
+    }
+
+    #[test]
+    fn completed_initial_probe_is_cache_only_when_an_agent_is_absent() {
+        let mut cache = DetectionCache::default();
+        assert!(cache.should_probe_synchronously());
+
+        let detected = cache.complete_initial_probe(Detection {
+            claude_code: true,
+            codex: true,
+            opencode: false,
+        });
+
+        assert_eq!(cache.detection, detected);
+        assert!(!detected.all_detected());
+        assert!(
+            !cache.should_probe_synchronously(),
+            "missing agents are retried by the background refresher, not each request"
+        );
     }
 
     #[test]
@@ -422,5 +609,109 @@ mod tests {
     fn codex_login_status_recognizes_not_logged_in() {
         assert!(!codex_login_status_indicates_logged_in("Not logged in"));
         assert!(!codex_login_status_indicates_logged_in(""));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn supported_version_probe_uses_the_resolved_argv_prefix() {
+        let (_directory, argv) = version_fixture("2.1.218 (Claude Code)", 0);
+        let version = require_supported_version(HarnessId::ClaudeCode, &argv)
+            .await
+            .unwrap();
+        assert_eq!(version.to_string(), "2.1.218");
+
+        let (_directory, argv) = version_fixture("1.18.10", 0);
+        let version = require_supported_version(HarnessId::OpenCode, &argv)
+            .await
+            .unwrap();
+        assert_eq!(version.to_string(), "1.18.10");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn opencode_launch_readiness_runs_the_bounded_plugin_free_database_probe() {
+        let (_directory, argv, log_path) = opencode_fixture(0);
+        let version = require_launch_ready(HarnessId::OpenCode, &argv)
+            .await
+            .unwrap();
+        assert_eq!(version.to_string(), "1.18.10");
+        assert_eq!(
+            std::fs::read_to_string(log_path).unwrap(),
+            "--pure\ndb\nSELECT 1\n--format\njson\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn opencode_launch_readiness_rejects_a_version_only_binary_with_a_broken_runtime() {
+        let (_directory, argv, _log_path) = opencode_fixture(12);
+        let error = require_launch_ready(HarnessId::OpenCode, &argv)
+            .await
+            .unwrap_err();
+        assert!(matches!(&error, ResolveError::RuntimeCheckFailed(_)));
+        assert!(error.to_string().contains("plugin-free database probe"));
+        assert!(error.to_string().contains("`opencode upgrade`"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timed_out_probe_kills_and_reaps_its_child() {
+        let argv = vec!["/bin/sleep".to_owned(), "60".to_owned()];
+        let child = spawn_probe(&argv, &[]).expect("spawn hung probe");
+        let pid = child
+            .id()
+            .expect("spawned probe has a process id")
+            .to_string();
+        assert!(capture_probe_child(child, Duration::from_millis(100))
+            .await
+            .is_none());
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let alive = std::process::Command::new("/bin/kill")
+                .args(["-0", &pid])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success());
+            if !alive {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "timed-out probe process {pid} was not reaped"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn direct_version_probe_rejects_an_installed_but_old_cli() {
+        let (_directory, argv) = version_fixture("codex-cli 0.144.4", 0);
+        let error = require_supported_version(HarnessId::Codex, &argv)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            &error,
+            ResolveError::UnsupportedVersion {
+                harness: HarnessId::Codex,
+                ..
+            }
+        ));
+        assert!(error.to_string().contains("Codex CLI 0.144.4"));
+        assert!(error.to_string().contains("Codex CLI 0.144.5 or newer"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_version_process_returns_explicit_requirement_and_upgrade_guidance() {
+        let (_directory, argv) = version_fixture("broken", 12);
+        let error = require_supported_version(HarnessId::ClaudeCode, &argv)
+            .await
+            .unwrap_err();
+        assert!(matches!(&error, ResolveError::VersionCheckFailed(_)));
+        let message = error.to_string();
+        assert!(message.contains("Claude Code 2.1.218 or newer"));
+        assert!(message.contains("`claude update`"));
     }
 }

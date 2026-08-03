@@ -1,7 +1,7 @@
 /**
  * Build the provider surface Decopilot consumes from resolved secret model
- * sources. This file is portable into the desktop daemon: no cluster provider,
- * vault, storage, or `ai-providers/*` imports.
+ * sources. It stays independent of cluster provider, vault, storage, and
+ * `ai-providers/*` imports so the hosted core remains easy to test.
  */
 
 import { createAnthropic } from "@ai-sdk/anthropic";

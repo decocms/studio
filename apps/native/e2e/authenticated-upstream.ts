@@ -4,9 +4,13 @@
  * loopback hop; this fixture establishes the separate upstream identity that
  * owns local threads, matching the native UI's Better Auth -> MCP OAuth flow.
  */
-import { authHeaders, jsonAuthHeaders, url, type LocalApi } from "./helpers";
+import { authHeaders, url, type LocalApi } from "./helpers";
 
 const SESSION_COOKIE = "better-auth.session_token=native-e2e-session";
+
+interface AuthenticatedUpstreamOptions {
+  virtualMcps?: Record<string, Record<string, unknown>>;
+}
 
 function fakeIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString(
@@ -16,10 +20,12 @@ function fakeIdToken(claims: Record<string, unknown>): string {
   return `${header}.${payload}.sig`;
 }
 
-export function startAuthenticatedUpstream() {
+export function startAuthenticatedUpstream(
+  options: AuthenticatedUpstreamOptions = {},
+) {
   const server = Bun.serve({
     port: 0,
-    fetch(req) {
+    async fetch(req) {
       const requestUrl = new URL(req.url);
 
       if (
@@ -84,6 +90,42 @@ export function startAuthenticatedUpstream() {
         });
       }
 
+      const virtualMcpMatch = requestUrl.pathname.match(
+        /^\/api\/[^/]+\/tools\/COLLECTION_VIRTUAL_MCP_GET$/,
+      );
+      if (virtualMcpMatch && req.method === "POST") {
+        const authorized =
+          req.headers.get("cookie") === SESSION_COOKIE ||
+          req.headers.get("authorization") ===
+            "Bearer sandbox-e2e-access-token";
+        if (!authorized) {
+          return Response.json({ error: "unauthorized" }, { status: 401 });
+        }
+        const input = (await req.json()) as { id?: unknown };
+        if (typeof input.id !== "string") {
+          return Response.json({ error: "id is required" }, { status: 400 });
+        }
+        const item = options.virtualMcps?.[input.id] ?? null;
+        return Response.json({ item });
+      }
+
+      const mcpMatch = requestUrl.pathname.match(
+        /^\/api\/[^/]+\/mcp\/([^/]+)$/,
+      );
+      if (mcpMatch && req.method === "GET") {
+        // The local terminal capability must be consumed at local-api's
+        // guard. Only Studio's own upstream session may cross this proxy
+        // boundary; a leaked random terminal bearer deliberately fails.
+        const authorized =
+          req.headers.get("cookie") === SESSION_COOKIE ||
+          req.headers.get("authorization") ===
+            "Bearer sandbox-e2e-access-token";
+        if (!authorized) {
+          return Response.json({ error: "unauthorized" }, { status: 401 });
+        }
+        return Response.json({ selectedMcp: decodeURIComponent(mcpMatch[1]!) });
+      }
+
       return new Response("not found", { status: 404 });
     },
   });
@@ -91,10 +133,13 @@ export function startAuthenticatedUpstream() {
   return { server, url: `http://127.0.0.1:${server.port}` };
 }
 
-export async function signInAndCompleteSession(a: LocalApi): Promise<void> {
+export async function signInAndCompleteSession(
+  a: LocalApi,
+  privateHeaders: Record<string, string> = authHeaders(),
+): Promise<void> {
   const signIn = await fetch(url(a, "/api/auth/sign-in/email"), {
     method: "POST",
-    headers: jsonAuthHeaders(),
+    headers: { ...privateHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({
       email: "sandbox-e2e@example.test",
       password: "hunter2",
@@ -108,7 +153,7 @@ export async function signInAndCompleteSession(a: LocalApi): Promise<void> {
 
   const bridge = await fetch(url(a, "/_auth/complete-session"), {
     method: "POST",
-    headers: authHeaders(),
+    headers: privateHeaders,
   });
   if (bridge.status !== 200) {
     throw new Error(

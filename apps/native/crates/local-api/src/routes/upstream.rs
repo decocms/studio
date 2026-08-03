@@ -32,8 +32,8 @@
 //! ## Thin reverse-proxy catchall — no path allowlist
 //!
 //! This handler is a THIN tokio/reqwest reverse proxy to the upstream mesh:
-//! only chat (decopilot dispatch) and the sandbox/thread/model interception
-//! table (`routes/intercept/`) are handled locally, checked FIRST — anything
+//! retired native Decopilot routes plus the sandbox/thread interception table
+//! (`routes/intercept/`) are handled locally, checked FIRST — anything
 //! that isn't intercepted is forwarded upstream, for ANY path, not just a
 //! curated `/api/*` allowlist. The web client's own transport
 //! (`apps/web/src/lib/desktop/transport-rules.ts`) rewrites every
@@ -180,7 +180,14 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     let session = upstream::global();
 
     if path.starts_with(AUTH_PATH_PREFIX) {
-        return proxy_auth_path(
+        let auth_path = path_and_query.split('?').next().unwrap_or(&path_and_query);
+        let is_sign_out = parts.method == Method::POST && auth_path == AUTH_SIGN_OUT_PATH;
+        let sign_out_transition = if is_sign_out {
+            Some(session.begin_transition().await)
+        } else {
+            None
+        };
+        let response = proxy_auth_path(
             &session,
             &parts.method,
             &path_and_query,
@@ -188,6 +195,15 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
             &body_bytes,
         )
         .await;
+        if response.status().is_success() {
+            if let Some(transition) = sign_out_transition {
+                transition.logout().await;
+                if let Err(error) = crate::auth_fence::reap_all(&state.agent_sessions).await {
+                    tracing::error!(%error, "proxied logout did not reap every coding agent");
+                }
+            }
+        }
+        return response;
     }
 
     if path == PUBLIC_NO_AUTH_PATH {
@@ -223,9 +239,11 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         // doomed refresh attempt.
         Err(err) => {
             if err.kind == upstream::refresh::RefreshErrorKind::InvalidGrant {
-                session
-                    .hard_sign_out("refresh token rejected while resolving an app-API request")
-                    .await;
+                crate::auth_fence::hard_sign_out_upstream_session(
+                    &state,
+                    "refresh token rejected while resolving an app-API request",
+                )
+                .await;
             }
             return unauthorized_upstream();
         }
@@ -487,7 +505,6 @@ async fn proxy_auth_path(
         && auth_path == AUTH_SIGN_OUT_PATH
         && upstream_resp.status().is_success()
     {
-        session.logout().await;
         return build_response(upstream_resp).await;
     }
 
@@ -1229,13 +1246,9 @@ fn unauthorized_upstream() -> Response {
 /// implementation. Not part of the `/api/*` proxy scope allowlist (this is
 /// a LOCAL action, never forwarded anywhere) and not documented as a
 /// stable public surface in the contract doc beyond this note.
-pub async fn complete_session() -> Response {
-    match upstream::global().complete_session().await {
-        Ok(status) => Json(json!({
-            "signedIn": status.signed_in,
-            "userLabel": status.user_label,
-        }))
-        .into_response(),
+pub async fn complete_session(State(state): State<AppState>) -> Response {
+    let prepared = match upstream::global().prepare_complete_session().await {
+        Ok(prepared) => prepared,
         Err(err) => {
             let is_no_cookie = matches!(
                 err,
@@ -1247,6 +1260,20 @@ pub async fn complete_session() -> Response {
                 StatusCode::UNAUTHORIZED
             } else {
                 StatusCode::BAD_GATEWAY
+            };
+            return (status, Json(json!({ "error": err.to_string() }))).into_response();
+        }
+    };
+    match crate::install_upstream_session(&state, prepared).await {
+        Ok(status) => Json(json!({
+            "signedIn": status.signed_in,
+            "userLabel": status.user_label,
+        }))
+        .into_response(),
+        Err(err) => {
+            let status = match &err {
+                crate::AccountInstallError::AgentReap(_) => StatusCode::SERVICE_UNAVAILABLE,
+                _ => StatusCode::BAD_GATEWAY,
             };
             (status, Json(json!({ "error": err.to_string() }))).into_response()
         }
@@ -1277,8 +1304,8 @@ pub async fn status() -> Response {
 /// failure mode from the caller's point of view — see
 /// `UpstreamSession::logout`'s own doc comment on why the upstream revoke
 /// half is unconditionally best-effort).
-pub async fn logout() -> Response {
-    let status = upstream::global().logout().await;
+pub async fn logout(State(state): State<AppState>) -> Response {
+    let status = crate::logout_upstream_session(&state).await;
     Json(json!({
         "signedIn": status.signed_in,
         "userLabel": status.user_label,

@@ -48,19 +48,16 @@ use super::org_view::ORG_VOLUMES;
 /// credential. Without all three, listing fails with
 /// `couldn't list files: forbidden origin: 403`.
 ///
-/// TWO credentials, deliberately not interchangeable: [`Self::cookie`] is the
-/// control session and unlocks the whole API, so only the agent harness' MCP
-/// — which genuinely calls arbitrary tools — gets it. `rclone` gets
-/// [`Self::mount_token`], which the guard accepts on `/_sandbox/orgfs/*` and
-/// nowhere else.
+/// `rclone` gets [`Self::mount_token`], which the guard accepts on
+/// `/_sandbox/orgfs/*` and nowhere else. Agent terminals mint their own
+/// per-session MCP capabilities and use this structure only to discover the
+/// local endpoint and CA certificate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MountCredentials {
     /// `http://<exact expected host>` — the host string must match what the
     /// guard compares against, byte for byte, or every request is rejected.
     pub base_url: String,
     pub origin: String,
-    /// The control session cookie, as a `name=value` pair. Whole-API scope.
-    pub cookie: String,
     /// The org-filesystem-only credential — see
     /// [`crate::client_auth::MOUNT_TOKEN_HEADER`].
     pub mount_token: String,
@@ -78,8 +75,7 @@ fn credentials_cell() -> &'static OnceLock<MountCredentials> {
     &CREDENTIALS
 }
 
-/// The published credentials, for anything else that must satisfy this
-/// process's own guard — currently the agent MCP handed to a CLI harness.
+/// The published endpoint and mount credential for loopback child processes.
 pub fn local_credentials() -> Option<&'static MountCredentials> {
     credentials_cell().get()
 }
@@ -251,13 +247,19 @@ pub async fn wait_ready(app_root: &Path, org_slug: &str) -> bool {
     }
 }
 
-/// The bundled rclone./// The bundled rclone.
+/// The bundled rclone.
 ///
 /// Tauri strips the host triple when copying an `externalBin` into
 /// `<App>.app/Contents/MacOS/`, so the packaged binary sits beside the app
 /// executable. The triple-suffixed path is the `tauri dev` fallback, where
 /// nothing has been copied yet.
 fn rclone_binary() -> Option<PathBuf> {
+    #[cfg(feature = "e2e-runner")]
+    if std::env::var_os("LOCAL_API_E2E_DISABLE_ORG_MOUNTS").as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+    {
+        return None;
+    }
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     let bundled = dir.join("rclone");

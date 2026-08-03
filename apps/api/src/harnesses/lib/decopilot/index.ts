@@ -38,7 +38,7 @@ import { requireDecopilotRunContext } from "./run-context";
 import type { DecopilotTelemetry } from "./run-stream";
 
 /** True when the injected context is a full cluster context (it carries
- *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds).
+ *  `storage`/`db`, absent from the portable `HarnessContext` contract).
  *  The cluster's richer `StudioContext` is structurally assignable to
  *  `HarnessContext`; the studio-side registered builder casts it back. */
 function isClusterContext(ctx: HarnessContext): boolean {
@@ -94,7 +94,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
         const cleanup: { close?: () => Promise<void> } = {};
 
         if (!isClusterContext(harnessCtx)) {
-          throw new Error("[decopilot] desktop dispatch is not supported");
+          throw new Error("[decopilot] a hosted Studio context is required");
         }
         if (!clusterEnvironmentBuilder) {
           throw new Error(

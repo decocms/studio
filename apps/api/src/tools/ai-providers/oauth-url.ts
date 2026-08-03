@@ -1,7 +1,7 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import {
   generateCodeVerifier,
@@ -39,7 +39,7 @@ export const AI_PROVIDER_OAUTH_URL = defineTool({
   description:
     "Get the OAuth PKCE authorization URL for a provider. Returns URL and state token.",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
     callbackUrl: z
       .string()
       .url()

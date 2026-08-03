@@ -3,22 +3,18 @@ import { describe, expect, test } from "bun:test";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 
 describe("resolveSubmitSettings", () => {
-  const globals = {
-    harnessId: "codex" as const,
-    sandboxProviderKind: "user-desktop" as const,
-    branch: "feature-x",
-  };
+  const globals = { branch: "feature-x" };
 
-  test("no active thread: returns all three from globals", () => {
+  test("no active thread: pins hosted Decopilot and carries the branch", () => {
     const out = resolveSubmitSettings({ thread: null, globals });
     expect(out).toEqual({
-      harnessId: "codex",
-      sandboxProviderKind: "user-desktop",
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
       branch: "feature-x",
     });
   });
 
-  test("legacy thread with harness_id null: returns all three from globals", () => {
+  test("legacy thread with harness_id null: pins hosted Decopilot", () => {
     const out = resolveSubmitSettings({
       thread: {
         harness_id: null,
@@ -28,8 +24,8 @@ describe("resolveSubmitSettings", () => {
       globals,
     });
     expect(out).toEqual({
-      harnessId: "codex",
-      sandboxProviderKind: "user-desktop",
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
       branch: "feature-x",
     });
   });
@@ -58,34 +54,26 @@ describe("resolveSubmitSettings", () => {
     expect(out).toEqual({});
   });
 
-  test("locked thread overrides aggressive globals (proves client-side strip)", () => {
+  test("locked thread strips the hosted defaults", () => {
     const out = resolveSubmitSettings({
       thread: {
         harness_id: "codex",
         sandbox_provider_kind: "user-desktop",
         branch: "main",
       },
-      globals: {
-        harnessId: "claude-code",
-        sandboxProviderKind: "user-desktop",
-        branch: "different-branch",
-      },
+      globals: { branch: "different-branch" },
     });
     expect(Object.keys(out)).toEqual([]);
   });
 
-  test("no active thread + no globals: returns empty undefined-valued fields", () => {
+  test("no active thread + no branch: still pins hosted Decopilot", () => {
     const out = resolveSubmitSettings({
       thread: null,
-      globals: {
-        harnessId: undefined,
-        sandboxProviderKind: undefined,
-        branch: null,
-      },
+      globals: { branch: null },
     });
     expect(out).toEqual({
-      harnessId: undefined,
-      sandboxProviderKind: undefined,
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
       branch: null,
     });
   });

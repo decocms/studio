@@ -10,6 +10,7 @@ import {
 } from "@/hooks/collections/use-ai-providers";
 import { useT } from "@/i18n/use-t.ts";
 import { ProviderKeyRow } from "./provider-key-row";
+import { buildProviderInventoryRows } from "./provider-inventory";
 
 interface ConnectedProvidersSectionProps {
   onConnectClick: () => void;
@@ -23,21 +24,9 @@ export function ConnectedProvidersSection({
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
 
-  // Show every key except Deco — Deco lives in its own hero/nudge slot.
-  const rows = allKeys
-    .filter((k) => k.providerId !== "deco")
-    .map((key) => ({
-      key,
-      provider: providers.find((p) => p.id === key.providerId),
-    }))
-    .filter(
-      (
-        row,
-      ): row is {
-        key: typeof row.key;
-        provider: NonNullable<typeof row.provider>;
-      } => row.provider !== undefined,
-    );
+  // Keep historical credentials visible even after their providers leave the
+  // hosted catalog, so organizations retain an inventory and deletion path.
+  const rows = buildProviderInventoryRows(allKeys, providers);
 
   return (
     <SettingsSection

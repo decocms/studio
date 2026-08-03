@@ -2,8 +2,8 @@
  * Hosted Harness Workflow.
  *
  * The HOSTED (in-process) agent-loop execution, factored out of the
- * thread-gate's `!useLink` branch into a single callable `runHostedHarness`
- * and wrapped in its own DBOS child workflow (`hostedHarnessWorkflow`).
+ * thread gate into a single callable `runHostedHarness` and wrapped in its own
+ * DBOS child workflow (`hostedHarnessWorkflow`).
  *
  * unified-control-plane T3: the thread gate's `runDispatchSteps` now STARTS
  * this child on `HOSTED_HARNESS_QUEUE` (partitioned by threadId, concurrency 1
@@ -11,10 +11,8 @@
  * `startHostedHarness` below returns as soon as the start itself is durably
  * recorded. The parent gate immediately proceeds to its consume step, which
  * live-tails the run's JetStream subject, projects final parts/title, and
- * writes terminal status — providing unified terminal-status writes for both
- * hosted and desktop topologies, with the SAME timing shape: the consume step
- * is opened before the producer (child workflow / desktop daemon) has
- * necessarily published anything yet. (Before T3, the gate `await`ed the
+ * writes terminal status. The consume step is opened before the child workflow
+ * has necessarily published anything yet. (Before T3, the gate `await`ed the
  * child's `getResult()` in full before starting the consume step — a
  * carried-over interim behavior from before the child published its own
  * terminal; see the "Guarantee" section below.)
@@ -476,7 +474,7 @@ async function hostedHarnessWorkflowFn(
     // `runProjectorWorkflowBody`'s `recordFailed` (unified-control-plane T2)
     // is the sole source, firing once the consume step's live tail folds the
     // in-band error chunk this catch publishes below — correctly categorized
-    // (`kind: "harness"`) and consistent with the desktop topology's failure
+    // (`kind: "harness"`) and consistent with the hosted projector's failure
     // analytics.
     await DBOS.runStep(() => publishHostedHarnessFailure(input, err), {
       name: "publishHostedHarnessFailure",
@@ -543,7 +541,7 @@ export function hostedChildWorkflowId(
  * step (a carried-over interim shape from before T1 gave the child its own
  * terminal-publishing guarantee). That coupling is gone: the caller now
  * starts the child and moves straight to `consumeRunProjection`, which
- * live-tails the run's JetStream subject exactly like the desktop topology
+ * live-tails the run's JetStream subject while the hosted child executes
  * already does — the child publishes chunks as it runs; the consume step's
  * `DeliverPolicy.All` consumer, opened BEFORE chunk 1 is necessarily
  * published, simply waits for it (see `projector-chunk-stream.ts` /

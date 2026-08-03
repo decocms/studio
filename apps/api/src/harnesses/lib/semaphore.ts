@@ -8,7 +8,7 @@
  * on a full gate can be cancelled (parent tool-call abort) without leaking a
  * permit or an orphaned waiter.
  *
- * `@/*`-free so the daemon (Task 18 desktop subtask) can bundle it.
+ * Kept `@/*`-free so it remains a portable async primitive.
  */
 
 export interface Semaphore {

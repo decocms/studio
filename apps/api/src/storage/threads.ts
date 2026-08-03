@@ -8,7 +8,12 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import type { ThreadStoragePort, ThreadUpdateData } from "./ports";
+import type {
+  ThreadRuntimePin,
+  ThreadRuntimePinResult,
+  ThreadStoragePort,
+  ThreadUpdateData,
+} from "./ports";
 import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
@@ -86,6 +91,13 @@ export class OrgScopedThreadStorage {
 
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
+  }
+
+  pinRuntimeIfUnset(
+    id: string,
+    pin: ThreadRuntimePin,
+  ): Promise<ThreadRuntimePinResult> {
+    return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
@@ -296,8 +308,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
-      sandbox_provider_kind: null,
-      harness_id: null,
+      sandbox_provider_kind: data.sandbox_provider_kind ?? null,
+      harness_id: data.harness_id ?? null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -423,6 +435,50 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
 
     return thread;
+  }
+
+  async pinRuntimeIfUnset(
+    id: string,
+    organizationId: string,
+    pin: ThreadRuntimePin,
+  ): Promise<ThreadRuntimePinResult> {
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        harness_id: pin.harnessId,
+        sandbox_provider_kind: sql<string | null>`coalesce(${sql.ref(
+          "sandbox_provider_kind",
+        )}, ${pin.sandboxProviderKind})`,
+        branch: sql<string | null>`coalesce(${sql.ref("branch")}, ${
+          pin.branch
+        })`,
+        updated_at: new Date().toISOString(),
+        ...(pin.messageStorageVersion !== undefined
+          ? { message_storage_version: pin.messageStorageVersion }
+          : {}),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("harness_id", "is", null)
+      .where((eb) =>
+        pin.sandboxProviderKind === null
+          ? eb("sandbox_provider_kind", "is", null)
+          : eb.or([
+              eb("sandbox_provider_kind", "is", null),
+              eb("sandbox_provider_kind", "=", pin.sandboxProviderKind),
+            ]),
+      )
+      .returningAll()
+      .executeTakeFirst();
+
+    if (row) {
+      return { thread: this.threadFromDbRow(row), claimed: true };
+    }
+
+    return {
+      thread: await this.get(id, organizationId),
+      claimed: false,
+    };
   }
 
   async completeRunIfNotCompleted(

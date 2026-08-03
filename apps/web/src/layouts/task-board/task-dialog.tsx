@@ -952,7 +952,7 @@ function PrCard({
 }: {
   pr: TaskBoardItemPr;
   previewThread?: TaskBoardItemThread;
-  /** Task-level: In Review + every enabled reviewer approved + auto-merge off. */
+  /** Task-level: In Review + every enabled reviewer approved. */
   reviewsReady: boolean;
   shipPending: boolean;
   onShip: () => void;
@@ -1160,7 +1160,6 @@ function LinksSection({
   const { data: activity } = useTaskBoardActivity(item.id);
   const qaEnabled = useOrgFlag("qa_agent_enabled");
   const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
-  const autoMerge = useOrgFlag("auto_merge");
   const promote = usePromoteToProduction(item.id);
   const links = extractDescriptionLinks(description);
   // Keep the section up (with a skeleton) while the PR enrichment loads; a
@@ -1171,11 +1170,12 @@ function LinksSection({
   }
 
   // Task-level readiness for the manual ship button: In Review + every enabled
-  // reviewer approved + auto-merge off. The per-card PrCard adds the PR-open +
-  // green-checks gate (so a failing PR never offers the button).
+  // reviewer approved. Shown regardless of auto-merge — it's a manual escape
+  // hatch (a human can ship even while auto-merge is pending/blocked on token
+  // verification). The per-card PrCard adds the PR-open + green-checks gate (so
+  // a failing PR never offers the button).
   const reviewsReady =
     item.status === "in_review" &&
-    !autoMerge &&
     reviewsSatisfiedForPromotion(
       activity ?? [],
       enabledReviewers({ qa: qaEnabled, codeReview: codeReviewerEnabled }),

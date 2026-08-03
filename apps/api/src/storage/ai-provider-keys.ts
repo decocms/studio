@@ -3,7 +3,7 @@ import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { ProviderKeyCache } from "./provider-key-cache";
 import type { Database, ProviderKeyInfo } from "./types";
-import type { ProviderId } from "@decocms/shared/sdk";
+import type { HostedProviderId, ProviderId } from "@decocms/shared/sdk";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 
 function hashApiKey(apiKey: string): string {
@@ -41,7 +41,7 @@ export class AIProviderKeyStorage {
   }
 
   async create(params: {
-    providerId: ProviderId;
+    providerId: HostedProviderId;
     label: string;
     apiKey: string; // plaintext — will be encrypted before storage
     organizationId: string;
@@ -88,7 +88,7 @@ export class AIProviderKeyStorage {
    * upstream provider returns the same key on every authorization.
    */
   async upsert(params: {
-    providerId: ProviderId;
+    providerId: HostedProviderId;
     label: string;
     apiKey: string; // plaintext — will be encrypted before storage
     organizationId: string;

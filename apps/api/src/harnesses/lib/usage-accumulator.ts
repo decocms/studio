@@ -2,10 +2,7 @@
  * Cumulative usage tracker for streamText loops.
  *
  * Aggregates token counts (input/output/total), cache read/write tokens,
- * and provider-reported cost across `streamText` steps. Used by the
- * decopilot harness (`runDecopilotStream`) and by the CLI harnesses
- * (claude-code, codex) so all three emit consistent cumulative usage
- * in `messageMetadata` chunks.
+ * and provider-reported cost across hosted Decopilot `streamText` steps.
  *
  * Replicates the inline accumulator pattern that lived in pre-refactor
  * `stream-core.ts` (lines 1411–1571 of commit `2073a39b8`):

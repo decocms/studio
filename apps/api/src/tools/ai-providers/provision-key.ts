@@ -5,7 +5,7 @@ import {
   requireOrganization,
   getUserId,
 } from "../../core/studio-context";
-import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 import { providerKeyOutputSchema } from "./key-create";
@@ -15,7 +15,7 @@ export const AI_PROVIDER_PROVISION_KEY = defineTool({
   description:
     "Auto-provision an API key for a provider that supports server-to-server key creation (e.g. Deco AI Gateway).",
   inputSchema: z.object({
-    providerId: z.enum(PROVIDER_IDS),
+    providerId: z.enum(HOSTED_PROVIDER_IDS),
   }),
   outputSchema: providerKeyOutputSchema,
   handler: async (input, ctx) => {

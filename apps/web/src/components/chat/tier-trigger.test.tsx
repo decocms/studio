@@ -54,20 +54,6 @@ describe("TierTriggerPure", () => {
     expect(queryByText(/Sonnet/)).toBeNull();
   });
 
-  it("uses the local harness name for the closed pill when provided", () => {
-    const { getByRole } = render(
-      <TierTriggerPure
-        tier="smart"
-        pillIcon={<svg data-testid="claude-code-icon" />}
-        pillLabel="Claude Code Smart"
-        groups={[cloudGroup()]}
-      />,
-    );
-    expect(
-      getByRole("button", { name: "Claude Code Smart" }),
-    ).toBeInTheDocument();
-  });
-
   it("popover shows one row per group entry with its subtitle", () => {
     const { getByRole } = render(
       <TierTriggerPure tier="smart" groups={[cloudGroup()]} />,
@@ -115,47 +101,5 @@ describe("TierTriggerPure", () => {
     fireEvent.click(getByRole("menuitem", { name: /Thinking/ }));
     expect(onSelect).toHaveBeenCalledWith("thinking");
     expect(queryByRole("menuitem")).toBeNull();
-  });
-
-  it("renders grouped runtimes with headings and scopes row labels", () => {
-    const groups = [
-      {
-        key: "claude-code",
-        label: "Claude Code",
-        rows: [
-          {
-            key: "claude-smart",
-            title: "Smart",
-            subtitle: "Sonnet 5",
-            active: true,
-            onSelect: () => {},
-          },
-        ],
-      },
-      {
-        key: "codex",
-        label: "Codex",
-        rows: [
-          {
-            key: "codex-smart",
-            title: "Smart",
-            subtitle: "GPT-5.6 Terra",
-            active: false,
-            onSelect: () => {},
-          },
-        ],
-      },
-    ];
-    const { getByRole } = render(
-      <TierTriggerPure tier="smart" groups={groups} />,
-    );
-    fireEvent.click(getByRole("button", { name: /Smart/i }));
-    // Both groups expose a "Smart" row — the group label disambiguates them.
-    expect(
-      getByRole("menuitem", { name: "Claude Code Smart" }).textContent,
-    ).toContain("Sonnet 5");
-    expect(
-      getByRole("menuitem", { name: "Codex Smart" }).textContent,
-    ).toContain("GPT-5.6 Terra");
   });
 });

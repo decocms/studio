@@ -3723,20 +3723,6 @@ export interface StudioToolIO {
       hasMore?: boolean | undefined;
     };
   };
-  THREAD_BACKGROUND_TOOL_START: {
-    input: {
-      threadId: string;
-      fenceToken: string;
-      toolName: "subtask" | "generate_image";
-      input: unknown;
-      toolCallId: string;
-      agentId: string;
-      temperature: number;
-      toolApprovalLevel: "readonly" | "auto";
-      branch?: string | null | undefined;
-    };
-    output: { jobId: string };
-  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {
@@ -4239,8 +4225,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       label: string;
       apiKey: string;
@@ -4284,9 +4268,9 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
+        | "openai-compatible"
         | "claude-code"
         | "codex"
-        | "openai-compatible"
         | undefined;
     };
     output: {
@@ -4308,8 +4292,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       callbackUrl: string;
     };
@@ -4323,8 +4305,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       code: string;
       stateToken: string;
@@ -4346,8 +4326,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
     };
     output: {
@@ -4366,8 +4344,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
       amountCents: number;
       currency?: "usd" | "brl" | undefined;
@@ -4382,8 +4358,6 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "claude-code"
-        | "codex"
         | "openai-compatible";
     };
     output: { balanceCents: number };

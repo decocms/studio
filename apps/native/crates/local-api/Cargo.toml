@@ -19,17 +19,29 @@ path = "src/lib.rs"
 name = "local-api"
 path = "src/main.rs"
 
+# Black-box terminal tests need the embedded cookie/Host/Origin contract that
+# the shipped Tauri app uses. The ordinary standalone binary intentionally
+# remains bearer-only and therefore cannot provision an embedded agent MCP
+# credential. Requiring an opt-in feature keeps this runner out of normal
+# workspace/release builds.
+[[bin]]
+name = "local-api-e2e-embedded"
+path = "src/bin/e2e-embedded.rs"
+required-features = ["e2e-runner"]
+
+[features]
+e2e-runner = []
+
 [lints]
 workspace = true
 
 [dependencies]
 axum-server = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
-# Phase 2: harness detection/tiers/spawn/stream-translation — see
-# `crates/harness`'s own Cargo.toml doc comment for why its PTY dependency
-# lives there instead of the shared `[workspace.dependencies]` table. This
-# is a path dep (in-workspace crate), not a version to keep in sync.
+# Native coding-agent detection and launch resolution. This is a path dep
+# (in-workspace crate), not a version to keep in sync.
 harness = { path = "../harness" }
+terminal-session = { path = "../terminal-session" }
 upstream = { path = "../upstream" }
 axum = { workspace = true }
 tokio = { workspace = true }
@@ -63,6 +75,14 @@ tokio-tungstenite = { workspace = true }
 # documents. Used by `sandbox/manager.rs` to derive the per-handle
 # `<branchSlug>-<hash16>` sandbox directory name (prod-parity shape).
 sha2 = "0.10"
+base64 = "0.22"
+# Claude Code coordinates writes to its user state through a directory lock
+# whose mtime is refreshed while held. Match that protocol across desktop
+# platforms so Claude cannot reap Studio's live pre-launch trust merge.
+filetime = "0.2"
+# Keeps an open, comparable OS file handle for Claude's directory lock. On
+# Windows this supplies the volume + file-index identity that Metadata lacks.
+same-file = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

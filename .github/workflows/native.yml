@@ -205,7 +205,7 @@ jobs:
 
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
-  #    binary, point packages/sandbox's curated 5-file daemon e2e suite at
+  #    binary, point packages/sandbox's curated 4-file daemon e2e suite at
   #    it via DAEMON_E2E_CMD, and assert the EXACT pinned failing-test set
   #    in scripts/ci/daemon-parity-allowlist.json — not just the counts.
   #    A NEW failure (regression) or a VANISHED one (allowlist gone stale)
@@ -230,6 +230,11 @@ jobs:
   #          * diverged-origin reconcile / fast-forward (2), fs watcher
   #            file-changed (1) — missing features, benign.
   #    Shrinking this file is the goal; growing it needs a reason on the line.
+  #
+  #    `daemon.dispatch.e2e.test.ts` is DELIBERATELY excluded after the native
+  #    terminal cutover. Cloud sandboxes still own `/_sandbox/dispatch` and
+  #    `/_sandbox/runs`; local-api now launches Claude Code, Codex, and OpenCode
+  #    only through the scoped terminal routes covered by apps/native/e2e.
   #
   #    `daemon.proxy.e2e.test.ts` + `daemon.ws-proxy.e2e.test.ts` (12 tests,
   #    formerly "all pass") are DELIBERATELY excluded from this curated set
@@ -278,9 +283,9 @@ jobs:
       - name: Install ripgrep
         run: brew install ripgrep
 
-      - name: Build release local-api binary
+      - name: Build release local-api binaries
         working-directory: apps/native
-        run: cargo build --release --bin local-api
+        run: cargo build --release --features e2e-runner --bin local-api --bin local-api-e2e-embedded
 
       - name: Run curated daemon e2e subset against local-api
         id: daemon-parity
@@ -303,7 +308,6 @@ jobs:
                    daemon-e2e/daemon.sse-shapes.e2e.test.ts \
                    daemon-e2e/daemon.git.e2e.test.ts \
                    daemon-e2e/daemon.tools.e2e.test.ts \
-                   daemon-e2e/daemon.dispatch.e2e.test.ts \
                    --reporter=junit --reporter-outfile="$RUNNER_TEMP/daemon-parity.xml" || true
 
       - name: Assert exact fail-set match against the pinned allowlist
@@ -356,14 +360,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build release local-api binary
+      - name: Build release local-api binaries
         working-directory: apps/native
-        run: cargo build --release --bin local-api
+        run: cargo build --release --features e2e-runner --bin local-api --bin local-api-e2e-embedded
 
       - name: Run local-api contract suite
         working-directory: apps/native
         run: |
           export LOCAL_API_E2E_CMD="[\"$GITHUB_WORKSPACE/apps/native/target/release/local-api\"]"
+          export LOCAL_API_EMBEDDED_E2E_CMD="[\"$GITHUB_WORKSPACE/apps/native/target/release/local-api-e2e-embedded\"]"
           bun test e2e
 
   # ---------------------------------------------------------------------
