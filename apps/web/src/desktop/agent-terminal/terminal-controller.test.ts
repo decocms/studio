@@ -262,6 +262,48 @@ describe("native terminal capability reply authority", () => {
     controller.dispose();
   });
 
+  test("restores one reply authority across multiple incomplete replay chunks", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const initialAuthority = createTerminalParserCapabilityQueryAuthority();
+    const unsubscribeInitial = controller.subscribeOutput((frame, ack) => {
+      initialAuthority.observe(frame.data, frame.allowCapabilityReplies);
+      if (frame.restorePendingCapabilityReplies) {
+        initialAuthority.restorePendingReplyAuthority();
+      }
+      ack();
+    });
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({ type: "output", seq: 5, data: "\x1b[", replay: false });
+    socket.receive({ type: "output", seq: 10, data: "0", replay: false });
+    unsubscribeInitial();
+
+    const remountAuthority = createTerminalParserCapabilityQueryAuthority();
+    const restoredBySequence: number[] = [];
+    const unsubscribeRemount = controller.subscribeOutput((frame, ack) => {
+      remountAuthority.observe(frame.data, frame.allowCapabilityReplies);
+      if (frame.restorePendingCapabilityReplies) {
+        restoredBySequence.push(frame.seq);
+        remountAuthority.restorePendingReplyAuthority();
+      }
+      ack();
+    });
+    expect(restoredBySequence).toEqual([5, 10]);
+
+    const replacement = TestWebSocket.instances[1]!;
+    replacement.open();
+    replacement.receive({ ...runningReady("codex"), lastSeq: 10 });
+    replacement.receive({ type: "output", seq: 15, data: "c", replay: false });
+    expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeTrue();
+    expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeFalse();
+
+    unsubscribeRemount();
+    controller.dispose();
+  });
+
   test("releases an unacknowledged live-frame lease across a StrictMode remount", async () => {
     const controller = new TerminalController("org", "thread");
     controller.retain();
