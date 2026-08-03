@@ -22,13 +22,23 @@ import type { CompanionFormProps } from "./types.ts";
 // Shopify MCP); the accessToken is a static bearer that lives on the
 // connection's `connection_token`, never in configuration_state. See
 // use-save-companion-config.ts for the split.
-const schema = z.object({
-  storeDomain: z.string().min(1, "Informe o domínio da loja"),
-  accessToken: z.string().optional(),
-  apiVersion: z.string().optional(),
-});
+// The token is REQUIRED on first configure: `isCompanionConfigured` reads
+// storeDomain as the "configured" signal, so a tokenless save would show a
+// connected card whose every vault lease 409s (no connection_token to fall
+// back to). On edit it stays optional — blank means "keep the existing token".
+const makeSchema = (configured: boolean) =>
+  z
+    .object({
+      storeDomain: z.string().min(1, "Informe o domínio da loja"),
+      accessToken: z.string().optional(),
+      apiVersion: z.string().optional(),
+    })
+    .refine((data) => configured || Boolean(data.accessToken?.trim()), {
+      path: ["accessToken"],
+      message: "Informe o Admin API access token",
+    });
 
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<ReturnType<typeof makeSchema>>;
 
 export function ShopifyConfigForm({
   card,
@@ -40,7 +50,7 @@ export function ShopifyConfigForm({
 }: CompanionFormProps) {
   const t = useT();
   const form = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(card.configured)),
     defaultValues: {
       storeDomain: (card.configurationState?.storeDomain as string) || "",
       // The token is write-only from the UI (stored on connection_token, not
