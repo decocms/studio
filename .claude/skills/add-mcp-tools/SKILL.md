@@ -305,28 +305,6 @@ function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 }
 ```
 
-### 8. Document in Spec
-
-Add documentation to `apps/api/spec/001.md`:
-
-```markdown
-#### My Domain Management
-
-Description of what this domain manages.
-
-**MY_DOMAIN_CREATE**
-
-\`\`\`typescript
-// Create example
-POST /mcp/tools/MY_DOMAIN_CREATE
-{ "name": "Example" }
-// Response
-{ "item": { "id": "...", "name": "Example", ... } }
-\`\`\`
-
-// ... other tools
-```
-
 ## Key Patterns to Follow
 
 ### Authentication & Authorization

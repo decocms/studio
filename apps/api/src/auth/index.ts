@@ -6,7 +6,7 @@
  * - API Key management (via API Key plugin)
  * - Role-based access control (via Admin plugin)
  *
- * Configuration is file-based (auth-config.json), not environment variables.
+ * Configuration comes from AUTH_* environment variables (see auth-env.ts).
  */
 
 import { randomBytes } from "crypto";

@@ -1,7 +1,0 @@
-{
-  "emailAndPassword": { "enabled": true },
-  "socialProviders": {},
-  "saml": { "enabled": false, "providers": [] },
-  "emailProviders": [],
-  "magicLinkConfig": { "enabled": false }
-}

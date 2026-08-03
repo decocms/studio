@@ -204,6 +204,5 @@ sandbox settings are documented with the Helm chart.
 - [Studio web app](../web/README.md)
 - [Repository guidelines](../../AGENTS.md)
 - [Testing strategy](../../TESTING.md)
-- [API design specification](./spec/001.md)
 - [Studio Helm chart](../../deploy/helm/studio/README.md)
 - [Project license](../../LICENSE.md)
