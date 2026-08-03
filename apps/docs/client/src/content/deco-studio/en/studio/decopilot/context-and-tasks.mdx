@@ -15,7 +15,7 @@ A **task** is your conversation with Decopilot — where you chat, Decopilot use
 Every task has one of four states:
 
 - **In progress** — the agent is working or waiting for your next message
-- **Requires action** — paused, waiting for your input (a tool needs approval, or it asked you a question)
+- **Requires action** — paused, waiting for your input. This is set only when there's a pending tool call that needs you — a tool-approval request or a `user_ask` — never just because the reply's text happens to contain a question mark (e.g. a rhetorical question, or a URL with a `?` query string)
 - **Completed** — work finished successfully
 - **Failed** — something went wrong, or the task timed out
 
