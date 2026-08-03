@@ -149,17 +149,32 @@ export const createCredentialVaultRoutes = () => {
       );
     }
 
+    // ONE query for all connections (decrypted entities: configuration_state
+    // + connection_token) and one for which of them hold a downstream OAuth
+    // token — only those go through the per-token refresh path; static-token
+    // connections resolve with no further reads.
+    const { items } = await ctx.storage.connections.list(organizationId, {
+      includeVirtual: true,
+      where: { field: ["id"], operator: "in", value: ids },
+      limit: ids.length,
+    });
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const withDownstreamToken = new Set(
+      (
+        await ctx.db
+          .selectFrom("downstream_tokens")
+          .select("connectionId")
+          .where("connectionId", "in", ids)
+          .execute()
+      ).map((row) => row.connectionId),
+    );
+
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
     const out: Record<string, unknown> = {};
     await Promise.all(
       ids.map(async (id) => {
         try {
-          // findById returns the DECRYPTED entity (configuration_state +
-          // connection_token), so one storage read covers both halves.
-          const target = await ctx.storage.connections.findById(
-            id,
-            organizationId,
-          );
+          const target = byId.get(id);
           if (!target || target.status !== "active") {
             out[id] = { error: "Connection not found" };
             return;
@@ -169,22 +184,27 @@ export const createCredentialVaultRoutes = () => {
             state: target.configuration_state ?? {},
             scopes: target.configuration_scopes ?? [],
           };
-          const result = await getValidDownstreamAccessToken({
-            connectionId: id,
-            connectionUrl: target.connection_url,
-            tokenStorage,
-          });
           let accessToken: Record<string, unknown> | null = null;
-          if (result.state === "valid" || result.state === "refreshed") {
-            const downstreamToken = await tokenStorage.get(id);
-            accessToken = {
-              type: "oauth_access_token",
-              tokenType: "Bearer",
-              accessToken: result.accessToken,
-              expiresAt: serializeExpiresAt(downstreamToken?.expiresAt ?? null),
-              scope: downstreamToken?.scope ?? null,
-            };
-          } else if (result.state === "missing" && target.connection_token) {
+          if (withDownstreamToken.has(id)) {
+            const result = await getValidDownstreamAccessToken({
+              connectionId: id,
+              connectionUrl: target.connection_url,
+              tokenStorage,
+            });
+            if (result.state === "valid" || result.state === "refreshed") {
+              const downstreamToken = await tokenStorage.get(id);
+              accessToken = {
+                type: "oauth_access_token",
+                tokenType: "Bearer",
+                accessToken: result.accessToken,
+                expiresAt: serializeExpiresAt(
+                  downstreamToken?.expiresAt ?? null,
+                ),
+                scope: downstreamToken?.scope ?? null,
+              };
+            }
+            // refresh_failed/expired ⇒ null, same as the single route's 424.
+          } else if (target.connection_token) {
             // Static-token MCPs (e.g. Shopify): bearer on the connection.
             accessToken = {
               type: "static_token",
