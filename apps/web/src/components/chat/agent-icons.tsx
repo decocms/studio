@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { NativeHarnessId } from "./pills/agent-options";
+import type { LocalHarnessId } from "./pills/agent-options";
 
 /** Glyphs used by the native coding-agent picker. */
 
@@ -71,7 +71,7 @@ type HarnessLabelKey =
 
 const LOCAL_HARNESS_BRAND: Partial<
   Record<
-    NativeHarnessId,
+    LocalHarnessId,
     { labelKey: HarnessLabelKey; Icon: (props: { size?: number }) => ReactNode }
   >
 > = {
@@ -84,6 +84,6 @@ const LOCAL_HARNESS_BRAND: Partial<
 };
 
 /** Native brand metadata for a coding-agent harness. */
-export function localHarnessBrand(harness: NativeHarnessId | null | undefined) {
+export function localHarnessBrand(harness: LocalHarnessId | null | undefined) {
   return (harness && LOCAL_HARNESS_BRAND[harness]) ?? null;
 }

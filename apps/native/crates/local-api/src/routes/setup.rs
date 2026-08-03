@@ -285,14 +285,10 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     Ok(Json(json!({ "enqueued": Step::Start.as_str() })))
 }
 
-/// `POST /_sandbox/setup/stop` — NEW, no daemon precedent and no byte-parity
-/// target: kills the resolved target's running `dev`/`start` task(s) WITHOUT
-/// re-spawning (unlike `start` above, which kills-then-resumes). Gives the
-/// sandbox drawer's Stop button a real desktop-local action to call — see
-/// the native desktop-runtime audit finding #1's
-/// sibling bug: `stop()` (`sandbox-lifecycle-context.tsx`) had NO desktop
-/// branch at all, only the cloud `SANDBOX_DELETE` path gated on a
-/// `sandboxProviderKind` that's always `null` in Tauri.
+/// `POST /_sandbox/setup/stop` kills the resolved target's running `dev`/`start`
+/// task(s) WITHOUT re-spawning (unlike `start` above, which
+/// kills-then-resumes). It gives native callers a local stop action while the
+/// selectorless `SANDBOX_DELETE` interception owns full sandbox teardown.
 ///
 /// A registered handle forgotten by this process is already stopped: its old
 /// child lifetime ended with that process. We persist `desired=stopped` and

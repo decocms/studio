@@ -30,7 +30,6 @@ import {
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/components/chat/index";
-import { useChatPrefs } from "@/components/chat/context";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
@@ -62,10 +61,10 @@ import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-d
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import {
   SandboxLifecycleProvider,
-  resolveVmEntry,
+  resolveSurfaceVmEntry,
+  sandboxSurfaceKind,
   overlayThreadSandboxMap,
   shouldAdoptBranch,
-  type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
@@ -199,8 +198,8 @@ function VmEventsBridge({
 }) {
   const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
-  const { pendingSandboxProviderKind } = useChatPrefs();
   const isDesktopApp = useIsDesktopApp();
+  const surfaceKind = sandboxSurfaceKind(isDesktopApp);
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime({
@@ -269,17 +268,13 @@ function VmEventsBridge({
   );
   const branchMap =
     userId && currentBranch
-      ? (parseBranchMap(
-          effectiveSandboxMap?.[userId]?.[currentBranch],
-        ) as Record<string, BranchMapEntryLike>)
+      ? parseBranchMap(effectiveSandboxMap?.[userId]?.[currentBranch])
       : {};
-  // Use the resolved provider kind to pick the matching entry — the SAME
-  // helper as SandboxLifecycleProvider so the SSE previewUrl and the lifecycle
-  // vmEntry always agree on which sandbox is active.
-  const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
+  // Resolve only the runtime owned by this application surface, using the same
+  // rule as SandboxLifecycleProvider so events and preview state stay aligned.
+  const vmEntry = resolveSurfaceVmEntry(branchMap, surfaceKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect =
-    executionEnabled && (Object.keys(branchMap).length > 0 || isStartPending);
+  const shouldConnect = executionEnabled && (!!vmEntry || isStartPending);
 
   // Native coding-agent threads are intentionally unavailable on hosted web.
   // Do not mount their workspace at all: every main-panel surface assumes it
@@ -318,7 +313,6 @@ function VmEventsBridge({
         userId={userId ?? null}
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
-        sandboxProviderKind={pendingSandboxProviderKind}
         threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider

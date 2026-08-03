@@ -129,6 +129,16 @@ describe("parseBranchMap", () => {
       "agent-sandbox": {
         sandboxHandle: "v1",
         previewUrl: null,
+      },
+      "user-desktop": {
+        sandboxHandle: "v2",
+        previewUrl: null,
+      },
+    });
+    expect(result).toEqual({
+      "agent-sandbox": {
+        sandboxHandle: "v1",
+        previewUrl: null,
         sandboxProviderKind: "agent-sandbox",
       },
       "user-desktop": {
@@ -137,16 +147,13 @@ describe("parseBranchMap", () => {
         sandboxProviderKind: "user-desktop",
       },
     });
-    expect(result["agent-sandbox"]?.sandboxHandle).toBe("v1");
-    expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
   });
 
-  test("normalizes legacy cluster key and record kind", () => {
+  test("normalizes a legacy cluster key when the record kind is absent", () => {
     const result = parseBranchMap({
       cluster: {
         sandboxHandle: "v1",
         previewUrl: null,
-        sandboxProviderKind: "cluster",
       },
     });
     expect(result).toEqual({
@@ -156,6 +163,70 @@ describe("parseBranchMap", () => {
         sandboxProviderKind: "agent-sandbox",
       },
     });
+  });
+
+  test("rejects an agent-sandbox cell carrying a desktop record", () => {
+    const result = parseBranchMap({
+      "agent-sandbox": {
+        sandboxHandle: "wrong-agent-cell",
+        previewUrl: null,
+        sandboxProviderKind: "user-desktop",
+      },
+      "user-desktop": {
+        sandboxHandle: "desktop-sibling",
+        previewUrl: null,
+        sandboxProviderKind: "user-desktop",
+      },
+    });
+
+    expect(result["agent-sandbox"]).toBeUndefined();
+    expect(result["user-desktop"]?.sandboxHandle).toBe("desktop-sibling");
+  });
+
+  test("rejects a user-desktop cell carrying an agent sandbox record", () => {
+    const result = parseBranchMap({
+      "agent-sandbox": {
+        sandboxHandle: "agent-sibling",
+        previewUrl: null,
+        sandboxProviderKind: "agent-sandbox",
+      },
+      "user-desktop": {
+        sandboxHandle: "wrong-desktop-cell",
+        previewUrl: null,
+        sandboxProviderKind: "agent-sandbox",
+      },
+    });
+
+    expect(result["agent-sandbox"]?.sandboxHandle).toBe("agent-sibling");
+    expect(result["user-desktop"]).toBeUndefined();
+  });
+
+  test("normalizes a legacy embedded kind before comparing it with the key", () => {
+    const result = parseBranchMap({
+      "agent-sandbox": {
+        sandboxHandle: "legacy-kind",
+        previewUrl: null,
+        sandboxProviderKind: "cluster",
+      },
+    });
+
+    expect(result["agent-sandbox"]).toEqual({
+      sandboxHandle: "legacy-kind",
+      previewUrl: null,
+      sandboxProviderKind: "agent-sandbox",
+    });
+  });
+
+  test("rejects malformed embedded provider kinds instead of stamping over them", () => {
+    const result = parseBranchMap({
+      "user-desktop": {
+        sandboxHandle: "unknown-kind",
+        previewUrl: null,
+        sandboxProviderKind: "retired-provider",
+      },
+    });
+
+    expect(result).toEqual({});
   });
 
   test("prefers canonical agent-sandbox over legacy cluster regardless of key order", () => {

@@ -1,58 +1,50 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  AGENT_OPTION_PINS,
+  AGENT_OPTION_HARNESSES,
   type AgentOption,
-  type AgentPins,
+  type AgentHarnessId,
   agentOptionFor,
   resolveNativeAgentOption,
 } from "./agent-options";
 describe("agentOptionFor", () => {
-  test("maps decopilot harness with agent-sandbox sandbox to decopilot option", () => {
-    expect(agentOptionFor("decopilot", "agent-sandbox")).toBe("decopilot");
+  test("maps the hosted harness to Decopilot", () => {
+    expect(agentOptionFor("decopilot")).toBe("decopilot");
   });
 
-  test("normalizes legacy cluster sandbox to decopilot option", () => {
-    expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
+  test("maps claude-code to claude-code-desktop", () => {
+    expect(agentOptionFor("claude-code")).toBe("claude-code-desktop");
   });
 
-  test("maps retired local Decopilot pins to hosted Decopilot", () => {
-    expect(agentOptionFor("decopilot", "user-desktop")).toBe("decopilot");
+  test("maps codex to codex-desktop", () => {
+    expect(agentOptionFor("codex")).toBe("codex-desktop");
   });
 
-  test("maps legacy decopilot harness with null sandbox to decopilot option", () => {
-    expect(agentOptionFor("decopilot", null)).toBe("decopilot");
-  });
-
-  test("maps claude-code + user-desktop to claude-code-desktop", () => {
-    expect(agentOptionFor("claude-code", "user-desktop")).toBe(
-      "claude-code-desktop",
-    );
-  });
-
-  test("maps codex + user-desktop to codex-desktop", () => {
-    expect(agentOptionFor("codex", "user-desktop")).toBe("codex-desktop");
-  });
-
-  test("maps opencode + user-desktop to opencode-desktop", () => {
-    expect(agentOptionFor("opencode", "user-desktop")).toBe("opencode-desktop");
+  test("maps opencode to opencode-desktop", () => {
+    expect(agentOptionFor("opencode")).toBe("opencode-desktop");
   });
 
   test("returns null for unknown harness", () => {
-    expect(agentOptionFor("unknown-harness", null)).toBeNull();
+    expect(agentOptionFor("unknown-harness")).toBeNull();
   });
 
   test("returns null for null harness", () => {
-    expect(agentOptionFor(null, "user-desktop")).toBeNull();
+    expect(agentOptionFor(null)).toBeNull();
   });
 
-  test("round-trips against AGENT_OPTION_PINS", () => {
-    for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
+  test("round-trips against AGENT_OPTION_HARNESSES", () => {
+    for (const [option, harness] of Object.entries(AGENT_OPTION_HARNESSES) as [
       AgentOption,
-      AgentPins,
+      AgentHarnessId,
     ][]) {
-      expect(agentOptionFor(pins.harness, pins.sandbox)).toBe(option);
+      expect(agentOptionFor(harness)).toBe(option);
     }
+  });
+
+  test("keeps one unique harness per option", () => {
+    expect(new Set(Object.values(AGENT_OPTION_HARNESSES)).size).toBe(
+      Object.keys(AGENT_OPTION_HARNESSES).length,
+    );
   });
 });
 

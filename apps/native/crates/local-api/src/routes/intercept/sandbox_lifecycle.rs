@@ -1,11 +1,10 @@
 //! Native interception for the production shell's sandbox lifecycle tools.
 //!
 //! `POST /api/:org/tools/SANDBOX_START` is what the real web shell calls to
-//! provision the sandbox behind a thread. In the browser that reaches mesh,
-//! which provisions either a cloud `agent-sandbox` or — for a `bunx decocms
-//! link` user — the `user-desktop` runtime on their machine. Inside the desktop
-//! app THIS process is that machine, so the same call has to resolve against
-//! the local [`SandboxManager`] instead of a cluster.
+//! provision the sandbox behind a thread. In the browser that reaches Studio,
+//! which provisions the managed `agent-sandbox`. Inside the desktop app this
+//! process owns the `user-desktop` runtime, so the same call resolves against
+//! the local [`SandboxManager`] instead.
 //!
 //! The frontend does not tell us which sandbox provider to use, and deliberately
 //! so: native coding agents always run on the user's machine, and `local-api`

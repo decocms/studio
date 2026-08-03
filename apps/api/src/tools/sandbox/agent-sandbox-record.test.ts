@@ -16,12 +16,12 @@ function record(
   };
 }
 
-function map(branchMap: Record<string, SandboxRecord>): SandboxMap {
+function map(branchMap: Record<string, unknown>): SandboxMap {
   return {
     [USER_ID]: {
-      [BRANCH]: branchMap as SandboxMap[string][string],
+      [BRANCH]: branchMap,
     },
-  };
+  } as unknown as SandboxMap;
 }
 
 describe("selectAgentSandboxRecord", () => {
@@ -35,6 +35,60 @@ describe("selectAgentSandboxRecord", () => {
         BRANCH,
       ),
     ).toEqual(entry);
+  });
+
+  it("stamps an absent provider kind from the agent-sandbox key", () => {
+    expect(
+      selectAgentSandboxRecord(
+        map({
+          "agent-sandbox": {
+            sandboxHandle: "hosted-without-kind",
+            previewUrl: null,
+          },
+        }),
+        USER_ID,
+        BRANCH,
+      ),
+    ).toEqual({
+      sandboxHandle: "hosted-without-kind",
+      previewUrl: null,
+      sandboxProviderKind: "agent-sandbox",
+    });
+  });
+
+  it("normalizes a legacy cluster cell and embedded kind", () => {
+    expect(
+      selectAgentSandboxRecord(
+        map({
+          cluster: {
+            sandboxHandle: "legacy-hosted",
+            previewUrl: null,
+            sandboxProviderKind: "cluster",
+          },
+        }),
+        USER_ID,
+        BRANCH,
+      ),
+    ).toEqual({
+      sandboxHandle: "legacy-hosted",
+      previewUrl: null,
+      sandboxProviderKind: "agent-sandbox",
+    });
+  });
+
+  it("selects the hosted record when a valid desktop sibling also exists", () => {
+    const hosted = record("hosted", "agent-sandbox");
+
+    expect(
+      selectAgentSandboxRecord(
+        map({
+          "agent-sandbox": hosted,
+          "user-desktop": record("desktop", "user-desktop"),
+        }),
+        USER_ID,
+        BRANCH,
+      ),
+    ).toEqual(hosted);
   });
 
   it("does not fall back to a desktop sibling", () => {
@@ -51,6 +105,23 @@ describe("selectAgentSandboxRecord", () => {
     expect(
       selectAgentSandboxRecord(
         map({ "agent-sandbox": record("desktop", "user-desktop") }),
+        USER_ID,
+        BRANCH,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not fall back to a legacy cell when the hosted cell is desktop", () => {
+    expect(
+      selectAgentSandboxRecord(
+        map({
+          "agent-sandbox": record("desktop", "user-desktop"),
+          cluster: {
+            sandboxHandle: "legacy-hosted",
+            previewUrl: null,
+            sandboxProviderKind: "cluster",
+          },
+        }),
         USER_ID,
         BRANCH,
       ),

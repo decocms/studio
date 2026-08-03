@@ -13,8 +13,8 @@ export type { UIMessageChunk } from "ai";
  * structural compatibility: the cluster passes its richer types where these
  * expect a UIMessage, and TS accepts the widening.
  *
- * The host-side execution context stays in apps/api/src/harnesses/lib — only
- * the API runs the hosted Decopilot stream.
+ * The hosted adapter stays in apps/api/src/harnesses/decopilot — only the API
+ * runs the hosted Decopilot stream.
  */
 
 /** Built-in harness identifiers. Open-ended on purpose — third-party harnesses

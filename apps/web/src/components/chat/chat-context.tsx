@@ -41,13 +41,12 @@ import {
   type ThreadObserver,
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import {
-  AGENT_OPTION_PINS,
+  AGENT_OPTION_HARNESSES,
   agentOptionFor,
   resolveNativeAgentOption,
   type AgentOption,
-  type NativeHarnessId,
+  type AgentHarnessId,
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
@@ -206,8 +205,6 @@ export interface ChatTaskContextValue {
   isThreadLocked: boolean;
   /** Locked harness for the active thread (null when unlocked / no thread). */
   lockedHarness: string | null;
-  /** Locked sandbox provider kind (null when unlocked, or harness has no sandbox). */
-  lockedSandbox: SandboxProviderKind | null;
   /** Locked branch (null when unlocked or thread has no branch). */
   lockedBranch: string | null;
   /** thread.branch — alias of `lockedBranch`. Kept for call-site compatibility
@@ -258,9 +255,7 @@ export interface ChatPrefsContextValue {
   pendingAgentOption: AgentOption | null;
   setPendingAgentOption: (option: AgentOption | null) => void;
   /** Derived from `pendingAgentOption`. Read-only. */
-  pendingHarnessId: NativeHarnessId | null;
-  /** Derived from `pendingAgentOption`. Read-only. */
-  pendingSandboxProviderKind: SandboxProviderKind | null;
+  pendingHarnessId: AgentHarnessId | null;
 }
 
 // ============================================================================
@@ -517,7 +512,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     useLocalStorage<AgentOption | null>(
       LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
       (existing) =>
-        existing && existing in AGENT_OPTION_PINS ? existing : null,
+        existing && existing in AGENT_OPTION_HARNESSES ? existing : null,
     );
 
   // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
@@ -530,10 +525,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // require restructuring the standalone mount path.
   const lockedAgentOption =
     taskCtxForLock?.isThreadLocked && taskCtxForLock.lockedHarness != null
-      ? agentOptionFor(
-          taskCtxForLock.lockedHarness,
-          taskCtxForLock.lockedSandbox,
-        )
+      ? agentOptionFor(taskCtxForLock.lockedHarness)
       : null;
 
   const isDesktopApp = useIsDesktopApp();
@@ -548,7 +540,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
       : null,
   });
   // Hosted web has exactly one runnable chat runtime: Decopilot. A locked
-  // thread still reflects its persisted tuple so the hosted runtime guard can
+  // thread still reflects its persisted harness so the hosted runtime guard can
   // surface legacy/native rows as unavailable instead of relabelling them.
   // Native recovers older rows by their local harness alone.
   const effectiveAgentOption: AgentOption | null = isDesktopApp
@@ -557,12 +549,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
       ? lockedAgentOption
       : "decopilot";
 
-  const effectivePins = effectiveAgentOption
-    ? AGENT_OPTION_PINS[effectiveAgentOption]
+  const pendingHarnessId = effectiveAgentOption
+    ? AGENT_OPTION_HARNESSES[effectiveAgentOption]
     : null;
-  const pendingHarnessId = effectivePins?.harness ?? null;
-  const pendingSandboxProviderKind: SandboxProviderKind | null =
-    effectivePins?.sandbox ?? null;
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
@@ -610,7 +599,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     pendingAgentOption: effectiveAgentOption,
     setPendingAgentOption,
     pendingHarnessId,
-    pendingSandboxProviderKind,
   };
 
   return (
@@ -672,8 +660,6 @@ export function ChatContextProvider({
   };
 
   const lockedHarness = activeTask?.harness_id ?? null;
-  const lockedSandbox = (activeTask?.sandbox_provider_kind ??
-    null) as SandboxProviderKind | null;
   const lockedBranch = activeTask?.branch ?? null;
   const isThreadLocked = lockedHarness != null;
 
@@ -750,7 +736,6 @@ export function ChatContextProvider({
     activeTask,
     isThreadLocked,
     lockedHarness,
-    lockedSandbox,
     lockedBranch,
     currentBranch,
     setCurrentTaskBranch: (branch: string | null) => {

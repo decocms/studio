@@ -24,6 +24,18 @@ const CANONICAL_ENTRY_B: SandboxRecord = {
   ...ENTRY_B,
   sandboxProviderKind: "agent-sandbox",
 };
+const CANONICAL_AGENT_ENTRY_A: SandboxRecord = {
+  ...ENTRY_A,
+  sandboxProviderKind: "agent-sandbox",
+};
+const CANONICAL_DESKTOP_ENTRY_A: SandboxRecord = {
+  ...ENTRY_A,
+  sandboxProviderKind: "user-desktop",
+};
+const CANONICAL_DESKTOP_ENTRY_B: SandboxRecord = {
+  ...ENTRY_B,
+  sandboxProviderKind: "user-desktop",
+};
 
 function entryAt(
   sandboxMap: SandboxMap,
@@ -98,7 +110,7 @@ describe("mergeAgentSandboxMapEntry", () => {
       ENTRY_B,
     );
     expect(entryAt(next, "u", "thread:t/conn_a", "agent-sandbox")).toEqual(
-      ENTRY_A,
+      CANONICAL_AGENT_ENTRY_A,
     );
     expect(entryAt(next, "u", "thread:t/conn_b", "agent-sandbox")).toEqual(
       CANONICAL_ENTRY_B,
@@ -108,7 +120,9 @@ describe("mergeAgentSandboxMapEntry", () => {
   test("preserves sibling kinds on the same branch", () => {
     const current = { u: { b: { "user-desktop": ENTRY_A } } };
     const next = mergeAgentSandboxMapEntry(current, "u", "b", ENTRY_B);
-    expect(entryAt(next, "u", "b", "user-desktop")).toEqual(ENTRY_A);
+    expect(entryAt(next, "u", "b", "user-desktop")).toEqual(
+      CANONICAL_DESKTOP_ENTRY_A,
+    );
     expect(entryAt(next, "u", "b", "agent-sandbox")).toEqual(CANONICAL_ENTRY_B);
   });
 
@@ -164,8 +178,12 @@ describe("deleteAgentSandboxMapEntry", () => {
       },
     };
     const next = deleteAgentSandboxMapEntry(current, "u", "b");
-    expect(entryAt(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
-    expect(entryAt(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
+    expect(entryAt(next!, "u", "b", "user-desktop")).toEqual(
+      CANONICAL_DESKTOP_ENTRY_B,
+    );
+    expect(entryAt(next!, "u", "other", "agent-sandbox")).toEqual(
+      CANONICAL_AGENT_ENTRY_A,
+    );
     expect(entryAt(next!, "u", "b", "agent-sandbox")).toBeNull();
   });
 });

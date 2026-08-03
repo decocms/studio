@@ -370,7 +370,7 @@ export function normalizeSandboxProviderKind(
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
  *  - agent-sandbox: daemon is reached via the Studio proxy; preview URL is the
  *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
- *  - user-desktop: daemon is reached directly via the user's link binary.
+ *  - user-desktop: daemon is reached directly through the native local API.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing
@@ -451,8 +451,11 @@ export function parseSandboxRecord(raw: unknown): SandboxRecord {
  *
  * Migration 087 rewrote every cell to the 3-level layout
  * (`sandboxProviderKind → SandboxRecord`) and migration 091 rewrote every
- * legacy kind value; this reader remains strict about retired values, while
- * still normalizing the legacy "cluster" key/value to "agent-sandbox".
+ * legacy kind value; this reader remains strict about retired keys, while
+ * still normalizing the legacy "cluster" key to "agent-sandbox". A missing
+ * embedded provider kind is stamped from the normalized map key. When both
+ * are present, they must agree after legacy normalization; conflicting cells
+ * are ignored instead of being relabeled as a different provider's sandbox.
  */
 export function parseBranchMap(
   raw: unknown,
@@ -471,7 +474,14 @@ export function parseBranchMap(
       if (k === "cluster" && out[kind]) {
         continue;
       }
-      out[kind] = parseSandboxRecord(v);
+      const parsed = parseSandboxRecord(v);
+      if (parsed.sandboxProviderKind && parsed.sandboxProviderKind !== kind) {
+        continue;
+      }
+      out[kind] = SandboxRecordSchema.parse({
+        ...parsed,
+        sandboxProviderKind: kind,
+      });
     } catch {
       // Skip malformed entries rather than throw — readers stay forgiving
       // about unexpected shapes within a known-key cell.

@@ -60,17 +60,13 @@ function postMessage(
   api: APIRequestContext,
   orgSlug: string,
   threadId: string,
-  agentId: string,
   text: string,
 ) {
   return api.post(`/api/${orgSlug}/decopilot/threads/${threadId}/messages`, {
     data: {
       messages: [{ role: "user", parts: [{ type: "text", text }] }],
-      agent: { id: agentId },
       branch: "ephemeral",
       temperature: 0,
-      sandboxProviderKind: "agent-sandbox",
-      harnessId: "decopilot",
     },
     headers: { "content-type": "application/json" },
   });
@@ -153,7 +149,6 @@ test.describe("decopilot hosted — stop then follow-up", () => {
         api,
         orgSlug,
         controlId,
-        agentId,
         "Say the single word: banana.",
       );
       expect(runControl.status()).toBe(202);
@@ -168,7 +163,6 @@ test.describe("decopilot hosted — stop then follow-up", () => {
         api,
         orgSlug,
         threadId,
-        agentId,
         "Write a 200-word story about a robot. Take your time.",
       );
       expect(runA.status()).toBe(202);
@@ -194,7 +188,6 @@ test.describe("decopilot hosted — stop then follow-up", () => {
         api,
         orgSlug,
         threadId,
-        agentId,
         "Say the single word: pineapple.",
       );
       expect(runB.status()).toBe(202);

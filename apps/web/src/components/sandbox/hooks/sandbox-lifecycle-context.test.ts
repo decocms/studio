@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type {
+  SandboxProviderKind,
+  SandboxRecord,
+} from "@decocms/shared/sdk/types";
 import {
-  resolveVmEntry,
-  selectVmEntry,
+  resolveSurfaceVmEntry,
+  sandboxSurfaceKind,
   shouldAutoStart,
   shouldAdoptBranch,
   shouldSelfHeal,
@@ -13,50 +17,58 @@ import {
   shouldAutoRetryClaim,
   reconcileClaimRetryEpisode,
   MAX_CLAIM_AUTO_RETRIES,
-  type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
 const entry = (
-  kind: string,
+  kind: SandboxProviderKind,
   handle = "h1",
   url: string | null = "https://example/preview",
-): BranchMapEntryLike => ({
+): SandboxRecord => ({
   sandboxHandle: handle,
   previewUrl: url,
   sandboxProviderKind: kind,
 });
 
-describe("selectVmEntry", () => {
-  test("returns null on empty map", () => {
-    expect(selectVmEntry({})).toBeNull();
+describe("sandboxSurfaceKind", () => {
+  test("hosted web owns agent-sandbox", () => {
+    expect(sandboxSurfaceKind(false)).toBe("agent-sandbox");
   });
 
-  test("prefers a non-user-desktop entry over a user-desktop entry", () => {
-    const result = selectVmEntry({
-      a: entry("user-desktop", "desk"),
-      b: entry("agent-sandbox", "vm"),
-    });
-    expect(result?.sandboxHandle).toBe("vm");
-  });
-
-  test("falls back to first entry when all are user-desktop", () => {
-    const result = selectVmEntry({
-      a: entry("user-desktop", "first"),
-      b: entry("user-desktop", "second"),
-    });
-    expect(result?.sandboxHandle).toBe("first");
-  });
-
-  test("returns the only entry when one is present", () => {
-    expect(
-      selectVmEntry({ a: entry("agent-sandbox", "solo") })?.sandboxHandle,
-    ).toBe("solo");
+  test("native owns user-desktop", () => {
+    expect(sandboxSurfaceKind(true)).toBe("user-desktop");
   });
 });
 
-describe("resolveVmEntry", () => {
-  test("an exact kind match wins over the non-desktop preference", () => {
-    const result = resolveVmEntry(
+describe("resolveSurfaceVmEntry", () => {
+  test("resolves the exact sandbox for the application surface", () => {
+    const branchMap = {
+      "user-desktop": entry("user-desktop", "desk"),
+      "agent-sandbox": entry("agent-sandbox", "vm"),
+    };
+
+    expect(
+      resolveSurfaceVmEntry(branchMap, "agent-sandbox")?.sandboxHandle,
+    ).toBe("vm");
+    expect(
+      resolveSurfaceVmEntry(branchMap, "user-desktop")?.sandboxHandle,
+    ).toBe("desk");
+  });
+
+  test("does not fall back to a sibling owned by another surface", () => {
+    const result = resolveSurfaceVmEntry(
+      { "user-desktop": entry("user-desktop", "desk") },
+      "agent-sandbox",
+    );
+    expect(result).toBeNull();
+  });
+
+  test("returns null when the branch has no sandbox", () => {
+    expect(resolveSurfaceVmEntry({}, "agent-sandbox")).toBeNull();
+    expect(resolveSurfaceVmEntry({}, "user-desktop")).toBeNull();
+  });
+
+  test("uses the desktop entry even when a hosted sibling exists", () => {
+    const result = resolveSurfaceVmEntry(
       {
         "user-desktop": entry("user-desktop", "desk"),
         "agent-sandbox": entry("agent-sandbox", "vm"),
@@ -64,33 +76,6 @@ describe("resolveVmEntry", () => {
       "user-desktop",
     );
     expect(result?.sandboxHandle).toBe("desk");
-  });
-
-  test("falls back to the serving sandbox when the pinned kind has no entry", () => {
-    // The regression: a linked desktop is serving the branch while the thread
-    // is optimistically pinned to `agent-sandbox`. Returning null here blanked
-    // a working preview into "Starting your preview" and booted a rival VM.
-    const result = resolveVmEntry(
-      { "user-desktop": entry("user-desktop", "desk") },
-      "agent-sandbox",
-    );
-    expect(result?.sandboxHandle).toBe("desk");
-  });
-
-  test("uses the heuristic when no kind is recorded", () => {
-    const result = resolveVmEntry(
-      {
-        "user-desktop": entry("user-desktop", "desk"),
-        "agent-sandbox": entry("agent-sandbox", "vm"),
-      },
-      null,
-    );
-    expect(result?.sandboxHandle).toBe("vm");
-  });
-
-  test("returns null when the branch has no sandbox at all", () => {
-    expect(resolveVmEntry({}, "agent-sandbox")).toBeNull();
-    expect(resolveVmEntry({}, null)).toBeNull();
   });
 });
 
@@ -235,20 +220,15 @@ describe("shouldSelfHeal", () => {
 });
 
 describe("buildSandboxStartArgs", () => {
-  test("includes sandboxProviderKind when the thread has a locked kind", () => {
-    // Regression: user-driven start/retry/resume used to omit
-    // sandboxProviderKind (unlike auto-start/self-heal), so retrying a
-    // failed locked-provider thread could get provisioned on the wrong
-    // provider instead of the one the preview is locked to.
-    expect(buildSandboxStartArgs("vmcp1", "main", "user-desktop")).toEqual({
+  test("includes the branch when present", () => {
+    expect(buildSandboxStartArgs("vmcp1", "main")).toEqual({
       virtualMcpId: "vmcp1",
       branch: "main",
-      sandboxProviderKind: "user-desktop",
     });
   });
 
-  test("omits branch and sandboxProviderKind when absent", () => {
-    expect(buildSandboxStartArgs("vmcp1", null, null)).toEqual({
+  test("omits the branch when absent", () => {
+    expect(buildSandboxStartArgs("vmcp1", null)).toEqual({
       virtualMcpId: "vmcp1",
     });
   });

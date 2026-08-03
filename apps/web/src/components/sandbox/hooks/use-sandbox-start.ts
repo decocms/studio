@@ -29,12 +29,6 @@ export interface SandboxStartArgs {
   virtualMcpId: string;
   /** Optional — SANDBOX_START generates one when omitted. */
   branch?: string;
-  /**
-   * Optional explicit sandbox provider kind. When omitted the server picks
-   * via resolveDefaultSandboxProviderKind (link-online ⇒ user-desktop, else
-   * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
-   */
-  sandboxProviderKind?: SandboxProviderKind;
 }
 
 export interface SandboxStartResult {
@@ -42,7 +36,7 @@ export interface SandboxStartResult {
   sandboxHandle: string;
   branch: string;
   isNewVm: boolean;
-  sandboxProviderKind?: SandboxProviderKind;
+  sandboxProviderKind: SandboxProviderKind;
 }
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();

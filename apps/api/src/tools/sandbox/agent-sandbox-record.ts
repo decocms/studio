@@ -32,6 +32,16 @@ function agentRecord(entry: SandboxRecord | null): SandboxRecord | null {
 export function selectAgentSandboxBranchRecord(
   raw: SandboxMap[string][string] | undefined,
 ): SandboxRecord | null {
+  const rawAgentCell = raw?.[AGENT_SANDBOX_KIND] as unknown;
+  if (
+    rawAgentCell &&
+    typeof rawAgentCell === "object" &&
+    !Array.isArray(rawAgentCell) &&
+    "sandboxProviderKind" in rawAgentCell &&
+    rawAgentCell.sandboxProviderKind === "user-desktop"
+  ) {
+    return null;
+  }
   return agentRecord(parseBranchMap(raw)[AGENT_SANDBOX_KIND] ?? null);
 }
 

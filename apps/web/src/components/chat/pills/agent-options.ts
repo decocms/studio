@@ -1,9 +1,4 @@
 import type { HarnessId } from "@decocms/shared/harness/types";
-import {
-  normalizeSandboxProviderKind,
-  type LegacySandboxProviderKind,
-  type SandboxProviderKind,
-} from "@/sdk";
 
 export type AgentOption =
   | "decopilot"
@@ -11,55 +6,35 @@ export type AgentOption =
   | "codex-desktop"
   | "opencode-desktop";
 export type LocalAgentOption = Exclude<AgentOption, "decopilot">;
-export type NativeHarnessId = HarnessId | "opencode";
-
-export interface AgentPins {
-  harness: NativeHarnessId;
-  sandbox: SandboxProviderKind | null;
-}
+export type AgentHarnessId = HarnessId | "opencode";
+export type LocalHarnessId = Exclude<AgentHarnessId, "decopilot">;
 
 /**
- * Canonical (harness, sandbox) pair for each `AgentOption`. The persisted
- * pending-agent value is the source of truth; terminal launch and the native
- * sandbox picker read through here so the pair cannot drift.
+ * Canonical harness for each `AgentOption`. Sandbox selection belongs to the
+ * current app surface and persisted thread output, not to this fresh-run
+ * choice.
  */
-export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
-  decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
-  "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
-  "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
-  "opencode-desktop": { harness: "opencode", sandbox: "user-desktop" },
+export const AGENT_OPTION_HARNESSES: Record<AgentOption, AgentHarnessId> = {
+  decopilot: "decopilot",
+  "claude-code-desktop": "claude-code",
+  "codex-desktop": "codex",
+  "opencode-desktop": "opencode",
 };
 
 /**
- * Inverse of `AGENT_OPTION_PINS`. Maps a (harness, sandbox) tuple — typically
- * sourced from `threads.harness_id` + `threads.sandbox_provider_kind` on a
- * locked thread — back to the canonical `AgentOption`.
+ * Inverse of `AGENT_OPTION_HARNESSES`. Maps a persisted thread harness back to
+ * the canonical `AgentOption`.
  *
- * Returns `null` when the pair does not correspond to any known option (which
+ * Returns `null` when the harness does not correspond to any known option (which
  * can happen for legacy or trigger-created rows that wrote a harness without
  * going through this picker).
  */
-export function agentOptionFor(
-  harness: string | null,
-  sandbox: LegacySandboxProviderKind | null,
-): AgentOption | null {
+export function agentOptionFor(harness: string | null): AgentOption | null {
   if (!harness) return null;
-  const normalizedSandbox = sandbox
-    ? normalizeSandboxProviderKind(sandbox)
-    : null;
-  if (
-    harness === "decopilot" &&
-    (normalizedSandbox === null || normalizedSandbox === "user-desktop")
-  ) {
-    return "decopilot";
-  }
-  for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
-    AgentOption,
-    AgentPins,
-  ][]) {
-    if (pins.harness === harness && pins.sandbox === normalizedSandbox) {
-      return option;
-    }
+  for (const [option, pinnedHarness] of Object.entries(
+    AGENT_OPTION_HARNESSES,
+  ) as [AgentOption, AgentHarnessId][]) {
+    if (pinnedHarness === harness) return option;
   }
   return null;
 }
