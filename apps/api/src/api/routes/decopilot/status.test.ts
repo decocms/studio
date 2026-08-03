@@ -12,9 +12,6 @@ describe("resolveThreadStatus", () => {
   });
 
   test("stop with a trailing question -> completed (no `?` heuristic)", () => {
-    // A clean stop is a finished turn. Ending prose with a question no longer
-    // implies the agent is waiting on input — that must be signalled
-    // structurally (user_ask / approval-requested, both under `tool-calls`).
     const parts = [
       { type: "text", text: "Here is the answer." },
       { type: "text", text: "Does that help?" },
@@ -22,11 +19,8 @@ describe("resolveThreadStatus", () => {
     expect(resolveThreadStatus("stop", parts)).toBe("completed");
   });
 
+  // Regression: a schemeless URL's query `?` used to false-trip requires_action.
   test("stop with a `?` inside a schemeless URL -> completed (regression)", () => {
-    // Real case: a review agent's summary mentioned `fonts.googleapis.com/css2?...`
-    // (no scheme). The old `?`-substring heuristic only stripped `https://`-scheme
-    // URLs, so this query-string `?` survived and the completed review thread was
-    // wrongly flipped to requires_action — wedging the task board.
     const parts = [
       {
         type: "text",

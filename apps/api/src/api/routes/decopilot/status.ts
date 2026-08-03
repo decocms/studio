@@ -24,14 +24,8 @@ export function resolveThreadStatus(
   responseParts: ResponsePart[] = [],
 ): Exclude<ThreadStatus, "in_progress"> {
   if (finishReason === "stop") {
-    // A clean stop is a finished turn. An agent that needs input signals it
-    // structurally — a pending `user_ask` or an `approval-requested` tool part,
-    // both handled by the `tool-calls` branch below — never by ending normal
-    // prose with a question. We used to infer `requires_action` from a `?` in
-    // the final text; that false-positived on any summary mentioning a URL
-    // query string (e.g. `fonts.googleapis.com/css2?...`) or a rhetorical
-    // question, wedging completed review threads in `requires_action` and
-    // blocking the task board from advancing them.
+    // Finished turn. "Needs input" comes only from the structured `tool-calls`
+    // signals below (user_ask / approval), never from a `?` in the prose.
     return "completed";
   }
 

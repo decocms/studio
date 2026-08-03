@@ -5,20 +5,14 @@ type ResponsePart = {
   state?: string;
 };
 
-// Client-side mirror of the server's `resolveThreadStatus`
-// (apps/api/src/api/routes/decopilot/status.ts). `apps/web` can't import from
-// `apps/api/src` (ban-web-server-imports), so the two are kept in lockstep by
-// hand — change both together.
+// Client mirror of the server's `resolveThreadStatus` (status.ts) — keep in sync.
 export function deriveTerminalThreadStatus(
   finishReason: string | undefined,
   responseParts: ResponsePart[] = [],
 ): Exclude<Task["status"], "in_progress"> {
   if (finishReason === "stop") {
-    // A clean stop is a finished turn. An agent that needs input signals it
-    // structurally — a pending `user_ask` or `approval-requested` part, both
-    // handled by the `tool-calls` branch below — never by ending prose with a
-    // question. (We used to infer `requires_action` from a `?` in the text,
-    // which false-positived on any URL query string or rhetorical question.)
+    // Finished turn. "Needs input" comes only from the structured `tool-calls`
+    // signals below (user_ask / approval), never from a `?` in the prose.
     return "completed";
   }
 
