@@ -481,4 +481,87 @@ describe("Credential Vault Routes", () => {
 
     expect(res.status).toBe(401);
   });
+
+  describe("batch (service token)", () => {
+    const prevServiceToken = process.env.VAULT_SERVICE_TOKEN;
+    beforeEach(() => {
+      process.env.VAULT_SERVICE_TOKEN = "svc-secret";
+    });
+    afterEach(() => {
+      if (prevServiceToken === undefined)
+        delete process.env.VAULT_SERVICE_TOKEN;
+      else process.env.VAULT_SERVICE_TOKEN = prevServiceToken;
+    });
+
+    const batchRequest = (bearer: string, connectionIds: unknown): Request =>
+      new Request("http://test/api/org_1/vault/connections/batch", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ connectionIds }),
+      });
+
+    it("leases configuration + token for N connections in one round-trip, per-item errors", async () => {
+      const res = await app.fetch(
+        batchRequest("svc-secret", [
+          "conn_target",
+          "conn_static_token_target",
+          "conn_configuration_target",
+          "conn_inactive_granted",
+          "conn_does_not_exist",
+        ]),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      const body = (await res.json()) as Record<
+        string,
+        {
+          configuration?: { state: Record<string, unknown> };
+          accessToken?: { type: string; accessToken: string } | null;
+          error?: string;
+        }
+      >;
+
+      // OAuth connection: valid downstream token comes back as oauth lane.
+      expect(body.conn_target?.accessToken?.type).toBe("oauth_access_token");
+      expect(body.conn_target?.accessToken?.accessToken).toBe(
+        "downstream_access_token",
+      );
+
+      // Static-token connection: the connection_token fallback lane.
+      expect(body.conn_static_token_target?.accessToken?.type).toBe(
+        "static_token",
+      );
+      expect(body.conn_static_token_target?.accessToken?.accessToken).toBe(
+        "static-admin-api-token",
+      );
+
+      // Configuration-bearing connection: decrypted state, no token ⇒ null.
+      expect(body.conn_configuration_target?.configuration?.state.apiKey).toBe(
+        "configuration-secret",
+      );
+      expect(body.conn_configuration_target?.accessToken).toBeNull();
+
+      // Inactive and unknown connections: per-item error, batch still 200.
+      expect(body.conn_inactive_granted?.error).toBe("Connection not found");
+      expect(body.conn_does_not_exist?.error).toBe("Connection not found");
+    });
+
+    it("rejects workload tokens — the batch lane is service-only", async () => {
+      const res = await app.fetch(batchRequest(workloadToken, ["conn_target"]));
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects an empty or non-array connectionIds", async () => {
+      expect((await app.fetch(batchRequest("svc-secret", []))).status).toBe(
+        400,
+      );
+      expect(
+        (await app.fetch(batchRequest("svc-secret", "conn_target"))).status,
+      ).toBe(400);
+    });
+  });
 });

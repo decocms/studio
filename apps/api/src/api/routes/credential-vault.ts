@@ -119,6 +119,115 @@ async function authorizeVaultRequest(
 export const createCredentialVaultRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
+  // Batch lease for the vault SERVICE lane only (decocms/reports resolves up
+  // to five providers per run): configuration + access token for N connections
+  // in one round-trip. Per-item failures never fail the batch — every requested
+  // id gets an entry, with `error` set when that connection can't be leased.
+  app.post("/vault/connections/batch", async (c) => {
+    const token = bearerToken(c.req.header("authorization"));
+    if (!token || !isVaultServiceToken(token)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const ctx = c.get("studioContext");
+    const organizationId = ctx.organization?.id;
+    if (!organizationId) {
+      return c.json({ error: "Organization context required" }, 403);
+    }
+
+    const body = (await c.req.json().catch(() => null)) as {
+      connectionIds?: unknown;
+    } | null;
+    const ids = Array.isArray(body?.connectionIds)
+      ? [...new Set(body.connectionIds)].filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        )
+      : [];
+    if (ids.length === 0 || ids.length > 20) {
+      return c.json(
+        { error: "connectionIds must be a non-empty string array (max 20)" },
+        400,
+      );
+    }
+
+    // ONE query for all connections (decrypted entities: configuration_state
+    // + connection_token) and one for which of them hold a downstream OAuth
+    // token — only those go through the per-token refresh path; static-token
+    // connections resolve with no further reads.
+    const { items } = await ctx.storage.connections.list(organizationId, {
+      includeVirtual: true,
+      where: { field: ["id"], operator: "in", value: ids },
+      limit: ids.length,
+    });
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const withDownstreamToken = new Set(
+      (
+        await ctx.db
+          .selectFrom("downstream_tokens")
+          .select("connectionId")
+          .where("connectionId", "in", ids)
+          .execute()
+      ).map((row) => row.connectionId),
+    );
+
+    const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+    const out: Record<string, unknown> = {};
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const target = byId.get(id);
+          if (!target || target.status !== "active") {
+            out[id] = { error: "Connection not found" };
+            return;
+          }
+          const configuration = {
+            type: "mcp_configuration",
+            state: target.configuration_state ?? {},
+            scopes: target.configuration_scopes ?? [],
+          };
+          let accessToken: Record<string, unknown> | null = null;
+          if (withDownstreamToken.has(id)) {
+            const result = await getValidDownstreamAccessToken({
+              connectionId: id,
+              connectionUrl: target.connection_url,
+              tokenStorage,
+            });
+            if (result.state === "valid" || result.state === "refreshed") {
+              const downstreamToken = await tokenStorage.get(id);
+              accessToken = {
+                type: "oauth_access_token",
+                tokenType: "Bearer",
+                accessToken: result.accessToken,
+                expiresAt: serializeExpiresAt(
+                  downstreamToken?.expiresAt ?? null,
+                ),
+                scope: downstreamToken?.scope ?? null,
+              };
+            }
+            // refresh_failed/expired ⇒ null, same as the single route's 424.
+          } else if (target.connection_token) {
+            // Static-token MCPs (e.g. Shopify): bearer on the connection.
+            accessToken = {
+              type: "static_token",
+              tokenType: "Bearer",
+              accessToken: target.connection_token,
+              expiresAt: null,
+              scope: null,
+            };
+          }
+          out[id] = { configuration, accessToken };
+        } catch (err) {
+          out[id] = {
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }),
+    );
+
+    c.header("Cache-Control", "no-store");
+    c.header("Pragma", "no-cache");
+    return c.json(out);
+  });
+
   app.post("/vault/connections/:connectionId/access-token", async (c) => {
     const targetConnectionId = c.req.param("connectionId");
     const authz = await authorizeVaultRequest(
