@@ -298,7 +298,7 @@ function ModelListSkeleton() {
 // ConnectionModelList — browse + manage modes
 // ============================================================================
 
-function ModelTierSection({
+export function ModelTierSection({
   label,
   models,
   onSelect,
@@ -316,13 +316,14 @@ function ModelTierSection({
         {label}
       </div>
       {models.map((m) => (
-        <div
+        <button
           key={m.modelId}
+          type="button"
           onClick={() => onSelect(m)}
-          className="cursor-pointer"
+          className="w-full text-left cursor-pointer"
         >
           <ModelItemContent model={m} onHover={onHover} />
-        </div>
+        </button>
       ))}
     </div>
   );
