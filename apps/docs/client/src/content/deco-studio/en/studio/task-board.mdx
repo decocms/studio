@@ -21,12 +21,13 @@ Once a task's pull request is **In Review** (its checks are passing, or it has n
 
 - **QA Agent** — exercises the feature itself, not just the diff, to verify the task actually solved the problem.
 - **Code Reviewer** — reviews the code using review skills appropriate to the repository's stack.
-- **Auto-merge** — when every enabled reviewer approves, merge the pull request automatically instead of waiting for a human to click merge.
+- **Auto-merge** — when every enabled reviewer approves, merge the pull request automatically instead of waiting for a human to click merge. If a conflict with the base branch blocks the merge, the Super Agent resolves it first (checks out the branch, merges the base, and pushes) before merging.
 
 Each reviewer that runs shows up as its own session on the task card, and its verdict is posted to the card's activity feed:
 
 - An **approval** (with optional notes) moves the task closer to shipping.
 - **Requested changes** hands the task back to the Super Agent to address the feedback, along with any notes from the reviewer.
+- A **merge conflict resolution** entry appears when auto-merge is blocked by a conflict with the base branch and the Super Agent is resolving it before retrying the merge.
 
 <Callout type="info">
   QA Agent and Code Reviewer are both off by default. Enable the ones you want
@@ -36,6 +37,6 @@ Each reviewer that runs shows up as its own session on the task card, and its ve
 
 ## Shipping to production
 
-When every enabled reviewer has approved a task's pull request — or no reviewers are enabled — the task card shows a **Ship to production** button. Clicking it merges the pull request. If auto-merge is enabled, this happens automatically once the review gate is satisfied instead of waiting for someone to click the button.
+When every enabled reviewer has approved a task's pull request — or no reviewers are enabled — the task card shows a **Ship to production** button. Clicking it merges the pull request. If auto-merge is enabled, this happens automatically once the review gate is satisfied instead of waiting for someone to click the button — including resolving a merge conflict with the base branch first, if one blocks the merge.
 
 Each card's PR panel also shows the pull request's live state (draft, open, merged, closed) and its check status (passing, pending, or failing), so you can see at a glance whether a task is ready to move forward.

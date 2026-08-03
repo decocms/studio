@@ -260,6 +260,27 @@ telemetry:
   `telemetry.otlp.ip` must be a bare IPv4 address, not a DNS name. Sandbox pods run with `dnsPolicy: None` against public resolvers, so in-cluster service names (like `gateway-otlp.opentelemetry-collector`) do not resolve inside them. Get the collector's ClusterIP with `kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'`. If the collector Service is later recreated, its ClusterIP can change — the daemon logs export failures and keeps serving, but re-read the IP and upgrade the release to restore metrics.
 </Callout>
 
+### Node placeholder (warm node capacity)
+
+`warmPool` pre-warms sandbox *pods*, but each warm-pool pod still needs a *node*. On pool refill after a burst, a KEDA/HPA scale-up, or a cold claim beyond the pool, new pods can go `Pending` while the cluster's autoscaler provisions a node — adding claim latency that `warmPool` alone can't remove.
+
+`nodePlaceholder` (disabled by default) runs low-priority "balloon" pods that reserve spare capacity on already-running nodes:
+
+```yaml
+nodePlaceholder:
+  enabled: true
+  replicas: 2
+  priorityClassName: placeholder-priority
+```
+
+A real sandbox pod (priority `0`) preempts a balloon instantly and takes its freed slot on the warm node, while the autoscaler re-provisions a node for the evicted balloon in the background — so the user-facing claim never waits on node provisioning.
+
+<Callout type="warning">
+  `priorityClassName` must reference a `PriorityClass` with a value below `0` so real sandbox and warm-pool pods always preempt the balloon. Self-hosters without an existing low-priority class must create one and set it here.
+</Callout>
+
+Left unset, the balloon's `nodeSelector` and `tolerations` default to the sandbox pod's own (`values.nodeSelector` / `values.tolerations`), so it reserves capacity on the same taint-isolated sandbox `NodePool` as real sandboxes. Size `replicas` to the burst of concurrent cold claims you want to absorb without a node-provisioning wait — production and staging share the same `NodePool`, so size once across environments rather than per environment.
+
 ### Idle housekeeper
 
 Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
@@ -351,6 +372,7 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `telemetry.enabled` | Export sandbox daemon OTLP metrics to a collector | `false` |
 | `telemetry.otlp.ip` / `telemetry.otlp.port` | Collector ClusterIP (required if enabled) / port | `""` / `4318` |
 | `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
+| `nodePlaceholder.enabled` / `nodePlaceholder.replicas` | Low-priority balloon pods that hold warm node capacity for the sandbox NodePool | `false` / `2` |
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
 
