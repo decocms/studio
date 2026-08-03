@@ -63,4 +63,21 @@ describe("ModelTierSection", () => {
     fireEvent.click(getByRole("button", { name: /Claude Sonnet 5/ }));
     expect(onSelect).toHaveBeenCalledWith(model);
   });
+
+  it("calls onHover when the row receives keyboard focus, not just a mouse hover", () => {
+    const onHover = mock((_m: AiProviderModel) => {});
+    const model = makeModel();
+    const { getByRole } = render(
+      <ModelTierSection
+        label="Smarter"
+        models={[model]}
+        onSelect={() => {}}
+        onHover={onHover}
+      />,
+    );
+    // Keyboard users tabbing through rows never trigger onMouseEnter, so the
+    // details panel would otherwise stay blank until Enter is pressed.
+    fireEvent.focus(getByRole("button", { name: /Claude Sonnet 5/ }));
+    expect(onHover).toHaveBeenCalledWith(model);
+  });
 });
