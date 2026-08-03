@@ -224,7 +224,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Mobile / standalone (no header slot): render the toolbar inline below.
   const headerSlot = useMainPanelHeaderSlot();
   const navigate = useNavigate();
-  const { currentBranch: branch } = useChatTask();
+  const { currentBranch: branch, canMutateThread } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
   // Toggles the bottom terminal drawer (null on surfaces without the provider).
   const terminal = useTerminalVisibility();
@@ -313,12 +313,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
     branch: branch ?? "",
-    enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
+    enabled:
+      canMutateThread &&
+      isDesktopSandbox &&
+      devServerReady &&
+      !!virtualMcpId &&
+      !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
   // can retain a stale repoDir after the provider kind changes from desktop to
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
-  const repoDir = isDesktopSandbox ? rawRepoDir : null;
+  const repoDir = canMutateThread && isDesktopSandbox ? rawRepoDir : null;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -326,7 +331,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (The inline CMS overlay still needs the dev server — it edits the page
   // rendered inside the iframe, which the dev server serves.)
   const decofileParams =
-    virtualMcpId && branch
+    canMutateThread && virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
   const decofileQuery = useDecofile(decofileParams, {
@@ -348,7 +353,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       hasEditableContent: hasEditableDecoContent(decofile, meta),
     }).kind === "content";
   const createPageParams =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+    canMutateThread && virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null;
   const createPage = useCreatePage(createPageParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
@@ -393,7 +400,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whatever product-search / category loader the running site actually ships.
   // A param with no resolvable source keeps the plain inline input.
   const pathParamSources: Record<string, OptionSource[]> = {};
-  if (devServerReady && previewUrl && meta && decofile) {
+  if (canMutateThread && devServerReady && previewUrl && meta && decofile) {
     const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
     const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
     const pageLoaders = collectPageLoaderResolveTypes(
@@ -412,7 +419,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   }
   const pickerSandboxRef =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+    canMutateThread && virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null;
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
@@ -662,7 +671,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // sandbox restarts (or wakes) so its loading/error state remains actionable
   // and the panel keeps reading the committed snapshot.
   const effectiveEditingMode: PreviewEditingMode =
-    display.mode !== "sandbox" && editingMode === "visual"
+    !canMutateThread || (display.mode !== "sandbox" && editingMode === "visual")
       ? "preview"
       : editingMode;
 
@@ -749,6 +758,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
+    if (!canMutateThread) return;
     const previousMode = editingMode;
     if (!isMobile && mode !== previousMode) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
@@ -764,6 +774,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
+    if (!canMutateThread) return;
     // The user is driving the editing mode now — stop the one-shot CMS
     // auto-open from ever kicking in behind them. This is the ONLY path back to
     // `editingMode === "preview"` (the direct `activateEditingMode("blocks")`
@@ -778,12 +789,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // card. Gated by the per-agent "Open CMS" Layout setting. Handled by the
   // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
   // holds; `onOpen` latches so it fires exactly once.
-  const autoOpenCms = shouldAutoOpenCms({
-    cmsDefaultOpen,
-    blocksReady,
-    autoOpenResolved: blocksAutoOpenResolved,
-    editingMode,
-  });
+  const autoOpenCms =
+    canMutateThread &&
+    shouldAutoOpenCms({
+      cmsDefaultOpen,
+      blocksReady,
+      autoOpenResolved: blocksAutoOpenResolved,
+      editingMode,
+    });
   const handleCmsAutoOpen = () => {
     setBlocksAutoOpenResolved(true);
     activateEditingMode("blocks");
@@ -948,7 +961,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     path: string;
     templateKey: string | null;
   }) => {
-    if (!virtualMcpId || !branch) return;
+    if (!canMutateThread || !virtualMcpId || !branch) return;
     const pathError = validatePagePath(path);
     if (pathError) {
       setCreatePageError(pathError);
@@ -1006,7 +1019,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // its editor opens on the LEFT. So its toggle lives in the floating preview
   // pill next to the visual-editor / device controls (see below), grouped with
   // the other edit-mode affordances rather than in the header's nav-tab row.
-  const blocksActive = editingMode === "blocks";
+  const blocksActive = effectiveEditingMode === "blocks";
 
   // Refresh + page selector + open-in-new-tab — the URL group. Sized to content
   // (capped) rather than stretching, so it doesn't dominate the top bar.
@@ -1015,25 +1028,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // it reads as a distinct action rather than being wedged inside the URL
   // controls. On mobile it anchors the left edge on its own (see below).
   // Filled when the Blocks editor is open; click again for plain preview.
-  const cmsToggle = showPreviewToolbar ? (
-    <HeaderTabButton
-      title={t("sandbox.preview.cms")}
-      tooltip={
-        blocksActive
-          ? t("sandbox.preview.exitEditor")
-          : t("sandbox.preview.editContent")
-      }
-      // Distinctive icon — sheds its label with the system tabs at 768px,
-      // well before this group hides at 384px, so the group stays narrow
-      // through the widths where it is most cramped.
-      labelCollapse="sooner"
-      icon={{ kind: "component", Component: PuzzlePiece01 }}
-      active={blocksActive}
-      onClick={() => toggleEditingMode("blocks")}
-      testId="preview-blocks-toggle"
-      dataTour={TOUR_ANCHORS.edit}
-    />
-  ) : null;
+  const cmsToggle =
+    showPreviewToolbar && canMutateThread ? (
+      <HeaderTabButton
+        title={t("sandbox.preview.cms")}
+        tooltip={
+          blocksActive
+            ? t("sandbox.preview.exitEditor")
+            : t("sandbox.preview.editContent")
+        }
+        // Distinctive icon — sheds its label with the system tabs at 768px,
+        // well before this group hides at 384px, so the group stays narrow
+        // through the widths where it is most cramped.
+        labelCollapse="sooner"
+        icon={{ kind: "component", Component: PuzzlePiece01 }}
+        active={blocksActive}
+        onClick={() => toggleEditingMode("blocks")}
+        testId="preview-blocks-toggle"
+        dataTour={TOUR_ANCHORS.edit}
+      />
+    ) : null;
 
   // The view controls proper: refresh · page selector · open-in-new. Kept as a
   // unit so both layouts can place it as one block — inline after the Edit
@@ -1180,24 +1194,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 autoFocus
               />
             </div>
-            <div className="p-1.5 border-b">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setPagesOpen(false);
-                  setPagesSearch("");
-                  setCreatePageError(undefined);
-                  setCreatePageDialogOpen(true);
-                }}
-              >
-                <Plus size={16} className="shrink-0 text-muted-foreground" />
-                <span className="flex-1 font-medium">
-                  {t("sandbox.preview.createNewPage")}
-                </span>
-              </button>
-            </div>
+            {canMutateThread && (
+              <div className="p-1.5 border-b">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setPagesOpen(false);
+                    setPagesSearch("");
+                    setCreatePageError(undefined);
+                    setCreatePageDialogOpen(true);
+                  }}
+                >
+                  <Plus size={16} className="shrink-0 text-muted-foreground" />
+                  <span className="flex-1 font-medium">
+                    {t("sandbox.preview.createNewPage")}
+                  </span>
+                </button>
+              </div>
+            )}
             {filteredPages.length === 0 &&
             filteredGlobalSections.length === 0 ? (
               <div className="px-4 py-5 text-center text-xs text-muted-foreground">
@@ -1298,7 +1314,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const urlControls = showPreviewToolbar ? (
     <div className="flex min-w-0 items-center gap-0.5">
       {cmsToggle}
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {canMutateThread && (
+        <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      )}
       {urlGroup}
     </div>
   ) : null;
@@ -1340,45 +1358,39 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 </DropdownMenuItem>
               </>
             )}
-            {decofile && meta && (
+            {canMutateThread && decofile && meta && currentPageKey && (
               <>
                 <DropdownMenuSeparator />
-                {currentPageKey && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      workspace.editSeo({
-                        kind: "page",
-                        key: currentPageKey,
-                        path: currentPath,
-                      });
-                      activateEditingMode("blocks");
-                    }}
-                  >
-                    <CreditCardSearch size={14} />
-                    {t("sandbox.preview.editSeo")}
-                  </DropdownMenuItem>
-                )}
-                {currentPageKey && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      try {
-                        goToTab(
-                          formatCodeTabId(
-                            decoBlockFileViewPath(currentPageKey),
-                          ),
-                        );
-                      } catch {
-                        toast.error(t("sandbox.preview.invalidPageBlockKey"));
-                      }
-                    }}
-                  >
-                    <Code01 size={14} />
-                    {t("sandbox.preview.viewJson")}
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem
+                  onClick={() => {
+                    workspace.editSeo({
+                      kind: "page",
+                      key: currentPageKey,
+                      path: currentPath,
+                    });
+                    activateEditingMode("blocks");
+                  }}
+                >
+                  <CreditCardSearch size={14} />
+                  {t("sandbox.preview.editSeo")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    try {
+                      goToTab(
+                        formatCodeTabId(decoBlockFileViewPath(currentPageKey)),
+                      );
+                    } catch {
+                      toast.error(t("sandbox.preview.invalidPageBlockKey"));
+                    }
+                  }}
+                >
+                  <Code01 size={14} />
+                  {t("sandbox.preview.viewJson")}
+                </DropdownMenuItem>
               </>
             )}
-            {repoDir && (
+            {canMutateThread && repoDir && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -1405,45 +1417,52 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 </DropdownMenuItem>
               </>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => startCmsTour(t)}>
-              <Compass01 size={14} />
-              {t("cmsTour.menuItem")}
-            </DropdownMenuItem>
+            {canMutateThread && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => startCmsTour(t)}>
+                  <Compass01 size={14} />
+                  {t("cmsTour.menuItem")}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     ) : null;
 
-  const canVisualEdit = display.mode === "sandbox";
-  const floatingPreviewControls = canVisualEdit ? (
+  const showFloatingPreviewControls = display.mode === "sandbox";
+  const canVisualEdit = canMutateThread && showFloatingPreviewControls;
+  const floatingPreviewControls = showFloatingPreviewControls ? (
     <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
       <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={() => toggleEditingMode("visual")}
-              aria-pressed={editingMode === "visual"}
-              aria-label={t("sandbox.preview.visualEditor")}
-              active={editingMode === "visual"}
-              disabled={!canVisualEdit}
-              className="rounded-full"
-              data-tour={TOUR_ANCHORS.visualEditor}
-            >
-              <CursorClick01 size={16} />
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t("sandbox.preview.visualEditor")}
-          </TooltipContent>
-        </Tooltip>
-        <div className="mx-0.5 h-5 w-px bg-border" />
+        {canVisualEdit && (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  onClick={() => toggleEditingMode("visual")}
+                  aria-pressed={editingMode === "visual"}
+                  aria-label={t("sandbox.preview.visualEditor")}
+                  active={editingMode === "visual"}
+                  className="rounded-full"
+                  data-tour={TOUR_ANCHORS.visualEditor}
+                >
+                  <CursorClick01 size={16} />
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("sandbox.preview.visualEditor")}
+              </TooltipContent>
+            </Tooltip>
+            <div className="mx-0.5 h-5 w-px bg-border" />
+          </>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
               onClick={handleDeviceToggle}
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-              disabled={!canVisualEdit}
               className="rounded-full"
               data-tour={TOUR_ANCHORS.device}
             >
@@ -1599,7 +1618,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   <div className="absolute inset-0 z-30">
                     <SandboxStateCard
                       kind="suspended"
-                      onResume={lifecycle.resume}
+                      onResume={canMutateThread ? lifecycle.resume : undefined}
                     />
                   </div>
                 )}
@@ -1609,8 +1628,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     <SandboxStateCard
                       kind="errored"
                       error={previewState.error}
-                      onRetry={lifecycle.retry}
-                      connectionsHref={`/${org.slug}/settings/connections`}
+                      onRetry={canMutateThread ? lifecycle.retry : undefined}
+                      connectionsHref={
+                        canMutateThread
+                          ? `/${org.slug}/settings/connections`
+                          : undefined
+                      }
                     />
                   </div>
                 )}
@@ -1685,7 +1708,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         // This is the VM dev-server preview (sandboxed running app),
                         // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                         track("vm_preview_loaded", {
-                          view_mode: editingMode,
+                          view_mode: effectiveEditingMode,
                           vm_id: vmEntry?.sandboxHandle ?? null,
                           // Intentionally excluding the full previewUrl — it can contain
                           // ephemeral tokens / user data in the query string.
@@ -1725,8 +1748,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // Cross-origin — can't read, keep current value
                           }
                         }
-                        if (editingMode === "visual") injectVisualEditor();
-                        if (editingMode === "blocks") injectCmsEditor();
+                        if (effectiveEditingMode === "visual")
+                          injectVisualEditor();
+                        if (effectiveEditingMode === "blocks")
+                          injectCmsEditor();
                       }}
                     />
                   </div>
@@ -1736,14 +1761,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </ResizablePanelGroup>
         )}
       </div>
-      <CreatePageModal
-        open={createPageDialogOpen}
-        onOpenChange={setCreatePageDialogOpen}
-        isPending={createPage.isPending}
-        error={createPageError}
-        templates={pages}
-        onSubmit={handleCreatePage}
-      />
+      {canMutateThread && (
+        <CreatePageModal
+          open={createPageDialogOpen}
+          onOpenChange={setCreatePageDialogOpen}
+          isPending={createPage.isPending}
+          error={createPageError}
+          templates={pages}
+          onSubmit={handleCreatePage}
+        />
+      )}
     </div>
   );
 }

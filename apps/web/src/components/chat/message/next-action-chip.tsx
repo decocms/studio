@@ -35,7 +35,7 @@ export function NextActionChip() {
   });
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
-  if (!virtualMcpId || isStreaming) return null;
+  if (!task?.canMutateThread || !virtualMcpId || isStreaming) return null;
   if (!isStudioPackAgent(virtualMcpId)) return null;
 
   // Only suggest a "next" once the user has actually done something in
@@ -61,6 +61,7 @@ export function NextActionChip() {
   if (!next) return null;
 
   const send = async (prompt: Prompt, args?: PromptArgumentValues) => {
+    if (!task.canMutateThread) return;
     if (!client) {
       toast.error(t("chat.nextActionChip.mcpClientNotAvailable"));
       return;
@@ -98,6 +99,7 @@ export function NextActionChip() {
   };
 
   const handleClick = () => {
+    if (!task.canMutateThread) return;
     const prompt: Prompt = {
       name: next.promptName,
       title: next.title,
@@ -133,6 +135,7 @@ export function NextActionChip() {
         prompt={dialogPrompt}
         setPrompt={(p) => setDialogPrompt(p)}
         onSubmit={async (values) => {
+          if (!task.canMutateThread) return;
           const prompt = dialogPrompt;
           setDialogPrompt(null);
           if (prompt) await send(prompt, values);

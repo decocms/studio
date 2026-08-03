@@ -63,6 +63,7 @@ import {
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import {
   getSourceSystemTabs,
+  resolveViewerActiveTab,
   shouldDeepLinkSourceTab,
 } from "./source-system-tabs";
 import { useCapability } from "@/hooks/use-capability";
@@ -158,7 +159,7 @@ export function useMainPanelTabs(ctx: {
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
-  const { currentBranch } = useChatTask();
+  const { currentBranch, canMutateThread } = useChatTask();
 
   const githubRepo = getActiveGithubRepo(entity);
   const prQuery = usePrByBranch({
@@ -194,13 +195,17 @@ export function useMainPanelTabs(ctx: {
     )?.ui ?? null;
 
   const entityLayout = entityUI?.layout ?? null;
-  const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
+  const configuredLayoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
 
   // The ephemeral dev connection (`dev_<id>`) the agent's sandbox dev server is
   // served through. Its views are auto-detected from the dev server's own MCP
   // app below — no pairing / live-partner config involved.
-  const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
-  const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
+  const rawDevConnId = entity?.id ? getDevConnectionId(entity.id) : null;
+  const devConnId = canMutateThread ? rawDevConnId : null;
+  const layoutTabs = canMutateThread ? configuredLayoutTabs : [];
+  const expandedTools: ThreadExpandedTool[] = canMutateThread
+    ? (metadata?.expanded_tools ?? [])
+    : [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   // A thread-scoped repo (bound by `load_repo`) makes the source tabs
   // (Preview, Code) available even when the agent itself has no repo — e.g.
@@ -245,7 +250,7 @@ export function useMainPanelTabs(ctx: {
   });
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,
-    enabled: !!devClient && devServerReady,
+    enabled: canMutateThread && !!devClient && devServerReady,
   });
   const devViews =
     devConnId && devServerReady
@@ -259,13 +264,22 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
+  const configuredPinnedViews = canMutateThread
+    ? (entityUI?.pinnedViews ?? [])
+    : [];
+  const pinnedViews = firstDevView ? devViews : configuredPinnedViews;
+  const configuredDefaultMainView = entityLayout?.defaultMainView ?? null;
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
-      : (entityLayout?.defaultMainView ?? null);
+      : !canMutateThread &&
+          (configuredDefaultMainView?.type === "ext-app" ||
+            configuredDefaultMainView?.type === "ext-apps" ||
+            configuredDefaultMainView?.type === "content")
+        ? null
+        : configuredDefaultMainView;
   const decofileFetchParams =
-    hasClonableSource && entity?.id && currentBranch
+    canMutateThread && hasClonableSource && entity?.id && currentBranch
       ? {
           orgSlug: org.slug,
           virtualMcpId: entity.id,
@@ -283,7 +297,8 @@ export function useMainPanelTabs(ctx: {
   const { data: meta } = useLiveMeta(decofileFetchParams, {
     fetchEnabled: devServerReady,
   });
-  const showContentTab = hasEditableDecoContent(decofile, meta);
+  const showContentTab =
+    canMutateThread && hasEditableDecoContent(decofile, meta);
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
@@ -307,8 +322,15 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
-  const activeTab =
-    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+  const activeTab = !canMutateThread
+    ? resolveViewerActiveTab({
+        rawActiveTab,
+        hasClonableSource,
+        configuredLayoutTabIds: configuredLayoutTabs.map((tab) => tab.id),
+        gitTabVisible,
+        gitQueryPending: prQuery.isPending,
+      })
+    : rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? resolveDefaultTabId(layoutForDefault)
       : rawActiveTab === "content" && !showContentTab
         ? resolveDefaultTabId(layoutForDefault)
@@ -349,7 +371,10 @@ export function useMainPanelTabs(ctx: {
   // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
   // into it (see setActiveTab).
   leadingSystemTabs.push(
-    ...getSourceSystemTabs(hasClonableSource || reportsOnly).map((tab) => ({
+    ...getSourceSystemTabs(
+      hasClonableSource || reportsOnly,
+      canMutateThread,
+    ).map((tab) => ({
       id: tab.id,
       title:
         tab.id === "preview"
@@ -364,7 +389,8 @@ export function useMainPanelTabs(ctx: {
   // A tab configured as the default main view stays pinned in the bar even
   // before its runtime data is ready (e.g. Content while the repo is still
   // cloning) — otherwise the bar would drop the tab the user chose to land on.
-  const contentIsDefaultMain = effectiveDefaultMainView?.type === "content";
+  const contentIsDefaultMain =
+    canMutateThread && effectiveDefaultMainView?.type === "content";
   if (hasClonableSource && (showContentTab || contentIsDefaultMain)) {
     systemTabs.push({
       id: "content",
@@ -432,7 +458,7 @@ export function useMainPanelTabs(ctx: {
   // current agent (and no agent switch) is needed. On the Report Agent itself
   // the loop above already added it with its configured label/icon, so this is
   // a no-op there (dedup by tab id).
-  if (reportsOnly) {
+  if (reportsOnly && canMutateThread) {
     const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
     const reportTabId = formatPinnedViewTabId(
       reportConnectionId,

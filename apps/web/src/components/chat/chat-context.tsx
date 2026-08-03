@@ -51,7 +51,9 @@ import {
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
+  canMutateThread,
   isHostedFirstSubmit,
+  resolveThreadMutationAuthority,
   resolveThreadVirtualMcpId,
 } from "./thread-authority";
 import {
@@ -129,7 +131,6 @@ import {
   takePendingBody,
 } from "./message-queue-store";
 import { textFromParts } from "./queue-items";
-import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
 import {
@@ -150,13 +151,6 @@ export interface ChatStreamContextValue {
   sendMessage: (
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
-  /** Edit a QUEUED (not-yet-running) message: cancel its gate workflow and
-   *  re-POST the edited text as a fresh message (re-enqueues at the queue
-   *  tail — see the implementation). Resolves true when the edited message
-   *  was dispatched OK; false on ANY failure (latch drop, cancel failure,
-   *  failed re-POST) — callers must keep the user's draft alive on false.
-   *  Every failure path surfaces its own toast. */
-  editQueuedMessage: (messageId: string, text: string) => Promise<boolean>;
   stop: () => void;
   /** Single mutator entry point — new user message, tool output, or approval
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
@@ -200,6 +194,9 @@ export interface ChatTaskContextValue {
     virtualMcpId?: string;
   }) => void;
   activeTask: Task | null;
+  /** Existing chats are mutable only by their creator. Unresolved route data
+   *  fails closed; only an explicit no-id creation state is writable. */
+  canMutateThread: boolean;
   /** True iff the thread row has captured a `harness_id` — i.e. the first
    *  message has been processed and the runtime is pinned for life. */
   isThreadLocked: boolean;
@@ -637,6 +634,10 @@ export function ChatContextProvider({
   // navigation by only honoring the prop when ids match.
   const activeTask =
     effectiveTaskId && task?.id === effectiveTaskId ? task : null;
+  const threadMutationsAllowed = canMutateThread(
+    resolveThreadMutationAuthority(effectiveTaskId, task),
+    user?.id,
+  );
 
   // An existing thread owns its agent identity. `virtualMcpId` is only the
   // creation hint supplied by the route while the row is missing.
@@ -677,7 +678,9 @@ export function ChatContextProvider({
       .create({
         id: newId,
         virtual_mcp_id: effectiveVirtualMcpId,
-        ...(currentBranch ? { branch: currentBranch } : {}),
+        ...(threadMutationsAllowed && currentBranch
+          ? { branch: currentBranch }
+          : {}),
       })
       .then(() =>
         navigateToTask(newId, { virtualMcpId: effectiveVirtualMcpId }),
@@ -703,7 +706,9 @@ export function ChatContextProvider({
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? effectiveVirtualMcpId;
     const carryBranch =
-      targetVmcp === effectiveVirtualMcpId ? currentBranch : null;
+      threadMutationsAllowed && targetVmcp === effectiveVirtualMcpId
+        ? currentBranch
+        : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void threadActions
       .create({
@@ -734,12 +739,13 @@ export function ChatContextProvider({
     createTask,
     createTaskWithMessage,
     activeTask,
+    canMutateThread: threadMutationsAllowed,
     isThreadLocked,
     lockedHarness,
     lockedBranch,
     currentBranch,
     setCurrentTaskBranch: (branch: string | null) => {
-      if (effectiveTaskId) {
+      if (threadMutationsAllowed && effectiveTaskId) {
         threadActions.setBranch(effectiveTaskId, branch);
       }
     },
@@ -773,7 +779,7 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
-  const { activeTask, currentBranch } = useChatTask();
+  const { activeTask, canMutateThread, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
@@ -782,6 +788,7 @@ export function ActiveTaskProvider({
   const hostedRuntimeBlockedMessage = t(
     "chat.input.codingAgentRequiresDesktop",
   );
+  const readOnlyThreadMessage = t("chat.input.readOnlyOthersChat");
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
   // the Set gate keeps it idempotent. Fires for every thread a user views —
@@ -809,12 +816,14 @@ export function ActiveTaskProvider({
   const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
 
   const { org, locator } = useProjectContext();
-  const queueActions = useMessageQueueActions();
 
   const [chatError, setChatError] = useState<Error | null>(null);
 
   const reportHostedLegacyDispatchBlocked = () => {
     setChatError(new Error(hostedRuntimeBlockedMessage));
+  };
+  const reportThreadMutationBlocked = () => {
+    setChatError(new Error(readOnlyThreadMessage));
   };
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
@@ -848,6 +857,7 @@ export function ActiveTaskProvider({
   // Stable callback ref so the observer wrapper sees the latest consumer
   // callbacks without re-running the effect on every render.
   const cbRef = useRef({
+    canMutateThread,
     onToolCall,
     queryClient,
     rawNavigateToTask,
@@ -859,6 +869,7 @@ export function ActiveTaskProvider({
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
+    canMutateThread,
     onToolCall,
     queryClient,
     rawNavigateToTask,
@@ -888,6 +899,7 @@ export function ActiveTaskProvider({
     taskId,
     onTaskStatus: (event) => {
       const cb = cbRef.current;
+      if (!cb.canMutateThread) return;
       const messageId = event.data.message_id;
       if (event.data.status === "in_progress" && messageId) {
         // The gate started executing this queued message — flip tray → body.
@@ -1007,7 +1019,9 @@ export function ActiveTaskProvider({
         const cb = cbRef.current;
         // Terminal event: the gate advanced — re-sync the queue so the
         // dequeued message drops and the next one surfaces.
-        if (cb.taskId) void refreshMessageQueue(cb.orgSlug, cb.taskId);
+        if (cb.canMutateThread && cb.taskId) {
+          void refreshMessageQueue(cb.orgSlug, cb.taskId);
+        }
         if (cb.taskId) {
           cb.manager.patchThread({
             id: cb.taskId,
@@ -1073,7 +1087,9 @@ export function ActiveTaskProvider({
 
     // Seed the frontend message queue from the gate on (re)mount so a reload
     // or thread switch still shows what's queued.
-    void refreshMessageQueue(cbRef.current.orgSlug, cbRef.current.taskId);
+    if (cbRef.current.canMutateThread) {
+      void refreshMessageQueue(cbRef.current.orgSlug, cbRef.current.taskId);
+    }
 
     // Keep the queue PANEL in sync on every local run start/end edge (the live
     // stream's own status). This is panel-only; the body reconcile for queued
@@ -1088,6 +1104,7 @@ export function ActiveTaskProvider({
       if (active === prevActive) return;
       prevActive = active;
       const cb = cbRef.current;
+      if (!cb.canMutateThread) return;
       void refreshMessageQueue(cb.orgSlug, cb.taskId);
     });
 
@@ -1114,22 +1131,19 @@ export function ActiveTaskProvider({
     connStatus.kind === "ready" &&
     messages.length > 0;
 
-  // Shared tail for dispatching a fresh user message — used by BOTH a plain
-  // composer send (sendMessageInternal) and a re-POSTed queued-message edit
-  // (editQueuedMessage). Builds requestOptions from the current thread/prefs
-  // state, then either queues the message behind an in-progress run or
-  // submits it immediately. Owns releasing the `sendInFlight` latch (finally):
-  // callers are responsible for the synchronous latch check + add BEFORE
-  // calling this, so a re-entrant call is rejected before any work happens.
-  //
-  // Resolves `true` when the message was handed off (queued or submitted).
-  // The enqueue branch handles its own errors (toast + chatError, never
-  // rethrows) and resolves `false` on failure so edit-flow callers can react;
-  // the immediate-submit branch still RETHROWS on failure — unchanged
-  // plain-send behavior (sendMessageInternal ignores the return value).
-  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+  // Shared tail for dispatching a fresh user message. Builds requestOptions
+  // from the current thread/prefs state, then either queues the message behind
+  // an in-progress run or submits it immediately. Owns releasing the
+  // `sendInFlight` latch (finally); the caller claims it synchronously first.
+  async function dispatchUserMessage(message: ChatMessage): Promise<void> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
+
+    if (!canMutateThread) {
+      reportThreadMutationBlocked();
+      sendInFlight.delete(capturedTaskId);
+      return;
+    }
 
     // Coding-agent harnesses have no hosted AI SDK/headless dispatch contract.
     // A native row can still reach this shared provider, so fail closed before
@@ -1138,7 +1152,7 @@ export function ActiveTaskProvider({
     if (hostedRuntimeBlocked) {
       reportHostedLegacyDispatchBlocked();
       sendInFlight.delete(capturedTaskId);
-      return false;
+      return;
     }
 
     const appContextEntries = Object.entries(appContexts);
@@ -1200,7 +1214,6 @@ export function ActiveTaskProvider({
     // immediately.
     try {
       if (isStreaming || isRunInProgress) {
-        let queuedOk = true;
         try {
           stashPendingBody(capturedTaskId, message);
           await conn.enqueue(message, requestOptions);
@@ -1208,11 +1221,6 @@ export function ActiveTaskProvider({
             workflowId: `thread-run:${capturedTaskId}:${message.id}`,
             messageId: message.id,
             text: textFromParts(message.parts),
-            // Computed locally so the tray's edit affordance is correct from
-            // the first render — leaving this undefined for one server
-            // round-trip would offer "edit" on an attachment-bearing turn,
-            // and an edit taken in that window drops the attachment for good.
-            hasAttachments: message.parts.some((p) => p.type === "file"),
             status: "queued",
             enqueuedAt: Date.now(),
             optimistic: true,
@@ -1225,7 +1233,6 @@ export function ActiveTaskProvider({
         } catch (err) {
           // The POST never landed — nothing was appended to the body, so
           // just drop the stash and the optimistic tray entry.
-          queuedOk = false;
           dropPendingBody(capturedTaskId, message.id);
           removeMessage(capturedTaskId, message.id);
           setChatError(err instanceof Error ? err : new Error(String(err)));
@@ -1237,10 +1244,9 @@ export function ActiveTaskProvider({
         }
         // Reconcile the optimistic row against the gate's authoritative list.
         void refreshMessageQueue(org.slug, capturedTaskId);
-        return queuedOk;
+        return;
       }
       await conn.submit({ kind: "message", message }, requestOptions);
-      return true;
     } finally {
       sendInFlight.delete(capturedTaskId);
     }
@@ -1248,6 +1254,10 @@ export function ActiveTaskProvider({
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
+    if (!canMutateThread) {
+      reportThreadMutationBlocked();
+      return;
+    }
     const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
     if (parts.length === 0) return;
 
@@ -1282,82 +1292,12 @@ export function ActiveTaskProvider({
     await dispatchUserMessage(userMessage);
   }
 
-  // Edit a QUEUED message: cancel the old gate workflow (server also deletes
-  // its persisted parts), then re-POST the edited text as a fresh message —
-  // which re-enqueues at the queue TAIL (DBOS workflow ids are once-ever; an
-  // accepted trade-off, only observable with 2+ queued). Text-only by design.
-  //
-  // Resolves `true` only when the edited message was dispatched OK; `false`
-  // on any failure (latch drop, cancel failure, failed re-POST) so the tray
-  // can keep the user's draft alive instead of discarding it. Every false
-  // path surfaces its own toast.
-  async function editQueuedMessage(
-    messageId: string,
-    text: string,
-  ): Promise<boolean> {
-    // Reject before cancelling the persisted original: the replacement cannot
-    // enter hosted dispatch, so cancelling first would silently lose the turn.
-    if (hostedRuntimeBlocked) {
-      reportHostedLegacyDispatchBlocked();
-      return false;
-    }
-
-    // Same synchronous per-thread latch sendMessageInternal uses — an edit
-    // is itself a dispatch, so it must not race a concurrent send/edit. The
-    // tray probes isSendInFlight() before calling, so this drop is a
-    // belt-and-braces guard — but report it honestly rather than resolving
-    // as if the edit happened.
-    if (sendInFlight.has(taskId)) {
-      toast.info(t("chat.chatContext.stillSendingPreviousMessage"));
-      return false;
-    }
-    sendInFlight.add(taskId);
-
-    const ok = await queueActions.cancel(taskId, messageId);
-    if (!ok) {
-      sendInFlight.delete(taskId);
-      toast.error(t("chat.chatContext.couldNotRemoveOriginalMessage"));
-      return false;
-    }
-    dropPendingBody(taskId, messageId);
-    // A reload/refetch may have preloaded the original queued message's
-    // persisted row into the local body store (render-hidden only while it
-    // stayed queued). The cancel just deleted its server parts and its
-    // queue entry — drop the stale local row too or the ORIGINAL text
-    // resurrects as a forever-unanswered bubble while the edited text is
-    // queued. Removing an absent id is a no-op, so call unconditionally.
-    conn.removeLocalMessage(messageId);
-
-    const edited: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      parts: [{ type: "text", text }],
-      metadata: {
-        created_at: new Date().toISOString(),
-        user: {
-          avatar: user?.image ?? undefined,
-          name: user?.name ?? "you",
-        },
-      },
-    };
-    // Reuse the exact enqueue-or-submit branch sendMessageInternal runs.
-    // The enqueue branch resolves false on failure (it toasts internally);
-    // the immediate-submit branch rethrows instead — map that to false too
-    // (with its own toast) so the tray sees one honest boolean either way.
-    try {
-      return await dispatchUserMessage(edited);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("chat.chatContext.failedToSendEditedMessage"),
-      );
-      return false;
-    }
-  }
-
   // Cancel run
   const cancelRun = async () => {
+    if (!canMutateThread) {
+      reportThreadMutationBlocked();
+      return;
+    }
     conn.stop();
     try {
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${taskId}`, {
@@ -1406,6 +1346,7 @@ export function ActiveTaskProvider({
   useEffect(() => {
     if (!shouldAutosend) return;
     if (messages.length > 0) return;
+    if (!canMutateThread) return;
     if (hostedRuntimeBlocked) return;
 
     const payload = claimStoredAutosend(sessionStorage, locator, taskId);
@@ -1418,6 +1359,7 @@ export function ActiveTaskProvider({
   }, [
     shouldAutosend,
     messages.length,
+    canMutateThread,
     hostedRuntimeBlocked,
     locator,
     taskId,
@@ -1429,8 +1371,11 @@ export function ActiveTaskProvider({
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
-    editQueuedMessage,
     stop: () => {
+      if (!canMutateThread) {
+        reportThreadMutationBlocked();
+        return;
+      }
       if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
         return;
@@ -1438,6 +1383,10 @@ export function ActiveTaskProvider({
       void cancelRun();
     },
     submit: async (action, opts) => {
+      if (!canMutateThread) {
+        reportThreadMutationBlocked();
+        return;
+      }
       if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
         return;

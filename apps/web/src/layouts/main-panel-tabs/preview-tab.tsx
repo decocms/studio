@@ -12,7 +12,7 @@ import { useT } from "@/i18n/use-t.ts";
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const entity = useVirtualMCP(virtualMcpId);
-  const { activeTask } = useChatTask();
+  const { activeTask, canMutateThread } = useChatTask();
   const [pickerOpen, setPickerOpen] = useState(false);
   // A thread-scoped repo (bound by `load_repo`) is previewable even when the
   // agent itself has no clonable source (e.g. the ephemeral Decopilot agent).
@@ -33,17 +33,21 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
           title={t("mainPanelTabs.previewTab.noSourceToPreview")}
           description={t("mainPanelTabs.previewTab.connectGithubDescription")}
           actions={
-            <Button onClick={() => setPickerOpen(true)}>
-              <GitHubIcon className="size-4" />
-              {t("mainPanelTabs.previewTab.connectGithub")}
-            </Button>
+            canMutateThread ? (
+              <Button onClick={() => setPickerOpen(true)}>
+                <GitHubIcon className="size-4" />
+                {t("mainPanelTabs.previewTab.connectGithub")}
+              </Button>
+            ) : undefined
           }
         />
-        <GitHubRepoPicker
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          mode="agent"
-        />
+        {canMutateThread && (
+          <GitHubRepoPicker
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            mode="agent"
+          />
+        )}
       </>
     );
   }

@@ -24,8 +24,7 @@
  * No edit action, by product decision: DBOS workflow ids are once-ever, so
  * an "edit" can only be cancel + re-POST — which re-enqueues at the TAIL,
  * not in place. That surprises users who expect the message to keep its
- * position, so the affordance was removed until an in-place design exists
- * (`editQueuedMessage` in chat-context still implements the composition).
+ * position, so the affordance remains absent until an in-place design exists.
  */
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -35,7 +34,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { ArrowUp, XClose } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
-import { useChatStream } from "./context";
+import { useChatStream, useChatTask } from "./context";
 import { dropPendingBody } from "./message-queue-store";
 import { selectQueuedItems } from "./queue-items";
 import { useMessageQueue, useMessageQueueActions } from "./use-message-queue";
@@ -46,6 +45,25 @@ export function QueueTray({ taskId }: { taskId: string }) {
   const queued = selectQueuedItems(items);
   const actions = useMessageQueueActions();
   const { stop, removeLocalMessage } = useChatStream();
+  const { canMutateThread } = useChatTask();
+
+  const sendNext = () => {
+    if (!canMutateThread) return;
+    void stop();
+  };
+
+  const removeFromQueue = (messageId: string) => {
+    if (!canMutateThread) return;
+    void actions.cancel(taskId, messageId).then((ok) => {
+      if (!ok) return;
+      dropPendingBody(taskId, messageId);
+      // A reload/refetch may have preloaded this queued message's persisted
+      // row into the local body store (render-hidden only while queued) — drop
+      // it too or the cancel unhides it as a stale, forever-unanswered bubble.
+      // No-op when the row was never loaded.
+      removeLocalMessage(messageId);
+    });
+  };
 
   if (queued.length === 0) return null;
 
@@ -60,22 +78,24 @@ export function QueueTray({ taskId }: { taskId: string }) {
             { count: queued.length },
           )}
         </span>
-        <Tooltip delayDuration={400}>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("chat.queueTray.sendNow")}
-              onClick={() => void stop()}
-            >
-              <ArrowUp size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="text-xs">{t("chat.queueTray.sendNow")}</p>
-          </TooltipContent>
-        </Tooltip>
+        {canMutateThread && (
+          <Tooltip delayDuration={400}>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("chat.queueTray.sendNow")}
+                onClick={sendNext}
+              >
+                <ArrowUp size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="text-xs">{t("chat.queueTray.sendNow")}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
       {queued.map((item, index) => (
         <div
@@ -91,30 +111,20 @@ export function QueueTray({ taskId }: { taskId: string }) {
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">
             {item.text}
           </span>
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/queuerow:opacity-100">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              title={t("chat.queueTray.removeFromQueue")}
-              aria-label={t("chat.queueTray.removeFromQueue")}
-              onClick={() =>
-                void actions.cancel(taskId, item.messageId).then((ok) => {
-                  if (ok) {
-                    dropPendingBody(taskId, item.messageId);
-                    // A reload/refetch may have preloaded this queued
-                    // message's persisted row into the local body store
-                    // (render-hidden only while queued) — drop it too or
-                    // the cancel unhides it as a stale, forever-unanswered
-                    // bubble. No-op when the row was never loaded.
-                    removeLocalMessage(item.messageId);
-                  }
-                })
-              }
-            >
-              <XClose className="size-3.5" />
-            </Button>
-          </div>
+          {canMutateThread && (
+            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/queuerow:opacity-100">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title={t("chat.queueTray.removeFromQueue")}
+                aria-label={t("chat.queueTray.removeFromQueue")}
+                onClick={() => removeFromQueue(item.messageId)}
+              >
+                <XClose className="size-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
       ))}
     </div>

@@ -10,11 +10,13 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { LibraryPreviewDialog } from "@/layouts/library/preview-dialog";
+import { useChatTask } from "@/components/chat/context";
 
 export function OrgFilePreviewMount() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { preview } = useSearch({ strict: false }) as { preview?: string };
+  const { canMutateThread } = useChatTask();
 
   if (!isMobile || !preview) return null;
 
@@ -31,6 +33,7 @@ export function OrgFilePreviewMount() {
         })
       }
       showSeeInLibrary
+      readOnly={!canMutateThread}
     />
   );
 }

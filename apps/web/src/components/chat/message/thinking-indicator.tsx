@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { getRunStatusCopy } from "../run-status.ts";
-import { useOptionalChatStream } from "../context.tsx";
+import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
 import { formatDuration } from "../../../lib/format-time.ts";
@@ -153,18 +153,23 @@ export function ThinkingState({ startedAt }: { startedAt: number | null }) {
   const t = useT();
   useClockTick(1000);
   const stream = useOptionalChatStream();
+  const canMutateThread = useOptionalChatTask()?.canMutateThread === true;
   const elapsedMs = startedAt !== null ? Date.now() - startedAt : 0;
   const isSlow = elapsedMs >= SLOW_AFTER_MS;
+  const cancel = () => {
+    if (!canMutateThread) return;
+    stream?.stop();
+  };
 
   return (
     <div className="flex flex-col gap-0.5">
       <RunStatusIndicator startedAt={startedAt} />
-      {isSlow && stream?.stop && (
+      {isSlow && canMutateThread && stream?.stop && (
         <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
           <span>{t("chat.thinkingIndicator.takingLonger")}</span>
           <button
             type="button"
-            onClick={() => stream.stop()}
+            onClick={cancel}
             className="text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
             {t("chat.thinkingIndicator.cancel")}

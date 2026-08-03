@@ -37,7 +37,7 @@ import { Suspense, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { ErrorBoundary } from "../error-boundary";
-import { useChatStream, useChatPrefs } from "./context";
+import { useChatPrefs, useChatStream, useChatTask } from "./context";
 import {
   PromptArgsDialog,
   type PromptArgumentValues,
@@ -361,6 +361,7 @@ function iceBreakerReducer(
 function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   const t = useT();
   const { sendMessage } = useChatStream();
+  const { canMutateThread } = useChatTask();
   const { org } = useProjectContext();
 
   // Fetch prompts from the aggregated virtual MCP
@@ -378,6 +379,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
   const loadPrompt = async (prompt: Prompt, args?: PromptArgumentValues) => {
+    if (!canMutateThread) return;
     if (!client) {
       toast.error(t("chat.iceBreakers.mcpClientNotAvailable"));
       dispatch({ type: "RESET" });
@@ -428,6 +430,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   };
 
   const handlePromptSelection = async (prompt: Prompt) => {
+    if (!canMutateThread) return;
     if (prompt.arguments && prompt.arguments.length > 0) {
       dispatch({ type: "SELECT_PROMPT", prompt });
       setDialogPrompt(prompt);
@@ -439,6 +442,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   };
 
   const handleDialogSubmit = async (values: PromptArgumentValues) => {
+    if (!canMutateThread) return;
     if (!dialogPrompt) return;
 
     dispatch({
@@ -477,9 +481,12 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 
 export function IceBreakers({ className }: IceBreakersProps) {
   const { selectedVirtualMcp } = useChatPrefs();
+  const { canMutateThread } = useChatTask();
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const connectionId = selectedVirtualMcp?.id ?? decopilotId;
+
+  if (!canMutateThread) return null;
 
   return (
     <div className={cn("w-full @container", className)}>

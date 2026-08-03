@@ -1,4 +1,5 @@
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { useChatTask } from "@/components/chat/context";
 import { agentShowsGithubHeaderActions } from "@/lib/agent-capabilities";
 import { HeaderActions } from "../../components/thread/github/header-actions.tsx";
 import { DevAgentControl } from "../../components/dev-agent/dev-agent-control.tsx";
@@ -13,11 +14,13 @@ export function VirtualMcpHeaderInfo({
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
+  const { canMutateThread } = useChatTask();
+
   return (
     <div className="flex items-center gap-2">
       <OpenInBoardButton />
       <DevAgentControl virtualMcp={virtualMcp} />
-      {agentShowsGithubHeaderActions(virtualMcp) ? (
+      {canMutateThread && agentShowsGithubHeaderActions(virtualMcp) ? (
         <HeaderActions virtualMcpId={virtualMcp.id} />
       ) : null}
     </div>

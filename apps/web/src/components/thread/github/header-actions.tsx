@@ -108,7 +108,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    canMutateThread,
+  } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
@@ -192,6 +196,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const publishGateBase =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
   const publishGateEnabled =
+    canMutateThread &&
     effectiveBranchMeta.kind === "ready" &&
     Boolean(sandboxRouteBranch) &&
     (effectiveBranchMeta.workingTreeDirty ||
@@ -288,6 +293,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   }
 
   const send = (text: string) => {
+    if (!canMutateThread) return;
     // Header actions can fire while the chat side panel is closed (e.g. from the
     // GitHub tab), so surface the chat so the user sees the message we just sent.
     openSidePanel("chat");
@@ -308,12 +314,14 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
+    if (!canMutateThread) return;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
   };
 
   const handleSquashMerge = async (pullNumber: number) => {
-    if (!githubRepo?.connectionId || githubActionPending) return;
+    if (!canMutateThread || !githubRepo?.connectionId || githubActionPending)
+      return;
     setGithubActionPending(true);
     try {
       const coAuthor = coAuthorFromSessionUser(session?.user);
@@ -340,7 +348,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const onActivate = (action: HeaderButton["action"]) => {
-    if (!action || !githubHeadBranch) return;
+    if (!canMutateThread || !action || !githubHeadBranch) return;
     switch (action) {
       case "create-pr":
         setPublishDialogIntent("open-pr");
@@ -378,6 +386,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const onPublishSide = () => {
+    if (!canMutateThread) return;
     setPublishDialogIntent("publish-only");
     setPublishOpen(true);
   };
@@ -386,7 +395,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // button gated by isDecoOnlyDiff so code changes still require review) is
   // owned by the panel-state descriptor — set on states with local work not
   // yet merged, and never on merge-split (where the primary button IS publish).
-  const showPublishSide = button.showPublishSide ?? false;
+  const showPublishSide = canMutateThread && (button.showPublishSide ?? false);
 
   const actionBusy = githubActionPending || isStreaming;
 
@@ -395,6 +404,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
       <HeaderButtonRenderer
         t={t}
         button={button}
+        canMutate={canMutateThread}
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
         onActivate={onActivate}
@@ -407,13 +417,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
         onReview={
           pr
             ? () => {
-                if (isStreaming) return;
+                if (!canMutateThread || isStreaming) return;
                 void send(tpl.reviewPr({ prNumber: pr.number }));
               }
             : undefined
         }
       />
-      {sandboxRouteBranch && (
+      {canMutateThread && sandboxRouteBranch && (
         <PublishDialog
           open={publishOpen}
           onOpenChange={setPublishOpen}
@@ -451,6 +461,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 function HeaderButtonRenderer(props: {
   t: TFunction;
   button: HeaderButton;
+  canMutate: boolean;
   actionBusy: boolean;
   githubActionPending: boolean;
   onActivate: (action: HeaderButton["action"]) => void;
@@ -462,21 +473,24 @@ function HeaderButtonRenderer(props: {
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
-  const { t, button, actionBusy, githubActionPending } = props;
+  const { t, button, canMutate, actionBusy, githubActionPending } = props;
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
     button.action !== "merge-split";
   const disabled =
+    !canMutate ||
     Boolean(button.disabled) ||
     chatBlocksAction ||
     (githubActionPending && button.action === "merge-split");
   const loading =
     Boolean(button.loading) ||
     (githubActionPending && button.action === "merge-split");
-  const tooltipLabel = chatBlocksAction
-    ? t("thread.headerActions.chatIsRunning")
-    : (button.tooltip ?? null);
+  const tooltipLabel = !canMutate
+    ? t("chat.input.readOnlyOthersChat")
+    : chatBlocksAction
+      ? t("thread.headerActions.chatIsRunning")
+      : (button.tooltip ?? null);
 
   if (
     button.action === "merge-split" &&
@@ -514,10 +528,12 @@ function HeaderButtonRenderer(props: {
           // is disabled and has no action) the step would point at an unrelated
           // button; leaving the anchor off lets the tour skip the step.
           data-tour={
-            button.action === "create-pr" ? TOUR_ANCHORS.submit : undefined
+            canMutate && button.action === "create-pr"
+              ? TOUR_ANCHORS.submit
+              : undefined
           }
           onClick={() => {
-            if (button.action) props.onActivate(button.action);
+            if (canMutate && button.action) props.onActivate(button.action);
           }}
         >
           {loading ? (
@@ -530,7 +546,7 @@ function HeaderButtonRenderer(props: {
           </span>
         </Button>
       </WithTooltip>
-      {props.showPublishSide ? (
+      {canMutate && props.showPublishSide ? (
         <WithTooltip
           label={
             props.publishGate.pending
@@ -544,9 +560,11 @@ function HeaderButtonRenderer(props: {
           <Button
             size="sm"
             variant="success"
-            data-tour={TOUR_ANCHORS.publish}
+            data-tour={canMutate ? TOUR_ANCHORS.publish : undefined}
             disabled={props.githubActionPending || !props.publishGate.allowed}
-            onClick={props.onPublishSide}
+            onClick={() => {
+              if (canMutate) props.onPublishSide();
+            }}
           >
             {props.publishGate.pending ? (
               <Spinner size="xs" variant="default" />

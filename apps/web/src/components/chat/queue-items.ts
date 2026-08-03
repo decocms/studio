@@ -10,8 +10,6 @@ export interface QueueItemDTO {
   enqueuedAt: number;
   /** The queued turn's text, for tray rendering. */
   text: string;
-  /** Whether the queued turn has non-text parts (attachments/files). */
-  hasAttachments?: boolean;
   /** True for a locally-queued item not yet confirmed by the server list. */
   optimistic?: boolean;
 }

@@ -33,6 +33,7 @@ import {
   parsePinnedViewTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useChatTask } from "@/components/chat/context";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -57,6 +58,8 @@ function TabBody({
     typeof useMainPanelTabs
   >["automationTabParsed"];
 }) {
+  const { canMutateThread } = useChatTask();
+
   // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
   // crash the active tab and exercise the ErrorBoundary recovery flow.
   // Dead-stripped from real production builds; alive in dev and in the e2e
@@ -98,9 +101,15 @@ function TabBody({
   }
   const codeTab = parseCodeTabId(activeTab);
   if (codeTab) {
+    if (!canMutateThread) {
+      return <PreviewTab virtualMcpId={virtualMcpId} />;
+    }
     return <CodeTab openPath={codeTab.path} />;
   }
   if (activeTab === "content") {
+    if (!canMutateThread) {
+      return <PreviewTab virtualMcpId={virtualMcpId} />;
+    }
     return <ContentTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
@@ -123,12 +132,19 @@ function TabBody({
   const libraryFileTab = parseLibraryFileTabId(activeTab);
   if (libraryFileTab) {
     return (
-      <LibraryFileTab key={libraryFileTab.path} path={libraryFileTab.path} />
+      <LibraryFileTab
+        key={libraryFileTab.path}
+        path={libraryFileTab.path}
+        readOnly={!canMutateThread}
+      />
     );
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);
   if (pinnedView) {
+    if (!canMutateThread) {
+      return <PreviewTab virtualMcpId={virtualMcpId} />;
+    }
     const expandedTool = expandedTools.find(
       (t) =>
         t.appId === pinnedView.connectionId &&
@@ -148,6 +164,9 @@ function TabBody({
 
   const agentTab = layoutTabs.find((t) => t.id === activeTab);
   if (agentTab) {
+    if (!canMutateThread) {
+      return <PreviewTab virtualMcpId={virtualMcpId} />;
+    }
     return (
       <Suspense fallback={<MainPanelLoading />}>
         <AppViewContent

@@ -69,13 +69,8 @@ export const chat = {
   "chat.chatContext.activeTaskProviderMissingContext":
     "ActiveTaskProvider must be used within ChatContextProvider",
   "chat.chatContext.cancelFailedStatus": "Cancel failed: {status}",
-  "chat.chatContext.couldNotRemoveOriginalMessage":
-    "Couldn't remove the original message",
   "chat.chatContext.failedToCancel": "Failed to cancel",
   "chat.chatContext.failedToQueueMessage": "Failed to queue message",
-  "chat.chatContext.failedToSendEditedMessage": "Failed to send edited message",
-  "chat.chatContext.stillSendingPreviousMessage":
-    "Still sending your previous message — try again in a moment",
   "chat.chatContext.useChatPrefsMissingContext":
     "useChatPrefs must be used within ChatContextProvider",
   "chat.chatContext.useChatStreamMissingContext":

@@ -56,7 +56,6 @@ import {
 import { isTiptapDocEmpty } from "./tiptap/utils";
 import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
-import { authClient } from "@/lib/auth-client.ts";
 import { track } from "@/lib/posthog-client";
 import { useSound } from "@/hooks/use-sound.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
@@ -367,8 +366,6 @@ export function ChatInput({
     chatMode,
     setChatMode,
   } = useChatPrefs();
-  const { data: session } = authClient.useSession();
-  const userId = session?.user?.id;
 
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
@@ -567,7 +564,7 @@ export function ChatInput({
     }
   };
 
-  if (userId && task?.created_by && task.created_by !== userId) {
+  if (taskCtx && !taskCtx.canMutateThread) {
     return (
       <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
     );

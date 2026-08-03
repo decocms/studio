@@ -42,8 +42,11 @@ interface SmartProps {
 export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
+  const canMutateThread = taskCtx?.canMutateThread ?? true;
   const locked =
-    (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
+    !canMutateThread ||
+    (stream?.messages ?? []).length > 0 ||
+    (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
@@ -71,6 +74,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
         value={currentBranch}
         onChange={(next) => {
+          if (!canMutateThread) return;
           if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
         }}
         locked={locked}

@@ -6,7 +6,7 @@ import { ChevronRight, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { joinCheckOutput } from "./check-run-output.ts";
-import { useChatStream } from "../../chat/chat-context.tsx";
+import { useChatStream, useChatTask } from "../../chat/chat-context.tsx";
 import * as tpl from "./message-templates.ts";
 import {
   useCheckRunDetail,
@@ -32,6 +32,7 @@ interface Props {
 export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   const { org } = useProjectContext();
   const chat = useChatStream();
+  const { canMutateThread } = useChatTask();
   const t = useT();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -44,8 +45,9 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
     prNumber: pr.number,
   });
 
-  const rerun = (name: string) =>
-    chat.sendMessage({
+  const rerun = (name: string) => {
+    if (!canMutateThread) return;
+    return chat.sendMessage({
       parts: [
         {
           type: "text",
@@ -53,6 +55,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
         },
       ],
     });
+  };
 
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -133,7 +136,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
                     <LinkExternal01 className="h-3.5 w-3.5" />
                   </a>
                 )}
-                {c.conclusion === "failure" && (
+                {canMutateThread && c.conclusion === "failure" && (
                   <Button
                     size="sm"
                     variant="ghost"

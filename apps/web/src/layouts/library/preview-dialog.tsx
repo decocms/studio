@@ -15,6 +15,7 @@ export function LibraryPreviewDialog({
   previewPath,
   onClose,
   showSeeInLibrary = false,
+  readOnly = false,
 }: LibraryPreviewProps) {
   return (
     <Dialog
@@ -28,6 +29,7 @@ export function LibraryPreviewDialog({
           previewPath={previewPath}
           onClose={onClose}
           showSeeInLibrary={showSeeInLibrary}
+          readOnly={readOnly}
           variant="dialog"
         />
       </DialogContent>

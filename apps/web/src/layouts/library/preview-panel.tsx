@@ -19,6 +19,7 @@ export function LibraryPreviewPanel({
   previewPath,
   onClose,
   showSeeInLibrary = false,
+  readOnly = false,
 }: LibraryPreviewProps) {
   return (
     <div className="flex h-full w-full flex-col bg-background">
@@ -26,6 +27,7 @@ export function LibraryPreviewPanel({
         previewPath={previewPath}
         onClose={onClose}
         showSeeInLibrary={showSeeInLibrary}
+        readOnly={readOnly}
         variant="panel"
       />
     </div>

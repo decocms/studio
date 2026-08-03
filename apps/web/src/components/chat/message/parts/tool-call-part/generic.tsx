@@ -54,6 +54,7 @@ import type React from "react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
+import { canRenderInteractiveThreadApp } from "@/components/chat/thread-authority";
 
 import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -246,7 +247,8 @@ export function GenericToolCallPart({
   const { openSidePanel } = usePanelActions();
   // Optional: the tool-call part is also rendered read-only in the Monitor
   // threads view, which has no ChatContextProvider / ThreadManagerProvider.
-  const taskId = useOptionalChatTask()?.taskId ?? null;
+  const task = useOptionalChatTask();
+  const taskId = task?.taskId ?? null;
   const { addOrReplaceEager } = useTaskExpandedTools(taskId);
   const navigate = useNavigate();
 
@@ -277,10 +279,11 @@ export function GenericToolCallPart({
   const uiResourceUri = getUIResourceUri(meta);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
+  const canRenderMCPApp = hasMCPApp && canRenderInteractiveThreadApp(task);
   const sourceId = connectionId ? `${connectionId}:${rawToolName}` : null;
   const isDestructive = !!annotations?.destructiveHint;
   const canOpenInPanel =
-    hasMCPApp && !!connectionId && !isDestructive && !!taskId;
+    canRenderMCPApp && !!connectionId && !isDestructive && !!taskId;
 
   const handleOpenInPanel = () => {
     if (!connectionId) return;
@@ -393,7 +396,7 @@ export function GenericToolCallPart({
   if (part.state === "output-error") {
     if (detail) detail += "\n\n";
     detail += "# Error\n" + (errorText ?? "");
-  } else if (part.output !== undefined && !hasMCPApp) {
+  } else if (part.output !== undefined && !canRenderMCPApp) {
     if (detail) detail += "\n\n";
     detail += "# Output\n" + safeStringifyFormatted(part.output);
   }
@@ -434,7 +437,7 @@ export function GenericToolCallPart({
           </button>
         </div>
       )}
-      {hasMCPApp && uiResourceUri && connectionId && org?.id && (
+      {canRenderMCPApp && uiResourceUri && connectionId && org?.id && (
         <>
           <ErrorBoundary
             fallback={({ resetError }) => (

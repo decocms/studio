@@ -14,6 +14,7 @@ export interface PreviewDrawerProps {
   branch: string | null;
   status: DrawerStatus;
   scripts: string[];
+  readOnly: boolean;
   open: boolean;
   onOpenChange: (next: boolean) => void;
   onStart: () => void;
@@ -79,7 +80,9 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // compute the per-user claim handle. Without them the request 400s
   // before reaching the daemon.
   const execScript = (name: string) => {
-    if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
+    if (props.readOnly || !props.virtualMcpId || !props.branch) {
+      return Promise.resolve(null);
+    }
     return fetch(
       `/api/${encodeURIComponent(props.orgSlug)}/sandbox/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}`,
       { method: "POST" },
@@ -87,7 +90,9 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   };
 
   const killScript = (name: string) => {
-    if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
+    if (props.readOnly || !props.virtualMcpId || !props.branch) {
+      return Promise.resolve(null);
+    }
     return fetch(
       `/api/${encodeURIComponent(props.orgSlug)}/sandbox/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}/kill`,
       { method: "POST" },
@@ -107,6 +112,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   };
 
   const handleAddScript = async (name: string) => {
+    if (props.readOnly) return;
     setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setActive(name);
     props.onOpenChange(true);
@@ -116,6 +122,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // × on a script tab: kill the process AND drop the tab. Active tab
   // falls back to setup.
   const handleCloseScript = async (name: string) => {
+    if (props.readOnly) return;
     await killScript(name);
     setScriptTabs((prev) => prev.filter((t) => t !== name));
     if (active === name) setActive(DEFAULT_TAB);
@@ -125,6 +132,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // tab; just (re)starts the process. Restart is the same call as Run; the
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
+    if (props.readOnly) return;
     const wasRunning = vmEvents.activeProcesses.includes(active);
     const failureMessage = wasRunning
       ? t("sandbox.drawer.failedToRestart", { name: active })
@@ -135,6 +143,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Per-script Stop on the active tab. Marks the script as killing so the
   // toolbar shows "Stopping…"; the prune above clears it once SSE confirms.
   const handleStopActive = async () => {
+    if (props.readOnly) return;
     if (killingScripts.has(active)) return;
     setKillingScripts((prev) => new Set(prev).add(active));
     try {
@@ -173,16 +182,32 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       <DrawerToolbar
         status={props.status}
         open={props.open}
+        readOnly={props.readOnly}
         onToggle={handleToggle}
-        onStart={props.status === "idle" ? props.onStart : undefined}
+        onStart={
+          !props.readOnly && props.status === "idle" ? props.onStart : undefined
+        }
         onStop={
-          props.status === "running" || props.status === "starting"
+          !props.readOnly &&
+          (props.status === "running" || props.status === "starting")
             ? props.onStop
             : undefined
         }
-        onRestart={props.status === "running" ? props.onRestart : undefined}
-        onResume={props.status === "suspended" ? props.onResume : undefined}
-        onRetry={props.status === "errored" ? props.onRetry : undefined}
+        onRestart={
+          !props.readOnly && props.status === "running"
+            ? props.onRestart
+            : undefined
+        }
+        onResume={
+          !props.readOnly && props.status === "suspended"
+            ? props.onResume
+            : undefined
+        }
+        onRetry={
+          !props.readOnly && props.status === "errored"
+            ? props.onRetry
+            : undefined
+        }
         scripts={props.scripts}
         active={active}
         scriptTabs={scriptTabs}
@@ -201,7 +226,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
             vmId={props.vmId}
             active={active}
             hasData={vmEvents.hasData(active)}
-            onRunActive={handleRunActive}
+            onRunActive={props.readOnly ? undefined : handleRunActive}
           />
         </div>
       )}
@@ -231,7 +256,7 @@ function DrawerBody({
   vmId: string | null;
   active: string;
   hasData: boolean;
-  onRunActive: () => void;
+  onRunActive?: () => void;
 }) {
   const t = useT();
   // When the sandbox isn't running, the preview area shows a starting card
@@ -244,13 +269,15 @@ function DrawerBody({
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
       <p>{t("sandbox.drawer.scriptNotRunning", { name: active })}</p>
-      <button
-        type="button"
-        onClick={onRunActive}
-        className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
-      >
-        <Play className="size-3.5" /> {t("sandbox.drawer.run")}
-      </button>
+      {onRunActive && (
+        <button
+          type="button"
+          onClick={onRunActive}
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+        >
+          <Play className="size-3.5" /> {t("sandbox.drawer.run")}
+        </button>
+      )}
     </div>
   );
 }

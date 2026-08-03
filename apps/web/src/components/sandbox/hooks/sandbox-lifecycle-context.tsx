@@ -396,11 +396,12 @@ export function SandboxLifecycleProvider({
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
-  const { setCurrentTaskBranch } = useChatTask();
+  const { canMutateThread, setCurrentTaskBranch } = useChatTask();
   const manager = useOptionalThreadManager();
   const events = useSandboxEvents();
   const queryClient = useQueryClient();
   const surfaceKind = sandboxSurfaceKind(useIsDesktopApp());
+  const mutationsEnabled = executionEnabled && canMutateThread;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -491,7 +492,7 @@ export function SandboxLifecycleProvider({
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
     autoStartAttemptedForBranchRef.current.has(autoStartDedupKey);
   const autoStartEligible = shouldAutoStart({
-    executionEnabled,
+    executionEnabled: mutationsEnabled,
     hasActiveGithubRepo,
     userId,
     branch,
@@ -526,7 +527,7 @@ export function SandboxLifecycleProvider({
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
   const deadVmId = events.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
   const selfHealEligible = shouldSelfHeal({
-    executionEnabled,
+    executionEnabled: mutationsEnabled,
     notFound: events.notFound,
     deadVmId,
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after firing
@@ -562,7 +563,7 @@ export function SandboxLifecycleProvider({
   // a bounded number of times before falling through to the errored card, so
   // the common transient-infra failure self-heals without a user click.
   const claimRetryEligible = shouldAutoRetryClaim({
-    executionEnabled,
+    executionEnabled: mutationsEnabled,
     failedReason: failedPhase?.reason ?? null,
     attempts: claimRetryEpisode.count,
     isPending: startVm.isPending,
@@ -608,7 +609,7 @@ export function SandboxLifecycleProvider({
 
   // User-driven actions.
   const start = () => {
-    if (!executionEnabled || !virtualMcpId) return;
+    if (!mutationsEnabled || !virtualMcpId) return;
     const args = buildSandboxStartArgs(virtualMcpId, branch);
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -621,7 +622,7 @@ export function SandboxLifecycleProvider({
   };
 
   const stop = async () => {
-    if (!executionEnabled || !virtualMcpId || !branch) return;
+    if (!mutationsEnabled || !virtualMcpId || !branch) return;
     sandboxUserStop.mark(virtualMcpId, branch);
     try {
       await mcpClient.callTool({
@@ -638,6 +639,7 @@ export function SandboxLifecycleProvider({
   };
 
   const restart = async () => {
+    if (!mutationsEnabled) return;
     await stop();
     start();
   };
@@ -646,6 +648,7 @@ export function SandboxLifecycleProvider({
   // calls onRetry for `errored` and onResume for `suspended`; both reduce
   // to the same operation in the provider.
   const retry = () => {
+    if (!mutationsEnabled) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so a fresh start can fire
     autoStartAttemptedForBranchRef.current = new Set();
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so self-heal can fire on next gone

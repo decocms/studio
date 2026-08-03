@@ -142,7 +142,7 @@ export function SettingsTab({
   const connectionNameMap = new Map(allConnections.map((c) => [c.id, c.title]));
 
   // Chat hooks for running the automation
-  const { openTask } = useChatTask();
+  const { canMutateThread, openTask } = useChatTask();
   const { openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
   const initialTiptapDoc =
@@ -170,7 +170,7 @@ export function SettingsTab({
   const [tiptapDirty, setTiptapDirty] = useState(false);
 
   const handleImprovePrompt = async () => {
-    if (isImproving) return;
+    if (!canMutateThread || isImproving) return;
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
     const instructionsText = parts
       .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -610,16 +610,18 @@ export function SettingsTab({
             <span className="text-xs font-semibold text-muted-foreground/60">
               {t("automations.automationDetail.instructions")}
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
-              disabled={isImproving || !tiptapDoc}
-              onClick={handleImprovePrompt}
-            >
-              <Stars01 size={13} />
-              {t("automations.automationDetail.improve")}
-            </Button>
+            {canMutateThread && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+                disabled={isImproving || !tiptapDoc}
+                onClick={handleImprovePrompt}
+              >
+                <Stars01 size={13} />
+                {t("automations.automationDetail.improve")}
+              </Button>
+            )}
           </div>
           <TiptapProvider
             tiptapDoc={tiptapDoc}

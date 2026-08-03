@@ -148,10 +148,13 @@ function isFlippable(part: SubtaskToolPart): boolean {
 /** Returns a callback that flips the given (still-running) subtask call to the
  *  background, freeing the thread so the user can keep chatting. The server
  *  fans the request out to the pod running the turn. */
-function useFlipToBackground(toolCallId: string): () => Promise<void> {
-  const { taskId: threadId } = useChatTask();
+function useFlipToBackground(
+  toolCallId: string,
+): (() => Promise<void>) | undefined {
+  const { taskId: threadId, canMutateThread } = useChatTask();
   const { org } = useProjectContext();
-  return async () => {
+  const flip = async () => {
+    if (!canMutateThread) return;
     const res = await fetch(
       `/api/${encodeURIComponent(org.slug)}/decopilot/flip/${encodeURIComponent(threadId)}`,
       {
@@ -165,6 +168,7 @@ function useFlipToBackground(toolCallId: string): () => Promise<void> {
     // button resets instead of sitting on "Moving to background…" forever.
     if (!res.ok) throw new Error(`flip failed: ${res.status}`);
   };
+  return canMutateThread ? flip : undefined;
 }
 
 /** A subtle "run in background" pill shown on a still-running foreground
@@ -528,7 +532,7 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
       state={state}
       usage={usage}
       latency={props.latency}
-      onFlip={isFlippable(props.part) ? onFlip : undefined}
+      onFlip={onFlip && isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>
@@ -568,7 +572,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
       state={state}
       usage={usage}
       latency={props.latency}
-      onFlip={isFlippable(props.part) ? onFlip : undefined}
+      onFlip={onFlip && isFlippable(props.part) ? onFlip : undefined}
     >
       <SubtaskResultBody part={props.part} />
     </SubtaskCard>

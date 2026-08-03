@@ -38,6 +38,7 @@ export type { DrawerStatus } from "./status-pill";
 export interface DrawerToolbarProps {
   status: DrawerStatus;
   open: boolean;
+  readOnly: boolean;
   onToggle: () => void;
   // VM lifecycle actions surfaced via the setup tab's split-button menu.
   onStart?: () => void;
@@ -119,15 +120,19 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
               if (props.active === tabName) props.onToggle();
               else props.onSelectTab(tabName);
             }}
-            onClose={() => props.onCloseScript(tabName)}
+            onClose={
+              props.readOnly ? undefined : () => props.onCloseScript(tabName)
+            }
             t={t}
           >
             {tabName}
           </TabButton>
         ))}
-        <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
+        {!props.readOnly && (
+          <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
+        )}
       </div>
-      {props.showScriptControls ? (
+      {!props.readOnly && props.showScriptControls ? (
         <ScriptControls
           isRunning={props.scriptIsRunning}
           isKilling={props.scriptIsKilling}
@@ -135,17 +140,17 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           onStop={props.onStopActiveScript}
           t={t}
         />
-      ) : (
+      ) : !props.showScriptControls ? (
         <SandboxActionControls
           status={props.status}
-          onStart={props.onStart}
-          onStop={props.onStop}
-          onRestart={props.onRestart}
-          onResume={props.onResume}
-          onRetry={props.onRetry}
+          onStart={props.readOnly ? undefined : props.onStart}
+          onStop={props.readOnly ? undefined : props.onStop}
+          onRestart={props.readOnly ? undefined : props.onRestart}
+          onResume={props.readOnly ? undefined : props.onResume}
+          onRetry={props.readOnly ? undefined : props.onRetry}
           t={t}
         />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -234,7 +239,7 @@ function SandboxActionControls({
       </Button>
     );
   }
-  if (status === "starting" || status === "running") {
+  if ((status === "starting" || status === "running") && onStop) {
     const showRestart = status === "running" && !!onRestart;
     return (
       <div className="flex items-center">

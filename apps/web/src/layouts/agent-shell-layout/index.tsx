@@ -197,7 +197,8 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const t = useT();
-  const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch, activeTask, canMutateThread, setCurrentTaskBranch } =
+    useChatTask();
   const isDesktopApp = useIsDesktopApp();
   const surfaceKind = sandboxSurfaceKind(isDesktopApp);
   const { data: session } = authClient.useSession();
@@ -234,9 +235,10 @@ function VmEventsBridge({
   const adoptedBranchForThreadRef = useRef<string | null>(null);
   const adoptBranchEligible =
     executionEnabled &&
+    canMutateThread &&
     shouldAdoptBranch({
       threadLoaded: !!activeTask,
-      isOwner: !!userId && activeTask?.created_by === userId,
+      isOwner: canMutateThread,
       hasActiveGithubRepo: effectiveHasGithubRepo,
       branch: currentBranch ?? null,
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
@@ -599,6 +601,7 @@ function AgentInsetProvider() {
             virtualMcpId={chatVirtualMcpId}
             task={ensureState.status === "ready" ? ensureState.task : null}
           >
+            <OrgFilePreviewMount />
             <VmEventsBridge
               virtualMcpId={virtualMcpId}
               hasActiveGithubRepo={hasActiveGithubRepo}
@@ -676,7 +679,6 @@ export default function AgentShellLayout() {
     <Suspense fallback={<ShellRouteLoading />}>
       <OrgFileOpenProvider>
         <AgentInsetProvider />
-        <OrgFilePreviewMount />
       </OrgFileOpenProvider>
     </Suspense>
   );

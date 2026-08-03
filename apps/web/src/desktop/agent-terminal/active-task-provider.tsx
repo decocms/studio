@@ -27,7 +27,6 @@ import {
   restoreStoredAutosend,
 } from "@/lib/autosend";
 import { useProjectContext } from "@/sdk";
-import { authClient } from "@/lib/auth-client";
 import {
   appendAppContexts,
   promptContentFromParts,
@@ -90,7 +89,6 @@ export function NativeAgentTerminalProvider({
   const task = useChatTask();
   const prefs = useChatPrefs();
   const manager = useThreadManager();
-  const { data: session } = authClient.useSession();
   const search = useSearch({ strict: false }) as { autosend?: string };
   const controller = getOrCreateTerminalController(org.slug, taskId);
   const snapshot = useSyncExternalStore(
@@ -100,9 +98,7 @@ export function NativeAgentTerminalProvider({
   );
   const lockedHarness = toTerminalHarnessId(task.lockedHarness);
   const pendingHarness = toTerminalHarnessId(prefs.pendingHarnessId);
-  const isReadOnly =
-    !task.activeTask?.created_by ||
-    task.activeTask.created_by !== session?.user?.id;
+  const isReadOnly = !task.canMutateThread;
   const shouldAutosend = search.autosend === AUTOSEND_QUERY_VALUE;
   const unsupportedHarnessMessage = t("chat.nativeTerminal.unsupportedHarness");
 
@@ -314,7 +310,6 @@ export function NativeAgentTerminalProvider({
     messages: EMPTY_MESSAGES,
     status: streamStatus(snapshot),
     sendMessage,
-    editQueuedMessage: async () => false,
     stop: () => {
       if (!isReadOnly) controller.interrupt();
     },

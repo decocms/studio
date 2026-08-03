@@ -17,6 +17,7 @@ import {
   useSandboxEvents,
 } from "@/components/sandbox/hooks/use-sandbox-events";
 import { PreviewDrawer } from "@/components/sandbox/preview/drawer/drawer";
+import { useChatTask } from "@/components/chat/context";
 
 const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
 
@@ -49,6 +50,7 @@ export function PreviewDrawerHost() {
   const inset = useInsetContext();
   const { org } = useProjectContext();
   const virtualMcpId = inset?.virtualMcpId ?? null;
+  const { canMutateThread } = useChatTask();
   const lifecycle = useSandboxLifecycle();
   const events = useSandboxEvents();
 
@@ -59,7 +61,7 @@ export function PreviewDrawerHost() {
   // that's permanently revoked.
   const autoRestartedVmcpRef = useRef<string | null>(null);
   useSandboxChunkHandler((source) => {
-    if (source !== "setup" || !virtualMcpId) return;
+    if (!canMutateThread || source !== "setup" || !virtualMcpId) return;
     if (autoRestartedVmcpRef.current === virtualMcpId) return;
     if (!GIT_AUTH_FAILURE_RE.test(events.getBuffer("setup"))) return;
     autoRestartedVmcpRef.current = virtualMcpId;
@@ -100,6 +102,7 @@ export function PreviewDrawerHost() {
       branch={lifecycle.branch}
       status={lifecycle.status}
       scripts={events.scripts}
+      readOnly={!canMutateThread}
       open={open}
       onOpenChange={handleOpenChange}
       onStart={lifecycle.start}

@@ -22,6 +22,7 @@ import {
   useOrgFsStat,
 } from "@/hooks/use-org-fs";
 import { FileShareButton } from "@/layouts/library/file-share-button";
+import { useChatTask } from "@/components/chat/context";
 
 const HOME_VOLUME = "home";
 
@@ -35,6 +36,7 @@ function DeckShimmer({ label }: { label?: string }) {
 }
 
 export function DeckTab({ path }: { path: string }) {
+  const { canMutateThread } = useChatTask();
   const stat = useOrgFsStat(HOME_VOLUME, path, {
     refetchIntervalWhenAbsent: 2000,
   });
@@ -57,15 +59,17 @@ export function DeckTab({ path }: { path: string }) {
       readUrl={readUrl}
       marker={entryMarker(stat.data)}
       title={path}
-      savePath={path}
+      savePath={canMutateThread ? path : undefined}
       trailing={
-        <FileShareButton
-          volume={HOME_VOLUME}
-          path={path}
-          shareMode={stat.data.shareMode ?? "private"}
-          effectivePublic={stat.data.effectivePublic ?? false}
-          url={window.location.origin + readUrl}
-        />
+        canMutateThread ? (
+          <FileShareButton
+            volume={HOME_VOLUME}
+            path={path}
+            shareMode={stat.data.shareMode ?? "private"}
+            effectivePublic={stat.data.effectivePublic ?? false}
+            url={window.location.origin + readUrl}
+          />
+        ) : undefined
       }
     />
   );

@@ -1,5 +1,6 @@
 import { retry } from "@decocms/shared/std";
 import type { APIRequestContext } from "@playwright/test";
+import { createServer } from "node:http";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
@@ -419,20 +420,130 @@ test.describe("hosted runtime boundary", () => {
 
   test("keeps an organization teammate from mutating another owner's thread", async ({
     authedPage,
+    browser,
     playwright,
   }) => {
+    test.setTimeout(60_000);
     const { page, orgSlug, user } = authedPage;
     const ownerApi = page.context().request;
     const memberApi = await newApiContext(playwright);
     const db = await connectDevDb();
+    const previewText = "Viewer-safe teammate sandbox preview";
+    const previewLog = "Viewer-safe teammate dev log";
+    const previewRequests: Array<{
+      method: string;
+      path: string;
+      accept: string | undefined;
+    }> = [];
+    const previewServer = createServer((request, response) => {
+      const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+      previewRequests.push({
+        method: request.method ?? "UNKNOWN",
+        path,
+        accept: request.headers.accept,
+      });
+
+      if (path === "/_sandbox/events") {
+        response.writeHead(200, {
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Content-Type": "text/event-stream",
+        });
+        response.flushHeaders();
+        response.write(
+          [
+            "event: lifecycle",
+            `data: ${JSON.stringify({
+              state: { phase: "running", port: 5173, htmlSupport: true },
+            })}`,
+            "",
+            "event: status",
+            `data: ${JSON.stringify({ state: "running" })}`,
+            "",
+            "event: scripts",
+            `data: ${JSON.stringify({ scripts: ["dev"] })}`,
+            "",
+            "event: tasks",
+            `data: ${JSON.stringify({
+              active: [{ id: "dev", command: "dev", logName: "dev" }],
+            })}`,
+            "",
+            "event: log",
+            `data: ${JSON.stringify({ source: "dev", data: `${previewLog}\n` })}`,
+            "",
+            "",
+          ].join("\n"),
+        );
+        return;
+      }
+
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(
+        `<!doctype html><html><body><main>${previewText}</main></body></html>`,
+      );
+    });
     try {
+      await new Promise<void>((resolve) =>
+        previewServer.listen(0, "127.0.0.1", resolve),
+      );
+      const previewAddress = previewServer.address();
+      if (!previewAddress || typeof previewAddress === "string") {
+        throw new Error("Teammate preview server did not bind to a TCP port");
+      }
+      const previewUrl = `http://127.0.0.1:${previewAddress.port}/`;
+
       const organizationId = await organizationIdForSlug(db, orgSlug);
       const agentId = await createAgent(
         ownerApi,
         orgSlug,
         "teammate boundary agent",
       );
+      const githubConnection = await createHttpConnection(ownerApi, orgSlug, {
+        title: "teammate boundary github",
+        url: "http://127.0.0.1:1/unused",
+      });
+      await callSelfMcpTool(
+        ownerApi,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_UPDATE",
+        {
+          id: agentId,
+          data: {
+            connections: [{ connection_id: githubConnection.id }],
+            metadata: {
+              githubRepo: {
+                url: "https://github.com/example/teammate-boundary",
+                owner: "example",
+                name: "teammate-boundary",
+                connectionId: githubConnection.id,
+              },
+            },
+          },
+        },
+      );
       const threadId = await createThread(ownerApi, orgSlug, agentId);
+      const sandboxBranch = `thread:${threadId}`;
+      await callSelfMcpTool(ownerApi, orgSlug, "COLLECTION_THREADS_UPDATE", {
+        id: threadId,
+        data: {
+          branch: sandboxBranch,
+          metadata: {
+            sandboxMap: {
+              [user.userId]: {
+                [sandboxBranch]: {
+                  "agent-sandbox": {
+                    sandboxHandle: `e2e-${threadId}`,
+                    previewUrl,
+                    sandboxProviderKind: "agent-sandbox",
+                    createdAt: Date.now(),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
       const scope = { threadId, organizationId, userId: user.userId };
       const before = await readThreadAuthorityState(db, scope);
 
@@ -444,7 +555,6 @@ test.describe("hosted runtime boundary", () => {
         member.email,
       );
 
-      const sandboxBranch = `thread:${threadId}`;
       const sandboxBase = `/api/${orgSlug}/sandbox/${agentId}/${encodeURIComponent(
         sandboxBranch,
       )}`;
@@ -490,11 +600,26 @@ test.describe("hosted runtime boundary", () => {
       // suite has no hosted runner, so a request that passed the owner-only gate
       // reaches the normal runner-unavailable response instead of the mutation
       // 403.
-      const statusResponse = await memberApi.get(`${sandboxBase}/git/status`);
-      expect(statusResponse.status()).toBe(503);
-      expect(await statusResponse.json()).toEqual({
-        error: "No sandbox runner configured",
-      });
+      for (const request of [
+        { method: "GET", path: "/git/status" },
+        { method: "POST", path: "/git/status" },
+        { method: "POST", path: "/git/diff" },
+      ] as const) {
+        const response = await memberApi.fetch(
+          `${sandboxBase}${request.path}`,
+          {
+            method: request.method,
+            ...(request.method === "GET" ? {} : { data: {} }),
+          },
+        );
+        expect(
+          response.status(),
+          `${request.method} ${request.path} must remain viewer-safe`,
+        ).toBe(503);
+        expect(await response.json()).toEqual({
+          error: "No sandbox runner configured",
+        });
+      }
 
       const eventsResponse = await memberApi.get(`${sandboxBase}/events`, {
         headers: { Accept: "text/event-stream" },
@@ -529,8 +654,157 @@ test.describe("hosted runtime boundary", () => {
 
       expect(await readThreadAuthorityState(db, scope)).toEqual(before);
       await expectNoQueuedRun(ownerApi, orgSlug, threadId);
+
+      const memberContext = await browser.newContext({
+        storageState: await memberApi.storageState(),
+      });
+      try {
+        const memberPage = await memberContext.newPage();
+        await memberPage.addInitScript(
+          (key) => localStorage.setItem(key, JSON.stringify({ visible: true })),
+          `preview-terminal-visible:${agentId}`,
+        );
+
+        const sandboxEventsUrl = `${getE2EAppOrigin()}${sandboxBase}/events`;
+        let sandboxEventsResponses = 0;
+        await memberPage.route(sandboxEventsUrl, async (route) => {
+          sandboxEventsResponses++;
+          if (sandboxEventsResponses > 1) {
+            await route.fulfill({ status: 204, body: "" });
+            return;
+          }
+          await route.fulfill({
+            status: 200,
+            headers: {
+              "Cache-Control": "no-cache",
+              "Content-Type": "text/event-stream",
+            },
+            body: 'event: phase\ndata: {"kind":"ready"}\n\n',
+          });
+        });
+
+        const viewerSafeSandboxRequests: string[] = [];
+        const forbiddenWorkspaceRequests: string[] = [];
+        memberPage.on("request", (request) => {
+          const method = request.method();
+          const url = request.url();
+
+          const viewerSafeSandboxRequest =
+            (method === "GET" &&
+              (url.includes(`${sandboxBase}/events`) ||
+                url.includes(`${sandboxBase}/git/status`))) ||
+            (method === "POST" &&
+              (url.includes(`${sandboxBase}/git/status`) ||
+                url.includes(`${sandboxBase}/git/diff`)));
+          if (viewerSafeSandboxRequest) {
+            viewerSafeSandboxRequests.push(`${method} ${url}`);
+            return;
+          }
+
+          if (url.includes(`/api/${orgSlug}/sandbox/`)) {
+            forbiddenWorkspaceRequests.push(`${method} ${url}`);
+            return;
+          }
+          if (
+            method === "GET" &&
+            url.includes(`/api/${orgSlug}/decopilot/queue/${threadId}`)
+          ) {
+            forbiddenWorkspaceRequests.push(`${method} ${url}`);
+          }
+          if (method === "GET") return;
+
+          if (
+            url.includes("/tools/SANDBOX_") ||
+            url.includes("/tools/GIT_") ||
+            url.includes("/tools/FS_") ||
+            url.includes("/tools/COLLECTION_THREADS_UPDATE") ||
+            url.includes("/tools/COLLECTION_THREADS_DELETE") ||
+            url.includes(`/decopilot/threads/${threadId}/messages`) ||
+            url.includes(`/decopilot/cancel/${threadId}`) ||
+            url.includes(`/decopilot/flip/${threadId}`)
+          ) {
+            forbiddenWorkspaceRequests.push(`${method} ${url}`);
+          }
+        });
+
+        await memberPage.goto(
+          `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=chat&main=preview`,
+        );
+
+        await expect(
+          memberPage.getByRole("button", { name: "Preview", exact: true }),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(
+          memberPage.getByRole("button", { name: "Code", exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          memberPage.getByRole("button", { name: "Content", exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          memberPage.getByRole("button", { name: "Publish", exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          memberPage.getByRole("button", { name: /^sandbox$/i }),
+        ).toBeVisible();
+        await expect(
+          memberPage
+            .frameLocator('iframe[title="Dev Server Preview"]')
+            .getByText(previewText, { exact: true }),
+        ).toBeVisible({ timeout: 15_000 });
+        const devLogTab = memberPage.getByRole("button", {
+          name: "dev",
+          exact: true,
+        });
+        await expect(devLogTab).toBeVisible();
+        await devLogTab.click();
+        await expect(memberPage.locator(".xterm-rows")).toContainText(
+          previewLog,
+          { timeout: 15_000 },
+        );
+        for (const action of ["Start", "Stop", "Restart", "Resume", "Retry"]) {
+          await expect(
+            memberPage.getByRole("button", { name: action, exact: true }),
+          ).toHaveCount(0);
+        }
+        await memberPage.waitForTimeout(250);
+        expect(
+          viewerSafeSandboxRequests.some((request) =>
+            request.includes(`${sandboxBase}/events`),
+          ),
+        ).toBe(true);
+        expect(
+          previewRequests.some(
+            (request) =>
+              request.method === "GET" && request.path === "/_sandbox/events",
+          ),
+        ).toBe(true);
+        expect(
+          previewRequests.some(
+            (request) =>
+              request.method === "GET" &&
+              request.path === "/" &&
+              request.accept?.includes("text/html"),
+          ),
+        ).toBe(true);
+        expect(forbiddenWorkspaceRequests).toEqual([]);
+        expect(await readThreadAuthorityState(db, scope)).toEqual(before);
+        await expectNoQueuedRun(ownerApi, orgSlug, threadId);
+      } finally {
+        await memberContext.close();
+      }
     } finally {
-      await Promise.all([db.end(), memberApi.dispose()]);
+      previewServer.closeAllConnections();
+      await Promise.all([
+        db.end(),
+        memberApi.dispose(),
+        previewServer.listening
+          ? new Promise<void>((resolve, reject) =>
+              previewServer.close((error) =>
+                error ? reject(error) : resolve(),
+              ),
+            )
+          : Promise.resolve(),
+      ]);
     }
   });
 

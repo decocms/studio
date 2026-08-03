@@ -38,13 +38,13 @@ type StatusHighlightProps =
   | {
       variant: "error";
       error: Error;
-      onFixInChat: () => void;
+      onFixInChat?: () => void;
       onDismiss: () => void;
     }
   | {
       variant: "warning";
       finishReason: string;
-      onContinue: () => void;
+      onContinue?: () => void;
       onDismiss: () => void;
     };
 
@@ -87,15 +87,17 @@ function StatusHighlight(props: StatusHighlightProps) {
       onClose={onDismiss}
       footerRight={
         isError ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onFixInChat}
-            className="h-7 text-xs"
-          >
-            {t("chat.highlight.fixInChat")}
-          </Button>
-        ) : (
+          props.onFixInChat ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={props.onFixInChat}
+              className="h-7 text-xs"
+            >
+              {t("chat.highlight.fixInChat")}
+            </Button>
+          ) : null
+        ) : props.onContinue ? (
           <Button
             size="sm"
             variant="outline"
@@ -104,7 +106,7 @@ function StatusHighlight(props: StatusHighlightProps) {
           >
             {t("chat.highlight.continue")}
           </Button>
-        )
+        ) : null
       }
     >
       {rawDetails ? (
@@ -173,7 +175,8 @@ export function ChatHighlight() {
     sendMessage,
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
-  const { virtualMcpId, createTaskWithMessage } = useChatTask();
+  const { virtualMcpId, createTaskWithMessage, canMutateThread } =
+    useChatTask();
   const { chatMode, simpleModeTier } = useChatPrefs();
 
   // Build a fresh RequestOptions at call time so tier/mode reflect the
@@ -212,6 +215,7 @@ export function ChatHighlight() {
   );
 
   const handleFixInChat = () => {
+    if (!canMutateThread) return;
     if (error) {
       const text = t("chat.highlight.fixInChatMessage", {
         error: error.message,
@@ -225,6 +229,7 @@ export function ChatHighlight() {
   };
 
   const handleContinue = () => {
+    if (!canMutateThread) return;
     const doc = {
       type: "doc" as const,
       content: [
@@ -238,6 +243,7 @@ export function ChatHighlight() {
   };
 
   const handleUserAskSubmit = (part: UserAskToolPart, response: string) => {
+    if (!canMutateThread) return;
     void submit(
       {
         kind: "toolOutput",
@@ -249,6 +255,7 @@ export function ChatHighlight() {
   };
 
   const handlePlanApprove = (planText: string) => {
+    if (!canMutateThread) return;
     // Set approval level to auto and persist
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
@@ -267,6 +274,7 @@ export function ChatHighlight() {
   };
 
   const handlePlanDismiss = () => {
+    if (!canMutateThread) return;
     const editor = document.querySelector<HTMLElement>("[data-chat-input]");
     editor?.focus();
   };
@@ -277,6 +285,7 @@ export function ChatHighlight() {
     reason: string | undefined,
     toolApprovalLevel: ToolApprovalLevel,
   ) => {
+    if (!canMutateThread) return;
     void submit(
       {
         kind: "approval",
@@ -312,7 +321,7 @@ export function ChatHighlight() {
           variant="error"
           error={error as Error}
           onDismiss={clearError}
-          onFixInChat={handleFixInChat}
+          onFixInChat={canMutateThread ? handleFixInChat : undefined}
         />
       )}
       {showWarning && (
@@ -320,10 +329,10 @@ export function ChatHighlight() {
           variant="warning"
           finishReason={finishReason as string}
           onDismiss={clearFinishReason}
-          onContinue={handleContinue}
+          onContinue={canMutateThread ? handleContinue : undefined}
         />
       )}
-      {hasApprovals && (
+      {canMutateThread && hasApprovals && (
         <ApprovalHighlight
           key={approvalKey}
           approvals={pendingApprovals}
@@ -331,7 +340,7 @@ export function ChatHighlight() {
           onRespond={handleApprovalRespond}
         />
       )}
-      {flags.hasPlans && (
+      {canMutateThread && flags.hasPlans && (
         <ProposePlanHighlight
           key={planKey}
           plans={pendingPlans}
@@ -340,7 +349,7 @@ export function ChatHighlight() {
           onDismiss={handlePlanDismiss}
         />
       )}
-      {flags.isWaitingForUserInput && (
+      {canMutateThread && flags.isWaitingForUserInput && (
         <UserAskQuestionHighlight
           key={userAskKey}
           userAskParts={userAskParts}

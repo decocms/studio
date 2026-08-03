@@ -36,6 +36,7 @@ import {
 } from "@/hooks/use-org-fs";
 import { FileShareButton } from "./file-share-button";
 import { basename, parseLibraryPath } from "./location";
+import { resolveLibraryPreviewCapabilities } from "./preview-capabilities";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
 
@@ -47,6 +48,8 @@ export interface LibraryPreviewProps {
   onClose: () => void;
   /** Render a "See in library" link (set when previewing outside the Library). */
   showSeeInLibrary?: boolean;
+  /** Omit inline editing and share controls when embedded in a read-only thread. */
+  readOnly?: boolean;
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -69,6 +72,7 @@ export function LibraryFilePreview({
   previewPath,
   onClose,
   showSeeInLibrary = false,
+  readOnly = false,
   variant,
 }: LibraryPreviewProps & { variant: LibraryPreviewVariant }) {
   const t = useT();
@@ -78,6 +82,10 @@ export function LibraryFilePreview({
   const downloadUrl = useOrgFsDownloadUrl(volume ?? "");
   const filename = basename(filePath);
   const isDialog = variant === "dialog";
+  const { canEditHtml, canShare } = resolveLibraryPreviewCapabilities(
+    readOnly,
+    volume,
+  );
 
   const seeInLibrary = showSeeInLibrary ? (
     <SeeInLibraryLink previewPath={previewPath} />
@@ -107,16 +115,18 @@ export function LibraryFilePreview({
           readUrl={file.downloadUrl}
           marker={entryMarker(entry)}
           title={filename}
-          savePath={volume === "home" ? filePath : undefined}
+          savePath={canEditHtml ? filePath : undefined}
           trailing={
             <>
-              <FileShareButton
-                volume={volume ?? ""}
-                path={filePath}
-                shareMode={entry.shareMode ?? "private"}
-                effectivePublic={entry.effectivePublic ?? false}
-                url={window.location.origin + file.downloadUrl}
-              />
+              {canShare && (
+                <FileShareButton
+                  volume={volume ?? ""}
+                  path={filePath}
+                  shareMode={entry.shareMode ?? "private"}
+                  effectivePublic={entry.effectivePublic ?? false}
+                  url={window.location.origin + file.downloadUrl}
+                />
+              )}
               {seeInLibrary}
               {isDialog ? (
                 <div className="w-8 shrink-0" />
@@ -158,13 +168,15 @@ export function LibraryFilePreview({
         </div>
         {file && (
           <>
-            <FileShareButton
-              volume={volume ?? ""}
-              path={filePath}
-              shareMode={entry?.shareMode ?? "private"}
-              effectivePublic={entry?.effectivePublic ?? false}
-              url={window.location.origin + file.downloadUrl}
-            />
+            {canShare && (
+              <FileShareButton
+                volume={volume ?? ""}
+                path={filePath}
+                shareMode={entry?.shareMode ?? "private"}
+                effectivePublic={entry?.effectivePublic ?? false}
+                url={window.location.origin + file.downloadUrl}
+              />
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" asChild>

@@ -11,7 +11,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { LibraryPreviewPanel } from "@/layouts/library/preview-panel";
 
-export function LibraryFileTab({ path }: { path: string }) {
+export function LibraryFileTab({
+  path,
+  readOnly,
+}: {
+  path: string;
+  readOnly: boolean;
+}) {
   const navigate = useNavigate();
   const onClose = () =>
     navigate({
@@ -27,6 +33,7 @@ export function LibraryFileTab({ path }: { path: string }) {
       previewPath={path}
       onClose={onClose}
       showSeeInLibrary
+      readOnly={readOnly}
     />
   );
 }

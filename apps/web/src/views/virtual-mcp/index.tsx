@@ -2,7 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { useChatStream } from "@/components/chat/context";
+import { useChatStream, useChatTask } from "@/components/chat/context";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -343,9 +343,10 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
+  const { canMutateThread } = useChatTask();
 
   const handleImprovePrompt = async () => {
-    if (isImproving) return;
+    if (!canMutateThread || isImproving) return;
     const currentInstructions = form.getValues("metadata.instructions");
     if (!currentInstructions?.trim()) return;
 
@@ -964,18 +965,20 @@ function VirtualMcpDetailViewWithData({
                       {t("virtualMcp.virtualMcp.promptTemplate")}
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      isImproving ||
-                      !form.watch("metadata.instructions")?.trim()
-                    }
-                    onClick={handleImprovePrompt}
-                  >
-                    <Stars01 size={13} />
-                    {t("virtualMcp.virtualMcp.improve")}
-                  </Button>
+                  {canMutateThread && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        isImproving ||
+                        !form.watch("metadata.instructions")?.trim()
+                      }
+                      onClick={handleImprovePrompt}
+                    >
+                      <Stars01 size={13} />
+                      {t("virtualMcp.virtualMcp.improve")}
+                    </Button>
+                  )}
                 </div>
               </div>
               <Controller
