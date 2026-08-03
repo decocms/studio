@@ -29,6 +29,25 @@ type OperationAck = oneshot::Sender<OperationResult>;
 #[cfg(unix)]
 const WATCHDOG_START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+const TERMINAL_COLOR_SUPPRESSION_ENV_VARS: [&str; 2] = ["NO_COLOR", "NODE_DISABLE_COLORS"];
+const TERMINAL_ZERO_DISABLE_ENV_VARS: [&str; 2] = ["FORCE_COLOR", "CLICOLOR"];
+
+fn configure_interactive_terminal_environment(builder: &mut portable_pty::CommandBuilder) {
+    for name in TERMINAL_COLOR_SUPPRESSION_ENV_VARS {
+        builder.env_remove(name);
+    }
+    for name in TERMINAL_ZERO_DISABLE_ENV_VARS {
+        if builder.get_env(name) == Some(std::ffi::OsStr::new("0")) {
+            builder.env_remove(name);
+        }
+    }
+
+    // A stable terminal declaration keeps color and full-screen TUI behavior
+    // consistent across the user's login-shell environment.
+    builder.env("TERM", "xterm-256color");
+    builder.env("COLORTERM", "truecolor");
+}
+
 enum ControlMessage {
     Resize(TerminalSize, OperationAck),
     Interrupt(OperationAck),
@@ -284,10 +303,7 @@ impl TerminalSession {
         for (name, value) in &command.env {
             builder.env(name, value);
         }
-        // A stable terminal declaration keeps color and full-screen TUI
-        // behavior consistent across the user's login-shell environment.
-        builder.env("TERM", "xterm-256color");
-        builder.env("COLORTERM", "truecolor");
+        configure_interactive_terminal_environment(&mut builder);
 
         let mut child = match pair.slave.spawn_command(builder) {
             Ok(child) => child,
@@ -1256,6 +1272,46 @@ mod tests {
         assert!(debug.contains("SECRET_COOKIE"));
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("must-not-leak"));
+    }
+
+    #[test]
+    fn interactive_terminal_environment_removes_inherited_color_suppression() {
+        let mut builder = portable_pty::CommandBuilder::new("agent");
+        builder.env("NO_COLOR", "");
+        builder.env("NODE_DISABLE_COLORS", "1");
+        builder.env("FORCE_COLOR", "0");
+        builder.env("CLICOLOR", "0");
+        builder.env("TERM", "dumb");
+
+        configure_interactive_terminal_environment(&mut builder);
+
+        assert_eq!(builder.get_env("NO_COLOR"), None);
+        assert_eq!(builder.get_env("NODE_DISABLE_COLORS"), None);
+        assert_eq!(builder.get_env("FORCE_COLOR"), None);
+        assert_eq!(builder.get_env("CLICOLOR"), None);
+        assert_eq!(
+            builder.get_env("TERM"),
+            Some(std::ffi::OsStr::new("xterm-256color"))
+        );
+        assert_eq!(
+            builder.get_env("COLORTERM"),
+            Some(std::ffi::OsStr::new("truecolor"))
+        );
+    }
+
+    #[test]
+    fn interactive_terminal_environment_preserves_explicit_color_enablement() {
+        let mut builder = portable_pty::CommandBuilder::new("agent");
+        builder.env("FORCE_COLOR", "1");
+        builder.env("CLICOLOR", "1");
+
+        configure_interactive_terminal_environment(&mut builder);
+
+        assert_eq!(
+            builder.get_env("FORCE_COLOR"),
+            Some(std::ffi::OsStr::new("1"))
+        );
+        assert_eq!(builder.get_env("CLICOLOR"), Some(std::ffi::OsStr::new("1")));
     }
 
     #[cfg(unix)]

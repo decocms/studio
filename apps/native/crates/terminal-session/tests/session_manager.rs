@@ -128,6 +128,56 @@ done
     assert!(exit.output_complete);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pty_child_removes_color_suppression_environment() {
+    let directory = TempDir::new().expect("temp directory");
+    let script = write_fixture(
+        &directory,
+        "color-environment.sh",
+        r#"
+stty -echo
+printf 'COLOR_ENV:%s|%s|%s|%s|%s|%s\n' \
+  "${NO_COLOR-unset}" \
+  "${NODE_DISABLE_COLORS-unset}" \
+  "${FORCE_COLOR-unset}" \
+  "${CLICOLOR-unset}" \
+  "${TERM-unset}" \
+  "${COLORTERM-unset}"
+while IFS= read -r line; do
+  [ "$line" = "quit" ] && exit 0
+done
+"#,
+    );
+    let command = shell(&script)
+        .env("NO_COLOR", "1")
+        .env("NODE_DISABLE_COLORS", "1")
+        .env("FORCE_COLOR", "0")
+        .env("CLICOLOR", "0")
+        .env("TERM", "dumb")
+        .env("COLORTERM", "disabled");
+    let manager = TerminalSessionManager::default();
+    let session = manager
+        .start_or_attach(key("color-environment"), command, TerminalSize::default())
+        .await
+        .expect("terminal must start")
+        .session;
+    let mut subscription = session.subscribe(0);
+
+    let expected = "COLOR_ENV:unset|unset|unset|unset|xterm-256color|truecolor";
+    let output = collect_until(&mut subscription, expected.as_bytes()).await;
+    assert!(
+        String::from_utf8_lossy(&output).contains(expected),
+        "PTY child inherited a color-suppression setting: {}",
+        String::from_utf8_lossy(&output)
+    );
+
+    session
+        .write(Bytes::from_static(b"quit\n"))
+        .await
+        .expect("quit input must reach PTY");
+    assert!(session.wait().await.success());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_start_creates_exactly_one_process() {
     let directory = TempDir::new().expect("temp directory");
