@@ -92,14 +92,13 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
     const database = getDb();
     const settings = getSettings();
 
-    // Billing identity FIRST (cheapest, most load-bearing): orgs created from
-    // now on are legacy = false — the org subscription applies to them. Orgs
-    // that predate migration 139 were backfilled legacy = true there. If this
-    // insert (or this whole hook) fails, a missing row reads as "not
-    // subscribed" — never bricks the org.
+    // Billing identity FIRST (cheapest, most load-bearing): the row the
+    // Stripe webhook binds the org's subscription onto. If this insert (or
+    // this whole hook) fails, a missing row reads as "not subscribed" —
+    // never bricks the org.
     await database.db
       .insertInto("organization_billing")
-      .values({ organization_id: organizationId, legacy: false })
+      .values({ organization_id: organizationId })
       .onConflict((oc) => oc.column("organization_id").doNothing())
       .execute();
 

@@ -13,7 +13,6 @@ function toBillingRow(
 ): OrganizationBillingRow {
   return {
     organizationId: row.organization_id,
-    legacy: row.legacy,
     status: row.status,
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
@@ -24,8 +23,6 @@ function toBillingRow(
 
 export interface OrganizationBillingRow {
   organizationId: string;
-  /** Orgs predating billing — permanently exempt from any paywall. */
-  legacy: boolean;
   status: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -66,8 +63,7 @@ export class OrganizationBillingStorage {
   /**
    * Platform write from the Stripe webhook handlers: subscription identity /
    * status / period end, plus the event high-water mark — ONE row update.
-   * Never touches legacy — webhooks only ever narrate what Stripe already
-   * committed.
+   * Webhooks only ever narrate what Stripe already committed.
    */
   async updateStripeState(
     organizationId: string,

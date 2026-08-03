@@ -14,7 +14,6 @@ import { applyStripeEvent, type StripeEvent } from "./stripe-webhook";
 // deliveries skipped) and terminal deletes (exempt + unbind), which together
 // make Stripe's unordered redeliveries unable to resurrect a canceled org.
 const ORG = "org_stripe_1";
-const ORG_LEGACY = "org_stripe_legacy";
 const ORG_BASIL = "org_stripe_basil";
 
 // Event-created timeline (epoch seconds).
@@ -53,7 +52,7 @@ describe("applyStripeEvent", () => {
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    const orgs = [ORG, ORG_LEGACY, ORG_BASIL];
+    const orgs = [ORG, ORG_BASIL];
     await database.db
       .insertInto("organization")
       .values(
@@ -67,11 +66,7 @@ describe("applyStripeEvent", () => {
       .execute();
     await database.db
       .insertInto("organization_billing")
-      .values([
-        { organization_id: ORG, legacy: false },
-        { organization_id: ORG_LEGACY, legacy: true },
-        { organization_id: ORG_BASIL, legacy: false },
-      ])
+      .values([{ organization_id: ORG }, { organization_id: ORG_BASIL }])
       .execute();
     storage = new OrganizationBillingStorage(database.db);
   });
@@ -220,7 +215,7 @@ describe("applyStripeEvent", () => {
     expect(billing?.lastStripeEventAt?.getTime()).toBe(T6 * 1000);
   });
 
-  it("checkout refuses unpaid sessions and legacy orgs", async () => {
+  it("checkout refuses unpaid sessions", async () => {
     const unpaid = await applyStripeEvent(
       storage,
       checkout({
@@ -231,19 +226,6 @@ describe("applyStripeEvent", () => {
       }),
     );
     expect(unpaid).toEqual({ handled: false, reason: "payment not confirmed" });
-
-    const refused = await applyStripeEvent(
-      storage,
-      checkout({
-        id: "cs_x",
-        subscription: "sub_x",
-        metadata: { orgId: ORG_LEGACY },
-      }),
-    );
-    expect(refused).toEqual({ handled: false, reason: "org is legacy" });
-    expect(
-      (await storage.getBilling(ORG_LEGACY))?.stripeSubscriptionId,
-    ).toBeNull();
   });
 
   it("reads Basil (2025-03-31) payload shapes; rebinds are refused", async () => {

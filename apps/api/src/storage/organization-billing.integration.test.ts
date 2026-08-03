@@ -31,7 +31,7 @@ describe("OrganizationBillingStorage", () => {
       .execute();
     await database.db
       .insertInto("organization_billing")
-      .values({ organization_id: ORG, legacy: false })
+      .values({ organization_id: ORG })
       .execute();
     storage = new OrganizationBillingStorage(database.db);
   });
@@ -44,7 +44,6 @@ describe("OrganizationBillingStorage", () => {
     const billing = await storage.getBilling(ORG);
     expect(billing).toMatchObject({
       organizationId: ORG,
-      legacy: false,
       status: "none",
       stripeCustomerId: null,
       stripeSubscriptionId: null,

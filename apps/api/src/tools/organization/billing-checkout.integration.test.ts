@@ -1,7 +1,7 @@
 /**
  * Real-Postgres coverage for the checkout guards — everything that fires
- * BEFORE any Stripe HTTP call, so no key and no network: legacy /
- * already-active / bound-but-not-active (the orphan-payment hole).
+ * BEFORE any Stripe HTTP call, so no key and no network: already-active /
+ * bound-but-not-active (the orphan-payment hole).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -56,7 +56,6 @@ function makeCtx(
 describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
   let database: StudioDatabase;
 
-  const ORG_LEGACY = "org_bg_legacy";
   const ORG_ACTIVE = "org_bg_active"; // active + bound
   const ORG_DUNNING = "org_bg_dunning"; // past_due + bound
 
@@ -64,7 +63,7 @@ describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
-    const orgs = [ORG_LEGACY, ORG_ACTIVE, ORG_DUNNING];
+    const orgs = [ORG_ACTIVE, ORG_DUNNING];
     const now = new Date().toISOString();
     await database.db
       .insertInto("organization")
@@ -92,16 +91,13 @@ describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
     await database.db
       .insertInto("organization_billing")
       .values([
-        { organization_id: ORG_LEGACY, legacy: true },
         {
           organization_id: ORG_ACTIVE,
-          legacy: false,
           status: "active",
           stripe_subscription_id: "sub_active_1",
         },
         {
           organization_id: ORG_DUNNING,
-          legacy: false,
           status: "past_due",
           stripe_subscription_id: "sub_dunning_1",
         },
@@ -111,15 +107,6 @@ describe("ORGANIZATION_BILLING_CHECKOUT_START guards", () => {
 
   afterAll(async () => {
     await closeTestPgDatabase(database);
-  });
-
-  it("rejects legacy orgs", async () => {
-    await expect(
-      ORGANIZATION_BILLING_CHECKOUT_START.handler(
-        {},
-        makeCtx(database, ORG_LEGACY),
-      ),
-    ).rejects.toThrow(/legacy plan/);
   });
 
   it("rejects an org with an active subscription", async () => {

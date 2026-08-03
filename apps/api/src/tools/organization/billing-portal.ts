@@ -42,14 +42,6 @@ export const ORGANIZATION_BILLING_PORTAL = defineTool({
         "This organization has no billing account yet — subscribe first.",
       );
     }
-    // deco-managed billing (legacy) must not self-serve cancellation or card
-    // changes over a deco-owned customer.
-    if (billing.legacy) {
-      throw new Error(
-        "This organization's billing is managed by deco — contact support.",
-      );
-    }
-
     try {
       return await createBillingPortalSession({
         customerId: billing.stripeCustomerId,

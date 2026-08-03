@@ -19,9 +19,9 @@
  * Events:
  *  - checkout.session.completed / ...async_payment_succeeded → bind
  *    customer/subscription to the org (metadata.orgId, set by our checkout
- *    creator) once payment_status is "paid"; status active. Refuses legacy
- *    orgs and rebinding over a live different subscription (the
- *    refused-but-paid orphan subscription is canceled).
+ *    creator) once payment_status is "paid"; status active. Refuses
+ *    rebinding over a live different subscription (the refused-but-paid
+ *    orphan subscription is canceled).
  *  - customer.subscription.updated → mirror status + current period end.
  *  - customer.subscription.deleted → status canceled + unbind.
  *  - invoice.paid → THE MONTHLY CLOCK: refresh period end + status (also the
@@ -237,17 +237,8 @@ export async function applyStripeEvent(
       const billing = await storage.getBilling(organizationId);
       if (!billing) return { handled: false, reason: "unknown org" };
       // metadata.orgId comes from our checkout creator, but never let it
-      // rebind billing it must not touch: non-legacy orgs only, and never an
-      // org still bound to a DIFFERENT subscription (deleted unbinds, so a
-      // legitimate re-subscribe passes).
-      if (billing.legacy) {
-        console.error("stripe webhook: refused checkout bind", {
-          organizationId,
-          eventId: event.id,
-          legacy: billing.legacy,
-        });
-        return { handled: false, reason: "org is legacy" };
-      }
+      // rebind an org still bound to a DIFFERENT subscription (deleted
+      // unbinds, so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
       if (
         billing.stripeSubscriptionId &&

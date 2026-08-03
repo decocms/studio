@@ -1218,14 +1218,11 @@ export interface ThreadMessagePartTable {
 
 /**
  * Per-org billing identity (see migration 139). Platform-written only:
- * migration backfill, org-creation hook, Stripe webhooks — NEVER writable by
- * org members (billing in the org `metadata` would be, via
- * ORGANIZATION_UPDATE). `legacy = true` orgs are exempt from any paywall
- * forever.
+ * org-creation hook and Stripe webhooks — NEVER writable by org members
+ * (billing in the org `metadata` would be, via ORGANIZATION_UPDATE).
  */
 export interface OrganizationBillingTable {
   organization_id: string;
-  legacy: boolean;
   /** Subscription status: "none" | "active" | "past_due" | "canceled". */
   status: ColumnType<string, string | undefined, string>;
   stripe_customer_id: ColumnType<

@@ -2,16 +2,18 @@ import { type Kysely, sql } from "kysely";
 
 /**
  * Per-seat billing is gone — the model pivoted to a flat per-org subscription
- * (one price, quantity 1) gating monthly task executions instead of seats.
+ * (one price, quantity 1) gating executions of the reports-pushed tasks.
  * Drop the seat machinery migrations 139–144 built up:
  *  - organization_paid_seat + seat_change_log (whole tables);
  *  - organization_billing.billing_mode (self_serve/invoiced was seat-specific),
- *    included_report_url / armed_report_url (the weekly-report benefit) and
- *    benefits_reference_id (+ its partial index) — the durable benefit-sync
- *    intent marker; the sync workflow is deleted with this migration.
- * KEPT on organization_billing: legacy (paywall exemption for pre-billing
- * orgs), status / stripe ids / current_period_end / last_stripe_event_at —
- * the org-subscription core the webhook still writes.
+ *    legacy (the old-org paywall exemption — the new gate only touches the
+ *    reports-task flow, which no org uses by inheritance, so nobody needs
+ *    exempting), included_report_url / armed_report_url (the weekly-report
+ *    benefit) and benefits_reference_id (+ its partial index) — the durable
+ *    benefit-sync intent marker; the sync workflow is deleted with this
+ *    migration.
+ * KEPT on organization_billing: status / stripe ids / current_period_end /
+ * last_stripe_event_at — the org-subscription core the webhook still writes.
  *
  * Nothing was ever enforced in production (STUDIO_BILLING_ENFORCED never
  * set), so the dropped data is staging noise at most.
@@ -23,6 +25,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .alterTable("organization_billing")
     .dropColumn("billing_mode")
+    .execute();
+  // The migration-139 backfill (pre-billing orgs = true) is not restorable on
+  // down; irrelevant — the flag gated a paywall that no longer exists.
+  await db.schema
+    .alterTable("organization_billing")
+    .dropColumn("legacy")
     .execute();
   await db.schema
     .alterTable("organization_billing")
@@ -39,6 +47,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  await db.schema
+    .alterTable("organization_billing")
+    .addColumn("legacy", "boolean", (col) => col.notNull().defaultTo(false))
+    .execute();
   await db.schema
     .alterTable("organization_billing")
     .addColumn("billing_mode", "text", (col) =>

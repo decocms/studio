@@ -39,11 +39,6 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
 
     const billing =
       await ctx.storage.organizationBilling.getBilling(organizationId);
-    if (billing?.legacy) {
-      throw new Error(
-        "This organization is on the legacy plan — no subscription needed.",
-      );
-    }
     if (billing?.status === "active") {
       throw new Error("This organization already has an active subscription.");
     }
