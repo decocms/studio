@@ -3,29 +3,10 @@ import { describe, expect, test } from "bun:test";
 import {
   AGENT_OPTION_PINS,
   type AgentOption,
-  type AgentOptionAvailability,
   type AgentPins,
   agentOptionFor,
-  agentOptionIsAvailable,
-  preferredLocalAgentOption,
   resolveNativeAgentOption,
-  resolveOfflineAgentOption,
 } from "./agent-options";
-
-const ALL_AVAILABLE: AgentOptionAvailability = {
-  agentSandbox: true,
-  userDesktop: true,
-  claudeCode: true,
-  codex: true,
-};
-
-const DESKTOP_OFFLINE: AgentOptionAvailability = {
-  agentSandbox: true,
-  userDesktop: false,
-  claudeCode: true, // capability advertised, but link offline → still unavailable
-  codex: true,
-};
-
 describe("agentOptionFor", () => {
   test("maps decopilot harness with agent-sandbox sandbox to decopilot option", () => {
     expect(agentOptionFor("decopilot", "agent-sandbox")).toBe("decopilot");
@@ -35,11 +16,8 @@ describe("agentOptionFor", () => {
     expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
   });
 
-  test("decopilot harness with user-desktop sandbox has no option (retired)", () => {
-    // "local decopilot" was removed — the cloud router is the only decopilot
-    // runtime. A legacy thread persisted with this pair maps to no known
-    // option and is treated as locked-unknown.
-    expect(agentOptionFor("decopilot", "user-desktop")).toBeNull();
+  test("maps retired local Decopilot pins to hosted Decopilot", () => {
+    expect(agentOptionFor("decopilot", "user-desktop")).toBe("decopilot");
   });
 
   test("maps legacy decopilot harness with null sandbox to decopilot option", () => {
@@ -56,8 +34,11 @@ describe("agentOptionFor", () => {
     expect(agentOptionFor("codex", "user-desktop")).toBe("codex-desktop");
   });
 
+  test("maps opencode + user-desktop to opencode-desktop", () => {
+    expect(agentOptionFor("opencode", "user-desktop")).toBe("opencode-desktop");
+  });
+
   test("returns null for unknown harness", () => {
-    // @ts-expect-error — deliberately passing an out-of-union value
     expect(agentOptionFor("unknown-harness", null)).toBeNull();
   });
 
@@ -75,117 +56,31 @@ describe("agentOptionFor", () => {
   });
 });
 
-describe("agentOptionIsAvailable", () => {
-  test("cloud decopilot needs agent-sandbox only", () => {
-    expect(agentOptionIsAvailable("decopilot", ALL_AVAILABLE)).toBe(true);
-    expect(
-      agentOptionIsAvailable("decopilot", {
-        ...ALL_AVAILABLE,
-        agentSandbox: false,
-      }),
-    ).toBe(false);
-    // desktop being offline does not affect the cloud option
-    expect(agentOptionIsAvailable("decopilot", DESKTOP_OFFLINE)).toBe(true);
-  });
-
-  test("desktop options require the link to be online", () => {
-    expect(agentOptionIsAvailable("claude-code-desktop", DESKTOP_OFFLINE)).toBe(
-      false,
-    );
-    expect(agentOptionIsAvailable("codex-desktop", DESKTOP_OFFLINE)).toBe(
-      false,
-    );
-  });
-
-  test("CLI options require both the link and the advertised capability", () => {
-    expect(agentOptionIsAvailable("claude-code-desktop", ALL_AVAILABLE)).toBe(
-      true,
-    );
-    expect(
-      agentOptionIsAvailable("claude-code-desktop", {
-        ...ALL_AVAILABLE,
-        claudeCode: false,
-      }),
-    ).toBe(false);
-    expect(
-      agentOptionIsAvailable("codex-desktop", {
-        ...ALL_AVAILABLE,
-        codex: false,
-      }),
-    ).toBe(false);
-  });
-});
-
-describe("preferredLocalAgentOption", () => {
-  test("Claude Code wins when both CLIs are present", () => {
-    expect(preferredLocalAgentOption(ALL_AVAILABLE)).toBe(
-      "claude-code-desktop",
-    );
-  });
-
-  test("falls back to Codex when only Codex is present", () => {
-    expect(
-      preferredLocalAgentOption({ ...ALL_AVAILABLE, claudeCode: false }),
-    ).toBe("codex-desktop");
-  });
-
-  test("null when no local CLI is available", () => {
-    expect(
-      preferredLocalAgentOption({
-        ...ALL_AVAILABLE,
-        claudeCode: false,
-        codex: false,
-      }),
-    ).toBeNull();
-  });
-});
-
 describe("resolveNativeAgentOption", () => {
-  test("does not turn unresolved native detection into cloud Decopilot", () => {
-    const unresolved = {
-      ...ALL_AVAILABLE,
-      claudeCode: false,
-      codex: false,
-    };
+  test("does not turn an unselected native chat into cloud Decopilot", () => {
     for (const pendingOption of [null, "decopilot"] as const) {
       expect(
         resolveNativeAgentOption({
           pendingOption,
           lockedHarness: null,
-          availability: unresolved,
         }),
       ).toBeNull();
     }
   });
-
-  test("ignores a stale persisted Decopilot choice", () => {
-    expect(
-      resolveNativeAgentOption({
-        pendingOption: "decopilot",
-        lockedHarness: null,
-        availability: ALL_AVAILABLE,
-      }),
-    ).toBe("claude-code-desktop");
-  });
-
-  test("uses Codex when it is the only detected local CLI", () => {
-    expect(
-      resolveNativeAgentOption({
-        pendingOption: null,
-        lockedHarness: null,
-        availability: { ...ALL_AVAILABLE, claudeCode: false },
-      }),
-    ).toBe("codex-desktop");
-  });
-
   test("preserves an explicit local choice", () => {
     expect(
       resolveNativeAgentOption({
         pendingOption: "codex-desktop",
         lockedHarness: null,
-        availability: ALL_AVAILABLE,
       }),
     ).toBe("codex-desktop");
+
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "opencode-desktop",
+        lockedHarness: null,
+      }),
+    ).toBe("opencode-desktop");
   });
 
   test("a locked local harness wins without requiring its sandbox tuple", () => {
@@ -193,35 +88,14 @@ describe("resolveNativeAgentOption", () => {
       resolveNativeAgentOption({
         pendingOption: "codex-desktop",
         lockedHarness: "claude-code",
-        availability: ALL_AVAILABLE,
       }),
     ).toBe("claude-code-desktop");
-  });
-});
 
-describe("resolveOfflineAgentOption", () => {
-  test("auto-switches a desktop pick to cloud when the link is offline", () => {
-    expect(resolveOfflineAgentOption("claude-code-desktop", true)).toBe(
-      "decopilot",
-    );
-    expect(resolveOfflineAgentOption("codex-desktop", true)).toBe("decopilot");
-  });
-
-  test("keeps the desktop pick while the link is online (or unresolved)", () => {
-    // The old behavior: a desktop pick is preserved exactly. It must only be
-    // overridden on a *confirmed* offline probe, never the unresolved default.
-    expect(resolveOfflineAgentOption("claude-code-desktop", false)).toBe(
-      "claude-code-desktop",
-    );
-    expect(resolveOfflineAgentOption("codex-desktop", false)).toBe(
-      "codex-desktop",
-    );
-  });
-
-  test("leaves cloud and null picks untouched regardless of link state", () => {
-    expect(resolveOfflineAgentOption("decopilot", true)).toBe("decopilot");
-    expect(resolveOfflineAgentOption("decopilot", false)).toBe("decopilot");
-    expect(resolveOfflineAgentOption(null, true)).toBeNull();
-    expect(resolveOfflineAgentOption(null, false)).toBeNull();
+    expect(
+      resolveNativeAgentOption({
+        pendingOption: "claude-code-desktop",
+        lockedHarness: "opencode",
+      }),
+    ).toBe("opencode-desktop");
   });
 });

@@ -52,8 +52,6 @@ import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
 import type { ChatMode } from "../types";
 import { toast } from "sonner";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@decocms/shared/harness/types";
 import {
   advanceRunStatusStage,
   isRunStatusControlChunk,
@@ -78,8 +76,8 @@ export interface RequestOptions {
    * Optional pins sent on first message. The server persists them onto the
    * thread row and ignores them on subsequent messages.
    */
-  sandboxProviderKind?: SandboxProviderKind;
-  harnessId?: HarnessId;
+  sandboxProviderKind?: "agent-sandbox";
+  harnessId?: "decopilot";
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────

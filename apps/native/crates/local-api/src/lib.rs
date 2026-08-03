@@ -44,6 +44,7 @@
 //! the next launch (see `routes/git.rs`'s "No publish on shutdown" section).
 
 mod auth;
+mod auth_fence;
 mod client_auth;
 mod config;
 mod cors;
@@ -62,6 +63,7 @@ mod setup;
 mod shutdown;
 mod state;
 mod tasks;
+mod terminal;
 mod time_util;
 mod ui;
 
@@ -70,6 +72,7 @@ mod ui;
 // fire on a `pub` struct field whose type lives in a `mod` that isn't
 // itself `pub` — these modules stay private; only the specific types an
 // embedder needs are named here).
+pub use auth_fence::{install_upstream_session, logout_upstream_session, AccountInstallError};
 pub use config::ConfigStore;
 pub use events::Broadcaster;
 pub use sandbox::SandboxManager;
@@ -77,6 +80,7 @@ pub use setup::SetupOrchestrator;
 pub use shutdown::ShutdownCoordinator;
 pub use state::{ApiMode, AppState, UpdateHooks};
 pub use tasks::{KillSignal, TaskRegistry};
+pub use terminal::AgentSessionRegistry;
 pub use ui::{UiAsset, UiAssetProvider};
 
 use std::fs::File;
@@ -225,9 +229,9 @@ pub enum StartError {
 /// under one `ServerHandle` — see the module doc's port-router summary and
 /// `router.rs`'s module doc for the exact route split:
 ///
-/// - the MAIN listener ([`ServerHandle::port`]) — `/health`, `/_sandbox/*`,
-///   `/threads*`, `/models`, and the app-API intercept-or-proxy fallback
-///   (bearer + Origin gated).
+/// - the MAIN listener ([`ServerHandle::port`]) — `/health`, `/_local/*`,
+///   `/_sandbox/*`, and the app-API intercept-or-proxy fallback (bearer +
+///   Origin gated).
 /// - the PREVIEW listener ([`ServerHandle::preview_port`]) — ONLY the
 ///   reverse-proxy-to-dev-server fallback (`routes::proxy::fallback`), no
 ///   auth at all. Moved to its own loopback port (rather than sharing the
@@ -251,9 +255,12 @@ pub struct ServerHandle {
     preview_shutdown_notify: Arc<Notify>,
     serve_task: tokio::task::JoinHandle<()>,
     preview_serve_task: tokio::task::JoinHandle<()>,
+    /// Non-coalescing upstream identity events reap account-scoped PTYs even
+    /// when the signed-out transition originated in background revalidation.
+    auth_reaper_task: tokio::task::JoinHandle<()>,
     /// Kernel-held advisory lock for this app root. The file handle—not a
     /// stale PID marker—is the lifetime fence: a second process cannot run
-    /// queue recovery against live harness work, and the OS releases it even
+    /// durable recovery against live native work, and the OS releases it even
     /// after SIGKILL. Graceful shutdown releases it only after every mutation
     /// and process owner proves quiescence; on a failed proof the handle is
     /// intentionally retained until OS process exit instead of permitting an
@@ -354,7 +361,6 @@ pub(crate) fn shared_child_lifetime_lock_path(app_root: &std::path::Path) -> std
 }
 
 const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
-const HARNESS_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 const FS_MUTATION_REAP_TIMEOUT: Duration = Duration::from_secs(3);
 const CHILD_TERM_GRACE: Duration = Duration::from_secs(2);
 const CHILD_KILL_GRACE: Duration = Duration::from_secs(2);
@@ -390,6 +396,7 @@ impl ServerHandle {
             preview_shutdown_notify,
             mut serve_task,
             mut preview_serve_task,
+            auth_reaper_task,
             _instance_lock,
             ..
         } = self;
@@ -399,6 +406,8 @@ impl ServerHandle {
         // drain at the end and forcibly closed if they outlive it.
         shutdown_notify.notify_one();
         preview_shutdown_notify.notify_one();
+        auth_reaper_task.abort();
+        let _ = auth_reaper_task.await;
 
         // Close every source of new side-effecting work before taking any
         // process snapshot. The coordinator waits for already-admitted
@@ -417,17 +426,14 @@ impl ServerHandle {
             );
         }
 
-        // Chat harnesses own process state outside TaskRegistry. Reap both
-        // families concurrently before setup/git can observe their worktrees.
-        let (decopilot_stopped, dispatch_stopped) = tokio::join!(
-            routes::intercept::decopilot::shutdown_all(HARNESS_REAP_TIMEOUT),
-            routes::dispatch::shutdown_all(HARNESS_REAP_TIMEOUT),
-        );
-        if !decopilot_stopped {
-            tracing::error!("shutdown: one or more Decopilot queues did not stop in time");
-        }
-        if !dispatch_stopped {
-            tracing::error!("shutdown: one or more legacy dispatches did not stop in time");
+        // Interactive terminals own process state outside TaskRegistry. Reap
+        // them before setup/git can observe their worktrees.
+        let terminal_report = state.agent_sessions.shutdown().await;
+        if !terminal_report.all_stopped() {
+            tracing::error!(
+                failures = terminal_report.failures.len(),
+                "shutdown: one or more interactive coding agents did not stop cleanly"
+            );
         }
 
         // Each setup shutdown internally snapshots once, signals every child
@@ -480,8 +486,7 @@ impl ServerHandle {
             );
         }
 
-        let process_tree_quiescent = decopilot_stopped
-            && dispatch_stopped
+        let process_tree_quiescent = terminal_report.all_stopped()
             && global_setup_stopped
             && sandbox_setups_stopped
             && final_tasks_stopped
@@ -604,18 +609,15 @@ pub async fn start_with_client_auth(
                 mount_token.clone(),
             )
             .map_err(|message| StartError::EmbeddedAuth { message })?;
-            // The two non-browser clients that must satisfy this process's own
-            // guard. Published once here rather than threaded through
-            // `AppState`, which this module family may not add fields to.
-            if let Some(session_token) = auth.session_token() {
-                sandbox::org_mount::set_credentials(sandbox::org_mount::MountCredentials {
-                    base_url: format!("{control_scheme}://{local_host}"),
-                    origin: control_origin,
-                    cookie: format!("{}={session_token}", client_auth::LOCAL_SESSION_COOKIE_NAME),
-                    mount_token,
-                    ca_cert: opts.tls.as_ref().map(|tls| tls.ca.clone()),
-                });
-            }
+            // Publish loopback endpoint metadata and the rclone-only mount
+            // capability. Agent terminals mint a separate exact-MCP-path
+            // capability per launch; they never receive the control cookie.
+            sandbox::org_mount::set_credentials(sandbox::org_mount::MountCredentials {
+                base_url: format!("{control_scheme}://{local_host}"),
+                origin: control_origin,
+                mount_token,
+                ca_cert: opts.tls.as_ref().map(|tls| tls.ca.clone()),
+            });
             // Previews are served per-sandbox at `<handle>.<control host>`:
             // the same registrable domain, so the iframe stays first-party and
             // can hold cookies, but a distinct host, so each sandbox gets its
@@ -636,8 +638,8 @@ pub async fn start_with_client_auth(
         source,
     })?;
     // `.decocms/` is local-api's OWN directory (distinct from a project's
-    // `.deco/tools/` catalog dir): lockfiles, run-stream spools and staged
-    // mutations. The SQLite store itself is `<app_root>/studio.db`.
+    // `.deco/tools/` catalog dir): lockfiles and staged mutations. The SQLite
+    // store itself is `<app_root>/studio.db`.
     let decocms_dir = opts.app_root.join(".decocms");
     std::fs::create_dir_all(&decocms_dir).map_err(|source| StartError::DecocmsDir {
         path: decocms_dir.clone(),
@@ -655,7 +657,7 @@ pub async fn start_with_client_auth(
     // that main lock, while independent watchdogs survive long enough to reap
     // old harnesses/tasks. Every watchdog inherited a SHARED lock on this
     // separate file; the successor waits for EXCLUSIVE ownership before any
-    // mutation/queue recovery can observe or promote durable work.
+    // durable recovery can observe or promote work.
     let child_lifetime_lock_path = shared_child_lifetime_lock_path(&opts.app_root);
     let child_recovery_fence =
         acquire_child_recovery_fence(&child_lifetime_lock_path, CHILD_CRASH_REAP_TIMEOUT)
@@ -703,6 +705,7 @@ pub async fn start_with_client_auth(
     // `SandboxManager::ensure`, not eagerly here (unlike `repo_dir` above,
     // which every plain-path request needs immediately).
     let sandbox_manager = SandboxManager::new(opts.app_root.clone());
+    let agent_sessions = terminal::AgentSessionRegistry::new();
 
     let state = AppState {
         token: opts.token.into(),
@@ -717,6 +720,7 @@ pub async fn start_with_client_auth(
         setup: setup_orchestrator,
         sandbox_manager,
         update: opts.update,
+        agent_sessions,
     };
 
     // Clear worktree registrations orphaned by a sandbox directory that
@@ -760,9 +764,25 @@ pub async fn start_with_client_auth(
     // command starts. With the main instance lock still held, no other process
     // can enter this handoff.
     drop(child_recovery_fence);
-    routes::intercept::decopilot::recover_durable_queue(&state)
-        .await
-        .map_err(|message| StartError::LocalStore { message })?;
+    let thread_db = routes::threads::shared_db(&state).map_err(|error| StartError::LocalStore {
+        message: error
+            .body
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("failed to open local thread database")
+            .to_string(),
+    })?;
+    let interrupted = thread_db
+        .rt_interrupt_live_terminal_sessions_on_boot()
+        .map_err(|error| StartError::LocalStore {
+            message: format!("failed to interrupt stale terminal sessions: {error}"),
+        })?;
+    if !interrupted.is_empty() {
+        tracing::info!(
+            count = interrupted.len(),
+            "marked terminal sessions from the previous app instance interrupted"
+        );
+    }
 
     // One rustls config shared by both listeners: they serve the same leaf,
     // which covers the control host and the `*.<host>` preview wildcard.
@@ -819,6 +839,11 @@ pub async fn start_with_client_auth(
         "http"
     });
 
+    // Subscribe before listener admission starts so even an immediate
+    // background hard sign-out has a process-owner waiting to reap terminals.
+    let auth_reaper_task =
+        auth_fence::spawn_identity_reaper(upstream::global(), state.agent_sessions.clone());
+
     let shutdown_notify = Arc::new(Notify::new());
     let notify_for_task = shutdown_notify.clone();
     let main_instance_lock = instance_lock.clone();
@@ -849,7 +874,6 @@ pub async fn start_with_client_auth(
         )
         .await;
     });
-
     Ok(ServerHandle {
         port: bound_port,
         preview_port,
@@ -858,6 +882,7 @@ pub async fn start_with_client_auth(
         preview_shutdown_notify,
         serve_task,
         preview_serve_task,
+        auth_reaper_task,
         _instance_lock: instance_lock,
     })
 }

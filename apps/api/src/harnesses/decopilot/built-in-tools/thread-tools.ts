@@ -5,9 +5,7 @@
  * Super Agent as always-available built-ins, so it can recall past
  * conversations without depending on the passthrough MCP allowlist.
  *
- * Imported from the concrete tool files (not the `@/tools/thread` barrel):
- * the barrel pulls in background-tool-start, which imports back into this
- * harness and would form an import cycle.
+ * Imported from the concrete tool files to keep this built-in set explicit.
  */
 
 import { tool, zodSchema, type ToolSet } from "ai";

@@ -47,6 +47,18 @@ export type ThreadUpdateData = Partial<Thread> & {
   failure_kind?: string | null;
 };
 
+export interface ThreadRuntimePin {
+  harnessId: string;
+  sandboxProviderKind: string | null;
+  branch: string | null;
+  messageStorageVersion?: number;
+}
+
+export interface ThreadRuntimePinResult {
+  thread: Thread | null;
+  claimed: boolean;
+}
+
 export interface ThreadStoragePort {
   /** `isNew` is false when `data.id` collided with an existing row (the
    *  insert is `ON CONFLICT DO NOTHING`) — callers use it to skip
@@ -58,6 +70,16 @@ export interface ThreadStoragePort {
     organizationId: string,
     data: ThreadUpdateData,
   ): Promise<Thread>;
+  /**
+   * Atomically pin an unlocked thread's runtime. The `harness_id IS NULL`
+   * predicate is the lock: concurrent native and hosted starts cannot
+   * overwrite whichever runtime won first.
+   */
+  pinRuntimeIfUnset(
+    id: string,
+    organizationId: string,
+    pin: ThreadRuntimePin,
+  ): Promise<ThreadRuntimePinResult>;
   /**
    * Atomically transition an in-progress thread to completed.
    * Returns the updated row when this call won the transition, or null when the

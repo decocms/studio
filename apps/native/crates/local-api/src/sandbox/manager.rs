@@ -63,10 +63,9 @@ pub struct GitSandboxConfig {
     /// so the slug has to travel with the config rather than staying at the
     /// request layer where it is known.
     ///
-    /// `Option` because not every caller knows it: `/_sandbox/dispatch` parses
-    /// its config out of a workspace block that carries no org. Such a call
-    /// inherits the persisted slug via `merge_durable_config`, so a sandbox
-    /// only has to learn its org once.
+    /// `Option` because workspace setup can happen before an organization is
+    /// known. Later org-scoped calls merge and persist the slug, so a sandbox
+    /// only has to learn its organization once.
     #[serde(default)]
     pub org_slug: Option<String>,
 }
@@ -356,8 +355,8 @@ impl SandboxManager {
     /// transcript what happened.
     ///
     /// The VIEW is built synchronously: it is a handful of `mkdir`s and
-    /// symlinks, and the dispatch path gates the agent's org-filesystem prompt
-    /// on that directory existing, so deferring it would let the first turn of
+    /// symlinks, and terminal launch gates the agent's org-filesystem prompt on
+    /// that directory existing, so deferring it would let the first turn of
     /// a brand-new sandbox run without knowing the org exists at all.
     ///
     /// The MOUNTS are warmed earlier, when the app first touches the org (see

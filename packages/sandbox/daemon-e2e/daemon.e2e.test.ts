@@ -26,6 +26,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { retry } from "@decocms/shared/std";
+
 import {
   authHeaders,
   type Daemon,
@@ -657,6 +659,29 @@ describe("daemon e2e: tasks", () => {
     return ((await res.json()) as { taskId: string }).taskId;
   }
 
+  async function waitForTaskToStop(id: string): Promise<void> {
+    await retry(
+      async () => {
+        const response = await fetch(url(d, `/_sandbox/tasks/${id}`), {
+          headers: authHeaders(),
+        });
+        if (!response.ok) {
+          throw new Error(`task ${id} returned ${response.status}`);
+        }
+        const task = (await response.json()) as { status: string };
+        if (task.status === "running") {
+          throw new Error(`task ${id} is still running`);
+        }
+      },
+      {
+        maxAttempts: 40,
+        minTimeout: 50,
+        maxTimeout: 50,
+        jitter: 0,
+      },
+    );
+  }
+
   it("GET /_sandbox/tasks lists a running background task", async () => {
     const id = await spawnBackground("sleep 10");
     const res = await fetch(url(d, "/_sandbox/tasks?status=running"), {
@@ -689,8 +714,7 @@ describe("daemon e2e: tasks", () => {
     });
     expect(kill.status).toBe(200);
     expect(((await kill.json()) as { ok: boolean }).ok).toBe(true);
-    // Wait for the process to actually exit before re-killing.
-    await new Promise((r) => setTimeout(r, 200));
+    await waitForTaskToStop(id);
     const again = await fetch(url(d, `/_sandbox/tasks/${id}/kill`), {
       method: "POST",
       headers: authHeaders(),
@@ -731,22 +755,7 @@ describe("daemon e2e: tasks", () => {
 
     // Finished task → ok. Spawn a fast task and wait for it to leave "running".
     const quick = await spawnBackground("true");
-    const deadline = Date.now() + 5000;
-    let exited = false;
-    while (Date.now() < deadline) {
-      const r = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
-        headers: authHeaders(),
-      });
-      if (
-        r.ok &&
-        ((await r.json()) as { status: string }).status !== "running"
-      ) {
-        exited = true;
-        break;
-      }
-      await new Promise((res) => setTimeout(res, 50));
-    }
-    expect(exited).toBe(true);
+    await waitForTaskToStop(quick);
     const delDone = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
       method: "DELETE",
       headers: authHeaders(),

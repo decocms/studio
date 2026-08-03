@@ -200,7 +200,7 @@ describe("HeartbeatEmitter", () => {
 });
 
 describe("buildLivenessChunk", () => {
-  test("shape: data-liveness, transient, carries a timestamp — the single wire-format source of truth for T5 (hosted) and T6 (desktop daemon)", () => {
+  test("shape: data-liveness, transient, and timestamped", () => {
     const chunk = buildLivenessChunk(() => 12345);
     expect(chunk).toEqual({
       type: "data-liveness",

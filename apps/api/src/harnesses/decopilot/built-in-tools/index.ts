@@ -89,15 +89,13 @@ export type VmContext = {
   /**
    * When true, the sandbox fs layer mints a virtual-MCP endpoint and fires
    * POST /_sandbox/tools/sync after provisioning so the daemon materializes
-   * the tool catalog + endpoint file under `<repo>/.deco/tools/` — hosted
-   * harnesses never send a /dispatch envelope, so this is the cloud-path
-   * counterpart of the daemon's onDispatchMcp hook.
+   * the tool catalog + endpoint file under `<repo>/.deco/tools/`.
    */
   syncTools?: boolean;
 };
 
 export interface BuiltinToolParams {
-  /** Provider — null for Claude Code (subtask tool is omitted when null) */
+  /** Provider — the subtask tool is omitted when no provider is available. */
   provider: StudioProvider | null;
   /** Provider used to instantiate `generate_image`. Caller passes the
    *  chat provider when the org's `image` tier shares the chat credential
@@ -287,7 +285,7 @@ async function buildAllTools(
     });
     if (loadRepo) tools.load_repo = loadRepo;
   }
-  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
+  // Subtask requires a provider for its LLM calls.
   if (provider) {
     // Made backgroundable: the model can opt a subtask into a durable cluster
     // run (`background: true`) instead of blocking the turn. Without a

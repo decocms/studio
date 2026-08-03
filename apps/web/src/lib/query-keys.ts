@@ -342,11 +342,6 @@ export const KEYS = {
   // First bytes of a CSV/TSV file for the card thumbnail (range request).
   csvThumb: (downloadUrl: string) => ["csv-thumb", downloadUrl] as const,
 
-  // Virtual MCP tools (for tool definition lookup in chat)
-  // null virtualMcpId means default virtual MCP
-  virtualMcpTools: (virtualMcpId: string | null, orgId: string) =>
-    ["virtual-mcp", orgId, virtualMcpId ?? "default", "tools"] as const,
-
   toolDefinitionLookup: (
     connectionId: string | null,
     orgId: string,
@@ -580,12 +575,8 @@ export const KEYS = {
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
 
-  // Link daemon status (user-scoped; the cluster derives the userSub
-  // from the bearer session, so we don't include it in the key).
-  linkStatus: () => ["link-status"] as const,
-
-  // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
-  currentLink: (orgId: string) => ["current-link", orgId] as const,
+  // Native-only coding-agent availability; process-wide, not org-scoped.
+  localAgentCapabilities: () => ["local-agent-capabilities"] as const,
 
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>

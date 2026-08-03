@@ -65,7 +65,7 @@ import {
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { type SimpleModeTier } from "@/components/chat/simple-mode-tier-dropdown";
 import { ModelSelector } from "@/components/chat/select-model";
-import { useAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 
@@ -236,25 +236,31 @@ function SpecificModelPicker({
   onOverrideChange: (o: AutomationModelOverride | null) => void;
 }) {
   const t = useT();
-  const keys = useAiProviderKeys();
+  const keys = useHostedAiProviderKeys();
   const defaultKeyId = keys[0]?.id ?? null;
   const [credentialId, setCredentialId] = useState<string | null>(
-    override?.credentialId ?? defaultKeyId,
+    keys.some((key) => key.id === override?.credentialId)
+      ? (override?.credentialId ?? null)
+      : defaultKeyId,
   );
+  const activeCredentialId = keys.some((key) => key.id === credentialId)
+    ? credentialId
+    : defaultKeyId;
 
-  const resolvedModel: AiProviderModel | null = override
-    ? ({
-        modelId: override.modelId,
-        title: override.title || override.modelId,
-        keyId: override.credentialId,
-        providerId: "deco",
-        description: null,
-        logo: null,
-        capabilities: [],
-        limits: null,
-        costs: null,
-      } as AiProviderModel)
-    : null;
+  const resolvedModel: AiProviderModel | null =
+    override && keys.some((key) => key.id === override.credentialId)
+      ? ({
+          modelId: override.modelId,
+          title: override.title || override.modelId,
+          keyId: override.credentialId,
+          providerId: "deco",
+          description: null,
+          logo: null,
+          capabilities: [],
+          limits: null,
+          costs: null,
+        } as AiProviderModel)
+      : null;
 
   if (keys.length === 0) {
     return (
@@ -270,10 +276,10 @@ function SpecificModelPicker({
         variant="bordered"
         placeholder={t("automations.automationConfig.pickModelPlaceholder")}
         model={resolvedModel}
-        credentialId={credentialId}
+        credentialId={activeCredentialId}
         onCredentialChange={setCredentialId}
         onModelChange={(m) => {
-          const keyId = m.keyId ?? credentialId ?? "";
+          const keyId = m.keyId ?? activeCredentialId ?? "";
           setCredentialId(keyId);
           onOverrideChange({
             modelId: m.modelId,

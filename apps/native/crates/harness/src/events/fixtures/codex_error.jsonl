@@ -1,3 +1,0 @@
-{"type":"thread.started","thread_id":"error-thread"}
-{"type":"turn.started"}
-{"type":"turn.failed","error":{"message":"stream disconnected before completion"}}

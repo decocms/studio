@@ -1,0 +1,26 @@
+[package]
+name = "terminal-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+harness = { path = "../harness" }
+
+# Interactive coding agents require a controlling terminal. Keep this local to
+# the crate that owns PTY lifetimes instead of making it a workspace-wide
+# dependency.
+portable-pty = "0.9"
+
+[dev-dependencies]
+tempfile = { workspace = true }

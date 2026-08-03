@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/local-api", "crates/harness", "crates/upstream", "src-tauri"]
+members = [
+  "crates/local-api",
+  "crates/harness",
+  "crates/terminal-session",
+  "crates/upstream",
+  "src-tauri",
+]
 
 [workspace.package]
 edition = "2021"
@@ -92,10 +98,7 @@ tauri-build = { version = "2", features = ["config-json5"] }
 # precedent `crates/harness/Cargo.toml` set for `portable-pty` — see that
 # crate's Cargo.toml doc comment.
 
-# Phase 2's `crates/harness` PTY spawn (see
-# the desktop migration contract) declares `portable-pty` (and
-# `libc`, for process-group signaling) directly in its OWN
-# `crates/harness/Cargo.toml` rather than here — this table stays the
-# family-agnostic dependency set every OTHER crate inherits via
-# `.workspace = true`; local-api itself never spawns a PTY directly and has
-# no reason to pull either dependency in.
+# The PTY-owning crates declare `portable-pty` directly rather than widening
+# this shared table. Process-group and tty signaling use absolute system-tool
+# paths through safe process APIs, so no direct `libc`/`nix` dependency is
+# needed here.

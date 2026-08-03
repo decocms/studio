@@ -7,8 +7,6 @@ const RESERVED_NATIVE_PATH_PREFIXES = [
   "/_auth",
   "/_local",
   "/_sandbox",
-  "/threads",
-  "/models",
   "/health",
   "/metrics",
 ] as const;

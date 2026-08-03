@@ -154,8 +154,8 @@ export async function createVirtualClientFrom(
 
   // Agent runtimes opt into the skill catalog: enumerate the org's skills now
   // (async — the sync getInstructions() can't) and stash the rendered block so
-  // it reaches both the cluster engine and the desktop daemon. Cheap: the
-  // public portion is cached process-wide. Skipped for non-agent consumers
+  // it reaches both hosted Decopilot and native coding-agent terminals. Cheap:
+  // the public portion is cached process-wide. Skipped for non-agent consumers
   // (e.g. the home-next-actions prompt poll).
   const skillsBlock = options?.includeSkillsCatalog
     ? ((await renderSkillsCatalogBlock(ctx, virtualMcp)) ?? undefined)

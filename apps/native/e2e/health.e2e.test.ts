@@ -100,7 +100,7 @@ describeLocalApi("local-api e2e: health", () => {
     // apps/api/src/api/app.ts), but the old hardcoded preflight list here
     // rejected it, killing every /api/:org/mcp/* call. The preflight now
     // echoes Access-Control-Request-Headers for an allowed origin.
-    const res = await fetch(url(a, "/models"), {
+    const res = await fetch(url(a, "/_local/agent-capabilities"), {
       method: "OPTIONS",
       headers: {
         Origin: "tauri://localhost",
@@ -118,7 +118,7 @@ describeLocalApi("local-api e2e: health", () => {
     // Cross-origin JS cannot READ response headers unless exposed; the MCP
     // client must read Mcp-Session-Id (same-origin prod web never needs
     // this, so only this suite pins it).
-    const res = await fetch(url(a, "/models"), {
+    const res = await fetch(url(a, "/_local/agent-capabilities"), {
       headers: { Origin: "tauri://localhost", ...authHeaders() },
     });
     expect(res.status).toBe(200);
@@ -127,7 +127,7 @@ describeLocalApi("local-api e2e: health", () => {
     );
   });
 
-  // A path outside /health, /_sandbox/*, /threads*, /models falls through to
+  // A path outside /health, /_sandbox/*, and /_local/* falls through to
   // the app-API intercept-or-proxy fallback (`routes/upstream.rs::proxy`,
   // merged in at the router root — see `router.rs`'s module doc), NOT the
   // reverse-proxy-to-dev-server family anymore: that family moved to its

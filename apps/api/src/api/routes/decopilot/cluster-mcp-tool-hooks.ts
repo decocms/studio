@@ -9,10 +9,8 @@
  *   - `resolveArgs`  → resolve `studio-storage:` refs to presigned URLs.
  *   - `onToolCalled` → emit per-tool-call analytics to PostHog.
  *
- * Lives in the cluster layer (not the portable harness tree) so the
- * harness leaves stay free of `@/posthog` / `file-materializer` reaches.
- * The desktop daemon simply omits these hooks (no ctx → no storage-ref
- * resolution, no analytics — the intended gated behavior).
+ * Lives in the cluster layer (not the portable harness tree) so the harness
+ * leaves stay free of `@/posthog` / `file-materializer` reaches.
  */
 
 import type { StudioContext } from "@/core/studio-context";

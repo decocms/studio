@@ -29,13 +29,14 @@
 //! every user's disk — extractable, and therefore public in practice. Minting
 //! a CA per machine keeps every private key local to the machine that made it.
 //!
-//! The root is NAME-CONSTRAINED to the control domain, `localhost` and
-//! 127.0.0.1, and its trust is scoped to the SSL policy at install time
+//! The root's DNS name form is NAME-CONSTRAINED to the control domain and
+//! `localhost`, and its trust is scoped to the SSL policy at install time
 //! (`add-trusted-cert -p ssl`). Both matter: without them a stolen
 //! `ca-key.pem` — readable by any process running as this user, including
 //! code the app itself runs in sandboxes — would be a general-purpose
-//! authority for every TLS connection this user makes. With them, a leak is
-//! worth exactly what the comment used to claim: this machine's loopback.
+//! authority for every TLS connection this user makes. The IP name form must
+//! remain unrestricted for BoringSSL compatibility, as detailed below, so a
+//! leaked key still could sign trusted leaves for arbitrary IP addresses.
 //!
 //! The user is asked to trust the ROOT once. Only the root persists; the leaf
 //! is re-minted on every launch (Apple rejects TLS leaves valid for more than
@@ -198,6 +199,9 @@ fn leaf_params() -> Result<CertificateParams, rcgen::Error> {
         KeyUsagePurpose::KeyEncipherment,
     ];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    // Multiple app namespaces can leave same-subject roots in the Keychain.
+    // AKI makes every verifier choose this launch's issuer deterministically.
+    params.use_authority_key_identifier_extension = true;
     let mut sans = vec![
         SanType::DnsName(CONTROL_HOST.try_into()?),
         // One label under the control host: every sandbox preview.
@@ -335,9 +339,18 @@ mod tests {
         assert!(joined.contains(&format!("*.{CONTROL_HOST}")), "{joined}");
     }
 
-    /// The name constraints are what make "a leak compromises one laptop's
-    /// loopback" TRUE: without them, a stolen `ca-key.pem` mints a trusted
-    /// leaf for any host this user's browsers will accept.
+    #[test]
+    fn the_leaf_identifies_its_issuer_key() {
+        let params = leaf_params().expect("params");
+        assert!(
+            params.use_authority_key_identifier_extension,
+            "without an authority key identifier, TLS verifiers can choose a stale same-name Studio root"
+        );
+    }
+
+    /// The name constraints prevent a stolen `ca-key.pem` from minting a
+    /// trusted leaf for arbitrary DNS hosts this user's browsers will accept.
+    /// They do not constrain IP-address leaves.
     ///
     /// DNS subtrees only — an IP subtree is a poison pill for BoringSSL
     /// verifiers (`UNSUPPORTED_CONSTRAINT_TYPE`), and the claude CLI is one.

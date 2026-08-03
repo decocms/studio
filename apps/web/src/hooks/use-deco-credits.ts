@@ -9,7 +9,7 @@ import { useProjectContext } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
-import { useAiProviderKeys } from "./collections/use-ai-providers";
+import { useHostedAiProviderKeys } from "./collections/use-ai-providers";
 import { track } from "../lib/posthog-client";
 import { useRef } from "react";
 
@@ -22,7 +22,7 @@ const lastSeenBalance = new Map<string, number>();
 export function useDecoCredits() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const keys = useAiProviderKeys();
+  const keys = useHostedAiProviderKeys();
 
   const decoKey = keys.find((k) => k.providerId === "deco");
 

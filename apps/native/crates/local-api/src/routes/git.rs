@@ -2335,6 +2335,7 @@ mod tests {
             token: "test-token".into(),
             boot_id: "test-boot".into(),
             sandbox_manager: crate::sandbox::SandboxManager::new(app_root.to_path_buf()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
             app_root: app_root.to_path_buf(),
             repo_dir: repo_dir.to_path_buf(),
             mode: crate::state::ApiMode::Strict,

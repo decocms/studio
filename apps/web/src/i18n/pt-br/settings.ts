@@ -568,6 +568,8 @@ export const settings = {
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · adicionada há {time}",
   "settings.providerKeyRow.cancel": "Cancelar",
+  "settings.providerKeyRow.claudeCode": "Claude Code",
+  "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",
   "settings.providerKeyRow.deleteProviderKey": "Excluir chave do provedor",

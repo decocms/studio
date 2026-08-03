@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
   buildDurableDispatchInput,
 } from "./dispatch-run";
@@ -79,6 +80,8 @@ describe("buildDurableDispatchInput", () => {
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         windowSize: 50,
         branch: "main",
@@ -87,7 +90,6 @@ describe("buildDurableDispatchInput", () => {
         messageId: "msg-user",
         runFenceToken: "fence-1",
         branch: "main",
-        harnessId: "decopilot",
       },
     );
 
@@ -115,6 +117,8 @@ describe("buildDurableDispatchInput", () => {
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
         runMetadata: { org_id: "org-xyz", url: "shop.com" },
       },
@@ -147,6 +151,8 @@ describe("buildDurableDispatchInput", () => {
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },
@@ -175,10 +181,30 @@ describe("buildDurableDispatchInput", () => {
         mode: "default",
         organizationId: "org-1",
         userId: "user-1",
+        harnessId: "decopilot",
+        sandboxProviderKind: "agent-sandbox",
         taskId: "thread-1",
       },
       { messageId: "msg-user", runFenceToken: "fence-1" },
     );
     expect("systemContext" in durable).toBe(false);
+  });
+});
+
+describe("assertHostedDispatchHarness", () => {
+  test("accepts only explicit Decopilot", () => {
+    expect(() => assertHostedDispatchHarness("decopilot")).not.toThrow();
+    for (const harnessId of [
+      null,
+      undefined,
+      "claude-code",
+      "codex",
+      "opencode",
+      "future",
+    ] as const) {
+      expect(() => assertHostedDispatchHarness(harnessId)).toThrow(
+        /explicit Decopilot/,
+      );
+    }
   });
 });

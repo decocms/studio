@@ -27,8 +27,8 @@ export interface VirtualClientOptions {
   /**
    * Pre-rendered `<available-skills>` catalog block, appended to the served
    * instructions by `getInstructions()`. Built async in the factory (the sync
-   * `getInstructions()` can't read org-fs) so it reaches both the in-process
-   * cluster engine and the sandbox/desktop daemon. Only set for agent runtimes.
+   * `getInstructions()` can't read org-fs) so it reaches both hosted Decopilot
+   * and native coding-agent terminals. Only set for agent runtimes.
    */
   skillsBlock?: string;
 }

@@ -31,6 +31,8 @@ export async function enqueueAgentRunForTask(
     virtual_mcp_id: agentId,
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
     message_storage_version: 2,
+    harness_id: "decopilot",
+    sandbox_provider_kind: "agent-sandbox",
     created_by: userId,
   });
 
@@ -73,6 +75,8 @@ export async function enqueueAgentRunForTask(
       mode: "default",
       organizationId,
       userId,
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
       taskId: thread.id,
       runMetadata: { taskBoardItemId: task.id },
     },

@@ -536,6 +536,8 @@ export const settings = {
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · added {time} ago",
   "settings.providerKeyRow.cancel": "Cancel",
+  "settings.providerKeyRow.claudeCode": "Claude Code",
+  "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
   "settings.providerKeyRow.deleteProviderKey": "Delete provider key",

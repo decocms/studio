@@ -15,6 +15,7 @@ import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
+import { getProviderInventoryState } from "./provider-inventory";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -29,8 +30,8 @@ function ErrorFallback({ error }: { error: Error }) {
 
 function OrgAiProvidersContent() {
   const allKeys = useAiProviderKeys();
-  const hasDeco = allKeys.some((k) => k.providerId === "deco");
-  const hasAnyProvider = allKeys.length > 0;
+  const { hasInventory, hasHostedProvider, hasDeco } =
+    getProviderInventoryState(allKeys);
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
@@ -38,7 +39,7 @@ function OrgAiProvidersContent() {
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
 
-  if (!hasAnyProvider) {
+  if (!hasHostedProvider) {
     return (
       <>
         <ProviderGrid
@@ -56,6 +57,11 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
+        {hasInventory ? (
+          <ConnectedProvidersSection
+            onConnectClick={() => setConnectOpen(true)}
+          />
+        ) : null}
       </>
     );
   }

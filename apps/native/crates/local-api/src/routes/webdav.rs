@@ -20,11 +20,11 @@
 //!
 //! ## Authentication
 //!
-//! Nothing is minted here. The caller authenticates to local-api exactly
-//! like every other `/_sandbox` route (`router.rs`'s `guard`: the per-launch
-//! bearer in standalone mode, the session cookie in embedded mode), and the
-//! upstream leg attaches the signed-in user's Keychain-backed access token
-//! server-side via [`crate::routes::upstream::send_org_request`]. The
+//! Nothing is minted here. In embedded mode, `router.rs` accepts rclone's
+//! mount-scoped token only for this `/_sandbox/orgfs/*` surface; standalone
+//! mode keeps its ordinary local bearer. The upstream leg attaches the
+//! signed-in user's Keychain-backed access token server-side via
+//! [`crate::routes::upstream::send_org_request`]. The
 //! daemon's `ORGFS_CONFIG` fs-scoped API key — provisioned because a cluster
 //! pod had no identity of its own — has no counterpart here and is
 //! deliberately gone.
@@ -33,12 +33,9 @@
 //! rediscovered from a failing mount:
 //!
 //! - The shipped Tauri app boots local-api in EMBEDDED mode
-//!   (`src-tauri/src/setup.rs` -> `local_api::start_embedded`), where `guard`
-//!   wants the HttpOnly per-launch session cookie, the exact `Host`, and the
-//!   exact `Origin` on unsafe methods — NOT a bearer. rclone can satisfy all
-//!   three (`--header "Cookie: ..." --header "Origin: ..."` against the
-//!   expected host), but "hand rclone the bearer token" only works in
-//!   standalone (`ClientAuthMode::Bearer`) mode.
+//!   (`src-tauri/src/setup.rs` -> `local_api::start_embedded`). rclone uses a
+//!   dedicated mount token plus the exact `Host` and `Origin`; that token is
+//!   accepted only on `/_sandbox/orgfs/*`, never as a whole-API credential.
 //! - `router.rs`'s `intercept_options` layer answers EVERY `OPTIONS` with
 //!   `204` before routing, so this module's `OPTIONS` branch (`DAV: 1`) is
 //!   currently unreachable through the main listener. rclone's `webdav`

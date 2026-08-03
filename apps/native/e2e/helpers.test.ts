@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { resolveLocalApiCmd } from "./helpers";
+import { resolveEmbeddedLocalApiCmd, resolveLocalApiCmd } from "./helpers";
 
 describe("resolveLocalApiCmd", () => {
   it("returns null when unset", () => {
@@ -49,5 +49,16 @@ describe("resolveLocalApiCmd", () => {
     // `daemon.e2e.helpers.ts`. Documenting the actual (mirrored) behavior
     // here rather than the guard's apparent intent.
     expect(resolveLocalApiCmd("[]")).toEqual(["[]"]);
+  });
+});
+
+describe("resolveEmbeddedLocalApiCmd", () => {
+  it("is independent from the normal local-api command", () => {
+    expect(resolveEmbeddedLocalApiCmd(undefined)).toBeNull();
+    expect(
+      resolveEmbeddedLocalApiCmd(
+        '["/abs/local-api-e2e-embedded", "--embedded"]',
+      ),
+    ).toEqual(["/abs/local-api-e2e-embedded", "--embedded"]);
   });
 });

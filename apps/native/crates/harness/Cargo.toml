@@ -12,35 +12,23 @@ workspace = true
 # Shared workspace-pinned deps (see apps/native/Cargo.toml's
 # `[workspace.dependencies]` table) — consumed via `.workspace = true`,
 # never edited here.
-serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-futures = { workspace = true }
-futures-util = { workspace = true }
-bytes = { workspace = true }
 
 # Crate-local dependency, NOT in the shared workspace table (see that
 # table's trailing comment) — declared directly here since this crate is
 # its only consumer.
 #
-# `portable-pty` — wezterm's PTY crate (see the native implementation contract
-# section 4 for the full "why portable-pty over node-pty" writeup): spawns
-# the child via `std::process::Command` from inside our own signed binary
-# (no separate `spawn-helper` executable to lose its execute bit or fail
-# Gatekeeper), used for the PTY-backed half of `spawn::spawn` — see that
-# module's doc comment for why it is NOT the path harness dispatch
-# actually takes (plain pipes are; PTY is implemented for completeness /
-# any future TTY-requiring CLI, per the Phase 2 TODO's explicit ask).
+# `portable-pty` — wezterm's PTY crate. The watchdog module uses its command
+# builder for the wrapper-first admission protocol shared by interactive
+# coding-agent sessions.
 #
 # No `libc`/`nix` dependency: the workspace denies `unsafe_code` (see
 # `apps/native/Cargo.toml`'s `[workspace.lints.rust]`), and every raw
 # `kill(2)`/`setpgid(2)` FFI call requires `unsafe`. Process-GROUP
-# signaling (`spawn.rs::kill_process_group`) instead shells out to the
-# `kill(1)` binary (`kill -TERM -<pgid>`) — POSIX-portable, zero `unsafe`,
-# no extra dependency. Process-group CREATION uses
-# `std::os::unix::process::CommandExt::process_group`, which is a safe,
-# stable std API (since Rust 1.64) — no FFI needed for that half either.
+# signaling instead shells out to `kill(1)` — POSIX-portable, zero `unsafe`,
+# no extra dependency.
 portable-pty = "0.9"
 
 [dev-dependencies]

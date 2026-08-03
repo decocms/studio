@@ -51,8 +51,11 @@ export {
 } from "./virtual-mcp";
 
 export {
+  HOSTED_PROVIDER_IDS,
   PROVIDER_IDS,
+  isHostedProviderId,
   MODEL_CAPABILITIES,
+  type HostedProviderId,
   type ProviderId,
   type ModelCapability,
   type AiProviderModel,

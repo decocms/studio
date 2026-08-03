@@ -8,10 +8,13 @@ import {
   type ModelSlot,
   type SimpleModeConfig,
 } from "./use-organization-settings";
+import { useHostedAiProviderKeys } from "./collections/use-ai-providers";
+import {
+  resolveEffectiveSimpleMode,
+  type ModelTierPreferences,
+} from "./model-slot-resolution";
 
-export interface UserModelPreferences {
-  tiers: Partial<Record<ChatTier, ModelSlot | null>>;
-}
+export type UserModelPreferences = ModelTierPreferences;
 
 const EMPTY_PREFS: UserModelPreferences = { tiers: {} };
 
@@ -107,12 +110,10 @@ export function useUpdateUserModelPreferences() {
 export function useEffectiveSimpleMode(): SimpleModeConfig {
   const org = useSimpleMode();
   const user = useUserModelPreferences();
-  return {
-    tiers: {
-      ...org.tiers,
-      fast: user.tiers.fast ?? org.tiers.fast,
-      smart: user.tiers.smart ?? org.tiers.smart,
-      thinking: user.tiers.thinking ?? org.tiers.thinking,
-    },
-  };
+  const keys = useHostedAiProviderKeys();
+  return resolveEffectiveSimpleMode(
+    org,
+    user,
+    new Set(keys.map((key) => key.id)),
+  );
 }

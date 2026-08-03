@@ -4,15 +4,11 @@
  * These interfaces are the narrow boundary between the portable orchestration
  * (`run-core.ts` / `run-stream.ts`) and the environment adapters:
  *   - `HarnessAssembledTools` — the tool-set bundle the orchestration reads.
- *     The cluster `AssembledTools` (`./tools`) structurally satisfies it; the
- *     desktop builds an equivalent in Task 15. Includes the per-run side
- *     channel + writer + pending-images + step-finish hook that the adapter
- *     owns and the loop merges.
+ *     The hosted `AssembledTools` (`./tools`) structurally satisfies it and
+ *     carries the per-run side channel, writer, pending images, and step hook.
  *   - `RunEngineArgs` / `AssembledEngineHandle` — the engine the orchestration
- *     drives. The cluster closes over `ctx` + `organization` and delegates to
- *     `runAgentLoop`; the desktop (Task 15) delegates to
- *     `runNativeAgentLoopCore`. The ctx-coupled args are NOT in this shape —
- *     the adapter's `runEngine` closure captures them.
+ *     drives. The hosted adapter closes over `ctx` + `organization` and
+ *     delegates to `runAgentLoop`; ctx-coupled args stay out of this shape.
  *
  * `@/*`-free: imports only AI-SDK + MCP-SDK + relative portable leaves.
  */
@@ -63,8 +59,7 @@ export interface HarnessAssembledTools {
   /** Server-provided agent instructions from the MCP — agent identity for
    *  non-decopilot agents. */
   serverInstructions: string | undefined;
-  /** The live MCP passthrough client (in-process on the cluster, HTTP on the
-   *  desktop). The adapter owns its lifecycle. */
+  /** The live MCP passthrough client. The hosted adapter owns its lifecycle. */
   passthroughClient: Client;
   /** Oversized tool outputs stashed for `read_tool_output`. The engine
    *  re-assembles the MCP tools internally, so it MUST write into this same
