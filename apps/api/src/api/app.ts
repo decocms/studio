@@ -1295,7 +1295,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
-  app.route("/report", createReportPagesRoutes(options.clientDir));
+  // Mounted twice: the nginx front door only proxies /api-prefixed paths to
+  // this server (everything else falls through to the static SPA), so the
+  // share-card image URL (og:image → /api/report/:domain/og.png) rides the
+  // /api mount to stay reachable in production without touching nginx.
+  const reportPages = createReportPagesRoutes(options.clientDir);
+  app.route("/report", reportPages);
+  app.route("/api/report", reportPages);
 
   // ============================================================================
   // Better Auth Routes

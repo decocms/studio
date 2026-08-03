@@ -11,9 +11,12 @@
  * The share IMAGE is the full cover card (favicon · url · score ring · device
  * frames with the real captured screenshots), rendered by the reports worker
  * (satori/resvg on the edge — see decocms/reports) and PROXIED by the sibling
- * `GET /report/:domain/og.png` route so og:image stays same-origin. The worker
- * always answers 200 with a branded card (even for an unscanned domain); the
- * designed static card remains the fallback for a dead/slow worker only.
+ * `GET /:domain/og.png` route so og:image stays same-origin. og:image points at
+ * the `/api/report` mount of this app (see app.ts): the nginx front door only
+ * proxies /api-prefixed paths here, so the plain /report path would land on the
+ * static SPA fallback. The worker always answers 200 with a branded card (even
+ * for an unscanned domain); the designed static card remains the fallback for a
+ * dead/slow worker only.
  */
 
 import { Hono } from "hono";
@@ -110,8 +113,10 @@ export function buildReportHead(
 
   // The rendered per-report card (favicon + domain + score), or its static
   // fallback for an unscanned domain — both 1200×630, so summary_large_image.
-  // og:image MUST be absolute for every unfurler.
-  const image = `${canonical}/og.png`;
+  // og:image MUST be absolute for every unfurler — and must ride the /api
+  // mount: the nginx front door only proxies /api-prefixed paths to this
+  // server, so `${canonical}/og.png` would land on the SPA fallback instead.
+  const image = `${origin}/api/report/${encodeURIComponent(domain)}/og.png`;
   const imageAlt = `${brand} commerce report by decocms`;
 
   return [
@@ -155,8 +160,9 @@ const OG_PROXY_TIMEOUT_MS = 10_000;
 export function createReportPagesRoutes(clientDir: string | undefined): Hono {
   const app = new Hono();
 
-  // GET /report/:domain/og.png — the per-report share card, proxied from the
-  // reports worker (GET /api/v2/public/diagnostics/:domain/og.png). The worker
+  // GET /:domain/og.png (reachable in prod as /api/report/:domain/og.png) —
+  // the per-report share card, proxied from the reports worker
+  // (GET /api/v2/public/diagnostics/:domain/og.png). The worker
   // renders the full cover card and always answers 200 (branded fallback for an
   // unscanned domain), so the designed static card here only covers a dead/slow
   // worker or a non-image reply. Registered before `/:domain` so the
