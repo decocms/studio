@@ -76,6 +76,7 @@ import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
+import { resolveThreadVirtualMcpId } from "@/components/chat/thread-authority";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -466,14 +467,18 @@ function AgentInsetProvider() {
   const search = useSearch({ strict: false }) as {
     virtualmcpid?: string;
   };
-  const virtualMcpId =
+  const requestedVirtualMcpId =
     search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(params.taskId ?? "", virtualMcpId);
+  const ensureState = useEnsureTask(params.taskId ?? "", requestedVirtualMcpId);
+  const virtualMcpId = resolveThreadVirtualMcpId(
+    ensureState.status === "ready" ? ensureState.task : null,
+    requestedVirtualMcpId,
+  );
 
   // Read-only teammate threads: pull the current metadata (githubRepo /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview

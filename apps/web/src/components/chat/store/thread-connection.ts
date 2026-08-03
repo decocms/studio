@@ -69,15 +69,8 @@ export interface RequestOptions {
   toolApprovalLevel: ToolApprovalLevel;
   /** Synthesized into a `role: "system"` message at POST time. */
   system?: string;
-  agent?: { id: string };
+  /** Optional first-submit hint; the persisted thread remains authoritative. */
   branch?: string | null;
-  thread_id?: string;
-  /**
-   * Optional pins sent on first message. The server persists them onto the
-   * thread row and ignores them on subsequent messages.
-   */
-  sandboxProviderKind?: "agent-sandbox";
-  harnessId?: "decopilot";
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
@@ -736,7 +729,7 @@ export class ThreadConnection {
     signal?: AbortSignal,
     quiet = false,
   ): Promise<void> {
-    const { system, ...rest } = opts;
+    const { system, tier, mode, toolApprovalLevel, branch } = opts;
     // Attach the system prompt only on a user turn. Tool-output / approval
     // continuations re-POST the assistant message; the server already has
     // the system context for the run.
@@ -749,7 +742,16 @@ export class ThreadConnection {
           }
         : null;
     const messages = systemMessage ? [systemMessage, message] : [message];
-    const body = { messages, ...rest };
+    // Whitelist the hosted wire contract instead of spreading caller input.
+    // The URL thread owns the agent and runtime; stale JS callers must not be
+    // able to smuggle the retired selectors into a strict request body.
+    const body = {
+      messages,
+      tier,
+      mode,
+      toolApprovalLevel,
+      ...(branch !== undefined ? { branch } : {}),
+    };
     const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/messages`;
     // G1: combine the caller's stop() abort signal with a generous timeout so
     // a stalled server never hangs the chat indefinitely. The POST is

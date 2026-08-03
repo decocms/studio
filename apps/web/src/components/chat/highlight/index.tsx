@@ -187,7 +187,6 @@ export function ChatHighlight() {
     tier: simpleModeTier,
     mode: chatMode,
     toolApprovalLevel,
-    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
   });
 
   const currentApprovalLevel: ToolApprovalLevel =

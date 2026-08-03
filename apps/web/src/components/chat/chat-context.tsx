@@ -50,8 +50,11 @@ import {
   type NativeHarnessId,
 } from "./pills/agent-options";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { resolveSubmitSettings } from "./resolve-submit-settings";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
+import {
+  isHostedFirstSubmit,
+  resolveThreadVirtualMcpId,
+} from "./thread-authority";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
@@ -313,9 +316,9 @@ export function ChatStreamValueProvider({
  * (chat model, image model, deep research model, simple-mode tier) sync
  * automatically with any other mount of this provider via storage events.
  *
- * `virtualMcpId` is derived from the URL search param (`virtualmcpid`) with
- * a decopilot fallback, matching `useChatNavigation` — so the same
- * provider works on `/$org/` and `/$org/$taskId`.
+ * On the standalone home surface, `virtualMcpId` comes from the URL search
+ * param (`virtualmcpid`) with a Decopilot fallback. Inside a task provider,
+ * the persisted thread identity overrides that creation hint.
  *
  * `ChatContextProvider` composes this provider, so routes that mount the
  * full chat context get the prefs context via the same code path. If a
@@ -327,6 +330,8 @@ export function ChatStreamValueProvider({
 export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const { locator } = useProjectContext();
   const { virtualMcpId: urlVirtualMcpId } = useChatNavigation();
+  const taskCtxForLock = useOptionalChatTask();
+  const selectedVirtualMcpId = taskCtxForLock?.virtualMcpId ?? urlVirtualMcpId;
 
   // Model selection (localStorage-backed) — image and deep research only;
   // chat model is always tier-driven.
@@ -458,10 +463,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
 
-  // selectedVirtualMcp — URL-derived
-  const selectedVirtualMcpData = useVirtualMCP(urlVirtualMcpId);
+  // Existing threads derive their selected agent from the persisted row. The
+  // URL remains the selection source only on the standalone/new-chat surface.
+  const selectedVirtualMcpData = useVirtualMCP(selectedVirtualMcpId);
   const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: urlVirtualMcpId,
+    id: selectedVirtualMcpId,
     title: "",
     description: null,
     icon: null,
@@ -522,7 +528,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // This is option (b) from the plan: read the inner context here rather
   // than hoist active-task knowledge into the outer provider, which would
   // require restructuring the standalone mount path.
-  const taskCtxForLock = useOptionalChatTask();
   const lockedAgentOption =
     taskCtxForLock?.isThreadLocked && taskCtxForLock.lockedHarness != null
       ? agentOptionFor(
@@ -627,11 +632,8 @@ export function ChatContextProvider({
   const user = session?.user ?? null;
 
   // URL state
-  const {
-    taskId: urlTaskId,
-    virtualMcpId: urlVirtualMcpId,
-    navigateToTask: rawNavigateToTask,
-  } = useChatNavigation();
+  const { taskId: urlTaskId, navigateToTask: rawNavigateToTask } =
+    useChatNavigation();
 
   // Preferences
   const [preferences] = usePreferences();
@@ -642,8 +644,18 @@ export function ChatContextProvider({
   // taskId always comes from the URL (seeded by router's validateSearch)
   const effectiveTaskId = urlTaskId;
 
-  // Effective agent: URL param ?? prop (thread owner)
-  const effectiveVirtualMcpId = urlVirtualMcpId;
+  // The active task row is resolved by the route layout via `useEnsureTask`
+  // and threaded in as a prop. Guard against transient prop/URL skew during
+  // navigation by only honoring the prop when ids match.
+  const activeTask =
+    effectiveTaskId && task?.id === effectiveTaskId ? task : null;
+
+  // An existing thread owns its agent identity. `virtualMcpId` is only the
+  // creation hint supplied by the route while the row is missing.
+  const effectiveVirtualMcpId = resolveThreadVirtualMcpId(
+    activeTask,
+    virtualMcpId,
+  );
 
   // Context prompt (uses effective agent)
   const contextPrompt = useContextHook(effectiveVirtualMcpId);
@@ -659,12 +671,6 @@ export function ChatContextProvider({
     });
   };
 
-  // The active task row is resolved by the route layout via `useEnsureTask`
-  // and threaded in as a prop, so this provider doesn't need to read the
-  // panel-visible threads slot. Guard against transient prop/URL skew during
-  // navigation by only honoring the prop when ids match.
-  const activeTask =
-    effectiveTaskId && task?.id === effectiveTaskId ? task : null;
   const lockedHarness = activeTask?.harness_id ?? null;
   const lockedSandbox = (activeTask?.sandbox_provider_kind ??
     null) as SandboxProviderKind | null;
@@ -684,15 +690,17 @@ export function ChatContextProvider({
     void threadActions
       .create({
         id: newId,
-        virtual_mcp_id: virtualMcpId,
+        virtual_mcp_id: effectiveVirtualMcpId,
         ...(currentBranch ? { branch: currentBranch } : {}),
       })
-      .then(() => navigateToTask(newId))
+      .then(() =>
+        navigateToTask(newId, { virtualMcpId: effectiveVirtualMcpId }),
+      )
       .catch(() => {
         // Error toast surfaced by ThreadManagerStore.create; navigate anyway
         // so the user's not stranded — the route loader's ensure fallback
         // will retry.
-        navigateToTask(newId);
+        navigateToTask(newId, { virtualMcpId: effectiveVirtualMcpId });
       });
     return newId;
   };
@@ -707,8 +715,9 @@ export function ChatContextProvider({
     virtualMcpId?: string;
   }) => {
     const newId = crypto.randomUUID();
-    const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
+    const targetVmcp = params.virtualMcpId ?? effectiveVirtualMcpId;
+    const carryBranch =
+      targetVmcp === effectiveVirtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void threadActions
       .create({
@@ -718,13 +727,13 @@ export function ChatContextProvider({
       })
       .then(() =>
         navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
+          virtualMcpId: targetVmcp,
           autosend: true,
         }),
       )
       .catch(() => {
         navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
+          virtualMcpId: targetVmcp,
           autosend: true,
         });
       });
@@ -779,7 +788,7 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
-  const { virtualMcpId, activeTask, currentBranch } = useChatTask();
+  const { activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
@@ -1136,7 +1145,6 @@ export function ActiveTaskProvider({
   async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
-    const capturedVirtualMcpId = virtualMcpId;
 
     // Coding-agent harnesses have no hosted AI SDK/headless dispatch contract.
     // A native row can still reach this shared provider, so fail closed before
@@ -1175,32 +1183,16 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
-    const submitSettings = resolveSubmitSettings({
-      thread: activeTask
-        ? {
-            harness_id: activeTask.harness_id ?? null,
-            sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
-            branch: activeTask.branch ?? null,
-          }
-        : null,
-      globals: {
-        branch: currentBranch,
-      },
-    });
-
-    // First message on an unlocked thread: the server pins harness_id /
-    // sandbox_provider_kind on receipt, but that write never flows back through
-    // `/watch` (RowPatch carries it, the SSE event does not). Mirror the
-    // harness into the store now so `findReusableNewChat` stops treating the
-    // (now non-empty, often just-failed) thread as an empty "New chat" and
-    // dropping the user back onto it. Hosted web always sends Decopilot.
-    // LIST/GET is authoritative; this only keeps the live view correct while
-    // its row refresh is still in flight. Leave the sandbox field to that
-    // authoritative refresh too.
-    if (!activeTask?.harness_id) {
+    // The server owns hosted runtime selection and pins Decopilot on first
+    // submit. That pin does not flow back through `/watch`, so mirror the known
+    // hosted invariant into the live store. This keeps a submitted (including
+    // just-failed) thread from being reused as an empty "New chat" before the
+    // next authoritative LIST/GET refresh.
+    const firstHostedSubmit = isHostedFirstSubmit(activeTask);
+    if (firstHostedSubmit) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: submitSettings.harnessId ?? "decopilot",
+        harness_id: "decopilot",
         updated_at: new Date().toISOString(),
       });
     }
@@ -1211,9 +1203,7 @@ export function ActiveTaskProvider({
       toolApprovalLevel:
         preferences.toolApprovalLevel ?? readToolApprovalLevel(),
       system: system || undefined,
-      agent: { id: capturedVirtualMcpId },
-      thread_id: capturedTaskId,
-      ...submitSettings,
+      ...(firstHostedSubmit ? { branch: currentBranch ?? null } : {}),
     };
 
     // A run is already streaming (this thread) or in progress (hosted): this

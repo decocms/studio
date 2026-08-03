@@ -178,11 +178,9 @@ export function formatMetricValue(
 // ── Agent resolution helpers ────────────────────────────────────────────────
 
 export function getThreadAgentId(thread: {
-  run_config?: Record<string, unknown> | null;
   virtual_mcp_id?: string;
 }): string | null {
-  const runConfig = (thread.run_config ?? {}) as { agent?: { id: string } };
-  return runConfig.agent?.id ?? (thread.virtual_mcp_id || null);
+  return thread.virtual_mcp_id || null;
 }
 
 export function resolveAgentName(

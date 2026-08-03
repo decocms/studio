@@ -77,7 +77,6 @@ export type ThreadEntity = Pick<
   | "created_at"
   | "updated_at"
   | "virtual_mcp_id"
-  | "run_config"
 >;
 
 type ThreadMessageEntity = Pick<

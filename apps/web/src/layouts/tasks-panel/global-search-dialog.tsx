@@ -29,7 +29,6 @@ type ThreadResult = {
   created_at: string;
   updated_at: string;
   virtual_mcp_id: string | null;
-  run_config: Record<string, unknown> | null;
   status: string | null;
 };
 

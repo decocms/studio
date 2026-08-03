@@ -776,6 +776,57 @@ describe("submit", () => {
     await p;
   });
 
+  test("POSTs only the hosted wire contract and omits caller-owned identities", async () => {
+    let postedBody: Record<string, unknown> | null = null;
+    globalThis.fetch = makeFetchMock({
+      messages: (init) => {
+        postedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "canonical-thread", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Retired fields are included through a cast to prove post() whitelists
+    // the wire payload even when stale compiled JavaScript supplies them.
+    const legacyOptions = {
+      ...baseOpts,
+      branch: "feature/hosted-contract",
+      agent: { id: "different-agent" },
+      thread_id: "different-thread",
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
+    } as RequestOptions;
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "hosted-contract-message",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      },
+      legacyOptions,
+    );
+
+    expect(postedBody).not.toBeNull();
+    const body = postedBody as unknown as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual([
+      "branch",
+      "messages",
+      "mode",
+      "tier",
+      "toolApprovalLevel",
+    ]);
+    expect(body.branch).toBe("feature/hosted-contract");
+    expect(body).not.toHaveProperty("agent");
+    expect(body).not.toHaveProperty("thread_id");
+    expect(body).not.toHaveProperty("harnessId");
+    expect(body).not.toHaveProperty("sandboxProviderKind");
+  });
+
   test("stamps the optimistic user message with a top-level created_at", async () => {
     globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
     const conn = getOrOpenStream("acme", "thread-stamp", { client: null });
@@ -991,13 +1042,15 @@ describe("submit defers POST", () => {
     await new Promise((r) => setTimeout(r, 10));
   }
 
-  test("single approval, accept → POSTs once", async () => {
+  test("single approval posts one selectorless continuation", async () => {
     let messagesCalls = 0;
+    let postedBody: Record<string, unknown> | null = null;
     const stream = controllableStream();
     globalThis.fetch = makeFetchMock({
       stream: () => stream.response,
-      messages: () => {
+      messages: (init) => {
         messagesCalls++;
+        postedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return new Response("ok", { status: 200 });
       },
     }) as unknown as typeof globalThis.fetch;
@@ -1008,12 +1061,24 @@ describe("submit defers POST", () => {
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, { approvalIds: ["a1"] });
 
-    await conn.submit(
-      { kind: "approval", approvalId: "a1", approved: true },
-      baseOpts,
-    );
+    await conn.submit({ kind: "approval", approvalId: "a1", approved: true }, {
+      ...baseOpts,
+      agent: { id: "retired-agent" },
+      thread_id: "retired-thread",
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
+    } as RequestOptions);
 
     expect(messagesCalls).toBe(1);
+    const body = postedBody as unknown as {
+      messages: Array<{ role: string }>;
+      [key: string]: unknown;
+    };
+    expect(body.messages.at(-1)?.role).toBe("assistant");
+    expect(body).not.toHaveProperty("agent");
+    expect(body).not.toHaveProperty("thread_id");
+    expect(body).not.toHaveProperty("harnessId");
+    expect(body).not.toHaveProperty("sandboxProviderKind");
   });
 
   test("3 approvals, accept first only → no POST, local state updated", async () => {
