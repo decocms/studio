@@ -326,6 +326,10 @@ pub enum LaunchContextError {
     VirtualMcp(String),
     #[error("the local Studio MCP endpoint is not ready")]
     LocalEndpointUnavailable,
+    #[error("could not load coding agent storage: {0}")]
+    Storage(String),
+    #[error("could not prepare the coding agent sandbox: {0}")]
+    Sandbox(String),
     #[error("could not prepare the agent workspace: {0}")]
     Workspace(String),
     #[error("could not prepare managed agent configuration: {0}")]
@@ -354,7 +358,7 @@ pub async fn prepare(
 ) -> Result<PreparedLaunch, LaunchContextError> {
     let thread = db
         .rt_get_thread_for_fence(request.fence)
-        .map_err(|error| LaunchContextError::Workspace(error.to_string()))?
+        .map_err(|error| LaunchContextError::Storage(error.to_string()))?
         .ok_or(LaunchContextError::StaleThread)?;
     let mut argv = harness::resolve_checked(request.harness)?;
     // The picker consumes the same compatibility probe, but repeat it at the
@@ -552,7 +556,7 @@ async fn resolve_cwd(
             .ensure(&config)
             .await
             .map(|sandbox| sandbox.workdir.clone())
-            .map_err(LaunchContextError::Workspace);
+            .map_err(LaunchContextError::Sandbox);
     }
 
     let org_dir = crate::sandbox::org_view::org_mount_root(&state.app_root, &fence.organization_id)

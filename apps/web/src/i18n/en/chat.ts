@@ -273,22 +273,25 @@ export const chat = {
     "{label} was not detected on this computer",
   "chat.nativeAgentEmptyState.tryAnyway": "try anyway",
   "chat.nativeTerminal.chooseAgentFirst":
-    "Choose Claude Code, Codex, or OpenCode before sending a prompt.",
+    "Choose Claude Code, Codex, or OpenCode before sending a message.",
   "chat.nativeTerminal.agentLabel": "coding agent",
-  "chat.nativeTerminal.connectionFailed": "Terminal connection failed.",
-  "chat.nativeTerminal.emptyPrompt": "The prompt is empty.",
+  "chat.nativeTerminal.chatClosedBeforePrompt":
+    "The chat closed before your message was sent. Reopen it and try again.",
+  "chat.nativeTerminal.connectionFailed":
+    "We couldn't connect to the coding agent. Reopen the chat and try again.",
+  "chat.nativeTerminal.emptyPrompt": "Write a message before sending.",
   "chat.nativeTerminal.exited": "Coding agent exited",
   "chat.nativeTerminal.exitedBeforeReady":
-    "The coding agent exited before it was ready.",
-  "chat.nativeTerminal.exitCode": "Coding agent exited with code {code}.",
+    "The coding agent stopped before it was ready. Reopen the chat and try again.",
   "chat.nativeTerminal.failed": "Terminal error",
-  "chat.nativeTerminal.promptFailed": "Could not send the prompt.",
+  "chat.nativeTerminal.promptFailed":
+    "We couldn't send your message. Try again.",
   "chat.nativeTerminal.promptDeliveryUnknown":
-    "The connection closed after the prompt was sent. It may already be running; check the terminal before sending it again.",
+    "We lost contact after your message was sent. It may already be running, so check the coding agent before sending it again.",
   "chat.nativeTerminal.promptTooLarge":
-    "This prompt is too large for the local coding agent terminal.",
+    "This message is too large to send. Shorten it and try again.",
   "chat.nativeTerminal.attachmentsUnsupported":
-    "File and image attachments are not supported in local terminal chats yet.",
+    "File and image attachments aren't available in coding-agent chats yet.",
   "chat.nativeTerminal.readOnly":
     "Only the chat owner can open or control its terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Read-only chat",
@@ -298,11 +301,12 @@ export const chat = {
   "chat.nativeTerminal.pulseReconnecting": "reconnecting",
   "chat.nativeTerminal.startingAgent": "Starting {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
-    "This action requires structured chat and is not available in the terminal.",
+    "This action isn't available in coding-agent chats yet.",
   "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
   "chat.nativeTerminal.unsupportedHarness":
-    "This chat is pinned to an agent that Studio Native cannot run.",
-  "chat.nativeTerminal.unexpectedExit": "Coding agent exited unexpectedly.",
+    "This chat uses a coding agent that this version of Studio can't run. Update Studio and try again.",
+  "chat.nativeTerminal.unexpectedExit":
+    "The coding agent stopped unexpectedly. Reopen the chat and try again.",
   "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",
   "chat.nativeTerminal.waitingForTerminalDraw":
     "waiting for the terminal to draw",

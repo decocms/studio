@@ -99,9 +99,6 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
         ? "chat.nativeTerminal.pulseConnected"
         : "chat.nativeTerminal.pulseInitializing",
   );
-  const unavailableLabel =
-    snapshot.error?.message ?? t("chat.nativeTerminal.exitedBeforeReady");
-
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- xterm, ResizeObserver, and PTY subscriptions have explicit mount/dispose lifecycles
   useEffect(() => {
     const element = containerRef.current;
@@ -367,22 +364,16 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       aria-busy={!isTerminalRevealed && !unavailableBeforeOutput}
     >
       <div ref={containerRef} className="h-full bg-background" />
-      <div
-        aria-hidden={isTerminalRevealed}
-        className={cn(
-          "absolute inset-0 z-10 flex items-center justify-center bg-background transition-opacity duration-200 motion-reduce:transition-none",
-          isTerminalRevealed ? "pointer-events-none opacity-0" : "opacity-100",
-        )}
-      >
-        {unavailableBeforeOutput ? (
-          <div
-            role="alert"
-            className="flex max-w-sm flex-col items-center gap-3 px-6 text-center"
-          >
-            <AlertCircle size={24} className="text-destructive" />
-            <p className="text-sm text-muted-foreground">{unavailableLabel}</p>
-          </div>
-        ) : (
+      {!unavailableBeforeOutput && (
+        <div
+          aria-hidden={isTerminalRevealed}
+          className={cn(
+            "absolute inset-0 z-10 flex items-center justify-center bg-background transition-opacity duration-200 motion-reduce:transition-none",
+            isTerminalRevealed
+              ? "pointer-events-none opacity-0"
+              : "opacity-100",
+          )}
+        >
           <div
             role="status"
             aria-live="polite"
@@ -426,14 +417,14 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
               <GridLoader />
             </span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function Picker() {
-  const { snapshot, startAgent, isReadOnly } = useNativeTerminalRuntime();
+  const { startAgent, isReadOnly } = useNativeTerminalRuntime();
   const t = useT();
 
   if (isReadOnly) {
@@ -451,15 +442,7 @@ function Picker() {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 overflow-y-auto py-8">
-      {snapshot.error && (
-        <div
-          role="alert"
-          className="mx-4 max-w-lg rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          {snapshot.error.message}
-        </div>
-      )}
+    <div className="flex h-full flex-col items-center justify-center gap-5 overflow-y-auto px-2 py-8">
       <NativeAgentEmptyState
         onSelect={(option) => {
           void startAgent(option).catch(() => {});

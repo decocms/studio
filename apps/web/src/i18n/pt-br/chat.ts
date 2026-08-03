@@ -283,21 +283,22 @@ export const chat = {
   "chat.nativeTerminal.chooseAgentFirst":
     "Escolha Claude Code, Codex ou OpenCode antes de enviar uma mensagem.",
   "chat.nativeTerminal.agentLabel": "agente de codificação",
-  "chat.nativeTerminal.connectionFailed": "Falha na conexão com o terminal.",
-  "chat.nativeTerminal.emptyPrompt": "A mensagem está vazia.",
+  "chat.nativeTerminal.chatClosedBeforePrompt":
+    "O chat foi fechado antes do envio da mensagem. Reabra-o e tente novamente.",
+  "chat.nativeTerminal.connectionFailed":
+    "Não foi possível conectar ao agente de codificação. Reabra o chat e tente novamente.",
+  "chat.nativeTerminal.emptyPrompt": "Escreva uma mensagem antes de enviar.",
   "chat.nativeTerminal.exited": "O agente de codificação foi encerrado",
   "chat.nativeTerminal.exitedBeforeReady":
-    "O agente de codificação foi encerrado antes de ficar pronto.",
-  "chat.nativeTerminal.exitCode":
-    "O agente de codificação foi encerrado com o código {code}.",
+    "O agente de codificação parou antes de ficar pronto. Reabra o chat e tente novamente.",
   "chat.nativeTerminal.failed": "Erro no terminal",
   "chat.nativeTerminal.promptFailed": "Não foi possível enviar a mensagem.",
   "chat.nativeTerminal.promptDeliveryUnknown":
-    "A conexão foi encerrada depois que a mensagem foi enviada. Ela pode já estar em execução; verifique o terminal antes de enviá-la novamente.",
+    "Perdemos a conexão depois que sua mensagem foi enviada. Ela pode já estar em execução; confira o agente de codificação antes de enviar novamente.",
   "chat.nativeTerminal.promptTooLarge":
-    "Este prompt é grande demais para o terminal do agente de código local.",
+    "Esta mensagem é grande demais para enviar. Encurte-a e tente novamente.",
   "chat.nativeTerminal.attachmentsUnsupported":
-    "Anexos de arquivos e imagens ainda não são compatíveis com chats no terminal local.",
+    "Anexos de arquivos e imagens ainda não estão disponíveis em chats com agentes de codificação.",
   "chat.nativeTerminal.readOnly":
     "Somente o proprietário do chat pode abrir ou controlar o terminal.",
   "chat.nativeTerminal.readOnlyTitle": "Chat somente leitura",
@@ -307,12 +308,12 @@ export const chat = {
   "chat.nativeTerminal.pulseReconnecting": "reconectando",
   "chat.nativeTerminal.startingAgent": "Iniciando {agent}…",
   "chat.nativeTerminal.structuredActionUnsupported":
-    "Esta ação exige o chat estruturado e não está disponível no terminal.",
+    "Esta ação ainda não está disponível em chats com agentes de codificação.",
   "chat.nativeTerminal.terminalLabel": "Terminal do agente de codificação",
   "chat.nativeTerminal.unsupportedHarness":
-    "Este chat está vinculado a um agente que o Studio Native não pode executar.",
+    "Este chat usa um agente de codificação que esta versão do Studio não consegue executar. Atualize o Studio e tente novamente.",
   "chat.nativeTerminal.unexpectedExit":
-    "O agente de codificação foi encerrado inesperadamente.",
+    "O agente de codificação parou inesperadamente. Reabra o chat e tente novamente.",
   "chat.nativeTerminal.waitingForAgentOutput": "Aguardando saída do {agent}…",
   "chat.nativeTerminal.waitingForTerminalDraw":
     "aguardando a exibição do terminal",

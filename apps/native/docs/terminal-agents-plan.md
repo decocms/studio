@@ -214,6 +214,11 @@ current opaque persisted thread-generation string.
 - Every attachment can observe output. A monotonic lease makes only the newest
   attachment authoritative for input and controls; stale writers receive a
   non-retryable `stale_attachment` error.
+- User-visible startup and terminal-management errors contain plain-language
+  recovery guidance. Raw readiness and launch diagnostics—such as probe
+  commands, paths, database details, and process errors—stay in native logs
+  instead of crossing in `error` frames. PTY output still streams unchanged to
+  xterm through `output` frames.
 
 `submit_prompt` exists for autosend and non-chat surfaces such as the visual
 editor. It is not the old queue. The backend accepts it only at a safe provider
@@ -569,8 +574,9 @@ Fresh unlocked thread behavior:
 3. The backend authoritatively detects, pins, and starts it.
 4. On success, replace the empty state with xterm and patch the live thread row
    from the server response.
-5. On missing CLI or launch failure, retain the picker and show a translated
-   actionable error. Never fall back to hosted chat.
+5. On missing CLI or launch failure, retain the unobstructed picker and show
+   plain-language actionable guidance in a deduplicated Sonner notification.
+   Keep the technical cause in native logs and never fall back to hosted chat.
 
 After launch, the panel contains only xterm. Studio does not add a terminal
 toolbar, lifecycle label, error banner, or action buttons; lifecycle remains in
@@ -829,8 +835,9 @@ the installed production app.
 - At the time of this two-provider pass, provider availability and direct
   launch required Claude Code 2.1.218 and Codex CLI 0.144.5. The subsequent
   OpenCode extension additionally requires OpenCode 1.18.10. Black-box stale-
-  request coverage proves an unsupported CLI fails with upgrade guidance
-  before the harness is pinned, leaving the fresh-chat picker intact.
+  request coverage proves an unsupported CLI fails with plain-language update
+  guidance before the harness is pinned, leaving the fresh-chat picker intact;
+  exact version and command diagnostics remain in native logs.
 - Terminal metadata returned the persisted opaque thread-generation fence.
   The final schema contained no executable queue table or queue API; v10 queue
   rows remained only in the non-executing legacy archive. Native autosend

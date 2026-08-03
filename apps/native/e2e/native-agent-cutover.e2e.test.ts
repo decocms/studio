@@ -7,6 +7,7 @@
  * harness so the UI can render the Claude Code / Codex picker.
  */
 import { afterAll, beforeAll, expect, it } from "bun:test";
+import { sleep } from "@decocms/shared/std";
 
 import {
   signInAndCompleteSession,
@@ -39,6 +40,12 @@ describeLocalApi("native terminal-agent cutover", () => {
         "/bin/sh",
         "-c",
         "printf '2.1.217 (Claude Code)\\n'",
+      ]),
+      LOCAL_API_OPENCODE_BIN: JSON.stringify([
+        "/bin/sh",
+        "-c",
+        "if [ \"$1\" = \"--version\" ]; then printf '1.18.10\\n'; exit 0; fi; printf 'raw plugin-free database probe: SELECT 1 --pure\\n' >&2; exit 12",
+        "opencode-fixture",
       ]),
     });
     await signInAndCompleteSession(api);
@@ -96,7 +103,7 @@ describeLocalApi("native terminal-agent cutover", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "harnessId must be claude-code, codex, or opencode",
+      error: "Choose Claude Code, Codex, or OpenCode.",
     });
   });
 
@@ -112,10 +119,101 @@ describeLocalApi("native terminal-agent cutover", () => {
 
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({
-      error: expect.stringContaining(
-        "Claude Code 2.1.217 is unsupported; Studio Native requires Claude Code 2.1.218 or newer",
-      ),
+      error:
+        "Claude Code needs an update to work with Studio. Update Claude Code, then try again.",
     });
+
+    const metadata = await fetch(
+      url(api, `/api/${ORG}/threads/${THREAD_ID}/terminal`),
+      { headers: authHeaders() },
+    );
+    expect(metadata.status).toBe(200);
+    expect(await metadata.json()).toMatchObject({
+      sessionId: null,
+      harnessId: null,
+    });
+  });
+
+  it("keeps OpenCode runtime diagnostics out of the terminal WebSocket error", async () => {
+    const target = url(
+      api,
+      `/api/${ORG}/threads/${THREAD_ID}/terminal/ws`,
+    ).replace("http://", "ws://");
+    const socket = new WebSocket(target, {
+      headers: authHeaders(),
+    } as unknown as string[]);
+    const opened = new Promise<void>((resolve, reject) => {
+      socket.addEventListener("open", () => resolve(), { once: true });
+      socket.addEventListener(
+        "error",
+        () => reject(new Error("terminal WebSocket failed to open")),
+        { once: true },
+      );
+    });
+    await Promise.race([
+      opened,
+      sleep(5_000).then(() => {
+        throw new Error("terminal WebSocket did not open before the deadline");
+      }),
+    ]);
+
+    const nextFrame = new Promise<Record<string, unknown>>(
+      (resolve, reject) => {
+        socket.addEventListener(
+          "message",
+          (event) => {
+            try {
+              resolve(
+                JSON.parse(String(event.data)) as Record<string, unknown>,
+              );
+            } catch (error) {
+              reject(error);
+            }
+          },
+          { once: true },
+        );
+        socket.addEventListener(
+          "error",
+          () => reject(new Error("terminal WebSocket failed")),
+          { once: true },
+        );
+      },
+    );
+    socket.send(
+      JSON.stringify({
+        type: "start",
+        harnessId: "opencode",
+        approvalMode: "default",
+        planMode: false,
+        rows: 30,
+        cols: 100,
+      }),
+    );
+    const frame = await Promise.race([
+      nextFrame,
+      sleep(10_000).then(() => {
+        throw new Error("terminal WebSocket did not return a frame");
+      }),
+    ]);
+    socket.close();
+
+    expect(frame).toEqual({
+      type: "error",
+      code: "start_failed",
+      message:
+        "We couldn't start OpenCode. Open OpenCode once to make sure it works, then try again. If the problem continues, update OpenCode.",
+      retryable: false,
+    });
+    const serialized = JSON.stringify(frame);
+    for (const diagnostic of [
+      "SELECT 1",
+      "--pure",
+      "plugin-free",
+      "database probe",
+      "exit 12",
+    ]) {
+      expect(serialized).not.toContain(diagnostic);
+    }
 
     const metadata = await fetch(
       url(api, `/api/${ORG}/threads/${THREAD_ID}/terminal`),

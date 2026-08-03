@@ -26,7 +26,7 @@ use crate::routes::threads::db::{
     RtTerminalSession, RtTerminalSessionCasOutcome, RtTerminalSessionCreateOutcome, RtThreadFence,
     ThreadsDb,
 };
-use crate::routes::threads::{db_err, shared_db};
+use crate::routes::threads::shared_db;
 use crate::state::AppState;
 use crate::terminal::launch_context::{self, LaunchRequest, PreparedLaunch};
 use crate::terminal::registry::{
@@ -157,13 +157,6 @@ impl SpawnFenceError {
             Self::Account(message) | Self::WorkspaceTrust(message) => message,
         }
     }
-
-    fn into_api_error(self) -> ApiError {
-        match self {
-            Self::Account(message) => ApiError::conflict(message),
-            Self::WorkspaceTrust(message) => ApiError::bad_gateway(message),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -180,6 +173,83 @@ enum ClientFrameError {
     StaleAttachment { request_id: Option<String> },
 }
 
+#[derive(Debug)]
+enum PromptError {
+    Invalid(String),
+    RequestConflict,
+    Busy,
+    SessionUnavailable,
+    Storage(String),
+    Contended,
+    Terminal(terminal_session::TerminalError),
+}
+
+impl PromptError {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Busy
+            | Self::Contended
+            | Self::Terminal(terminal_session::TerminalError::Backpressure { .. }) => "agent_busy",
+            _ => "prompt_rejected",
+        }
+    }
+
+    fn message(&self) -> &'static str {
+        match self {
+            Self::Invalid(_) => {
+                "We couldn't send this message. Refresh the chat and try again."
+            }
+            Self::RequestConflict => {
+                "We couldn't safely retry this message. Refresh the chat and try again."
+            }
+            Self::Busy | Self::Contended => {
+                "The coding agent is busy. Wait for it to finish, or respond directly in the terminal."
+            }
+            Self::SessionUnavailable => {
+                "The coding agent is no longer available. Reopen the chat and try again."
+            }
+            Self::Storage(_) => "We couldn't send your message right now. Try again.",
+            Self::Terminal(terminal_session::TerminalError::Backpressure { .. }) => {
+                "The coding agent is busy. Wait a moment and try again."
+            }
+            Self::Terminal(terminal_session::TerminalError::InputTooLarge { .. }) => {
+                "This message is too large to send. Shorten it and try again."
+            }
+            Self::Terminal(terminal_session::TerminalError::SessionClosed) => {
+                "The coding agent is no longer available. Reopen the chat and try again."
+            }
+            Self::Terminal(_) => {
+                "We couldn't send your message to the coding agent. Reopen the chat and try again."
+            }
+        }
+    }
+
+    fn retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Busy
+                | Self::Storage(_)
+                | Self::Contended
+                | Self::Terminal(terminal_session::TerminalError::Backpressure { .. })
+        )
+    }
+
+    fn log(&self) {
+        match self {
+            Self::Storage(error) => {
+                tracing::warn!(%error, "could not persist coding agent prompt state")
+            }
+            Self::Terminal(error) => {
+                tracing::warn!(%error, "could not write prompt to coding agent terminal")
+            }
+            Self::Invalid(error) => {
+                tracing::debug!(%error, "coding agent prompt validation failed")
+            }
+            Self::RequestConflict | Self::Busy | Self::SessionUnavailable | Self::Contended => {}
+        }
+    }
+}
+
 impl From<String> for ClientFrameError {
     fn from(error: String) -> Self {
         Self::Invalid(error)
@@ -193,10 +263,10 @@ pub async fn get(
     let (db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
     let session = db
         .rt_get_live_terminal_session_fenced(&fence)
-        .map_err(db_err)?
+        .map_err(|error| terminal_storage_error("load live coding agent session", error))?
         .or(db
             .rt_get_latest_terminal_session_fenced(&fence)
-            .map_err(db_err)?);
+            .map_err(|error| terminal_storage_error("load latest coding agent session", error))?);
     Ok(Json(json!(metadata_for(
         &state,
         db,
@@ -210,14 +280,19 @@ pub async fn start(
     Path((org, thread_id)): Path<(String, String)>,
     body: Bytes,
 ) -> ApiResult<Response> {
-    let parsed: StartTerminalBody =
-        crate::http_util::json_body_or_default(&body, "invalid terminal start JSON")?;
-    let harness = parse_harness(
-        parsed
-            .harness_id
-            .as_deref()
-            .ok_or_else(|| ApiError::bad_request("harnessId is required"))?,
-    )?;
+    let parsed: StartTerminalBody = crate::http_util::json_body_or_default(
+        &body,
+        "could not read coding agent request",
+    )
+    .map_err(|error| {
+        tracing::warn!(error = %api_error_message(error), "invalid coding agent start request");
+        ApiError::bad_request(
+            "We couldn't read this coding agent request. Refresh Studio and try again.",
+        )
+    })?;
+    let harness = parse_harness(parsed.harness_id.as_deref().ok_or_else(|| {
+        ApiError::bad_request("Choose a coding agent before starting this chat.")
+    })?)?;
     let size = terminal_size(parsed.rows.unwrap_or(30), parsed.cols.unwrap_or(100))?;
     validate_approval_mode(&parsed.approval_mode)?;
     let (db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
@@ -235,7 +310,7 @@ pub async fn start(
     .await?;
     let row = db
         .rt_get_terminal_session_fenced(&fence, managed.session.id())
-        .map_err(db_err)?;
+        .map_err(|error| terminal_storage_error("load started coding agent session", error))?;
     let metadata = metadata_for(&state, db, &fence, row.as_ref())?;
     Ok((StatusCode::CREATED, Json(json!(metadata))).into_response())
 }
@@ -252,7 +327,8 @@ pub async fn delete(
         .terminate_fence(&fence)
         .await
         .map_err(|error| {
-            ApiError::internal(format!("could not terminate coding agent: {error}"))
+            tracing::warn!(%error, "could not terminate coding agent");
+            ApiError::internal("We couldn't close the coding agent. Restart Studio and try again.")
         })?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -278,7 +354,14 @@ async fn serve_socket(
     let handshake = match receive_handshake(&mut socket, db, &fence).await {
         Ok(handshake) => handshake,
         Err(error) => {
-            let _ = send_error_socket(&mut socket, "invalid_start", &error, false).await;
+            tracing::warn!(%error, "coding agent terminal handshake failed");
+            let _ = send_error_socket(
+                &mut socket,
+                "invalid_start",
+                "We couldn't open this coding agent. Refresh the chat and try again.",
+                false,
+            )
+            .await;
             return;
         }
     };
@@ -286,12 +369,17 @@ async fn serve_socket(
     let managed = match ensure_session(&state, db, &fence, handshake.options).await {
         Ok(managed) => managed,
         Err(error) => {
+            let retryable = error
+                .body
+                .get("retryable")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let message = error
                 .body
                 .get("error")
                 .and_then(Value::as_str)
-                .unwrap_or("could not start coding agent");
-            let _ = send_error_socket(&mut socket, "start_failed", message, true).await;
+                .unwrap_or("We couldn't start the coding agent. Restart Studio and try again.");
+            let _ = send_error_socket(&mut socket, "start_failed", message, retryable).await;
             return;
         }
     };
@@ -303,21 +391,35 @@ async fn serve_socket(
             let _ = send_error_socket(
                 &mut socket,
                 "stale_session",
-                "the terminal session is no longer available",
+                "This coding agent is no longer available. Reopen the chat and try again.",
                 false,
             )
             .await;
             return;
         }
         Err(error) => {
-            let _ = send_error_socket(&mut socket, "storage_error", &error.to_string(), true).await;
+            tracing::warn!(%error, "could not load coding agent terminal state");
+            let _ = send_error_socket(
+                &mut socket,
+                "storage_error",
+                "We couldn't load this chat right now. Try again.",
+                true,
+            )
+            .await;
             return;
         }
     };
     let writer = match managed.claim_writer_lease().await {
         Ok(writer) => writer,
         Err(error) => {
-            let _ = send_error_socket(&mut socket, "writer_unavailable", error, false).await;
+            tracing::warn!(%error, "could not claim coding agent terminal input ownership");
+            let _ = send_error_socket(
+                &mut socket,
+                "writer_unavailable",
+                "We couldn't open the coding agent terminal. Restart Studio and try again.",
+                false,
+            )
+            .await;
             return;
         }
     };
@@ -325,7 +427,14 @@ async fn serve_socket(
     // an older attachment cannot interleave input after this mutation.
     if let Some(_permit) = writer.mutation_permit().await {
         if let Err(error) = managed.session.resize(requested_size).await {
-            let _ = send_error_socket(&mut socket, "resize_failed", &error.to_string(), true).await;
+            tracing::warn!(%error, "could not set coding agent terminal size");
+            let _ = send_error_socket(
+                &mut socket,
+                "resize_failed",
+                "We couldn't open the coding agent terminal. Reopen the chat and try again.",
+                true,
+            )
+            .await;
             return;
         }
     }
@@ -405,7 +514,13 @@ async fn serve_socket(
                         ).await {
                             match error {
                                 ClientFrameError::Invalid(error) => {
-                                    let _ = send_error_socket(&mut socket, "invalid_control", &error, false).await;
+                                    tracing::warn!(%error, "coding agent terminal command failed");
+                                    let _ = send_error_socket(
+                                        &mut socket,
+                                        "invalid_control",
+                                        "We couldn't complete that terminal action. Reopen the chat and try again.",
+                                        false,
+                                    ).await;
                                 }
                                 ClientFrameError::StaleAttachment { request_id } => {
                                     let _ = send_stale_attachment_socket(&mut socket, request_id.as_deref()).await;
@@ -417,7 +532,13 @@ async fn serve_socket(
                         match writer.mutation_permit().await {
                             Some(_permit) => {
                                 if let Err(error) = managed.session.write(data).await {
-                                    let _ = send_error_socket(&mut socket, "input_failed", &error.to_string(), true).await;
+                                    tracing::warn!(%error, "could not write coding agent terminal input");
+                                    let _ = send_error_socket(
+                                        &mut socket,
+                                        "input_failed",
+                                        "We couldn't send input to the coding agent. Reopen the chat and try again.",
+                                        true,
+                                    ).await;
                                 }
                             }
                             None => {
@@ -534,7 +655,7 @@ async fn receive_handshake(
                         send_error_socket(
                             socket,
                             "start_required",
-                            "send start or attach before terminal input",
+                            "Choose a coding agent before using the terminal.",
                             false,
                         )
                         .await
@@ -564,32 +685,53 @@ async fn ensure_session(
     let initial_account_transition = upstream_session.begin_transition().await;
     require_current_account(fence)
         .await
-        .map_err(ApiError::conflict)?;
+        .map_err(|error| account_start_error(options.harness, error))?;
     let current_thread = db
         .rt_get_thread_for_fence(fence)
-        .map_err(db_err)?
-        .ok_or_else(|| ApiError::not_found("thread not found"))?;
+        .map_err(|error| {
+            agent_start_internal_error(options.harness, "load chat before start", error)
+        })?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
     if current_thread.hidden {
-        return Err(ApiError::conflict("chat is archived"));
+        return Err(ApiError::conflict(
+            "This chat is archived. Restore it before starting a coding agent.",
+        ));
     }
-    if db.rt_thread_delete_pending(fence).map_err(db_err)? {
-        return Err(ApiError::conflict("chat is being deleted"));
+    if db.rt_thread_delete_pending(fence).map_err(|error| {
+        agent_start_internal_error(options.harness, "check chat deletion state", error)
+    })? {
+        return Err(ApiError::conflict(
+            "This chat is being deleted and can't start a coding agent.",
+        ));
     }
     if let Some(managed) = state.agent_sessions.get(fence).filter(|managed| {
         !managed.session.snapshot().state.is_terminal() && managed.hook.harness == options.harness
     }) {
+        reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
+        state.agent_sessions.notify_lifecycle(fence);
         return Ok(managed);
     }
     drop(initial_account_transition);
 
-    let pinned = db.rt_harness_id_fenced(fence).map_err(db_err)?.flatten();
+    let pinned = db
+        .rt_harness_id_fenced(fence)
+        .map_err(|error| {
+            agent_start_internal_error(options.harness, "load chat coding agent", error)
+        })?
+        .flatten();
     if pinned
         .as_deref()
         .is_some_and(|pinned| pinned != options.harness.wire_id())
     {
+        let pinned_agent = pinned
+            .as_deref()
+            .and_then(HarnessId::from_wire_id)
+            .map(agent_display_name)
+            .unwrap_or("another coding agent");
         return Err(ApiError::conflict(format!(
-            "chat is already using {}",
-            pinned.as_deref().unwrap_or_default()
+            "This chat is already using {pinned_agent}."
         )));
     }
 
@@ -601,16 +743,18 @@ async fn ensure_session(
 
     let provider_session_id = match db
         .rt_terminal_resume_decision_fenced(fence, options.harness.wire_id())
-        .map_err(db_err)?
-    {
+        .map_err(|error| {
+            agent_start_internal_error(options.harness, "load coding agent resume state", error)
+        })? {
         RtTerminalResumeDecision::Fresh => None,
         RtTerminalResumeDecision::Resume(provider_session_id) => Some(provider_session_id),
     };
     let terminal_session_id = Uuid::new_v4().to_string();
     let commit = match db
         .rt_create_terminal_session_fenced(fence, &terminal_session_id, options.harness.wire_id())
-        .map_err(db_err)?
-    {
+        .map_err(|error| {
+            agent_start_internal_error(options.harness, "create coding agent session", error)
+        })? {
         RtTerminalSessionCreateOutcome::Created(commit) => commit,
         RtTerminalSessionCreateOutcome::ExistingLive(commit) => {
             // A live durable row without an in-process PTY can only be an
@@ -619,12 +763,15 @@ async fn ensure_session(
                 if managed.session.id() == commit.session.id
                     && !managed.session.snapshot().state.is_terminal()
                 {
+                    reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
+                    state.agent_sessions.notify_lifecycle(fence);
                     return Ok(managed);
                 }
                 if !managed.session.snapshot().state.is_terminal() {
-                    return Err(ApiError::conflict(
-                        "coding agent process ownership is inconsistent",
-                    ));
+                    return Err(ApiError::conflict(format!(
+                        "We couldn't safely reopen {}. Restart Studio and try again.",
+                        agent_display_name(options.harness)
+                    )));
                 }
             }
             crate::terminal::lifecycle::mark_exited(
@@ -635,7 +782,13 @@ async fn ensure_session(
                 false,
                 Some("terminal process was not present in the current app instance"),
             )
-            .map_err(ApiError::internal)?;
+            .map_err(|error| {
+                agent_start_internal_error(
+                    options.harness,
+                    "close interrupted coding agent session",
+                    error,
+                )
+            })?;
             let replacement_id = Uuid::new_v4().to_string();
             match db
                 .rt_create_terminal_session_fenced(
@@ -643,11 +796,19 @@ async fn ensure_session(
                     &replacement_id,
                     options.harness.wire_id(),
                 )
-                .map_err(db_err)?
-            {
+                .map_err(|error| {
+                    agent_start_internal_error(
+                        options.harness,
+                        "replace interrupted coding agent session",
+                        error,
+                    )
+                })? {
                 RtTerminalSessionCreateOutcome::Created(commit) => commit,
                 RtTerminalSessionCreateOutcome::ExistingLive(_) => {
-                    return Err(ApiError::conflict("coding agent is already starting"));
+                    return Err(retryable_start_error(ApiError::conflict(format!(
+                        "{} is already starting. Try again in a moment.",
+                        agent_display_name(options.harness)
+                    ))));
                 }
             }
         }
@@ -674,20 +835,26 @@ async fn ensure_session(
     let launch = match launch {
         Ok(launch) => launch,
         Err(error) => {
-            let message = error.to_string();
+            let diagnostic = error.to_string();
+            tracing::warn!(
+                harness = options.harness.wire_id(),
+                error = %diagnostic,
+                "coding agent launch preparation failed"
+            );
             let _ = crate::terminal::lifecycle::mark_exited(
                 db,
                 fence,
                 &commit.session.id,
                 None,
                 false,
-                Some(&message),
+                Some(&diagnostic),
             );
-            return Err(ApiError::bad_gateway(message));
+            return Err(launch_preparation_api_error(options.harness, &error));
         }
     };
     let command = command_spec(state, &launch);
-    let key = crate::terminal::AgentSessionRegistry::session_key(fence).map_err(terminal_error)?;
+    let key = crate::terminal::AgentSessionRegistry::session_key(fence)
+        .map_err(|error| terminal_start_error(options.harness, error))?;
     run_spawn_owner(
         SessionSpawnOwner {
             state: state.clone(),
@@ -739,16 +906,25 @@ impl SessionSpawnOwner {
                 match acquire_spawn_fences(&state, &upstream_session, &fence, &launch).await {
                     Ok(fences) => fences,
                     Err(error) => {
-                        let message = error.message().to_string();
+                        let diagnostic = error.message().to_string();
+                        tracing::warn!(
+                            harness = options.harness.wire_id(),
+                            error = %diagnostic,
+                            "coding agent account or workspace preparation failed"
+                        );
+                        let message = spawn_fence_message(options.harness, &error);
                         let _ = crate::terminal::lifecycle::mark_exited(
                             db,
                             &fence,
                             &terminal_session_id,
                             None,
                             false,
-                            Some(&message),
+                            Some(&diagnostic),
                         );
-                        return Err(error.into_api_error());
+                        return Err(match error {
+                            SpawnFenceError::Account(_) => ApiError::conflict(message),
+                            SpawnFenceError::WorkspaceTrust(_) => ApiError::bad_gateway(message),
+                        });
                     }
                 };
             let mut lifecycle = state.agent_sessions.subscribe_lifecycle();
@@ -780,16 +956,16 @@ impl SessionSpawnOwner {
                 Ok(started) => started,
                 Err(error) => {
                     state.agent_sessions.unregister_hook(&terminal_session_id);
-                    let message = error.to_string();
+                    let diagnostic = error.to_string();
                     let _ = crate::terminal::lifecycle::mark_exited(
                         db,
                         &fence,
                         &terminal_session_id,
                         None,
                         false,
-                        Some(&message),
+                        Some(&diagnostic),
                     );
-                    return Err(terminal_error(error));
+                    return Err(terminal_start_error(options.harness, error));
                 }
             };
             let recover_fresh = if may_recover_missing_claude_resume {
@@ -836,16 +1012,21 @@ impl SessionSpawnOwner {
                 {
                     Ok(launch) => launch,
                     Err(error) => {
-                        let message = error.to_string();
+                        let diagnostic = error.to_string();
+                        tracing::warn!(
+                            harness = options.harness.wire_id(),
+                            error = %diagnostic,
+                            "coding agent fresh-session recovery preparation failed"
+                        );
                         let _ = crate::terminal::lifecycle::mark_exited(
                             db,
                             &fence,
                             &terminal_session_id,
                             None,
                             false,
-                            Some(&message),
+                            Some(&diagnostic),
                         );
-                        return Err(ApiError::bad_gateway(message));
+                        return Err(launch_preparation_api_error(options.harness, &error));
                     }
                 };
                 command = command_spec(&state, &launch);
@@ -863,7 +1044,17 @@ impl SessionSpawnOwner {
                 started.session.clone(),
                 hook,
             );
-            let account_error = require_current_account(&fence).await.err();
+            let account_error = require_current_account(&fence)
+                .await
+                .err()
+                .map(|diagnostic| {
+                    tracing::warn!(
+                        harness = options.harness.wire_id(),
+                        error = %diagnostic,
+                        "coding agent account changed before harness pin"
+                    );
+                    (diagnostic, account_start_message(options.harness), false)
+                });
             let pin_error = account_error.or_else(|| {
                 match db
                     .rt_pin_harness_if_unset_fenced(
@@ -880,12 +1071,40 @@ impl SessionSpawnOwner {
                         }
                     }) {
                     Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
-                    Ok(Some(Some(pinned))) => Some(format!("chat is already using {pinned}")),
-                    Ok(_) => Some("thread is no longer available".to_string()),
-                    Err(error) => Some(error.to_string()),
+                    Ok(Some(Some(pinned))) => {
+                        let pinned_agent = HarnessId::from_wire_id(&pinned)
+                            .map(agent_display_name)
+                            .unwrap_or("another coding agent");
+                        Some((
+                            format!("chat is already using {pinned}"),
+                            format!("This chat is already using {pinned_agent}."),
+                            false,
+                        ))
+                    }
+                    Ok(_) => Some((
+                        "thread is no longer available".to_string(),
+                        "This chat is no longer available. Refresh Studio and try again."
+                            .to_string(),
+                        false,
+                    )),
+                    Err(error) => {
+                        tracing::warn!(
+                            harness = options.harness.wire_id(),
+                            %error,
+                            "could not pin coding agent to chat"
+                        );
+                        Some((
+                            error.to_string(),
+                            format!(
+                                "We couldn't finish starting {}. Try again.",
+                                agent_display_name(options.harness)
+                            ),
+                            true,
+                        ))
+                    }
                 }
             });
-            if let Some(error) = pin_error {
+            if let Some((diagnostic, message, retryable)) = pin_error {
                 let exit = started
                     .session
                     .terminate(crate::terminal::registry::termination_policy())
@@ -907,12 +1126,19 @@ impl SessionSpawnOwner {
                     &terminal_session_id,
                     exit_code,
                     requested,
-                    process_error.or(Some(&error)),
+                    process_error.or(Some(&diagnostic)),
                 );
-                return Err(ApiError::conflict(error));
+                let api_error = ApiError::conflict(message);
+                return Err(if retryable {
+                    retryable_start_error(api_error)
+                } else {
+                    api_error
+                });
             }
-            crate::terminal::lifecycle::mark_running(db, &fence, &terminal_session_id)
-                .map_err(ApiError::internal)?;
+            // Keep the registered PTY alive if this local write fails. A
+            // retry enters the managed-session fast path above and repairs
+            // Starting -> Running instead of spawning a second process.
+            reconcile_registered_session(db, &fence, &terminal_session_id, options.harness)?;
             state.agent_sessions.notify_lifecycle(&fence);
             return Ok(managed);
         }
@@ -1104,9 +1330,12 @@ where
     F: Future<Output = ApiResult<T>> + Send + 'static,
     T: Send + 'static,
 {
-    tokio::spawn(work)
-        .await
-        .map_err(|error| ApiError::internal(format!("coding agent start owner failed: {error}")))?
+    tokio::spawn(work).await.map_err(|error| {
+        tracing::error!(%error, "coding agent start owner failed");
+        ApiError::internal(
+            "We couldn't finish starting the coding agent. Restart Studio and try again.",
+        )
+    })?
 }
 
 async fn acquire_spawn_fences(
@@ -1174,15 +1403,221 @@ async fn require_current_account(fence: &RtThreadFence) -> Result<(), String> {
 }
 
 async fn require_supported_harness(harness_id: HarnessId) -> ApiResult<()> {
-    let argv = harness::resolve_checked(harness_id).map_err(|error| {
-        ApiError::bad_gateway(format!("the selected agent is unavailable: {error}"))
-    })?;
+    let argv = harness::resolve_checked(harness_id)
+        .map_err(|error| harness_unavailable_error(harness_id, error))?;
     harness::detect::require_launch_ready(harness_id, &argv)
         .await
-        .map_err(|error| {
-            ApiError::bad_gateway(format!("the selected agent is unavailable: {error}"))
-        })?;
+        .map_err(|error| harness_unavailable_error(harness_id, error))?;
     Ok(())
+}
+
+fn agent_display_name(harness_id: HarnessId) -> &'static str {
+    match harness_id {
+        HarnessId::ClaudeCode => "Claude Code",
+        HarnessId::Codex => "Codex",
+        HarnessId::OpenCode => "OpenCode",
+    }
+}
+
+fn harness_unavailable_error(harness_id: HarnessId, error: harness::ResolveError) -> ApiError {
+    tracing::warn!(
+        harness = harness_id.wire_id(),
+        %error,
+        "coding agent launch readiness check failed"
+    );
+    ApiError::bad_gateway(harness_unavailable_message(harness_id, &error))
+}
+
+fn harness_unavailable_message(harness_id: HarnessId, error: &harness::ResolveError) -> String {
+    let agent = agent_display_name(harness_id);
+    match error {
+        harness::ResolveError::NotFound(_) => {
+            format!(
+                "Make sure {agent} is installed on this computer, then restart Studio and try again."
+            )
+        }
+        harness::ResolveError::UnsupportedVersion { .. } => format!(
+            "{agent} needs an update to work with Studio. Update {agent}, then try again."
+        ),
+        harness::ResolveError::RuntimeCheckFailed(_) => format!(
+            "We couldn't start {agent}. Open {agent} once to make sure it works, then try again. If the problem continues, update {agent}."
+        ),
+        harness::ResolveError::VersionCheckFailed(_)
+        | harness::ResolveError::UnrecognizedVersion { .. } => format!(
+            "We couldn't confirm that {agent} is ready. Open {agent} once to make sure it works, then try again. If the problem continues, update {agent}."
+        ),
+        harness::ResolveError::InvalidOverride(_) => format!(
+            "We couldn't use your {agent} setup. Restart Studio and try again."
+        ),
+    }
+}
+
+fn launch_preparation_message(
+    harness_id: HarnessId,
+    error: &launch_context::LaunchContextError,
+) -> String {
+    let agent = agent_display_name(harness_id);
+    match error {
+        launch_context::LaunchContextError::StaleThread => {
+            "This chat is no longer available. Refresh Studio and try again.".to_string()
+        }
+        launch_context::LaunchContextError::Harness(error) => {
+            harness_unavailable_message(harness_id, error)
+        }
+        launch_context::LaunchContextError::VirtualMcp(_) => {
+            "We couldn't load the coding agent for this chat. Refresh Studio and try again."
+                .to_string()
+        }
+        launch_context::LaunchContextError::LocalEndpointUnavailable => {
+            "Studio is still getting your coding agent ready. Try again in a moment.".to_string()
+        }
+        launch_context::LaunchContextError::Storage(_) => {
+            "We couldn't load this chat right now. Try again.".to_string()
+        }
+        launch_context::LaunchContextError::Sandbox(_) => {
+            format!("We couldn't prepare this workspace for {agent}. Try again in a moment.")
+        }
+        launch_context::LaunchContextError::Workspace(_) => {
+            format!("We couldn't prepare this workspace for {agent}. Restart Studio and try again.")
+        }
+        launch_context::LaunchContextError::Artifacts(_)
+        | launch_context::LaunchContextError::Json(_) => {
+            format!("We couldn't finish preparing {agent}. Restart Studio and try again.")
+        }
+    }
+}
+
+fn launch_preparation_is_retryable(error: &launch_context::LaunchContextError) -> bool {
+    matches!(
+        error,
+        launch_context::LaunchContextError::VirtualMcp(_)
+            | launch_context::LaunchContextError::LocalEndpointUnavailable
+            | launch_context::LaunchContextError::Storage(_)
+            | launch_context::LaunchContextError::Sandbox(_)
+    )
+}
+
+fn launch_preparation_api_error(
+    harness_id: HarnessId,
+    error: &launch_context::LaunchContextError,
+) -> ApiError {
+    let message = launch_preparation_message(harness_id, error);
+    let api_error = match error {
+        launch_context::LaunchContextError::StaleThread => ApiError::not_found(message),
+        launch_context::LaunchContextError::Storage(_)
+        | launch_context::LaunchContextError::Workspace(_)
+        | launch_context::LaunchContextError::Artifacts(_)
+        | launch_context::LaunchContextError::Json(_) => ApiError::internal(message),
+        launch_context::LaunchContextError::Harness(_)
+        | launch_context::LaunchContextError::VirtualMcp(_)
+        | launch_context::LaunchContextError::LocalEndpointUnavailable
+        | launch_context::LaunchContextError::Sandbox(_) => ApiError::bad_gateway(message),
+    };
+    if launch_preparation_is_retryable(error) {
+        retryable_start_error(api_error)
+    } else {
+        api_error
+    }
+}
+
+fn reconcile_registered_session(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    harness_id: HarnessId,
+) -> ApiResult<()> {
+    crate::terminal::lifecycle::mark_running(db, fence, terminal_session_id).map_err(|error| {
+        agent_start_internal_error(harness_id, "persist running coding agent state", error)
+    })?;
+    Ok(())
+}
+
+fn spawn_fence_message(harness_id: HarnessId, error: &SpawnFenceError) -> String {
+    let agent = agent_display_name(harness_id);
+    match error {
+        SpawnFenceError::Account(_) => format!(
+            "We couldn't confirm your Studio account while starting {agent}. Restart Studio and try again; if needed, sign in again."
+        ),
+        SpawnFenceError::WorkspaceTrust(_) => {
+            format!("We couldn't finish preparing {agent}. Restart Studio and try again.")
+        }
+    }
+}
+
+fn account_start_message(harness_id: HarnessId) -> String {
+    format!(
+        "We couldn't confirm your Studio account while starting {}. Restart Studio and try again; if needed, sign in again.",
+        agent_display_name(harness_id)
+    )
+}
+
+fn account_start_error(harness_id: HarnessId, error: String) -> ApiError {
+    tracing::warn!(
+        harness = harness_id.wire_id(),
+        %error,
+        "could not confirm Studio account before coding agent start"
+    );
+    ApiError::conflict(account_start_message(harness_id))
+}
+
+fn agent_start_internal_error(
+    harness_id: HarnessId,
+    context: &'static str,
+    error: impl std::fmt::Display,
+) -> ApiError {
+    tracing::warn!(
+        harness = harness_id.wire_id(),
+        %error,
+        context,
+        "coding agent start persistence failed"
+    );
+    retryable_start_error(ApiError::internal(format!(
+        "We couldn't prepare this chat for {}. Try again.",
+        agent_display_name(harness_id)
+    )))
+}
+
+fn retryable_start_error(mut error: ApiError) -> ApiError {
+    if let Some(body) = error.body.as_object_mut() {
+        body.insert("retryable".to_string(), Value::Bool(true));
+    }
+    error
+}
+
+fn terminal_start_error(harness_id: HarnessId, error: terminal_session::TerminalError) -> ApiError {
+    tracing::warn!(
+        harness = harness_id.wire_id(),
+        %error,
+        "coding agent terminal process failed to start"
+    );
+    match error {
+        terminal_session::TerminalError::ManagerShuttingDown => {
+            ApiError::conflict("Studio is closing. Reopen it and try again.")
+        }
+        terminal_session::TerminalError::Backpressure { .. } => {
+            retryable_start_error(ApiError::conflict(
+                "Studio is busy starting another coding agent. Try again in a moment.",
+            ))
+        }
+        terminal_session::TerminalError::Spawn(_)
+        | terminal_session::TerminalError::WorkerStart(_)
+        | terminal_session::TerminalError::Operation(_) => ApiError::bad_gateway(format!(
+            "We couldn't start {}. Restart Studio and try again.",
+            agent_display_name(harness_id)
+        )),
+        terminal_session::TerminalError::InvalidSessionKey(_)
+        | terminal_session::TerminalError::InvalidTerminalSize { .. }
+        | terminal_session::TerminalError::InvalidCommand(_)
+        | terminal_session::TerminalError::SessionIdConflict { .. }
+        | terminal_session::TerminalError::SessionClosed
+        | terminal_session::TerminalError::InputTooLarge { .. }
+        | terminal_session::TerminalError::TerminationTimeout { .. } => {
+            ApiError::conflict(format!(
+                "We couldn't safely start {}. Restart Studio and try again.",
+                agent_display_name(harness_id)
+            ))
+        }
+    }
 }
 
 fn command_spec(state: &AppState, launch: &PreparedLaunch) -> CommandSpec {
@@ -1286,9 +1721,9 @@ async fn submit_prompt(
     managed: &ManagedTerminal,
     prompt: &str,
     request_id: &str,
-) -> Result<(), String> {
-    let prompt = validate_prompt(prompt)?;
-    let request_id = validate_request_id(request_id)?;
+) -> Result<(), PromptError> {
+    let prompt = validate_prompt(prompt).map_err(PromptError::Invalid)?;
+    let request_id = validate_request_id(request_id).map_err(PromptError::Invalid)?;
 
     // One gate is shared by every WebSocket attached to this process. It
     // makes a reconnect resend idempotent and prevents two otherwise-idle
@@ -1296,9 +1731,7 @@ async fn submit_prompt(
     let mut prompt_ledger = managed.lock_prompt_ledger().await;
     match prompt_ledger.status(request_id, prompt) {
         PromptRequestStatus::Duplicate => return Ok(()),
-        PromptRequestStatus::Conflict => {
-            return Err("requestId was already accepted with different prompt text".to_string())
-        }
+        PromptRequestStatus::Conflict => return Err(PromptError::RequestConflict),
         PromptRequestStatus::New => {}
     }
 
@@ -1310,17 +1743,15 @@ async fn submit_prompt(
     for _ in 0..8 {
         let row = db
             .rt_get_terminal_session_fenced(fence, managed.session.id())
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "terminal session is no longer available".to_string())?;
+            .map_err(|error| PromptError::Storage(error.to_string()))?
+            .ok_or(PromptError::SessionUnavailable)?;
         if !matches!(
             row.logical_state,
             RtTerminalLogicalState::Idle
                 | RtTerminalLogicalState::Completed
                 | RtTerminalLogicalState::Failed
         ) {
-            return Err(
-                "coding agent is busy; type directly in the terminal to respond".to_string(),
-            );
+            return Err(PromptError::Busy);
         }
         match db
             .rt_compare_and_set_terminal_session_state(
@@ -1332,7 +1763,7 @@ async fn submit_prompt(
                 None,
                 None,
             )
-            .map_err(|error| error.to_string())?
+            .map_err(|error| PromptError::Storage(error.to_string()))?
         {
             RtTerminalSessionCasOutcome::Updated(commit) => {
                 crate::terminal::lifecycle::emit_thread(fence, &commit.thread);
@@ -1340,13 +1771,11 @@ async fn submit_prompt(
                 break;
             }
             RtTerminalSessionCasOutcome::Stale(_) => continue,
-            RtTerminalSessionCasOutcome::Missing => {
-                return Err("terminal session is no longer available".to_string())
-            }
+            RtTerminalSessionCasOutcome::Missing => return Err(PromptError::SessionUnavailable),
         }
     }
     if !claimed {
-        return Err("terminal state changed too many times while accepting prompt".to_string());
+        return Err(PromptError::Contended);
     }
     state.agent_sessions.notify_lifecycle(fence);
 
@@ -1359,7 +1788,7 @@ async fn submit_prompt(
             RtTerminalLogicalState::Failed,
         );
         state.agent_sessions.notify_lifecycle(fence);
-        return Err(error.to_string());
+        return Err(PromptError::Terminal(error));
     }
     prompt_ledger.remember(request_id, prompt);
     Ok(())
@@ -1465,26 +1894,44 @@ async fn scoped_owned_thread(
 ) -> ApiResult<(&'static ThreadsDb, RtAccountScope, RtThreadFence)> {
     let scope = thread_tools::current_account_scope_result()
         .await
-        .map_err(|error| ApiError::internal(format!("session storage unavailable: {error}")))?
-        .ok_or_else(ApiError::unauthorized)?;
-    let db = shared_db(state)?;
+        .map_err(|error| {
+            tracing::warn!(%error, "could not load the Studio account for a coding agent request");
+            ApiError::internal(
+                "We couldn't confirm your Studio account. Restart Studio and try again; if needed, sign in again.",
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "Your Studio session expired. Sign in again.",
+            )
+        })?;
+    let db = shared_db(state).map_err(|error| {
+        terminal_storage_error("open coding agent storage", api_error_message(error))
+    })?;
     let thread = db
         .rt_get_thread_in_scope(&scope, org, thread_id)
-        .map_err(db_err)?
-        .ok_or_else(|| ApiError::not_found("thread not found"))?;
+        .map_err(|error| terminal_storage_error("load chat for coding agent request", error))?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
     if thread.created_by != scope.user_id {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
-            "this chat is read-only",
+            "Only the chat owner can control this coding agent.",
         ));
     }
     if thread.hidden {
-        return Err(ApiError::conflict("chat is archived"));
+        return Err(ApiError::conflict(
+            "This chat is archived. Restore it before opening the coding agent.",
+        ));
     }
     let fence = db
         .rt_thread_fence_in_scope(&scope, org, thread_id)
-        .map_err(db_err)?
-        .ok_or_else(|| ApiError::not_found("thread not found"))?;
+        .map_err(|error| terminal_storage_error("load chat ownership state", error))?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
     Ok((db, scope, fence))
 }
 
@@ -1496,8 +1943,10 @@ fn metadata_for(
 ) -> ApiResult<TerminalMetadata> {
     let thread = db
         .rt_thread_fenced(fence)
-        .map_err(db_err)?
-        .ok_or_else(|| ApiError::not_found("thread not found"))?;
+        .map_err(|error| terminal_storage_error("load coding agent chat metadata", error))?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
     let live_snapshot = state
         .agent_sessions
         .get(fence)
@@ -1508,7 +1957,9 @@ fn metadata_for(
     let provider_session_available = match harness_id.as_deref() {
         Some(harness_id) => matches!(
             db.rt_terminal_resume_decision_fenced(fence, harness_id)
-                .map_err(db_err)?,
+                .map_err(|error| {
+                    terminal_storage_error("load coding agent resume metadata", error)
+                })?,
             RtTerminalResumeDecision::Resume(_)
         ),
         None => false,
@@ -1529,13 +1980,18 @@ fn metadata_for(
     })
 }
 
+fn terminal_storage_error(context: &'static str, error: impl std::fmt::Display) -> ApiError {
+    tracing::warn!(%error, context, "coding agent storage request failed");
+    ApiError::internal("We couldn't load this chat right now. Try again.")
+}
+
 fn parse_harness(value: &str) -> ApiResult<HarnessId> {
     match value {
         "claude" | "claude-code" => Ok(HarnessId::ClaudeCode),
         "codex" => Ok(HarnessId::Codex),
         "opencode" => Ok(HarnessId::OpenCode),
         _ => Err(ApiError::bad_request(
-            "harnessId must be claude-code, codex, or opencode",
+            "Choose Claude Code, Codex, or OpenCode.",
         )),
     }
 }
@@ -1545,16 +2001,16 @@ fn validate_approval_mode(value: &str) -> ApiResult<()> {
         Ok(())
     } else {
         Err(ApiError::bad_request(
-            "approvalMode must be default, auto, or readonly",
+            "Choose a supported coding-agent access mode and try again.",
         ))
     }
 }
 
 fn terminal_size(rows: u16, cols: u16) -> ApiResult<TerminalSize> {
     if !(MIN_ROWS..=MAX_ROWS).contains(&rows) || !(MIN_COLS..=MAX_COLS).contains(&cols) {
-        return Err(ApiError::bad_request(format!(
-            "terminal dimensions must be {MIN_ROWS}..={MAX_ROWS} rows and {MIN_COLS}..={MAX_COLS} columns"
-        )));
+        return Err(ApiError::bad_request(
+            "We couldn't fit the terminal to this window. Resize it and try again.",
+        ));
     }
     Ok(TerminalSize::new(rows, cols))
 }
@@ -1582,24 +2038,6 @@ fn logical_wire(state: RtTerminalLogicalState) -> &'static str {
         RtTerminalLogicalState::Completed => "completed",
         RtTerminalLogicalState::Failed => "failed",
         RtTerminalLogicalState::Interrupted => "interrupted",
-    }
-}
-
-fn terminal_error(error: terminal_session::TerminalError) -> ApiError {
-    match error {
-        terminal_session::TerminalError::ManagerShuttingDown => {
-            ApiError::conflict("the app is shutting down")
-        }
-        terminal_session::TerminalError::Backpressure { .. } => {
-            ApiError::conflict(error.to_string())
-        }
-        terminal_session::TerminalError::InputTooLarge { .. }
-        | terminal_session::TerminalError::InvalidCommand(_)
-        | terminal_session::TerminalError::InvalidSessionKey(_)
-        | terminal_session::TerminalError::InvalidTerminalSize { .. } => {
-            ApiError::bad_request(error.to_string())
-        }
-        _ => ApiError::bad_gateway(error.to_string()),
     }
 }
 
@@ -1637,15 +2075,16 @@ async fn send_error_socket(
 async fn send_prompt_error_socket(
     socket: &mut WebSocket,
     request_id: &str,
-    message: &str,
+    error: &PromptError,
 ) -> Result<(), axum::Error> {
+    error.log();
     send_json(
         socket,
         &json!({
             "type": "error",
-            "code": "prompt_rejected",
-            "message": message,
-            "retryable": false,
+            "code": error.code(),
+            "message": error.message(),
+            "retryable": error.retryable(),
             "requestId": request_id,
         }),
     )
@@ -1661,7 +2100,7 @@ async fn send_stale_attachment_socket(
         &json!({
             "type": "error",
             "code": "stale_attachment",
-            "message": "this terminal is read-only because a newer attachment owns input",
+            "message": "This chat is being controlled from another Studio window.",
             "retryable": false,
             "requestId": request_id,
         }),
@@ -1684,6 +2123,222 @@ mod tests {
         assert_eq!(parse_harness("codex").unwrap(), HarnessId::Codex);
         assert_eq!(parse_harness("opencode").unwrap(), HarnessId::OpenCode);
         assert!(parse_harness("decopilot").is_err());
+    }
+
+    #[test]
+    fn readiness_errors_are_actionable_without_exposing_cli_diagnostics() {
+        let cases = [
+            (
+                HarnessId::ClaudeCode,
+                harness::ResolveError::NotFound(
+                    "claude-code CLI not found at /private/path".to_string(),
+                ),
+                "Make sure Claude Code is installed on this computer, then restart Studio and try again.",
+            ),
+            (
+                HarnessId::Codex,
+                harness::ResolveError::VersionCheckFailed(
+                    "`codex --version` timed out after 5 seconds".to_string(),
+                ),
+                "We couldn't confirm that Codex is ready. Open Codex once to make sure it works, then try again. If the problem continues, update Codex.",
+            ),
+            (
+                HarnessId::OpenCode,
+                harness::ResolveError::RuntimeCheckFailed(
+                    "plugin-free database probe failed for SELECT 1".to_string(),
+                ),
+                "We couldn't start OpenCode. Open OpenCode once to make sure it works, then try again. If the problem continues, update OpenCode.",
+            ),
+            (
+                HarnessId::OpenCode,
+                harness::ResolveError::InvalidOverride(
+                    "LOCAL_API_OPENCODE_BIN contains invalid JSON".to_string(),
+                ),
+                "We couldn't use your OpenCode setup. Restart Studio and try again.",
+            ),
+        ];
+
+        for (harness_id, error, expected) in cases {
+            let message = harness_unavailable_message(harness_id, &error);
+            assert_eq!(message, expected);
+            assert!(!message.contains("SELECT 1"));
+            assert!(!message.contains("--version"));
+            assert!(!message.contains("LOCAL_API_"));
+            assert!(!message.contains("/private/path"));
+        }
+
+        let unsupported = harness::resolve::require_supported_version(
+            HarnessId::ClaudeCode,
+            "2.1.217 (Claude Code)\n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            harness_unavailable_message(HarnessId::ClaudeCode, &unsupported),
+            "Claude Code needs an update to work with Studio. Update Claude Code, then try again."
+        );
+
+        let unrecognized = harness::resolve::require_supported_version(
+            HarnessId::Codex,
+            "Codex version unknown\n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            harness_unavailable_message(HarnessId::Codex, &unrecognized),
+            "We couldn't confirm that Codex is ready. Open Codex once to make sure it works, then try again. If the problem continues, update Codex."
+        );
+    }
+
+    #[test]
+    fn prompt_errors_are_actionable_without_exposing_internal_diagnostics() {
+        let storage = PromptError::Storage(
+            "SQLite error near SELECT * FROM terminal_sessions at /private/studio.db".to_string(),
+        );
+        assert_eq!(storage.code(), "prompt_rejected");
+        assert_eq!(
+            storage.message(),
+            "We couldn't send your message right now. Try again."
+        );
+        assert!(storage.retryable());
+
+        let terminal = PromptError::Terminal(terminal_session::TerminalError::Operation(
+            "PTY write failed for process 4812".to_string(),
+        ));
+        assert_eq!(terminal.code(), "prompt_rejected");
+        assert_eq!(
+            terminal.message(),
+            "We couldn't send your message to the coding agent. Reopen the chat and try again."
+        );
+        assert!(!terminal.retryable());
+
+        let backpressure = PromptError::Terminal(terminal_session::TerminalError::Backpressure {
+            channel: "input",
+        });
+        assert_eq!(backpressure.code(), "agent_busy");
+        assert_eq!(
+            backpressure.message(),
+            "The coding agent is busy. Wait a moment and try again."
+        );
+        assert!(backpressure.retryable());
+
+        let invalid = PromptError::Invalid("requestId must be 1..=512 bytes".to_string());
+        assert_eq!(invalid.code(), "prompt_rejected");
+        assert_eq!(
+            invalid.message(),
+            "We couldn't send this message. Refresh the chat and try again."
+        );
+        assert!(!invalid.retryable());
+
+        let conflict = PromptError::RequestConflict;
+        assert_eq!(conflict.code(), "prompt_rejected");
+        assert!(!conflict.retryable());
+
+        let busy = PromptError::Busy;
+        assert_eq!(busy.code(), "agent_busy");
+        assert!(busy.retryable());
+
+        for message in [storage.message(), terminal.message(), invalid.message()] {
+            assert!(!message.contains("SQLite"));
+            assert!(!message.contains("SELECT"));
+            assert!(!message.contains("/private"));
+            assert!(!message.contains("PTY"));
+            assert!(!message.contains("4812"));
+            assert!(!message.contains("requestId"));
+        }
+    }
+
+    #[test]
+    fn terminal_start_retryability_matches_the_failure_kind() {
+        let permanent = terminal_start_error(
+            HarnessId::OpenCode,
+            terminal_session::TerminalError::Spawn(
+                "operation not permitted at /private/bin/opencode".to_string(),
+            ),
+        );
+        assert_eq!(permanent.body.get("retryable"), None);
+        assert_eq!(
+            api_error_message(permanent),
+            "We couldn't start OpenCode. Restart Studio and try again."
+        );
+
+        let transient = terminal_start_error(
+            HarnessId::Codex,
+            terminal_session::TerminalError::Backpressure { channel: "start" },
+        );
+        assert_eq!(
+            transient.body.get("retryable").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            transient.body.get("error").and_then(Value::as_str),
+            Some("Studio is busy starting another coding agent. Try again in a moment.")
+        );
+    }
+
+    #[test]
+    fn terminal_storage_errors_keep_database_details_out_of_responses() {
+        let error = terminal_storage_error(
+            "load coding agent chat metadata",
+            "database is locked at /private/studio.db",
+        );
+        let message = api_error_message(error);
+        assert_eq!(message, "We couldn't load this chat right now. Try again.");
+        assert!(!message.contains("database"));
+        assert!(!message.contains("/private"));
+    }
+
+    #[test]
+    fn launch_preparation_status_matches_the_failure_boundary() {
+        let storage = launch_context::LaunchContextError::Storage(
+            "database is locked at /private/studio.db".to_string(),
+        );
+        let storage_error = launch_preparation_api_error(HarnessId::Codex, &storage);
+        assert_eq!(storage_error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            storage_error.body.get("retryable").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            storage_error.body.get("error").and_then(Value::as_str),
+            Some("We couldn't load this chat right now. Try again.")
+        );
+
+        let stale = launch_context::LaunchContextError::StaleThread;
+        let stale_error = launch_preparation_api_error(HarnessId::Codex, &stale);
+        assert_eq!(stale_error.status, StatusCode::NOT_FOUND);
+        assert_eq!(stale_error.body.get("retryable"), None);
+    }
+
+    #[test]
+    fn registered_starting_session_is_reconciled_before_reuse() {
+        let db = Box::leak(Box::new(ThreadsDb::open_in_memory().unwrap()));
+        db.rt_create_thread(Some("thread"), "org", "", None, "vmcp", None, "user")
+            .unwrap();
+        let fence = db.rt_thread_fence_in_org("org", "thread").unwrap().unwrap();
+        let session_id = "registered-starting-session";
+        assert!(matches!(
+            db.rt_create_terminal_session_fenced(&fence, session_id, "codex")
+                .unwrap(),
+            RtTerminalSessionCreateOutcome::Created(_)
+        ));
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, session_id)
+                .unwrap()
+                .unwrap()
+                .physical_state,
+            RtTerminalPhysicalState::Starting
+        );
+
+        reconcile_registered_session(db, &fence, session_id, HarnessId::Codex).unwrap();
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, session_id)
+                .unwrap()
+                .unwrap()
+                .physical_state,
+            RtTerminalPhysicalState::Running
+        );
+
+        // Reusing an already-running session remains idempotent.
+        reconcile_registered_session(db, &fence, session_id, HarnessId::Codex).unwrap();
     }
 
     #[test]

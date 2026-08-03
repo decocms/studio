@@ -377,7 +377,9 @@ export class TerminalController {
     this.socket = null;
     this.startupReplySocket = null;
     this.capabilityReplyAuthorities.clear();
-    const error = new Error("Terminal controller was disposed");
+    const error = new Error(
+      translate("chat.nativeTerminal.chatClosedBeforePrompt"),
+    );
     this.startDeferred?.reject(error);
     this.startDeferred = null;
     this.rejectPendingPrompts(error, true);
@@ -674,13 +676,7 @@ export class TerminalController {
         );
         const error =
           !frame.expected && lifecycle.logicalState === "failed"
-            ? new Error(
-                frame.code === undefined || frame.code === 0
-                  ? translate("chat.nativeTerminal.unexpectedExit")
-                  : translate("chat.nativeTerminal.exitCode", {
-                      code: frame.code,
-                    }),
-              )
+            ? new Error(translate("chat.nativeTerminal.unexpectedExit"))
             : null;
         const pendingExitError =
           error ??

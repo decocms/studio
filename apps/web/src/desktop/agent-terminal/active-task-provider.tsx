@@ -112,6 +112,17 @@ export function NativeAgentTerminalProvider({
     return () => controller.release();
   }, [controller]);
 
+  // Native terminal failures belong in the app-level notification surface.
+  // A stable per-chat id prevents Strict Mode and reconnect snapshots from
+  // stacking duplicate toasts for the same active failure.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- Sonner reflects errors published by the external terminal controller
+  useEffect(() => {
+    if (!snapshot.error) return;
+    toast.error(snapshot.error.message, {
+      id: `native-terminal-error:${taskId}`,
+    });
+  }, [snapshot.error, taskId]);
+
   // A persisted local harness is authoritative. Attaching is idempotent and
   // never starts the legacy chat connection.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- external terminal attachment follows the persisted thread pin
@@ -268,10 +279,11 @@ export function NativeAgentTerminalProvider({
     const harness = selectedHarness();
     if (!harness) return;
     void dispatchAutosend(harness).catch((error: unknown) => {
-      toast.error(
+      if (controller.snapshot.get().error) return;
+      controller.reportError(
         error instanceof Error
-          ? error.message
-          : t("chat.nativeTerminal.promptFailed"),
+          ? error
+          : new Error(t("chat.nativeTerminal.promptFailed")),
       );
     });
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage claim and controller request id, not callback identity, gate duplicate sends

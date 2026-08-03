@@ -91,6 +91,41 @@ afterEach(() => {
 });
 
 describe("native terminal prompt delivery", () => {
+  test("uses user-facing copy when a chat closes before an unsent prompt", async () => {
+    const controller = new TerminalController("org", "thread");
+    const submitted = controller.submitPrompt("run it", "request-disposed");
+
+    controller.dispose();
+
+    await expect(submitted).rejects.toThrow(
+      "The chat closed before your message was sent. Reopen it and try again.",
+    );
+  });
+
+  test("keeps process exit codes out of the user-facing error", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const unsubscribe = controller.subscribeOutput(() => {});
+    controller.ensureAttached("codex");
+
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({
+      type: "exit",
+      code: 137,
+      expected: false,
+    });
+
+    expect(controller.snapshot.get().error?.message).toBe(
+      "The coding agent stopped unexpectedly. Reopen the chat and try again.",
+    );
+    expect(controller.snapshot.get().error?.message).not.toContain("137");
+
+    unsubscribe();
+    controller.dispose();
+  });
+
   test("does not resend an initial prompt after an ambiguous disconnect", async () => {
     const controller = new TerminalController("org", "thread");
     controller.retain();
