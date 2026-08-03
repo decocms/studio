@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.160.3",
+      "version": "4.160.5",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -57,7 +57,6 @@
         "@better-auth/sso": "1.4.1",
         "@decocms/better-auth": "1.5.17",
         "@decocms/bindings": "workspace:*",
-        "@decocms/harness": "workspace:*",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -126,7 +125,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.160.3",
+      "version": "4.160.5",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -259,26 +258,6 @@
         "typescript": "^7.0.2",
       },
     },
-    "packages/harness": {
-      "name": "@decocms/harness",
-      "version": "2.8.4",
-      "dependencies": {
-        "@ai-sdk/anthropic": "^3.0.85",
-        "@ai-sdk/google": "^3.0.83",
-        "@ai-sdk/openai": "^3.0.73",
-        "@ai-sdk/provider": "^3.0.10",
-        "@decocms/shared": "workspace:*",
-        "@modelcontextprotocol/sdk": "1.29.0",
-        "@openrouter/ai-sdk-provider": "^2.9.1",
-        "@opentelemetry/api": "^1.9.0",
-        "ai": "^6.0.208",
-        "nanoid": "^5.1.6",
-        "zod": "4.3.6",
-      },
-      "peerDependencies": {
-        "ai": ">=6.0.0",
-      },
-    },
     "packages/mcp-utils": {
       "name": "@decocms/mcp-utils",
       "version": "1.2.0",
@@ -318,7 +297,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.35.4",
+      "version": "1.35.5",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -335,7 +314,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.13.3",
+      "version": "0.13.4",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -704,8 +683,6 @@
     "@decocms/docs": ["@decocms/docs@workspace:apps/docs"],
 
     "@decocms/e2e": ["@decocms/e2e@workspace:packages/e2e"],
-
-    "@decocms/harness": ["@decocms/harness@workspace:packages/harness"],
 
     "@decocms/mcp-utils": ["@decocms/mcp-utils@workspace:packages/mcp-utils"],
 

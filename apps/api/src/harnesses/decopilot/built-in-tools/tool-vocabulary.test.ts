@@ -45,10 +45,10 @@ import {
   createSandboxFsHooks,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
-import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import { createLocalSubtaskTool } from "@decocms/harness/decopilot/built-in-tools/local-subtask";
-import type { ModelsConfig } from "@decocms/harness/types";
+import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
+import { createVmTools } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/index";
+import { createLocalSubtaskTool } from "@/harnesses/lib/decopilot/built-in-tools/local-subtask";
+import type { ModelsConfig } from "@/harnesses/lib/types";
 
 const writer = {
   write: () => {},

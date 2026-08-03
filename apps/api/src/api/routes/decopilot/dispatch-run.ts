@@ -48,14 +48,14 @@ import type {
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
-import { setDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
+import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
   DecopilotObjectStorageSource,
   HarnessWorkspace,
-} from "@decocms/harness/types";
-import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
-import { stringifyError } from "@decocms/harness/stream-error";
+} from "@/harnesses/lib/types";
+import { createProviderFromSecret } from "@/harnesses/lib/decopilot/provider-from-secret";
+import { stringifyError } from "@/harnesses/lib/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
@@ -245,7 +245,7 @@ export function buildAgentSandboxUiStream(
  *
  * Anything that isn't a recognized CLI agent provider id maps to
  * decopilot — the native in-tree harness. The CLI agent providers each
- * own their own harness (see `packages/harness/src/{claude-code,codex}`).
+ * own their own harness (see `apps/api/src/harnesses/lib/{claude-code,codex}`).
  *
  * Exported so POST /messages can resolve the harness up-front (before
  * enqueuing onto the thread gate) to decide whether the request needs

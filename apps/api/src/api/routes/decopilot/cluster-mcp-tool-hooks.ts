@@ -20,7 +20,7 @@ import { posthog } from "@/posthog";
 import type {
   PrOpenedEvent,
   ToolCallAnalytics,
-} from "@decocms/harness/decopilot/mcp-tools";
+} from "@/harnesses/lib/decopilot/mcp-tools";
 import { resolveArgsStorageRefs } from "./file-materializer";
 import {
   advanceTaskBoardForRun,

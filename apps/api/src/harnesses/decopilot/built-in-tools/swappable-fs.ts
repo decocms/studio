@@ -16,7 +16,7 @@
  * `@decocms/sandbox` imports, so it's trivially unit-testable.
  */
 
-import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
+import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 
 export interface SwappableFs {
   /** The forwarder to hand to `createVmTools` — a stable reference. */

@@ -12,7 +12,7 @@ import {
   reassembleFragments,
   streamSubject,
   type RawMsg,
-} from "@decocms/harness/run-stream-codec";
+} from "@/harnesses/lib/run-stream-codec";
 
 /** Back-compat alias — the shared `RawMsg` is the old `ProjectorStreamMessage`. */
 export type ProjectorStreamMessage = RawMsg;

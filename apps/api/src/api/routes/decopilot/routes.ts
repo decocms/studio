@@ -12,7 +12,7 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import { resolveAgentTier } from "@decocms/harness/claude-code/model/agent-tiers";
+import { resolveAgentTier } from "@/harnesses/lib/claude-code/model/agent-tiers";
 import {
   ChatTierSchema,
   type ChatTier,
@@ -44,7 +44,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
-import { stringifyError } from "@decocms/harness/stream-error";
+import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,

@@ -35,7 +35,7 @@ export interface GrepHit {
  * Object-storage hook surface (spec §14). Structurally a subset of the
  * cluster's `BoundObjectStorage`, so `ctx.objectStorage` is assignable
  * directly. Kept as a standalone interface (no `@/` import) so this file
- * stays portable when it moves to `@decocms/harness`.
+ * keeps the harness lib a leaf: flat deps in, no app-tree imports.
  */
 export interface ObjectStorageHooks {
   getBytesOrPresign(
@@ -69,7 +69,7 @@ export interface ObjectStorageHooks {
  * PassthroughClient extras the cluster relies on for the prompt/connections
  * blocks. Structurally a subset of `@modelcontextprotocol/sdk` `Client`, so a
  * concrete `PassthroughClient` / `Client` is assignable directly (no `@/` or
- * SDK import here keeps this file portable to `@decocms/harness`).
+ * SDK import here keeps the harness lib free of cluster modules).
  */
 export interface McpClient {
   listTools(): Promise<{

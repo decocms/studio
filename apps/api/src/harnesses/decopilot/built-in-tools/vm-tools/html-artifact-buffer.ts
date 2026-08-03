@@ -15,8 +15,8 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
-import { matchHtmlArtifactToolPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-artifact-paths";
-import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import { matchHtmlArtifactToolPath } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/html-artifact-paths";
+import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 
 const HOME_VOLUME = "home";
 

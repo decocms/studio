@@ -73,7 +73,7 @@
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { UIMessageChunk } from "ai";
-import { HeartbeatEmitter } from "@decocms/harness/liveness-heartbeat";
+import { HeartbeatEmitter } from "@/harnesses/lib/liveness-heartbeat";
 import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import type {
   DispatchRunDeps,

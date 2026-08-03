@@ -8,8 +8,8 @@ import type { ChatMessage } from "./types";
 export {
   denyPendingApprovals,
   processConversation,
-} from "@decocms/harness/decopilot/conversation";
-export type { ProcessedConversation } from "@decocms/harness/decopilot/conversation";
+} from "@/harnesses/lib/decopilot/conversation";
+export type { ProcessedConversation } from "@/harnesses/lib/decopilot/conversation";
 
 /**
  * Split request messages into system and the single request message.

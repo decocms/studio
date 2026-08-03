@@ -15,7 +15,7 @@ export type { UIMessageChunk } from "ai";
  * expect a UIMessage, and TS accepts the widening.
  *
  * The host-side execution contracts (`Harness`, `HarnessContext`,
- * `HarnessFactory`) stay in @decocms/harness — only the API runs one.
+ * `HarnessFactory`) stay in apps/api/src/harnesses/lib — only the API runs one.
  */
 
 /** Built-in harness identifiers. Open-ended on purpose — third-party harnesses
@@ -23,13 +23,13 @@ export type { UIMessageChunk } from "ai";
 export type HarnessId = "decopilot" | "claude-code" | "codex";
 
 /** Tool approval policy a harness should honor when forwarding to its CLI.
- *  Mirrors `packages/harness/src/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
+ *  Mirrors `apps/api/src/harnesses/lib/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
 export type ToolApprovalLevel = "auto" | "readonly";
 
 /** Mode flag forwarded into harnesses. The CLI harnesses only care about
  *  "plan" (sets `isPlanMode` for read-only restrictions); decopilot
  *  interprets the rest internally. Mirrors
- *  `packages/harness/src/decopilot/mode-config.ts:CHAT_MODES`. */
+ *  `apps/api/src/harnesses/lib/decopilot/mode-config.ts:CHAT_MODES`. */
 export type ChatMode =
   | "default"
   | "plan"

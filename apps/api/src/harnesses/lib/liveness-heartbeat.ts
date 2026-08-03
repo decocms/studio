@@ -6,11 +6,11 @@
  * `apps/api/src/link-daemon/chunk-relay.ts`, which is the file that
  * actually pumps a sandbox's raw SSE into seq-numbered relay lines; that
  * file lives in the `apps/api` workspace, which already depends on
- * `@decocms/harness`, same as `packages/sandbox`) — both need the exact same
+ * the harness lib, same as `packages/sandbox`) — both need the exact same
  * "call `emit` after N ms of silence, reset the window on every real chunk,
  * never emit again after `stop()`" scheduler; only the wiring (what `emit`
  * actually publishes) differs per executor. Lives here so this is reachable
- * from both without a reverse dependency (packages/harness has no
+ * from both without a reverse dependency (the harness lib has no
  * dependency on apps/api in either direction).
  *
  * Pure: no NATS/DBOS/StudioContext/relay-transport knowledge — just a timer
@@ -37,7 +37,7 @@ import { sleep } from "@decocms/shared/std";
  * per-pod reaper backstop enforce. 30s gives ~20 heartbeats of margin inside
  * that 10-minute window, so a single dropped publish or a slow tick never
  * risks a false-positive liveness kill. Not imported from run-registry.ts on
- * purpose: `packages/harness` has no dependency on `apps/api` (that would be
+ * purpose: the harness lib does not import the app tree (that would be
  * the wrong direction) — the relationship is documented here, not enforced
  * by import.
  */

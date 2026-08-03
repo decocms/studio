@@ -14,7 +14,7 @@ import { z } from "zod";
 import { isCancelRequested } from "@/storage/cancel-flag";
 import { fenceMatches } from "@/storage/run-fence";
 import { createBackgroundToolDispatcher } from "@/harnesses/decopilot/background-tool-workflow";
-import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
+import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 

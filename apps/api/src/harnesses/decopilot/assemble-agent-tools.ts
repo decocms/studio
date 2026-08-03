@@ -20,8 +20,8 @@ import {
   type PrOpenedEvent,
   type ToolApprovalLevel,
   type ToolCallAnalytics,
-} from "@decocms/harness/decopilot/mcp-tools";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
+} from "@/harnesses/lib/decopilot/mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
 import {
   buildBuiltInTools,
   getBuiltInTools,

@@ -12,7 +12,7 @@ import { Glob } from "bun";
 // `decopilot/harness-deps.ts`, `decopilot/index.ts`) legitimately keep
 // `StudioContext`/`HarnessContext` type reaches (`../core/studio-context`,
 // `../../core/harness-context`) — that DI surface is rewritten to
-// `@decocms/harness` specifiers in the later package-move slice, not here.
+// harness-lib specifiers when the package moved, and stays that way.
 //
 // Excludes:
 //  - *.integration.test.ts (DB-backed; stays studio-side, not packaged)
@@ -41,7 +41,7 @@ describe("harness tree is cross-tree-free", () => {
 });
 
 // Option-b sandbox decoupling: the portable harness was extracted to
-// `@decocms/harness` (guarded there by packages/harness/src/no-cross-tree.test.ts).
+// `@/harnesses/lib` (guarded there by apps/api/src/harnesses/lib/no-cross-tree.test.ts).
 // What remains in this directory is the cluster island, which sits ABOVE
 // `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
 // not a layering violation — but we still keep that surface explicit and small.

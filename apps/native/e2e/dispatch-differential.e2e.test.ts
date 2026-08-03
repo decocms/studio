@@ -6,7 +6,7 @@
  * the native parity contract's Phase 2 section for the full
  * investigation. Summary: `packages/sandbox/daemon-go/main.go` registers the
  * REAL `claudeCodeHarnessFactory`/`codexHarnessFactory`
- * (`@decocms/harness/claude-code`, `/codex`) into a hardcoded
+ * (the TS CLI harnesses, since deleted) into a hardcoded
  * module-singleton registry at import time — there is no env var or DI seam
  * a black-box-spawned daemon process exposes to swap in a fake harness
  * factory (unlike `DAEMON_E2E_CMD`, which swaps the whole BINARY, not one
@@ -16,7 +16,7 @@
  * (`@anthropic-ai/claude-agent-sdk-<platform>`), not a swappable `claude` on
  * PATH — so even editing daemon config couldn't retarget it to this repo's
  * stub without a code change to `packages/sandbox/daemon` or
- * `packages/harness`, both out of bounds for this work. Running the daemon
+ * the harness code, both out of bounds for this work. Running the daemon
  * for real would mean a real, paid, network-dependent Claude API call per
  * test — unacceptable for CI. This file is the golden-transcript
  * alternative instead.
@@ -62,7 +62,7 @@
  *     the real TS path (the AI SDK's `toUIMessageStream()` already
  *     sub-chunks one raw CLI message into several UIMessageChunks: a
  *     text-start, one-or-more text-delta, a text-end, a finish-step, etc.
- *     — see `packages/harness/src/claude-code/index.ts`), so there is no
+ *     — see the since-deleted TS claude-code harness), so there is no
  *     invariant to pin here even in principle.
  *   - `chunk`'s internal field names/shape — opaque per contract doc.
  *   - Non-content fields inside the raw ndjson that the stub itself already

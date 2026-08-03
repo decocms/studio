@@ -25,22 +25,22 @@ import type { StudioContext } from "@/core/studio-context";
 import { getThreadGithubRepo, threadBranch } from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { StudioProvider } from "@/ai-providers/types";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import {
   getBuiltInTools,
   type PendingImage,
   type VmContext,
 } from "./built-in-tools";
-import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
-import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
+import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import {
   toolsFromMCP,
   type PrOpenedEvent,
   type ToolCallAnalytics,
-} from "@decocms/harness/decopilot/mcp-tools";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
-import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
-import type { HarnessStreamInput } from "@decocms/harness/types";
+} from "@/harnesses/lib/decopilot/mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
+import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
+import type { HarnessStreamInput } from "@/harnesses/lib/types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
 export type PassthroughToolList = Awaited<

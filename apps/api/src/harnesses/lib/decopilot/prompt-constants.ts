@@ -1,4 +1,3 @@
-import type { GithubRepo } from "@decocms/shared/sdk";
 export { DEFAULT_THREAD_TITLE } from "../thread-title";
 
 export const DEFAULT_WINDOW_SIZE = 50;
@@ -116,20 +115,4 @@ You have a \`todo_write\` tool for planning and tracking multi-step work.
 - Your most recent \`todo_write\` call is your current state — re-read
   your last call to see where you are.
 </todo-write>`;
-}
-
-export function buildRepoEnvironmentPrompt(repo: GithubRepo): string {
-  return `<repo-environment>
-You are running inside the repository \`${repo.owner}/${repo.name}\`.
-
-Cite file locations as \`path:line\` so the user can jump to them.
-
-Git operations live in two layers:
-- Working tree, history, commits, branches, pushes → BASH + git CLI
-  inside the VM. The repo is already cloned and checked out; never
-  re-clone.
-- PR-level operations (open, close, merge, review, comment) → GitHub
-  MCP tools. For rebasing a branch on its base, use git CLI — never
-  \`update_pull_request_branch\`, which merges instead of rebasing.
-</repo-environment>`;
 }

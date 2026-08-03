@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
-import type { HeartbeatSleepFn } from "@decocms/harness/liveness-heartbeat";
+import type { HeartbeatSleepFn } from "@/harnesses/lib/liveness-heartbeat";
 import {
   buildLivenessChunk,
   withLivenessHeartbeat,

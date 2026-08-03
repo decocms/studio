@@ -26,19 +26,19 @@ import {
   type StreamTextOnStepFinishCallback,
   type UIMessageStreamWriter,
 } from "ai";
-import type { ModelsConfig } from "@decocms/harness/types";
-import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
+import type { ModelsConfig } from "@/harnesses/lib/types";
+import type { ToolApprovalLevel } from "@/harnesses/lib/decopilot/mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/shared/sdk";
-import { createLanguageModel } from "@decocms/harness/decopilot/studio-provider";
+import { createLanguageModel } from "@/harnesses/lib/decopilot/studio-provider";
 import {
   resolveMaxOutputTokens,
   selectActiveTools,
-} from "@decocms/harness/decopilot/harness-constants";
-import { estimateJsonTokens } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
+} from "@/harnesses/lib/decopilot/harness-constants";
+import { estimateJsonTokens } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import {
   PARENT_STEP_LIMIT,
   SUBAGENT_STEP_LIMIT,
-} from "@decocms/harness/decopilot/prompt-constants";
+} from "@/harnesses/lib/decopilot/prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { BuiltinToolParams } from "./built-in-tools";
@@ -49,12 +49,12 @@ import {
   isPrCreateBashCommand,
 } from "@/tools/task-board/run-reactions";
 import type { SubtaskParams } from "./built-in-tools/subtask";
-import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import {
   runNativeAgentLoopCore,
   type NativeAgentLoopCoreHandle,
-} from "@decocms/harness/decopilot/native-agent-loop-core";
-import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
+} from "@/harnesses/lib/decopilot/native-agent-loop-core";
+import type { CodingWorkspacePromptInput } from "@/harnesses/lib/coding-workspace-prompt";
 
 export interface RunAgentLoopOptions {
   ctx: StudioContext;
@@ -76,7 +76,7 @@ export interface RunAgentLoopOptions {
   /** Authenticated user identity for the user-context prompt block. */
   user?: { id: string; name?: string | null; email?: string | null };
   /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
-  userContext?: import("@decocms/harness/types").HarnessUserContext;
+  userContext?: import("@/harnesses/lib/types").HarnessUserContext;
   codingWorkspace?: CodingWorkspacePromptInput;
   /** Tools `prepareStep` will activate. Sizes the output-token budget; without
    *  it the budget is sized off every assembled tool, including the ones

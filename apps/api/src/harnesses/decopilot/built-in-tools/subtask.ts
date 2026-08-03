@@ -21,11 +21,11 @@ import type {
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { StudioProvider } from "@/ai-providers/types";
-import type { ModelsConfig } from "@decocms/harness/types";
+import type { ModelsConfig } from "@/harnesses/lib/types";
 import { runAgentLoop } from "../run-agent-loop";
-import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
+import { SUBAGENT_STEP_LIMIT } from "@/harnesses/lib/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
-import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
+import type { CodingWorkspacePromptInput } from "@/harnesses/lib/coding-workspace-prompt";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
