@@ -80,6 +80,16 @@ O sandbox do agent é totalmente gerenciado e isolado por agent — o Studio tra
   O sandbox gerenciado é o padrão certo para toda execução, supervisionada ou não — colegas de time nunca precisam de uma configuração local para usar um agent.
 </Callout>
 
+### Studio Native: terminais de coding agent
+
+O app de desktop Studio Native adiciona uma segunda forma, separada, de trabalhar com código. Ao iniciar uma thread nova no Studio Native, aparece um seletor **"Choose a coding agent"** no lugar do composer de chat normal — escolha **Claude Code**, **Codex** ou **OpenCode** e o Studio inicia essa CLI como um terminal interativo ao vivo (uma sessão `xterm.js` embutida) dentro da thread, usando a instalação que ele detectar na sua máquina. Se uma CLI não for detectada, uma opção **"try anyway"** a inicia mesmo assim.
+
+A escolha é permanente para aquela thread: reabri-la reconecta à sessão em execução (ou retoma a conversa salva pela própria CLI) em vez de mostrar o seletor de novo. O Studio continua rastreando a thread na sua sidebar e injeta na CLI uma connection MCP com escopo limitado (`cms`) de volta para as tools da sua org, mas tudo que você digita vai direto para a interface da própria CLI — o Studio não interpreta nem reproduz essa saída como mensagens de chat.
+
+<Callout type="info">
+  Esse seletor só aparece no app de desktop Studio Native, e apenas para uma thread nova — ele não tem relação com o runtime gerenciado do **Decopilot** descrito acima, que está disponível tanto no app de desktop quanto no app web.
+</Callout>
+
 ## Um agent é um MCP virtual
 
 Cada agent no Studio é exposto como seu próprio **endpoint MCP**: um pacote curado de tools, resources e instruções ao qual qualquer client compatível com MCP pode se conectar. Você pode pensar em um agent como um "MCP server virtual" que você monta visualmente — escolha algumas tools das suas connections, adicione instruções, e você publicou um endpoint MCP focado que seu time (ou seus outros agents) pode usar.
