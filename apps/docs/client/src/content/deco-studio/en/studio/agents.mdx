@@ -80,6 +80,16 @@ The agent's sandbox is fully managed and isolated per agent — Studio handles t
   The managed sandbox is the right default for every run, attended or unattended — teammates never need a local setup to use an agent.
 </Callout>
 
+### Studio Native: coding-agent terminals
+
+The Studio Native desktop app adds a second, separate way to work with code. Starting a brand-new thread in Studio Native shows a **"Choose a coding agent"** picker instead of the usual chat composer — pick **Claude Code**, **Codex**, or **OpenCode** and Studio launches that CLI as a live, interactive terminal (an embedded `xterm.js` session) inside the thread, using whichever installation it detects on your machine. If a CLI isn't detected, a **"try anyway"** option launches it regardless.
+
+The choice is permanent for that thread: reopening it reattaches to the running session (or resumes the CLI's own saved conversation) instead of showing the picker again. Studio still tracks the thread in your sidebar and gives the CLI a scoped MCP connection (`cms`) back into your org's tools, but everything you type goes straight to the CLI's own interface — Studio does not parse or replay its output as chat messages.
+
+<Callout type="info">
+  This picker only appears in the Studio Native desktop app, and only for a brand-new thread — it is unrelated to the managed **Decopilot** runtime described above, which is available in both the desktop app and the web app.
+</Callout>
+
 ## An agent is a virtual MCP
 
 Each agent in Studio is exposed as its own **MCP endpoint**: a curated bundle of tools, resources, and instructions that any MCP-compatible client can connect to. You can think of an agent as a "virtual MCP server" that you assemble visually — pick a few tools from your connections, layer on instructions, and you've published a focused MCP endpoint your team (or your other agents) can use.
