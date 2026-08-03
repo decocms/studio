@@ -4,6 +4,9 @@ import { resolveTier } from "@/core/resolve-tier";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { getDecopilotId } from "@decocms/shared/sdk";
+import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
+import { threadBranch } from "@/tools/sandbox/thread-repo";
+import type { TaskRepo } from "./claude-code-task-run";
 
 /**
  * The single home for the "run the org's agent on a task" plumbing, shared by
@@ -16,10 +19,24 @@ import { getDecopilotId } from "@decocms/shared/sdk";
 export async function enqueueAgentRunForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
-  opts: { title: string; prompt: string; temperature: number },
+  opts: {
+    title: string;
+    prompt: string;
+    temperature: number;
+    /** Hosted harness for this run. Defaults to Decopilot. */
+    harnessId?: HostedHarnessId;
+    /**
+     * Repo to bind to the run's thread BEFORE dispatch. Required for
+     * `claude-code`, which resolves its sandbox branch (and therefore its
+     * checkout) at dispatch time and cannot pick a repo mid-run the way
+     * Decopilot's `load_repo` does.
+     */
+    repo?: TaskRepo;
+  },
 ): Promise<{ threadId: string }> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
+  const harnessId = opts.harnessId ?? "decopilot";
 
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
@@ -31,10 +48,33 @@ export async function enqueueAgentRunForTask(
     virtual_mcp_id: agentId,
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
     message_storage_version: 2,
-    harness_id: "decopilot",
+    harness_id: harnessId,
     sandbox_provider_kind: "agent-sandbox",
     created_by: userId,
   });
+
+  // Bind the repo to the thread the way `load_repo` does — it's the only place a
+  // repo persists for the synthetic Super Agent, and it's what makes
+  // `resolveSandboxBranch` hand this run a sandbox with the checkout in it. The
+  // branch must be the repo-specific one or the run lands in the shared
+  // "ephemeral" sandbox with no repo.
+  if (opts.repo) {
+    const branch = threadBranch(thread.id, opts.repo.connectionId);
+    await ctx.storage.threads.update(thread.id, {
+      metadata: {
+        ...(thread.metadata ?? {}),
+        githubRepo: {
+          url: opts.repo.url,
+          owner: opts.repo.owner,
+          name: opts.repo.name,
+          installationId: opts.repo.installationId,
+          connectionId: opts.repo.connectionId,
+        },
+      },
+      branch,
+      updated_by: userId,
+    });
+  }
 
   // Link the run thread to the task (many-to-many) so the board can render it
   // in the card and derive its live run state.
@@ -75,7 +115,7 @@ export async function enqueueAgentRunForTask(
       mode: "default",
       organizationId,
       userId,
-      harnessId: "decopilot",
+      harnessId,
       sandboxProviderKind: "agent-sandbox",
       taskId: thread.id,
       runMetadata: { taskBoardItemId: task.id },
