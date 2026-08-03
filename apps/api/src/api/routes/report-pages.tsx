@@ -8,12 +8,12 @@
  * an OG/Twitter share image. The authenticated SPA still fetches the full deck
  * after the session gate — this shell only carries what a crawler reads.
  *
- * The share IMAGE is a clean per-report card (favicon + domain + score),
- * rendered by the sibling `GET /report/:domain/og.png` route. That route
- * renders with satori + resvg and CACHES per (domain, score); the CDN caches
- * the response too, so the origin renders each report at most once. og:image
- * therefore always points at `<canonical>/og.png`, which itself falls back to a
- * designed static card for a domain with no score yet.
+ * The share IMAGE is the full cover card (favicon · url · score ring · device
+ * frames with the real captured screenshots), rendered by the reports worker
+ * (satori/resvg on the edge — see decocms/reports) and PROXIED by the sibling
+ * `GET /report/:domain/og.png` route so og:image stays same-origin. The worker
+ * always answers 200 with a branded card (even for an unscanned domain); the
+ * designed static card remains the fallback for a dead/slow worker only.
  */
 
 import { Hono } from "hono";
@@ -28,7 +28,6 @@ import {
   toDeck,
   type PublicReportResponse,
 } from "@decocms/shared/reports/to-deck";
-import { renderOgCard } from "@/reports/og-card";
 import { resolveBaseUrl } from "@/tools/reports/auth-client";
 import { getSettings } from "@/settings";
 
@@ -148,43 +147,20 @@ function rewriteHead(html: string, headBlock: string): string {
   return stripped.replace("</head>", `    ${headBlock}\n  </head>`);
 }
 
-/**
- * Rendered cards, keyed by `${domain}|${score}`. Bounded so a long-lived pod
- * can't grow this without limit; a re-scan changes the score and thus the key,
- * so a stale card is never served. The CDN (`s-maxage`) is the first line of
- * caching — this in-memory map only absorbs same-pod repeats within a deploy.
- */
-const cardCache = new Map<string, Uint8Array<ArrayBuffer>>();
-const CARD_CACHE_MAX = 256;
-
-async function renderCachedCard(
-  domain: string,
-  score: number,
-): Promise<Uint8Array<ArrayBuffer>> {
-  const key = `${domain}|${Math.round(score)}`;
-  const hit = cardCache.get(key);
-  if (hit) return hit;
-  const png = await renderOgCard({
-    domain,
-    initial: domain.charAt(0),
-    score,
-    faviconUrl: faviconForDomain(domain, 128),
-  });
-  if (cardCache.size >= CARD_CACHE_MAX) {
-    const oldest = cardCache.keys().next().value;
-    if (oldest !== undefined) cardCache.delete(oldest);
-  }
-  cardCache.set(key, png);
-  return png;
-}
+/** The card render fetches + inlines screenshots before rasterizing — give it
+ *  a real budget (unlike the HTML shell's 2.5s); the CDN caches the result, so
+ *  a cold render is rare. */
+const OG_PROXY_TIMEOUT_MS = 10_000;
 
 export function createReportPagesRoutes(clientDir: string | undefined): Hono {
   const app = new Hono();
 
-  // GET /report/:domain/og.png — the per-report share card. Renders the
-  // score card when the domain has a report; otherwise (and on any render
-  // error) serves the designed static fallback. Registered before `/:domain`
-  // so the two-segment path wins.
+  // GET /report/:domain/og.png — the per-report share card, proxied from the
+  // reports worker (GET /api/v2/public/diagnostics/:domain/og.png). The worker
+  // renders the full cover card and always answers 200 (branded fallback for an
+  // unscanned domain), so the designed static card here only covers a dead/slow
+  // worker or a non-image reply. Registered before `/:domain` so the
+  // two-segment path wins.
   app.get("/:domain/og.png", async (c) => {
     const domain = normalizeDomain(c.req.param("domain"));
     const serveFallback = async () => {
@@ -198,11 +174,19 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
       });
     };
     try {
-      const seo = await fetchReportSeo(domain);
-      if (!seo || typeof seo.score !== "number") return serveFallback();
-      const png = await renderCachedCard(domain, seo.score);
-      return c.body(png, 200, {
-        "Content-Type": "image/png",
+      const res = await fetch(
+        `${resolveBaseUrl({})}/api/v2/public/diagnostics/${encodeURIComponent(
+          domain,
+        )}/og.png`,
+        { signal: AbortSignal.timeout(OG_PROXY_TIMEOUT_MS) },
+      );
+      const type = res.headers.get("content-type") ?? "";
+      if (!res.ok || !type.startsWith("image/") || !res.body) {
+        return serveFallback();
+      }
+      // Pipe the worker's stream through — never buffer the PNG here.
+      return c.body(res.body, 200, {
+        "Content-Type": type,
         // Crawlers cache the bytes; a day is plenty and re-scans are rare.
         "Cache-Control": "public, max-age=0, s-maxage=86400",
       });
