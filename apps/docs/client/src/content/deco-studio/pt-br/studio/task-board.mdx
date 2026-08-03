@@ -21,12 +21,13 @@ Quando o pull request de uma task fica **In Review** (seus checks estão passand
 
 - **QA Agent** — exercita a própria feature, não só o diff, para verificar se a task realmente resolveu o problema.
 - **Code Reviewer** — revisa o código usando skills de revisão apropriadas para o stack do repositório.
-- **Auto-merge** — quando todos os revisores habilitados aprovam, o pull request é mesclado automaticamente em vez de esperar um humano.
+- **Auto-merge** — quando todos os revisores habilitados aprovam, o pull request é mesclado automaticamente em vez de esperar um humano. Se um conflito com a branch base bloquear o merge, o Super Agent o resolve primeiro (faz checkout da branch, mescla a base e faz push) antes de mesclar.
 
 Cada revisor que roda aparece como sua própria sessão no card da task, e o veredito dele é publicado no feed de atividade do card:
 
 - Uma **aprovação** (com notas opcionais) aproxima a task de ir para produção.
 - **Solicitação de mudanças** devolve a task para o Super Agent resolver o feedback, junto com as notas do revisor.
+- Uma entrada de **resolução de conflito de merge** aparece quando o auto-merge é bloqueado por um conflito com a branch base e o Super Agent está resolvendo antes de tentar mesclar novamente.
 
 <Callout type="info">
   QA Agent e Code Reviewer vêm desabilitados por padrão. Habilite os que você
@@ -36,6 +37,6 @@ Cada revisor que roda aparece como sua própria sessão no card da task, e o ver
 
 ## Enviando para produção
 
-Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão.
+Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão — incluindo resolver antes um conflito de merge com a branch base, se houver algum bloqueando.
 
 O painel de PR de cada card também mostra o estado ao vivo do pull request (draft, open, merged, closed) e o status dos checks (passing, pending ou failing), para você ver de imediato se uma task está pronta para avançar.
