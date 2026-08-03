@@ -24,7 +24,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, normalizeBranch, repoDirFor } from "./sandbox-handle";
 
@@ -33,9 +32,11 @@ import {
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
+  listTasks,
   startLocalApi,
   stopLocalApi,
   url,
+  waitForFreshRunningTask,
   type LocalApi,
 } from "./helpers";
 
@@ -110,51 +111,6 @@ async function ensureSandbox(
   const body = (await response.json()) as { handle?: string };
   expect(body.handle).toBeString();
   return body.handle!;
-}
-
-interface TaskSummary {
-  id: string;
-  command: string;
-  status: string;
-  logName: string | null;
-}
-
-/** `GET /_sandbox/tasks` scoped to `handle` via the header (or the
- * process-global registry when `handle` is omitted). */
-async function listTasks(a: LocalApi, handle?: string): Promise<TaskSummary[]> {
-  const res = await fetch(url(a, "/_sandbox/tasks"), {
-    headers: authHeaders(handle ? { "x-decocms-sandbox-handle": handle } : {}),
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { tasks: TaskSummary[] };
-  return body.tasks;
-}
-
-/** Polls `listTasks(a, handle)` until a RUNNING task named `logName` with an
- * id different from every id in `excludeIds` shows up — proves a fresh
- * dev-server task was spawned for THAT specific handle. */
-async function waitForFreshRunningTask(
-  a: LocalApi,
-  handle: string,
-  logName: string,
-  excludeIds: Set<string>,
-  deadlineMs = 20_000,
-): Promise<TaskSummary> {
-  const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
-    const tasks = await listTasks(a, handle);
-    const fresh = tasks.find(
-      (t) =>
-        t.logName === logName &&
-        t.status === "running" &&
-        !excludeIds.has(t.id),
-    );
-    if (fresh) return fresh;
-    await sleep(200);
-  }
-  throw new Error(
-    `no fresh running "${logName}" task appeared for handle ${handle} within ${deadlineMs}ms`,
-  );
 }
 
 describeLocalApi(

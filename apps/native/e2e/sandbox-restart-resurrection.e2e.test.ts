@@ -43,10 +43,12 @@ import {
   authHeaders,
   describeLocalApi,
   jsonAuthHeaders,
+  listTasks,
   readSseUntil,
   startLocalApi,
   stopLocalApi,
   url,
+  waitForFreshRunningTask,
   type LocalApi,
 } from "./helpers";
 
@@ -103,21 +105,6 @@ function setupFixtureRepo(packageJson = PACKAGE_JSON): {
   return { root, bareDir };
 }
 
-interface TaskSummary {
-  id: string;
-  status: string;
-  logName: string | null;
-}
-
-async function listTasks(a: LocalApi, handle?: string): Promise<TaskSummary[]> {
-  const res = await fetch(url(a, "/_sandbox/tasks"), {
-    headers: authHeaders(handle ? { "x-decocms-sandbox-handle": handle } : {}),
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { tasks: TaskSummary[] };
-  return body.tasks;
-}
-
 /** The production UI's desktop control-plane entry point. This route needs no
  * coding-agent session: it materializes the
  * focused repo, durably registers its meaning, and reconciles it to running. */
@@ -146,30 +133,6 @@ async function ensureSandbox(
   const body = (await response.json()) as { handle?: string };
   expect(body.handle).toBeString();
   return body.handle!;
-}
-
-async function waitForFreshRunningTask(
-  a: LocalApi,
-  handle: string,
-  logName: string,
-  excludeIds: Set<string>,
-  deadlineMs = 20_000,
-): Promise<TaskSummary> {
-  const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
-    const tasks = await listTasks(a, handle);
-    const fresh = tasks.find(
-      (t) =>
-        t.logName === logName &&
-        t.status === "running" &&
-        !excludeIds.has(t.id),
-    );
-    if (fresh) return fresh;
-    await sleep(200);
-  }
-  throw new Error(
-    `no fresh running "${logName}" task appeared for handle ${handle} within ${deadlineMs}ms`,
-  );
 }
 
 interface LiveSseCapture {
