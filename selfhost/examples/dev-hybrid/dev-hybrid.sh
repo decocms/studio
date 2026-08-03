@@ -62,10 +62,29 @@ kubectl -n "${NAMESPACE}" rollout status deploy/studio-db --timeout=120s || true
 kubectl -n "${NAMESPACE}" rollout status deploy/studio-minio --timeout=120s || true
 kubectl -n "${NAMESPACE}" rollout status statefulset/"${RELEASE}"-nats --timeout=120s 2>/dev/null || true
 
-echo "==> Port-forwarding cluster backends to localhost"
-kubectl -n "${NAMESPACE}" port-forward svc/studio-db 5432:5432        >/dev/null 2>&1 & PF_PIDS+=($!)
-kubectl -n "${NAMESPACE}" port-forward svc/studio-minio 9000:9000     >/dev/null 2>&1 & PF_PIDS+=($!)
-kubectl -n "${NAMESPACE}" port-forward svc/"${RELEASE}"-nats 4222:4222 >/dev/null 2>&1 & PF_PIDS+=($!)
+# Local ports for the forwards. Overridable because a developer machine often
+# already has something on the default (a Homebrew/embedded Postgres on 5432 is
+# the common one): `kubectl port-forward` then fails to bind and the app
+# silently dials THAT service instead — which surfaces as a confusing
+# `role "studio" does not exist`, not as a port error. Override here and in the
+# matching URL in `.env`; they have to agree.
+DB_PORT="${DB_PORT:-5432}"
+MINIO_PORT="${MINIO_PORT:-9000}"
+NATS_PORT="${NATS_PORT:-4222}"
+
+echo "==> Port-forwarding cluster backends to localhost (db:${DB_PORT} minio:${MINIO_PORT} nats:${NATS_PORT})"
+for spec in "studio-db:${DB_PORT}:5432" "studio-minio:${MINIO_PORT}:9000" "${RELEASE}-nats:${NATS_PORT}:4222"; do
+  svc="${spec%%:*}"; ports="${spec#*:}"
+  local_port="${ports%%:*}"
+  # Fail loudly on a busy port instead of leaving the app pointed somewhere else.
+  if lsof -nP -iTCP:"${local_port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "    ERROR: port ${local_port} is already in use — ${svc} cannot be forwarded." >&2
+    echo "    Free it, or re-run with a different port (e.g. DB_PORT=5433) AND" >&2
+    echo "    update the matching URL in selfhost/examples/dev-hybrid/.env." >&2
+    exit 1
+  fi
+  kubectl -n "${NAMESPACE}" port-forward svc/"${svc}" "${ports}" >/dev/null 2>&1 & PF_PIDS+=($!)
+done
 sleep 3   # let the forwards establish before the app dials them
 
 echo "==> Starting Studio from source (bun run dev) against the cluster"
