@@ -142,6 +142,16 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
     },
     select: (task) => task?.metadata ?? null,
     staleTime: 30_000,
+    // Seeded from the store so the suspense read resolves synchronously in the
+    // common case. Without it, this blanks the WHOLE DesktopTaskWorkspace
+    // subtree (main panel + chat) to <Chat.Skeleton /> for a round-trip whose
+    // result is then discarded — `localHit` wins below. That flash recurs on
+    // every cache miss: first open of a task, after the 5-minute gcTime elapses
+    // while you're on another task, or any remount with an evicted entry.
+    //
+    // Cold/archived threads (the case this query exists for) have no localHit,
+    // so initialData is undefined and the fetch-and-suspend path is unchanged.
+    initialData: localHit ?? undefined,
   });
   return localHit?.metadata ?? fetchedMetadata ?? null;
 }

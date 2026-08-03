@@ -10,6 +10,7 @@
  */
 
 import {
+  Suspense,
   useEffect,
   useRef,
   type PropsWithChildren,
@@ -30,6 +31,7 @@ import {
   type WorkspaceVisibility,
 } from "@/hooks/use-layout-state";
 import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
+import { ShellRouteLoading } from "@/layouts/shell-route-loading";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { CmsTour } from "@/components/cms-tour/cms-tour";
 import { headerLayout } from "./header-layout";
@@ -80,6 +82,14 @@ function PanelCard({
  * The agent's main-panel controls: the view tab bar, which also folds in the
  * agent-independent overlays (Library / Tasks) and caps itself at 3 buttons
  * plus a stack popover. Rendered in whichever header hosts the main panel.
+ *
+ * Own Suspense boundary, deliberately. `useMainPanelTabs` suspends on
+ * main-panel data (the task row, the GitHub MCP client, and the dev MCP client
+ * — whose query key carries the sandbox `previewUrl`, so it re-suspends every
+ * time a sandbox starts). Without a boundary here those reads escape to the
+ * one in `DesktopTaskWorkspace`, whose fallback is <Chat.Skeleton /> — blanking
+ * the CHAT for main-panel data it has nothing to do with. The tab bar simply
+ * yields its own strip of header until it resolves.
  */
 function MainControls({
   virtualMcpId,
@@ -93,12 +103,14 @@ function MainControls({
   maxVisible?: number;
 }) {
   return (
-    <MainPanelTabsBar
-      virtualMcpId={virtualMcpId}
-      taskId={taskId}
-      disableActiveMainToggle={disableActiveMainToggle}
-      maxVisible={maxVisible}
-    />
+    <Suspense fallback={null}>
+      <MainPanelTabsBar
+        virtualMcpId={virtualMcpId}
+        taskId={taskId}
+        disableActiveMainToggle={disableActiveMainToggle}
+        maxVisible={maxVisible}
+      />
+    </Suspense>
   );
 }
 
@@ -150,7 +162,14 @@ export function WorkspacePanelGroup({
   const agentCrumb = sidebarCollapsed ? <AgentSwitcherCrumb /> : null;
   const newChatCrumb = sidebarCollapsed ? <NewChatCrumb /> : null;
 
-  const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
+  // Own boundary, same reasoning as MainControls: these read PR/check state
+  // through the GitHub MCP client, and that client's connect must not be able
+  // to blank the chat.
+  const publishActions = (
+    <Suspense fallback={null}>
+      <VirtualMcpHeaderInfo virtualMcp={entity} />
+    </Suspense>
+  );
 
   // Branch selector lives in the workspace header (top-right, next to publish),
   // NOT in the chat composer — it's a workspace-level concern (which branch the
@@ -159,7 +178,9 @@ export function WorkspacePanelGroup({
   // context (this tree is inside Chat.ActiveTaskProvider).
   const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
   const branchSelector = (
-    <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+    <Suspense fallback={null}>
+      <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+    </Suspense>
   );
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs URL-derived visibility with the resizable panels' imperative layout API
@@ -310,7 +331,16 @@ export function WorkspacePanelGroup({
           className="min-w-0 overflow-hidden bg-sidebar"
         >
           <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
-            <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
+            {/* Same reasoning as MainControls: the main panel's own loads stay
+                in the main panel. Its spinner is the panel-scoped one, so a
+                view swap or a sandbox coming up never reaches the chat's
+                boundary. */}
+            <Suspense fallback={<ShellRouteLoading />}>
+              <MainPanelWithDrawer
+                taskId={taskId}
+                virtualMcpId={virtualMcpId}
+              />
+            </Suspense>
           </PanelCard>
         </ResizablePanel>
       </ResizablePanelGroup>
