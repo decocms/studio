@@ -5,7 +5,7 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
-  useHostedAiProviderKeys,
+  useAiProviderKeys,
   useAiProviders,
 } from "@/hooks/collections/use-ai-providers";
 import { useT } from "@/i18n/use-t.ts";
@@ -15,6 +15,7 @@ import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
+import { getProviderInventoryState } from "./provider-inventory";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -28,9 +29,9 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 function OrgAiProvidersContent() {
-  const allKeys = useHostedAiProviderKeys();
-  const hasDeco = allKeys.some((k) => k.providerId === "deco");
-  const hasAnyProvider = allKeys.length > 0;
+  const allKeys = useAiProviderKeys();
+  const { hasInventory, hasHostedProvider, hasDeco } =
+    getProviderInventoryState(allKeys);
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
@@ -38,7 +39,7 @@ function OrgAiProvidersContent() {
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
 
-  if (!hasAnyProvider) {
+  if (!hasHostedProvider) {
     return (
       <>
         <ProviderGrid
@@ -56,6 +57,11 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
+        {hasInventory ? (
+          <ConnectedProvidersSection
+            onConnectClick={() => setConnectOpen(true)}
+          />
+        ) : null}
       </>
     );
   }

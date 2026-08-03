@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle } from "@untitledui/icons";
@@ -15,6 +16,7 @@ import {
   createTerminalPixelSizeQueryResponder,
   installTerminalCapabilityReplyHandlers,
 } from "./terminal-capability-replies";
+import { toTerminalHarnessId } from "./protocol";
 import type {
   TerminalControllerOutputFrame,
   TerminalControllerSnapshot,
@@ -45,6 +47,46 @@ export function shouldForwardTerminalData(
   nativeReplyAuthority: boolean | null,
 ): boolean {
   return nativeReplyAuthority !== false;
+}
+
+type NativeTerminalPanelSurface = "picker" | "terminal" | "unsupported";
+
+export function nativeTerminalPanelSurface({
+  isThreadLocked,
+  lockedHarness,
+  hasSession,
+  physicalState,
+}: {
+  isThreadLocked: boolean;
+  lockedHarness: string | null;
+  hasSession: boolean;
+  physicalState: TerminalControllerSnapshot["physicalState"];
+}): NativeTerminalPanelSurface {
+  if (isThreadLocked && !toTerminalHarnessId(lockedHarness)) {
+    return "unsupported";
+  }
+  if (isThreadLocked || hasSession || physicalState === "starting") {
+    return "terminal";
+  }
+  return "picker";
+}
+
+const OPENABLE_TERMINAL_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "vscode:",
+  "cursor:",
+]);
+
+export function isOpenableTerminalLink(uri: string): boolean {
+  try {
+    const url = new URL(uri);
+    if (!OPENABLE_TERMINAL_PROTOCOLS.has(url.protocol)) return false;
+    if (url.protocol !== "http:") return true;
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
 }
 
 export type TerminalPulsePhase = "starting" | "reconnecting" | "waiting-output";
@@ -165,6 +207,10 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       brightCyan: terminalColor(["--chart-5"], "#06b6d4"),
       brightWhite: terminalColor(["--foreground"], "#d4d4d4"),
     });
+    const activateTerminalLink = (_event: MouseEvent, uri: string) => {
+      if (!isOpenableTerminalLink(uri)) return;
+      window.open(uri, "_blank", "noopener,noreferrer");
+    };
     const terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: false,
@@ -175,11 +221,17 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
         "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
       fontSize: 13,
       lineHeight: 1.35,
+      linkHandler: {
+        activate: activateTerminalLink,
+        allowNonHttpProtocols: true,
+      },
       scrollback: 10_000,
       theme: createTerminalTheme(),
     });
     const fitAddon = new FitAddon();
+    const webLinksAddon = new WebLinksAddon(activateTerminalLink);
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(webLinksAddon);
     terminal.open(element);
     terminal.textarea?.setAttribute("aria-label", terminalLabel);
     const syncTerminalTheme = () => {
@@ -452,16 +504,38 @@ function Picker() {
   );
 }
 
+function UnsupportedHarnessState() {
+  const t = useT();
+
+  return (
+    <div
+      role="status"
+      className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
+    >
+      <AlertCircle size={28} className="text-muted-foreground" />
+      <p className="text-sm font-medium text-foreground">
+        {t("chat.nativeTerminal.unsupportedHarnessTitle")}
+      </p>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {t("chat.nativeTerminal.unsupportedHarness")}
+      </p>
+    </div>
+  );
+}
+
 export function NativeAgentTerminalPanel() {
   const task = useChatTask();
   const { controller, snapshot, isReadOnly } = useNativeTerminalRuntime();
-  const shouldRenderTerminal =
-    task.isThreadLocked ||
-    snapshot.hasSession ||
-    snapshot.physicalState === "starting";
+  const surface = nativeTerminalPanelSurface({
+    isThreadLocked: task.isThreadLocked,
+    lockedHarness: task.lockedHarness,
+    hasSession: snapshot.hasSession,
+    physicalState: snapshot.physicalState,
+  });
 
+  if (surface === "unsupported") return <UnsupportedHarnessState />;
   if (isReadOnly) return <Picker />;
-  if (!shouldRenderTerminal) return <Picker />;
+  if (surface === "picker") return <Picker />;
 
   return <NativeXterm key={controller.threadId} readOnly={isReadOnly} />;
 }

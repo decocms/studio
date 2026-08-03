@@ -311,7 +311,9 @@ export const chat = {
     "Esta ação ainda não está disponível em chats com agentes de codificação.",
   "chat.nativeTerminal.terminalLabel": "Terminal do agente de codificação",
   "chat.nativeTerminal.unsupportedHarness":
-    "Este chat usa um agente de codificação que esta versão do Studio não consegue executar. Atualize o Studio e tente novamente.",
+    "Este chat foi criado com um agente que o aplicativo para desktop não suporta. Abra-o no Studio pela web ou atualize o Studio e tente novamente.",
+  "chat.nativeTerminal.unsupportedHarnessTitle":
+    "Este chat não pode ser aberto no aplicativo para desktop",
   "chat.nativeTerminal.unexpectedExit":
     "O agente de codificação parou inesperadamente. Reabra o chat e tente novamente.",
   "chat.nativeTerminal.waitingForAgentOutput": "Aguardando saída do {agent}…",

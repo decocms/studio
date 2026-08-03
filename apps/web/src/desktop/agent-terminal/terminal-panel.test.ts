@@ -5,6 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { Terminal } from "@xterm/xterm";
 import {
   hasVisibleTerminalContent,
+  isOpenableTerminalLink,
+  nativeTerminalPanelSurface,
   shouldForwardTerminalData,
   shouldRevealTerminal,
   terminalPulsePhase,
@@ -14,6 +16,78 @@ const writeTerminal = (terminal: Terminal, data: string) =>
   new Promise<void>((resolve) => terminal.write(data, resolve));
 
 describe("native terminal loading visibility", () => {
+  test("keeps unsupported locked chats out of the terminal surface", () => {
+    expect(
+      nativeTerminalPanelSurface({
+        isThreadLocked: true,
+        lockedHarness: "decopilot",
+        hasSession: false,
+        physicalState: null,
+      }),
+    ).toBe("unsupported");
+    expect(
+      nativeTerminalPanelSurface({
+        isThreadLocked: true,
+        lockedHarness: null,
+        hasSession: false,
+        physicalState: null,
+      }),
+    ).toBe("unsupported");
+  });
+
+  test("renders only supported locked chats and active sessions as terminals", () => {
+    for (const lockedHarness of ["claude-code", "codex", "opencode"]) {
+      expect(
+        nativeTerminalPanelSurface({
+          isThreadLocked: true,
+          lockedHarness,
+          hasSession: false,
+          physicalState: null,
+        }),
+      ).toBe("terminal");
+    }
+
+    expect(
+      nativeTerminalPanelSurface({
+        isThreadLocked: false,
+        lockedHarness: null,
+        hasSession: true,
+        physicalState: "running",
+      }),
+    ).toBe("terminal");
+    expect(
+      nativeTerminalPanelSurface({
+        isThreadLocked: false,
+        lockedHarness: null,
+        hasSession: false,
+        physicalState: "starting",
+      }),
+    ).toBe("terminal");
+    expect(
+      nativeTerminalPanelSurface({
+        isThreadLocked: false,
+        lockedHarness: null,
+        hasSession: false,
+        physicalState: null,
+      }),
+    ).toBe("picker");
+  });
+
+  test("allows only links that the native OS opener can route", () => {
+    expect(isOpenableTerminalLink("https://example.com/docs")).toBeTrue();
+    expect(isOpenableTerminalLink("http://localhost:4000/chat")).toBeTrue();
+    expect(isOpenableTerminalLink("http://127.0.0.1:4000/chat")).toBeTrue();
+    expect(isOpenableTerminalLink("vscode://file/tmp/example.ts:4")).toBeTrue();
+    expect(isOpenableTerminalLink("cursor://file/tmp/example.ts:4")).toBeTrue();
+
+    expect(isOpenableTerminalLink("http://example.com/docs")).toBeFalse();
+    expect(isOpenableTerminalLink("javascript:alert(1)")).toBeFalse();
+    expect(isOpenableTerminalLink("data:text/html,hello")).toBeFalse();
+    expect(isOpenableTerminalLink("file:///tmp/example.ts")).toBeFalse();
+    expect(isOpenableTerminalLink("/tmp/example.ts")).toBeFalse();
+    expect(isOpenableTerminalLink("not a link")).toBeFalse();
+  });
+
   test("forwards user input while rejecting recognized replay replies", () => {
     expect(shouldForwardTerminalData(null)).toBeTrue();
     expect(shouldForwardTerminalData(true)).toBeTrue();

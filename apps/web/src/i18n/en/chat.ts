@@ -304,7 +304,9 @@ export const chat = {
     "This action isn't available in coding-agent chats yet.",
   "chat.nativeTerminal.terminalLabel": "Coding agent terminal",
   "chat.nativeTerminal.unsupportedHarness":
-    "This chat uses a coding agent that this version of Studio can't run. Update Studio and try again.",
+    "This chat was created with an agent that the desktop app doesn't support. Open it in Studio on the web, or update Studio and try again.",
+  "chat.nativeTerminal.unsupportedHarnessTitle":
+    "This chat can't be opened in the desktop app",
   "chat.nativeTerminal.unexpectedExit":
     "The coding agent stopped unexpectedly. Reopen the chat and try again.",
   "chat.nativeTerminal.waitingForAgentOutput": "Waiting for {agent} output…",

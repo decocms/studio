@@ -612,14 +612,17 @@ remounts must not duplicate it.
 
 ### xterm
 
-The terminal component owns xterm and FitAddon lifecycle only:
+The terminal component owns xterm, FitAddon, and WebLinksAddon lifecycle only.
+Plain web URLs and OSC 8 hyperlinks are handed to Tauri's OS opener, which
+routes browser links and supported editor schemes to their registered app. The
+terminal component also:
 
-- enable stdin and forward `onData` through bounded UTF-8-safe JSON chunks;
-- send fitted dimensions and later resize changes;
-- apply replay before live output;
-- reconnect with the last rendered byte offset;
-- preserve focus, selection, copy, paste, Unicode, and bracketed-paste behavior;
-- dispose browser resources on unmount without stopping the backend process.
+- enables stdin and forwards `onData` through bounded UTF-8-safe JSON chunks;
+- sends fitted dimensions and later resize changes;
+- applies replay before live output;
+- reconnects with the last rendered byte offset;
+- preserves focus, selection, copy, paste, Unicode, and bracketed-paste behavior;
+- disposes browser resources on unmount without stopping the backend process.
 
 Add English and pt-BR strings for connecting, starting, reconnecting, retry,
 missing CLI, exit, and terminal errors.

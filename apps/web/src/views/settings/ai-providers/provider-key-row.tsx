@@ -29,12 +29,13 @@ import {
   getPreset,
   type OpenAICompatiblePreset,
 } from "@/utils/openai-compatible-presets";
+import { PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { EditProviderKeyDialog } from "./edit-provider-dialog";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ProviderKeyRowProps {
   providerKey: AiProviderKey;
-  provider: AiProviderInfo;
+  provider: AiProviderInfo | null;
 }
 
 export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
@@ -47,7 +48,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const [preferences] = usePreferences();
   const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
 
-  const isOpenAICompatible = provider.id === "openai-compatible";
+  const isOpenAICompatible = provider?.id === "openai-compatible";
 
   const preset: OpenAICompatiblePreset | undefined =
     isOpenAICompatible && providerKey.presetId
@@ -58,8 +59,14 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     ? preset.name
     : isOpenAICompatible
       ? t("settings.aiProviders.customOpenAiCompatible")
-      : provider.name;
-  const logo = preset?.logo ?? provider.logo;
+      : (provider?.name ??
+        (providerKey.providerId === "claude-code"
+          ? t("settings.providerKeyRow.claudeCode")
+          : providerKey.providerId === "codex"
+            ? t("settings.providerKeyRow.codex")
+            : providerKey.providerId));
+  const logo =
+    preset?.logo ?? provider?.logo ?? PROVIDER_LOGOS[providerKey.providerId];
 
   const description = (() => {
     if (isOpenAICompatible) {
@@ -111,15 +118,17 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
         description={description}
         action={
           <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t("settings.providerKeyRow.editProviderKey")}
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => setEditOpen(true)}
-            >
-              <Edit01 size={14} />
-            </Button>
+            {provider ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("settings.providerKeyRow.editProviderKey")}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => setEditOpen(true)}
+              >
+                <Edit01 size={14} />
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               size="icon"
@@ -134,12 +143,14 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
         }
       />
 
-      <EditProviderKeyDialog
-        providerKey={providerKey}
-        provider={provider}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-      />
+      {provider ? (
+        <EditProviderKeyDialog
+          providerKey={providerKey}
+          provider={provider}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      ) : null}
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
