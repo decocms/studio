@@ -100,7 +100,12 @@ pub fn build(org_dir: &Path, thread_id: &str, user_id: Option<&str>) -> String {
     let tree = rows
         .iter()
         .map(|(path, gloss)| {
-            let pad = " ".repeat(column.unwrap_or_default() - path.chars().count() + 2);
+            let pad = " ".repeat(
+                column
+                    .unwrap_or_default()
+                    .saturating_sub(path.chars().count())
+                    .saturating_add(2),
+            );
             format!("{path}{pad}{gloss}")
         })
         .collect::<Vec<_>>()

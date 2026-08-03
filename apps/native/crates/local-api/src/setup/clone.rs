@@ -46,6 +46,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use upstream::poison::MutexExt;
 
 use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
@@ -212,7 +213,9 @@ async fn run_git(
                 match res {
                     Ok(0) | Err(_) => stdout_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&so_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(so_chunk.get(..n).unwrap_or(&so_chunk))
+                                .into_owned();
                         combined.push_str(&text);
                         emit_chunk(orch, task_id, OutputStream::Stdout, &text).await;
                     }
@@ -222,7 +225,9 @@ async fn run_git(
                 match res {
                     Ok(0) | Err(_) => stderr_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&se_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(se_chunk.get(..n).unwrap_or(&se_chunk))
+                                .into_owned();
                         combined.push_str(&text);
                         emit_chunk(orch, task_id, OutputStream::Stderr, &text).await;
                     }
@@ -375,13 +380,17 @@ async fn clone_fresh(orch: &Arc<SetupOrchestrator>, clone_url: &str, branch: Opt
         return false;
     }
 
-    match clone_fresh_body(orch, &task_id, clone_url, branch, &controller).await {
-        _ if controller.requested().is_some() => {
-            let signal = controller.requested().expect("checked above");
-            orch.tasks
-                .finalize(&task_id, TaskStatus::Killed, signal.exit_code(), false);
-            false
-        }
+    let outcome = clone_fresh_body(orch, &task_id, clone_url, branch, &controller).await;
+    // A cancellation observed at any point during the body wins over its
+    // result. Read ONCE and bind the signal here: the previous shape asked
+    // `requested()` twice — a match guard and then the arm body — which left
+    // room for the two answers to disagree.
+    if let Some(signal) = controller.requested() {
+        orch.tasks
+            .finalize(&task_id, TaskStatus::Killed, signal.exit_code(), false);
+        return false;
+    }
+    match outcome {
         Ok(()) => {
             orch.tasks.finalize(&task_id, TaskStatus::Exited, 0, false);
             true
@@ -830,8 +839,7 @@ fn mirror_surgery_lock(canonical_str: &str) -> Arc<tokio::sync::Mutex<()>> {
     > = std::sync::OnceLock::new();
     LOCKS
         .get_or_init(Default::default)
-        .lock()
-        .expect("mirror lock map is never poisoned")
+        .lock_ok()
         .entry(canonical_str.to_string())
         .or_default()
         .clone()

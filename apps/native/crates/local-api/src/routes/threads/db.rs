@@ -842,11 +842,19 @@ pub fn native_assistant_message_id(fence: &RtThreadFence, user_message_id: &str)
         fence.generation.as_str(),
         user_message_id,
     ] {
-        digest.update((component.len() as u64).to_be_bytes());
+        digest.update(
+            u64::try_from(component.len())
+                .unwrap_or(u64::MAX)
+                .to_be_bytes(),
+        );
         digest.update(component.as_bytes());
     }
     let digest = digest.finalize();
-    let mut id = String::with_capacity(NATIVE_ASSISTANT_MESSAGE_ID_V1_PREFIX.len() + 64);
+    let mut id = String::with_capacity(
+        NATIVE_ASSISTANT_MESSAGE_ID_V1_PREFIX
+            .len()
+            .saturating_add(64),
+    );
     id.push_str(NATIVE_ASSISTANT_MESSAGE_ID_V1_PREFIX);
     for byte in digest {
         use std::fmt::Write as _;
@@ -1063,7 +1071,7 @@ pub(crate) fn now_rfc3339() -> String {
 }
 
 pub(crate) fn format_rfc3339(d: Duration) -> String {
-    let secs = d.as_secs() as i64;
+    let secs = i64::try_from(d.as_secs()).unwrap_or(i64::MAX);
     let millis = d.subsec_millis();
     let days = secs.div_euclid(86_400);
     let secs_of_day = secs.rem_euclid(86_400);
@@ -1096,21 +1104,15 @@ fn migrate(conn: &mut Connection) -> DbResult<()> {
     // All pending versions share the same IMMEDIATE transaction: either the
     // full forward upgrade and its final `user_version` land, or the database
     // is byte-for-byte on the old schema.
-    let mut expected = found + 1;
+    // The table's own shape — contiguous, ordered, ending exactly at
+    // `CURRENT_SCHEMA_VERSION` — is a property of THIS SOURCE FILE, not of
+    // the user's database, so `migration_table_is_contiguous` asserts it
+    // once over the whole table instead of re-deriving it here on every
+    // boot against only the `> found` slice.
     for migration in MIGRATIONS.iter().filter(|m| m.version > found) {
-        assert_eq!(
-            migration.version, expected,
-            "native SQLite migrations must be contiguous and ordered"
-        );
         tx.execute_batch(migration.sql)?;
         tx.pragma_update(None, "user_version", migration.version)?;
-        expected += 1;
     }
-    assert_eq!(
-        expected,
-        CURRENT_SCHEMA_VERSION + 1,
-        "CURRENT_SCHEMA_VERSION must match the last native SQLite migration"
-    );
     validate_foreign_keys(&tx)?;
     tx.commit()?;
     Ok(())
@@ -1905,22 +1907,28 @@ impl ThreadsDb {
             clauses.push("hidden = 0".to_string());
             let mut placeholders = Vec::with_capacity(trigger_ids.len());
             for trigger_id in trigger_ids {
-                placeholders.push(format!("?{}", sql_params.len() + 1));
+                placeholders.push(format!("?{}", sql_params.len().saturating_add(1)));
                 sql_params.push(Box::new(trigger_id.clone()));
             }
             clauses.push(format!("trigger_id IN ({})", placeholders.join(", ")));
         } else {
             if let Some(user_id) = options.created_by {
-                clauses.push(format!("created_by = ?{}", sql_params.len() + 1));
+                clauses.push(format!(
+                    "created_by = ?{}",
+                    sql_params.len().saturating_add(1)
+                ));
                 sql_params.push(Box::new(user_id.to_string()));
             }
             if let Some(hidden) = options.hidden {
-                clauses.push(format!("hidden = ?{}", sql_params.len() + 1));
-                sql_params.push(Box::new(hidden as i64));
+                clauses.push(format!("hidden = ?{}", sql_params.len().saturating_add(1)));
+                sql_params.push(Box::new(i64::from(hidden)));
             }
             let virtual_mcp_id = options.virtual_mcp_id.or(options.agent_id);
             if let Some(virtual_mcp_id) = virtual_mcp_id {
-                clauses.push(format!("virtual_mcp_id = ?{}", sql_params.len() + 1));
+                clauses.push(format!(
+                    "virtual_mcp_id = ?{}",
+                    sql_params.len().saturating_add(1)
+                ));
                 sql_params.push(Box::new(virtual_mcp_id.to_string()));
             }
             if let Some(has_trigger) = options.has_trigger {
@@ -1933,23 +1941,26 @@ impl ThreadsDb {
             if let Some(start_date) = options.start_date {
                 clauses.push(format!(
                     "julianday(updated_at) >= julianday(?{})",
-                    sql_params.len() + 1
+                    sql_params.len().saturating_add(1)
                 ));
                 sql_params.push(Box::new(start_date.to_string()));
             }
             if let Some(end_date) = options.end_date {
                 clauses.push(format!(
                     "julianday(updated_at) <= julianday(?{})",
-                    sql_params.len() + 1
+                    sql_params.len().saturating_add(1)
                 ));
                 sql_params.push(Box::new(end_date.to_string()));
             }
             if let Some(s) = options.search.filter(|s| !s.is_empty()) {
-                clauses.push(format!("title LIKE ?{} ESCAPE '\\'", sql_params.len() + 1));
+                clauses.push(format!(
+                    "title LIKE ?{} ESCAPE '\\'",
+                    sql_params.len().saturating_add(1)
+                ));
                 sql_params.push(Box::new(format!("%{}%", like_escape(s))));
             }
             if let Some(status) = options.status {
-                clauses.push(format!("status = ?{}", sql_params.len() + 1));
+                clauses.push(format!("status = ?{}", sql_params.len().saturating_add(1)));
                 sql_params.push(Box::new(status.to_string()));
             }
         }
@@ -1965,8 +1976,8 @@ impl ThreadsDb {
         let list_sql = format!(
             "SELECT {RT_THREAD_COLUMNS} FROM native_scoped_threads WHERE {where_sql} \
              ORDER BY updated_at DESC, rowid DESC LIMIT ?{} OFFSET ?{}",
-            sql_params.len() + 1,
-            sql_params.len() + 2,
+            sql_params.len().saturating_add(1),
+            sql_params.len().saturating_add(2),
         );
         sql_params.push(Box::new(options.limit));
         sql_params.push(Box::new(options.offset));
@@ -2005,38 +2016,47 @@ impl ThreadsDb {
         let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> =
             vec![Box::new(ts), Box::new(updated_by.to_string())];
         if let Some(v) = &patch.title {
-            sets.push(format!("title = ?{}", sql_params.len() + 1));
+            sets.push(format!("title = ?{}", sql_params.len().saturating_add(1)));
             sql_params.push(Box::new(v.clone()));
         }
         if let Some(v) = &patch.description {
-            sets.push(format!("description = ?{}", sql_params.len() + 1));
+            sets.push(format!(
+                "description = ?{}",
+                sql_params.len().saturating_add(1)
+            ));
             sql_params.push(Box::new(v.clone()));
         }
         if let Some(v) = patch.hidden {
-            sets.push(format!("hidden = ?{}", sql_params.len() + 1));
-            sql_params.push(Box::new(v as i64));
+            sets.push(format!("hidden = ?{}", sql_params.len().saturating_add(1)));
+            sql_params.push(Box::new(i64::from(v)));
         }
         if let Some(v) = &patch.status {
-            sets.push(format!("status = ?{}", sql_params.len() + 1));
+            sets.push(format!("status = ?{}", sql_params.len().saturating_add(1)));
             sql_params.push(Box::new(v.clone()));
         }
         if let Some(v) = &patch.metadata {
-            sets.push(format!("metadata = ?{}", sql_params.len() + 1));
+            sets.push(format!(
+                "metadata = ?{}",
+                sql_params.len().saturating_add(1)
+            ));
             sql_params.push(Box::new(v.as_ref().map(|v| v.to_string())));
         }
         if let Some(v) = &patch.branch {
-            sets.push(format!("branch = ?{}", sql_params.len() + 1));
+            sets.push(format!("branch = ?{}", sql_params.len().saturating_add(1)));
             sql_params.push(Box::new(v.clone()));
         }
         if let Some(v) = &patch.virtual_mcp_id {
-            sets.push(format!("virtual_mcp_id = ?{}", sql_params.len() + 1));
+            sets.push(format!(
+                "virtual_mcp_id = ?{}",
+                sql_params.len().saturating_add(1)
+            ));
             sql_params.push(Box::new(v.clone()));
         }
-        let id_placeholder = sql_params.len() + 1;
+        let id_placeholder = sql_params.len().saturating_add(1);
         sql_params.push(Box::new(id.to_string()));
-        let org_placeholder = sql_params.len() + 1;
+        let org_placeholder = sql_params.len().saturating_add(1);
         sql_params.push(Box::new(organization_id.to_string()));
-        let scope_placeholder = sql_params.len() + 1;
+        let scope_placeholder = sql_params.len().saturating_add(1);
         let account_scope = scope.storage_key();
         sql_params.push(Box::new(account_scope.clone()));
         let sql = format!(
@@ -2885,8 +2905,11 @@ impl ThreadsDb {
             ],
         )?;
         if !existing.is_empty() {
-            if existing.len() == 1 {
-                let item = existing.into_iter().next().expect("one existing row");
+            // `len() == 1` then `next().expect(...)` said the same thing
+            // twice; consuming the iterator once says it in the type.
+            let mut rows = existing.into_iter();
+            let only = rows.next().filter(|_| rows.next().is_none());
+            if let Some(item) = only {
                 if item.message_id == input.message_id
                     && item.workflow_id == input.workflow_id
                     && item.task_id == input.task_id
@@ -4800,6 +4823,31 @@ mod tests {
 
     type TableShapeRow = (i64, String, String, i64, Option<String>, i64);
     type ForeignKeyShapeRow = (i64, i64, String, String, String, String, String, String);
+
+    /// `migrate` walks `MIGRATIONS` assuming the table is contiguous, ordered
+    /// from 1, and ends at `CURRENT_SCHEMA_VERSION`. That is a property of
+    /// this source file, so it is asserted here over the WHOLE table — a
+    /// runtime check inside `migrate` could only ever see the `> found`
+    /// slice, so a gap below an existing database's version was invisible to
+    /// it.
+    #[test]
+    fn migration_table_is_contiguous() {
+        for (index, migration) in MIGRATIONS.iter().enumerate() {
+            let position = u32::try_from(index).expect("migration count fits in u32");
+            assert_eq!(
+                migration.version,
+                position + 1,
+                "migrations must be contiguous and ordered from 1; \
+                 entry {index} is version {}",
+                migration.version
+            );
+        }
+        assert_eq!(
+            MIGRATIONS.last().map(|m| m.version),
+            Some(CURRENT_SCHEMA_VERSION),
+            "CURRENT_SCHEMA_VERSION must match the last native SQLite migration"
+        );
+    }
 
     fn local_db_path(app_root: &Path) -> PathBuf {
         app_root.join(crate::STUDIO_DB_FILE_NAME)
@@ -7218,7 +7266,11 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
 
     #[test]
     fn claim_quarantines_wrong_or_reversed_assistant_reservations() {
-        for corruption in ["wrong-id", "reversed-sequence"] {
+        // `assistant_first` doubles as the case selector: the reversed-sequence
+        // case is exactly the one that reuses the reserved id AND writes the
+        // assistant row first. Carrying it in the loop tuple beats re-deriving
+        // it from the label with a match that needs a dead arm.
+        for (corruption, assistant_first) in [("wrong-id", false), ("reversed-sequence", true)] {
             let db = ThreadsDb::open_in_memory().unwrap();
             create_rt_thread(&db, "org", "thread");
             let input = turn_input("m1", corruption, 1);
@@ -7226,11 +7278,10 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 RtTurnEnqueueOutcome::Inserted(item) => item,
                 other => panic!("expected insertion, got {other:?}"),
             };
-            let reserved_id = claimed_assistant_id(&queued);
-            let (assistant_id, assistant_first) = match corruption {
-                "wrong-id" => ("foreign-assistant".to_string(), false),
-                "reversed-sequence" => (reserved_id, true),
-                _ => unreachable!(),
+            let assistant_id = if assistant_first {
+                claimed_assistant_id(&queued)
+            } else {
+                "foreign-assistant".to_string()
             };
             if assistant_first {
                 db.rt_append_message_in_org(
@@ -8135,7 +8186,20 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
 
     #[test]
     fn terminal_commit_rolls_back_assistant_when_status_or_delete_fails() {
-        for failure_point in ["status", "delete"] {
+        for (failure_point, trigger) in [
+            (
+                "status",
+                "CREATE TEMP TRIGGER terminal_failure \
+                 BEFORE UPDATE OF status ON native_scoped_threads \
+                 BEGIN SELECT RAISE(ABORT, 'forced status failure'); END",
+            ),
+            (
+                "delete",
+                "CREATE TEMP TRIGGER terminal_failure \
+                 BEFORE DELETE ON native_scoped_turn_queue \
+                 BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END",
+            ),
+        ] {
             let db = ThreadsDb::open_in_memory().unwrap();
             create_rt_thread(&db, "org", "thread");
             db.rt_enqueue_turn_in_org("org", "thread", &turn_input("m1", "first", 1))
@@ -8149,19 +8213,6 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 db.rt_begin_claimed_turn(&claimed).unwrap(),
                 RtTurnBeginOutcome::Begun(_)
             ));
-            let trigger = match failure_point {
-                "status" => {
-                    "CREATE TEMP TRIGGER terminal_failure \
-                     BEFORE UPDATE OF status ON native_scoped_threads \
-                     BEGIN SELECT RAISE(ABORT, 'forced status failure'); END"
-                }
-                "delete" => {
-                    "CREATE TEMP TRIGGER terminal_failure \
-                     BEFORE DELETE ON native_scoped_turn_queue \
-                     BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END"
-                }
-                _ => unreachable!(),
-            };
             db.lock().execute_batch(trigger).unwrap();
 
             assert!(matches!(

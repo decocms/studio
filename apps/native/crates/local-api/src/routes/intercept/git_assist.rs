@@ -112,15 +112,13 @@ fn path_change_kind(
 /// Port of `fallbackCommitSuggestion` — mesh's own no-LLM degradation.
 fn fallback_commit_suggestion(status: &GitStatusLike, diff: Option<&GitDiffLike>) -> Response {
     let paths = changed_paths(status, diff);
-    if paths.is_empty() {
+    let Some(first) = paths.first() else {
         return Json(json!({ "title": "No changes", "body": "", "message": "No changes" }))
             .into_response();
-    }
-
-    let first = &paths[0];
+    };
     let label = format!("{} {first}", path_change_kind(first, status, diff));
     let extra = if paths.len() > 1 {
-        format!(" and {} more", paths.len() - 1)
+        format!(" and {} more", paths.len().saturating_sub(1))
     } else {
         String::new()
     };

@@ -147,6 +147,13 @@ fn install_signal_shutdown(app: tauri::AppHandle) {
                         signal = signal_name,
                         "second native shutdown signal received; forcing exit"
                     );
+                    #[expect(
+                        clippy::exit,
+                        reason = "forcing exit IS this branch — the comment above \
+                                  describes it as the operator's escape hatch from \
+                                  a wedged shutdown hook, which a graceful return \
+                                  cannot provide."
+                    )]
                     std::process::exit(1);
                 }
             }
@@ -259,10 +266,11 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     };
     let browser_origin = control.resolve();
     let bundled_ui = if selftest_mode || !tauri::is_dev() {
-        Some(Arc::new(
+        let assets: Arc<dyn local_api::UiAssetProvider> = Arc::new(
             crate::ui_assets::TauriUiAssets::new(app, selftest_mode)
                 .map_err(SetupError::UiAssets)?,
-        ) as Arc<dyn local_api::UiAssetProvider>)
+        );
+        Some(assets)
     } else {
         None
     };

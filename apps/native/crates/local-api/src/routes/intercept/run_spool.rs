@@ -243,7 +243,7 @@ impl RunSpool {
 
         let next_len = inner
             .written
-            .checked_add(frame.len() as u64)
+            .checked_add(u64::try_from(frame.len()).unwrap_or(u64::MAX))
             .filter(|next| *next <= self.cap_bytes)
             .ok_or_else(|| RunSpoolError::CapacityExceeded {
                 path: self.path.clone(),
@@ -252,10 +252,15 @@ impl RunSpool {
                 frame_bytes: frame.len(),
             })?;
 
+        // `writer` is `None` only after `finish()` took it — the same state
+        // the `Finished` guard above reports, so reuse that error instead of
+        // asserting the guard already ran.
         let writer = inner
             .writer
             .as_mut()
-            .expect("an active run spool always owns its writer");
+            .ok_or_else(|| RunSpoolError::Finished {
+                path: self.path.clone(),
+            })?;
         writer
             .write_all(&frame)
             .await
@@ -301,7 +306,7 @@ impl RunSpool {
         }
         let start = inner.written;
         let end = start
-            .checked_add(frame.len() as u64)
+            .checked_add(u64::try_from(frame.len()).unwrap_or(u64::MAX))
             .filter(|next| *next <= self.cap_bytes)
             .ok_or_else(|| RunSpoolError::CapacityExceeded {
                 path: self.path.clone(),
@@ -309,10 +314,15 @@ impl RunSpool {
                 current_bytes: inner.written,
                 frame_bytes: frame.len(),
             })?;
+        // `writer` is `None` only after `finish()` took it — the same state
+        // the `Finished` guard above reports, so reuse that error instead of
+        // asserting the guard already ran.
         let writer = inner
             .writer
             .as_mut()
-            .expect("an active run spool always owns its writer");
+            .ok_or_else(|| RunSpoolError::Finished {
+                path: self.path.clone(),
+            })?;
         writer
             .write_all(&frame)
             .await
@@ -341,7 +351,11 @@ impl RunSpool {
                 path: self.path.clone(),
             });
         }
-        let pending = inner.staged.take().expect("staged frame checked above");
+        let Some(pending) = inner.staged.take() else {
+            return Err(RunSpoolError::StagedFrameMismatch {
+                path: self.path.clone(),
+            });
+        };
         inner.visible = inner.written;
         if let Some(sender) = &inner.sender {
             let _ = sender.send(pending.frame);
@@ -362,10 +376,15 @@ impl RunSpool {
                 path: self.path.clone(),
             });
         }
+        // `writer` is `None` only after `finish()` took it — the same state
+        // the `Finished` guard above reports, so reuse that error instead of
+        // asserting the guard already ran.
         let writer = inner
             .writer
             .as_mut()
-            .expect("an active run spool always owns its writer");
+            .ok_or_else(|| RunSpoolError::Finished {
+                path: self.path.clone(),
+            })?;
         writer
             .flush()
             .await

@@ -250,6 +250,13 @@ impl MutationCoordinator {
     /// second `budget`. The commit barrier shares whichever owner phase is
     /// active: registration removal therefore happens before a true terminal
     /// outcome, and a false outcome remains a hard publish gate.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+                  constant. `checked_add` has no honest fallback here — there \
+                  is no `Instant::MAX` to saturate to, so the call site would \
+                  have to invent a deadline. Overflow is ~584 years out."
+    )]
     pub fn begin_shutdown(
         &self,
         budget: Duration,
@@ -307,7 +314,7 @@ impl MutationCoordinator {
         };
         if removed {
             self.owner_changes
-                .send_modify(|generation| *generation += 1);
+                .send_modify(|generation| *generation = generation.saturating_add(1));
         }
     }
 

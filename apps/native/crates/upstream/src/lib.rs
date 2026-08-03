@@ -34,6 +34,10 @@
 //!   [`login`] and [`bridge`] (both mint a [`tokens::StoredSession`]).
 //! - [`paths`] — shared app-data-directory resolution for this crate's
 //!   non-secret on-disk caches ([`register`], [`org_cache`]).
+//! - [`poison`] — `lock_ok`/`read_ok`/`write_ok`: the workspace-wide policy
+//!   for a poisoned lock (recover the guard, never cascade the panic).
+//!   Lives here because `crates/local-api` already depends on this crate and
+//!   is its heaviest consumer — same reason [`clock`] does.
 //!
 //! ## Why a process-wide singleton instead of an `AppState` field
 //!
@@ -61,6 +65,7 @@ pub mod cookie_jar;
 pub mod keychain_helper;
 pub mod login;
 pub mod pkce;
+pub mod poison;
 pub mod refresh;
 pub mod register;
 pub mod revalidate;

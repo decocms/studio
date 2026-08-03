@@ -87,6 +87,12 @@ fn match_group_identity(
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 fn port_pattern() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
@@ -273,7 +279,7 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
         }
         return;
     };
-    let record_started_at = now_ms() as u64;
+    let record_started_at = u64::try_from(now_ms()).unwrap_or(0);
     let identities = match capture_process_group_identity(
         || observe_process_group(pid),
         IDENTITY_CAPTURE_ATTEMPTS,
@@ -432,7 +438,9 @@ async fn drain_and_watch(
                 match res {
                     Ok(0) | Err(_) => stdout_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&so_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(so_chunk.get(..n).unwrap_or(&so_chunk))
+                                .into_owned();
                         // Both this task's own file AND the stable
                         // `"app/<starter>"` transcript (`routes/events.rs`
                         // replays the latter), then a live `log` SSE frame so
@@ -476,7 +484,9 @@ async fn drain_and_watch(
                 match res {
                     Ok(0) | Err(_) => stderr_open = false,
                     Ok(n) => {
-                        let text = String::from_utf8_lossy(&se_chunk[..n]).into_owned();
+                        let text =
+                            String::from_utf8_lossy(se_chunk.get(..n).unwrap_or(&se_chunk))
+                                .into_owned();
                         orch.tasks
                             .append_log(&id, &starter, OutputStream::Stderr, &text, &orch.broadcaster)
                             .await;
@@ -564,7 +574,11 @@ async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u1
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_ascii_lowercase().contains("text/html"))
                     .unwrap_or(false);
-                let was_down = orch.lifecycle_snapshot()["phase"].as_str() != Some("running");
+                let was_down = orch
+                    .lifecycle_snapshot()
+                    .get("phase")
+                    .and_then(Value::as_str)
+                    != Some("running");
                 if !orch.transition_dev_lifecycle(
                     &task_id,
                     json!({
@@ -590,6 +604,13 @@ async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u1
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), String> {
     let current = observe_process_group(record.pgid).await?;
     let authorized = match match_group_identity(&record.identities, current) {
@@ -660,7 +681,7 @@ where
             }
             Err(error) => last_error = error,
         }
-        if attempt + 1 < attempts {
+        if attempt.saturating_add(1) < attempts {
             tokio::time::sleep(interval).await;
         }
     }
@@ -761,13 +782,17 @@ async fn observe_process_identity(
     let output = String::from_utf8(process.stdout)
         .map_err(|error| format!("ps returned non-UTF-8 output for {pid}: {error}"))?;
     let fields: Vec<&str> = output.split_whitespace().collect();
-    if fields.len() < 9 {
-        return Err(format!("cannot parse process identity for {pid}"));
-    }
-    let observed_pid = fields[0]
+    // `ps` emits pid, pgid, state, then a 5-field start time, then the
+    // command — the slice pattern below is that shape, so a short or
+    // reshaped line is rejected instead of indexed into.
+    let ([raw_pid, raw_pgid, state], birth_and_command) = fields
+        .split_first_chunk::<3>()
+        .filter(|(_, rest)| rest.len() >= 6)
+        .ok_or_else(|| format!("cannot parse process identity for {pid}"))?;
+    let observed_pid = raw_pid
         .parse::<u32>()
         .map_err(|error| format!("cannot parse observed pid for {pid}: {error}"))?;
-    let observed_pgid = fields[1]
+    let observed_pgid = raw_pgid
         .parse::<u32>()
         .map_err(|error| format!("cannot parse observed pgid for {pid}: {error}"))?;
     if observed_pid != pid || observed_pgid != expected_pgid {
@@ -775,14 +800,14 @@ async fn observe_process_identity(
             "process {pid} no longer belongs to group {expected_pgid}"
         ));
     }
-    if fields[2].starts_with('Z') {
+    if state.starts_with('Z') {
         return Ok(None);
     }
 
     Ok(Some(DevProcessIdentity {
         pid,
-        birth: fields[3..8].join(" "),
-        executable: fields[8..].join(" "),
+        birth: birth_and_command.get(..5).unwrap_or_default().join(" "),
+        executable: birth_and_command.get(5..).unwrap_or_default().join(" "),
     }))
 }
 

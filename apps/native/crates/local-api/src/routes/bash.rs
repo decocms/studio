@@ -113,7 +113,8 @@ pub async fn bash(State(state): State<AppState>, body: Bytes) -> ApiResult<Json<
 
 fn clamp_timeout(raw: Option<i64>, background: bool) -> u64 {
     let requested = match raw {
-        Some(v) if v > 0 => v as u64,
+        // `try_from` rejects the negatives the old `v > 0` guard did.
+        Some(v) if v > 0 => u64::try_from(v).unwrap_or(DEFAULT_TIMEOUT_MS),
         _ => DEFAULT_TIMEOUT_MS,
     };
     let ceiling = if background {
@@ -185,7 +186,9 @@ impl Utf8ChunkDecoder {
             }
             Err(e) => {
                 let valid_len = e.valid_up_to();
-                let out = String::from_utf8_lossy(&self.pending[..valid_len]).into_owned();
+                let out =
+                    String::from_utf8_lossy(self.pending.get(..valid_len).unwrap_or_default())
+                        .into_owned();
                 self.pending.drain(..valid_len);
                 // A valid UTF-8 sequence is at most 4 bytes; anything larger
                 // still pending can't be "a partial character waiting for
@@ -590,7 +593,8 @@ mod tests {
             update: None,
             token: Arc::from("test-token"),
             boot_id: Arc::from("test-boot"),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone())
+                .expect("registry opens in a fresh temp app root"),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

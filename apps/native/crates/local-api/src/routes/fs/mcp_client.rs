@@ -170,7 +170,7 @@ impl Session {
     /// failure.
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, McpFetchError> {
         let id = self.next_id;
-        self.next_id += 1;
+        self.next_id = self.next_id.saturating_add(1);
         let body = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
         let resp = self.post(&body).await?;
         let status = resp.status();

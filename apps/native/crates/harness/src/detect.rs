@@ -239,8 +239,8 @@ fn claude_auth_status_indicates_logged_in(text: &str) -> bool {
     if end < start {
         return false;
     }
-    serde_json::from_str::<serde_json::Value>(&text[start..=end])
-        .ok()
+    text.get(start..=end)
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
         .and_then(|v| v.get("loggedIn").and_then(serde_json::Value::as_bool))
         .unwrap_or(false)
 }

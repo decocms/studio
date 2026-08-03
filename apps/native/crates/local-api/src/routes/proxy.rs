@@ -584,7 +584,7 @@ async fn send_to_loopback(
         match tokio::time::timeout(HEADERS_TIMEOUT, builder.send()).await {
             Ok(Ok(resp)) => return Ok(resp),
             Ok(Err(e)) => {
-                let is_last = idx == hosts.len() - 1;
+                let is_last = idx == hosts.len().saturating_sub(1);
                 if !is_last && e.is_connect() {
                     last_err = Some(e.to_string());
                     continue;
@@ -723,13 +723,19 @@ fn relax_set_cookie(value: &str) -> String {
 
 fn inject_bootstrap_script(html: &str) -> String {
     match html.rfind("</body>") {
-        Some(idx) => {
-            let mut out = String::with_capacity(html.len() + BOOTSTRAP_SCRIPT.len());
-            out.push_str(&html[..idx]);
-            out.push_str(BOOTSTRAP_SCRIPT);
-            out.push_str(&html[idx..]);
-            out
-        }
+        Some(idx) => match (html.get(..idx), html.get(idx..)) {
+            (Some(head), Some(tail)) => {
+                let mut out =
+                    String::with_capacity(html.len().saturating_add(BOOTSTRAP_SCRIPT.len()));
+                out.push_str(head);
+                out.push_str(BOOTSTRAP_SCRIPT);
+                out.push_str(tail);
+                out
+            }
+            // `rfind` returns a char boundary, so this is dead — but
+            // appending still produces a working document.
+            _ => format!("{html}{BOOTSTRAP_SCRIPT}"),
+        },
         None => format!("{html}{BOOTSTRAP_SCRIPT}"),
     }
 }
@@ -1227,7 +1233,8 @@ mod tests {
             update: None,
             token: "test-token".into(),
             boot_id: "test-boot".into(),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone())
+                .expect("registry opens in a fresh temp app root"),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

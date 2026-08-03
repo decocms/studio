@@ -19,9 +19,27 @@ use serde_json::Value;
 use std::path::{Component, Path};
 use std::sync::LazyLock;
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 static BRANCH_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9._/-]+$").unwrap());
+#[expect(
+    clippy::unwrap_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 static ENV_KEY_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap());
+#[expect(
+    clippy::unwrap_used,
+    reason = "the pattern is a literal in this file, so `Regex::new` can only fail \
+              if THIS SOURCE is wrong — a compile-time mistake a test catches, \
+              not a runtime input. `static_regexes_compile` forces every one."
+)]
 static EMAIL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$").unwrap());
 
@@ -225,6 +243,17 @@ fn display_value(v: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The three statics above unwrap `Regex::new` on source literals. That
+    /// is only safe because a bad literal is caught here rather than on a
+    /// user's machine: `LazyLock` defers compilation to first use, so this
+    /// forces all three.
+    #[test]
+    fn static_regexes_compile() {
+        assert!(BRANCH_RE.is_match("main"));
+        assert!(ENV_KEY_RE.is_match("PATH"));
+        assert!(EMAIL_RE.is_match("a@b.co"));
+    }
 
     #[test]
     fn empty_config_is_valid() {

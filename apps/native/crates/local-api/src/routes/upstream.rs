@@ -454,13 +454,8 @@ async fn proxy_auth_path(
     let url = format!("{}{path_and_query}", session.target());
     let upstream_resp = match send_once_no_bearer(method, &url, &out_headers, body.clone()).await {
         Ok(resp) => resp,
-        Err(ProxyError::Network(msg)) => {
+        Err(msg) => {
             return ApiError::bad_gateway(format!("upstream unreachable: {msg}")).into_response()
-        }
-        // `send_once_no_bearer` never produces `HardUnauthorized` — that
-        // variant only exists for the bearer-retry branch above.
-        Err(ProxyError::HardUnauthorized) => {
-            unreachable!("send_once_no_bearer never returns ProxyError::HardUnauthorized")
         }
     };
 
@@ -680,7 +675,7 @@ fn merge_cookie_headers(base: Option<&str>, overlay: Option<&str>) -> Option<Str
         order
             .iter()
             .map(|name| {
-                let value = &values[name];
+                let value = values.get(name).map_or("", String::as_str);
                 if value.is_empty() {
                     name.clone()
                 } else {
@@ -776,12 +771,7 @@ async fn proxy_public_config(
     let url = format!("{}{path_and_query}", session.target());
     match send_once_no_bearer(method, &url, &out_headers, body.clone()).await {
         Ok(resp) => rewrite_config_version(resp, staged_version.as_deref()).await,
-        Err(ProxyError::Network(msg)) => {
-            ApiError::bad_gateway(format!("upstream unreachable: {msg}")).into_response()
-        }
-        Err(ProxyError::HardUnauthorized) => {
-            unreachable!("send_once_no_bearer never returns ProxyError::HardUnauthorized")
-        }
+        Err(msg) => ApiError::bad_gateway(format!("upstream unreachable: {msg}")).into_response(),
     }
 }
 
@@ -933,6 +923,12 @@ enum ProxyError {
     HardUnauthorized,
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "the builder is configured entirely from literals here; `build()` fails \
+              only if the rustls backend cannot initialize, in which case no \
+              request this proxy exists to make could succeed anyway."
+)]
 fn proxy_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -1095,7 +1091,9 @@ async fn send_with_retry(
 
     let mut headers = headers.clone();
     if cookie_leads {
-        let first = send_once_no_bearer(method, &url, &headers, body.clone()).await?;
+        let first = send_once_no_bearer(method, &url, &headers, body.clone())
+            .await
+            .map_err(ProxyError::Network)?;
         if first.status() != StatusCode::UNAUTHORIZED {
             return Ok(first);
         }
@@ -1154,20 +1152,26 @@ async fn send_once(
 /// handling, but no `Authorization: Bearer` attached at all (the auth-path
 /// branch authenticates via the `Cookie` header already present in
 /// `headers`, not a bearer token).
+/// `Err` carries the network/timeout message directly rather than a
+/// [`ProxyError`]: this path sends no bearer, so `HardUnauthorized` — which
+/// only the bearer-revalidation branch can produce — is not one of its
+/// outcomes. Encoding that in the type is what keeps the two
+/// response-building callers from having to handle a variant they can never
+/// receive, and makes it a compile error if that ever stops being true.
 async fn send_once_no_bearer(
     method: &Method,
     url: &str,
     headers: &HeaderMap,
     body: axum::body::Bytes,
-) -> Result<reqwest::Response, ProxyError> {
+) -> Result<reqwest::Response, String> {
     let builder = proxy_client()
         .request(method.clone(), url)
         .headers(headers.clone())
         .body(body);
     match tokio::time::timeout(UPSTREAM_HEADERS_TIMEOUT, builder.send()).await {
         Ok(Ok(resp)) => Ok(resp),
-        Ok(Err(err)) => Err(ProxyError::Network(err.to_string())),
-        Err(_elapsed) => Err(ProxyError::Network("upstream headers timeout".to_string())),
+        Ok(Err(err)) => Err(err.to_string()),
+        Err(_elapsed) => Err("upstream headers timeout".to_string()),
     }
 }
 
@@ -1528,7 +1532,9 @@ mod tests {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64
+            .as_secs()
+            .try_into()
+            .unwrap_or(i64::MAX)
     }
 
     async fn signed_in_session_with_store(
@@ -1546,7 +1552,7 @@ mod tests {
             },
             access_token: access_token.to_string(),
             refresh_token: Some("refresh_1".to_string()),
-            expires_at: Some(now_unix() + 3600),
+            expires_at: Some(now_unix().saturating_add(3600)),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             cookie: None,
         };
@@ -2601,7 +2607,7 @@ mod tests {
                     },
                     access_token: "tok".to_string(),
                     refresh_token: Some("refresh_1".to_string()),
-                    expires_at: Some(now_unix() + 3600),
+                    expires_at: Some(now_unix().saturating_add(3600)),
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                     cookie: Some("better-auth.session_token=abc".to_string()),
                 },
@@ -2670,7 +2676,7 @@ mod tests {
                     },
                     access_token: "tok".to_string(),
                     refresh_token: Some("refresh_1".to_string()),
-                    expires_at: Some(now_unix() + 3600),
+                    expires_at: Some(now_unix().saturating_add(3600)),
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                     cookie: Some("better-auth.session_token=durable".to_string()),
                 },
@@ -2744,7 +2750,7 @@ mod tests {
                     },
                     access_token: "good-token".to_string(),
                     refresh_token: Some("refresh_1".to_string()),
-                    expires_at: Some(now_unix() + 3600),
+                    expires_at: Some(now_unix().saturating_add(3600)),
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                     cookie: Some("better-auth.session_token=durable".to_string()),
                 },

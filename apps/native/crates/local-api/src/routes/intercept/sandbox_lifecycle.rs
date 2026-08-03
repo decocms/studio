@@ -397,7 +397,7 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
                 observed_status: &record.observed_status,
                 failure_reason: record.error.as_deref(),
                 updated_at_rfc3339: crate::routes::threads::db::format_rfc3339(
-                    std::time::Duration::from_secs(record.updated_at.max(0) as u64),
+                    std::time::Duration::from_secs(u64::try_from(record.updated_at).unwrap_or(0)),
                 ),
             },
         ));

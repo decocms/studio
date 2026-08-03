@@ -198,18 +198,19 @@ struct ReadBody {
 /// `None` for everything else — this doesn't try to be clever about
 /// arbitrary binary formats.
 fn sniff_image_media_type(probe: &[u8]) -> Option<&'static str> {
-    if probe.len() >= 3 && probe[0..3] == [0xff, 0xd8, 0xff] {
+    if probe.starts_with(&[0xff, 0xd8, 0xff]) {
         return Some("image/jpeg");
     }
-    if probe.len() >= 8 && probe[0..8] == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] {
+    if probe.starts_with(&[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) {
         return Some("image/png");
     }
-    if probe.len() >= 6 && probe[0..4] == [0x47, 0x49, 0x46, 0x38] {
+    // GIF needs 6 bytes present ("GIF87a"/"GIF89a") but only the first 4
+    // identify it — the original length guard is kept deliberately.
+    if probe.len() >= 6 && probe.starts_with(&[0x47, 0x49, 0x46, 0x38]) {
         return Some("image/gif");
     }
-    if probe.len() >= 12
-        && probe[0..4] == [0x52, 0x49, 0x46, 0x46]
-        && probe[8..12] == [0x57, 0x45, 0x42, 0x50]
+    if probe.starts_with(&[0x52, 0x49, 0x46, 0x46])
+        && probe.get(8..12) == Some(&[0x57, 0x45, 0x42, 0x50])
     {
         return Some("image/webp");
     }
@@ -223,21 +224,30 @@ const BASE64_ALPHABET: &[u8; 64] =
 /// dependency table (see `mcp_client.rs`'s doc comment for the "shared
 /// Cargo.toml, don't add deps" constraint); this is a self-contained ~15
 /// line encoder, unit-tested against known vectors below.
+/// One alphabet lookup, masked to six bits so the index cannot leave the
+/// 64-entry table.
+fn base64_char(sextet: u8) -> char {
+    BASE64_ALPHABET
+        .get(usize::from(sextet & 0x3f))
+        .copied()
+        .map_or('=', char::from)
+}
+
 fn base64_encode(data: &[u8]) -> String {
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3).saturating_mul(4));
     for chunk in data.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = *chunk.get(1).unwrap_or(&0);
-        let b2 = *chunk.get(2).unwrap_or(&0);
-        out.push(BASE64_ALPHABET[(b0 >> 2) as usize] as char);
-        out.push(BASE64_ALPHABET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        let b0 = chunk.first().copied().unwrap_or(0);
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        out.push(base64_char(b0 >> 2));
+        out.push(base64_char(((b0 & 0x03) << 4) | (b1 >> 4)));
         out.push(if chunk.len() > 1 {
-            BASE64_ALPHABET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char
+            base64_char(((b1 & 0x0f) << 2) | (b2 >> 6))
         } else {
             '='
         });
         out.push(if chunk.len() > 2 {
-            BASE64_ALPHABET[(b2 & 0x3f) as usize] as char
+            base64_char(b2)
         } else {
             '='
         });
@@ -286,7 +296,9 @@ async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<S
 
     let mut parts: Vec<String> = Vec::with_capacity(names.len());
     for name in names {
-        let stem = &name[..name.len() - ".json".len()];
+        let Some(stem) = name.strip_suffix(".json") else {
+            continue;
+        };
         // A stem that is not valid percent-encoding keeps its literal form,
         // mirroring the frontend's own fallback.
         let key = urlencoding::decode(stem)
@@ -356,10 +368,10 @@ pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
         Ok(d) => d,
         Err(e) => return ApiError::internal(e.to_string()).into_response(),
     };
-    let probe = &data[..data.len().min(8192)];
+    let probe = data.get(..data.len().min(8192)).unwrap_or(&data);
 
     if let Some(media_type) = sniff_image_media_type(probe) {
-        if data.len() as u64 > MAX_IMAGE_BYTES {
+        if u64::try_from(data.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES {
             return ApiError::bad_request(format!(
                 "Image too large ({} bytes; cap is {MAX_IMAGE_BYTES})",
                 data.len()
@@ -388,20 +400,20 @@ pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
     let offset: usize = if full {
         1
     } else {
-        body.offset.unwrap_or(1).max(1) as usize
+        usize::try_from(body.offset.unwrap_or(1).max(1)).unwrap_or(1)
     };
     let limit: usize = if full {
         lines.len()
     } else {
-        body.limit.unwrap_or(2000).max(0) as usize
+        usize::try_from(body.limit.unwrap_or(2000).max(0)).unwrap_or(2000)
     };
     let start = offset.saturating_sub(1).min(lines.len());
     let end = start.saturating_add(limit).min(lines.len());
-    let slice = &lines[start..end];
+    let slice = lines.get(start..end).unwrap_or_default();
     let numbered = slice
         .iter()
         .enumerate()
-        .map(|(i, l)| format!("{}\t{l}", offset + i))
+        .map(|(i, l)| format!("{}\t{l}", offset.saturating_add(i)))
         .collect::<Vec<_>>()
         .join("\n");
     Json(json!({ "kind": "text", "content": numbered, "lineCount": lines.len() })).into_response()
@@ -499,8 +511,11 @@ pub async fn unlink(State(state): State<AppState>, body: Bytes) -> Response {
                         "Refusing to unlink directory without recursive: true",
                     ));
                 }
-                if recursive {
-                    let trash_path = trash_for_commit.unwrap().join("deleted");
+                // `trash_for_commit` is `Some` exactly when `recursive` — it
+                // was built from that same flag — so match on the value
+                // instead of re-testing the flag and unwrapping.
+                if let Some(trash_root) = trash_for_commit {
+                    let trash_path = trash_root.join("deleted");
                     tokio::fs::rename(&file_path, &trash_path)
                         .await
                         .map_err(|error| ApiError::internal(error.to_string()))?;
@@ -747,13 +762,13 @@ async fn drive_owned_rg(
             read = stdout.read(&mut stdout_chunk), if stdout_open => {
                 match read {
                     Ok(0) | Err(_) => stdout_open = false,
-                    Ok(n) => stdout_bytes.extend_from_slice(&stdout_chunk[..n]),
+                    Ok(n) => stdout_bytes.extend_from_slice(stdout_chunk.get(..n).unwrap_or(&stdout_chunk)),
                 }
             }
             read = stderr.read(&mut stderr_chunk), if stderr_open => {
                 match read {
                     Ok(0) | Err(_) => stderr_open = false,
-                    Ok(n) => stderr_bytes.extend_from_slice(&stderr_chunk[..n]),
+                    Ok(n) => stderr_bytes.extend_from_slice(stderr_chunk.get(..n).unwrap_or(&stderr_chunk)),
                 }
             }
             status = child.wait(), if !exited && !stdout_open && !stderr_open => {
@@ -920,7 +935,7 @@ pub async fn grep(State(state): State<AppState>, body: Bytes) -> Response {
     args.push(pattern);
     args.push(search_path.to_string_lossy().to_string());
 
-    let limit = body.limit.unwrap_or(250).max(0) as usize;
+    let limit = usize::try_from(body.limit.unwrap_or(250).max(0)).unwrap_or(250);
     let output = match run_owned_rg(&state, &args).await {
         Ok(output) => output,
         Err(error) => return error.into_response(),
@@ -977,6 +992,13 @@ pub async fn glob(State(state): State<AppState>, body: Bytes) -> Response {
         None => state.repo_dir.clone(),
     };
     let result_limit = resolve_glob_result_limit(body.limit);
+    // Float-to-integer `as` is a saturating cast (defined behavior since
+    // Rust 1.45) and `max(1.0)` sets the floor, so this clamps rather than
+    // wrapping; there is no `TryFrom<f64> for usize` to express it instead.
+    #[expect(
+        clippy::as_conversions,
+        reason = "saturating float cast, floored above"
+    )]
     let max_depth = body.max_depth.map(|d| (d.max(1.0).floor()) as usize);
 
     let (file_paths, directory_paths, truncated) = if let Some(md) = max_depth {
@@ -1012,7 +1034,9 @@ pub async fn glob(State(state): State<AppState>, body: Bytes) -> Response {
     let empty_dirs = collect_empty_directories(&file_paths, &dirs_vec);
     let mut out = json!({ "files": file_paths, "directories": empty_dirs });
     if truncated {
-        out["truncated"] = json!(true);
+        if let Some(fields) = out.as_object_mut() {
+            fields.insert("truncated".to_string(), json!(true));
+        }
     }
     Json(out).into_response()
 }
@@ -1118,7 +1142,7 @@ async fn write_from_url_owned(
                     )))
                 }
             };
-            written += chunk.len() as u64;
+            written = written.saturating_add(u64::try_from(chunk.len()).unwrap_or(u64::MAX));
             if written > MAX_TRANSFER_BYTES {
                 return Err(ApiError::bad_gateway(format!(
                     "Stream exceeded {MAX_TRANSFER_BYTES} bytes"

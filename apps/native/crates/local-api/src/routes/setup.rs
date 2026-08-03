@@ -337,7 +337,7 @@ pub async fn stop(State(state): State<AppState>, headers: HeaderMap) -> ApiResul
         if matches!(t.log_name.as_deref(), Some("dev") | Some("start"))
             && target.tasks.kill(&t.id, KillSignal::Term) == Some(true)
         {
-            killed += 1;
+            killed = killed.saturating_add(1);
         }
     }
     if killed == 0 {
@@ -398,7 +398,8 @@ mod tests {
             update: None,
             token: "test-token".into(),
             boot_id: "test-boot".into(),
-            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone())
+                .expect("registry opens in a fresh temp app root"),
             app_root,
             repo_dir,
             mode: crate::state::ApiMode::Strict,

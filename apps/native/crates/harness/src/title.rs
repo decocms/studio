@@ -218,7 +218,8 @@ fn extract_title(harness: HarnessId, stdout: &str) -> Option<String> {
         .find('{')
         .zip(text.rfind('}'))
         .filter(|(start, end)| start < end)
-        .and_then(|(start, end)| serde_json::from_str::<Value>(&text[start..=end]).ok())
+        .and_then(|(start, end)| text.get(start..=end))
+        .and_then(|json| serde_json::from_str::<Value>(json).ok())
         .and_then(|value| {
             value
                 .get("title")

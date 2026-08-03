@@ -467,7 +467,8 @@ mod tests {
 
         // Opening a fresh manager imports the legacy sidecar into SQLite but
         // deliberately leaves its live object cache empty.
-        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf())
+            .expect("registry opens in a fresh temp app root");
         assert!(manager.get(&handle).is_none());
         let state = state_with_manager(root.path(), manager.clone());
 

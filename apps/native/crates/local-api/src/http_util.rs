@@ -22,7 +22,7 @@
 //!   string, previously duplicated per intercept route.
 
 use axum::body::Body;
-use axum::http::{header, HeaderMap, HeaderName, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::de::DeserializeOwned;
 
@@ -79,11 +79,18 @@ pub(crate) fn strip_hop_by_hop_headers(headers: &mut HeaderMap) {
 /// DELIBERATELY different from [`event_stream_response`]'s events-family set
 /// (`no-store` here, not `no-cache`; no `X-Accel-Buffering`/
 /// `Content-Encoding`, since those aren't pinned for the dispatch routes).
-pub(crate) fn dispatch_sse_headers() -> [(HeaderName, &'static str); 3] {
+pub(crate) fn dispatch_sse_headers() -> [(HeaderName, HeaderValue); 3] {
+    // Pre-parsed rather than `&'static str`: every caller fed these straight
+    // into `HeaderMap::insert`, which meant a `.parse().unwrap()` per call
+    // site for values that are literals right here. `from_static` moves that
+    // to one infallible construction.
     [
-        (header::CONTENT_TYPE, "text/event-stream"),
-        (header::CACHE_CONTROL, "no-store"),
-        (header::CONNECTION, "keep-alive"),
+        (
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/event-stream"),
+        ),
+        (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        (header::CONNECTION, HeaderValue::from_static("keep-alive")),
     ]
 }
 
@@ -224,9 +231,21 @@ mod tests {
     fn dispatch_sse_headers_pin_the_no_store_contract() {
         let headers = dispatch_sse_headers();
         assert_eq!(headers.len(), 3);
-        assert_eq!(headers[0], (header::CONTENT_TYPE, "text/event-stream"));
-        assert_eq!(headers[1], (header::CACHE_CONTROL, "no-store"));
-        assert_eq!(headers[2], (header::CONNECTION, "keep-alive"));
+        assert_eq!(
+            headers[0],
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/event-stream")
+            )
+        );
+        assert_eq!(
+            headers[1],
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))
+        );
+        assert_eq!(
+            headers[2],
+            (header::CONNECTION, HeaderValue::from_static("keep-alive"))
+        );
     }
 
     #[test]

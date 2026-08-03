@@ -312,7 +312,7 @@ impl ClaudeEventMapper {
 
     fn next_part_id(&mut self) -> String {
         let id = self.next_id;
-        self.next_id += 1;
+        self.next_id = self.next_id.saturating_add(1);
         id.to_string()
     }
 
@@ -775,11 +775,11 @@ mod tests {
 
         let finish = events
             .iter()
-            .find(|e| matches!(e, MappedEvent::Chunk(v) if v["type"] == "finish"))
+            .find_map(|e| match e {
+                MappedEvent::Chunk(v) if v["type"] == "finish" => Some(v),
+                _ => None,
+            })
             .expect("a finish chunk");
-        let MappedEvent::Chunk(finish) = finish else {
-            unreachable!()
-        };
         assert_eq!(finish["finishReason"], "stop");
         assert_eq!(
             finish["messageMetadata"]["codingAgentProvider"],
@@ -809,22 +809,22 @@ mod tests {
 
         let available = events
             .iter()
-            .find(|e| matches!(e, MappedEvent::Chunk(v) if v["type"] == "tool-input-available"))
+            .find_map(|e| match e {
+                MappedEvent::Chunk(v) if v["type"] == "tool-input-available" => Some(v),
+                _ => None,
+            })
             .expect("a tool-input-available chunk");
-        let MappedEvent::Chunk(available) = available else {
-            unreachable!()
-        };
         assert_eq!(available["toolCallId"], "toolu_01ABC");
         assert_eq!(available["toolName"], "Bash");
         assert_eq!(available["input"]["command"], "echo hi");
 
         let output = events
             .iter()
-            .find(|e| matches!(e, MappedEvent::Chunk(v) if v["type"] == "tool-output-available"))
+            .find_map(|e| match e {
+                MappedEvent::Chunk(v) if v["type"] == "tool-output-available" => Some(v),
+                _ => None,
+            })
             .expect("a tool-output-available chunk");
-        let MappedEvent::Chunk(output) = output else {
-            unreachable!()
-        };
         assert_eq!(output["toolCallId"], "toolu_01ABC");
     }
 

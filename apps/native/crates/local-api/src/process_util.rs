@@ -38,7 +38,7 @@ const ESCALATE_AFTER: Duration = Duration::from_secs(3);
 pub(crate) fn exit_status_to_code(status: std::process::ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
     match status.signal() {
-        Some(sig) => 128 + sig,
+        Some(sig) => 128_i32.saturating_add(sig),
         None => status.code().unwrap_or(1),
     }
 }
@@ -79,8 +79,8 @@ pub(crate) fn emit_tasks_event(tasks: &TaskRegistry, broadcaster: &Broadcaster) 
         .into_iter()
         .map(|t| {
             let mut obj = json!({"id": t.id, "command": t.command});
-            if let Some(name) = t.log_name {
-                obj["logName"] = json!(name);
+            if let (Some(fields), Some(name)) = (obj.as_object_mut(), t.log_name) {
+                fields.insert("logName".to_string(), json!(name));
             }
             obj
         })
@@ -179,6 +179,13 @@ pub(crate) struct DriveOutcome {
 /// group leader unreaped until every inherited output writer has closed —
 /// its unreaped PID pins the process-group identity, so timeout/controller
 /// signals can never target a recycled PGID.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+              constant. `checked_add` has no honest fallback here — there \
+              is no `Instant::MAX` to saturate to, so the call site would \
+              have to invent a deadline. Overflow is ~584 years out."
+)]
 pub(crate) async fn drive_group_to_exit<S: OutputSink>(
     child: &mut ProcessGroupChild,
     mut stdout_pipe: ChildStdout,
@@ -218,13 +225,19 @@ pub(crate) async fn drive_group_to_exit<S: OutputSink>(
             res = stdout_pipe.read(&mut so_chunk), if stdout_open => {
                 match res {
                     Ok(0) | Err(_) => stdout_open = false,
-                    Ok(n) => sink.write(OutputStream::Stdout, &so_chunk[..n]).await,
+                    Ok(n) => {
+                        sink.write(OutputStream::Stdout, so_chunk.get(..n).unwrap_or(&so_chunk))
+                            .await
+                    }
                 }
             }
             res = stderr_pipe.read(&mut se_chunk), if stderr_open => {
                 match res {
                     Ok(0) | Err(_) => stderr_open = false,
-                    Ok(n) => sink.write(OutputStream::Stderr, &se_chunk[..n]).await,
+                    Ok(n) => {
+                        sink.write(OutputStream::Stderr, se_chunk.get(..n).unwrap_or(&se_chunk))
+                            .await
+                    }
                 }
             }
             // Do not reap the group leader while descendants may still own an

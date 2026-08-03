@@ -1,3 +1,8 @@
+#[expect(
+    clippy::expect_used,
+    reason = "build script: a failed Tauri build-context generation SHOULD fail the \
+              build rather than produce a broken bundle."
+)]
 fn main() {
     const COMMANDS: &[&str] = &[
         "local_api_info",

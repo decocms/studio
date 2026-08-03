@@ -90,14 +90,16 @@ struct TokenResponse {
 fn now_unix() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
         .unwrap_or(0)
 }
 
 fn is_expired(session: &StoredSession, skew: Duration) -> bool {
     match session.expires_at {
         None => false,
-        Some(exp) => exp - skew.as_secs() as i64 <= now_unix(),
+        Some(exp) => {
+            exp.saturating_sub(i64::try_from(skew.as_secs()).unwrap_or(i64::MAX)) <= now_unix()
+        }
     }
 }
 
@@ -247,7 +249,7 @@ impl RefreshCoordinator {
             refresh_token: token.refresh_token.or(observed.refresh_token),
             expires_at: token
                 .expires_in
-                .map(|s| now_unix() + s)
+                .map(|s| now_unix().saturating_add(s))
                 .or(observed.expires_at),
             ..observed
         };
@@ -298,7 +300,7 @@ mod tests {
                 "/api/auth/mcp/token",
                 post(
                     move |State(calls): State<Arc<AtomicUsize>>, _body: axum::body::Bytes| {
-                        let n = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        let n = calls.fetch_add(1, Ordering::SeqCst).saturating_add(1);
                         async move {
                             Json(serde_json::json!({
                                 "access_token": format!("refreshed-{n}"),

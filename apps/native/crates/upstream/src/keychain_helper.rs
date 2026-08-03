@@ -244,7 +244,7 @@ pub fn serve_stdio() -> std::io::Result<()> {
         .take(MAX_PROTOCOL_BYTES + 1)
         .read_to_end(&mut input)?;
 
-    let response = if input.len() as u64 > MAX_PROTOCOL_BYTES {
+    let response = if u64::try_from(input.len()).unwrap_or(u64::MAX) > MAX_PROTOCOL_BYTES {
         KeychainHelperResponse::error("helper request exceeded the size limit")
     } else {
         match serde_json::from_slice::<KeychainHelperRequest>(&input) {

@@ -198,7 +198,7 @@ pub async fn complete_via_cookie_jar(
         },
         access_token: token.access_token,
         refresh_token: token.refresh_token,
-        expires_at: token.expires_in.map(|s| now_unix() + s),
+        expires_at: token.expires_in.map(|s| now_unix().saturating_add(s)),
         created_at: now_rfc3339(),
         // Owner course-correction (post-Phase-3): the cookie that
         // authenticated THIS authorize call is no longer a one-shot,

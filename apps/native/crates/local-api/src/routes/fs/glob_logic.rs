@@ -56,17 +56,25 @@ pub fn register_glob_ancestor_directories(
         .split('/')
         .filter(|s| !s.is_empty())
         .collect();
-    let dir_parts: &[&str] = if is_file && !parts.is_empty() {
-        &parts[..parts.len() - 1]
+    let dir_parts: &[&str] = if is_file {
+        parts.split_last().map_or(&[], |(_, head)| head)
     } else {
         &parts[..]
     };
     let take = dir_parts.len().min(max_depth);
     for i in 1..=take {
-        directory_paths.insert(dir_parts[..i].join("/"));
+        if let Some(prefix) = dir_parts.get(..i) {
+            directory_paths.insert(prefix.join("/"));
+        }
     }
 }
 
+#[expect(
+    clippy::as_conversions,
+    reason = "float-to-integer `as` is a saturating cast (defined behavior \
+              since Rust 1.45), which is precisely the clamp wanted here; \
+              there is no `TryFrom<f64> for usize` to say it another way."
+)]
 pub fn resolve_glob_result_limit(limit: Option<f64>) -> usize {
     match limit {
         None => GLOB_RESULT_LIMIT,
@@ -416,6 +424,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::as_conversions,
+        reason = "test literal: this constant is far below f64's exact-integer range"
+    )]
     fn resolve_glob_result_limit_caps_at_max() {
         assert_eq!(resolve_glob_result_limit(None), GLOB_RESULT_LIMIT);
         assert_eq!(

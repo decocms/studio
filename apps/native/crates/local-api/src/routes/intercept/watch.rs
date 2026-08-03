@@ -378,10 +378,17 @@ pub(crate) fn emit_thread_status(
         "updated_at": thread.updated_at,
     });
     if let Some(metadata) = thread.metadata.as_ref() {
-        data["metadata"] = metadata.clone();
+        if let Some(fields) = data.as_object_mut() {
+            fields.insert("metadata".to_string(), metadata.clone());
+        }
     }
     if let Some(message_id) = message_id {
-        data["message_id"] = serde_json::Value::String(message_id.to_string());
+        if let Some(fields) = data.as_object_mut() {
+            fields.insert(
+                "message_id".to_string(),
+                serde_json::Value::String(message_id.to_string()),
+            );
+        }
     }
     let event = LocalWatchEvent {
         id: Uuid::new_v4().to_string(),

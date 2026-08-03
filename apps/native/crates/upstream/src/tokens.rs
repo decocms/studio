@@ -45,6 +45,7 @@
 //! guidance — this isn't a workaround, it's a verified, documented,
 //! deliberately-accepted default.
 
+use crate::poison::MutexExt;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
@@ -302,7 +303,7 @@ impl StableDevHelperBackend {
             .map_err(|error| helper_backend_error("launch", error))?;
         #[cfg(test)]
         if let Some(spawned_pids) = &self.spawned_pids {
-            spawned_pids.lock().unwrap().push(child.id());
+            spawned_pids.lock_ok().push(child.id());
         }
         let stdin = child
             .stdin
@@ -380,7 +381,7 @@ impl StableDevHelperBackend {
                 status
             )));
         }
-        if output.len() as u64 > MAX_HELPER_RESPONSE_BYTES {
+        if u64::try_from(output.len()).unwrap_or(u64::MAX) > MAX_HELPER_RESPONSE_BYTES {
             return Err(TokenStoreError::Backend(
                 "installed development Keychain helper response exceeded the size limit"
                     .to_string(),
@@ -588,6 +589,13 @@ impl KeychainTokenStore {
         }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "deadline math: `Instant`/`OffsetDateTime` plus a bounded \
+                  constant. `checked_add` has no honest fallback here — there \
+                  is no `Instant::MAX` to saturate to, so the call site would \
+                  have to invent a deadline. Overflow is ~584 years out."
+    )]
     async fn run_blocking<T>(
         &self,
         operation: &'static str,
@@ -744,17 +752,14 @@ pub struct InMemoryTokenStore {
 #[async_trait]
 impl TokenStore for InMemoryTokenStore {
     async fn load(&self, host: &str) -> Result<Option<StoredSession>, TokenStoreError> {
-        Ok(self.entries.lock().unwrap().get(host).cloned())
+        Ok(self.entries.lock_ok().get(host).cloned())
     }
     async fn save(&self, host: &str, session: StoredSession) -> Result<(), TokenStoreError> {
-        self.entries
-            .lock()
-            .unwrap()
-            .insert(host.to_string(), session);
+        self.entries.lock_ok().insert(host.to_string(), session);
         Ok(())
     }
     async fn clear(&self, host: &str) -> Result<(), TokenStoreError> {
-        self.entries.lock().unwrap().remove(host);
+        self.entries.lock_ok().remove(host);
         Ok(())
     }
 }
@@ -843,11 +848,7 @@ pub mod test_support {
 
         pub fn seeded(host: &str, session: StoredSession) -> Self {
             let store = Self::new();
-            store
-                .entries
-                .lock()
-                .unwrap()
-                .insert(host.to_string(), session);
+            store.entries.lock_ok().insert(host.to_string(), session);
             store
         }
     }
@@ -855,19 +856,16 @@ pub mod test_support {
     #[async_trait]
     impl TokenStore for MemoryTokenStore {
         async fn load(&self, host: &str) -> Result<Option<StoredSession>, TokenStoreError> {
-            Ok(self.entries.lock().unwrap().get(host).cloned())
+            Ok(self.entries.lock_ok().get(host).cloned())
         }
 
         async fn save(&self, host: &str, session: StoredSession) -> Result<(), TokenStoreError> {
-            self.entries
-                .lock()
-                .unwrap()
-                .insert(host.to_string(), session);
+            self.entries.lock_ok().insert(host.to_string(), session);
             Ok(())
         }
 
         async fn clear(&self, host: &str) -> Result<(), TokenStoreError> {
-            self.entries.lock().unwrap().remove(host);
+            self.entries.lock_ok().remove(host);
             Ok(())
         }
     }
@@ -934,7 +932,7 @@ mod tests {
         ) -> Result<(), TokenStoreError> {
             self.save_calls.fetch_add(1, Ordering::SeqCst);
             self.save_started.notify_one();
-            if let Some(receiver) = self.save_release.lock().unwrap().take() {
+            if let Some(receiver) = self.save_release.lock_ok().take() {
                 receiver.recv().map_err(|error| {
                     TokenStoreError::Backend(format!("fake save release failed: {error}"))
                 })?;
@@ -946,7 +944,7 @@ mod tests {
         fn clear(&self, _service: &str, _host: &str) -> Result<(), TokenStoreError> {
             self.clear_calls.fetch_add(1, Ordering::SeqCst);
             self.clear_started.notify_one();
-            if let Some(receiver) = self.clear_release.lock().unwrap().take() {
+            if let Some(receiver) = self.clear_release.lock_ok().take() {
                 receiver.recv().map_err(|error| {
                     TokenStoreError::Backend(format!("fake clear release failed: {error}"))
                 })?;
@@ -1193,7 +1191,7 @@ exec /bin/sleep 60
             ),
             "expected a typed {operation} timeout, got {error:?}"
         );
-        let pids = spawned_pids.lock().unwrap();
+        let pids = spawned_pids.lock_ok();
         assert_eq!(pids.len(), 1);
         let pid = pids[0].to_string();
         let still_alive = Command::new("/bin/kill")
