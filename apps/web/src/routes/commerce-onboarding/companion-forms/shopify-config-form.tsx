@@ -14,7 +14,7 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { PasswordInput } from "@deco/ui/components/password-input.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
 import type { CompanionFormProps } from "./types.ts";
 
@@ -23,16 +23,18 @@ import type { CompanionFormProps } from "./types.ts";
 // connection's `connection_token`, never in configuration_state. See
 // use-save-companion-config.ts for the split.
 // Token: required on first configure; blank on edit keeps the stored one.
-const makeSchema = (configured: boolean) =>
+const makeSchema = (configured: boolean, t: TFunction) =>
   z
     .object({
-      storeDomain: z.string().min(1, "Informe o domínio da loja"),
+      storeDomain: z
+        .string()
+        .min(1, t("commerceOnboarding.shopifyConfigForm.storeDomainRequired")),
       accessToken: z.string().optional(),
       apiVersion: z.string().optional(),
     })
     .refine((data) => configured || Boolean(data.accessToken?.trim()), {
       path: ["accessToken"],
-      message: "Informe o Admin API access token",
+      message: t("commerceOnboarding.shopifyConfigForm.accessTokenRequired"),
     });
 
 type FormData = z.infer<ReturnType<typeof makeSchema>>;
@@ -47,7 +49,7 @@ export function ShopifyConfigForm({
 }: CompanionFormProps) {
   const t = useT();
   const form = useForm<FormData>({
-    resolver: zodResolver(makeSchema(card.configured)),
+    resolver: zodResolver(makeSchema(card.configured, t)),
     defaultValues: {
       storeDomain: (card.configurationState?.storeDomain as string) || "",
       // Write-only: never prefilled; blank on edit keeps the stored token.

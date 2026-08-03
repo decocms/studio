@@ -70,8 +70,12 @@ export const commerceOnboarding = {
   "commerceOnboarding.shopifyConfigForm.storeDomainLabel": "Store domain",
   "commerceOnboarding.shopifyConfigForm.storeDomainPlaceholder":
     "my-store.myshopify.com",
+  "commerceOnboarding.shopifyConfigForm.storeDomainRequired":
+    "Enter the store domain",
   "commerceOnboarding.shopifyConfigForm.accessTokenLabel":
     "Admin API access token",
+  "commerceOnboarding.shopifyConfigForm.accessTokenRequired":
+    "Enter the Admin API access token",
   "commerceOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_...",
   "commerceOnboarding.shopifyConfigForm.apiVersionLabel":
     "API version (optional)",
