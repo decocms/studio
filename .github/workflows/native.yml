@@ -23,14 +23,14 @@ on:
     paths:
       - "apps/native/**"
       - "apps/web/**"
-      - "packages/sandbox/daemon/**"
+      - "packages/sandbox/daemon-e2e/**"
       - "packages/shared/**"
       - ".github/workflows/native.yml"
   pull_request:
     branches:
       - main
-  # stub-seam-nightly keeps the DAEMON_E2E_CMD swap seam (packages/sandbox/
-  # daemon/e2e-stub/) from rotting even on weeks with no apps/native PRs —
+  # stub-seam-nightly keeps the DAEMON_E2E_CMD swap seam
+  # (packages/sandbox/daemon-e2e/stub-daemon.mjs) from rotting even on weeks with no apps/native PRs —
   # see the desktop migration contract §5.1's "nightly job running the daemon-e2e stub-seam
   # check". `schedule` + `workflow_dispatch` fire regardless of `paths:`
   # (path filters only apply to push/pull_request), which is intentional
@@ -123,7 +123,7 @@ jobs:
             case "$f" in
               apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
                 rust=true ;;
-              packages/sandbox/daemon/*|apps/native/scripts/ci/*) suite=true ;;
+              packages/sandbox/daemon-e2e/*|apps/native/scripts/ci/*) suite=true ;;
               apps/native/e2e/*) contract=true ;;
               apps/web/*|packages/shared/*) frontend=true ;;
               # Everything else under apps/native — package.json, tsconfig,
@@ -221,7 +221,7 @@ jobs:
   #            in local-api have NO allowlist and follow redirects. That is
   #            a real hole in the desktop app, pinned here only so this gate
   #            stays a *set* match; it is not sanctioned. Port
-  #            packages/sandbox/daemon/routes/offload-fetch.ts and delete
+  #            packages/sandbox/daemon-go/internal/urlallow and delete
   #            these 11 lines.
   #          * decofile block validation (4) — an invalid block written by
   #            the agent reaches the user's branch and breaks site render.
@@ -299,9 +299,11 @@ jobs:
           LOCAL_API_BIN="$GITHUB_WORKSPACE/apps/native/target/release/local-api"
           export DAEMON_E2E_CMD="[\"$LOCAL_API_BIN\"]"
           cd packages/sandbox
-          bun test daemon/daemon.e2e.test.ts daemon/daemon.sse-shapes.e2e.test.ts \
-                   daemon/daemon.git.e2e.test.ts daemon/daemon.tools.e2e.test.ts \
-                   daemon/daemon.dispatch.e2e.test.ts \
+          bun test daemon-e2e/daemon.e2e.test.ts \
+                   daemon-e2e/daemon.sse-shapes.e2e.test.ts \
+                   daemon-e2e/daemon.git.e2e.test.ts \
+                   daemon-e2e/daemon.tools.e2e.test.ts \
+                   daemon-e2e/daemon.dispatch.e2e.test.ts \
                    --reporter=junit --reporter-outfile="$RUNNER_TEMP/daemon-parity.xml" || true
 
       - name: Assert exact fail-set match against the pinned allowlist
@@ -509,7 +511,7 @@ jobs:
   # 5. stub-seam-nightly — keeps the DAEMON_E2E_CMD swap-seam mechanics
   #    (spawn / env contract / health-poll / SIGKILL-teardown) exercised
   #    even on weeks with no apps/native PRs, per the desktop migration contract §5.1.
-  #    Runs the plain Node stub (packages/sandbox/daemon/e2e-stub/
+  #    Runs the plain Node stub (packages/sandbox/daemon-e2e/
   #    stub-daemon.mjs), not the Rust binary — ubuntu-latest is fine since
   #    nothing here is macOS-specific (no cargo build at all). Asserts the
   #    documented 76 pass / 27 fail table from the daemon parity contract via the
@@ -541,10 +543,10 @@ jobs:
         # "What stub-daemon.mjs implements"). `|| true` for the same reason
         # as job 2's parity step — the next step is the real gate.
         run: |
-          STUB="$GITHUB_WORKSPACE/packages/sandbox/daemon/e2e-stub/stub-daemon.mjs"
+          STUB="$GITHUB_WORKSPACE/packages/sandbox/daemon-e2e/stub-daemon.mjs"
           export DAEMON_E2E_CMD="[\"node\", \"$STUB\"]"
           cd packages/sandbox
-          bun test daemon/daemon.e2e.test.ts \
+          bun test daemon-e2e/daemon.e2e.test.ts \
                    --reporter=junit --reporter-outfile="$RUNNER_TEMP/stub-seam.xml" || true
 
       - name: Assert exact fail-set match against the pinned allowlist

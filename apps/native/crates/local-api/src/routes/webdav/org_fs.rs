@@ -2,7 +2,7 @@
 //! implementation: an HTTP client for the studio's org-fs contract
 //! (`/api/:org/fs/:volume/*`, `apps/api/src/api/routes/org-fs.ts`).
 //!
-//! Port of `packages/sandbox/daemon/org-fs/api.ts` + `client.ts`, minus the
+//! Port of `packages/sandbox/orgfs/api.ts` + `client.ts`, minus the
 //! entire token-provisioning path. The daemon needed a short-lived fs-scoped
 //! API key relayed through `ORGFS_CONFIG` because a cluster pod has no
 //! identity of its own; local-api already holds the signed-in user's session,

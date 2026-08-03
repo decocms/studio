@@ -4,7 +4,7 @@
  *
  * Exact-fail-set gate for a `bun test --reporter=junit` run. Two CI jobs
  * (`daemon-e2e-vs-rust`, `stub-seam-nightly` — see `.github/workflows/native.yml`)
- * run a curated slice of `packages/sandbox/daemon/daemon.e2e.*.test.ts` against a
+ * run a curated slice of `packages/sandbox/daemon-e2e/daemon.*.e2e.test.ts` against a
  * Rust/stub binary that is INTENTIONALLY not byte-parity with the TS daemon (see
  * the native parity contract and
  * the daemon parity contract for why each documented failure is

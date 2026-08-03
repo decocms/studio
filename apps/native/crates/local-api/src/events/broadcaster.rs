@@ -1,5 +1,5 @@
 //! `Broadcaster` — the SSE fan-out hub, byte-parity in spirit with
-//! `packages/sandbox/daemon/events/broadcast.ts`.
+//! `packages/sandbox/daemon-go/internal/events/broadcast.go`.
 //!
 //! Ownership split (see the native module-ownership contract): EVERY
 //! family may call `emit()` to publish a named event (bash background ->

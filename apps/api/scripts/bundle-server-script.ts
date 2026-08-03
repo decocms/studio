@@ -659,22 +659,6 @@ async function copyQuickjsWasm() {
   console.log(`✅ QuickJS WASM copied to ${wasmDest}`);
 }
 
-// host/runner.ts inlines packages/sandbox/daemon/dist/daemon.js via a
-// text-import attribute. `bun build` needs that file present on disk to
-// embed it into the server bundle, so produce it before bundling.
-// Idempotent — `bun run build` just rewrites the same outfile.
-async function buildSandboxDaemon() {
-  console.log("🔨 Building sandbox daemon bundle...");
-  const sandboxRoot = join(WORKSPACE_ROOT, "packages/sandbox");
-  await $`bun run build`.cwd(sandboxRoot).quiet();
-  const daemonBundle = join(sandboxRoot, "daemon/dist/daemon.js");
-  if (!existsSync(daemonBundle)) {
-    console.error(`❌ Sandbox daemon bundle missing at ${daemonBundle}`);
-    process.exit(1);
-  }
-  console.log(`✅ Sandbox daemon bundle ready at ${daemonBundle}`);
-}
-
 // Node built-ins — these don't need to be in dist/server/node_modules/.
 // Bun built-ins use the `bun:` prefix and are handled by string-prefix check.
 const NODE_BUILTINS = new Set([
@@ -916,9 +900,6 @@ async function stripNonRuntimeFiles() {
 }
 
 async function main() {
-  // Build sandbox daemon bundle so runner.ts's text-import has a file to embed.
-  await buildSandboxDaemon();
-
   // Prune node_modules to only include required dependencies for both scripts
   const packagesToExternalize = await pruneNodeModules();
 

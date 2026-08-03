@@ -243,7 +243,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             yield chunk;
           }
         } catch (err) {
-          // The dispatch route (packages/sandbox/daemon/routes/dispatch.ts)
+          // The dispatch route (packages/sandbox/daemon-go/internal/dispatch/dispatch.go)
           // also logs the crash, but logging here captures the resolved
           // cwd/model context at the point of failure — the most useful
           // detail when the CLI subprocess fails to start.

@@ -1,5 +1,5 @@
 //! Validate a fully-merged `TenantConfig` (post-merge, pre-persist). Byte-parity
-//! port of `packages/sandbox/daemon/validate.ts`'s `validateTenantConfig` +
+//! port of `packages/sandbox/daemon-go/internal/config/validate.go`'s `validateTenantConfig` +
 //! `packages/sandbox/git-co-author.ts`'s `normalizeCoAuthorIdentity` (needed
 //! by `operator` validation).
 //!

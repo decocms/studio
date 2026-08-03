@@ -1,6 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["rg", "where"],
   "workspaces": {
     ".": {
       "entry": ["plugins/**/*", "scripts/**/*.ts"],
@@ -46,17 +45,12 @@
       ]
     },
     "packages/sandbox": {
-      // daemon/entry.ts is bundled via `bun build` into a standalone binary
-      // that runs inside sandbox VMs; org-fs/sidecar-main.ts likewise into
-      // the orgfs-sidecar image (deploy/helm/sandbox-env/orgfs-sidecar).
+      // orgfs/sidecar-main.ts is bundled via `bun build` into the
+      // orgfs-sidecar image (deploy/helm/sandbox-env/orgfs-sidecar).
       // The skills *.mjs CLIs are COPY'd into the sandbox image and executed
       // there via the _bin shims (e.g. `slides-create`), never imported.
       // Without marking them as entries, knip treats their graphs as unused.
-      "entry": [
-        "daemon/entry.ts",
-        "daemon/org-fs/sidecar-main.ts",
-        "image/skills/*/*.mjs"
-      ]
+      "entry": ["orgfs/sidecar-main.ts", "image/skills/*/*.mjs"]
     },
     "packages/typegen": {},
     "packages/e2e": {

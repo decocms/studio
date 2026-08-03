@@ -31,8 +31,8 @@ was found in shipped code the first time.
 | Thing | Where | State |
 | --- | --- | --- |
 | `withClaimGitLock` | `apps/api/src/api/routes/sandbox-proxy.ts:250` | Per-**process** `Map`, git routes only. Serializes nothing across API pods. |
-| Worktree lock | `packages/sandbox/daemon-go/internal/worktree` | **Landed** (see [Phase 0](#phase-0--landed)). Go daemon only; the TS daemon has no equivalent. |
-| Remote-branch-name validation | `daemon/git/*` | Kept; `origin/HEAD` lookup restored (so hole 12 is closed). |
+| Worktree lock | `packages/sandbox/daemon-go/internal/worktree` | **Landed** (see [Phase 0](#phase-0--landed)). The Go daemon is the only daemon, so this covers production. |
+| Remote-branch-name validation | `daemon-go/internal/gitx/*` | Kept; `origin/HEAD` lookup restored (so hole 12 is closed). |
 | Org-fs least-privilege narrowing | `file-storage/mount/provisioning.ts` | Kept. Revocation still missing (hole 07). |
 
 ---
@@ -255,8 +255,7 @@ underneath it was ready.
 - `worktree.Lock` in the Go daemon. Mutating fs routes and
   `publish`/`discard`/`rebase` serialize; a concurrent-`/edit` regression test
   proves it (45 of 50 writes were lost without it).
-- **Open:** the TS daemon has no equivalent, and it is the one in production.
-  Same fix, same shape, or the race stays live wherever TS runs.
+  Since the TS daemon was deleted, this covers every sandbox in production.
 
 ### Phase 1 — identity and attribution *(no sharing yet)*
 
@@ -302,7 +301,7 @@ actually collide.
 
 Per `TESTING.md`, two tiers, no third.
 
-- **Daemon conformance (`packages/sandbox/daemon/daemon.e2e.*`)** — black-box
+- **Daemon conformance (`packages/sandbox/daemon-e2e/daemon.*.e2e.test.ts`)** — black-box
   HTTP/SSE, runs against either implementation via `DAEMON_E2E_CMD`. Anything
   new on the daemon's wire surface (actor headers, `publish { paths }`,
   `presence`) gets a test here, and it must pass on **both** daemons. A test that

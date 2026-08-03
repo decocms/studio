@@ -1,5 +1,5 @@
 //! Bearer-token auth — byte-parity with
-//! `packages/sandbox/daemon/auth.ts::requireToken` /
+//! `packages/sandbox/daemon-go/internal/auth/auth.go::requireToken` /
 //! `constantTimeEqual` (see `auth.test.ts` for the exact matrix pinned
 //! here: matching token accepts, wrong token / no header / non-`Bearer`
 //! scheme / empty configured token all reject).

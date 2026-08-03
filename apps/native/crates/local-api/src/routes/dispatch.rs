@@ -74,7 +74,7 @@
 //! ## Client disconnect == cancel (round-1 verifier fix)
 //!
 //! Byte-parity gap found and closed: the daemon's byte-parity target
-//! (`packages/sandbox/daemon/routes/dispatch.ts`) wires its
+//! (`packages/sandbox/daemon-go/internal/dispatch/dispatch.go`) wires its
 //! `ReadableStream`'s `cancel()` callback — fired when the SSE consumer
 //! disconnects, e.g. a browser tab closes or the app navigates away mid
 //! run — straight to `ctrl.abort()`, which reaches the real harness's
@@ -494,7 +494,7 @@ pub async fn dispatch(State(state): State<AppState>, body: Bytes) -> Response {
         //
         // `client_gone` tracks byte-parity with the daemon's
         // `ReadableStream` `cancel()` callback (`ctrl.abort()` in
-        // `packages/sandbox/daemon/routes/dispatch.ts`, which reaches the
+        // `packages/sandbox/daemon-go/internal/dispatch/dispatch.go`, which reaches the
         // real harness's `AbortSignal` and kills its spawned process): an
         // SSE consumer that vanishes — mid-stream, OR before even the
         // first byte, e.g. a browser tab closed the instant a fetch was

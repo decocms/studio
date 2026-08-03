@@ -10,7 +10,7 @@
 //! The JSON-array-or-plain-string parsing mirrors the convention already
 //! used twice elsewhere in this migration —
 //! `apps/native/e2e/helpers.ts::resolveLocalApiCmd` and
-//! `packages/sandbox/daemon/daemon.e2e.helpers.ts::resolveDaemonCmd` — so a
+//! `packages/sandbox/daemon-e2e/daemon.e2e.helpers.ts::resolveDaemonCmd` — so a
 //! test author who already knows one of those knows this one.
 
 use std::path::{Path, PathBuf};

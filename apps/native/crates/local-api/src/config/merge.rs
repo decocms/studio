@@ -1,6 +1,6 @@
 //! Deep-merge a `ConfigPatch`-shaped JSON value into the current
 //! `TenantConfig`. Byte-parity port of
-//! `packages/sandbox/daemon/config-store/merge.ts`.
+//! `packages/sandbox/daemon-go/internal/config/merge.go`.
 //!
 //! Semantics (unchanged from the TS source):
 //!   - field absent (key missing) -> leave existing
