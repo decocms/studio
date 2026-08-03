@@ -163,8 +163,7 @@ describe("Credential Vault Routes", () => {
           title: "Static Token Target",
           connection_type: "HTTP",
           connection_url: "https://static-token.example.test/mcp",
-          // Token-auth MCP (e.g. Shopify): the bearer lives on the connection,
-          // never in downstream_tokens.
+          // Token-auth MCP (e.g. Shopify): bearer on the connection only.
           connection_token: await new CredentialVault(
             getSettings().encryptionKey,
           ).encrypt("static-admin-api-token"),

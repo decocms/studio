@@ -147,13 +147,9 @@ export const createCredentialVaultRoutes = () => {
     });
 
     if (result.state === "missing") {
-      // Fall back to a static bearer token stored on the connection itself
-      // (token-auth MCPs like Shopify that never run an OAuth flow, so nothing
-      // is ever written to downstream_tokens). Mirrors the MCP proxy's own
-      // resolution order — OAuth first, then connection_token (see
-      // mcp-clients/outbound/headers.ts) — so static-token connections are
-      // first-class in the vault too. The response shape is unchanged; only
-      // `type` differs so callers can tell the lanes apart.
+      // Token-auth MCPs (e.g. Shopify) never write downstream_tokens — fall
+      // back to the connection's static bearer, the same OAuth-then-token
+      // order as mcp-clients/outbound/headers.ts.
       if (target.connection_token) {
         c.header("Cache-Control", "no-store");
         c.header("Pragma", "no-cache");

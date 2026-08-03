@@ -33,10 +33,8 @@ export function useSaveCompanionConfig({
       const data: Record<string, unknown> = {
         configuration_state: mergedState,
       };
-      // Static-token MCPs (e.g. Shopify) keep the secret on the connection's
-      // encrypted `connection_token`, never in configuration_state. Omitted when
-      // the caller doesn't manage a token, or left blank on edit — so an existing
-      // token survives a domain-only change instead of being wiped.
+      // undefined ⇒ leave connection_token untouched (blank on edit keeps the
+      // stored secret; it never lives in configuration_state).
       if (connectionToken !== undefined) {
         data.connection_token = connectionToken;
       }

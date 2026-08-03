@@ -108,8 +108,7 @@ export function isCompanionConfigured(args: {
     case "vtex":
       return isMeaningfulConfigValue(companionConfig?.accountName);
     case "shopify":
-      // The access token lives on connection_token, not configuration_state, so
-      // the store domain (the MCP's other required credential) is the signal.
+      // The token is on connection_token — storeDomain is the visible signal.
       return isMeaningfulConfigValue(companionConfig?.storeDomain);
     case "google-analytics":
       return isMeaningfulConfigValue(companionConfig?.propertyId);

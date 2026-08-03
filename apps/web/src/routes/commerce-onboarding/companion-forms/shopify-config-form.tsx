@@ -51,8 +51,7 @@ export function ShopifyConfigForm({
     resolver: zodResolver(makeSchema(card.configured)),
     defaultValues: {
       storeDomain: (card.configurationState?.storeDomain as string) || "",
-      // The token is write-only from the UI (stored on connection_token, not
-      // configuration_state) — never prefilled. Left blank on edit preserves it.
+      // Write-only: never prefilled; blank on edit keeps the stored token.
       accessToken: "",
       apiVersion: (card.configurationState?.apiVersion as string) || "",
     },
