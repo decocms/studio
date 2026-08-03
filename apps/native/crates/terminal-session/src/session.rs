@@ -1288,10 +1288,7 @@ mod tests {
             builder.get_env("FORCE_COLOR"),
             Some(std::ffi::OsStr::new("0"))
         );
-        assert_eq!(
-            builder.get_env("CLICOLOR"),
-            Some(std::ffi::OsStr::new("0"))
-        );
+        assert_eq!(builder.get_env("CLICOLOR"), Some(std::ffi::OsStr::new("0")));
         assert_eq!(
             builder.get_env("TERM"),
             Some(std::ffi::OsStr::new("xterm-256color"))
