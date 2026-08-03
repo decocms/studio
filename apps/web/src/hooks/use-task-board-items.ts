@@ -28,11 +28,10 @@ export function useTaskBoardItems() {
     orgSlug: org.slug,
     onUpdate: (item) => {
       queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) => {
-        const next = (prev ?? []) as TaskBoardItem[];
-        const patched = item as unknown as TaskBoardItem;
-        return next.some((t) => t.id === patched.id)
-          ? next.map((t) => (t.id === patched.id ? patched : t))
-          : [patched, ...next];
+        const next = prev ?? [];
+        return next.some((t) => t.id === item.id)
+          ? next.map((t) => (t.id === item.id ? item : t))
+          : [item, ...next];
       });
       // Every pushed item change also appends to its timeline — refetch the
       // activity feed so a task dialog left open during a live transition
