@@ -3,6 +3,7 @@ import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Input } from "@deco/ui/components/input.tsx";
 import { CheckCircle, SearchSm } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t.ts";
 
 export interface SelectableOption {
   value: string;
@@ -15,7 +16,7 @@ export function SelectableList({
   onChange,
   disabled,
   ariaLabel,
-  searchPlaceholder = "Buscar...",
+  searchPlaceholder,
   hideSearch = false,
 }: {
   options: SelectableOption[];
@@ -30,6 +31,7 @@ export function SelectableList({
   // itself (e.g. a server-side repo search). Options are then rendered as-is.
   hideSearch?: boolean;
 }): ReactElement {
+  const t = useT();
   const [query, setQuery] = useState("");
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -97,8 +99,13 @@ export function SelectableList({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={disabled}
-            placeholder={searchPlaceholder}
-            aria-label={`Buscar ${ariaLabel}`}
+            placeholder={
+              searchPlaceholder ??
+              t("commerceOnboarding.selectableList.searchPlaceholder")
+            }
+            aria-label={t("commerceOnboarding.selectableList.searchAriaLabel", {
+              label: ariaLabel,
+            })}
             className="h-8 pl-8"
           />
         </div>
@@ -111,7 +118,7 @@ export function SelectableList({
       >
         {filtered.length === 0 ? (
           <div className="px-2 py-2 text-sm text-muted-foreground">
-            Nenhum resultado
+            {t("commerceOnboarding.selectableList.noResults")}
           </div>
         ) : (
           filtered.map((option) => {

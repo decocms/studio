@@ -88,4 +88,23 @@ export const commerceOnboarding = {
   "commerceOnboarding.shopifyConfigForm.savingButton": "Salvando...",
   "commerceOnboarding.shopifyConfigForm.savingError":
     "Não foi possível salvar a configuração",
+  "commerceOnboarding.googleSearchConsoleConfigForm.loadingSites":
+    "Carregando sites...",
+  "commerceOnboarding.googleSearchConsoleConfigForm.loadSitesError":
+    "Não foi possível carregar os sites do Google Search Console.",
+  "commerceOnboarding.googleSearchConsoleConfigForm.noSitesFound":
+    "Nenhum site verificado foi encontrado. Verifique um site no Google Search Console.",
+  "commerceOnboarding.googleSearchConsoleConfigForm.siteAriaLabel":
+    "Site verificado",
+  "commerceOnboarding.googleSearchConsoleConfigForm.siteRequired":
+    "Selecione um site",
+  "commerceOnboarding.googleSearchConsoleConfigForm.savingError":
+    "Não foi possível salvar a configuração",
+  "commerceOnboarding.googleSearchConsoleConfigForm.cancelButton": "Cancelar",
+  "commerceOnboarding.googleSearchConsoleConfigForm.saveButton": "Salvar",
+  "commerceOnboarding.googleSearchConsoleConfigForm.savingButton":
+    "Salvando...",
+  "commerceOnboarding.selectableList.searchPlaceholder": "Buscar...",
+  "commerceOnboarding.selectableList.searchAriaLabel": "Buscar {label}",
+  "commerceOnboarding.selectableList.noResults": "Nenhum resultado",
 } satisfies Record<keyof typeof commerceOnboardingEn, string>;

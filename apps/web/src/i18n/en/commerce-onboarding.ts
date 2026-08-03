@@ -85,4 +85,22 @@ export const commerceOnboarding = {
   "commerceOnboarding.shopifyConfigForm.savingButton": "Saving...",
   "commerceOnboarding.shopifyConfigForm.savingError":
     "Couldn't save the configuration",
+  "commerceOnboarding.googleSearchConsoleConfigForm.loadingSites":
+    "Loading sites...",
+  "commerceOnboarding.googleSearchConsoleConfigForm.loadSitesError":
+    "Couldn't load Google Search Console sites.",
+  "commerceOnboarding.googleSearchConsoleConfigForm.noSitesFound":
+    "No verified site found. Verify a site in Google Search Console.",
+  "commerceOnboarding.googleSearchConsoleConfigForm.siteAriaLabel":
+    "Verified site",
+  "commerceOnboarding.googleSearchConsoleConfigForm.siteRequired":
+    "Select a site",
+  "commerceOnboarding.googleSearchConsoleConfigForm.savingError":
+    "Couldn't save the configuration",
+  "commerceOnboarding.googleSearchConsoleConfigForm.cancelButton": "Cancel",
+  "commerceOnboarding.googleSearchConsoleConfigForm.saveButton": "Save",
+  "commerceOnboarding.googleSearchConsoleConfigForm.savingButton": "Saving...",
+  "commerceOnboarding.selectableList.searchPlaceholder": "Search...",
+  "commerceOnboarding.selectableList.searchAriaLabel": "Search {label}",
+  "commerceOnboarding.selectableList.noResults": "No results",
 } as const;
