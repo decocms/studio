@@ -37,11 +37,13 @@ interface PromptArgsDialogProps {
   defaultValues?: PromptArgumentValues;
 }
 
-function buildArgumentSchema(prompt: Prompt | null) {
+function buildArgumentSchema(prompt: Prompt | null, requiredMessage: string) {
   const shape: Record<string, z.ZodString> = {};
 
   for (const arg of prompt?.arguments ?? []) {
-    shape[arg.name] = arg.required ? z.string().min(1, "Required") : z.string();
+    shape[arg.name] = arg.required
+      ? z.string().min(1, requiredMessage)
+      : z.string();
   }
 
   return z.object(shape);
@@ -66,7 +68,10 @@ export function PromptArgsDialog({
 }: PromptArgsDialogProps) {
   const id = useId();
   const t = useT();
-  const schema = buildArgumentSchema(prompt);
+  const schema = buildArgumentSchema(
+    prompt,
+    t("chat.dialogPromptArguments.required"),
+  );
   const form = useForm<PromptArgumentValues>({
     resolver: zodResolver(schema),
     defaultValues: prompt ? buildDefaultValues(prompt, defaultValues) : {},
@@ -129,7 +134,7 @@ export function PromptArgsDialog({
                       {arg.required ? null : (
                         <span className="text-muted-foreground font-normal">
                           {" "}
-                          (optional)
+                          {t("chat.dialogPromptArguments.optional")}
                         </span>
                       )}
                     </FormLabel>

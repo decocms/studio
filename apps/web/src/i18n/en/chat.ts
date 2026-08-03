@@ -167,6 +167,8 @@ export const chat = {
   "chat.decopilot.tryAnotherProviderOrRetry": "Try another provider or retry.",
   "chat.dialogPromptArguments.cancel": "Cancel",
   "chat.dialogPromptArguments.loading": "Loading...",
+  "chat.dialogPromptArguments.optional": "(optional)",
+  "chat.dialogPromptArguments.required": "Required",
   "chat.dialogPromptArguments.usePrompt": "Use prompt",
   "chat.generateImage.failed": "Failed",
   "chat.generateImage.generatedImage": "Generated image",
