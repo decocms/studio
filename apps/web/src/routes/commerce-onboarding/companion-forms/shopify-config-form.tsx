@@ -22,10 +22,8 @@ import type { CompanionFormProps } from "./types.ts";
 // Shopify MCP); the accessToken is a static bearer that lives on the
 // connection's `connection_token`, never in configuration_state. See
 // use-save-companion-config.ts for the split.
-// The token is REQUIRED on first configure: `isCompanionConfigured` reads
-// storeDomain as the "configured" signal, so a tokenless save would show a
-// connected card whose every vault lease 409s (no connection_token to fall
-// back to). On edit it stays optional — blank means "keep the existing token".
+// Token required on first configure (a tokenless save reads "connected" but
+// every vault lease 409s); optional on edit — blank keeps the existing token.
 const makeSchema = (configured: boolean) =>
   z
     .object({
