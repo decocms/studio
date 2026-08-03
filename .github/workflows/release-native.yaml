@@ -201,10 +201,6 @@ jobs:
         working-directory: apps/native
         run: ./scripts/fetch-rclone.sh
 
-      - name: Build desktop frontend bundle
-        if: steps.guard.outputs.release == 'true'
-        run: bun run --cwd apps/web build:native
-
       # Import the Developer ID certificate only when configured. Kept as its
       # own step (not left to the Tauri CLI env-sniffing) so a broken cert
       # fails HERE with a clear name, not inside `tauri build`.
