@@ -111,7 +111,10 @@ export class StudioKV implements TriggerStorage {
     );
 
     if (!res.ok) {
-      console.error(`[StudioKV] PUT failed: ${res.status} ${res.statusText}`);
+      // Callers (TriggerStateManager.persist) await this — throwing lets
+      // TRIGGER_CONFIGURE surface the failure instead of reporting
+      // `{ success: true }` for credentials that never reached storage.
+      throw new Error(`[StudioKV] PUT failed: ${res.status} ${res.statusText}`);
     }
   }
 
@@ -125,7 +128,7 @@ export class StudioKV implements TriggerStorage {
     );
 
     if (!res.ok && res.status !== 404) {
-      console.error(
+      throw new Error(
         `[StudioKV] DELETE failed: ${res.status} ${res.statusText}`,
       );
     }
