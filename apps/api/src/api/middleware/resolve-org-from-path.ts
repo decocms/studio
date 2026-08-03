@@ -1,9 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
-import { subscriptionInGoodStanding } from "../../billing/subscription-state";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
-import { getSettings } from "../../settings";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
@@ -176,43 +174,9 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // ctx.access.check() (UnauthorizedError → 401).
   let pathRole: string | undefined;
   if (userId) {
-    // This middleware is the hot path for every org-scoped request, so the
-    // seat-gate state (per-seat billing) rides the membership lookup as
-    // scalar subqueries instead of extra round-trips — and only when the
-    // deployment enforces billing at all (STUDIO_BILLING_ENFORCED;
-    // self-hosted never turns it on, paying zero).
-    const billingEnforced = getSettings().billingEnforced;
     const membership = await db
       .selectFrom("member")
       .select(["role"])
-      .$if(billingEnforced, (qb) =>
-        qb.select((eb) => [
-          eb
-            .selectFrom("organization_billing")
-            .select("legacy")
-            .where("organization_id", "=", org.id)
-            .as("billing_legacy"),
-          eb
-            .selectFrom("organization_billing")
-            .select("billing_mode")
-            .where("organization_id", "=", org.id)
-            .as("billing_mode"),
-          eb
-            .selectFrom("organization_billing")
-            .select("status")
-            .where("organization_id", "=", org.id)
-            .as("billing_status"),
-          eb
-            .exists(
-              eb
-                .selectFrom("organization_paid_seat")
-                .select("user_id")
-                .where("organization_id", "=", org.id)
-                .where("user_id", "=", userId),
-            )
-            .as("has_paid_seat"),
-        ]),
-      )
       .where("userId", "=", userId)
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
@@ -237,32 +201,6 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       // the read route can stat the file and serve it if it's public.
     } else {
       pathRole = membership.role;
-      // Seat gate: monetization, orthogonal to roles — enforced inside
-      // AccessControl.check() BEFORE the admin/owner bypass. `billing_legacy`
-      // is null when the org has NO billing row: fail OPEN (treated as
-      // legacy) so an org-creation hook failure can't brick an org.
-      //
-      // A paid-seat row only UNLOCKS while someone is actually paying: for
-      // self_serve orgs the subscription must be in good standing (staged
-      // seats before the first checkout, or after cancellation, don't grant
-      // access) — subscriptionInGoodStanding, the SAME predicate the grant
-      // side (effectivePaidSeatCount) keys on, so access and allowance can't
-      // drift. A null billing row passes the predicate, but billing_legacy is
-      // null then too, so the gate stays off regardless.
-      if (billingEnforced) {
-        const subscriptionGood = subscriptionInGoodStanding(
-          membership.billing_mode && membership.billing_status
-            ? {
-                billingMode: membership.billing_mode,
-                status: membership.billing_status,
-              }
-            : null,
-        );
-        ctx.access.setSeatGated(
-          membership.billing_legacy === false &&
-            !(membership.has_paid_seat === true && subscriptionGood),
-        );
-      }
     }
   }
 

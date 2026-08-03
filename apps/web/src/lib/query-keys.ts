@@ -198,10 +198,6 @@ export const KEYS = {
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
 
-  // Per-seat billing: billing identity + paid-seat membership
-  organizationSeats: (organizationId: string) =>
-    ["organization-seats", organizationId] as const,
-
   // API keys (scoped by organization; the LIST tool filters by org server-side)
   apiKeysList: (organizationId: string) =>
     ["api-keys", organizationId] as const,

@@ -1,39 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { sql } from "kysely";
 import type { StudioDatabase } from "../database";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
-import {
-  OrganizationBillingStorage,
-  SeatTargetNotMemberError,
-} from "./organization-billing";
+import { OrganizationBillingStorage } from "./organization-billing";
 
-// Real-Postgres coverage for the seat transaction: paid-seat rows and their
-// change-log entries must commit together (the log is the invoiced orgs'
-// billing source), no-ops must not log, and unknown users must reject the
-// whole batch.
+// Real-Postgres coverage for the org-billing row: mapping, the webhook's
+// updateStripeState patch semantics, and subscription-id resolution. The
+// event-ordering behavior on top of these writes lives in
+// billing/stripe-webhook.integration.test.ts.
 const ORG = "org_billing_1";
 
 describe("OrganizationBillingStorage", () => {
   let database: StudioDatabase;
   let storage: OrganizationBillingStorage;
-
-  // Raw SQL like seedCommonTestPgFixtures: real Postgres has BOOLEAN
-  // emailVerified, which the (PGlite-era) typed table shape disagrees with.
-  const addMember = async (userId: string) => {
-    const now = new Date().toISOString();
-    await sql`
-      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
-      VALUES (${userId}, ${`${userId}@billing.test`}, false, ${userId}, ${now}, ${now})
-    `.execute(database.db);
-    await sql`
-      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
-      VALUES (${`mem_${userId}`}, ${userId}, ${ORG}, 'user', ${now})
-    `.execute(database.db);
-  };
 
   beforeAll(async () => {
     database = await connectTestPgDatabase();
@@ -51,8 +33,6 @@ describe("OrganizationBillingStorage", () => {
       .insertInto("organization_billing")
       .values({ organization_id: ORG, legacy: false })
       .execute();
-    await addMember("user_a");
-    await addMember("user_b");
     storage = new OrganizationBillingStorage(database.db);
   });
 
@@ -60,175 +40,53 @@ describe("OrganizationBillingStorage", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("applies transitions and logs exactly the ones that changed state", async () => {
-    const first = await storage.setSeats(
-      ORG,
-      [
-        { userId: "user_a", seat: "paid" },
-        { userId: "user_b", seat: "free" }, // already free — no-op
-      ],
-      "admin_1",
-    );
-    expect(first.applied).toEqual([{ userId: "user_a", seat: "paid" }]);
-    expect(first.paidSeatCount).toBe(1);
-
-    // Replaying the same state applies (and logs) nothing.
-    const replay = await storage.setSeats(
-      ORG,
-      [{ userId: "user_a", seat: "paid" }],
-      "admin_1",
-    );
-    expect(replay.applied).toEqual([]);
-    expect(replay.paidSeatCount).toBe(1);
-
-    const log = await database.db
-      .selectFrom("seat_change_log")
-      .select(["user_id", "seat", "changed_by"])
-      .where("organization_id", "=", ORG)
-      .execute();
-    expect(log).toEqual([
-      { user_id: "user_a", seat: "paid", changed_by: "admin_1" },
-    ]);
-  });
-
-  it("rejects the whole batch when any target is not a member", async () => {
-    await expect(
-      storage.setSeats(
-        ORG,
-        [
-          { userId: "user_b", seat: "paid" },
-          { userId: "ghost", seat: "paid" },
-        ],
-        "admin_1",
-      ),
-    ).rejects.toThrow(SeatTargetNotMemberError);
-
-    // Atomicity: the valid half of the batch must NOT have been applied.
-    expect(await storage.listPaidSeatUserIds(ORG)).toEqual(["user_a"]);
-  });
-
-  it("a stale seat row (member gone, release never ran) never counts", async () => {
-    // Simulate the crash window: member removed, releaseSeat never ran.
-    await database.db
-      .deleteFrom("member")
-      .where("userId", "=", "user_a")
-      .where("organizationId", "=", ORG)
-      .execute();
-
-    // The orphan row still exists…
-    const raw = await database.db
-      .selectFrom("organization_paid_seat")
-      .select(["user_id"])
-      .where("organization_id", "=", ORG)
-      .execute();
-    expect(raw.map((r) => r.user_id)).toEqual(["user_a"]);
-    // …but the member JOIN keeps it out of every count.
-    expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
-  });
-
-  it("releases the seat (hooks boundary), logs it, and marks the sync pending", async () => {
-    const release = await storage.releaseSeat(ORG, "user_a", "admin_1", {
-      markBenefitsPending: true,
+  it("getBilling maps the row; missing row is null", async () => {
+    const billing = await storage.getBilling(ORG);
+    expect(billing).toMatchObject({
+      organizationId: ORG,
+      legacy: false,
+      status: "none",
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
     });
-    expect(release.released).toBe(true);
-    expect(release.benefitsReferenceId).toBeTruthy();
-    expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
-    // The pending marker committed with the release (same transaction).
-    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBe(
-      release.benefitsReferenceId,
-    );
-
-    // Releasing again is a no-op — nothing new logged, no new marker.
-    const again = await storage.releaseSeat(ORG, "user_a", "admin_1", {
-      markBenefitsPending: true,
-    });
-    expect(again.released).toBe(false);
-    expect(again.benefitsReferenceId).toBeNull();
-
-    const frees = await database.db
-      .selectFrom("seat_change_log")
-      .select(["seat"])
-      .where("organization_id", "=", ORG)
-      .where("user_id", "=", "user_a")
-      .execute();
-    expect(frees.map((r) => r.seat)).toEqual(["paid", "free"]);
+    expect(await storage.getBilling("org_missing")).toBeNull();
   });
 
-  it("clearBenefitsPending is a CAS: only the matching reference clears", async () => {
-    const pendingRef = (await storage.getBilling(ORG))?.benefitsReferenceId;
-    expect(pendingRef).toBeTruthy();
-
-    // A stale delivery (older reference) must NOT clear the newer marker.
-    await storage.clearBenefitsPending(ORG, "some-older-reference");
-    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBe(
-      pendingRef ?? null,
-    );
-
-    // The sweep sees it once stale…
-    const pending = await storage.listBenefitsPending(
-      new Date(Date.now() + 60_000),
-      10,
-    );
-    expect(pending).toEqual([
-      { organizationId: ORG, referenceId: pendingRef as string },
-    ]);
-
-    // …and the matching delivery clears it.
-    await storage.clearBenefitsPending(ORG, pendingRef as string);
-    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBeNull();
+  it("updateStripeState patches only the given fields and reports row presence", async () => {
+    const when = new Date("2026-01-01T00:00:00Z");
     expect(
-      await storage.listBenefitsPending(new Date(Date.now() + 60_000), 10),
-    ).toEqual([]);
-  });
-
-  it("getBilling maps the row; missing row is null (fail-open upstream)", async () => {
+      await storage.updateStripeState(ORG, {
+        stripeCustomerId: "cus_1",
+        stripeSubscriptionId: "sub_1",
+        status: "active",
+        lastStripeEventAt: when,
+      }),
+    ).toBe(true);
+    // Partial patch: untouched fields survive.
+    await storage.updateStripeState(ORG, { status: "past_due" });
     const billing = await storage.getBilling(ORG);
-    expect(billing?.legacy).toBe(false);
-    expect(billing?.billingMode).toBe("self_serve");
-    expect(billing?.status).toBe("none");
-    expect(await storage.getBilling("org_without_billing")).toBeNull();
-  });
-
-  it("setIncludedReportUrl commits choice + pending marker in ONE update; unmarked writes leave a pending ref untouched; missing row updates nothing", async () => {
-    const { updated, benefitsReferenceId } = await storage.setIncludedReportUrl(
-      ORG,
-      "shop.example.com",
-      { markBenefitsPending: true },
-    );
-    expect(updated).toBe(true);
-    expect(benefitsReferenceId).not.toBeNull();
-    const billing = await storage.getBilling(ORG);
-    expect(billing?.includedReportUrl).toBe("shop.example.com");
-    expect(billing?.benefitsReferenceId).toBe(benefitsReferenceId);
-
-    // markBenefitsPending: false — the choice changes, but a pending ref from
-    // an undelivered change is NOT silently superseded.
-    const second = await storage.setIncludedReportUrl(ORG, null, {
-      markBenefitsPending: false,
+    expect(billing).toMatchObject({
+      stripeCustomerId: "cus_1",
+      stripeSubscriptionId: "sub_1",
+      status: "past_due",
     });
-    expect(second.updated).toBe(true);
-    expect(second.benefitsReferenceId).toBeNull();
-    const after = await storage.getBilling(ORG);
-    expect(after?.includedReportUrl).toBeNull();
-    expect(after?.benefitsReferenceId).toBe(benefitsReferenceId);
-
-    // Missing billing row: updated=false so the tool can refuse loudly.
-    const missing = await storage.setIncludedReportUrl(
-      "org_without_billing",
-      "x.example.com",
-      { markBenefitsPending: true },
-    );
-    expect(missing.updated).toBe(false);
-
-    await storage.clearBenefitsPending(ORG, benefitsReferenceId as string);
+    expect(billing?.lastStripeEventAt?.getTime()).toBe(when.getTime());
+    // Explicit null unbinds the subscription (deleted event).
+    await storage.updateStripeState(ORG, { stripeSubscriptionId: null });
+    expect((await storage.getBilling(ORG))?.stripeSubscriptionId).toBeNull();
+    // Unknown org: no row updated.
+    expect(
+      await storage.updateStripeState("org_missing", { status: "active" }),
+    ).toBe(false);
   });
 
-  it("setArmedReportUrl round-trips and clears", async () => {
-    await storage.setArmedReportUrl(ORG, "shop.example.com");
-    expect((await storage.getBilling(ORG))?.armedReportUrl).toBe(
-      "shop.example.com",
+  it("resolves the org behind a Stripe subscription id", async () => {
+    await storage.updateStripeState(ORG, { stripeSubscriptionId: "sub_2" });
+    expect(
+      (await storage.getBillingByStripeSubscriptionId("sub_2"))?.organizationId,
+    ).toBe(ORG);
+    expect(await storage.getBillingByStripeSubscriptionId("sub_none")).toBe(
+      null,
     );
-    await storage.setArmedReportUrl(ORG, null);
-    expect((await storage.getBilling(ORG))?.armedReportUrl).toBeNull();
   });
 });

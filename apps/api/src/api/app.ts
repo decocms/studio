@@ -17,7 +17,6 @@ import {
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
 } from "../file-storage/dbos-public-sets-sync";
-import { registerBenefitsSyncWorkflows } from "../billing/sync-org-benefits";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1678,7 +1677,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
-  registerBenefitsSyncWorkflows();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

@@ -71,13 +71,8 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_REMOVE",
   "ORGANIZATION_MEMBER_LIST",
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
-  "ORGANIZATION_SEATS_GET",
-  "ORGANIZATION_SEATS_SET",
   "ORGANIZATION_BILLING_CHECKOUT_START",
-  "ORGANIZATION_SEATS_PREVIEW",
   "ORGANIZATION_BILLING_PORTAL",
-  "ORGANIZATION_INCLUDED_REPORT_SET",
-  "ORGANIZATION_REPORT_RUN_PAID",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -414,42 +409,15 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "ORGANIZATION_SEATS_GET",
-    description: "Get billing identity and paid seats",
-    category: "Organizations",
-  },
-  {
-    name: "ORGANIZATION_SEATS_SET",
-    description: "Set members' seats (paid/free)",
-    category: "Organizations",
-    dangerous: true,
-  },
-  {
     name: "ORGANIZATION_BILLING_CHECKOUT_START",
-    description: "Start the seat subscription checkout",
+    description: "Start the org subscription checkout",
     category: "Organizations",
     dangerous: true,
-  },
-  {
-    name: "ORGANIZATION_SEATS_PREVIEW",
-    description: "Preview a seat change's prorated charge",
-    category: "Organizations",
   },
   {
     name: "ORGANIZATION_BILLING_PORTAL",
     description: "Open the Stripe billing portal",
     category: "Organizations",
-  },
-  {
-    name: "ORGANIZATION_INCLUDED_REPORT_SET",
-    description: "Choose the subscription's included weekly report site",
-    category: "Organizations",
-  },
-  {
-    name: "ORGANIZATION_REPORT_RUN_PAID",
-    description: "Trigger a paid report run (billed in AI credits)",
-    category: "Organizations",
-    dangerous: true,
   },
   // Connection tools
   {
@@ -1232,13 +1200,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Seats live on the members page and change who the org pays for —
       // same trust tier as adding/removing the member itself. Checkout and
       // preview are the money half of the same surface.
-      "ORGANIZATION_SEATS_GET",
-      "ORGANIZATION_SEATS_SET",
       "ORGANIZATION_BILLING_CHECKOUT_START",
-      "ORGANIZATION_SEATS_PREVIEW",
       "ORGANIZATION_BILLING_PORTAL",
-      "ORGANIZATION_INCLUDED_REPORT_SET",
-      "ORGANIZATION_REPORT_RUN_PAID",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

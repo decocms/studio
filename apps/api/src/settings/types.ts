@@ -77,29 +77,17 @@ export interface Settings {
   // AI Gateway
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
-  /** Bearer for the gateway's /api/admin/* (allowance grants). Absent →
-   *  benefit sync is skipped (self-hosted deployments have no gateway admin). */
-  aiGatewayAdminToken: string | undefined;
-  /** Monthly AI-gateway allowance per PAID SEAT, in cents (default $5). */
-  seatAllowanceCents: number;
 
-  // Stripe (per-seat self-serve billing). Absent → the webhook route 503s and
-  // no checkout can be created; invoiced/legacy orgs are unaffected.
+  // Stripe (per-org self-serve subscription). Absent → the webhook route
+  // 503s and no checkout can be created; legacy orgs are unaffected.
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
-  /** The $20/seat/month multi-currency price (created in the Stripe
-   *  dashboard); quantity = the org's paid-seat count. */
-  stripeSeatPriceId: string | undefined;
-  /** Fee on AI-credit top-ups, percent (default 15 — parity with the
-   *  gateway's legacy checkout being migrated off). */
-  topupFeePercent: number;
+  /** The flat monthly org-subscription price (created in the Stripe
+   *  dashboard); quantity is always 1. */
+  stripeOrgPriceId: string | undefined;
 
   // Feature Flags
   enableDecoImport: boolean;
-  /** Per-seat billing enforcement (STUDIO_BILLING_ENFORCED). Default OFF —
-   *  self-hosted deployments never turn this on; with it off, every member
-   *  behaves as a paid seat and billing tables are inert. */
-  billingEnforced: boolean;
   /** MCP read/list caching. On by default in production, off in development;
    *  MCP_CACHE_ENABLED explicitly overrides either default. */
   mcpCacheEnabled: boolean;

@@ -1,23 +1,11 @@
 /**
- * Minimal Stripe API client for the per-seat billing surface: first-subscribe
- * Checkout, prorated seat-change preview, and the quantity update that
- * charges the difference. Raw fetch + form encoding (Stripe's API is
- * form-encoded), same no-SDK posture as the reports worker and the gateway —
- * three endpoints don't buy a dependency.
- *
- * Proration model (the plan's "pay the difference now" flow):
- *  - previewSeatChange → POST /v1/invoices/create_preview with the new
- *    quantity: Stripe returns exactly "new total minus what this cycle
- *    already paid", which the members-page apply bar renders.
- *  - applySeatQuantity → POST /v1/subscriptions/:id with
- *    proration_behavior=always_invoice: charges/credits the prorated
- *    difference immediately on the saved card. payment_behavior=
- *    pending_if_incomplete leaves the subscription consistent when the card
- *    demands 3DS — the webhook narrates whatever lands.
+ * Minimal Stripe API client for the per-org billing surface: first-subscribe
+ * Checkout, the hosted Customer Portal, and subscription cancellation. Raw
+ * fetch + form encoding (Stripe's API is form-encoded), same no-SDK posture
+ * as the reports worker — three endpoints don't buy a dependency.
  */
 
 import { getSettings } from "../settings";
-import { getUsdToBrl, toUsdCreditCents } from "./exchange-rate";
 
 const BASE_URL = "https://api.stripe.com/v1";
 
@@ -96,151 +84,27 @@ async function stripeRequest<T>(
   return parsed as T;
 }
 
-/** First subscribe: Checkout collects + saves the card; afterwards every
- *  seat change is an inline prorated charge (no redirect ever again). */
-export async function createSeatCheckoutSession(input: {
+/** First subscribe: Checkout collects + saves the card for the org's flat
+ *  monthly subscription (quantity 1). */
+export async function createOrgCheckoutSession(input: {
   organizationId: string;
-  quantity: number;
   successUrl: string;
   cancelUrl: string;
 }): Promise<{ url: string }> {
-  const priceId = getSettings().stripeSeatPriceId;
+  const priceId = getSettings().stripeOrgPriceId;
   if (!priceId) {
     throw new StripeApiError(503, "billing is not configured");
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
     params: {
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: input.quantity }],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
       // orgId on BOTH the session (checkout.session.completed) and the
       // subscription (defense in depth for subscription-keyed lookups).
       metadata: { orgId: input.organizationId },
       subscription_data: { metadata: { orgId: input.organizationId } },
-    },
-  });
-  if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
-  return { url: session.url };
-}
-
-interface StripeSubscription {
-  id: string;
-  items: {
-    data: Array<{ id: string; quantity?: number; price?: { id?: string } }>;
-  };
-}
-
-/**
- * The org's SEAT item on its subscription: matched by the configured seat
- * price so a dashboard-added second item (a future addon) can never get its
- * quantity silently rewritten by a seat change. Falls back to a sole item
- * only when no price is configured.
- */
-async function getSeatItem(
-  subscriptionId: string,
-): Promise<{ itemId: string; quantity: number }> {
-  const sub = await stripeRequest<StripeSubscription>(
-    `/subscriptions/${encodeURIComponent(subscriptionId)}`,
-  );
-  const items = sub.items?.data ?? [];
-  const priceId = getSettings().stripeSeatPriceId;
-  const item = priceId
-    ? items.find((i) => i.price?.id === priceId)
-    : items.length === 1
-      ? items[0]
-      : undefined;
-  if (!item) throw new StripeApiError(500, "subscription has no seat item");
-  return { itemId: item.id, quantity: item.quantity ?? 0 };
-}
-
-/** The inline recompute behind the Apply button: what the org pays NOW for
- *  moving this cycle to `quantity` seats (negative = credit). */
-export async function previewSeatChange(input: {
-  subscriptionId: string;
-  quantity: number;
-}): Promise<{ amountDueCents: number; currency: string }> {
-  const { itemId } = await getSeatItem(input.subscriptionId);
-  const preview = await stripeRequest<{
-    amount_due?: number;
-    currency?: string;
-  }>("/invoices/create_preview", {
-    params: {
-      subscription: input.subscriptionId,
-      subscription_details: {
-        items: [{ id: itemId, quantity: input.quantity }],
-        proration_behavior: "always_invoice",
-      },
-    },
-  });
-  return {
-    amountDueCents: preview.amount_due ?? 0,
-    currency: preview.currency ?? "usd",
-  };
-}
-
-/**
- * AI-credit top-up (one-time payment, migrating off the gateway's own Stripe
- * so the org has ONE customer/card). The buyer pays amountCents (in usd or
- * brl) + the fee; the gateway is credited the USD-equivalent creditCents by
- * the webhook — price parity with the gateway's legacy checkout (15% fee,
- * same AwesomeAPI live rate for BRL). The FX rate is locked at session
- * creation: `metadata.creditCents` carries the converted USD amount, so the
- * webhook credits exactly what the buyer saw regardless of when it lands.
- */
-export function computeTopUpChargeCents(
-  amountCents: number,
-  feePercent: number,
-): number {
-  return Math.round(amountCents * (1 + feePercent / 100));
-}
-
-export async function createTopUpCheckoutSession(input: {
-  organizationId: string;
-  /** Amount in the PAYMENT currency's cents (BRL centavos for brl). */
-  amountCents: number;
-  currency: "usd" | "brl";
-  feePercent: number;
-  customerId: string | null;
-  successUrl: string;
-  cancelUrl: string;
-}): Promise<{ url: string }> {
-  const chargeCents = computeTopUpChargeCents(
-    input.amountCents,
-    input.feePercent,
-  );
-  const creditCents = toUsdCreditCents(
-    input.amountCents,
-    input.currency,
-    await getUsdToBrl(),
-  );
-  const label =
-    input.currency === "brl"
-      ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
-      : `Studio AI credits ($${(input.amountCents / 100).toFixed(2)})`;
-  const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
-    params: {
-      mode: "payment",
-      // Reuse the org's saved customer when it exists (same card as the
-      // seat subscription); otherwise Checkout creates a guest payment.
-      ...(input.customerId && { customer: input.customerId }),
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: input.currency,
-            unit_amount: chargeCents,
-            product_data: { name: label },
-          },
-        },
-      ],
-      success_url: input.successUrl,
-      cancel_url: input.cancelUrl,
-      metadata: {
-        kind: "topup",
-        orgId: input.organizationId,
-        creditCents,
-      },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
@@ -261,26 +125,6 @@ export async function createBillingPortalSession(input: {
   return { url: session.url };
 }
 
-/** Commit the seat change on Stripe: prorated difference charged immediately
- *  on the saved card (always_invoice); pending_if_incomplete keeps the
- *  subscription consistent if the bank demands 3DS. */
-export async function applySeatQuantity(input: {
-  subscriptionId: string;
-  quantity: number;
-}): Promise<void> {
-  const { itemId } = await getSeatItem(input.subscriptionId);
-  await stripeRequest(
-    `/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
-    {
-      params: {
-        items: [{ id: itemId, quantity: input.quantity }],
-        proration_behavior: "always_invoice",
-        payment_behavior: "pending_if_incomplete",
-      },
-    },
-  );
-}
-
 /** Cancel a subscription outright. Used for orphans: a checkout that
  *  completed for an org already bound to a different subscription — the
  *  customer paid, the webhook refused the bind, nothing should keep billing. */
@@ -290,31 +134,4 @@ export async function cancelSubscription(
   await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "DELETE",
   });
-}
-
-/**
- * Converge the subscription quantity onto the seat rows (the truth of WHO is
- * paid-for). Called from webhook anchors that prove the card WORKS
- * (invoice.paid, checkout completion) — never from failure paths, so a
- * declined proration can't loop charge attempts. No-op when they already
- * match. Returns whether a correction was pushed.
- */
-export async function reconcileSeatQuantity(input: {
-  subscriptionId: string;
-  targetQuantity: number;
-}): Promise<boolean> {
-  if (input.targetQuantity < 1) return false; // zero-seat = cancellation flow, not a quantity
-  const { itemId, quantity } = await getSeatItem(input.subscriptionId);
-  if (quantity === input.targetQuantity) return false;
-  await stripeRequest(
-    `/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
-    {
-      params: {
-        items: [{ id: itemId, quantity: input.targetQuantity }],
-        proration_behavior: "always_invoice",
-        payment_behavior: "pending_if_incomplete",
-      },
-    },
-  );
-  return true;
 }

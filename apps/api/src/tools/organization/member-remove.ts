@@ -55,9 +55,7 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
       );
     }
 
-    // Remove member via Better Auth. The paid-seat release happens in the
-    // afterRemoveMember organization hook (auth/index.ts) — the canonical
-    // removal boundary, covering every path, not just this tool.
+    // Remove member via Better Auth.
     const removed = await ctx.boundAuth.organization.removeMember({
       organizationId,
       memberIdOrEmail: input.memberIdOrEmail,
