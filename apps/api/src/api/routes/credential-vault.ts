@@ -168,6 +168,19 @@ export const createCredentialVaultRoutes = () => {
           .execute()
       ).map((row) => row.connectionId),
     );
+    // Raw (still-encrypted) configuration_state, so a decrypt failure can be
+    // told apart from "no configuration set" below — `connections.list()`
+    // silently maps a decrypt failure to `null`, same as an unset value.
+    const rawConfigStateById = new Map(
+      (
+        await ctx.db
+          .selectFrom("connections")
+          .select(["id", "configuration_state"])
+          .where("id", "in", ids)
+          .where("organization_id", "=", organizationId)
+          .execute()
+      ).map((row) => [row.id, row.configuration_state]),
+    );
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
     const out: Record<string, unknown> = {};
@@ -177,6 +190,12 @@ export const createCredentialVaultRoutes = () => {
           const target = byId.get(id);
           if (!target || target.status !== "active") {
             out[id] = { error: "Connection not found" };
+            return;
+          }
+          if (rawConfigStateById.get(id) && !target.configuration_state) {
+            // Mirrors the single-connection /configuration route: don't mask
+            // a decrypt failure as an empty configuration.
+            out[id] = { error: "MCP configuration could not be decrypted" };
             return;
           }
           const configuration = {

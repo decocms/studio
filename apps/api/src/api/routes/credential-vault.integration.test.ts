@@ -550,6 +550,18 @@ describe("Credential Vault Routes", () => {
       expect(body.conn_does_not_exist?.error).toBe("Connection not found");
     });
 
+    it("does not return empty configuration when saved configuration cannot be decrypted", async () => {
+      const res = await app.fetch(
+        batchRequest("svc-secret", ["conn_invalid_configuration_target"]),
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, { error?: string }>;
+      expect(body.conn_invalid_configuration_target?.error).toBe(
+        "MCP configuration could not be decrypted",
+      );
+    });
+
     it("rejects workload tokens — the batch lane is service-only", async () => {
       const res = await app.fetch(batchRequest(workloadToken, ["conn_target"]));
       expect(res.status).toBe(401);
