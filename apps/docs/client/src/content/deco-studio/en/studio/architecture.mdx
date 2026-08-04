@@ -95,6 +95,8 @@ The step above is the default path — it doesn't cover every hosted run. Two ha
 
 claude-code is opt-in per org (`claude_code_sandbox_enabled`, default off). Task Board's Super Agent tasks use it only when the org has opted in **and** has at least one importable repo. With exactly one repo, dispatch resolves and checks it out up front; with several, the run dispatches into an empty working directory and the `TASK_ADD_REPO` tool lets the agent clone the right repo into the already-running pod once it decides which one to use. Otherwise those tasks run Decopilot exactly as before.
 
+Credential resolution for a sandbox-hosted claude-code run checks the dispatching user's own linked Claude subscription first (see [AI Providers](/en/studio/ai-providers)) — a live, unexpired token there outranks the org's Thinking-tier provider, since the user asked for their own plan to pay. It falls back to the org's credential when no personal subscription is linked or the token has expired, rather than failing the run.
+
 ## MCP: in-process vs. the proxy routes
 
 This distinction matters for reasoning about the system:

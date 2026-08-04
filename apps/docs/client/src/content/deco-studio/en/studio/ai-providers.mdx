@@ -71,6 +71,21 @@ When Studio runs locally (via `bunx -p decocms deco`), two extra providers light
 
 These don't appear in the cloud product.
 
+## Your Claude subscription (bring your own plan)
+
+Sandbox-hosted coding runs (Task Board's Super Agent, and other flows that dispatch a `claude-code` run into a cloud sandbox) normally bill against the organization's connected AI credit. If you'd rather pay for your own coding runs out of your personal **Claude Pro or Max** plan, link it under **Settings → AI Providers → Your Claude subscription**:
+
+1. On your own machine, run `claude setup-token` and copy the token it prints.
+2. Paste the token into the **Your Claude subscription** card and click **Link**.
+
+Once linked, your own runs use your plan instead of the org's credit — it outranks the org's configured Thinking-tier provider for sandbox-hosted `claude-code` runs specifically. If Anthropic invalidates the token (e.g. it expires), Studio falls back to the org's credential automatically rather than failing the run; the card shows an **expired** state so you know to generate a new token.
+
+Click **Disconnect** to unlink your subscription at any time.
+
+<Callout type="info">
+This only affects sandbox-hosted `claude-code` runs. It's unrelated to the **Claude Code** local-only provider above, which drives a CLI on your own machine.
+</Callout>
+
 ## How a provider gets connected
 
 **API key** — the most common method. Paste the key from your provider's dashboard. It's stored encrypted and never exposed to your team.
