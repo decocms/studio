@@ -26,7 +26,6 @@ export type ToolCategory =
   | "Monitoring"
   | "Users"
   | "API Keys"
-  | "Event Bus"
   | "Tags"
   | "AI Providers"
   | "Secrets"
@@ -1599,7 +1598,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Monitoring: [],
     Users: [],
     "API Keys": [],
-    "Event Bus": [],
     Tags: [],
     "AI Providers": [],
     Secrets: [],
