@@ -1205,8 +1205,12 @@ export interface TaskQuotaClaimTable {
   organization_id: string;
   period_key: string;
   /** Dispatches funded by this claim — capped at STUDIO_MAX_RUNS_PER_TASK so
-   *  one claim can't fund a re-delegation loop. */
+   *  one claim can't fund a re-delegation loop. Survives a release, so
+   *  releasing is never a free reset. */
   run_count: ColumnType<number, number | undefined, number>;
+  /** "held" (dispatched, charge pending) | "committed" (the run opened a PR)
+   *  | "released" (ended with nothing — stops counting toward the period). */
+  state: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 

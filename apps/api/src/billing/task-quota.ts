@@ -11,6 +11,13 @@
  * quota — bounded by `maxRunsPerTask`, because a claimed task can be
  * re-delegated in a loop and each dispatch spends real (subsidized) money.
  *
+ * A dispatch takes a HOLD, not a charge: the slot is counted immediately (an
+ * org can never start more runs than it could finish), and the claim only
+ * COMMITS when the run opens a pull request. A run that ends with nothing is
+ * RELEASED and the slot returns — the customer doesn't lose one of their
+ * executions for a run that produced no work. Releasing is not a reset: the
+ * run tally survives it, so the per-task cap still bounds retries.
+ *
  * Periods need no cron: claims carry a `period_key` — "trial" while nothing
  * is being paid, else the subscription's current period end, which
  * invoice.paid refreshes, minting a fresh bucket each cycle.
@@ -20,7 +27,10 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { getSettings } from "../settings";
-import type { OrganizationBillingRow } from "../storage/organization-billing";
+import type {
+  OrganizationBillingRow,
+  OrganizationBillingStorage,
+} from "../storage/organization-billing";
 
 /**
  * The wire contract for the paywall UI — same convention as `[CREDITS]`
@@ -143,16 +153,13 @@ export async function ensureTaskExecutionAllowed(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<void> {
   if (!config.enforced || !isReportsTask(task)) return;
-  const existingRuns = await ctx.storage.organizationBilling.taskRunCount(
-    task.id,
-  );
-  if (existingRuns !== null) {
-    // Already claimed — re-runs are free within the per-task cap.
-    if (existingRuns >= config.maxRunsPerTask) {
-      throw new TaskQuotaError("runs_exhausted");
-    }
-    return;
+  const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
+  if (claim && claim.runCount >= config.maxRunsPerTask) {
+    throw new TaskQuotaError("runs_exhausted");
   }
+  // A live (held or committed) claim already owns its slot — re-runs are free
+  // within the cap. A released one must re-take a slot, so fall through.
+  if (claim && claim.state !== "released") return;
   const billing = await ctx.storage.organizationBilling.getBilling(
     task.organizationId,
   );
@@ -192,14 +199,51 @@ export async function claimTaskExecution(
   if (result === "runs_exhausted") throw new TaskQuotaError("runs_exhausted");
 }
 
-/** Whether this task has a quota claim — the server-side fact the subsidized
- *  payer swap corroborates the run stamp against. */
+/** Whether this task holds a LIVE quota claim — the server-side fact the
+ *  subsidized payer swap corroborates the run stamp against. A released claim
+ *  doesn't authorize spending: only a run we actually charged for (or are
+ *  holding a slot for) rides the subsidy key. */
 export async function hasTaskQuotaClaim(
   ctx: StudioContext,
   taskBoardItemId: string,
 ): Promise<boolean> {
-  return (
-    (await ctx.storage.organizationBilling.taskRunCount(taskBoardItemId)) !==
-    null
-  );
+  const claim =
+    await ctx.storage.organizationBilling.taskClaim(taskBoardItemId);
+  return !!claim && claim.state !== "released";
+}
+
+/**
+ * The run opened a pull request — confirm the charge. Called from the
+ * task-board advance-to-review reaction (the one funnel every PR-open route
+ * shares). Idempotent and best-effort: a miss leaves the slot held, which is
+ * the safe direction (counted, not refunded).
+ */
+export async function commitTaskExecution(
+  billing: OrganizationBillingStorage,
+  taskBoardItemId: string,
+): Promise<void> {
+  // Deliberately NOT gated on `enforced`: with the gate off no claim exists,
+  // so this touches nothing — and if the flag is turned off mid-flight, the
+  // holds it already took still have to resolve.
+  await billing
+    .commitTaskClaim(taskBoardItemId)
+    .catch((err) =>
+      console.error("[task-quota] commit failed (slot stays held)", err),
+    );
+}
+
+/**
+ * The run ended without a pull request — give the slot back. Only a HELD
+ * claim releases, so a task that already delivered never refunds.
+ */
+export async function releaseTaskExecution(
+  billing: OrganizationBillingStorage,
+  taskBoardItemId: string,
+): Promise<void> {
+  // Ungated for the same reason as commitTaskExecution.
+  await billing
+    .releaseTaskClaim(taskBoardItemId)
+    .catch((err) =>
+      console.error("[task-quota] release failed (slot stays held)", err),
+    );
 }

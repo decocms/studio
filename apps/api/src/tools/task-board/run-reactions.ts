@@ -19,6 +19,11 @@
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
+import {
+  commitTaskExecution,
+  releaseTaskExecution,
+} from "@/billing/task-quota";
+import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
 import { sseHub } from "@/event-bus/sse-hub";
@@ -141,6 +146,11 @@ export async function advanceTaskBoardForRun(
         .catch((err) =>
           console.error("[task-board] activity log write failed", err),
         );
+      // Reaching In Review means this run opened a pull request — the moment
+      // the quota hold becomes a real charge (billing/task-quota.ts).
+      if (status === "in_review") {
+        await commitTaskExecution(ctx.storage.organizationBilling, itemId);
+      }
       emitTaskBoardUpdated(orgId, item);
     }
   } catch (err) {
@@ -195,6 +205,10 @@ export async function advanceTasksToReviewOnThreadFinish(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
+  /** Quota bookkeeping: a task the finished run left short of In Review
+   *  produced no pull request, so its held slot goes back (task-quota.ts).
+   *  Optional so callers without billing storage keep working. */
+  billing?: OrganizationBillingStorage,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
@@ -202,6 +216,21 @@ export async function advanceTasksToReviewOnThreadFinish(
       orgId,
     );
     for (const item of moved) emitTaskBoardUpdated(orgId, item);
+    // Committing the ADVANCED ones happens here (this path bypasses
+    // advanceTaskBoardForRun); the rest are released.
+    if (billing) {
+      const advanced = new Set(moved.map((item) => item.id));
+      for (const item of moved) {
+        await commitTaskExecution(billing, item.id);
+      }
+      for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
+        if (advanced.has(taskId)) continue;
+        const item = await taskBoard.getById(taskId, orgId);
+        // Already in review/done means an earlier PR-open committed it.
+        if (!item || RANK[item.status] >= RANK["in_review"]) continue;
+        await releaseTaskExecution(billing, taskId);
+      }
+    }
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
