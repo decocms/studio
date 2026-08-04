@@ -607,6 +607,7 @@ export const sandbox = {
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
+  "sandbox.savedSectionEditor.editingBreadcrumb": "Trilha de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Seção global — alterações são salvas automaticamente e aplicadas em todos os locais onde é usada.",
   "sandbox.savedSectionEditor.invalidJsonError":
