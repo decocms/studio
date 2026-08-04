@@ -88,7 +88,6 @@ export class ThreadManagerStore {
   readonly hasMore = new Store<boolean>(false);
   readonly isFetchingMore = new Store<boolean>(false);
 
-  private pendingOptimistic = new Set<string>();
   /**
    * Short-lived block list of just-archived thread ids. Read by every code
    * path that could re-insert a row (`decopilot.thread.*` patch handler,
@@ -261,7 +260,6 @@ export class ThreadManagerStore {
   ): Promise<void> {
     if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
     const snapshot = this.threads.get();
-    this.pendingOptimistic.add(id);
     this.threads.update((list) =>
       applyPatch(list, {
         ...(patch as unknown as RowPatch),
@@ -280,15 +278,12 @@ export class ThreadManagerStore {
     } catch (err) {
       this.threads.set(snapshot);
       throw err;
-    } finally {
-      this.pendingOptimistic.delete(id);
     }
   }
 
   private async optimisticHide(id: string): Promise<void> {
     if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
     const snapshot = this.threads.get();
-    this.pendingOptimistic.add(id);
     // Tombstone BEFORE filtering the row out so any late `decopilot.thread.*`
     // event for this thread (e.g., the finish event for a run that was still
     // streaming at archive time) is dropped by handleFrame instead of
@@ -310,8 +305,6 @@ export class ThreadManagerStore {
       // silently dropped.
       this.archivedTombstones.delete(id);
       throw err;
-    } finally {
-      this.pendingOptimistic.delete(id);
     }
   }
 
