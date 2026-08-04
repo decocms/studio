@@ -571,11 +571,8 @@ async function provisionSandbox(
   const sandbox = await runner.ensure(
     { userId: sandboxUserId, projectRef },
     {
-      // Pass branch explicitly so the runner-side `computeHandle` agrees with
-      // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
-      // VM falls back to `s-<hash>` while the proxy looks up `<branch>-<hash>`
-      // and every proxy call 404s with `unknown handle` (see resilience
-      // scenarios `link-dispatch-ws-partition` / `link-dispatch-log-replay`).
+      // Annotation only — the handle comes from `projectRef`, which already
+      // carries this branch, so runner and proxy agree without being told.
       branch,
       repo: repoOpts,
       workload,

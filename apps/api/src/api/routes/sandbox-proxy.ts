@@ -174,10 +174,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // handle never existed — /events reported `claiming` forever and every other
   // route 404'd. See `resolveSandboxUserId`.
   const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-  const claimName = computeClaimHandle(
-    { userId: sandboxUserId, projectRef },
-    branch,
-  );
+  const claimName = computeClaimHandle({ userId: sandboxUserId, projectRef });
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
