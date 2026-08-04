@@ -172,6 +172,19 @@ describe("Credential Vault Routes", () => {
           created_at: now,
           updated_at: now,
         },
+        {
+          id: "conn_invalid_token_target",
+          organization_id: "org_1",
+          created_by: "user_1",
+          title: "Invalid Token Target",
+          connection_type: "HTTP",
+          connection_url: "https://invalid-token.example.test/mcp",
+          connection_token: "not-valid-ciphertext",
+          status: "active",
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        },
       ])
       .execute();
 
@@ -201,6 +214,10 @@ describe("Credential Vault Routes", () => {
         },
         {
           targetConnectionId: "conn_static_token_target",
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        },
+        {
+          targetConnectionId: "conn_invalid_token_target",
           scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
         },
         {
@@ -429,6 +446,23 @@ describe("Credential Vault Routes", () => {
     });
   });
 
+  it("does not report 'not found' when a static connection token cannot be decrypted", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_invalid_token_target/access-token",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(424);
+    await expect(res.json()).resolves.toEqual({
+      error: "Connection token could not be decrypted",
+    });
+  });
+
   it("rejects access when the subject lacks a grant to the target", async () => {
     const res = await app.fetch(
       new Request(
@@ -559,6 +593,18 @@ describe("Credential Vault Routes", () => {
       const body = (await res.json()) as Record<string, { error?: string }>;
       expect(body.conn_invalid_configuration_target?.error).toBe(
         "MCP configuration could not be decrypted",
+      );
+    });
+
+    it("does not report a null token when a static connection token cannot be decrypted", async () => {
+      const res = await app.fetch(
+        batchRequest("svc-secret", ["conn_invalid_token_target"]),
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, { error?: string }>;
+      expect(body.conn_invalid_token_target?.error).toBe(
+        "Connection token could not be decrypted",
       );
     });
 

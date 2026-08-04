@@ -168,18 +168,19 @@ export const createCredentialVaultRoutes = () => {
           .execute()
       ).map((row) => row.connectionId),
     );
-    // Raw (still-encrypted) configuration_state, so a decrypt failure can be
-    // told apart from "no configuration set" below — `connections.list()`
-    // silently maps a decrypt failure to `null`, same as an unset value.
-    const rawConfigStateById = new Map(
+    // Raw (still-encrypted) configuration_state + connection_token, so a
+    // decrypt failure can be told apart from "not set" below —
+    // `connections.list()` silently maps either decrypt failure to `null`,
+    // same as an unset value.
+    const rawById = new Map(
       (
         await ctx.db
           .selectFrom("connections")
-          .select(["id", "configuration_state"])
+          .select(["id", "configuration_state", "connection_token"])
           .where("id", "in", ids)
           .where("organization_id", "=", organizationId)
           .execute()
-      ).map((row) => [row.id, row.configuration_state]),
+      ).map((row) => [row.id, row]),
     );
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
@@ -192,7 +193,10 @@ export const createCredentialVaultRoutes = () => {
             out[id] = { error: "Connection not found" };
             return;
           }
-          if (rawConfigStateById.get(id) && !target.configuration_state) {
+          if (
+            rawById.get(id)?.configuration_state &&
+            !target.configuration_state
+          ) {
             // Mirrors the single-connection /configuration route: don't mask
             // a decrypt failure as an empty configuration.
             out[id] = { error: "MCP configuration could not be decrypted" };
@@ -232,6 +236,11 @@ export const createCredentialVaultRoutes = () => {
               expiresAt: null,
               scope: null,
             };
+          } else if (rawById.get(id)?.connection_token) {
+            // Same masking as configuration_state above, for the static-token
+            // lane: don't report "no token" when it's actually undecryptable.
+            out[id] = { error: "Connection token could not be decrypted" };
+            return;
           }
           out[id] = { configuration, accessToken };
         } catch (err) {
@@ -286,6 +295,21 @@ export const createCredentialVaultRoutes = () => {
           expiresAt: null,
           scope: null,
         });
+      }
+      // `connections.findById` decrypts eagerly and silently maps a
+      // connection_token decrypt failure to null, same as an unset value —
+      // check the raw ciphertext so that case reports 424, not "not found".
+      const raw = await ctx.db
+        .selectFrom("connections")
+        .select("connection_token")
+        .where("id", "=", targetConnectionId)
+        .where("organization_id", "=", organizationId)
+        .executeTakeFirst();
+      if (raw?.connection_token) {
+        return c.json(
+          { error: "Connection token could not be decrypted" },
+          424,
+        );
       }
       return c.json({ error: "Downstream token not found" }, 409);
     }
