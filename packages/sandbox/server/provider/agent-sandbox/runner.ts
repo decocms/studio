@@ -496,17 +496,23 @@ export class AgentSandboxProvider implements SandboxProvider {
   // ---- SandboxProvider surface ------------------------------------------------
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    // Branch is the slug source. Prefer the explicit top-level `opts.branch`
-    // (which `sandbox-proxy.ts`'s `computeClaimHandle` also uses) over
-    // `opts.repo?.branch` so a repo-less SANDBOX_START — i.e. a virtual MCP
-    // with no GitHub connection — still composes the same handle the proxy
-    // looks up. The fallback to bare-hash (`s-<hash>`) survives only for
-    // legacy tool-only / smoke-test callers that drive `ensure` without
-    // ever touching the sandbox-proxy.
-    const handle = composeBranchHandle(
-      id,
-      opts.branch ?? opts.repo?.branch ?? null,
-    );
+    // Identity comes from `id` alone — slug and hash both derive from
+    // `id.projectRef`, so this agrees with `sandbox-proxy.ts`'s
+    // `computeClaimHandle` by construction. It used to take a branch argument
+    // (`opts.branch ?? opts.repo?.branch ?? null`); callers that omitted the
+    // top-level field fell through to `repo.branch` — the DERIVED git ref, not
+    // the synthetic isolation key — and posted a second claim for one sandbox.
+    const handle = composeBranchHandle(id);
+    // An unsluggable ref is a caller bug, not something to recover from: the
+    // old silent `s-<hash>` fallback is exactly how a repo-less sandbox got a
+    // duplicate pod in prod (`s-<hash>` alongside `ephemeral-<hash>`, 0.4s
+    // apart, same hash — the `s-` one never received a dispatch and idled to
+    // its 15-min TTL).
+    if (handle.startsWith("s-")) {
+      throw new Error(
+        `ensure: projectRef has no slug source: ${id.projectRef}`,
+      );
+    }
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
@@ -1940,6 +1946,14 @@ export class AgentSandboxProvider implements SandboxProvider {
           repo: await this.withFreshCloneUrl(persistedOpts.repo),
         }
       : persistedOpts;
+    // The row must resolve back to the handle we were asked to resurrect.
+    // Structurally guaranteed now that both derive from `id.projectRef`, which
+    // is the point of asserting it: if a future ref encoding breaks the
+    // identity, resurrecting would post a SECOND claim under a different name
+    // while the caller kept waiting on this one. 404 instead — the UI's
+    // notFound → SANDBOX_START flow re-supplies correct opts.
+    const resurrected = composeBranchHandle(row.id);
+    if (resurrected !== handle) return null;
     // ensure() is idempotent + advisory-locked, so concurrent resurrections
     // for the same handle collapse to a single provision. The lock is keyed
     // on (userId, projectRef, kind), the same identity our state-store row
@@ -2507,10 +2521,10 @@ function tenantAttrs(tenant: RunnerTenant | null): {
  */
 export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   const out: EnsureOptions = {};
-  // The handle's slug source. Dropping it made `resurrectByHandle` fall back to
-  // `repo.branch` (the derived git ref, not the synthetic isolation key), so the
-  // re-ensure computed a DIFFERENT handle and posted a SECOND SandboxClaim for
-  // one thread — while the handle the caller was waiting on stayed unknown.
+  // Kept for the claim's `git-branch` annotation on reprovision. It no longer
+  // affects the handle (that comes from `projectRef`), so losing it can't fork a
+  // claim the way it once did — persist it anyway so a resurrected claim carries
+  // the same operator-facing annotation as the original.
   if (opts.branch) out.branch = opts.branch;
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;

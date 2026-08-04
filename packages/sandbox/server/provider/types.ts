@@ -42,13 +42,18 @@ export interface Workload {
 
 export interface EnsureOptions {
   /**
-   * Branch slug for handle composition. The sandbox proxy
-   * (`apps/api/src/api/routes/sandbox-proxy.ts`) ALWAYS derives the claim
-   * handle from the URL-path branch, so the runner MUST agree or every
-   * proxy call 404s with `unknown handle`. Callers that also drive the
-   * proxy (i.e. SANDBOX_START / ensureSandbox) MUST pass this; `repo.branch`
-   * remains as a fallback only because legacy/test callers without a proxy
-   * surface still use it. When both are set, this top-level field wins.
+   * The synthetic isolation key, recorded as the claim's `git-branch`
+   * ANNOTATION for operators reading `kubectl get sandboxclaim -o yaml`.
+   *
+   * NOT an identity input — the handle derives its slug and its hash from
+   * `projectRef` alone (see `computeHandle`). Setting this wrong costs you a
+   * misleading annotation, nothing more. It used to feed the handle's slug,
+   * which is how a caller passing the derived git ref here instead of the
+   * synthetic key got a second claim for one sandbox.
+   *
+   * Prefer it over `repo.branch` for the annotation: `repo.branch` is the real
+   * git ref the daemon checks out, which for thread-scoped work is the derived
+   * `sandbox/thread-*` name rather than the isolation key.
    */
   branch?: string;
   /**
