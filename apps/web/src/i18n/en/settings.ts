@@ -535,10 +535,11 @@ export const settings = {
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Organization name",
   "settings.organizationForm.nameTitle": "Name",
-  "settings.organizationForm.slugPlaceholder": "my-organization",
   "settings.organizationForm.updateSuccess":
     "Organization updated successfully",
   "settings.organizationForm.uploadLogoLabel": "Upload organization logo",
+  "settings.organizationForm.urlDescription":
+    "Can't be changed — it's used in URLs and API integrations.",
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · added {time} ago",
   "settings.providerKeyRow.cancel": "Cancel",

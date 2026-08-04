@@ -566,11 +566,12 @@ export const settings = {
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Nome da organiza\u00e7\u00e3o",
   "settings.organizationForm.nameTitle": "Nome",
-  "settings.organizationForm.slugPlaceholder": "minha-organizacao",
   "settings.organizationForm.updateSuccess":
     "Organiza\u00e7\u00e3o atualizada com sucesso",
   "settings.organizationForm.uploadLogoLabel":
     "Enviar logo da organiza\u00e7\u00e3o",
+  "settings.organizationForm.urlDescription":
+    "N\u00e3o pode ser alterada \u2014 \u00e9 usada em URLs e integra\u00e7\u00f5es de API.",
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · adicionada há {time}",
   "settings.providerKeyRow.cancel": "Cancelar",
