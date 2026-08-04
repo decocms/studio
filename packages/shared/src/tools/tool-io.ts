@@ -124,7 +124,7 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            inline_field_descriptions?: boolean | undefined;
+            field_description_tooltips?: boolean | undefined;
           }
         | null
         | undefined;
@@ -190,7 +190,7 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            inline_field_descriptions?: boolean | undefined;
+            field_description_tooltips?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -256,7 +256,7 @@ export interface StudioToolIO {
             qa_agent_enabled?: boolean | undefined;
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
-            inline_field_descriptions?: boolean | undefined;
+            field_description_tooltips?: boolean | undefined;
           }
         | null
         | undefined;

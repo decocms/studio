@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "@untitledui/icons";
 import {
   FieldDescriptionTooltip,
-  useInlineFieldDescriptions,
+  useFieldDescriptionTooltips,
 } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
@@ -25,7 +25,7 @@ export function ObjectField({
   sandbox,
 }: FieldProps) {
   const [open, setOpen] = useState(false);
-  const inlineDescriptions = useInlineFieldDescriptions();
+  const tooltipsEnabled = useFieldDescriptionTooltips();
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -62,7 +62,7 @@ export function ObjectField({
         </FieldDescriptionTooltip>
       </button>
 
-      {inlineDescriptions && schema.description && (
+      {!tooltipsEnabled && schema.description && (
         <p className="break-words pl-9 text-xs leading-normal text-muted-foreground">
           {schema.description}
         </p>

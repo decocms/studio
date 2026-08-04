@@ -65,7 +65,7 @@ export default defineConfig({
             replacement: stub("file-picker-dialog.tsx"),
           },
           // FieldLabel (nearly every field widget) reads the
-          // inline_field_descriptions org flag via useOrgFlag, which also
+          // field_description_tooltips org flag via useOrgFlag, which also
           // calls useProjectContext() — same problem as above.
           {
             find: /^@\/hooks\/use-organization-settings$/,

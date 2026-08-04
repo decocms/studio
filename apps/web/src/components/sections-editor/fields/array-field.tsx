@@ -50,7 +50,7 @@ import {
 } from "./array-entries";
 import {
   FieldDescriptionTooltip,
-  useInlineFieldDescriptions,
+  useFieldDescriptionTooltips,
 } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { ArrayRowContent, SortableArrayRow } from "./array-row";
@@ -127,7 +127,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
-  const inlineDescriptions = useInlineFieldDescriptions();
+  const tooltipsEnabled = useFieldDescriptionTooltips();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -477,7 +477,7 @@ export function ArrayField({
         )}
       </div>
 
-      {inlineDescriptions && schema.description && (
+      {!tooltipsEnabled && schema.description && (
         <p className="break-words text-xs leading-normal text-muted-foreground">
           {schema.description}
         </p>

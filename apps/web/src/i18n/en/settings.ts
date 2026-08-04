@@ -387,9 +387,10 @@ export const settings = {
   "settings.blocksForm.title": "Blocks form",
   "settings.blocksForm.description":
     "Controls how field descriptions render in the blocks form editor.",
-  "settings.blocksForm.inlineDescriptionsTitle": "Show descriptions inline",
-  "settings.blocksForm.inlineDescriptionsDescription":
-    "Render a field's description as text below its title instead of a hover tooltip on the title.",
+  "settings.blocksForm.descriptionTooltipsTitle":
+    "Show descriptions as tooltips",
+  "settings.blocksForm.descriptionTooltipsDescription":
+    "Render a field's description as a hover tooltip on its title instead of text below the title.",
   "settings.blocksForm.updateError": "Couldn't update the blocks form setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
