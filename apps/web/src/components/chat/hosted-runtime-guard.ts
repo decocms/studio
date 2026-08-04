@@ -5,10 +5,7 @@
  * thread that in fact runs fine (that is what happened to `claude-code`).
  *
  * `claude-code` runs in the hosted sandbox, not on the user's machine, so it is
- * viewable here. The org flag that gates *starting* a claude-code run
- * (`claude_code_sandbox_enabled`) is deliberately NOT consulted: this decides
- * whether a thread's workspace may mount, and the server still rejects a
- * dispatch for a flag-off org with its own error.
+ * viewable here.
  */
 const HOSTED_HARNESS_IDS = new Set(["decopilot", "claude-code"]);
 

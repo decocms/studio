@@ -158,20 +158,6 @@ export async function resolveTaskRepoChoice(
   }
 }
 
-/** Is the sandbox-hosted harness allowed for this org? Default off. */
-export async function claudeCodeEnabledForOrg(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<boolean> {
-  try {
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    return settings?.flags?.claude_code_sandbox_enabled === true;
-  } catch (err) {
-    console.warn("[task-board] org flag lookup failed", err);
-    return false;
-  }
-}
-
 /**
  * The autonomous prompt for a claude-code task run. Pure, so the branch
  * selection is unit-tested.
