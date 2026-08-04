@@ -273,9 +273,18 @@ export function resolveConfig(
     // AI Gateway
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
+    aiGatewayAdminToken: envVars.DECO_AI_GATEWAY_ADMIN_TOKEN,
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
+    // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
+    // that would silently more-than-double every top-up charge.
+    topupFeePercent: toPositiveIntegerOrDefault(
+      "STUDIO_TOPUP_FEE_PERCENT",
+      envVars.STUDIO_TOPUP_FEE_PERCENT,
+      15,
+      100,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

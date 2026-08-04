@@ -4,6 +4,7 @@
  */
 
 import { getSettings } from "../settings";
+import { getUsdToBrl, toUsdCreditCents } from "./exchange-rate";
 
 const BASE_URL = "https://api.stripe.com/v1";
 
@@ -103,6 +104,72 @@ export async function createOrgCheckoutSession(input: {
       // subscription (defense in depth for subscription-keyed lookups).
       metadata: { orgId: input.organizationId },
       subscription_data: { metadata: { orgId: input.organizationId } },
+    },
+  });
+  if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
+  return { url: session.url };
+}
+
+/**
+ * AI-credit top-up (one-time payment; one Stripe customer/card for the org).
+ * The buyer pays amountCents (usd or brl) + the fee; the webhook credits the
+ * gateway the USD-equivalent creditCents. The FX rate is locked at session
+ * creation: `metadata.creditCents` carries the converted USD amount, so the
+ * webhook credits exactly what the buyer saw regardless of when it lands.
+ */
+export function computeTopUpChargeCents(
+  amountCents: number,
+  feePercent: number,
+): number {
+  return Math.round(amountCents * (1 + feePercent / 100));
+}
+
+export async function createTopUpCheckoutSession(input: {
+  organizationId: string;
+  /** Amount in the PAYMENT currency's cents (BRL centavos for brl). */
+  amountCents: number;
+  currency: "usd" | "brl";
+  feePercent: number;
+  customerId: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ url: string }> {
+  const chargeCents = computeTopUpChargeCents(
+    input.amountCents,
+    input.feePercent,
+  );
+  const creditCents = toUsdCreditCents(
+    input.amountCents,
+    input.currency,
+    await getUsdToBrl(),
+  );
+  const label =
+    input.currency === "brl"
+      ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
+      : `Studio AI credits ($${(input.amountCents / 100).toFixed(2)})`;
+  const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    params: {
+      mode: "payment",
+      // Reuse the org's saved customer when it exists (same card as the
+      // subscription); otherwise Checkout creates a guest payment.
+      ...(input.customerId && { customer: input.customerId }),
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: input.currency,
+            unit_amount: chargeCents,
+            product_data: { name: label },
+          },
+        },
+      ],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      metadata: {
+        kind: "topup",
+        orgId: input.organizationId,
+        creditCents,
+      },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");

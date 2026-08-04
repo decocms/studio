@@ -77,13 +77,19 @@ export interface Settings {
   // AI Gateway
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
+  /** Bearer for the gateway's /api/admin/* (top-up credits). Absent → the
+   *  top-up tool falls back to the gateway's own checkout. */
+  aiGatewayAdminToken: string | undefined;
 
-  // Stripe (per-org subscription). Absent → webhook 503s, no checkout.
+  // Stripe (per-org subscription + AI-credit top-ups). Absent → webhook
+  // 503s, no checkout.
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe
    *  dashboard); quantity is always 1. */
   stripeOrgPriceId: string | undefined;
+  /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
+  topupFeePercent: number;
 
   // Feature Flags
   enableDecoImport: boolean;

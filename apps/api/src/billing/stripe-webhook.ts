@@ -25,6 +25,7 @@ import {
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
 import { cancelSubscription, StripeApiError } from "./stripe-api";
+import { creditGatewayTopUp } from "./gateway-admin";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
 
@@ -186,6 +187,10 @@ export type HandledStripeEvent =
   | {
       handled: true;
       organizationId: string;
+      /** A paid AI-credit top-up to forward to the gateway (route wrapper
+       *  credits it; a failure THROWS so Stripe redelivers — Stripe is the
+       *  retry queue, the gateway referenceId dedupe makes replays no-ops). */
+      topUp?: { creditCents: number; referenceId: string };
     };
 
 /**
@@ -204,6 +209,52 @@ export async function applyStripeEvent(
     case "checkout.session.async_payment_succeeded": {
       const organizationId = s(rec(obj.metadata)?.orgId);
       if (!organizationId) return { handled: false, reason: "no orgId" };
+
+      // AI-credit top-up (mode=payment, metadata.kind=topup — set by our own
+      // checkout creator). Orthogonal to the subscription: NO billing-row
+      // writes, no watermark. The gateway credit happens in the route wrapper.
+      if (s(rec(obj.metadata)?.kind) === "topup") {
+        if (obj.mode !== "payment") {
+          return { handled: false, reason: "topup with wrong mode" };
+        }
+        if (s(obj.payment_status) !== "paid") {
+          return { handled: false, reason: "payment not confirmed" };
+        }
+        const sessionId = s(obj.id);
+        if (!sessionId) {
+          // No deterministic dedupe key — a random one would double-credit
+          // on redelivery (completed + async_payment_succeeded both land
+          // here). Sessions always carry ids; absence is malformed.
+          console.error("stripe webhook: topup session without id", {
+            eventId: event.id,
+            organizationId,
+          });
+          return { handled: false, reason: "topup session without id" };
+        }
+        const creditCents = Number(rec(obj.metadata)?.creditCents);
+        if (!Number.isInteger(creditCents) || creditCents <= 0) {
+          // Money captured but the credit can't be computed — our own
+          // checkout creator wrote this metadata, so this is a bug. Loud but
+          // 200-acked: throwing would redeliver a deterministic failure.
+          console.error(
+            "stripe webhook: paid topup with bad metadata — credit NOT applied",
+            {
+              eventId: event.id,
+              organizationId,
+              creditCents: rec(obj.metadata)?.creditCents,
+            },
+          );
+          return { handled: false, reason: "bad topup metadata" };
+        }
+        return {
+          handled: true,
+          organizationId,
+          topUp: {
+            creditCents,
+            referenceId: `stripe-topup:${sessionId}`,
+          },
+        };
+      }
 
       if (obj.mode !== "subscription") {
         return { handled: false, reason: "not a subscription checkout" };
@@ -298,6 +349,16 @@ export async function processStripeEvent(
 ): Promise<HandledStripeEvent> {
   const storage = new OrganizationBillingStorage(getDb().db);
   const result = await applyStripeEvent(storage, event);
+  // Top-up: forward the paid credits to the gateway. NOT fail-soft — a throw
+  // 500s the route so Stripe redelivers, and the gateway referenceId dedupe
+  // makes every replay a no-op. Stripe is the retry queue here.
+  if (result.handled && result.topUp) {
+    await creditGatewayTopUp({
+      organizationId: result.organizationId,
+      amountCents: result.topUp.creditCents,
+      referenceId: result.topUp.referenceId,
+    });
+  }
   // Cancel a refused-but-paid subscription so it stops charging. NOT
   // fail-soft: a transient failure must 500 the route so Stripe redelivers
   // and the cancel retries. Already-gone (400/404) is success.

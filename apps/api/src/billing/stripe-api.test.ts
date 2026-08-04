@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { toStripeForm } from "./stripe-api";
+import { computeTopUpChargeCents, toStripeForm } from "./stripe-api";
+import { toUsdCreditCents } from "./exchange-rate";
 
 describe("toStripeForm", () => {
   test("encodes nested objects and arrays in Stripe's bracket form", () => {
@@ -33,5 +34,25 @@ describe("toStripeForm", () => {
       nested: { keep: "x", drop: undefined, gone: null },
     });
     expect([...form.keys()]).toEqual(["nested[keep]"]);
+  });
+});
+
+describe("computeTopUpChargeCents", () => {
+  test("adds the fee on top of the credited amount (gateway parity: 15%)", () => {
+    expect(computeTopUpChargeCents(1000, 15)).toBe(1150);
+    expect(computeTopUpChargeCents(10000, 15)).toBe(11500);
+    expect(computeTopUpChargeCents(1000, 0)).toBe(1000);
+  });
+
+  test("rounds to whole cents", () => {
+    expect(computeTopUpChargeCents(333, 15)).toBe(383); // 382.95 → 383
+  });
+});
+
+describe("toUsdCreditCents (BRL top-up FX)", () => {
+  test("BRL centavos convert at the locked rate; USD is identity", () => {
+    expect(toUsdCreditCents(5500, "brl", 5.5)).toBe(1000); // R$55 @5.5 = $10
+    expect(toUsdCreditCents(1000, "usd", 5.5)).toBe(1000);
+    expect(toUsdCreditCents(999, "brl", 5.5)).toBe(182); // rounds
   });
 });
