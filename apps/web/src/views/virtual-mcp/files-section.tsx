@@ -101,9 +101,16 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const toUpload = Array.from(fileList).filter(
-      (file) => file.size <= MAX_FILE_BYTES,
-    );
+    const all = Array.from(fileList);
+    const toUpload = all.filter((file) => file.size <= MAX_FILE_BYTES);
+    const rejected = all.filter((file) => file.size > MAX_FILE_BYTES);
+    if (rejected.length > 0) {
+      toast.warning(t("virtualMcp.filesSection.fileTooLargeTitle"), {
+        description: t("virtualMcp.filesSection.fileTooLargeDescription", {
+          names: rejected.map((file) => file.name).join(", "),
+        }),
+      });
+    }
     if (toUpload.length === 0) return;
     try {
       await upload.mutateAsync({ dir: KNOWLEDGE_DIR, files: toUpload });

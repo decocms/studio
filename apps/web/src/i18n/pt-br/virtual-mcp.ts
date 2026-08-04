@@ -91,6 +91,9 @@ export const virtualMcp = {
   "virtualMcp.filesSection.description":
     "Anexe arquivos e skills que o agente sempre pode consultar.",
   "virtualMcp.filesSection.failedUploadFile": "Falha ao enviar arquivo.",
+  "virtualMcp.filesSection.fileTooLargeDescription":
+    "Excede o limite de 25MB, não enviado: {names}",
+  "virtualMcp.filesSection.fileTooLargeTitle": "Arquivo muito grande",
   "virtualMcp.filesSection.filesAndSkills": "Arquivos e skills",
   "virtualMcp.filesSection.kindFile": "Arquivo",
   "virtualMcp.filesSection.kindSkill": "Skill",
