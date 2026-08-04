@@ -50,6 +50,7 @@ import { createSSOConfig } from "./sso";
 import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
+import { rejectOrganizationSlugChange } from "./reject-slug-change";
 
 function rejectReservedOrganizationSlug(slug: unknown): void {
   if (!isReservedOrganizationSlug(slug)) return;
@@ -253,6 +254,21 @@ const plugins = [
         // Better Auth allows slug changes directly, so creation-only
         // validation could otherwise be bypassed by renaming an existing org.
         rejectReservedOrganizationSlug(organization.slug);
+
+        // Studio's ORGANIZATION_UPDATE tool and settings UI never send a
+        // slug, but this endpoint is also reachable directly
+        // (authClient.organization.update) — reject any attempt to change
+        // it there too, so the slug stays immutable regardless of caller.
+        if (typeof organization.slug === "string") {
+          const current = await getDb()
+            .db.selectFrom("organization")
+            .select("slug")
+            .where("id", "=", member.organizationId)
+            .executeTakeFirst();
+          if (current) {
+            rejectOrganizationSlugChange(current.slug, organization.slug);
+          }
+        }
 
         const logo = organization.logo;
         if (typeof logo !== "string" || !logo.startsWith("data:")) return;
