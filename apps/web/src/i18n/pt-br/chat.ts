@@ -239,6 +239,8 @@ export const chat = {
     "Continue este chat do agente de código no aplicativo Studio para desktop.",
   "chat.input.readOnlyOthersChat":
     "Apenas leitura - você está visualizando um chat de outra pessoa",
+  "chat.input.readOnlyThread":
+    "Apenas leitura - este chat rodou de forma autônoma e não aceita respostas",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":

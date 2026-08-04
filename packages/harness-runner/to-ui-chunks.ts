@@ -202,6 +202,13 @@ export function turnStartChunks(messageId: string): UIMessageChunk[] {
  * Closing chunks for a turn. An SDK `result` with `is_error` becomes an
  * `error` chunk *before* `finish` so the run is recorded as failed rather than
  * silently succeeding with no output.
+ *
+ * `finishReason` is ALWAYS set — `"stop"` on a clean turn. It is not optional
+ * decoration: the live dispatch path resolves the thread's terminal status with
+ * `resolveThreadStatus(finishReason, …)`, which maps `undefined` to **failed**
+ * (only the durable projector special-cases a missing reason as completed). A
+ * turn that opened its PR and then reported `failed` is exactly what omitting it
+ * produced.
  */
 export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = [];
@@ -215,7 +222,7 @@ export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
   const usage = turnUsage(result);
   chunks.push({
     type: "finish",
-    ...(result.is_error ? { finishReason: "error" as const } : {}),
+    finishReason: result.is_error ? ("error" as const) : ("stop" as const),
     ...(usage ? { messageMetadata: { usage } } : {}),
   });
   return chunks;

@@ -177,14 +177,20 @@ describe("turn framing", () => {
     ]);
   });
 
-  test("successful result finishes without an error chunk", () => {
+  // `finishReason: "stop"` is load-bearing, not cosmetic: the live dispatch
+  // path maps a MISSING reason to a FAILED thread (`resolveThreadStatus`), so
+  // omitting it reported every clean turn as a failure.
+  test("successful result finishes with stop and no error chunk", () => {
     expect(
       turnFinishChunks({
         type: "result",
         subtype: "success",
         is_error: false,
       }),
-    ).toEqual([{ type: "finish-step" }, { type: "finish" }]);
+    ).toEqual([
+      { type: "finish-step" },
+      { type: "finish", finishReason: "stop" },
+    ]);
   });
 
   test("usage and cost ride on the finish chunk", () => {

@@ -6,6 +6,7 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
+import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
@@ -58,23 +59,32 @@ export async function enqueueAgentRunForTask(
   // `resolveSandboxBranch` hand this run a sandbox with the checkout in it. The
   // branch must be the repo-specific one or the run lands in the shared
   // "ephemeral" sandbox with no repo.
-  if (opts.repo) {
-    const branch = threadBranch(thread.id, opts.repo.connectionId);
-    await ctx.storage.threads.update(thread.id, {
-      metadata: {
-        ...(thread.metadata ?? {}),
-        githubRepo: {
-          url: opts.repo.url,
-          owner: opts.repo.owner,
-          name: opts.repo.name,
-          installationId: opts.repo.installationId,
-          connectionId: opts.repo.connectionId,
-        },
-      },
-      branch,
-      updated_by: userId,
-    });
-  }
+  //
+  // `read_only` rides along on the same write: a sandbox-hosted harness answers
+  // exactly the one prompt it was dispatched with, so a follow-up message would
+  // sit in a queue nothing drains. The chat composer reads this and says so.
+  const metadata = {
+    ...(thread.metadata ?? {}),
+    ...(harnessRunsInSandbox(harnessId) ? { read_only: true } : {}),
+    ...(opts.repo
+      ? {
+          githubRepo: {
+            url: opts.repo.url,
+            owner: opts.repo.owner,
+            name: opts.repo.name,
+            installationId: opts.repo.installationId,
+            connectionId: opts.repo.connectionId,
+          },
+        }
+      : {}),
+  };
+  await ctx.storage.threads.update(thread.id, {
+    metadata,
+    ...(opts.repo
+      ? { branch: threadBranch(thread.id, opts.repo.connectionId) }
+      : {}),
+    updated_by: userId,
+  });
 
   // Link the run thread to the task (many-to-many) so the board can render it
   // in the card and derive its live run state.
