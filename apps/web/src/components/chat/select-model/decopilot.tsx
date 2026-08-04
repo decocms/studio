@@ -661,7 +661,6 @@ function ModelSelectorInner({
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [managing, setManaging] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const aiProviders = useAiProviders();
   const keys = useHostedAiProviderKeys();
 
@@ -713,7 +712,7 @@ function ModelSelectorInner({
           <label className="flex items-center gap-2.5 h-12 px-4 pr-12 md:pr-4 cursor-text">
             <SearchMd size={16} className="text-muted-foreground shrink-0" />
             <Input
-              ref={searchInputRef}
+              autoFocus
               type="text"
               placeholder={
                 managing
