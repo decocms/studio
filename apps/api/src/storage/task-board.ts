@@ -906,15 +906,21 @@ export class TaskBoardStorage {
   }
 
   /** Edit a comment's body and/or a thread's resolved flag. Null when the
-   *  comment isn't in this org. */
+   *  comment isn't in this org, or a body edit is attempted by someone other
+   *  than its author — resolving a thread is a shared, not an authored,
+   *  action, so that one is open to anyone with access to the task. */
   async updateComment(params: {
     id: string;
     organizationId: string;
+    callerId: string;
     body?: string;
     resolved?: boolean;
   }): Promise<TaskBoardComment | null> {
-    const owned = await this.commentInOrg(params.id, params.organizationId);
-    if (!owned) return null;
+    const existing = await this.commentInOrg(params.id, params.organizationId);
+    if (!existing) return null;
+    if (params.body !== undefined && existing.authorId !== params.callerId) {
+      return null;
+    }
 
     const row = await this.db
       .updateTable("task_board_comments")
@@ -930,10 +936,14 @@ export class TaskBoardStorage {
   }
 
   /** Delete a comment; a root takes its replies with it (FK cascade). False
-   *  when the comment isn't in this org. */
-  async deleteComment(id: string, organizationId: string): Promise<boolean> {
-    const owned = await this.commentInOrg(id, organizationId);
-    if (!owned) return false;
+   *  when the comment isn't in this org, or isn't the caller's own. */
+  async deleteComment(
+    id: string,
+    organizationId: string,
+    callerId: string,
+  ): Promise<boolean> {
+    const existing = await this.commentInOrg(id, organizationId);
+    if (!existing || existing.authorId !== callerId) return false;
     await this.db
       .deleteFrom("task_board_comments")
       .where("id", "=", id)
@@ -944,15 +954,15 @@ export class TaskBoardStorage {
   private async commentInOrg(
     id: string,
     organizationId: string,
-  ): Promise<boolean> {
+  ): Promise<{ authorId: string } | null> {
     const row = await this.db
       .selectFrom("task_board_comments as c")
       .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
-      .select("c.id")
+      .select(["c.id", "c.author_id"])
       .where("c.id", "=", id)
       .where("item.organization_id", "=", organizationId)
       .executeTakeFirst();
-    return !!row;
+    return row ? { authorId: row.author_id } : null;
   }
 
   private itemFromDbRow(row: {
