@@ -9,6 +9,7 @@ describe("claudeCodeEnvFromCredential", () => {
     expect(
       claudeCodeEnvFromCredential({ providerId: "anthropic", apiKey: "sk-a" }),
     ).toEqual({
+      CLAUDE_CODE_MODEL: "claude-opus-5",
       ANTHROPIC_API_KEY: "sk-a",
       ANTHROPIC_AUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: null,
@@ -29,6 +30,7 @@ describe("claudeCodeEnvFromCredential", () => {
     expect(
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" }),
     ).toEqual({
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "or-1",
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",

@@ -30,11 +30,21 @@ const ENVS = {
   EXECUTABLE_ENV: "CLAUDE_CODE_PATH",
 };
 
-/** One turn's output. `error` accompanies whatever the turn managed to produce. */
+/**
+ * One frame of a turn's output. `error` accompanies whatever the turn managed
+ * to produce and only ever appears on the last frame.
+ */
 export interface HarnessRunResult {
   chunks: unknown[];
   error?: { code: string; message: string } | null;
 }
+
+/**
+ * Where a frame goes: one JSON line on stdout, read by the daemon and forwarded
+ * to Studio as it arrives. Emitting per SDK message rather than once at the end
+ * is what lets Studio persist a turn's work while the turn is still running.
+ */
+export type EmitFrame = (frame: HarnessRunResult) => void;
 
 /** Extract the prompt text from Studio's opaque `userMessage` wire object. */
 export function promptFromUserMessage(userMessage: unknown): string {
@@ -93,6 +103,8 @@ export function buildOptions(args: {
       ...(instructions ? { append: instructions } : {}),
     },
     ...(model ? { model } : {}),
+    // ponytail: fixed, not configurable — raise it here if runs come back thin.
+    effort: "low",
     // Resume keeps the thread's history in the SDK's own transcript instead of
     // replaying it as prompt text. `sessionId` seeds a new one at the same id
     // so the next turn can resume it.
@@ -112,13 +124,14 @@ export function buildOptions(args: {
 }
 
 /**
- * Run one turn and return its chunks. An SDK throw becomes `error` alongside
- * whatever the turn had already produced, so a crash mid-turn still shows the
- * work instead of an empty message.
+ * Run one turn, emitting its chunks as the SDK produces them. An SDK throw
+ * becomes a final `error` frame after whatever the turn had already emitted, so
+ * a crash mid-turn still shows the work instead of an empty message.
  */
 export async function runClaudeCode(
   input: HarnessStreamInputWire,
-): Promise<HarnessRunResult> {
+  emit: EmitFrame,
+): Promise<void> {
   const file = sessionFile(input.threadId);
   const stored = (
     await Bun.file(file)
@@ -128,8 +141,22 @@ export async function runClaudeCode(
   const sessionId = stored || crypto.randomUUID();
 
   const translator = new UiChunkTranslator();
-  const buffered: unknown[] = [];
   let messageId: string | undefined;
+  // Chunks translated before the turn's message id is known. Every chunk has to
+  // land after `turnStartChunks`, and that needs the id — so anything the SDK
+  // produces before the first assistant message waits here, never longer.
+  const pending: unknown[] = [];
+  let started = false;
+  const startTurn = (id: string) => {
+    if (started) return;
+    started = true;
+    emit({ chunks: [...turnStartChunks(id), ...pending.splice(0)] });
+  };
+  const push = (chunks: unknown[]) => {
+    if (chunks.length === 0) return;
+    if (started) emit({ chunks });
+    else pending.push(...chunks);
+  };
 
   try {
     const stream = query({
@@ -152,64 +179,78 @@ export async function runClaudeCode(
       // instructions". The init message is the only place that distinguishes
       // the two, so log it.
       if (message.type === "system" && message.subtype === "init") {
+        const studioToolCount = message.tools.filter((tool) =>
+          tool.startsWith("mcp__"),
+        ).length;
         console.error(
           `[claude-code] mcp: ${
             message.mcp_servers
               .map((server) => `${server.name}=${server.status}`)
               .join(" ") || "none configured"
-          } | studio tools: ${
-            message.tools.filter((tool) => tool.startsWith("mcp__")).length
-          }`,
+          } | studio tools: ${studioToolCount}`,
         );
+        // Configured-but-empty is always a misconfiguration, never a valid run:
+        // the endpoint Studio mints for this harness is the org's management
+        // MCP, which always exposes its core tools. Zero means the run cannot
+        // touch Studio (no board update, no state change) while still producing
+        // a confident-looking answer — the exact failure that reads as success.
+        // Fail here so it surfaces as a broken run instead of a silent no-op.
+        if (input.mcp.url && studioToolCount === 0) {
+          fail(
+            `studio MCP exposed no tools (${input.mcp.url}). The harness cannot ` +
+              `act on Studio; refusing to run rather than return a result that ` +
+              `changed nothing.`,
+          );
+          return;
+        }
       }
       // First Anthropic message id of the turn becomes Studio's assistant
       // message id: stable if the same turn is delivered twice.
-      if (!messageId && message.type === "assistant") {
+      // Every assistant message opens a step, and closes the previous one. The
+      // step boundary is not cosmetic: Studio persists a run's parts on
+      // `finish-step` (`emitStepParts`), so a turn wrapped in ONE step reaches
+      // the database only when the whole loop ends, however early its chunks
+      // arrived. Tool results (the `user` message that follows) belong to the
+      // step whose call produced them, which is why the close happens here and
+      // not when they arrive.
+      if (message.type === "assistant") {
         const id = message.message.id;
-        if (typeof id === "string" && id.length > 0) messageId = id;
+        if (!messageId && typeof id === "string" && id.length > 0) {
+          messageId = id;
+        }
+        if (started) push([{ type: "finish-step" }, { type: "start-step" }]);
+        else startTurn(messageId ?? `msg_${message.uuid}`);
       }
-      for (const chunk of translator.translate(message)) buffered.push(chunk);
+      push([...translator.translate(message)]);
       if (message.type !== "result") continue;
       // Remember the session only once a turn completed on it. ponytail: a
       // failed turn therefore starts the next one fresh, losing the history —
       // the alternative is resuming a session the SDK may have left unwritten,
       // which fails the whole run instead of just forgetting.
       await Bun.write(file, sessionId);
-      const id = messageId ?? `msg_${message.uuid}`;
-      return {
-        chunks: [
-          ...turnStartChunks(id),
-          ...buffered,
-          ...turnFinishChunks(message as SdkResultMessage),
-        ],
-      };
+      startTurn(messageId ?? `msg_${message.uuid}`);
+      emit({ chunks: [...turnFinishChunks(message as SdkResultMessage)] });
+      return;
     }
-    return failed(buffered, messageId, "claude-code ended without a result");
+    fail("claude-code ended without a result");
   } catch (err) {
-    return failed(
-      buffered,
-      messageId,
-      err instanceof Error ? err.message : String(err),
-    );
+    fail(err instanceof Error ? err.message : String(err));
   }
-}
 
-/** Whatever the failed turn produced, plus the error that ended it. */
-function failed(
-  buffered: unknown[],
-  messageId: string | undefined,
-  message: string,
-): HarnessRunResult {
-  return {
-    chunks:
-      buffered.length > 0
-        ? [
-            ...turnStartChunks(messageId ?? `msg_${Date.now()}`),
-            ...buffered,
-            { type: "finish-step" },
-            { type: "finish", finishReason: "error" },
-          ]
-        : [],
-    error: { code: "harness_crashed", message },
-  };
+  /** Close whatever the turn had emitted, then report what ended it. */
+  function fail(message: string) {
+    const error = { code: "harness_crashed", message };
+    if (!started && pending.length === 0) {
+      emit({ chunks: [], error });
+      return;
+    }
+    startTurn(messageId ?? `msg_${Date.now()}`);
+    emit({
+      chunks: [
+        { type: "finish-step" },
+        { type: "finish", finishReason: "error" },
+      ],
+      error,
+    });
+  }
 }

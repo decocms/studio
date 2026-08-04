@@ -6,8 +6,12 @@ package dispatch
 //
 //	spawn   argv from HARNESS_RUNNER_CMD, in its own process group
 //	input   {harnessId, input} as JSON on stdin
-//	output  one HarnessRunResult as JSON on stdout; stderr is the pod's log
+//	output  a stream of HarnessRunResult frames on stdout, one JSON line each;
+//	        stderr is the pod's log
 //	cancel  cancel ctx — the process group is killed, the CLI with it
+//
+// Frames are forwarded to Studio as they are read, not collected: a turn that
+// runs for minutes persists its work as it goes instead of all at the end.
 //
 // Exec-per-run is what bounds the model credential's lifetime: it is the child's
 // spawn environment, so it cannot outlive the run it came with.
@@ -16,28 +20,34 @@ package dispatch
 // child's own output into an error that travels back to Studio.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
 )
 
-// RunHarness runs one turn and returns the harness's result JSON verbatim. An
-// error means no result was produced at all — the caller reports that as a
-// crash.
+// RunHarness runs one turn, handing each result frame the harness prints to
+// `emit` verbatim as it is read. Returns how many frames were emitted; an error
+// means the harness died, and the caller reports that as a crash — alongside the
+// frames that did make it, which the consumer has already received.
+//
+// `emit` returning false means the client is gone; reading stops there.
 func RunHarness(
 	ctx context.Context,
 	argv []string,
 	harnessId string,
 	input json.RawMessage,
 	env map[string]string,
-) ([]byte, error) {
+	emit func([]byte) bool,
+) (int, error) {
 	payload, err := json.Marshal(map[string]any{"harnessId": harnessId, "input": input})
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	// Own process group, killed as a group: the harness spawns the `claude` CLI,
@@ -52,38 +62,58 @@ func RunHarness(
 	}
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stderr = os.Stdout // the daemon's logs are stdout-only (see logging_test.go)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return 0, err
+	}
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("harness runner failed to start: %w", err)
+	}
 
-	runErr := cmd.Run()
-	// A harness that printed a result owns the outcome even if it then exited
-	// non-zero: the result carries the partial work and the real reason.
-	if result := resultLine(stdout.Bytes()); result != nil {
-		return result, nil
+	emitted := 0
+	// bufio.Reader, not Scanner: a frame carrying a large tool result exceeds
+	// Scanner's line cap, and a dropped frame is lost work.
+	reader := bufio.NewReader(stdout)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if frame := resultFrame(line); frame != nil {
+			emitted++
+			if !emit(frame) {
+				break
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	io.Copy(io.Discard, stdout) // don't SIGPIPE a harness we stopped reading
+
+	runErr := cmd.Wait()
+	// A harness that printed frames owns the outcome even if it then exited
+	// non-zero: the last frame carries the real reason.
+	if emitted > 0 {
+		return emitted, nil
 	}
 	if runErr != nil {
-		return nil, fmt.Errorf("harness runner failed: %w", runErr)
+		return 0, fmt.Errorf("harness runner failed: %w", runErr)
 	}
-	return nil, fmt.Errorf("harness runner produced no result")
+	return 0, fmt.Errorf("harness runner produced no result")
 }
 
-// resultLine picks the result out of stdout: the last line that is a JSON object
-// with a `chunks` array. Scanned rather than assumed to be all of stdout —
-// anything else printed there (a runtime warning, a stray log) would otherwise
-// read as a crashed harness.
-func resultLine(out []byte) []byte {
-	lines := bytes.Split(out, []byte("\n"))
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := bytes.TrimSpace(lines[i])
-		if len(line) == 0 || line[0] != '{' {
-			continue
-		}
-		var probe struct {
-			Chunks []json.RawMessage `json:"chunks"`
-		}
-		if json.Unmarshal(line, &probe) == nil && probe.Chunks != nil {
-			return line
-		}
+// resultFrame recognizes one output line as a harness frame: a JSON object with
+// a `chunks` array. Probed rather than assumed — anything else the harness
+// prints on stdout (a runtime warning, a stray log) is skipped instead of
+// travelling to Studio as a malformed frame.
+func resultFrame(line []byte) []byte {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || line[0] != '{' {
+		return nil
 	}
-	return nil
+	var probe struct {
+		Chunks []json.RawMessage `json:"chunks"`
+	}
+	if json.Unmarshal(line, &probe) != nil || probe.Chunks == nil {
+		return nil
+	}
+	return line
 }

@@ -28,7 +28,14 @@ const (
 	fakeRunnerCrash = "crash"
 	// A harness that prints an unrelated line on stdout before its result.
 	fakeRunnerNoisy = "noisy"
+	// A harness that prints one frame, waits, then prints a second: the shape a
+	// real multi-step turn has.
+	fakeRunnerMulti = "multi"
 )
+
+// How long the multi-frame harness holds between its two frames. Long enough
+// that a buffering runner cannot pass the streaming assertion by accident.
+const multiFrameGap = 300 * time.Millisecond
 
 // TestFakeHarnessEntrypoint is the fake harness, not a test: when FAKE_RUNNER is
 // set the binary was spawned as one and speaks the wire instead.
@@ -58,6 +65,13 @@ func runFakeHarness(mode string) {
 	if mode == fakeRunnerNoisy {
 		fmt.Println("some runtime warning nobody asked for")
 	}
+	if mode == fakeRunnerMulti {
+		fmt.Println(`{"chunks":[{"seq":1}]}`)
+		os.Stdout.Sync()
+		time.Sleep(multiFrameGap)
+		fmt.Println(`{"chunks":[{"seq":2}]}`)
+		return
+	}
 	result, _ := json.Marshal(map[string]any{
 		"chunks": []any{map[string]any{
 			"harnessId": body.HarnessId,
@@ -76,23 +90,43 @@ func fakeHarnessArgv() []string {
 	return []string{os.Args[0], "-test.run=TestFakeHarnessEntrypoint", "-test.v=false"}
 }
 
-func runFake(t *testing.T, mode string, ctx context.Context, env map[string]string) ([]byte, error) {
+// runFake runs the fake harness and collects every frame it emitted, with the
+// moment each arrived — what a streaming runner has to get right.
+func runFake(t *testing.T, mode string, ctx context.Context, env map[string]string) ([][]byte, error) {
 	t.Helper()
-	t.Setenv(fakeRunnerEnv, mode)
-	return RunHarness(ctx, fakeHarnessArgv(), "claude-code",
-		json.RawMessage(`{"threadId":"t-1"}`), env)
+	frames, _, err := runFakeTimed(t, mode, ctx, env)
+	return frames, err
 }
 
-func chunksOf(t *testing.T, out []byte) []map[string]any {
+func runFakeTimed(
+	t *testing.T, mode string, ctx context.Context, env map[string]string,
+) ([][]byte, []time.Time, error) {
 	t.Helper()
+	t.Setenv(fakeRunnerEnv, mode)
+	var frames [][]byte
+	var at []time.Time
+	_, err := RunHarness(ctx, fakeHarnessArgv(), "claude-code",
+		json.RawMessage(`{"threadId":"t-1"}`), env, func(frame []byte) bool {
+			frames = append(frames, append([]byte(nil), frame...))
+			at = append(at, time.Now())
+			return true
+		})
+	return frames, at, err
+}
+
+func chunksOf(t *testing.T, frames [][]byte) []map[string]any {
+	t.Helper()
+	if len(frames) == 0 {
+		t.Fatal("the harness emitted no frames")
+	}
 	var result struct {
 		Chunks []map[string]any `json:"chunks"`
 	}
-	if err := json.Unmarshal(out, &result); err != nil {
-		t.Fatalf("result is not JSON: %v (%s)", err, out)
+	if err := json.Unmarshal(frames[0], &result); err != nil {
+		t.Fatalf("frame is not JSON: %v (%s)", err, frames[0])
 	}
 	if len(result.Chunks) == 0 {
-		t.Fatalf("result carried no chunks: %s", out)
+		t.Fatalf("frame carried no chunks: %s", frames[0])
 	}
 	return result.Chunks
 }
@@ -133,8 +167,41 @@ func TestRunHarnessIgnoresNoiseOnStdout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(out), `{"chunks"`) {
-		t.Fatalf("expected the result line, got %s", out)
+	if len(out) != 1 || !strings.HasPrefix(string(out[0]), `{"chunks"`) {
+		t.Fatalf("expected exactly the result frame, got %s", out)
+	}
+}
+
+// The point of the whole transport: a frame reaches the caller when the harness
+// prints it, not when the harness exits.
+func TestRunHarnessEmitsEachFrameAsItArrives(t *testing.T) {
+	frames, at, err := runFakeTimed(t, fakeRunnerMulti, context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 frames, got %d: %s", len(frames), frames)
+	}
+	if gap := at[1].Sub(at[0]); gap < multiFrameGap/2 {
+		t.Fatalf("frames arrived together (%s apart) — the runner buffered", gap)
+	}
+}
+
+// A client that hangs up mid-run stops the read instead of blocking on a
+// harness that keeps printing.
+func TestRunHarnessStopsWhenTheClientIsGone(t *testing.T) {
+	t.Setenv(fakeRunnerEnv, fakeRunnerMulti)
+	seen := 0
+	frames, err := RunHarness(context.Background(), fakeHarnessArgv(), "claude-code",
+		json.RawMessage(`{"threadId":"t-1"}`), nil, func([]byte) bool {
+			seen++
+			return false
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen != 1 || frames != 1 {
+		t.Fatalf("kept reading after the client left: seen=%d frames=%d", seen, frames)
 	}
 }
 
@@ -163,7 +230,8 @@ func TestRunHarnessCancellationKillsTheChild(t *testing.T) {
 func TestRunHarnessRejectsAMissingBinary(t *testing.T) {
 	_, err := RunHarness(context.Background(),
 		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())},
-		"claude-code", json.RawMessage(`{"threadId":"t-1"}`), nil)
+		"claude-code", json.RawMessage(`{"threadId":"t-1"}`), nil,
+		func([]byte) bool { return true })
 	if err == nil {
 		t.Fatal("spawning a missing harness binary reported success")
 	}

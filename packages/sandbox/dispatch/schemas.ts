@@ -31,13 +31,14 @@ export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
 export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
 
 /**
- * One harness run's whole output — the body of `POST /_sandbox/dispatch`.
+ * One frame of a harness run's output. The body of `POST /_sandbox/dispatch` is
+ * a stream of these, newline-delimited, one per step the harness produced —
+ * that is what lets Studio persist a long turn as it happens instead of at its
+ * end. (Blank lines in the body are the daemon's keepalive; skip them.)
  *
- * A turn only exists at its end (the harness buffers until the SDK reports a
- * result), so the wire is request/response rather than a stream. `error` is
- * reported ALONGSIDE `chunks`, never instead of them: a crash mid-turn still has
- * to surface the work it did, and the consumer's error path is what records the
- * run as failed.
+ * `error` appears only on the last frame, and ALONGSIDE `chunks` rather than
+ * instead of them: a crash mid-turn still has to surface the work it did, and
+ * the consumer's error path is what records the run as failed.
  */
 export const harnessRunResultSchema = z.object({
   chunks: z.array(z.unknown()),

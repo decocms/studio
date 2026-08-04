@@ -21,6 +21,17 @@
 /** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
+/**
+ * The model this harness runs, per provider — the same model, named the way
+ * each endpoint names it. Fixed rather than taken from the agent's thinking
+ * slot: the SDK drives the `claude` CLI, which only works against Claude
+ * models, so the slot's id is not usable here.
+ */
+const CLAUDE_CODE_MODEL = {
+  anthropic: "claude-opus-5",
+  openrouter: "anthropic/claude-opus-5",
+} as const;
+
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
   providerId: string;
@@ -54,6 +65,7 @@ export function claudeCodeEnvFromCredential(
   const { providerId, apiKey, baseUrl } = credential;
   if (providerId === "anthropic") {
     return {
+      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic,
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: baseUrl ?? null,
@@ -61,6 +73,7 @@ export function claudeCodeEnvFromCredential(
   }
   if (providerId === "openrouter") {
     return {
+      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.openrouter,
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",

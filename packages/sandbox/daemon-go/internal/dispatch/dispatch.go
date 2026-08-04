@@ -290,10 +290,11 @@ func (reg *Registry) handleOffloadDispatch(
 	reg.runHarness(ctx, w, deps, harnessId, runId, rebaseInput(merged, deps.AppRoot))
 }
 
-// runHarness runs the harness for one run and writes its result as this
-// request's JSON response. Always answers 200 with a HarnessRunResult: a crash is
-// reported as `error` alongside whatever chunks the turn produced, because the
-// partial work still has to reach the projector. Clears the run registry in defer.
+// runHarness runs the harness for one run and streams its frames as this
+// request's response body — newline-delimited HarnessRunResult JSON, flushed per
+// frame so Studio persists the turn as it happens. Always answers 200: a crash
+// is a final frame with `error`, because the partial work still has to reach the
+// projector. Clears the run registry in defer.
 func (reg *Registry) runHarness(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -320,15 +321,26 @@ func (reg *Registry) runHarness(
 		runEnv = deps.RunEnv()
 	}
 
-	// Headers first, then a keepalive byte while the harness works. The response
-	// body only materializes at the end of the turn, and the transport between
-	// here and Studio hangs up on an idle one long before a real task finishes.
+	// Headers first, then frames as the harness produces them, with a keepalive
+	// byte while it is quiet — the transport between here and Studio hangs up on
+	// an idle body long before a real task finishes.
 	writeResultHeaders(w)
 	body := newBodyWriter(w)
 	startedAt := time.Now()
 	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
 
-	result, err := RunHarness(ctx, deps.HarnessRunnerCmd, harnessId, input, runEnv)
+	// One line per frame: without it a streaming run and a buffering one look
+	// identical in the pod log (both are silence until "dispatch done"), which is
+	// exactly the question you ask this log to answer.
+	seq := 0
+	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, harnessId, input, runEnv,
+		func(frame []byte) bool {
+			seq++
+			slog.Info("dispatch frame", "harness", harnessId, "run_id", runId,
+				"seq", seq, "bytes", len(frame),
+				"elapsed_s", int(time.Since(startedAt).Seconds()))
+			return body.write(append(frame, '\n'))
+		})
 	stopKeepalive()
 	elapsed := int(time.Since(startedAt).Seconds())
 
@@ -344,8 +356,7 @@ func (reg *Registry) runHarness(
 		return
 	}
 	slog.Info("dispatch done", "harness", harnessId, "run_id", runId,
-		"elapsed_s", elapsed, "bytes", len(result))
-	body.write(result)
+		"elapsed_s", elapsed, "frames", frames)
 }
 
 // startKeepalive writes an insignificant byte into the JSON body while the
@@ -398,13 +409,15 @@ func writeResultHeaders(w http.ResponseWriter) {
 	}
 }
 
-// harnessFailure is a HarnessRunResult for a run that produced nothing at all.
+// harnessFailure is a terminal HarnessRunResult frame carrying no chunks of its
+// own — the run either produced nothing at all, or died after its frames were
+// already forwarded.
 func harnessFailure(code, message string) []byte {
 	body, _ := json.Marshal(map[string]any{
 		"chunks": []any{},
 		"error":  map[string]string{"code": code, "message": message},
 	})
-	return body
+	return append(body, '\n')
 }
 
 // writeResult answers a dispatch that never started the harness.

@@ -187,6 +187,36 @@ describe("turn framing", () => {
     ).toEqual([{ type: "finish-step" }, { type: "finish" }]);
   });
 
+  test("usage and cost ride on the finish chunk", () => {
+    const [, finish] = turnFinishChunks({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      total_cost_usd: 0.42,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 100,
+        cache_creation_input_tokens: 20,
+      },
+    });
+    expect((finish as { messageMetadata: unknown }).messageMetadata).toEqual({
+      usage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        contextTokens: 130,
+        cachedInputTokens: 100,
+        inputTokenDetails: {
+          cacheReadTokens: 100,
+          cacheWriteTokens: 20,
+          noCacheTokens: 10,
+        },
+        providerMetadata: { openrouter: { usage: { cost: 0.42 } } },
+      },
+    });
+  });
+
   test("failed result emits error before finish", () => {
     const chunks = turnFinishChunks({
       type: "result",

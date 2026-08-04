@@ -12,11 +12,12 @@
  * STUDIO-OWNED, like its in-process sibling: it closes over StudioContext, so
  * it cannot live in `@decocms/sandbox`.
  *
- * Transport note: one request per run, held open for its whole length. A turn's
- * output only exists at its end (the harness buffers until the SDK reports a
- * result), so there is nothing to stream — and Studio keeps the one thing a
- * push model gives up, which is knowing precisely when the run ended.
- * `withLivenessHeartbeat` upstream covers the silence.
+ * Transport note: one request per run, held open for its whole length, with the
+ * daemon streaming newline-delimited `HarnessRunResult` frames as the harness
+ * produces them. Each frame's chunks are yielded on arrival, so the projector
+ * persists a long turn while it is still running instead of at its end. The
+ * response still ends when the run does, so Studio keeps knowing precisely when
+ * that was; `withLivenessHeartbeat` upstream covers the quiet stretches.
  */
 
 import type { UIMessageChunk } from "ai";
@@ -172,11 +173,23 @@ export class SandboxDispatchClient implements SandboxClient {
         // another process, so it needs a real endpoint — without one the
         // daemon rejects the envelope outright, and the org's tools (moving
         // the task on the board, for one) would be unreachable anyway.
+        //
+        // The management surface, NOT the agent's own: super-agent task runs
+        // dispatch as Decopilot, which by design aggregates no connections
+        // (`storage/virtual.ts` findById returns `connections: []`) because
+        // hosted Decopilot reaches TASK_BOARD_* by `subtask`-delegating to the
+        // Task Manager agent. This harness has no `subtask`, so pointing it at
+        // the agent's virtual MCP yielded `connected` with zero tools.
+        //
+        // ponytail: one surface, not both — the agent's aggregated connections
+        // are not merged in. Add a second MCP server on the wire if a
+        // claude-code run ever needs an agent's own external tools.
         mcp: await mintMcpEndpoint(
           this.ctx,
           this.virtualMcpId,
           organization,
           `${this.harnessId}-run`,
+          "management",
         ),
         // Hosted Decopilot mounts no working directory; this harness edits the
         // checkout the daemon prepared.
@@ -261,24 +274,54 @@ async function* dispatchToDaemon(args: {
       `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`,
     );
   }
-  const parsed = harnessRunResultSchema.safeParse(
-    await res.json().catch(() => null),
-  );
-  if (!parsed.success) {
-    throw new Error(
-      `sandbox dispatch returned a malformed result: ${parsed.error.message}`,
-    );
+  if (!res.body) throw new Error("sandbox dispatch returned no body");
+  let total = 0;
+  // Only ever set by the last frame, and only after its chunks are yielded:
+  // partial work first, THEN the throw, because the consumer's error path is
+  // what records the run as failed and it must not also lose the turn's work.
+  let error: { code: string; message: string } | null = null;
+  for await (const line of ndjsonLines(res.body)) {
+    const parsed = harnessRunResultSchema.safeParse(line);
+    if (!parsed.success) {
+      throw new Error(
+        `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
+      );
+    }
+    total += parsed.data.chunks.length;
+    yield* parsed.data.chunks as UIMessageChunk[];
+    error = parsed.data.error;
   }
-  const { chunks, error } = parsed.data;
   console.log("[sandbox-dispatch] run done", {
     runId: args.runId,
     handle: args.handle,
-    chunks: chunks.length,
+    chunks: total,
     elapsedMs: Date.now() - startedAt,
     error: error?.code ?? null,
   });
-  // Partial work first, THEN the throw: the consumer's error path is what
-  // records the run as failed, and it must not also lose what the turn produced.
-  yield* chunks as UIMessageChunk[];
   if (error) throw new Error(`${error.code}: ${error.message}`);
+}
+
+/**
+ * Parse the daemon's response body as newline-delimited JSON.
+ *
+ * Blank lines are the daemon's keepalive (it writes a lone newline while the
+ * harness is quiet), so they are skipped rather than parsed.
+ */
+async function* ndjsonLines(
+  body: ReadableStream<Uint8Array>,
+): AsyncIterable<unknown> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const drain = function* (rest: boolean) {
+    const lines = buffer.split("\n");
+    buffer = rest ? (lines.pop() ?? "") : "";
+    for (const line of lines) {
+      if (line.trim().length > 0) yield JSON.parse(line) as unknown;
+    }
+  };
+  for await (const bytes of body as unknown as AsyncIterable<Uint8Array>) {
+    buffer += decoder.decode(bytes, { stream: true });
+    yield* drain(true);
+  }
+  yield* drain(false);
 }

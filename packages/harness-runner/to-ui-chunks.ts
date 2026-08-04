@@ -48,6 +48,15 @@ export interface SdkResultMessage {
   subtype: string;
   is_error: boolean;
   result?: string;
+  /** Anthropic-shaped token counts for the whole turn. */
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+  /** The CLI's own cost estimate for the turn, in USD. */
+  total_cost_usd?: number;
 }
 
 export type TranslatableSdkMessage =
@@ -203,9 +212,45 @@ export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
     });
   }
   chunks.push({ type: "finish-step" });
+  const usage = turnUsage(result);
   chunks.push({
     type: "finish",
     ...(result.is_error ? { finishReason: "error" as const } : {}),
+    ...(usage ? { messageMetadata: { usage } } : {}),
   });
   return chunks;
+}
+
+/**
+ * The turn's usage in the `messageMetadata.usage` shape Studio stores and the
+ * chat UI reads (`apps/api/src/harnesses/lib/usage-accumulator.ts`).
+ *
+ * One turn is one step here, so cumulative and per-step totals coincide. The
+ * cost is the CLI's own estimate — it is reported under `openrouter` because
+ * that is the only slot the UI reads a dollar figure from, and this harness
+ * bills through OpenRouter; it is not OpenRouter's own accounting.
+ */
+function turnUsage(result: SdkResultMessage): Record<string, unknown> | null {
+  const usage = result.usage;
+  if (!usage) return null;
+  const inputTokens = usage.input_tokens ?? 0;
+  const outputTokens = usage.output_tokens ?? 0;
+  const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+  const cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
+  const cost = result.total_cost_usd ?? 0;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    contextTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+    cachedInputTokens: cacheReadTokens,
+    inputTokenDetails: {
+      cacheReadTokens,
+      cacheWriteTokens,
+      noCacheTokens: inputTokens,
+    },
+    ...(cost > 0
+      ? { providerMetadata: { openrouter: { usage: { cost } } } }
+      : {}),
+  };
 }

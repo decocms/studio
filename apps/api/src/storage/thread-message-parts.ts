@@ -283,10 +283,19 @@ export class SqlThreadMessagePartStorage {
    * Windowed read: page over the one-per-message `finish` anchors (newest
    * first), then fetch+fold the parts of exactly those messages. `total` is the
    * count of completed messages. The whole-thread fold is never executed.
+   *
+   * `includeInFlight` additionally returns the messages that have parts but no
+   * anchor yet — a turn whose parts are being written step by step, which is
+   * invisible to an anchor-only read until it ends. `foldParts` already marks
+   * those `status: "in_progress"`. OPT-IN because most callers want the
+   * opposite: the projector and dispatch seeds reconcile against the last
+   * SETTLED message, and prompt history must not replay a half-written turn.
+   * Only on the first page — later pages page over anchors, and prepending a
+   * moving target to them would shift rows between pages.
    */
   async loadWindow(
     threadId: string,
-    options: { limit: number; offset?: number },
+    options: { limit: number; offset?: number; includeInFlight?: boolean },
   ): Promise<{ messages: FoldedMessage[]; total: number }> {
     const anchors = await this.db
       .selectFrom("thread_message_parts")
@@ -307,7 +316,32 @@ export class SqlThreadMessagePartStorage {
       .executeTakeFirst();
     const total = Number(totalRow?.count ?? 0);
 
-    const messageIds = anchors.map((a) => a.message_id);
+    const inFlight =
+      options.includeInFlight && (options.offset ?? 0) === 0
+        ? await this.db
+            .selectFrom("thread_message_parts as p")
+            .select("p.message_id")
+            .distinct()
+            .where("p.thread_id", "=", threadId)
+            .where((eb) =>
+              eb.not(
+                eb.exists(
+                  eb
+                    .selectFrom("thread_message_parts as f")
+                    .select("f.id")
+                    .whereRef("f.message_id", "=", "p.message_id")
+                    .where("f.thread_id", "=", threadId)
+                    .where("f.kind", "=", "finish"),
+                ),
+              ),
+            )
+            .execute()
+        : [];
+
+    const messageIds = [
+      ...anchors.map((a) => a.message_id),
+      ...inFlight.map((a) => a.message_id),
+    ];
     if (messageIds.length === 0) return { messages: [], total };
 
     const rows = await this.db
