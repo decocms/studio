@@ -151,17 +151,23 @@ async fn route(
         (&Method::POST, ["git", "publish"]) => {
             let handle_lock = target.sandbox_manager.handle_lock(handle);
             let _guard = handle_lock.lock().await;
-            crate::routes::git::publish(state, body).await.into_response()
+            crate::routes::git::publish(state, body)
+                .await
+                .into_response()
         }
         (&Method::POST, ["git", "discard"]) => {
             let handle_lock = target.sandbox_manager.handle_lock(handle);
             let _guard = handle_lock.lock().await;
-            crate::routes::git::discard(state, body).await.into_response()
+            crate::routes::git::discard(state, body)
+                .await
+                .into_response()
         }
         (&Method::POST, ["git", "rebase"]) => {
             let handle_lock = target.sandbox_manager.handle_lock(handle);
             let _guard = handle_lock.lock().await;
-            crate::routes::git::rebase(state, body).await.into_response()
+            crate::routes::git::rebase(state, body)
+                .await
+                .into_response()
         }
 
         // The two AI-assisted endpoints. Mesh's handlers guard on a VM claim
