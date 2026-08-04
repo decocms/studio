@@ -69,6 +69,18 @@ describe("createDecopilotThreadStatusEvent — enriched fields", () => {
     expect(e.data.updated_at).toBeUndefined();
   });
 
+  test("round-trips harnessId, and omits it when the row wasn't loaded", () => {
+    expect(
+      createDecopilotThreadStatusEvent("task-1", "in_progress", {
+        harnessId: "claude-code",
+      }).data.harness_id,
+    ).toBe("claude-code");
+    expect(
+      createDecopilotThreadStatusEvent("task-1", "in_progress", {}).data
+        .harness_id,
+    ).toBeUndefined();
+  });
+
   test("explicit null branch is preserved", () => {
     const e = createDecopilotThreadStatusEvent("task-1", "in_progress", {
       branch: null,

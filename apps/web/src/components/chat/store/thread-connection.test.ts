@@ -2207,6 +2207,56 @@ describe("batch mode", () => {
     expect(c.calls()).toBe(afterBoot);
   });
 
+  test("a connection opened before the harness was pinned still goes live", async () => {
+    // `harness_id` is null until the thread's first run pins it, so the chat
+    // opens in streaming mode and only learns it is batch on a later render.
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const stub = makeSSEStub();
+    const c = makePagingClient([
+      [row("m-1", "2026-01-01T00:00:00Z")],
+      [row("m-1", "2026-01-01T00:00:00Z"), row("m-2", "2026-01-01T00:00:01Z")],
+    ]);
+
+    const conn = getOrOpenStream("acme", "t-batch-late", {
+      client: c.client,
+      batch: false,
+      sse: stub.sse,
+    });
+    await conn.ready;
+
+    // Same thread, now known to be batch — must reuse the connection AND
+    // subscribe it, not silently keep the streaming-only one.
+    expect(
+      getOrOpenStream("acme", "t-batch-late", {
+        client: c.client,
+        batch: true,
+        sse: stub.sse,
+      }),
+    ).toBe(conn);
+
+    stub.fire("decopilot.step", "t-batch-late");
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
+  });
+
+  test("enabling batch twice subscribes once", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const stub = makeSSEStub();
+    const c = makePagingClient([[row("m-1", "2026-01-01T00:00:00Z")]]);
+    const conn = getOrOpenStream("acme", "t-batch-twice", {
+      client: c.client,
+      batch: true,
+      sse: stub.sse,
+    });
+    await conn.ready;
+    conn.enableBatch();
+    conn.dispose();
+    // One subscribe → one unsubscribe. A second would leak a handler that
+    // doubles every refetch.
+    expect(stub.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
   test("dispose drops the watch subscription", async () => {
     globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
     const stub = makeSSEStub();

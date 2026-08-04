@@ -12,6 +12,7 @@ export interface TerminalThreadStatusRow {
   created_by?: string | null;
   trigger_id?: string | null;
   branch?: string | null;
+  harness_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -48,6 +49,7 @@ export function emitTerminalThreadStatus(
       createdBy: row.created_by ?? undefined,
       triggerId: row.trigger_id ?? null,
       branch: row.branch ?? null,
+      harnessId: row.harness_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }),

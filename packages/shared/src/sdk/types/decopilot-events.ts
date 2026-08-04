@@ -81,6 +81,12 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
     title?: string;
     /** Branch this thread is pinned to (null when unpinned). Absent if caller didn't load the row. */
     branch?: string | null;
+    /** Harness the thread is pinned to — null until its first run pins it.
+     *  The chat client picks its live-update mechanism off this (a batch
+     *  harness has no per-thread stream to follow), so a row the client only
+     *  ever sees through these events must carry it. Absent if the caller
+     *  didn't load the row. */
+    harness_id?: string | null;
     /** Thread creation timestamp. Absent if caller didn't load the row. */
     created_at?: string;
     /** Last update timestamp; useful for the client to sort/dedupe. Absent if caller didn't load the row. */
@@ -147,6 +153,7 @@ export function createDecopilotThreadStatusEvent(
     triggerId?: string | null;
     title?: string;
     branch?: string | null;
+    harnessId?: string | null;
     createdAt?: string;
     updatedAt?: string;
     metadata?: Record<string, unknown>;
@@ -168,6 +175,7 @@ export function createDecopilotThreadStatusEvent(
       ...(opts?.triggerId !== undefined && { trigger_id: opts.triggerId }),
       ...(opts?.title !== undefined && { title: opts.title }),
       ...(opts?.branch !== undefined && { branch: opts.branch }),
+      ...(opts?.harnessId !== undefined && { harness_id: opts.harnessId }),
       ...(opts?.createdAt !== undefined && { created_at: opts.createdAt }),
       ...(opts?.updatedAt !== undefined && { updated_at: opts.updatedAt }),
       ...(opts?.metadata !== undefined && { metadata: opts.metadata }),

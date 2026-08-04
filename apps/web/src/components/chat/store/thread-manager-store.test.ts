@@ -483,6 +483,34 @@ describe("ThreadManagerStore enriched thread.status events", () => {
     expect(row?.updated_at).toBe("2026-05-19T00:00:01Z");
     store.dispose();
   });
+
+  it("carries harness_id so the chat picks batch mode without a reload", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "t-1",
+        title: "Thread",
+        created_at: "2026-05-19T00:00:00Z",
+        updated_at: "2026-05-19T00:00:00Z",
+        harness_id: null,
+      },
+    ]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
+    await new Promise((r) => setTimeout(r, 10));
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent(
+        "t-1",
+        { status: "in_progress", harness_id: "claude-code" },
+        "2026-05-19T00:00:02Z",
+      ),
+    );
+
+    expect(store.threads.get()[0]?.harness_id).toBe("claude-code");
+    store.dispose();
+  });
 });
 
 describe("ThreadManagerStore.fetchThread", () => {

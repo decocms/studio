@@ -323,8 +323,11 @@ export class ThreadConnection {
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
-  /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only. */
-  private readonly batch: boolean;
+  /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only.
+   *  Not readonly: `enableBatch` flips it when the harness is pinned after
+   *  this connection was already opened. */
+  private batch = false;
+  private readonly sse: SSESubscription;
   /** Batch mode only: org-`/watch` unsubscribe, dropped on dispose. */
   private watchUnsubscribe: (() => void) | null = null;
   private serverFetchedCount = 0;
@@ -355,17 +358,35 @@ export class ThreadConnection {
   ) {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
-    this.batch = opts.batch ?? false;
-    if (this.batch) {
-      const sse = opts.sse ?? decopilotSSE;
-      this.watchUnsubscribe = sse.subscribe(orgSlug, (e) =>
-        this.handleWatchEvent(e),
-      );
-    }
+    this.sse = opts.sse ?? decopilotSSE;
+    if (opts.batch) this.enableBatch();
     this.ready = new Promise<void>((res) => {
       this.resolveReady = res;
     });
     void this.bootstrap();
+  }
+
+  /**
+   * Switch a live connection into batch mode.
+   *
+   * A thread's `harness_id` is NULL until its first run pins it, so a chat
+   * opened before that — a new thread, or one whose first run is still
+   * dispatching — builds its connection in streaming mode and only learns it
+   * is batch afterwards. Since `getOrOpenStream` is idempotent by key, the
+   * corrected `batch: true` from the next render would otherwise be dropped
+   * and the transcript would sit frozen (a sandbox harness writes nothing to
+   * the per-thread `/stream`) until the user reloads the page.
+   *
+   * Idempotent — a second subscribe would double every refetch. The already
+   * running `/stream` loop is left alone: it costs one idle SSE and closes on
+   * dispose, which is cheaper than plumbing a cancel through the loop.
+   */
+  enableBatch(): void {
+    if (this.batch) return;
+    this.batch = true;
+    this.watchUnsubscribe = this.sse.subscribe(this.orgSlug, (e) =>
+      this.handleWatchEvent(e),
+    );
   }
 
   dispose(): void {
@@ -1607,7 +1628,13 @@ export function getOrOpenStream(
   opts: ThreadConnectionOptions = {},
 ): ThreadConnection {
   const key = `${orgSlug}::${threadId}`;
-  if (current?.key === key) return current;
+  if (current?.key === key) {
+    // The only option worth re-reading: `batch` is derived from the thread
+    // row's `harness_id`, which lands after the connection is opened (see
+    // `enableBatch`). Re-opening instead would throw away the transcript.
+    if (opts.batch) current.enableBatch();
+    return current;
+  }
   current?.dispose();
   current = new ThreadConnection(orgSlug, threadId, opts);
   // DEBUG (temporary): expose the live store for inspecting in-memory order.
