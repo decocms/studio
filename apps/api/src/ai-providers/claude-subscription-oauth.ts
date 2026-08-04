@@ -1,25 +1,41 @@
 /**
  * "Log in with your Claude subscription" — Claude Code's own OAuth PKCE flow.
  *
- * This is NOT an API-key provider: the result is a short-lived OAuth access
- * token that bills against the person's Claude plan, which is exactly what the
- * sandbox-hosted `claude-code` harness wants (`CLAUDE_CODE_OAUTH_TOKEN`). It
- * therefore lives outside the `ai-providers` registry — none of the registry's
- * surfaces (list models, count tokens, key preview) apply.
+ * The result is a short-lived OAuth access token, not an API key, which is what
+ * the sandbox-hosted `claude-code` harness wants (`CLAUDE_CODE_OAUTH_TOKEN`).
+ * It therefore lives outside the `ai-providers` registry — none of the
+ * registry's surfaces (list models, count tokens, key preview) apply.
  *
- * The redirect URI is Anthropic's own console page, which we cannot receive a
- * callback on, so the flow is the same copy/paste one the `claude` CLI uses:
- * the user authorizes, Anthropic shows them a `code#state` string, and they
- * paste it back into Studio. `state` still round-trips, so the PKCE verifier is
- * bound to the user who started the flow.
+ * The redirect URI is Anthropic's own page, which we cannot receive a callback
+ * on, so the flow is the copy/paste one: the user authorizes, Anthropic shows
+ * them a `code#state` string, and they paste it back into Studio. `state` still
+ * round-trips, so the PKCE verifier is bound to the user who started the flow.
+ *
+ * ⚠️ The client id is ANTHROPIC'S — the one their own client uses, not one
+ * Studio registered — which is why it is configurable (`CLAUDE_SUBSCRIPTION_
+ * CLIENT_ID`) rather than compiled in. Two consequences, both unverified
+ * against a live login:
+ *
+ *  - `user:inference` is the scope that makes inference bill the person's
+ *    plan. `org:create_api_key` — which the CLI historically also requested —
+ *    is deliberately NOT requested here: it mints an API key, which is the
+ *    billing outcome this feature exists to avoid.
+ *  - For an account that has BOTH a claude.ai subscription AND a Console
+ *    organization, this client is reported to resolve to the Console org, so
+ *    the run bills API credit instead of the plan
+ *    (anthropics/claude-code#39445). Nothing here can detect that, so treat
+ *    "linked" as "linked", not as proof of who pays.
  */
 
-const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+import { getSettings } from "../settings";
+
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
-const TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
-const REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
-const SCOPE = "org:create_api_key user:profile user:inference";
+const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+const REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
+const SCOPE = "user:profile user:inference";
 const MAX_TTL_MS = 24 * 60 * 60 * 1000;
+
+const clientId = () => getSettings().claudeSubscriptionClientId;
 
 export function claudeSubscriptionAuthorizeUrl(params: {
   codeChallenge: string;
@@ -27,7 +43,7 @@ export function claudeSubscriptionAuthorizeUrl(params: {
 }): string {
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set("code", "true");
-  url.searchParams.set("client_id", CLIENT_ID);
+  url.searchParams.set("client_id", clientId());
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", REDIRECT_URI);
   url.searchParams.set("scope", SCOPE);
@@ -67,7 +83,7 @@ export async function exchangeClaudeSubscriptionCode(params: {
       grant_type: "authorization_code",
       code: params.code,
       state: params.state,
-      client_id: CLIENT_ID,
+      client_id: clientId(),
       redirect_uri: REDIRECT_URI,
       code_verifier: params.codeVerifier,
     }),

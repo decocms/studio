@@ -3,6 +3,7 @@ import {
   claudeSubscriptionAuthorizeUrl,
   splitPastedCode,
 } from "./claude-subscription-oauth";
+import { getSettings } from "../settings";
 
 describe("splitPastedCode", () => {
   test("splits the `code#state` string Anthropic displays", () => {
@@ -27,5 +28,23 @@ describe("claudeSubscriptionAuthorizeUrl", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("state")).toBe("st");
     expect(url.searchParams.get("scope")).toContain("user:inference");
+  });
+
+  test("never asks for the API-key scope", () => {
+    // `org:create_api_key` mints an API key, whose usage bills the org's API
+    // credit — the exact outcome linking a subscription exists to avoid.
+    const url = new URL(
+      claudeSubscriptionAuthorizeUrl({ codeChallenge: "ch", state: "st" }),
+    );
+    expect(url.searchParams.get("scope")).not.toContain("create_api_key");
+  });
+
+  test("the client id comes from settings, so it can be replaced", () => {
+    const url = new URL(
+      claudeSubscriptionAuthorizeUrl({ codeChallenge: "ch", state: "st" }),
+    );
+    expect(url.searchParams.get("client_id")).toBe(
+      getSettings().claudeSubscriptionClientId,
+    );
   });
 });
