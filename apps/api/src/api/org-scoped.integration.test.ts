@@ -198,6 +198,45 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
+  it("corrects the scheme on protected-resource metadata for virtual MCP connections", async () => {
+    // Virtual MCPs (`virtual://<id>`) hand back Better Auth's generic
+    // protected-resource metadata, whose `resource` field is derived from
+    // the server's static `baseURL` config — not the incoming request. Behind
+    // a TLS-terminating proxy (e.g. the native app's local reverse proxy)
+    // that config can be `http` while the client actually connects over
+    // `https`, and an uncorrected `resource` fails the MCP SDK's resource
+    // check (`checkResourceAllowed`). The handler must override `resource`
+    // with the request-derived, `fixProtocol`-corrected URL — same as the
+    // `self` branch above. "test" isn't a `.localhost`/`127.0.0.1` host, so
+    // `fixProtocol` forces https regardless of what `baseURL` says.
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: "conn_virtual",
+        organization_id: "org_1",
+        created_by: "user_1",
+        title: "Test Virtual Connection",
+        connection_type: "VIRTUAL",
+        connection_url: "virtual://vmcp_1",
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/mcp/conn_virtual/.well-known/oauth-protected-resource",
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resource: string };
+    expect(body.resource).toBe("https://test/api/org_1/mcp/conn_virtual");
+  });
+
   it("rejects an API key whose organization differs from the URL org", async () => {
     mockApiKey("user_1", "org_2", "org_2");
 
