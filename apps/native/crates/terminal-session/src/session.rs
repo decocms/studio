@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
@@ -1104,8 +1103,22 @@ fn signal_child(
             // foreground job gets INT. When job control keeps that job in the
             // anchor group, the wrapper ignores INT while the real CLI resets
             // it to the default disposition before exec.
+            //
+            // Enumerate the group and signal each member by POSITIVE pid
+            // rather than spelling `kill -INT -<pgid>`. A leading-`-` target is
+            // not portable kill(1) argv: procps-ng reads it as a signal spec,
+            // is left with an empty pid list, and signals the CALLER's own
+            // process group — measured identically on procps-ng 3.3.17 (Ubuntu
+            // 22.04) and 4.0.4 (Ubuntu 24.04). Spelling it that way meant
+            // Ctrl-C in a Studio terminal left the foreground job running and
+            // aimed SIGINT at Studio itself. BSD kill(1) accepts the negative
+            // form, which is why macOS never showed it.
+            //
+            // `signal_non_anchor_members` is `pgrep -g` plus one kill per
+            // POSITIVE pid — portable on every implementation tested, and
+            // already what the Terminate and Kill arms below use.
             if let Some(group) = master.and_then(foreground_process_group) {
-                run_kill("INT", format!("-{group}")).is_ok()
+                harness::watchdog::signal_non_anchor_members(group, 0, WatchdogSignal::Interrupt)
             } else {
                 harness::watchdog::signal_terminal_members(anchor_id, 0, WatchdogSignal::Interrupt)
             }
@@ -1140,23 +1153,6 @@ fn signal_child(
         ProcessSignal::Interrupt => Err(TerminalError::Operation(
             "terminal interrupt is not implemented on this platform".to_string(),
         )),
-    }
-}
-
-#[cfg(unix)]
-fn run_kill(signal: &str, target: String) -> Result<(), String> {
-    let status = Command::new("/bin/kill")
-        .arg(format!("-{signal}"))
-        .arg(target)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| error.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("kill(1) exited with {status}"))
     }
 }
 
