@@ -320,6 +320,7 @@ export function ModelTierSection({
           key={m.modelId}
           type="button"
           onClick={() => onSelect(m)}
+          onFocus={() => onHover(m)}
           className="w-full text-left cursor-pointer"
         >
           <ModelItemContent model={m} onHover={onHover} />
