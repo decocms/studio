@@ -297,8 +297,17 @@ jobs:
       # things the platform treats differently from BSD: `upstream` writes a
       # helper script and execs it (a concurrent fork inherits the write
       # descriptor and the exec fails ETXTBSY), and `local-api`'s process-group
-      # suite manipulates process groups, so it runs under `setsid` to keep any
-      # stray group signal inside its own session rather than the runner's.
+      # suite manipulates process groups, so it runs under `setsid`.
+      #
+      # Be exact about what `setsid` buys, because the earlier claim here
+      # ("keeps a stray group signal inside its own session rather than the
+      # runner's") overstated it. `setsid --wait` does NOT fork when its caller
+      # is not already a process-group leader — it `setsid()`s in place and
+      # execs — so cargo itself becomes the chunk's session and group leader.
+      # That bounds a stray group signal to one chunk instead of this step's
+      # shell, and nothing more: pgids are global, so it cannot protect a chunk
+      # from a test that signals its OWN group. Three tests did exactly that;
+      # the fix is at the source, in `process_util::group_signal_argv`.
       - name: cargo test (Linux)
         if: runner.os == 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
@@ -307,14 +316,26 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: |
           cargo test -p harness -- --test-threads=1
+          # terminal-session drives real PTYs and signals foreground process
+          # groups, so it is exactly the crate a BSD-vs-Linux divergence hides
+          # in — and no other leg ran it on Linux, which is why a Ctrl-C that
+          # never reached the foreground job shipped unnoticed. 11 tests, ~3 s:
+          # small enough to need neither chunking nor `setsid`.
+          cargo test -p terminal-session -- --test-threads=1
           cargo test -p upstream -- --test-threads=1
-          # local-api's ~850 tests are chunked into separate processes, not
-          # because any one of them is slow but because running them all in a
-          # single long-lived process exhausts the runner: the kill point moved
-          # steadily later (past 1000 tests) as individual suspects were
-          # excluded, which is accumulation, not one bad test. A new process
-          # per chunk reclaims whatever is being held. `setsid` keeps the
-          # process-group suites' stray signals inside their own session.
+          # local-api's ~850 tests are chunked into separate processes. Note
+          # the original justification for this — "the kill point moved
+          # steadily later as suspects were excluded, so it is accumulation,
+          # not one bad test" — did NOT hold up. There were three self-killing
+          # tests, and excluding them one at a time produces precisely that
+          # moving kill point. All three are fixed and re-enabled; run as ONE
+          # process the crate finishes 817 tests in 49 s at ~250 MB and 14
+          # processes, so there is no resource wall here to chunk around —
+          # note that measures execution, not the link peak the step's own
+          # comments blame. Chunking stays because it is nearly free
+          # and makes a failure name its chunk, not because the suite cannot
+          # survive a single process. `setsid` bounds a stray group signal to
+          # one chunk (see the note above the step).
           for chunk in routes:: sandbox:: setup::; do
             setsid --wait cargo test -p local-api "$chunk" -- --test-threads=1
           done
