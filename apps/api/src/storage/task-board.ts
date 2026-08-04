@@ -488,6 +488,38 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically claim a task for a reviewer's `request_changes` bounce: move it
+   * from In Review to In Progress ONLY if it's still In Review, returning the
+   * updated item to the single winner and null to everyone else. QA and Code
+   * Reviewer run concurrently, and either can independently decide changes are
+   * needed — without this fence both would bounce the task and each enqueue
+   * its own Super Agent run on the SAME PR, racing to push conflicting commits.
+   * Same atomic-conditional-UPDATE pattern as `claimConflictResolution`.
+   */
+  async claimReviewChangesBounce(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: "in_progress",
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_review")
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Populate each item's `threads` and `tags` — one transaction, so a card
    * can't read its threads from before a concurrent edit and its tags from
    * after.

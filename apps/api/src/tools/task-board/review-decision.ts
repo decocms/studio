@@ -128,10 +128,17 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       // Any reviewer requesting changes bounces the task straight back to the
       // Super Agent with the feedback in its re-run prompt — no need to wait on
       // the other reviewer. Pull it back to In Progress and re-enqueue directly.
-      const updated = await ctx.storage.taskBoard.update(
+      //
+      // Atomically claim the bounce — the dispatch fence. QA and Code Reviewer
+      // run concurrently, and either can independently decide changes are
+      // needed; without this fence both would win a plain update and each
+      // enqueue its own Super Agent run on the SAME PR, racing to push
+      // conflicting commits. The decision is still recorded either way (see
+      // below) — only the second reviewer's re-enqueue is skipped, since the
+      // first winner's run already carries the fix forward.
+      const updated = await ctx.storage.taskBoard.claimReviewChangesBounce(
         taskBoardItemId,
         organizationId,
-        { status: "in_progress" },
         item.updatedBy,
       );
       await recordTaskActivity(ctx, {
@@ -140,6 +147,14 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         actorId: null,
         data: { reviewer, notes, verified },
       });
+      if (!updated) {
+        const current =
+          (await ctx.storage.taskBoard.getById(
+            taskBoardItemId,
+            organizationId,
+          )) ?? item;
+        return { status: current.status, merged: false };
+      }
       emitTaskBoardUpdated(organizationId, updated);
       // Pass the PR under review so the re-run updates it in place (checks out
       // its branch) instead of opening a second PR. Newest linked PR is the one.
