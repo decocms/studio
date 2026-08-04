@@ -11,6 +11,15 @@
  * quota — bounded by `maxRunsPerTask`, because a claimed task can be
  * re-delegated in a loop and each dispatch spends real (subsidized) money.
  *
+ * A dispatch CHARGES the slot immediately (an org can never start more runs
+ * than it could finish), and the charge is REFUNDED only when the run
+ * demonstrably produced nothing — no pull request, the card never reached In
+ * Review, and nothing else on the task still running. Those are durable facts
+ * on the board, so the refund has one decision site (run-reactions.ts) and no
+ * event to miss: a path that never reports "PR opened" simply stays charged,
+ * which is the safe direction. Refunding is not a reset: the run tally
+ * survives it, so the per-task cap still bounds retries.
+ *
  * Periods need no cron: claims carry a `period_key` — "trial" while nothing
  * is being paid, else the subscription's current period end, which
  * invoice.paid refreshes, minting a fresh bucket each cycle.
@@ -20,7 +29,10 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { getSettings } from "../settings";
-import type { OrganizationBillingRow } from "../storage/organization-billing";
+import type {
+  OrganizationBillingRow,
+  OrganizationBillingStorage,
+} from "../storage/organization-billing";
 
 /**
  * The wire contract for the paywall UI — same convention as `[CREDITS]`
@@ -143,16 +155,13 @@ export async function ensureTaskExecutionAllowed(
   config: TaskQuotaConfig = taskQuotaConfig(),
 ): Promise<void> {
   if (!config.enforced || !isReportsTask(task)) return;
-  const existingRuns = await ctx.storage.organizationBilling.taskRunCount(
-    task.id,
-  );
-  if (existingRuns !== null) {
-    // Already claimed — re-runs are free within the per-task cap.
-    if (existingRuns >= config.maxRunsPerTask) {
-      throw new TaskQuotaError("runs_exhausted");
-    }
-    return;
+  const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
+  if (claim && claim.runCount >= config.maxRunsPerTask) {
+    throw new TaskQuotaError("runs_exhausted");
   }
+  // A live (held or committed) claim already owns its slot — re-runs are free
+  // within the cap. A released one must re-take a slot, so fall through.
+  if (claim && claim.state !== "released") return;
   const billing = await ctx.storage.organizationBilling.getBilling(
     task.organizationId,
   );
@@ -192,14 +201,35 @@ export async function claimTaskExecution(
   if (result === "runs_exhausted") throw new TaskQuotaError("runs_exhausted");
 }
 
-/** Whether this task has a quota claim — the server-side fact the subsidized
- *  payer swap corroborates the run stamp against. */
+/** Whether this task holds a CHARGED claim — the server-side fact the
+ *  subsidized payer swap corroborates the run stamp against. A refunded claim
+ *  doesn't authorize spending. */
 export async function hasTaskQuotaClaim(
   ctx: StudioContext,
   taskBoardItemId: string,
 ): Promise<boolean> {
-  return (
-    (await ctx.storage.organizationBilling.taskRunCount(taskBoardItemId)) !==
-    null
-  );
+  const claim =
+    await ctx.storage.organizationBilling.taskClaim(taskBoardItemId);
+  return !!claim && claim.state !== "released";
+}
+
+/**
+ * Refund a charged claim — the run produced nothing. The DECISION (no PR, card
+ * below In Review, no live sibling run) belongs to the single site in
+ * tools/task-board/run-reactions.ts; this only performs it.
+ *
+ * Deliberately NOT gated on `enforced`: with the gate off no claim exists, so
+ * this touches nothing — and holds taken before the flag was turned off still
+ * have to resolve.
+ */
+export async function releaseTaskExecution(
+  billing: OrganizationBillingStorage,
+  organizationId: string,
+  taskBoardItemId: string,
+): Promise<void> {
+  await billing
+    .releaseTaskClaim(organizationId, taskBoardItemId)
+    .catch((err) =>
+      console.error("[task-quota] refund failed (stays charged)", err),
+    );
 }

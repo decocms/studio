@@ -11,6 +11,8 @@ import { TaskBoardStorage } from "../storage/task-board";
 import {
   claimTaskExecution,
   ensureTaskExecutionAllowed,
+  hasTaskQuotaClaim,
+  releaseTaskExecution,
   type TaskQuotaConfig,
 } from "./task-quota";
 
@@ -42,6 +44,12 @@ describe("task quota (integration)", () => {
       organization: { id: org, slug: org, name: org },
       storage: { organizationBilling: billing },
     }) as unknown as StudioContext;
+
+  // taskClaim returns null when unclaimed; these read just the tally.
+  const runCountOf = async (taskId: string) =>
+    (await billing.taskClaim(taskId))?.runCount ?? null;
+  const stateOf = async (taskId: string) =>
+    (await billing.taskClaim(taskId))?.state ?? null;
 
   const seedOrg = async (id: string, withBillingRow: boolean) => {
     await database.db
@@ -110,7 +118,7 @@ describe("task quota (integration)", () => {
     // Quota is exhausted (2/2) but this task is already claimed: the re-run
     // (review bounce / conflict resolution) is free.
     await claimTaskExecution(ctx, task, CONFIG);
-    expect(await billing.taskRunCount(task.id)).toBe(2);
+    expect(await runCountOf(task.id)).toBe(2);
     expect(await billing.countTaskClaims(ORG, "trial")).toBe(2);
 
     // maxRunsPerTask = 2 — one claim must not fund an unbounded
@@ -121,19 +129,19 @@ describe("task quota (integration)", () => {
     await expect(ensureTaskExecutionAllowed(ctx, task, CONFIG)).rejects.toThrow(
       /execution limit/,
     );
-    expect(await billing.taskRunCount(task.id)).toBe(2);
+    expect(await runCountOf(task.id)).toBe(2);
   });
 
   it("user-created tasks are never gated or counted", async () => {
     const userTask = await makeTask("user_1");
     await claimTaskExecution(ctx, userTask, CONFIG); // no throw, no claim
-    expect(await billing.taskRunCount(userTask.id)).toBeNull();
+    expect(await runCountOf(userTask.id)).toBeNull();
   });
 
   it("enforcement off = fully dormant", async () => {
     const t = await makeTask("system");
     await claimTaskExecution(ctx, t, { ...CONFIG, enforced: false });
-    expect(await billing.taskRunCount(t.id)).toBeNull();
+    expect(await runCountOf(t.id)).toBeNull();
   });
 
   it("a just-subscribed org gets the monthly limit, not the spent trial bucket", async () => {
@@ -215,4 +223,81 @@ describe("task quota (integration)", () => {
       }
     });
   }
+
+  it("a dispatch charges the slot immediately", async () => {
+    const org = "org_charge";
+    await seedOrg(org, true);
+    const task = await makeTask("system", org);
+
+    await claimTaskExecution(ctxFor(org), task, CONFIG);
+    expect(await stateOf(task.id)).toBe("held");
+    // Charged the moment it dispatches: an org can never start more runs
+    // than it could finish.
+    expect(await billing.countTaskClaims(org, "trial")).toBe(1);
+  });
+
+  it("a refund returns the slot; refunding twice is a no-op", async () => {
+    const org = "org_refund";
+    await seedOrg(org, true);
+    const ctxR = ctxFor(org);
+    const [a, b, c] = await Promise.all([
+      makeTask("system", org),
+      makeTask("system", org),
+      makeTask("system", org),
+    ]);
+
+    await claimTaskExecution(ctxR, a!, CONFIG);
+    await claimTaskExecution(ctxR, b!, CONFIG);
+    // Trial limit is 2 — the third is refused while both charges stand.
+    await expect(claimTaskExecution(ctxR, c!, CONFIG)).rejects.toThrow(
+      /^\[SUBSCRIPTION_REQUIRED\]/,
+    );
+
+    await releaseTaskExecution(billing, org, a!.id);
+    await releaseTaskExecution(billing, org, a!.id); // idempotent
+    expect(await stateOf(a!.id)).toBe("released");
+    expect(await billing.countTaskClaims(org, "trial")).toBe(1);
+    await claimTaskExecution(ctxR, c!, CONFIG);
+    expect(await billing.countTaskClaims(org, "trial")).toBe(2);
+  });
+
+  it("a refunded claim no longer authorizes subsidized spending", async () => {
+    const org = "org_refund_subsidy";
+    await seedOrg(org, true);
+    const task = await makeTask("system", org);
+    await claimTaskExecution(ctxFor(org), task, CONFIG);
+    expect(await hasTaskQuotaClaim(ctxFor(org), task.id)).toBe(true);
+
+    await releaseTaskExecution(billing, org, task.id);
+    expect(await hasTaskQuotaClaim(ctxFor(org), task.id)).toBe(false);
+  });
+
+  it("refunding is NOT a free reset — the per-task run cap survives it", async () => {
+    const org = "org_refund_loop";
+    await seedOrg(org, true);
+    const ctxRl = ctxFor(org);
+    const task = await makeTask("system", org);
+
+    // maxRunsPerTask = 2: dispatch, refund, dispatch again → tally is 2.
+    await claimTaskExecution(ctxRl, task, CONFIG);
+    await releaseTaskExecution(billing, org, task.id);
+    await claimTaskExecution(ctxRl, task, CONFIG);
+    expect(await runCountOf(task.id)).toBe(2);
+
+    // A third loop is refused even though the slot was refunded each time.
+    await releaseTaskExecution(billing, org, task.id);
+    await expect(claimTaskExecution(ctxRl, task, CONFIG)).rejects.toThrow(
+      /execution limit/,
+    );
+  });
+
+  it("a refund is org-scoped — another org's id can't touch the claim", async () => {
+    const org = "org_scope_a";
+    await seedOrg(org, true);
+    const task = await makeTask("system", org);
+    await claimTaskExecution(ctxFor(org), task, CONFIG);
+
+    await releaseTaskExecution(billing, "org_scope_other", task.id);
+    expect(await stateOf(task.id)).toBe("held");
+  });
 });

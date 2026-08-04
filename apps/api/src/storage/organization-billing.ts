@@ -95,27 +95,45 @@ export class OrganizationBillingStorage {
   // Task-execution quota claims (billing/task-quota.ts): one row per
   // reports-pushed task ever dispatched; period_key buckets the count.
 
-  /** Dispatches this task's claim has funded, or null when unclaimed. */
-  async taskRunCount(taskBoardItemId: string): Promise<number | null> {
+  /** This task's claim (run tally + charge state), or null when unclaimed. */
+  async taskClaim(
+    taskBoardItemId: string,
+  ): Promise<{ runCount: number; state: string } | null> {
     const row = await this.db
       .selectFrom("task_quota_claims")
-      .select("run_count")
+      .select(["run_count", "state"])
       .where("task_board_item_id", "=", taskBoardItemId)
       .executeTakeFirst();
-    return row ? row.run_count : null;
+    return row ? { runCount: row.run_count, state: row.state } : null;
+  }
+
+  /** Claims charged against a period — the ONE definition of "counts"
+   *  (released ones were refunded), shared by the read and the claim
+   *  transaction so the two can never drift. */
+  private static liveClaimCount(
+    db: Kysely<Database>,
+    organizationId: string,
+    periodKey: string,
+  ): Promise<number> {
+    return db
+      .selectFrom("task_quota_claims")
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("organization_id", "=", organizationId)
+      .where("period_key", "=", periodKey)
+      .where("state", "<>", "released")
+      .executeTakeFirst()
+      .then((row) => Number(row?.count ?? 0));
   }
 
   async countTaskClaims(
     organizationId: string,
     periodKey: string,
   ): Promise<number> {
-    const row = await this.db
-      .selectFrom("task_quota_claims")
-      .select((eb) => eb.fn.countAll().as("count"))
-      .where("organization_id", "=", organizationId)
-      .where("period_key", "=", periodKey)
-      .executeTakeFirst();
-    return Number(row?.count ?? 0);
+    return await OrganizationBillingStorage.liveClaimCount(
+      this.db,
+      organizationId,
+      periodKey,
+    );
   }
 
   /**
@@ -129,9 +147,14 @@ export class OrganizationBillingStorage {
    * serialization silently degrades — so the billing row is self-healed
    * first (orgs whose creation-time seed failed have none).
    *
+   * A dispatch CHARGES (state `held`, counted); `releaseTaskClaim` refunds it
+   * only when the run demonstrably produced nothing. A released claim keeps
+   * its `run_count`, so re-dispatching it re-takes a slot but can never reset
+   * the per-task cap.
+   *
    * Outcomes:
-   *  - "claimed": a fresh claim consumed a period slot (run_count = 1);
-   *  - "rerun": the task was already claimed and its run_count incremented
+   *  - "claimed": a fresh (or re-charged) claim consumed a period slot;
+   *  - "rerun": the task was already charged and its run_count incremented
    *    (review bounces / conflict resolutions cost nothing extra);
    *  - "runs_exhausted": the task's own run_count hit `maxRunsPerTask` — one
    *    claim must not fund unlimited dispatches (re-delegation loop);
@@ -158,11 +181,21 @@ export class OrganizationBillingStorage {
         .executeTakeFirstOrThrow();
       const existing = await trx
         .selectFrom("task_quota_claims")
-        .select("run_count")
+        .select(["run_count", "state"])
         .where("task_board_item_id", "=", taskBoardItemId)
         .executeTakeFirst();
-      if (existing) {
-        if (existing.run_count >= maxRunsPerTask) return "runs_exhausted";
+      // The per-task cap is checked FIRST and against the persisted tally, so
+      // a refunded claim can't be looped for free dispatches.
+      if (existing && existing.run_count >= maxRunsPerTask) {
+        return "runs_exhausted";
+      }
+      const countedForPeriod = () =>
+        OrganizationBillingStorage.liveClaimCount(
+          trx,
+          organizationId,
+          periodKey,
+        );
+      if (existing && existing.state !== "released") {
         await trx
           .updateTable("task_quota_claims")
           .set({ run_count: existing.run_count + 1 })
@@ -170,22 +203,49 @@ export class OrganizationBillingStorage {
           .execute();
         return "rerun";
       }
-      const used = await trx
-        .selectFrom("task_quota_claims")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("organization_id", "=", organizationId)
-        .where("period_key", "=", periodKey)
-        .executeTakeFirst();
-      if (Number(used?.count ?? 0) >= limit) return "exhausted";
+      if ((await countedForPeriod()) >= limit) return "exhausted";
+      if (existing) {
+        // Re-charge a refunded claim: it takes a slot again (under the
+        // CURRENT period's key) while the run tally carries over.
+        await trx
+          .updateTable("task_quota_claims")
+          .set({
+            state: "held",
+            period_key: periodKey,
+            run_count: existing.run_count + 1,
+          })
+          .where("task_board_item_id", "=", taskBoardItemId)
+          .execute();
+        return "claimed";
+      }
       await trx
         .insertInto("task_quota_claims")
         .values({
           task_board_item_id: taskBoardItemId,
           organization_id: organizationId,
           period_key: periodKey,
+          state: "held",
         })
         .execute();
       return "claimed";
     });
+  }
+
+  /** Refund a charged claim: the run produced nothing (see the single
+   *  decision site in tools/task-board/run-reactions.ts). Org-scoped so the
+   *  invariant doesn't rest on every future caller passing a scoped id.
+   *  Idempotent; `run_count` is left intact on purpose, so a refund can't be
+   *  looped into free dispatches. */
+  async releaseTaskClaim(
+    organizationId: string,
+    taskBoardItemId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_quota_claims")
+      .set({ state: "released" })
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("state", "=", "held")
+      .execute();
   }
 }

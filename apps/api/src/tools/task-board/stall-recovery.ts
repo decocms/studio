@@ -178,6 +178,7 @@ export async function recoverStalledTasks(
           ctx.storage.taskBoard,
           thread.threadId,
           organizationId,
+          ctx.storage.organizationBilling,
         );
       } else {
         await nudgeThread(ctx, item, thread);

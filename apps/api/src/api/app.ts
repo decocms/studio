@@ -139,6 +139,7 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
+import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { enqueueReviewersOnThreadFinish } from "../tools/task-board/enqueue-reviewer";
@@ -1499,6 +1500,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   const projectorTaskBoard = new TaskBoardStorage(database.db);
+  // Quota bookkeeping for the projector's thread-finish reaction: a run that
+  // ended without a PR releases its held slot (billing/task-quota.ts).
+  const projectorBilling = new OrganizationBillingStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1545,6 +1549,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           projectorTaskBoard,
           runId,
           orgId,
+          projectorBilling,
         );
         // Headless reviewer trigger: a Super Agent run just finished — enqueue
         // the enabled reviewers if it left a PR In Review, no UI required.
@@ -1578,6 +1583,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           projectorTaskBoard,
           runId,
           orgId,
+          projectorBilling,
         );
         // Headless reviewer trigger — see completeRunIfNotCompleted above. A
         // failed run rarely leaves a task In Review (the guard inside no-ops).
