@@ -56,8 +56,7 @@
 import { describe, expect, test } from "bun:test";
 // Relative import (NOT the `@/` alias): the `@/` path is defined only inside
 // the apps/api workspace tsconfig, and these resilience scenarios live
-// outside it. The headless link-daemon entrypoint reaches into app code the
-// same way (see ../link-daemon-entrypoint.ts).
+// outside it, so use a relative import for this test-only observation helper.
 import {
   foldParts,
   type ThreadMessagePart,

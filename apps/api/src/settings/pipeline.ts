@@ -73,20 +73,6 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
           s3ForcePathStyle: serviceOutputs.s3.forcePathStyle,
         }
       : {}),
-    // Dev NATS operator/JWT config (managed operator-mode NATS). Threaded so
-    // the in-process serve path mints real session creds and the cluster
-    // authenticates with its creds file. Null/absent in production (external
-    // NATS), where these come from the deployment env via resolveConfig.
-    ...(serviceOutputs.natsTunnel
-      ? {
-          natsPublicUrl: serviceOutputs.natsTunnel.publicUrl,
-          natsAccountJwt: serviceOutputs.natsTunnel.accountJwt,
-          natsAccountSigningKey: serviceOutputs.natsTunnel.accountSigningKey,
-          natsOperatorJwt: serviceOutputs.natsTunnel.operatorJwt,
-          natsTunnelPublicEnabled: true,
-          natsCredsPath: serviceOutputs.natsTunnel.credsPath,
-        }
-      : {}),
   };
 
   setGlobalSettings(settings);

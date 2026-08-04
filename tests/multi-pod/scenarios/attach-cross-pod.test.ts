@@ -48,8 +48,7 @@
  * status yet, since mock-ai hasn't sent chunks 2-5 or its `stop` frame),
  * terminal `completed`, and parts persisted exactly once (a part count
  * that's stable across two reads taken a beat apart — the exact count mock-ai's
- * chunk-to-part folding produces isn't a stable contract to pin at this
- * granularity; see `projector-parity.test.ts` for that level of detail).
+ * chunk-to-part folding produces isn't a stable contract to pin here).
  */
 
 import { describe, expect, test } from "bun:test";

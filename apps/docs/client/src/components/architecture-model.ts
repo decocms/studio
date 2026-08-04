@@ -15,7 +15,6 @@ const TIER: Record<string, string> = {
   sbx: "#fb7185",
   pub: "#fb923c",
   llm: "#f0abfc",
-  desk: "#c4b5fd",
 };
 
 const ZONES = [
@@ -38,16 +37,6 @@ const ZONES = [
     sub: "kubernetes",
     stroke: "rgba(56,189,248,.24)",
     fill: "rgba(56,189,248,.03)",
-  },
-  {
-    x: 1192,
-    y: 150,
-    w: 384,
-    h: 790,
-    label: "Desktop",
-    sub: "deco link · laptop",
-    stroke: "rgba(168,130,255,.28)",
-    fill: "rgba(168,130,255,.045)",
   },
 ];
 
@@ -98,10 +87,10 @@ const NODES: Record<string, Node> = {
     label: "LLM",
     tag: "anthropic · external",
     role: "Model provider",
-    desc: "Claude models (Anthropic). Called by whichever runs the agent loop — the cloud worker or the desktop loop. Credentials injected per run.",
+    desc: "Claude models (Anthropic). Called by the worker that runs the Decopilot loop. Credentials are injected per run.",
     facts: [
       ["Models", "Claude"],
-      ["Called by", "worker / desktop loop"],
+      ["Called by", "worker"],
     ],
   },
   dmcp: {
@@ -264,11 +253,10 @@ const NODES: Record<string, Node> = {
     label: "NATS",
     tag: "messaging",
     role: "Live message bus",
-    desc: "Live infra (not the dormant event-bus feature). Three jobs: JetStream /stream fan-out (decopilot.stream.<thread>) → UI; pull work-queue (link.work.<user>) → desktop; link-claim KV (studio_links).",
+    desc: "Live infrastructure for JetStream /stream fan-out (decopilot.stream.<thread>) to the UI and cross-pod run signals. It is separate from the dormant CloudEvents event-bus feature.",
     facts: [
       ["Fan-out", "/stream → UI"],
-      ["Pull queue", "→ desktop"],
-      ["KV", "link claims"],
+      ["Signals", "cross-pod runs"],
     ],
   },
   db: {
@@ -314,7 +302,7 @@ const NODES: Record<string, Node> = {
     label: "Daemon API",
     tag: "protected · /_sandbox/*",
     role: "Sandbox control API",
-    desc: "The in-pod daemon's protected control surface (Bearer DAEMON_TOKEN, port 9000): fs ops (read/write/edit/bash/grep), git (status/diff/publish), exec scripts, setup (clone→install→start), tasks, SSE events, harness dispatch. Reached over k8s port-forward. Called by the worker (agent fs/git/bash tools) and the API (UI setup + events). Relays org-fs config to the sidecar via /_sandbox/orgfs-config.",
+    desc: "The in-pod daemon's protected control surface (Bearer DAEMON_TOKEN, port 9000): fs ops (read/write/edit/bash/grep), git (status/diff/publish), exec scripts, setup (clone→install→start), tasks, and SSE events. Reached over k8s port-forward. Called by the worker (agent fs/git/bash tools) and the API (UI setup + events). Relays org-fs config to the sidecar via /_sandbox/orgfs-config.",
     facts: [
       ["Auth", "Bearer DAEMON_TOKEN"],
       ["Port", "9000"],
@@ -354,71 +342,6 @@ const NODES: Record<string, Node> = {
       ["URL", "handle.preview.<domain>"],
     ],
   },
-
-  linkd: {
-    x: 1300,
-    y: 340,
-    w: 158,
-    h: 62,
-    tier: "desk",
-    label: "Link Daemon",
-    tag: "deco link",
-    role: "Desktop bridge",
-    desc: "`deco link` on the laptop. Long-polls /api/links/work (chat queue) and /api/links/proxy (sandbox control); heartbeats presence into the NATS studio_links KV so the cluster routes here.",
-    facts: [
-      ["Runs on", "laptop"],
-      ["Polls", "links/work + proxy"],
-      ["Presence", "NATS KV"],
-    ],
-  },
-  dloop: {
-    x: 1300,
-    y: 560,
-    w: 158,
-    h: 62,
-    tier: "desk",
-    label: "Desktop Loop",
-    tag: "native loop",
-    role: "Desktop decopilot",
-    desc: "runNativeAgentLoopCore — a portable copy of the agent loop running on the laptop. Thinking model injected by the cluster; MCP reached over HTTP via a presigned URL back to the cluster. No OTel, no run-registry.",
-    facts: [
-      ["Entry", "desktop-runtime.ts"],
-      ["MCP", "presigned → cluster"],
-      ["Tools", "minimal local"],
-    ],
-  },
-  dsbx: {
-    x: 1290,
-    y: 800,
-    w: 152,
-    h: 62,
-    tier: "sbx",
-    label: "Desktop Sandbox",
-    tag: "local daemon",
-    role: "Desktop sandbox",
-    desc: "Same sandbox daemon, spawned locally per claim. Serves the public preview at <handle>.localhost:<port> and the protected /_sandbox/* control API over loopback (Bearer token). Default provider when a link is live.",
-    facts: [
-      ["Runs on", "laptop"],
-      ["Preview", "handle.localhost"],
-      ["Control", "/_sandbox/* loopback"],
-    ],
-  },
-  orgfsd: {
-    x: 1460,
-    y: 800,
-    w: 140,
-    h: 56,
-    tier: "file",
-    label: "Org FS",
-    tag: "mount · daemon",
-    role: "Org filesystem mount",
-    desc: "The org filesystem mounted on the laptop at <appRoot>/org/<volume>. No sidecar — the desktop daemon mounts directly (ORGFS_CONFIG boot env, rclone → loopback WebDAV) at startup. Backend: it calls the cluster's /api/:org/fs/* (same S3 store as the cloud sandbox).",
-    facts: [
-      ["Mount", "rclone → WebDAV"],
-      ["Desktop", "daemon-direct, no sidecar"],
-      ["Backend", "/api/:org/fs → S3"],
-    ],
-  },
 };
 
 // from, to, kind
@@ -438,7 +361,6 @@ const EDGES: [string, string, string][] = [
   ["worker", "db", "ctrl"],
   ["api", "nats", "ctrl"],
   ["worker", "nats", "ctrl"],
-  ["nats", "linkd", "bridge"],
   ["worker", "llm", "model"],
   ["worker", "daemonctl", "ctrl"],
   ["api", "daemonctl", "ctrl"],
@@ -446,11 +368,6 @@ const EDGES: [string, string, string][] = [
   ["gateway", "daemonprev", "public"],
   ["daemonctl", "orgfsc", "ctrl"],
   ["orgfsc", "files", "ctrl"],
-  ["dsbx", "orgfsd", "ctrl"],
-  ["linkd", "dloop", "ctrl"],
-  ["dloop", "llm", "model"],
-  ["dloop", "api", "mcp"],
-  ["dloop", "dsbx", "ctrl"],
 ];
 
 const EDGE_STYLE: Record<
@@ -460,7 +377,6 @@ const EDGE_STYLE: Record<
   req: { stroke: "#465268", w: 1.5, op: 0.55 },
   ctrl: { stroke: "#465268", w: 1.5, op: 0.5 },
   model: { stroke: TIER.llm, dash: "2 5", w: 1.4, op: 0.45 },
-  bridge: { stroke: TIER.desk, dash: "7 5", w: 1.8, op: 0.7 },
   mcp: { stroke: "#52607a", dash: "3 6", w: 1.4, op: 0.4 },
   inproc: { stroke: TIER.mcp, dash: "2 4", w: 1.4, op: 0.5 },
   public: { stroke: TIER.pub, dash: "6 5", w: 1.5, op: 0.6 },
@@ -473,12 +389,6 @@ const ROUTES: Record<string, { x: number; y: number }[]> = {
     { x: 300, y: 1002 },
     { x: 1085, y: 1002 },
     { x: 1085, y: 882 },
-  ],
-  "dloop>api": [
-    { x: 1300, y: 529 },
-    { x: 1300, y: 128 },
-    { x: 485, y: 128 },
-    { x: 485, y: 328 },
   ],
 };
 
@@ -527,20 +437,6 @@ const SCENARIOS = [
     ],
   },
   {
-    id: "desktop",
-    label: "Desktop run (pull)",
-    color: TIER.desk,
-    steps: [
-      ["web", "api"],
-      ["api", "nats"],
-      ["nats", "linkd"],
-      ["linkd", "dloop"],
-      ["dloop", "llm"],
-      ["dloop", "api"],
-      ["dloop", "dsbx"],
-    ],
-  },
-  {
     id: "sandbox",
     label: "Sandbox preview + control",
     color: TIER.sbx,
@@ -560,7 +456,6 @@ const SCENARIOS = [
       ["daemonctl", "orgfsc"],
       ["orgfsc", "files"],
       ["files", "s3"],
-      ["dsbx", "orgfsd"],
     ],
   },
 ];
@@ -577,7 +472,6 @@ const LEGEND: [string, string][] = [
   ["sbx", "Sandbox"],
   ["pub", "Preview"],
   ["llm", "LLM"],
-  ["desk", "Desktop"],
 ];
 
 // ---------- layout math ----------

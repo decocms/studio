@@ -49,7 +49,6 @@ export interface StudioThread {
   harness_id: string | null;
   metadata: ThreadMetadata;
   message_storage_version: number;
-  link_transport: string | null;
 }
 
 export interface StudioThreadMessage {

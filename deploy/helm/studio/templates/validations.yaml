@@ -4,6 +4,6 @@ This file only runs chart-level validations and renders no resources.
 {{- include "chart-deco-studio.validate" . -}}
 {{- include "chart-deco-studio.validateOtel" . -}}
 {{- include "chart-deco-studio.validateExternalSecret" . -}}
-{{- include "chart-deco-studio.validateNatsTunnel" . -}}
+{{- include "chart-deco-studio.validateNatsClusterCreds" . -}}
 {{- include "chart-deco-studio.validateDispatchRole" . -}}
 {{- include "chart-deco-studio.validateClickhouse" . -}}

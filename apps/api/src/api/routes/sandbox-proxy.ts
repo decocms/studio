@@ -45,7 +45,6 @@ import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
-import { loopbackPreviewTarget } from "../../lib/loopback-preview";
 import {
   GitPushAuthError,
   parseGithubRepoFromMetadata,
@@ -100,14 +99,10 @@ const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
- * FAST when the daemon link is partitioned. Without an explicit bound they
- * inherit the tunnel dispatch's 30s first-frame timeout (see
- * `links/tunnel-dispatch.ts`), so a read against a severed link hangs ~30s
- * before erroring. These ops answer in well under a second on a healthy link,
- * so a 10s ceiling never trips when the daemon is reachable but turns a
- * partition into a prompt 502 instead of a 30s stall. Streaming/long ops
- * (exec, events, git/*) are intentionally NOT bounded here - the daemon itself
- * allows up to 60s for upstream headers (see `daemon/proxy.ts`).
+ * fast when the hosted daemon is unreachable. These ops answer in well under
+ * a second on a healthy sandbox, so a 10s ceiling turns a broken pod/network
+ * path into a prompt 502. Streaming/long ops (exec, events, git/*) retain their
+ * operation-specific lifetimes.
  */
 const QUICK_FILE_OP_TIMEOUT_MS = 10_000;
 const GIT_STATUS_TIMEOUT_MS = 2_000;
@@ -574,8 +569,8 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
-      // A container path (`/app/repo`) is never openable on the user's
-      // machine — only surface `repoDir` for the desktop link daemon.
+      // A container path (`/app/repo`) is an internal implementation detail
+      // and is never openable by the browser client.
       redactRepoDir: true,
     }),
   );
@@ -966,12 +961,9 @@ export const createSandboxRoutes = () => {
     }
 
     const base = previewUrl.replace(/\/+$/, "");
-    const loopback = loopbackPreviewTarget(`${base}${path}`);
     let upstream: Response;
     try {
-      upstream = await fetch(loopback?.url ?? `${base}${path}`, {
-        ...(loopback ? { headers: { host: loopback.hostHeader } } : {}),
-      });
+      upstream = await fetch(`${base}${path}`);
     } catch {
       return c.json({ error: "Preview unreachable" }, 502);
     }
@@ -1031,14 +1023,12 @@ export const createSandboxRoutes = () => {
       }
 
       const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
-      const loopback = loopbackPreviewTarget(invokeUrl);
       let upstream: Response;
       try {
-        upstream = await fetch(loopback?.url ?? invokeUrl, {
+        upstream = await fetch(invokeUrl, {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            ...(loopback ? { host: loopback.hostHeader } : {}),
           },
           body: JSON.stringify(invoke.payload),
           signal: AbortSignal.timeout(30_000),

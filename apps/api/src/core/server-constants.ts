@@ -34,10 +34,8 @@ export function getInternalUrl(): string {
 /**
  * Get the cluster's externally reachable URL.
  *
- * Used when minting URLs that need to be resolvable from outside the
- * cluster — e.g. the MCP endpoint URL handed to a remote link daemon
- * (remote harness dispatch), which talks back to the cluster over the
- * public network from the user's desktop.
+ * Used when minting URLs that need to be resolvable from outside the cluster,
+ * such as OAuth callbacks, public org-fs sources, and hosted sandbox config.
  *
  * Uses `STUDIO_PUBLIC_URL` when set, with `MESH_PUBLIC_URL` accepted as a
  * compatibility alias, then falls back to `BASE_URL`

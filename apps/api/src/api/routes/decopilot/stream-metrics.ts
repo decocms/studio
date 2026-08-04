@@ -1,10 +1,7 @@
 import { meter } from "@/observability";
 
-// Shared OTel instruments for the decopilot stream producer. Two modules
-// publish chunks: `nats-stream-buffer.ts` (pump/publishRawChunk) and the
-// link-daemon's `direct-nats-publisher.ts` (the path agent-sandbox runs
-// actually take). Defining the instruments once here keeps both producers
-// feeding the same metric instead of double-registering the same name.
+// Shared OTel instruments for the Decopilot JetStream producer. Keeping them
+// here avoids double-registering names while allowing lazy initialization.
 //
 // `meter` is a NoopMeter until initObservability() runs at bootstrap, and
 // these modules are imported before that — so create the instruments lazily

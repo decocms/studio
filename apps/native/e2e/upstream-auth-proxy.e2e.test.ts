@@ -265,7 +265,7 @@ function startStubMesh() {
         });
       }
 
-      if (u.pathname === "/api/links/me" && req.method === "GET") {
+      if (u.pathname === "/api/auth/desktop/me" && req.method === "GET") {
         const authorization = req.headers.get("authorization");
         probeAuthHeaders.push(authorization);
         if (

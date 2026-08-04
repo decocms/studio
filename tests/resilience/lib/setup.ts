@@ -40,7 +40,6 @@ export function registerTestHooks() {
       PROXY_NAMES.POSTGRES,
       PROXY_NAMES.NATS,
       PROXY_NAMES.EVERYTHING,
-      PROXY_NAMES.STUDIO_WS,
     ]) {
       if (!(name in (proxies as Record<string, unknown>))) {
         throw new Error(`Toxiproxy proxy "${name}" not found`);

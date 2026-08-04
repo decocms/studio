@@ -237,8 +237,8 @@ pub async fn perform_interactive_login(
 /// Failure here is FATAL to the whole login attempt (propagated via `?`,
 /// never swallowed into a bearer-only fallback): a bearer-only session
 /// would report `signed_in: true` from this crate's own point of view (see
-/// `session.rs`'s `probe_upstream`, which only checks a bearer-friendly
-/// org-scoped route) while the real shell's `RequiredAuthLayout` gate would
+/// `session.rs`'s `probe_desktop_auth`, which validates only the desktop
+/// OAuth bearer) while the real shell's `RequiredAuthLayout` gate would
 /// still bounce the user straight back to `/login` — i.e. a silently
 /// half-signed-in state, exactly the bug this bridge exists to close. A
 /// clear, surfaced login error is strictly better than reintroducing it

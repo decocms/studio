@@ -112,7 +112,7 @@ spec:
             - name: SHUTDOWN_GRACE_SECONDS
               value: {{ .Values.terminationGracePeriodSeconds | quote }}
             {{- end }}
-            {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+            {{- if .Values.nats.clusterCreds.enabled }}
             - name: NATS_CREDS
               value: {{ include "chart-deco-studio.natsClusterCredsPath" . | quote }}
             {{- end }}
@@ -183,9 +183,9 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
-            {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+            {{- if .Values.nats.clusterCreds.enabled }}
             - name: nats-cluster-creds
-              mountPath: {{ .Values.tunnel.nats.clusterCreds.mountDir | quote }}
+              mountPath: {{ .Values.nats.clusterCreds.mountDir | quote }}
               readOnly: true
             {{- end }}
           {{- with .Values.volumeMounts }}
@@ -204,13 +204,13 @@ spec:
         - name: data
           emptyDir:
             sizeLimit: {{ .Values.persistence.emptyDirSizeLimit | default "10Gi" }}
-        {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+        {{- if .Values.nats.clusterCreds.enabled }}
         - name: nats-cluster-creds
           secret:
             secretName: {{ include "chart-deco-studio.natsClusterCredsSecretName" . | quote }}
             items:
-              - key: {{ .Values.tunnel.nats.clusterCreds.secretKey | quote }}
-                path: {{ .Values.tunnel.nats.clusterCreds.fileName | quote }}
+              - key: {{ .Values.nats.clusterCreds.secretKey | quote }}
+                path: {{ .Values.nats.clusterCreds.fileName | quote }}
         {{- end }}
         {{- with .Values.volumes }}
           {{- toYaml . | nindent 8 }}

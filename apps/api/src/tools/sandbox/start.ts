@@ -483,8 +483,7 @@ async function provisionSandbox(
       // Pass branch explicitly so the runner-side `computeHandle` agrees with
       // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
       // VM falls back to `s-<hash>` while the proxy looks up `<branch>-<hash>`
-      // and every proxy call 404s with `unknown handle` (see resilience
-      // scenarios `link-dispatch-ws-partition` / `link-dispatch-log-replay`).
+      // and every proxy call 404s with `unknown handle`.
       branch,
       repo: repoOpts,
       workload,

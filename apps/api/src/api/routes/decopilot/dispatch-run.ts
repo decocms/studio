@@ -608,14 +608,14 @@ export async function dispatchRunAndWait(
  * Built eagerly in `prepareRun`'s main body (user-message materialization and
  * field assembly) so it's available without consuming
  * `uiStream`. The hosted dispatch path layers the signal on top inside the
- * lazy harness chunk source:
+ * lazy Decopilot chunk source:
  * `{ ...preparedDecopilotInput, signal: registrySignal }`.
  */
 type PreparedDecopilotInput = Omit<DecopilotStreamInput, "signal">;
 
 interface PreparedRun {
   taskId: string;
-  /** LAZY: no harness work happens until the first consumer pull. */
+  /** LAZY: Decopilot does not start until the first consumer pull. */
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
 }
@@ -1158,8 +1158,8 @@ async function prepareRun(
       organizationId: input.organizationId,
       currentThreadTitle: mem.thread.title,
     };
-    // ── LAZY harness dispatch ───────────────────────────────────────────────
-    // This generator's body — local harness dispatch — runs only when the
+    // ── LAZY Decopilot dispatch ─────────────────────────────────────────────
+    // This generator's body — the Decopilot dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
     // once the hosted consumer pulls `uiStream`.
     //

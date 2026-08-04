@@ -1,8 +1,13 @@
 /**
  * Desktop system-browser session bridge.
  *
- * `POST /api/auth/desktop/session-from-oauth` — the one Studio-side change
- * the native authentication contract concluded was unavoidable to fix
+ * Desktop authentication endpoints used by the native app:
+ *
+ * - `GET /api/auth/desktop/me` validates the native app's current OAuth
+ *   bearer (or session cookie) without coupling authentication to an
+ *   organization or to the retired presence protocol.
+ * - `POST /api/auth/desktop/session-from-oauth` is the one Studio-side change
+ * the native authentication contract needed to fix
  * the Google/GitHub/SAML system-browser desktop login path: an MCP OAuth
  * access token (the `oauthAccessToken` row both desktop login paths
  * ultimately hold) satisfies org-scoped `/api/:org/*` routes but is REJECTED
@@ -25,9 +30,9 @@
  *
  * ## Auth guard
  *
- * Dual-auth via the SAME `resolveLinkBearer` resolver `GET /api/links/me`
- * uses (MCP OAuth session primary, Better Auth API key fallback) — reusing
- * a reviewed, already-tested resolver rather than a bespoke check. In
+ * Dual-auth via the same `resolveDesktopBearer` resolver used by
+ * `GET /api/auth/desktop/me` (MCP OAuth session primary, Better Auth API key
+ * fallback) — reusing a reviewed, already-tested resolver. In
  * practice the desktop app only ever presents a fresh MCP OAuth access
  * token here (never an API key), but there's no reason to special-case that
  * narrower expectation when the shared resolver already does the right
@@ -61,12 +66,95 @@
 import { createHmac } from "node:crypto";
 import { Hono } from "hono";
 import { auth } from "@/auth";
-import {
-  resolveLinkBearer,
-  type LinkBearerAuthApi,
-} from "./decopilot/link-bearer-auth";
 
 const app = new Hono();
+
+function bearerToken(headers: Headers): string | null {
+  const match = /^Bearer\s+(.+)$/i.exec(headers.get("authorization") ?? "");
+  return match?.[1]?.trim() || null;
+}
+
+function directUserId(value: unknown): string | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("userId" in value) ||
+    typeof value.userId !== "string"
+  ) {
+    return null;
+  }
+  return value.userId;
+}
+
+function sessionUserId(value: unknown): string | null {
+  if (!value || typeof value !== "object" || !("user" in value)) {
+    return null;
+  }
+
+  const { user } = value;
+  if (
+    !user ||
+    typeof user !== "object" ||
+    !("id" in user) ||
+    typeof user.id !== "string"
+  ) {
+    return null;
+  }
+  return user.id;
+}
+
+function verifiedApiKeyUserId(value: unknown): string | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("valid" in value) ||
+    value.valid !== true ||
+    !("key" in value)
+  ) {
+    return null;
+  }
+  return directUserId(value.key);
+}
+
+/** Resolve the native app's OAuth/API-key bearer using Better Auth directly. */
+async function resolveDesktopBearer(token: string): Promise<string | null> {
+  const headers = new Headers({
+    authorization: `Bearer ${token}`,
+    // Internal marker: prevent the apiKey plugin from treating an MCP OAuth
+    // bearer as a malformed API key. It is created here, never client-trusted.
+    "X-MCP-Session-Auth": "true",
+  });
+  const mcp: unknown = await auth.api
+    .getMcpSession({ headers })
+    .catch(() => null);
+  const mcpUserId = directUserId(mcp);
+  if (mcpUserId) return mcpUserId;
+
+  // Local/dev fallback: the native client may use a Better Auth API key when
+  // no MCP OAuth provider is configured.
+  const verified: unknown = await auth.api
+    .verifyApiKey({ body: { key: token } })
+    .catch(() => null);
+  return verifiedApiKeyUserId(verified);
+}
+
+app.get("/me", async (c) => {
+  const token = bearerToken(c.req.raw.headers);
+  let userId: string | null;
+  if (token) {
+    userId = await resolveDesktopBearer(token);
+  } else {
+    const session: unknown = await auth.api
+      .getSession({ headers: c.req.raw.headers })
+      .catch(() => null);
+    userId = sessionUserId(session);
+  }
+
+  if (!userId) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  return c.json({ userId });
+});
 
 /**
  * Reproduces Better Auth's own session-cookie signing (see this file's
@@ -88,17 +176,12 @@ export function signSessionCookieValue(token: string, secret: string): string {
 }
 
 app.post("/session-from-oauth", async (c) => {
-  const authHeader = c.req.header("authorization") ?? "";
-  const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const token = match?.[1]?.trim();
+  const token = bearerToken(c.req.raw.headers);
   if (!token) {
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  const userId = await resolveLinkBearer(
-    token,
-    auth.api as unknown as LinkBearerAuthApi,
-  );
+  const userId = await resolveDesktopBearer(token);
   if (!userId) {
     return c.json({ error: "unauthorized" }, 401);
   }
@@ -110,7 +193,7 @@ app.post("/session-from-oauth", async (c) => {
     return c.json({ sessionToken });
   } catch (err) {
     console.error(
-      "[desktop-session-bridge] failed to mint a session from an OAuth bearer:",
+      "[desktop-auth] failed to mint a session from an OAuth bearer:",
       err instanceof Error ? err.message : String(err),
     );
     return c.json({ error: "failed to mint a session" }, 500);

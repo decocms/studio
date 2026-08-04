@@ -31,7 +31,6 @@ import {
  */
 const MAX_PENDING_FRAMES = 256;
 
-// Keep in sync with apps/api/src/link-daemon/local-ingress.ts CONNECTING_HTML.
 const CONNECTING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}</style></head><body><div><h3>Connecting to sandbox…</h3><p>Waiting for the sandbox to come online. This page refreshes automatically.</p></div><script>setTimeout(function(){window.location.reload()},1500)</script></body></html>`;
 
 /** A top-level document navigation (the iframe loading a page) — as opposed to
@@ -150,7 +149,7 @@ export async function tryHandlePreviewHttp(
   const response = await runner.proxyPreviewRequest(handle, request);
   // Unspawned / unreachable sandbox: serve an auto-reloading "connecting" page
   // for top-level document navigations so the iframe shows a friendly reloading
-  // page (mirrors the desktop local-ingress) instead of raw JSON. The app's own
+  // page instead of raw JSON. The app's own
   // fetches (non-document) keep the JSON error so they can handle/retry it.
   if (
     response.headers.get(PREVIEW_NOT_READY_HEADER) &&

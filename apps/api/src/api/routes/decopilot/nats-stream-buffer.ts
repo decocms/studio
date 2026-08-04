@@ -69,16 +69,15 @@ const publishErrorsCounter = lazyInstrument(() =>
   }),
 );
 
-// encode_ms + published_chunks live in ./stream-metrics so the link-daemon's
-// direct-nats-publisher (the path agent-sandbox runs actually take) feeds the
-// same instruments instead of double-registering them.
+// Shared producer metrics live in ./stream-metrics to keep their lazy
+// initialization separate from the JetStream implementation.
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
-const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long desktop runs
+const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts long runs
 // Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
-// this window is dropped by JetStream, so an at-least-once producer (outbox
-// retry) can't double-write the same UI part.
+// this window is dropped by JetStream, so a producer retry can't double-write
+// the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams

@@ -74,21 +74,8 @@ services:
       BASE_URL: http://localhost:3000
       DECOCMS_LOCAL_MODE: "true"
       STUDIO_AGENT_SANDBOX_ENABLED: "false"
-      STUDIO_SANDBOX_PROVIDER: user-desktop # rollback compatibility only
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
-      # org-fs mounts can't work in these containers (no FUSE / rclone mount
-      # fails), and this suite exercises tunnel/WS resilience, not org-fs. With
-      # mounts enabled the daemon's first quick file op blocks on the 10s
-      # FIRST_MOUNT_WAIT_MS grace (entry.ts), which collides with the studio
-      # proxy's 10s QUICK_FILE_OP_TIMEOUT_MS (sandbox-proxy.ts) and 502s the very
-      # first write/read even on a healthy link. Disable so the daemon never
-      # expects org-fs (skips the wait) — see DISABLE_ORGFS_MOUNTS in start.ts.
-      DISABLE_ORGFS_MOUNTS: "true"
       DATA_DIR: /app/data
-      NATS_PUBLIC_URL: ws://toxiproxy:3010
-      NATS_ACCOUNT_JWT: eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ.eyJhdWQiOiJOQVRTIiwibmFtZSI6InR1bm5lbCIsInN1YiI6IkFDQ1JKT0dDS1BGSkpNUDNMSE9HMkk1NU5WMkpRVkZNSUlaUVRDVDNQTjZaQlhWR1M1SVFCSU1CIiwibmF0cyI6eyJzaWduaW5nX2tleXMiOlsiQUFYVVRQUUpMS05ZRVZMVlVUSEFURVVRMlA3T1hIN0FWS09UVUUyU0IyS0o2VTNJN0UySkFPVDIiXSwibGltaXRzIjp7InN1YnMiOi0xLCJjb25uIjotMSwiZGF0YSI6LTEsInBheWxvYWQiOi0xLCJpbXBvcnRzIjotMSwiZXhwb3J0cyI6LTEsIndpbGRjYXJkcyI6dHJ1ZSwibWVtX3N0b3JhZ2UiOi0xLCJkaXNrX3N0b3JhZ2UiOi0xLCJzdHJlYW1zIjotMSwiY29uc3VtZXIiOi0xfSwidHlwZSI6ImFjY291bnQiLCJ2ZXJzaW9uIjoyfSwiaXNzIjoiT0JVSDNLRzJQT1FNQVJSWEYyTVZNTkdMN1NCRDVBUE9UVkU1REJKNTZOR1A1NElaVUFMUE1QNUYiLCJpYXQiOjE3ODE5Njc5NzAsImp0aSI6ImpFMzhWWk45ZVRQVStLMlB6d2NtbWdESVgyQWE1UzVTZ2FCb1Y5RWtqM0tQVHhCOUErVTZuS2daNmp0VFpLc3EwdEx5V0F1VmpzdnNsZHpVUjZ4N1hnPT0ifQ.KXYXjyj7WzyxCOyz90dIYV_Rq8fGaIUxTP1RhGsV9mpyPZk0Pj30HvRLGilGxz6E75M0IBZkQ7vmFTKFsgeWBA
-      NATS_ACCOUNT_SIGNING_KEY: SAAD4LKQUA2MPS5AOHTWV2ELQILVCQXRMMLMWQSJFFRF2MIT3S7ANO4SRM
-      NATS_CREDS: /nats-creds/cluster.creds
     ports:
       - "127.0.0.1:13000:3000"
     depends_on:
@@ -104,5 +91,3 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 20
-    volumes:
-      - ./nats-config/cluster.creds:/nats-creds/cluster.creds:ro

@@ -3,8 +3,8 @@
 //!
 //! The shared web UI addresses filesystem operations through
 //! `/api/:org/sandbox/:virtualMcpId/:branch/:operation`. In the browser that
-//! route belongs to mesh, which resolves a hosted or `deco link` sandbox. In
-//! the native app the same request first reaches local-api's app-API fallback;
+//! route belongs to mesh, which resolves the hosted agent sandbox. In the
+//! native app the same request first reaches local-api's app-API fallback;
 //! forwarding it upstream would ask the cluster for a claim that cannot see
 //! this Mac's durable sandbox registry.
 //!

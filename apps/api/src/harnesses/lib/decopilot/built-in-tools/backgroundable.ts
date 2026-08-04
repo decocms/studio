@@ -8,9 +8,8 @@ import { z } from "zod";
  * injects a `background` boolean into the input schema and, when the model sets
  * it, enqueues a durable job and returns immediately; otherwise the tool runs
  * inline unchanged. The cluster (DBOS) owns the durable work; this module only
- * defines the seam + the `BackgroundDispatcher`. Absent dispatcher
- * (desktop without link material, tests) → the tool is returned untouched and
- * `background` isn't even advertised.
+ * defines the seam + the `BackgroundDispatcher`. With no dispatcher, the tool
+ * is returned untouched and `background` isn't advertised.
  */
 
 /** Enqueues the real tool work as a durable background job. Cluster-only. */

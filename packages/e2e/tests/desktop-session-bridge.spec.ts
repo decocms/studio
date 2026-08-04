@@ -16,6 +16,57 @@ import { expect, newApiContext, test } from "../fixtures/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { mintMcpAccessToken } from "../fixtures/mcp-oauth";
 
+test.describe("desktop identity: GET /api/auth/desktop/me", () => {
+  test("returns the same stable identity for a session cookie and API-key bearer", async ({
+    playwright,
+  }) => {
+    const sessionCtx = await newApiContext(playwright);
+    const user = await signUpViaApi(sessionCtx);
+
+    const cookieResponse = await sessionCtx.get("/api/auth/desktop/me");
+    expect(cookieResponse.status()).toBe(200);
+    expect(await cookieResponse.json()).toEqual({ userId: user.userId });
+
+    const keyResponse = await sessionCtx.post(
+      `/api/${user.orgSlug}/tools/API_KEY_CREATE`,
+      {
+        data: {
+          name: `desktop-me-${Date.now()}`,
+          permissions: { "*": ["*"] },
+        },
+      },
+    );
+    expect(keyResponse.ok()).toBe(true);
+    const apiKey = ((await keyResponse.json()) as { key?: string }).key;
+    expect(apiKey).toBeTruthy();
+
+    const bearerCtx = await newApiContext(playwright);
+    const bearerResponse = await bearerCtx.get("/api/auth/desktop/me", {
+      headers: { authorization: `Bearer ${apiKey}` },
+    });
+    expect(bearerResponse.status()).toBe(200);
+    expect(await bearerResponse.json()).toEqual({ userId: user.userId });
+
+    await Promise.all([sessionCtx.dispose(), bearerCtx.dispose()]);
+  });
+
+  test("rejects missing and invalid credentials", async ({ playwright }) => {
+    const ctx = await newApiContext(playwright);
+
+    const missing = await ctx.get("/api/auth/desktop/me");
+    expect(missing.status()).toBe(401);
+    expect(await missing.json()).toEqual({ error: "unauthorized" });
+
+    const invalid = await ctx.get("/api/auth/desktop/me", {
+      headers: { authorization: "Bearer not-a-real-token" },
+    });
+    expect(invalid.status()).toBe(401);
+    expect(await invalid.json()).toEqual({ error: "unauthorized" });
+
+    await ctx.dispose();
+  });
+});
+
 test.describe("desktop session bridge: POST /api/auth/desktop/session-from-oauth", () => {
   test("exchanges a valid MCP OAuth bearer for a Better Auth session cookie the native endpoints accept", async ({
     playwright,

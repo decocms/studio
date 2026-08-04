@@ -3,11 +3,9 @@
  * SAME thread — the follow-up must run to completion, not hang forever.
  *
  * Repro for the reported "stop a thread and then ask a follow up: it never
- * returns" bug. Unlike the queue specs (which use the claude-code + fake
- * tunnel-daemon path), this drives the REAL hosted decopilot agent loop
- * against a real openai-compatible provider, because the bug only reproduces
- * on the hosted topology (agent-sandbox + decopilot), which no other e2e
- * exercises.
+ * returns" bug. This drives the real hosted Decopilot loop against an
+ * OpenAI-compatible provider so the stop and follow-up cross the durable
+ * agent-sandbox execution boundary.
  *
  * Requires OPENROUTER_API_KEY in the environment; skipped otherwise. The key
  * is written into an org-scoped `AI_PROVIDER_KEY_CREATE` credential (never

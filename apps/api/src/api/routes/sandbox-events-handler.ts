@@ -389,12 +389,10 @@ async function proxyDaemonEvents(args: {
         await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
-      // Daemon unreachable past the budget. Don't emit a terminal failure —
-      // end the stream so the client's EventSource reconnects (it will pick
-      // up logs / `gone` once the link is back). Latching here froze the
-      // preview across a `deco link` relink. Log once (per ~60s SSE attempt)
-      // so an operator can tell an expected `deco link` outage from a
-      // misconfig/crash without the client seeing a terminal failure.
+      // Daemon unreachable past the budget. Don't emit a terminal failure:
+      // end the stream so the client's EventSource reconnects and can recover
+      // after a pod restart. Log once per SSE attempt without latching the
+      // preview into a permanently failed state.
       console.warn(
         `[vm-events] daemon unreachable past budget for ${claimName}: ${
           err instanceof Error ? err.message : String(err)

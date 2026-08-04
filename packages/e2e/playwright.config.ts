@@ -23,14 +23,8 @@ const commerceMockKey = "e2e-commerce-key";
 // decopilot-unified-control-plane.spec.ts's "executor dies mid-run" proof can
 // observe the liveness terminal without a real 10-minute wait. Read ONCE at
 // server boot (run-registry.ts module load), so this applies to the whole e2e
-// run, not per-test. Chosen with headroom above every OTHER spec's
-// held-open-turn windows in this suite (the widest being
-// decopilot-thread-queue.spec.ts's `nextWorkItem(..., { timeoutMs: 35_000 })`
-// waits for a queued turn to reach the fake daemon — the consume step's idle
-// timer is already ticking during that wait, since dispatch marks the run
-// in_progress and opens the live tail before the daemon ever receives
-// anything) so no other spec's legitimately-slow-but-alive turn is
-// misclassified as dead.
+// run, not per-test. The two-minute value leaves headroom for provider-backed
+// specs while still making a dead producer observable within the suite.
 // deployment-admin@e2e.local + deployment-admin-2@e2e.local are reserved for
 // deployment-admin.spec.ts only (consistent with the suite's unique-domain-per-
 // run rule). The second admin exists so an admin-impersonating-an-admin test can

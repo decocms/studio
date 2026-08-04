@@ -1,8 +1,8 @@
 /**
  * The ONE shared ingest unit (spec §unified-pipeline / Phase B).
  *
- * Both execution paths — agent-sandbox (in-studio) and user-desktop (relay) —
- * route through `ingestRun`. It does two things, in lockstep, per chunk:
+ * Hosted agent-sandbox output routes through `ingestRun`. It does two things,
+ * in lockstep, per chunk:
  *
  *  1. **Publish** the raw chunk to `DECOPILOT_STREAMS` with a seq-keyed
  *     `Nats-Msg-Id` (`${runId}:${fenceToken}:${seq}`) so an at-least-once
@@ -15,10 +15,9 @@
  *     title injection fire EXACTLY ONCE per logical chunk because the dedup
  *     happens before the kernel ever sees a replay.
  *
- * Dedup policy is ported verbatim from `links/uplink-ingest.ts`: a rolling
- * CONTIGUOUS `ackSeq` (highest seq with all <= it publish-confirmed) plus a
- * `pending` set for out-of-order arrivals. A seq already at/below `ackSeq` is a
- * replayed prefix → skipped (no publish, no hook).
+ * Dedup uses a rolling CONTIGUOUS `ackSeq` (highest seq with all <= it
+ * publish-confirmed) plus a `pending` set for out-of-order arrivals. A seq
+ * already at/below `ackSeq` is a replayed prefix and is skipped.
  *
  * Pure: the stream buffer, hooks, title options, and `fenceOk` are injected, so
  * this is a unit (no StudioContext, no NATS, no DB).

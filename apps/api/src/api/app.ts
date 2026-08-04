@@ -50,7 +50,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import desktopSessionBridgeRoutes from "./routes/desktop-session-bridge";
+import desktopAuthRoutes from "./routes/desktop-auth";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -969,9 +969,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // Optional cluster creds: local dev runs NATS in operator mode (anonymous
-    // connect is impossible there), so ensure-services persists a cluster creds
-    // file and points NATS_CREDS at it. Absent (production) → anonymous connect.
+    // External NATS deployments may require a credentials file. Managed local
+    // NATS accepts the loopback connection without one.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {
@@ -1302,12 +1301,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
-  // POST /api/auth/desktop/session-from-oauth — mints a real Better Auth
-  // session from a valid MCP OAuth bearer, for the desktop app's
-  // system-browser (Google/GitHub/SAML) login path. Mounted BEFORE the
-  // `/api/auth/*` catchall (`auth.handler`) so it never reaches it. See
-  // `./routes/desktop-session-bridge.ts`'s module doc for why this exists.
-  app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
+  // Native desktop authentication: a bearer-only identity probe plus the
+  // bearer-to-session bridge used by system-browser login. Mounted before the
+  // `/api/auth/*` Better Auth catchall so these explicit routes win.
+  app.route("/api/auth/desktop", desktopAuthRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
@@ -1334,9 +1331,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // owns, NOT `use("*", ...)`. Because this sub-app is mounted at `/`, a
   // wildcard middleware fires for every request to the root app — and the
   // suppression logic in `log-deprecated-route.ts` can't reliably tell
-  // root-app handlers (e.g. `/api/links/heartbeat`) apart from this
-  // sub-app's handlers via basePath alone. Pinning the middleware to the
-  // actual deprecated patterns avoids the false-positive entirely.
+  // unrelated root-app handlers apart from this sub-app's handlers via
+  // basePath alone. Pinning the middleware to the actual deprecated patterns
+  // avoids the false-positive entirely.
   legacyWellKnownProtectedResource.use(
     "/.well-known/oauth-protected-resource/mcp/:connectionId",
     logDeprecatedRoute,
@@ -1460,11 +1457,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     studioContextFactory: automationContextFactory,
   });
 
-  // The per-thread gate now STARTS the run (hosted: fire-and-forget enqueue of
-  // the hosted-harness child; desktop: publish the work item) and lets the
-  // consume step write terminal status. It no longer runs the agent loop itself,
-  // so it no longer needs a `dispatchRunFn` or a status-poll cap. Wiring happens
-  // before `DBOS.launch()` for the same reasons as automations.
+  // The per-thread gate starts the hosted run and lets the consume step write
+  // terminal status. It no longer runs the agent loop itself, so it no longer
+  // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
+  // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
     studioContextFactory: automationContextFactory,
     deps: {
@@ -1536,9 +1532,8 @@ export async function createApp(options: CreateAppOptions = {}) {
         orgId,
       );
       // Push the terminal status to the org SSE so the sidebar chip updates
-      // live. user-desktop runs finalize here (not via the run-reactor), so
-      // without this the chip stays "running" until a refetch. `flipped` is
-      // null on a no-op (already terminal) → no double-publish.
+      // live. `flipped` is null on a no-op (already terminal), so this never
+      // double-publishes.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
       if (flipped) {
         await advanceTasksToReviewOnThreadFinish(

@@ -2457,7 +2457,7 @@ mod tests {
                     }
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::OK }))
+            .route("/api/auth/desktop/me", get(|| async { StatusCode::OK }))
             .route(
                 "/api/auth/get-session",
                 get(|| async { Json(json!({ "user": { "id": "account-b" } })) }),
@@ -3056,7 +3056,7 @@ mod tests {
                     }
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::OK }));
+            .route("/api/auth/desktop/me", get(|| async { StatusCode::OK }));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -3128,7 +3128,7 @@ mod tests {
                 }),
             )
             .route(
-                "/api/links/me",
+                "/api/auth/desktop/me",
                 get(|headers: HeaderMap| async move {
                     match headers
                         .get(header::AUTHORIZATION)
@@ -3203,7 +3203,10 @@ mod tests {
                     }
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::UNAUTHORIZED }));
+            .route(
+                "/api/auth/desktop/me",
+                get(|| async { StatusCode::UNAUTHORIZED }),
+            );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -3260,7 +3263,10 @@ mod tests {
                     )
                 }),
             )
-            .route("/api/links/me", get(|| async { StatusCode::UNAUTHORIZED }));
+            .route(
+                "/api/auth/desktop/me",
+                get(|| async { StatusCode::UNAUTHORIZED }),
+            );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {

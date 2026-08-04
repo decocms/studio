@@ -151,12 +151,9 @@ secret:
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
-  # Optional: required for the public NATS link tunnel when using the
-  # chart-managed Secret. Prefer secret.secretName or externalSecret for
-  # production GitOps so these values are not stored in plain values files.
-  # NATS_ACCOUNT_JWT: ""
-  # NATS_ACCOUNT_SIGNING_KEY: ""
-  # NATS_OPERATOR_JWT: ""
+  # Optional internal NATS credentials. Prefer secret.secretName or
+  # externalSecret for production GitOps so credentials are not stored in
+  # plain values files.
   # NATS_CLUSTER_CREDS: ""
 
 # ExternalSecret — pull all values from AWS Secrets Manager via external-secrets operator.
@@ -318,29 +315,18 @@ s3Sync:
 # NATS subchart (https://artifacthub.io/packages/helm/nats/nats)
 # When enabled, NATS_URL is automatically set to nats://<release-name>-nats:4222
 # unless overridden via configMap.meshConfig.NATS_URL
-tunnel:
-  nats:
-    publicUrl: "" # e.g. wss://nats.example.com
-    publicEnabled: false
-    sessionTtlSeconds: 900
-    clusterCreds:
-      # Enable when NATS runs in operator/JWT mode and Studio's internal
-      # NATS_URL connection must authenticate with a creds file.
-      enabled: false
-      # Empty defaults to the same Secret consumed by Studio envFrom
-      # (secret.secretName, externalSecret target, or the chart-managed Secret).
-      secretName: ""
-      secretKey: "NATS_CLUSTER_CREDS"
-      mountDir: "/etc/nats-creds"
-      fileName: "cluster.creds"
-
 nats:
   enabled: true
-  # Native NATS websocket/ingress settings belong to the NATS subchart under
-  # nats.config.websocket and nats.config.websocket.ingress. This chart does
-  # not enable them by default and Helm cannot derive subchart websocket values
-  # from tunnel.nats.*; set both sections explicitly when exposing a public
-  # tunnel.
+  clusterCreds:
+    # Enable when Studio's internal NATS_URL connection must authenticate with
+    # a creds file.
+    enabled: false
+    # Empty defaults to the same Secret consumed by Studio envFrom
+    # (secret.secretName, externalSecret target, or the chart-managed Secret).
+    secretName: ""
+    secretKey: "NATS_CLUSTER_CREDS"
+    mountDir: "/etc/nats-creds"
+    fileName: "cluster.creds"
   config:
     jetstream:
       enabled: true

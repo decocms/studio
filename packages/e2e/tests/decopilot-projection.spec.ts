@@ -1,32 +1,18 @@
 /**
  * E2E: unified projection lifecycle — consume step as sole projector.
  *
- * Since the Task-5/6/11 refactor, `consumeRunProjection` is the ONE place that
- * writes terminal status (completed / failed / requires_action) for ALL run
- * paths (hosted child workflow + desktop/link relay). These tests verify that
- * the refactored path produces the correct outcome at the DB level.
+ * `consumeRunProjection` is the one place that writes terminal status
+ * (completed / failed / requires_action) for hosted runs. These tests verify
+ * that the hosted path produces the correct outcome at the DB level.
  *
  * ## Coverage
  *
- * 1. **Desktop happy path** — REMOVED. Post-refactor, projection only runs as
- *    the dispatch workflow's per-run consume step, so the desktop happy path
- *    can no longer be driven by a bare seed + NATS publish (nothing would
- *    consume the stream). The dispatch-driven equivalent lives in
- *    `link-ingest.spec.ts` ("matching fence → parts land … run completes"),
- *    which registers a fake desktop daemon, POSTs /messages (starting the
- *    consume step), and relays with the gate-minted fence. That test is the
- *    "consume step is sole projector" regression anchor; duplicating it here as
- *    a bare-seed case would be vacuous, so it was deleted rather than ported.
- *    The entry-guard case that shared this describe block is likewise removed:
- *    a terminal-status short-circuit requires a dispatched-then-terminal run,
- *    which has no e2e-injectable surface (see the unit test for that branch).
- *
- * 2. **Hosted happy path** (LIVE when `E2E_ANTHROPIC_KEY` is set; skipped
+ * 1. **Hosted happy path** (LIVE when `E2E_ANTHROPIC_KEY` is set; skipped
  *    otherwise) — POST a user message via `agent-sandbox` and poll until
  *    terminal. The hosted path goes through `hostedHarnessWorkflow → consume
  *    step`, so a terminal row proves consume wrote it.
  *
- * 3. **requires_action** (SKIPPED) — driving a reliable tool-approval pause
+ * 2. **requires_action** (SKIPPED) — driving a reliable tool-approval pause
  *    from e2e requires either a real model that emits `tool-calls` with a
  *    pending `approval-requested` part, or a harness mock that injects one.
  *    TODO: expose a test hook in `consumeRunProjection` (or a `/__test/...`
@@ -35,7 +21,7 @@
  *    `approval-requested` part so the status resolver maps it to
  *    `requires_action`.
  *
- * 4. **Parent recovery mid-stream** (SKIPPED) — requires killing the DBOS
+ * 3. **Parent recovery mid-stream** (SKIPPED) — requires killing the DBOS
  *    worker process mid-flight and asserting that on restart the consume step
  *    re-enters (entry guard passes because status is still `in_progress`),
  *    replays from the durable consumer, and reaches a terminal state without
@@ -43,14 +29,14 @@
  *    TODO: add a `/__test/decopilot/consume/kill-worker-mid-stream` endpoint
  *    (pause + signal + resume) behind a dedicated multi-pod test gate.
  *
- * 5. **Parent recovery after terminal** (SKIPPED) — requires triggering a
+ * 4. **Parent recovery after terminal** (SKIPPED) — requires triggering a
  *    second invocation of `consumeRunProjection` for an already-terminal run
  *    and asserting the entry guard short-circuits (`isTerminalStatus(row.status)`
  *    returns immediately). Without a multi-pod DBOS test harness this cannot be
  *    driven from e2e.
  *    TODO: same multi-pod controls as case 4.
  *
- * 6. **Dead producer / idle-timeout** (SKIPPED) — `consumeRunProjection`
+ * 5. **Dead producer / idle-timeout** (SKIPPED) — `consumeRunProjection`
  *    accepts `idleTimeoutMs` but that parameter is only wired at the
  *    call-site inside the hosted workflow, not injectable from a public API
  *    surface. Driving this from e2e would require either:
@@ -61,25 +47,13 @@
  *    TODO: implement option (a) in a `dev-only` test-route module and gate it
  *    behind `process.env.NODE_ENV === "test"`.
  *
- * 7. **Idempotent terminal re-delivery** (SKIPPED) — verifying that a
+ * 6. **Idempotent terminal re-delivery** (SKIPPED) — verifying that a
  *    redelivered `{done}` envelope (e.g. if the consume step crashes after
  *    projecting but before ack-ing) does not double-write status or double-count
  *    analytics requires publishing the same `{done}` message twice with the
  *    same `Nats-Msg-Id` header and asserting a single terminal row. The
- *    `publishRelayBodyToNats` helper uses JetStream dedup via `Nats-Msg-Id`
- *    headers; to drive the dedup-bypass case (force-publish after dedup window)
- *    we need a lower-level NATS publish helper not currently available in fixtures.
- *    TODO: add a `publishRelayBodyRaw()` variant to `relay-nats.ts` that bypasses
- *    JetStream dedup so the idempotency path can be exercised directly.
- *
- * ## Relationship to existing specs
- *
- * - `link-ingest.spec.ts` covers the desktop path comprehensively (fence
- *   matching, mismatched fence, full-prefix resend) via real dispatch + relay,
- *   which is now the ONLY way to exercise the consume step. The desktop happy
- *   path + entry-guard cases that used to live here are subsumed by that spec
- *   (see case 1 above); this spec now only carries the hosted-path LIVE case
- *   (gated on E2E_ANTHROPIC_KEY) plus the documented SKIPPED future cases.
+ *    current public surface does not expose raw redelivery controls, so this
+ *    needs a purpose-built test hook or a lower-level NATS fixture.
  */
 
 import { expect, test } from "../fixtures/test";
@@ -93,7 +67,7 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 const ANTHROPIC_AVAILABLE = !!process.env.E2E_ANTHROPIC_KEY;
 
 // ---------------------------------------------------------------------------
-// DB helpers (scoped; mirror link-ingest.spec.ts)
+// DB helpers (tenant/run scoped)
 // ---------------------------------------------------------------------------
 
 /** Fetch the `threads.status` for a thread. */
@@ -121,20 +95,7 @@ async function fetchParts(
 }
 
 // ---------------------------------------------------------------------------
-// Test 1: Desktop happy path + entry guard — REMOVED.
-//
-// Post-refactor projection only runs as the dispatch workflow's per-run consume
-// step, so a bare seed + NATS publish no longer projects anything (nothing
-// consumes the stream). The dispatch-driven equivalent of the desktop happy
-// path lives in `link-ingest.spec.ts` ("matching fence → parts land … run
-// completes"); the entry-guard short-circuit has no e2e-injectable surface
-// (a dispatched-then-terminal run) and is covered by the consume-step unit
-// test. Keeping bare-seed versions here would false-pass, so they were deleted.
-// See the header doc's Coverage section.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Test 2: Hosted happy path (LIVE when E2E_ANTHROPIC_KEY is set)
+// Test 1: Hosted happy path (LIVE when E2E_ANTHROPIC_KEY is set)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — hosted happy path", () => {
@@ -208,7 +169,7 @@ test.describe("decopilot projection — hosted happy path", () => {
         const kinds = parts.map((p) => p.kind);
         expect(kinds).toContain("text");
         expect(kinds).toContain("finish");
-        expect(await fetchThreadStatus(db, runId)).toBe("completed");
+        expect(await fetchThreadStatus(db, thread.item.id)).toBe("completed");
       }).toPass({ timeout: 60_000, intervals: [500, 1000, 2000, 3000] });
 
       // Title should have been set by the title-interceptor inside the consume path.
@@ -226,7 +187,7 @@ test.describe("decopilot projection — hosted happy path", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: requires_action (SKIPPED)
+// Test 2: requires_action (SKIPPED)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — requires_action", () => {
@@ -251,7 +212,7 @@ test.describe("decopilot projection — requires_action", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 4: Parent recovery mid-stream (SKIPPED)
+// Test 3: Parent recovery mid-stream (SKIPPED)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — parent recovery mid-stream", () => {
@@ -272,7 +233,7 @@ test.describe("decopilot projection — parent recovery mid-stream", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 5: Parent recovery after terminal (SKIPPED)
+// Test 4: Parent recovery after terminal (SKIPPED)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — parent recovery after terminal", () => {
@@ -295,7 +256,7 @@ test.describe("decopilot projection — parent recovery after terminal", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: Dead producer / idle-timeout (SKIPPED)
+// Test 5: Dead producer / idle-timeout (SKIPPED)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — dead producer idle-timeout", () => {
@@ -320,7 +281,7 @@ test.describe("decopilot projection — dead producer idle-timeout", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 7: Idempotent terminal re-delivery (SKIPPED)
+// Test 6: Idempotent terminal re-delivery (SKIPPED)
 // ---------------------------------------------------------------------------
 
 test.describe("decopilot projection — idempotent terminal re-delivery", () => {
@@ -333,11 +294,9 @@ test.describe("decopilot projection — idempotent terminal re-delivery", () => 
       "    (bypassing JetStream dedup), or " +
       "(b) a /__test/... endpoint that invokes runProjectorWorkflowBody twice for " +
       "    the same {done} and asserts a single status-write via an idempotency guard. " +
-      "The current publishRelayBody helper uses JetStream dedup (Nats-Msg-Id " +
-      "headers), so a second publish of the same body is silently deduplicated by " +
-      "the broker rather than reaching the consumer twice. " +
-      "TODO: add publishRelayBodyRaw() to relay-nats.ts (bypasses Nats-Msg-Id dedup) " +
-      "and add the assertion: after two raw publishes, status is written exactly once " +
+      "The public API does not expose raw JetStream redelivery controls. " +
+      "TODO: add a narrowly scoped test hook and assert that after two raw " +
+      "deliveries, status is written exactly once " +
       "(check by counting terminal-status transitions in the threads table or by " +
       "asserting analytics events via a test capture hook).",
   );

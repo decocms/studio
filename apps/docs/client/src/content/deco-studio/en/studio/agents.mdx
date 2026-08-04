@@ -4,8 +4,6 @@ description: The working surface of Studio — one agent, one job, its own threa
 icon: Bot
 ---
 
-import Callout from "../../../../components/ui/Callout.astro";
-
 ## What is an agent?
 
 An **agent** is an AI configured for a specific job: a focused set of tools, clear instructions, and a single purpose. Agents are the working surface of Studio — almost everything you do in the product happens inside one.
@@ -26,7 +24,7 @@ You reach an agent from the home grid, the thread list in the sidebar, or the **
 
 When you open an agent, the screen splits in two:
 
-- **Left — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Your past messages and threads with this agent live here. Above the input are the **model-tier picker** (Fast, Smart, Thinking — see [AI Providers](/en/studio/ai-providers)) and the **runtime picker** (see [Where an agent runs](#where-an-agent-runs)).
+- **Left — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Your past messages and threads with this agent live here. Above the input is the **model-tier picker** (Fast, Smart, Thinking — see [AI Providers](/en/studio/ai-providers)).
 - **Right — a tabbed panel.** Which tabs appear depends on what the agent is:
 
 | Tab | When it appears |
@@ -37,7 +35,7 @@ When you open an agent, the screen splits in two:
 | **Content** | When that repo exposes editable pages or sections — edit content inline |
 | **Review changes** | When the agent is linked to a GitHub repo **and has an open pull request** — review the branch and its diff |
 
-A Git-backed agent also shows a **branch selector** beside the runtime picker, and a **sandbox status** indicator while its environment boots.
+A Git-backed agent also shows a **branch selector** and a **sandbox status** indicator while its environment boots.
 
 Everything about a single agent lives on this one screen.
 
@@ -64,33 +62,11 @@ In a future release, Studio will let you build simple views directly inside the 
 
 An agent can be backed by code. Link it to a GitHub repository in **Settings → Sandbox** and Studio will run the repo as an isolated dev environment scoped to that agent — typically the agent's own MCP server, but it can be any service the agent needs. The sandbox starts on demand, lives only as long as the agent needs it, and never leaks across agents.
 
-When the agent is running with a local code-editor runtime, **Open in VSCode** and **Open in Cursor** buttons appear directly in the tab bar for one-click access to the repo on your machine. In other runtime modes the same options are available in the tab bar's three-dot (⋯) menu.
-
 ## Where an agent runs
 
-Above the chat input, next to the model picker, is the **runtime picker**. It controls *where* the agent executes and *which harness* drives it. There are two groups:
-
-**Cloud**
-
-- **Decopilot** — _"Runs in an agent sandbox."_ The agent executes in a sandbox managed by Studio. This is the default, always available, with nothing to install.
-
-**Local** — run the agent on your own machine. Until a local runtime is connected, these options read **"Desktop not detected"** and stay disabled.
-
-- **Decopilot** — the Decopilot harness, running on your desktop
-- **Claude Code** — drives the agent with the [Claude Code](https://claude.com/claude-code) CLI
-- **Codex** — drives the agent with the Codex CLI
-
-Running locally means the agent's sandbox lives on your machine: it can read and write your local files, use your installed tooling, and run with your own credentials — while Studio still handles the chat, connections, and logging. The cloud sandbox, by contrast, is fully managed and isolated per agent.
-
-To enable the local options, connect a desktop runtime with `deco link`. Studio detects the connection and lights up whichever harnesses it exposes — **Claude Code** and **Codex** appear once their CLI is available on the linked machine.
-
-<Callout type="tip">
-  Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for a local runtime when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code or Codex.
-</Callout>
-
-## Windows
-
-The daemon runs natively on Windows with one prerequisite: **[Git for Windows](https://gitforwindows.org)** — it provides both `git` and the bash shell used to run your project's dev scripts. If the daemon reports "POSIX shell (sh) not found", install Git for Windows or set the `DECO_SHELL` environment variable to a bash-compatible shell. WSL2 remains a fully supported alternative. Org file mounts are not yet available on Windows.
+Studio chats run with **Decopilot**. When an agent is backed by code, Decopilot
+uses the agent's managed **agent sandbox** for file, shell, git, and preview
+operations. There is no runtime or harness choice to configure.
 
 ## An agent is a virtual MCP
 

@@ -980,15 +980,6 @@ export interface ThreadTable {
   /** Single-writer fence for the active run; null when none minted (Phase A). */
   run_fence_token: ColumnType<string | null, string | null, string | null>;
   /**
-   * @deprecated Per-thread transport selector. No longer read for routing —
-   * the thread gate uses the active link publisher whenever NATS and the link
-   * dispatch runtime are available (see thread-gate-workflow.ts). The writer
-   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup.
-   * Column retained (nullable) for backward compatibility; no drop migration.
-   * New code MUST NOT read or write it.
-   */
-  link_transport: ColumnType<string | null, string | null, string | null>;
-  /**
    * Durable cancel flag (Phase C). Set by the cancel endpoint; the ingest
    * backstop rejects with 409 when non-null, regardless of fence state.
    * Null = no cancel requested; non-null timestamp = cancel was requested.
@@ -1060,12 +1051,6 @@ export interface Thread {
    * Pinned on the thread row; read path forks on this value.
    */
   message_storage_version: number;
-  /**
-   * @deprecated No longer used for routing (see the `threads` table column
-   * doc). Surfaced on the read path for backward compatibility only; nothing
-   * writes it. New code MUST NOT depend on it.
-   */
-  link_transport: string | null;
 }
 
 /**

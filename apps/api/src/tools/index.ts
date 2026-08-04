@@ -203,8 +203,6 @@ export const CORE_TOOLS = [
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
 
-  // Link tools
-
   // Search tools
   SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];

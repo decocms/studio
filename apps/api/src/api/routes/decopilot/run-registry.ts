@@ -267,10 +267,10 @@ export class RunRegistry {
       )
         continue;
 
-      // The durable status is authoritative: a desktop/link run is completed
-      // (or failed) by the projector OUT-OF-BAND, so its in-memory entry lingers
-      // as "running" with no in-process progress bumps. Such a run is finished,
-      // not stuck — evict the stale entry WITHOUT force-failing, so the reaper
+      // The durable status is authoritative: a run may be completed or failed
+      // by the projector out of band while its in-memory entry still says
+      // "running". Such a run is finished, not stuck — evict the stale entry
+      // without force-failing, so the reaper
       // never overwrites a `completed` run with `failed`. A DB read failure
       // falls through to the force-fail path (the reaper must still be able to
       // kill a genuinely stuck run when storage is momentarily unavailable).

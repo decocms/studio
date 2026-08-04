@@ -1,7 +1,7 @@
 //! Native coding-agent availability for the terminal picker.
 //!
-//! This is a guarded local-app route, not a Studio tool and not a desktop-link
-//! capability. It never reaches the hosted API or participates in chat
+//! This is a guarded local-app route for native terminal execution. It never
+//! reaches the hosted API or participates in hosted chat
 //! dispatch; it only reports which local CLI can be launched into a PTY.
 
 use axum::Json;

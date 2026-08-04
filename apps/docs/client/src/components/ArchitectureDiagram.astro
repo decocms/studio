@@ -9,7 +9,7 @@ const { zones, subzones, nodes, edges, legend } = computeLayout();
 
 <figure class="arch">
   <div class="arch-scroll">
-    <svg viewBox="0 0 1600 1020" role="img" aria-label="Studio system architecture: edge, cloud cluster and desktop tiers">
+    <svg viewBox="0 0 1200 1020" role="img" aria-label="Studio system architecture: edge and cloud cluster tiers">
       <defs>
         <marker id="arch-ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="#5b6a82"></path>
@@ -56,7 +56,7 @@ const { zones, subzones, nodes, edges, legend } = computeLayout();
       <span><i style={`background:${l.col}`}></i>{l.name}</span>
     ))}
   </div>
-  <figcaption>Request path, agent runs and sandboxes across the edge, cloud cluster and desktop tiers.</figcaption>
+  <figcaption>Request path, hosted Decopilot runs and managed agent sandboxes across the edge and cloud cluster.</figcaption>
 </figure>
 
 <style>
@@ -72,7 +72,7 @@ const { zones, subzones, nodes, edges, legend } = computeLayout();
     font-family: ui-monospace, "IBM Plex Mono", Menlo, monospace;
   }
   .arch-scroll { overflow-x: auto; }
-  .arch svg { display: block; width: 100%; min-width: 1180px; height: auto; }
+  .arch svg { display: block; width: 100%; min-width: 900px; height: auto; }
   .arch .zlabel { font-size: 10px; letter-spacing: .34em; text-transform: uppercase; fill: #7c8aa3; font-weight: 600; }
   .arch .zsub { font-size: 8.5px; letter-spacing: .18em; text-transform: uppercase; fill: #465268; }
   .arch .szlabel { font-size: 9px; letter-spacing: .22em; text-transform: uppercase; fill: rgba(251,113,133,.65); font-weight: 600; }

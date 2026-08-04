@@ -117,7 +117,7 @@ Key paths:
 | `src/dbos/` and `src/dispatch-queue/` | Durable workflows and queue coordination |
 | `src/event-bus/` and `src/nats/` | Event delivery and NATS integration |
 | `src/encryption/` and `src/vault/` | Credential encryption and secure token access |
-| `src/sandbox/` and `src/link-daemon/` | Sandbox lifecycle and desktop-link coordination |
+| `src/sandbox/` | Hosted agent-sandbox lifecycle and preview routing |
 | `src/observability/` and `src/monitoring/` | Telemetry export and monitoring queries |
 | `migrations/` | Ordered Kysely migrations |
 | `scripts/` | Bundle, contract-generation, migration, and smoke-test utilities |

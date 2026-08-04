@@ -25,19 +25,6 @@ import { arch, platform } from "os";
 import { dirname, join } from "path";
 import type { ServiceInputs, ServiceOutputs } from "../settings/types";
 import { resolveS3ForcePathStyle } from "../settings/resolve-config";
-import {
-  buildNatsOperatorArtifacts,
-  buildNatsServerConf,
-  generateNatsOperatorKeys,
-  isNatsOperatorKeys,
-  type NatsOperatorArtifacts,
-  type NatsOperatorKeys,
-} from "./nats-operator-config";
-import {
-  ensureDevNatsToxiProxy,
-  isDevNatsToxiProxyEnabled,
-  stopDevNatsToxiProxy,
-} from "./dev-nats-toxiproxy";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -77,7 +64,10 @@ interface StateFile {
   pid: number;
   port: number;
   startedAt: string;
-  /** NATS only: the WebSocket listener port (operator-mode dev NATS). */
+  /**
+   * Legacy operator-mode NATS state. Its presence forces a one-time restart
+   * into the current loopback-only JetStream configuration.
+   */
   wsPort?: number;
 }
 
@@ -157,20 +147,10 @@ function isProcessAlive(pid: number): boolean {
  * command line. This guards against PID reuse: if the OS recycled the PID for
  * an unrelated process, we must not signal it.
  *
- * `mode: "comm"` matches against the executable name (`ps -o comm=`). Use this
- * for services launched as their own binary (postgres, nats-server).
- *
- * `mode: "args"` matches against the full argv (`ps -o args=`). Use this when
- * the parent process is a generic interpreter (e.g. `bun run …`) and the
- * marker is a script path — `expectedName` is matched as a substring of the
- * full command line, so callers can pass distinctive arg fragments like
- * `cli.ts link`.
+ * The managed services are launched as their own binaries, so matching the
+ * executable name (`ps -o comm=`) is sufficient.
  */
-function isOwnedProcess(
-  pid: number,
-  expectedName: string,
-  mode: "comm" | "args" = "comm",
-): boolean {
+function isOwnedProcess(pid: number, expectedName: string): boolean {
   if (!isProcessAlive(pid)) return false;
 
   try {
@@ -187,13 +167,7 @@ function isOwnedProcess(
       return output.toLowerCase().includes(expectedName.toLowerCase());
     }
 
-    const proc = Bun.spawnSync([
-      "ps",
-      "-p",
-      String(pid),
-      "-o",
-      mode === "args" ? "args=" : "comm=",
-    ]);
+    const proc = Bun.spawnSync(["ps", "-p", String(pid), "-o", "comm="]);
     const output = new TextDecoder().decode(proc.stdout).trim().toLowerCase();
     return output.includes(expectedName.toLowerCase());
   } catch {
@@ -202,7 +176,7 @@ function isOwnedProcess(
   }
 }
 
-function probePort(port: number, host = "localhost"): Promise<boolean> {
+function probePort(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = createConnection({ port, host });
     sock.once("connect", () => {
@@ -619,78 +593,29 @@ async function downloadNats(home: string): Promise<string> {
   return binPath;
 }
 
-// ---------------------------------------------------------------------------
-// NATS operator-mode key persistence (dev only)
-//
-// Local dev runs NATS in decentralized-JWT ("operator") mode so the link tunnel
-// exercises the SAME auth path as production: the cluster authenticates with a
-// creds file, the daemon links with a short-lived per-user JWT minted from the
-// tunnel account's signing key. The operator/account/user SEEDS are secrets,
-// persisted under the dev home services dir (outside the repo) and reused on
-// subsequent boots so restarts don't churn identities.
-// ---------------------------------------------------------------------------
-
-function natsJwtDir(home: string): string {
-  return join(servicesDir(home), "nats", "jwt");
+/**
+ * Build the managed NATS command. The explicit loopback bind is a security
+ * boundary: local development must not expose an unauthenticated NATS server
+ * to the LAN. JetStream data stays under the selected Studio home directory.
+ */
+export function managedNatsCommand(
+  binPath: string,
+  port: number,
+  storeDir: string,
+): string[] {
+  return [
+    binPath,
+    "-js",
+    "-a",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-sd",
+    storeDir,
+  ];
 }
 
-function natsKeysPath(home: string): string {
-  return join(natsJwtDir(home), "keys.json");
-}
-
-function natsConfPath(home: string): string {
-  return join(natsJwtDir(home), "nats-server.conf");
-}
-
-function natsClusterCredsPath(home: string): string {
-  return join(natsJwtDir(home), "cluster.creds");
-}
-
-/** Load persisted operator keys, or generate + persist a fresh set. */
-function loadOrCreateNatsOperatorKeys(home: string): NatsOperatorKeys {
-  const keysPath = natsKeysPath(home);
-  if (existsSync(keysPath)) {
-    try {
-      const parsed = JSON.parse(readFileSync(keysPath, "utf8"));
-      if (isNatsOperatorKeys(parsed)) return parsed;
-    } catch {
-      // Corrupt file — regenerate below.
-    }
-  }
-  const keys = generateNatsOperatorKeys();
-  ensureDir(natsJwtDir(home));
-  // Secrets — owner-only perms, never committed (lives in the dev home).
-  writeFileSync(keysPath, JSON.stringify(keys, null, 2), { mode: 0o600 });
-  return keys;
-}
-
-interface NatsTunnelConfig {
-  publicUrl: string;
-  accountJwt: string;
-  accountSigningKey: string;
-  operatorJwt: string;
-  credsPath: string;
-}
-
-function natsTunnelConfigFrom(
-  artifacts: NatsOperatorArtifacts,
-  tcpPort: number,
-  credsPath: string,
-): NatsTunnelConfig {
-  return {
-    // Dev: the daemon uses the Node `nats` transport (raw TCP), so hand it the
-    // TCP URL. The WebSocket listener is still configured for fidelity.
-    publicUrl: `nats://127.0.0.1:${tcpPort}`,
-    accountJwt: artifacts.tunnelAccountJwt,
-    accountSigningKey: artifacts.tunnelSigningSeed,
-    operatorJwt: artifacts.operatorJwt,
-    credsPath,
-  };
-}
-
-async function ensureNats(
-  home: string,
-): Promise<{ info: ServiceInfo; tunnel: NatsTunnelConfig }> {
+async function ensureNats(home: string): Promise<ServiceInfo> {
   const info: ServiceInfo = {
     name: "NATS",
     state: "stopped",
@@ -699,32 +624,26 @@ async function ensureNats(
     owner: "none",
   };
 
-  // Operator keys + artifacts are needed on EVERY boot (reuse or fresh) so the
-  // cluster can authenticate and the session route can mint daemon creds.
-  const keys = loadOrCreateNatsOperatorKeys(home);
-  const artifacts = await buildNatsOperatorArtifacts(keys);
-  const credsPath = natsClusterCredsPath(home);
-
-  // The NATS chaos harness needs the server on 0.0.0.0 so the Toxiproxy
-  // container can reach it via host.docker.internal; default is loopback.
-  const bindHost = isDevNatsToxiProxyEnabled() ? "0.0.0.0" : "127.0.0.1";
-
   // Check state.json for an existing managed instance
   const existing = readState(home, "nats");
   if (existing !== null) {
     if (isOwnedProcess(existing.pid, "nats-server")) {
-      // Reuse only when the running instance's bind interface matches what we
-      // need. In chaos mode a previously-loopback instance is unreachable from
-      // the container, so restart it fresh with the right binding.
-      if (bindHost === "127.0.0.1") {
+      // Older Studio versions wrote `wsPort` while running operator/JWT mode.
+      // That server rejects the new credential-free local connection, so
+      // restart it once instead of reusing an incompatible process.
+      if (existing.wsPort === undefined) {
+        // Operator/JWT keys from an older Studio release are no longer used.
+        // Remove the dormant secrets even when the current plain server is
+        // already healthy.
+        rmSync(join(servicesDir(home), "nats", "jwt"), {
+          recursive: true,
+          force: true,
+        });
         info.state = "running";
         info.pid = existing.pid;
         info.port = existing.port;
         info.owner = "managed";
-        return {
-          info,
-          tunnel: natsTunnelConfigFrom(artifacts, existing.port, credsPath),
-        };
+        return info;
       }
       await stopNats(home);
     } else {
@@ -733,30 +652,24 @@ async function ensureNats(
     }
   }
 
-  // Allocate dynamic ports (TCP for cluster/daemon, WS for fidelity with prod).
+  // Retired operator/account seeds are sensitive and have no remaining
+  // consumer. The path is an exact app-managed subdirectory, never user input.
+  rmSync(join(servicesDir(home), "nats", "jwt"), {
+    recursive: true,
+    force: true,
+  });
+
+  // Allocate one dynamic loopback port for Studio's local connection.
   const port = await findAvailablePort();
-  const wsPort = await findAvailablePort();
   info.port = port;
 
   const binPath = await downloadNats(home);
   const dataDir = join(servicesDir(home), "nats", "data");
   const logDir = join(servicesDir(home), "nats");
   ensureDir(dataDir);
-  ensureDir(natsJwtDir(home));
-
-  // Write the cluster creds file (secret) + the operator-mode server conf.
-  writeFileSync(credsPath, artifacts.clusterCreds, { mode: 0o600 });
-  const conf = buildNatsServerConf({
-    tcpPort: port,
-    wsPort,
-    storeDir: dataDir,
-    bindHost,
-    artifacts,
-  });
-  writeFileSync(natsConfPath(home), conf);
 
   const logFile = Bun.file(join(logDir, "nats.log"));
-  const proc = Bun.spawn([binPath, "-c", natsConfPath(home)], {
+  const proc = Bun.spawn(managedNatsCommand(binPath, port, dataDir), {
     stdout: logFile,
     stderr: logFile,
   });
@@ -764,20 +677,15 @@ async function ensureNats(
   writeState(home, "nats", {
     pid: proc.pid,
     port,
-    wsPort,
     startedAt: new Date().toISOString(),
   });
 
   await waitForPort(port);
-  await waitForPort(wsPort);
 
   info.state = "running";
   info.pid = proc.pid;
   info.owner = "managed";
-  return {
-    info,
-    tunnel: natsTunnelConfigFrom(artifacts, port, credsPath),
-  };
+  return info;
 }
 
 async function stopNats(home: string): Promise<void> {
@@ -833,10 +741,9 @@ async function stopNats(home: string): Promise<void> {
 // MinIO (auto-downloaded binary — S3-compatible object storage for dev)
 // ---------------------------------------------------------------------------
 //
-// Object storage is a hard dependency of the message-offload path. In dev we
-// auto-provision a real S3-compatible store (MinIO) so the offload code runs
-// against the production S3Service rather than the DevObjectStorage fallback,
-// mirroring how postgres and nats-server are managed above.
+// In dev we auto-provision a real S3-compatible store (MinIO) so file uploads,
+// generated assets, and run attachments use the same S3Service as production
+// rather than the DevObjectStorage fallback.
 //
 // MinIO publishes per-OS/arch *server* binaries at a stable URL:
 //   https://dl.min.io/server/minio/release/<os>-<arch>/minio[.exe]
@@ -943,19 +850,6 @@ async function waitForMinioReady(
 /**
  * Create the dev bucket (idempotent). Uses the already-installed
  * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
- *
- * Object-storage hygiene notes for dispatch offload objects:
- * - `link-dispatch/` offload objects are written when a desktop work item's
- *   `harnessInput.messages` exceeds the inline payload budget. They are
- *   reclaimed by the bucket's lifecycle TTL (there is no eager per-run delete).
- * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
- *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
- *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never
- *   match them. Rather than install a silently-broken rule here, we omit it.
- * - Production operators who want automatic cleanup should configure a
- *   lifecycle rule appropriate to their key layout, e.g. an object-tag-based
- *   rule (tag offload objects on PUT and filter on that tag), or an
- *   `<orgId>/link-dispatch/` prefix per org if their layout is known.
  */
 async function provisionMinioBucket(endpoint: string): Promise<void> {
   const { S3Client, CreateBucketCommand } = await import("@aws-sdk/client-s3");
@@ -1003,8 +897,8 @@ async function provisionMinioBucket(endpoint: string): Promise<void> {
       name !== "BucketAlreadyExists" &&
       !(e instanceof Error && e.message.includes("already"))
     ) {
-      // Genuine bucket-create failure: the offload feature requires the bucket,
-      // so let this propagate and abort startup.
+      // A genuine bucket-create failure leaves object-backed features unusable,
+      // so let it propagate and abort startup.
       client.destroy();
       throw e;
     }
@@ -1128,10 +1022,6 @@ async function stopMinio(home: string): Promise<void> {
   console.log("MinIO stopped");
 }
 
-// ---------------------------------------------------------------------------
-// Link daemon (deco link, spawned via `bun run --cwd=apps/api src/cli.ts link`)
-// ---------------------------------------------------------------------------
-
 function portFromUrl(url: string, fallback: number): number {
   try {
     const parsed = new URL(url);
@@ -1169,7 +1059,6 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       }
     : await ensurePostgres(inputs.home);
 
-  let natsTunnel: ServiceOutputs["natsTunnel"] = null;
   let natsInfo: ServiceInfo;
   if (skipNats) {
     natsInfo = {
@@ -1180,21 +1069,7 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       owner: "external",
     };
   } else {
-    const ensured = await ensureNats(inputs.home);
-    natsInfo = ensured.info;
-    natsTunnel = ensured.tunnel;
-
-    // Optional dev chaos: insert a Toxiproxy hop ONLY on the daemon -> NATS leg.
-    // The cluster still talks to NATS directly (via `outputs.natsUrls` below);
-    // we rewrite only the URL handed to the daemon through the link session, so
-    // HTTP routes are untouched. NATS was bound to 0.0.0.0 above for this.
-    if (isDevNatsToxiProxyEnabled() && natsTunnel) {
-      const handle = await ensureDevNatsToxiProxy({ natsPort: natsInfo.port });
-      natsTunnel = { ...natsTunnel, publicUrl: handle.config.publicUrl };
-      console.log(
-        `[dev-nats-toxiproxy] daemon NATS routed through ${handle.config.publicUrl} -> ${handle.config.upstream} (admin ${handle.config.apiUrl})`,
-      );
-    }
+    natsInfo = await ensureNats(inputs.home);
   }
 
   const services: ServiceInfo[] = [pgInfo, natsInfo];
@@ -1246,27 +1121,13 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     }
   }
 
-  // Mirror the dev NATS operator/JWT config into process.env BEFORE the app
-  // resolves Settings. The in-process serve path reads the frozen Settings
-  // (threaded via `outputs.natsTunnel` in pipeline.ts); the dev path spawns
-  // `dev:servers` as a child that re-derives Settings from inherited
-  // process.env. The env names must match resolve-config.ts exactly.
-  if (natsTunnel) {
-    process.env.NATS_PUBLIC_URL = natsTunnel.publicUrl;
-    process.env.NATS_ACCOUNT_JWT = natsTunnel.accountJwt;
-    process.env.NATS_ACCOUNT_SIGNING_KEY = natsTunnel.accountSigningKey;
-    process.env.NATS_OPERATOR_JWT = natsTunnel.operatorJwt;
-    process.env.NATS_TUNNEL_PUBLIC_ENABLED = "true";
-    process.env.NATS_CREDS = natsTunnel.credsPath;
-  }
-
   const databaseUrl = skipPostgres
     ? inputs.externalDatabaseUrl!
     : pgConnectionString(pgInfo.port);
 
   const natsUrl = skipNats
     ? inputs.externalNatsUrl!
-    : `nats://localhost:${natsInfo.port}`;
+    : `nats://127.0.0.1:${natsInfo.port}`;
 
   return {
     services,
@@ -1274,7 +1135,6 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       databaseUrl,
       natsUrls: [natsUrl],
       s3,
-      natsTunnel,
     },
   };
 }
@@ -1283,10 +1143,6 @@ export async function stopServices(home: string): Promise<void> {
   await stopPostgres(home);
   await stopNats(home);
   await stopMinio(home);
-  // Best-effort: tear down the dev NATS chaos proxy container if it was started.
-  if (isDevNatsToxiProxyEnabled()) {
-    await stopDevNatsToxiProxy().catch(() => {});
-  }
   console.log("\nAll managed services stopped.");
 }
 

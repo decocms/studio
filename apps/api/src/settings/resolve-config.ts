@@ -72,11 +72,6 @@ function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
-function toBoolOrUndefined(value: string | undefined): boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  return toBool(value);
-}
-
 function toPositiveIntegerOrUndefined(
   name: string,
   value: string | undefined,
@@ -200,9 +195,6 @@ export function resolveConfig(
     flags.nodeEnv || resolveNodeEnv(envVars.NODE_ENV);
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
-  const natsTunnelPublicEnabled =
-    toBoolOrUndefined(envVars.NATS_TUNNEL_PUBLIC_ENABLED) ??
-    !!envVars.NATS_PUBLIC_URL;
 
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
@@ -253,16 +245,6 @@ export function resolveConfig(
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Event Bus & Networking
-    natsPublicUrl: envVars.NATS_PUBLIC_URL,
-    natsTunnelPublicEnabled,
-    natsTunnelSessionTtlSeconds: toPositiveIntegerOrDefault(
-      "NATS_TUNNEL_SESSION_TTL_SECONDS",
-      envVars.NATS_TUNNEL_SESSION_TTL_SECONDS,
-      900,
-    ),
-    natsOperatorJwt: envVars.NATS_OPERATOR_JWT,
-    natsAccountJwt: envVars.NATS_ACCOUNT_JWT,
-    natsAccountSigningKey: envVars.NATS_ACCOUNT_SIGNING_KEY,
     natsCredsPath: envVars.NATS_CREDS,
 
     // Config files

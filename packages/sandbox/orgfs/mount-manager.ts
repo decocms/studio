@@ -13,7 +13,7 @@
  * logs and is skipped — it never breaks the daemon, the dev server, the fs
  * routes, or the harnesses. Mounting only happens when the studio pushes
  * `TenantConfig.orgFs` (it won't for cluster pods, whose security posture
- * blocks mounts — desktop links are the target).
+ * blocks mounts — the native app's local sandbox is the target).
  */
 
 import { mkdir } from "node:fs/promises";

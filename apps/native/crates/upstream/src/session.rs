@@ -54,22 +54,20 @@ use crate::tokens::{
     host_key, InMemoryTokenStore, KeychainTokenStore, StoredSession, TokenStore, TokenStoreError,
 };
 
-/// `GET /api/links/me` (see `apps/api/src/api/app.ts`) is the cheapest
-/// authenticated endpoint this crate found in the mesh API: dual-auth
-/// (Bearer OR cookie), always returns `200` (even `null`) for a VALID
-/// bearer regardless of link/presence state, and `401
-/// {"error":"unauthorized"}` specifically when bearer resolution fails —
-/// i.e. it's a pure auth probe, no org/permission semantics riding along
-/// (unlike an org-scoped `/api/:org/...` route, which can legitimately
-/// `403` an authenticated-but-non-member caller — see `probe_upstream`'s
-/// doc comment for why that distinction matters).
-const PROBE_PATH: &str = "/api/links/me";
+/// `GET /api/auth/desktop/me` is the canonical desktop bearer probe. It has
+/// no link-presence or organization semantics: a valid desktop OAuth bearer
+/// returns `200`, while an unrecognized bearer returns `401`. Keeping the
+/// probe outside an org-scoped `/api/:org/...` route matters because an
+/// authenticated non-member can legitimately receive `403` there; that is
+/// not evidence that the desktop credential itself is invalid.
+const DESKTOP_AUTH_PROBE_PATH: &str = "/api/auth/desktop/me";
 
 /// `GET /api/auth/get-session` — the endpoint the production web shell's own
 /// sign-in gate authenticates with, using the durable session COOKIE
 /// ([`StoredSession::cookie`]), never the OAuth bearer. Better Auth answers
 /// `200` with a session object for a live cookie and `200 null` for a dead
-/// or missing one — which is exactly why [`PROBE_PATH`] alone is not enough:
+/// or missing one — which is exactly why [`DESKTOP_AUTH_PROBE_PATH`] alone is
+/// not enough:
 /// a valid bearer with a dead cookie reports `signed_in: true` here while
 /// the shell bounces the user to an in-webview `/login` page whose social
 /// buttons cannot work (blocked external navigation). See
@@ -82,7 +80,7 @@ pub const STATUS_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// Default per-request timeout for every HTTP call this session's
 /// `reqwest::Client` makes (register, token exchange, refresh, the
-/// `/api/links/me` probe) — `reqwest::Client::new()` has NO default
+/// desktop-auth probe) — `reqwest::Client::new()` has NO default
 /// timeout at all, so a DNS stall or a connection that never completes
 /// would otherwise hang the calling future forever. Generous enough for a
 /// slow-but-working network, bounded enough that `status()`/`login()`/
@@ -401,34 +399,36 @@ impl UpstreamSession {
         };
 
         match self.ensure_fresh_session(session.clone()).await {
-            Ok(fresh) => match self.probe_upstream(&fresh.access_token).await {
-                ProbeOutcome::Authenticated => self.confirm_shell_session(fresh).await,
-                ProbeOutcome::Unauthenticated => {
+            Ok(fresh) => match self.probe_desktop_auth(&fresh.access_token).await {
+                DesktopAuthProbeOutcome::Authenticated => self.confirm_shell_session(fresh).await,
+                DesktopAuthProbeOutcome::Unauthenticated => {
                     match self.force_refresh_session(fresh.clone()).await {
-                        Ok(refreshed) => match self.probe_upstream(&refreshed.access_token).await {
-                            ProbeOutcome::Authenticated => {
-                                self.confirm_shell_session(refreshed).await
-                            }
-                            ProbeOutcome::Unauthenticated => {
-                                self.hard_sign_out(
-                                    "upstream rejected an access token after a forced refresh",
-                                )
-                                .await
-                            }
-                            ProbeOutcome::Inconclusive(reason) => {
-                                tracing::debug!(
+                        Ok(refreshed) => {
+                            match self.probe_desktop_auth(&refreshed.access_token).await {
+                                DesktopAuthProbeOutcome::Authenticated => {
+                                    self.confirm_shell_session(refreshed).await
+                                }
+                                DesktopAuthProbeOutcome::Unauthenticated => {
+                                    self.hard_sign_out(
+                                        "upstream rejected an access token after a forced refresh",
+                                    )
+                                    .await
+                                }
+                                DesktopAuthProbeOutcome::Inconclusive(reason) => {
+                                    tracing::debug!(
                                 reason,
                                 "upstream status probe after refresh inconclusive; keeping signed-in state"
                             );
-                                self.mark_validated(true);
-                                StatusResult {
-                                    signed_in: true,
-                                    user_label: label(&refreshed),
-                                    upstream_url: self.0.target.clone(),
-                                    storage_state: AuthStorageState::Available,
+                                    self.mark_validated(true);
+                                    StatusResult {
+                                        signed_in: true,
+                                        user_label: label(&refreshed),
+                                        upstream_url: self.0.target.clone(),
+                                        storage_state: AuthStorageState::Available,
+                                    }
                                 }
                             }
-                        },
+                        }
                         Err(RefreshError {
                             kind: RefreshErrorKind::InvalidGrant,
                             ..
@@ -458,12 +458,9 @@ impl UpstreamSession {
                         }
                     }
                 }
-                ProbeOutcome::Inconclusive(reason) => {
-                    // Fail OPEN on a transient probe failure — mirrors
-                    // `/api/links/me`'s own "presence is best-effort" fail-
-                    // open posture (`apps/api/src/api/app.ts`) and this
-                    // repo's general rule that a network hiccup must never
-                    // read as "sign the user out."
+                DesktopAuthProbeOutcome::Inconclusive(reason) => {
+                    // Fail OPEN on a transient probe failure. A network
+                    // hiccup must never read as "sign the user out."
                     tracing::debug!(
                         reason,
                         "upstream status probe inconclusive; keeping prior signed-in state"
@@ -806,28 +803,24 @@ impl UpstreamSession {
         });
     }
 
-    /// Probes `PROBE_PATH` with `access_token` — see `PROBE_PATH`'s doc
-    /// comment for why this endpoint specifically. Only a genuine `401`
-    /// (bearer resolution failure) is treated as "unauthenticated"; every
-    /// other non-2xx status or network failure is `Inconclusive` and must
-    /// NOT trigger a sign-out (a `5xx`, a timeout, or — on an org-scoped
-    /// endpoint, though this one isn't — a `403` for an unrelated
-    /// authorization reason are all NOT proof the token itself is bad).
-    async fn probe_upstream(&self, access_token: &str) -> ProbeOutcome {
+    /// Probes [`DESKTOP_AUTH_PROBE_PATH`] with `access_token`. Only a genuine
+    /// `401` is treated as unauthenticated; every other non-2xx status or
+    /// network failure is inconclusive and must not trigger a sign-out.
+    async fn probe_desktop_auth(&self, access_token: &str) -> DesktopAuthProbeOutcome {
         let res = self
             .0
             .http
-            .get(format!("{}{PROBE_PATH}", self.0.target))
+            .get(format!("{}{DESKTOP_AUTH_PROBE_PATH}", self.0.target))
             .bearer_auth(access_token)
             .send()
             .await;
         match res {
-            Ok(r) if r.status().is_success() => ProbeOutcome::Authenticated,
+            Ok(r) if r.status().is_success() => DesktopAuthProbeOutcome::Authenticated,
             Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
-                ProbeOutcome::Unauthenticated
+                DesktopAuthProbeOutcome::Unauthenticated
             }
-            Ok(r) => ProbeOutcome::Inconclusive(format!("HTTP {}", r.status())),
-            Err(e) => ProbeOutcome::Inconclusive(e.to_string()),
+            Ok(r) => DesktopAuthProbeOutcome::Inconclusive(format!("HTTP {}", r.status())),
+            Err(e) => DesktopAuthProbeOutcome::Inconclusive(e.to_string()),
         }
     }
 
@@ -836,7 +829,7 @@ impl UpstreamSession {
     /// "no session" answer (`200 null`, a `401`, or no stored cookie at
     /// all) is [`CookieProbeOutcome::Dead`]; every other failure is
     /// `Inconclusive` and must not trigger a re-mint or sign-out, mirroring
-    /// [`Self::probe_upstream`]'s fail-open posture.
+    /// [`Self::probe_desktop_auth`]'s fail-open posture.
     async fn probe_cookie_session(&self, stored: &StoredSession) -> CookieProbeOutcome {
         let Some(cookie) = stored.cookie.as_deref() else {
             return CookieProbeOutcome::Dead("no durable session cookie is stored".to_string());
@@ -979,15 +972,15 @@ impl SessionTransitionGuard {
     }
 }
 
-enum ProbeOutcome {
+enum DesktopAuthProbeOutcome {
     Authenticated,
     Unauthenticated,
     Inconclusive(String),
 }
 
 /// Outcome of probing the durable session COOKIE — the credential the web
-/// shell signs in with, distinct from the OAuth bearer [`ProbeOutcome`]
-/// covers.
+/// shell signs in with, distinct from the OAuth bearer
+/// [`DesktopAuthProbeOutcome`] covers.
 enum CookieProbeOutcome {
     Valid,
     /// The upstream explicitly does not recognize the cookie (or none is
@@ -1153,22 +1146,24 @@ mod tests {
             .as_secs() as i64
     }
 
-    async fn spawn_probe_server(behavior: ProbeBehavior) -> (String, Arc<AtomicUsize>) {
+    async fn spawn_desktop_auth_server(
+        behavior: DesktopAuthBehavior,
+    ) -> (String, Arc<AtomicUsize>) {
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_route = calls.clone();
         let app = Router::new().route(
-            "/api/links/me",
+            DESKTOP_AUTH_PROBE_PATH,
             get(move || {
                 let calls = calls_for_route.clone();
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     match behavior {
-                        ProbeBehavior::Ok => (StatusCode::OK, Json(serde_json::json!(null))),
-                        ProbeBehavior::AlwaysUnauthorized => (
+                        DesktopAuthBehavior::Ok => (StatusCode::OK, Json(serde_json::json!(null))),
+                        DesktopAuthBehavior::AlwaysUnauthorized => (
                             StatusCode::UNAUTHORIZED,
                             Json(serde_json::json!({"error":"unauthorized"})),
                         ),
-                        ProbeBehavior::AlwaysServerError => (
+                        DesktopAuthBehavior::AlwaysServerError => (
                             StatusCode::INTERNAL_SERVER_ERROR,
                             Json(serde_json::json!({"error":"boom"})),
                         ),
@@ -1185,7 +1180,7 @@ mod tests {
     }
 
     #[derive(Clone, Copy)]
-    enum ProbeBehavior {
+    enum DesktopAuthBehavior {
         Ok,
         AlwaysUnauthorized,
         AlwaysServerError,
@@ -1204,7 +1199,7 @@ mod tests {
         Unauthorized,
     }
 
-    /// A full shell-shaped upstream: bearer probe always OK, plus the two
+    /// A full shell-shaped upstream: desktop bearer probe always OK, plus the two
     /// cookie-session endpoints `confirm_shell_session` talks to. Returns
     /// (target, mint call counter, last Cookie header the get-session probe
     /// saw).
@@ -1222,7 +1217,7 @@ mod tests {
         let seen_cookie_route = seen_cookie.clone();
         let app = Router::new()
             .route(
-                "/api/links/me",
+                DESKTOP_AUTH_PROBE_PATH,
                 get(|| async { (StatusCode::OK, Json(serde_json::json!(null))) }),
             )
             .route(
@@ -1394,7 +1389,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_reports_signed_in_and_probes_upstream_on_a_cold_cache() {
-        let (target, calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let store = seeded_store(&target, valid_session(&target));
         let session = UpstreamSession::new(target, store);
 
@@ -1407,7 +1402,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_within_the_cache_window_does_not_hit_the_network_again() {
-        let (target, calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let store = seeded_store(&target, valid_session(&target));
         let session = UpstreamSession::new(target, store);
 
@@ -1423,7 +1418,8 @@ mod tests {
 
     #[tokio::test]
     async fn force_revalidate_signs_out_on_a_hard_401_after_refresh() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::AlwaysUnauthorized).await;
+        let (target, _calls) =
+            spawn_desktop_auth_server(DesktopAuthBehavior::AlwaysUnauthorized).await;
         let store = seeded_store(&target, valid_session(&target));
         let host = host_key(&target);
         let session = UpstreamSession::new(target, store.clone());
@@ -1444,7 +1440,7 @@ mod tests {
         let refreshes = refresh_calls.clone();
         let app = Router::new()
             .route(
-                PROBE_PATH,
+                DESKTOP_AUTH_PROBE_PATH,
                 get(move |headers: axum::http::HeaderMap| {
                     let probes = probes.clone();
                     async move {
@@ -1497,7 +1493,8 @@ mod tests {
 
     #[tokio::test]
     async fn force_revalidate_fails_open_on_a_transient_probe_error() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::AlwaysServerError).await;
+        let (target, _calls) =
+            spawn_desktop_auth_server(DesktopAuthBehavior::AlwaysServerError).await;
         let store = seeded_store(&target, valid_session(&target));
         let host = host_key(&target);
         let session = UpstreamSession::new(target, store.clone());
@@ -1520,7 +1517,7 @@ mod tests {
         // `signed_in: true` — there is no org-choice/bootstrap detour here
         // at all, regardless of which login path produced the session
         // (cookie or bearer-only).
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, _calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let mut bearer_only = valid_session(&target);
         bearer_only.cookie = None;
         let store = seeded_store(&target, bearer_only);
@@ -1601,7 +1598,7 @@ mod tests {
 
     #[tokio::test]
     async fn logout_clears_the_store_and_publishes_signed_out() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, _calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let store = seeded_store(&target, valid_session(&target));
         let host = host_key(&target);
         let session = UpstreamSession::new(target, store.clone());
@@ -1640,7 +1637,7 @@ mod tests {
 
     #[tokio::test]
     async fn logout_does_not_publish_signed_out_when_keychain_clear_fails() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, _calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let stored = valid_session(&target);
         let session = UpstreamSession::new(
             target,
@@ -1979,7 +1976,7 @@ mod tests {
     /// `/login` UI this mock skips rendering), `/api/auth/mcp/token`, and the
     /// new `/api/auth/desktop/session-from-oauth` bridge (accepts ONLY the
     /// exact bearer the token endpoint minted, mirroring the real
-    /// endpoint's `resolveLinkBearer`-backed guard).
+    /// endpoint's desktop-bearer guard).
     async fn spawn_mock_mesh_for_login() -> (String, Arc<std::sync::Mutex<usize>>) {
         use axum::extract::Query;
         use axum::response::{IntoResponse, Redirect};
@@ -2281,7 +2278,7 @@ mod tests {
 
     #[tokio::test]
     async fn logout_purges_the_persisted_cookie_along_with_the_rest_of_the_session() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, _calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let mut seeded = valid_session(&target);
         seeded.cookie = Some("better-auth.session_token=xyz".to_string());
         let store = seeded_store(&target, seeded);
@@ -2302,7 +2299,7 @@ mod tests {
 
     #[tokio::test]
     async fn remember_cookie_updates_an_existing_sessions_persisted_cookie() {
-        let (target, _calls) = spawn_probe_server(ProbeBehavior::Ok).await;
+        let (target, _calls) = spawn_desktop_auth_server(DesktopAuthBehavior::Ok).await;
         let mut seeded = valid_session(&target);
         seeded.cookie = Some("better-auth.session_token=old".to_string());
         let store = seeded_store(&target, seeded);

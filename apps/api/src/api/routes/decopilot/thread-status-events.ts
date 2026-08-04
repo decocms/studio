@@ -20,12 +20,9 @@ export interface TerminalThreadStatusRow {
  * Emit the org-wide `decopilot.thread.status` SSE event for a terminal run
  * transition performed by the durable projector.
  *
- * user-desktop runs finalize via the projector (`completeRunIfNotCompleted` /
- * `markRunFailed`), NOT via the in-memory run-reactor that hosted runs use — so
- * without this emit the sidebar status chip never receives a real-time
- * completed/failed push and stays "running" until the next refetch (a manual
- * refresh or the SSE reconnect recovery). This mirrors the emit the run-reactor
- * already does for hosted runs (`run-reactor.handleTerminalStatus`).
+ * Projector terminal transitions happen outside the in-memory run reactor, so
+ * this emit keeps the sidebar status chip current without waiting for a
+ * refetch. It mirrors `run-reactor.handleTerminalStatus` for the durable path.
  *
  * `row` is the row returned by the conditional flip (`WHERE status =
  * 'in_progress'`): non-null only when THIS call actually transitioned the run.
