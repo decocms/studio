@@ -35,6 +35,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Plus, Trash01 } from "@untitledui/icons";
 import { SUBMODULE_HOST_RE } from "@/sdk";
+import { useT } from "@/i18n/use-t.ts";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   SECRET_NAME_RE,
@@ -67,20 +68,20 @@ export function SubmoduleCredentialsField<T extends FieldValues>({
   control,
   form,
 }: SubmoduleCredentialsFieldProps<T>) {
+  const t = useT();
   return (
     <div className="space-y-2">
       <Label className="font-normal text-foreground">
-        Submodule credentials
+        {t("sandbox.submoduleCredentialsField.title")}
       </Label>
       <p className="text-xs text-muted-foreground">
-        Personal access tokens for cloning private git submodules that live in
-        other repositories. Reference an org/user secret per host; SSH submodule
-        URLs are rewritten to HTTPS so the token applies.
+        {t("sandbox.submoduleCredentialsField.description")}
       </p>
       <ErrorBoundary
         fallback={({ error }) => (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error?.message ?? "Failed to load secrets"}
+            {error?.message ??
+              t("sandbox.submoduleCredentialsField.failedToLoadSecrets")}
           </div>
         )}
       >
@@ -101,6 +102,7 @@ function SubmoduleCredentialsEditor<T extends FieldValues>({
   control,
   form,
 }: EditorProps<T>) {
+  const t = useT();
   const fieldPath = "metadata.runtime.submoduleCredentials" as FieldPath<T>;
   const { fields, append, remove } = useFieldArray({
     control,
@@ -143,7 +145,7 @@ function SubmoduleCredentialsEditor<T extends FieldValues>({
         className="w-full"
       >
         <Plus className="size-3.5" />
-        Add submodule credential
+        {t("sandbox.submoduleCredentialsField.addSubmoduleCredential")}
       </Button>
 
       {dialogIndex !== null ? (
@@ -182,6 +184,7 @@ function SubmoduleRow<T extends FieldValues>({
   onCreateNewSecret,
   onRemove,
 }: SubmoduleRowProps<T>) {
+  const t = useT();
   const hostName = `${fieldPath}.${index}.host` as FieldPath<T>;
   const secretIdName = `${fieldPath}.${index}.secretId` as FieldPath<T>;
 
@@ -199,7 +202,9 @@ function SubmoduleRow<T extends FieldValues>({
                 <Input
                   {...field}
                   value={(field.value as string | undefined) ?? ""}
-                  placeholder="github.com"
+                  placeholder={t(
+                    "sandbox.submoduleCredentialsField.hostPlaceholder",
+                  )}
                   spellCheck={false}
                   autoComplete="off"
                   autoCapitalize="off"
@@ -210,7 +215,10 @@ function SubmoduleRow<T extends FieldValues>({
                       "border-destructive focus-visible:ring-destructive",
                   )}
                   aria-invalid={invalid}
-                  aria-label={`Submodule credential ${index + 1} host`}
+                  aria-label={t(
+                    "sandbox.submoduleCredentialsField.hostAriaLabel",
+                    { index: index + 1 },
+                  )}
                   onBlur={(e) => {
                     field.onChange(e.target.value.trim());
                     field.onBlur();
@@ -218,7 +226,7 @@ function SubmoduleRow<T extends FieldValues>({
                 />
                 {invalid ? (
                   <p className="text-[11px] text-destructive">
-                    Bare hostname, e.g. github.com (no scheme or path).
+                    {t("sandbox.submoduleCredentialsField.hostInvalidMessage")}
                   </p>
                 ) : null}
               </div>
@@ -242,14 +250,18 @@ function SubmoduleRow<T extends FieldValues>({
                   !field.value && "text-muted-foreground",
                 )}
               >
-                <SelectValue placeholder="Pick a secret…">
+                <SelectValue
+                  placeholder={t(
+                    "sandbox.submoduleCredentialsField.pickSecretPlaceholder",
+                  )}
+                >
                   <SecretPickerValue field={field} secretById={secretById} />
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {secrets.length === 0 ? (
                   <div className="px-2 py-2 text-xs text-muted-foreground">
-                    No secrets yet. Use the “+” to create one.
+                    {t("sandbox.submoduleCredentialsField.noSecretsYet")}
                   </div>
                 ) : (
                   secrets.map((s) => (
@@ -271,13 +283,17 @@ function SubmoduleRow<T extends FieldValues>({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Create new secret"
+              aria-label={t(
+                "sandbox.submoduleCredentialsField.createNewSecretAriaLabel",
+              )}
               onClick={onCreateNewSecret}
             >
               <Plus className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Create new secret</TooltipContent>
+          <TooltipContent>
+            {t("sandbox.submoduleCredentialsField.createNewSecret")}
+          </TooltipContent>
         </Tooltip>
       </div>
 
@@ -288,13 +304,17 @@ function SubmoduleRow<T extends FieldValues>({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Remove submodule credential"
+              aria-label={t(
+                "sandbox.submoduleCredentialsField.removeAriaLabel",
+              )}
               onClick={onRemove}
             >
               <Trash01 className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Remove</TooltipContent>
+          <TooltipContent>
+            {t("sandbox.submoduleCredentialsField.remove")}
+          </TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -307,6 +327,7 @@ interface CreateSecretDialogProps {
 }
 
 function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
+  const t = useT();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<SecretScopeKind>("organization");
   const [value, setValue] = useState("");
@@ -329,10 +350,18 @@ function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
         value,
         description: description.trim() || undefined,
       });
-      toast.success(`Saved secret "${result.name}"`);
+      toast.success(
+        t("sandbox.submoduleCredentialsField.secretSaved", {
+          name: result.name,
+        }),
+      );
       onSaved(result.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.submoduleCredentialsField.failedToSaveSecret"),
+      );
     }
   };
 
@@ -345,16 +374,18 @@ function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create new secret</DialogTitle>
+          <DialogTitle>
+            {t("sandbox.submoduleCredentialsField.createNewSecretTitle")}
+          </DialogTitle>
           <DialogDescription>
-            Stored encrypted in the credential vault. The submodule credential
-            will reference the new secret by id — its value never leaves the
-            server.
+            {t("sandbox.submoduleCredentialsField.createNewSecretDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="submodule-secret-scope">Scope</Label>
+            <Label htmlFor="submodule-secret-scope">
+              {t("sandbox.submoduleCredentialsField.scopeLabel")}
+            </Label>
             <Select
               value={scope}
               onValueChange={(v) => setScope(v as SecretScopeKind)}
@@ -364,52 +395,60 @@ function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="organization">
-                  Organization — visible to all members
+                  {t("sandbox.submoduleCredentialsField.scopeOrganization")}
                 </SelectItem>
                 <SelectItem value="user">
-                  Private — only visible to me
+                  {t("sandbox.submoduleCredentialsField.scopePrivate")}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="submodule-secret-name">Name</Label>
+            <Label htmlFor="submodule-secret-name">
+              {t("sandbox.submoduleCredentialsField.nameLabel")}
+            </Label>
             <Input
               id="submodule-secret-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="GITHUB_SUBMODULE_PAT"
+              placeholder={t(
+                "sandbox.submoduleCredentialsField.namePlaceholder",
+              )}
               autoComplete="off"
               required
             />
             <p className="text-xs text-muted-foreground">
-              Letters, digits, underscore, dot, hyphen.
+              {t("sandbox.submoduleCredentialsField.nameHelperText")}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="submodule-secret-value">
-              Personal access token
+              {t("sandbox.submoduleCredentialsField.tokenLabel")}
             </Label>
             <Input
               id="submodule-secret-value"
               type="password"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="ghp_…"
+              placeholder={t(
+                "sandbox.submoduleCredentialsField.tokenPlaceholder",
+              )}
               autoComplete="new-password"
               required
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="submodule-secret-description">
-              Description (optional)
+              {t("sandbox.submoduleCredentialsField.descriptionLabel")}
             </Label>
             <Textarea
               id="submodule-secret-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What is this token used for?"
+              placeholder={t(
+                "sandbox.submoduleCredentialsField.descriptionPlaceholder",
+              )}
             />
           </div>
           <DialogFooter>
@@ -419,13 +458,15 @@ function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
               onClick={onClose}
               disabled={createSecret.isPending}
             >
-              Cancel
+              {t("sandbox.submoduleCredentialsField.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={!canSubmit || createSecret.isPending}
             >
-              {createSecret.isPending ? "Saving…" : "Save secret"}
+              {createSecret.isPending
+                ? t("sandbox.submoduleCredentialsField.saving")
+                : t("sandbox.submoduleCredentialsField.saveSecret")}
             </Button>
           </DialogFooter>
         </form>
