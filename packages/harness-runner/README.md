@@ -1,23 +1,40 @@
 # @decocms/harness-runner
 
-Runs coding-agent harnesses inside a sandbox pod. One process per run: the Go
-daemon execs it, writes `{harnessId, input}` to stdin, and reads one
-`HarnessRunResult` (`{chunks, error}`) off stdout. stderr is the pod's log.
+Runs coding-agent harnesses inside a sandbox pod, one process per run.
 
 | Attribute | Value |
 | --- | --- |
 | Workspace | `@decocms/harness-runner` (`packages/harness-runner`) |
 | Kind | Private in-sandbox harness process |
 | Runtime | Bun (inside the sandbox image) |
-| Distribution | Packed into `packages/sandbox/dist/harness-runner.tgz` and installed into the sandbox image |
+| Distribution | Private workspace package, packed into `packages/sandbox/dist/harness-runner.tgz` and installed into the sandbox image |
 
-The wire is defined by `daemon-go/internal/dispatch/runner.go`; the result shape
-is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. It
-implements one harness today, `claude-code`.
+## Overview
 
-- `main.ts` — the wire: stdin envelope in, one result out.
-- `claude-code.ts` — SDK options policy, the per-turn loop, session persistence.
-- `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s.
+The Go daemon execs this process for each dispatched run, writes a
+`{harnessId, input}` envelope to stdin, and reads NDJSON frames
+(`{chunks, error}`) off stdout as they are produced. stderr is the pod's log.
+
+The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
+is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
+harness is implemented today, `claude-code`, driven by the Claude Agent SDK.
+
+## Responsibilities
+
+- Read the dispatch envelope off stdin and dispatch it to a harness.
+- Run the harness against the checkout the daemon already prepared.
+- Translate SDK messages into AI SDK `UIMessageChunk`s so nothing downstream of
+  the daemon needs new part types.
+- Emit a frame per turn, and always emit a final frame — including on a throw.
+- Remember the per-thread session id so a follow-up turn resumes.
+
+## Usage
+
+Not imported by Studio. The daemon spawns it through `HARNESS_RUNNER_CMD`:
+
+```bash
+echo '{"harnessId":"claude-code","input":{ ... }}' | bun packages/harness-runner/main.ts
+```
 
 Model access is configured entirely by environment, pushed down as sandbox env
 by Studio and reaching this process as its spawn environment:
@@ -29,6 +46,19 @@ by Studio and reaching this process as its spawn environment:
 | `CLAUDE_CODE_MODEL` | Optional model pin; unset uses Claude Code's default |
 | `CLAUDE_CODE_PATH` | Optional explicit path to the `claude` executable |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config dir; also where the per-thread session id is remembered |
+
+## Architecture
+
+- `main.ts` — the wire: stdin envelope in, NDJSON frames out.
+- `claude-code.ts` — SDK options policy, the per-turn loop, session persistence.
+- `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s.
+
+## Development
+
+```bash
+bun run --cwd=packages/harness-runner check
+bun run --cwd=packages/harness-runner test
+```
 
 ## Boundaries
 
@@ -43,11 +73,6 @@ by Studio and reaching this process as its spawn environment:
 - Permissions are bypassed by design: the pod is the isolation boundary and
   there is no approval UI upstream. Do not add a prompt path that would block a
   run forever.
-
-```bash
-bun run --cwd=packages/harness-runner check
-bun run --cwd=packages/harness-runner test
-```
 
 ## Related documentation
 
