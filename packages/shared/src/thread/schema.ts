@@ -103,14 +103,13 @@ export const ThreadEntitySchema = z.object({
   metadata: ThreadMetadataSchema.optional().describe(
     "Free-form per-thread UI state (e.g. expanded_tools)",
   ),
-  // Typed as a loose record to stay compatible with the Kysely storage type
-  // (Thread.run_config: Record<string, unknown> | null). Callers that need the
-  // typed shape should parse with PersistedRunConfigSchema from run-config.ts.
+  // Typed as a loose record to stay compatible with the durable Kysely storage
+  // snapshot (Thread.run_config: Record<string, unknown> | null).
   run_config: z
     .record(z.string(), z.unknown())
     .nullable()
     .optional()
-    .describe("Persisted run configuration (contains agent and model info)"),
+    .describe("Persisted run configuration snapshot"),
 });
 
 export type ThreadEntity = z.infer<typeof ThreadEntitySchema>;
