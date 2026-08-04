@@ -143,15 +143,32 @@ async fn route(
         (&Method::POST, ["git", "diff"]) => {
             crate::routes::git::diff(state, body).await.into_response()
         }
-        (&Method::POST, ["git", "publish"]) => crate::routes::git::publish(state, body)
-            .await
-            .into_response(),
-        (&Method::POST, ["git", "discard"]) => crate::routes::git::discard(state, body)
-            .await
-            .into_response(),
-        (&Method::POST, ["git", "rebase"]) => crate::routes::git::rebase(state, body)
-            .await
-            .into_response(),
+        // Held for the duration of the git command: these three mutate the
+        // worktree on disk, and `SandboxManager::remove_registered` (reclaim on
+        // last-thread archive) deletes that same directory under this handle's
+        // lock. Without holding it here too, a reclaim can `rm -rf` the
+        // worktree out from under an in-flight publish/discard/rebase.
+        (&Method::POST, ["git", "publish"]) => {
+            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let _guard = handle_lock.lock().await;
+            crate::routes::git::publish(state, body)
+                .await
+                .into_response()
+        }
+        (&Method::POST, ["git", "discard"]) => {
+            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let _guard = handle_lock.lock().await;
+            crate::routes::git::discard(state, body)
+                .await
+                .into_response()
+        }
+        (&Method::POST, ["git", "rebase"]) => {
+            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let _guard = handle_lock.lock().await;
+            crate::routes::git::rebase(state, body)
+                .await
+                .into_response()
+        }
 
         // The two AI-assisted endpoints. Mesh's handlers guard on a VM claim
         // this machine's sandboxes never have (`requireRunner` → 503), so

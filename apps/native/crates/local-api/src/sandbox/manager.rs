@@ -1275,7 +1275,12 @@ impl SandboxManager {
         });
     }
 
-    fn handle_lock(&self, handle: &str) -> Arc<tokio::sync::Mutex<()>> {
+    /// The per-handle operation lock also taken by `stop_registered` and
+    /// `remove_registered`. Exposed so a caller that runs a git mutation
+    /// directly against a sandbox's worktree (bypassing this manager) can
+    /// serialize against a concurrent stop/reclaim of the SAME handle — see
+    /// `intercept::sandbox_ops::route`'s `git/publish|discard|rebase` arms.
+    pub(crate) fn handle_lock(&self, handle: &str) -> Arc<tokio::sync::Mutex<()>> {
         let mut guard = self.lock_locks();
         guard
             .entry(handle.to_string())
@@ -2125,6 +2130,68 @@ mod tests {
         assert!(
             !again.workdir.join("uncommitted.txt").exists(),
             "a reclaim is a delete, not a stash"
+        );
+    }
+
+    /// `intercept::sandbox_ops::route` takes this same lock around
+    /// `git/publish|discard|rebase` before touching the worktree, precisely so
+    /// a reclaim can't `rm -rf` the directory out from under an in-flight git
+    /// mutation. Simulate that holder directly: while it holds the lock,
+    /// `remove_registered` must not have removed the worktree yet.
+    #[tokio::test]
+    async fn remove_registered_waits_for_a_concurrent_git_op_holding_the_same_handle_lock() {
+        let (_root, clone_url) = setup_two_branch_repo();
+        let app_root = tempfile::tempdir().unwrap();
+        let manager = Arc::new(SandboxManager::new(app_root.path().to_path_buf()));
+        let cfg = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-race".to_string(),
+            clone_url,
+            branch: Some("work".to_string()),
+            ..Default::default()
+        };
+
+        let sandbox = manager.ensure(&cfg).await.expect("ensure succeeds");
+        let handle = sandbox.handle.clone();
+        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while sandbox.setup.is_running() || sandbox.setup.pending_count() > 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the setup pipeline settles");
+        drop(sandbox);
+
+        // Stand in for `sandbox_ops::route`'s git-op guard: a "publish" in
+        // flight, holding the handle lock for as long as its git command runs.
+        let git_op_lock = manager.handle_lock(&handle);
+        let git_op_guard = git_op_lock.lock().await;
+
+        let reclaim = tokio::spawn({
+            let manager = manager.clone();
+            let handle = handle.clone();
+            async move { manager.remove_registered(&handle).await }
+        });
+
+        // The reclaim is blocked behind the lock the simulated git op holds —
+        // give it every chance to (wrongly) race ahead before asserting.
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            worktree.is_dir(),
+            "reclaim must not touch the worktree while a git op holds the handle lock"
+        );
+
+        drop(git_op_guard);
+        reclaim
+            .await
+            .expect("reclaim task doesn't panic")
+            .expect("reclaim succeeds")
+            .expect("a registered handle is not unknown");
+        assert!(
+            !worktree.exists(),
+            "reclaim proceeds once the git op releases the lock"
         );
     }
 
