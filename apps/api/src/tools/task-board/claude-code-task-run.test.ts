@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildClaudeCodeTaskPrompt,
+  pickSoleTaskRepo,
   type TaskRepo,
 } from "./claude-code-task-run";
 
@@ -87,5 +88,81 @@ describe("buildClaudeCodeTaskPrompt", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).not.toContain("gh pr checkout");
     expect(prompt).not.toContain("existing one");
+  });
+});
+
+/** An active repo-scoped `mcp-github` connection, as `connections.list` returns it. */
+const repoConn = (
+  id: string,
+  owner: string,
+  name: string,
+  extra?: Record<string, unknown>,
+) => ({
+  id,
+  status: "active",
+  metadata: {
+    ...extra,
+    repoScope: { installationId: 42, owner, repo: name },
+  },
+});
+
+describe("pickSoleTaskRepo", () => {
+  test("no imported repo is not eligible", () => {
+    expect(pickSoleTaskRepo([])).toBeNull();
+    // The bare org-level connection carries no repoScope.
+    expect(
+      pickSoleTaskRepo([{ id: "conn_0", status: "active", metadata: {} }]),
+    ).toBeNull();
+  });
+
+  test("one repo, one connection", () => {
+    expect(pickSoleTaskRepo([repoConn("conn_1", "acme", "web")])).toEqual({
+      connectionId: "conn_1",
+      owner: "acme",
+      name: "web",
+      installationId: 42,
+      url: "https://github.com/acme/web",
+    });
+  });
+
+  // The regression: importing one repo leaves an org-shared connection AND a
+  // per-agent one behind. Counting connections read that as "ambiguous".
+  test("one repo behind two connections is still one repo, org-shared wins", () => {
+    const picked = pickSoleTaskRepo([
+      repoConn("conn_agent", "acme", "web"),
+      repoConn("conn_shared", "acme", "web", { orgShared: true }),
+    ]);
+    expect(picked?.connectionId).toBe("conn_shared");
+  });
+
+  test("falls back to the per-agent connection when none is org-shared", () => {
+    const picked = pickSoleTaskRepo([repoConn("conn_agent", "acme", "web")]);
+    expect(picked?.connectionId).toBe("conn_agent");
+  });
+
+  test("owner/repo case does not split one repo into two", () => {
+    const picked = pickSoleTaskRepo([
+      repoConn("conn_1", "acme", "web"),
+      repoConn("conn_2", "Acme", "Web"),
+    ]);
+    expect(picked).not.toBeNull();
+  });
+
+  test("two different repos stay ambiguous", () => {
+    expect(
+      pickSoleTaskRepo([
+        repoConn("conn_1", "acme", "web"),
+        repoConn("conn_2", "acme", "api"),
+      ]),
+    ).toBeNull();
+  });
+
+  test("an inactive connection does not count as an imported repo", () => {
+    const picked = pickSoleTaskRepo([
+      repoConn("conn_1", "acme", "web"),
+      { ...repoConn("conn_2", "acme", "api"), status: "inactive" },
+    ]);
+    expect(picked?.owner).toBe("acme");
+    expect(picked?.name).toBe("web");
   });
 });
