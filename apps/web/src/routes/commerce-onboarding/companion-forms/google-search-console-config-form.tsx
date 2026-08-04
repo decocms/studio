@@ -18,12 +18,19 @@ import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 
-const schema = z.object({
-  siteUrl: z.string().min(1, "Selecione um site"),
-});
+const makeSchema = (t: TFunction) =>
+  z.object({
+    siteUrl: z
+      .string()
+      .min(
+        1,
+        t("commerceOnboarding.googleSearchConsoleConfigForm.siteRequired"),
+      ),
+  });
 
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<ReturnType<typeof makeSchema>>;
 
 export function GoogleSearchConsoleConfigForm({
   card,
@@ -35,6 +42,7 @@ export function GoogleSearchConsoleConfigForm({
   onDone,
   onIsPendingChange,
 }: CompanionFormProps) {
+  const t = useT();
   const sitesQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionGscSites(org.id, connectionId),
     queryFn: async () => {
@@ -50,7 +58,7 @@ export function GoogleSearchConsoleConfigForm({
   });
 
   const form = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(t)),
     defaultValues: {
       siteUrl: (card.configurationState?.siteUrl as string) || "",
     },
@@ -104,7 +112,11 @@ export function GoogleSearchConsoleConfigForm({
   if (sitesQuery.isLoading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
-        <LoadingIndicator label="Carregando sites..." />
+        <LoadingIndicator
+          label={t(
+            "commerceOnboarding.googleSearchConsoleConfigForm.loadingSites",
+          )}
+        />
       </div>
     );
   }
@@ -113,7 +125,7 @@ export function GoogleSearchConsoleConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-destructive">
-          Não foi possível carregar os sites do Google Search Console.
+          {t("commerceOnboarding.googleSearchConsoleConfigForm.loadSitesError")}
         </p>
       </div>
     );
@@ -125,8 +137,7 @@ export function GoogleSearchConsoleConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Nenhum site verificado foi encontrado. Verifique um site no Google
-          Search Console.
+          {t("commerceOnboarding.googleSearchConsoleConfigForm.noSitesFound")}
         </p>
       </div>
     );
@@ -149,7 +160,9 @@ export function GoogleSearchConsoleConfigForm({
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
-                  ariaLabel="Site verificado"
+                  ariaLabel={t(
+                    "commerceOnboarding.googleSearchConsoleConfigForm.siteAriaLabel",
+                  )}
                 />
               </FormControl>
               <FormMessage />
@@ -162,7 +175,7 @@ export function GoogleSearchConsoleConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error
             ? error.message
-            : "Não foi possível salvar a configuração"}
+            : t("commerceOnboarding.googleSearchConsoleConfigForm.savingError")}
         </p>
       )}
 
@@ -173,10 +186,12 @@ export function GoogleSearchConsoleConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancelar
+          {t("commerceOnboarding.googleSearchConsoleConfigForm.cancelButton")}
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Salvando..." : "Salvar"}
+          {isPending
+            ? t("commerceOnboarding.googleSearchConsoleConfigForm.savingButton")
+            : t("commerceOnboarding.googleSearchConsoleConfigForm.saveButton")}
         </Button>
       </DialogFooter>
     </form>

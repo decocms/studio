@@ -1,9 +1,23 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 import { describe, expect, it, mock } from "bun:test";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { SelectableList } from "./selectable-list";
+
+// SelectableList resolves its search placeholder/aria-label via useT(), which
+// reads the language preference through TanStack Query — renders need a
+// QueryClientProvider.
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+const render = (ui: Parameters<typeof renderBare>[0]) =>
+  renderBare(ui, { wrapper });
 
 const OPTIONS = [
   { value: "a", label: "Alpha" },
