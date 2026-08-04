@@ -1,6 +1,7 @@
 package decofile
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -28,7 +29,8 @@ const (
 // reference resolves. Mirrors the frontend's documented decoBlockKeyFromFileStem
 // fallback: an invalid-encoding stem keeps its last successfully decoded form.
 // url.PathUnescape (not QueryUnescape) so a literal `+` in a block name is left
-// alone, matching JS decodeURIComponent.
+// alone, matching JS decodeURIComponent. Terminates: PathUnescape only collapses
+// `%XX` triples, so each pass strictly shortens the string until stable or errs.
 func decodeUntilStable(stem string) string {
 	key := stem
 	for {
@@ -40,7 +42,7 @@ func decodeUntilStable(stem string) string {
 	}
 }
 
-// GenerateFromBlocks rebuilds the merged decofile from the sibling
+// generateFromBlocks rebuilds the merged decofile from the sibling
 // `.deco/blocks/*.json` files so the CMS is readable before the dev server is
 // up. Maps each file to `{ [decodeUntilStable(stem)]: <file contents> }`,
 // sorted by filename for a deterministic, byte-for-byte result.
@@ -49,11 +51,13 @@ func decodeUntilStable(stem string) string {
 // unmarshal/marshal round-tripping through Go values — this payload is
 // routinely multi-MB, and a malformed block isn't caught here; the client's
 // parse fails and falls back to "no snapshot", same as the read/write/edit
-// handlers already gate.
+// handlers already gate. The merge is deliberately all-or-nothing: one bad block
+// blanks the whole snapshot rather than silently dropping a block and rendering
+// a partial site.
 //
 // Returns ok=false when there's no blocks dir (nothing to merge) so the caller
 // falls through to its normal "file not found" path.
-func GenerateFromBlocks(blocksDir string) (string, bool) {
+func generateFromBlocks(blocksDir string) (string, bool) {
 	entries, err := os.ReadDir(blocksDir)
 	if err != nil {
 		return "", false
@@ -78,9 +82,10 @@ func GenerateFromBlocks(blocksDir string) (string, bool) {
 		if err != nil {
 			continue
 		}
-		content := strings.TrimSpace(string(raw))
+		// bytes.TrimSpace avoids a full-payload string copy per block.
+		content := bytes.TrimSpace(raw)
 		// Skip empty files — `"key":` with no value would break the merged JSON.
-		if content == "" {
+		if len(content) == 0 {
 			continue
 		}
 		keyJSON, err := json.Marshal(decodeUntilStable(stem))
@@ -93,7 +98,7 @@ func GenerateFromBlocks(blocksDir string) (string, bool) {
 		first = false
 		b.Write(keyJSON)
 		b.WriteByte(':')
-		b.WriteString(content)
+		b.Write(content)
 	}
 	b.WriteByte('}')
 	return b.String(), true
@@ -126,12 +131,16 @@ func GenerateFromBlocksDeduped(blocksDir string) (string, bool) {
 	decofileInFlight[blocksDir] = b
 	decofileBuildMu.Unlock()
 
-	b.text, b.ok = GenerateFromBlocks(blocksDir)
+	// Clear the in-flight entry and wake followers even if the merge panics —
+	// otherwise a single bad build leaves a stale entry and every present and
+	// future waiter on this blocksDir blocks on b.done forever.
+	defer func() {
+		decofileBuildMu.Lock()
+		delete(decofileInFlight, blocksDir)
+		decofileBuildMu.Unlock()
+		close(b.done)
+	}()
 
-	decofileBuildMu.Lock()
-	delete(decofileInFlight, blocksDir)
-	decofileBuildMu.Unlock()
-	close(b.done)
-
+	b.text, b.ok = generateFromBlocks(blocksDir)
 	return b.text, b.ok
 }

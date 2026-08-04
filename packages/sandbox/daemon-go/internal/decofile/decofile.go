@@ -1,7 +1,12 @@
-// Package decofile guards `.deco/blocks/*.json` — machine-managed pure JSON
-// where a single malformed file breaks the entire site render. The byte-level
-// /write and /edit endpoints can produce invalid JSON, and publish would commit
-// those bytes verbatim onto the user's branch.
+// Package decofile owns the `.deco/blocks/*.json` domain on both sides:
+//
+//   - validation: the byte-level /write and /edit endpoints can produce invalid
+//     JSON, and publish would commit those bytes verbatim onto the user's
+//     branch, so a single malformed file — which breaks the entire site render —
+//     must be rejected at write time (IsBlockPath, InvalidBlockJSON).
+//   - generation: merging every block source into the `blocks.gen.json` artifact
+//     the runtime emits (GenerateFromBlocksDeduped), so the CMS is readable
+//     before the dev server has regenerated it.
 package decofile
 
 import (

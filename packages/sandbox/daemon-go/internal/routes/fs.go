@@ -97,7 +97,12 @@ func Read(deps FsDeps) http.HandlerFunc {
 			// CMS is readable before the dev server boots. Returned un-numbered:
 			// the decofile is consumed as one blob and the client's line-number
 			// strip is a no-op on content that lacks the `^\d+\t` prefix.
-			if filepath.Base(filePath) == decofile.GenBasename {
+			//
+			// Only for relative paths: those are SafePath-confined to appRoot by
+			// resolveReadPath, so the sibling `blocks` dir can't escape the
+			// project. An absolute `body.Path` bypasses SafePath, so refuse to
+			// turn it into a directory glob (the CMS only ever sends relative).
+			if !filepath.IsAbs(body.Path) && filepath.Base(filePath) == decofile.GenBasename {
 				blocksDir := filepath.Join(filepath.Dir(filePath), decofile.BlocksDirname)
 				if merged, ok := decofile.GenerateFromBlocksDeduped(blocksDir); ok {
 					httpx.JSON(w, 200, map[string]any{
