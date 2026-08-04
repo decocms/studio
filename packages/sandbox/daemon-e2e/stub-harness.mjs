@@ -11,6 +11,8 @@
  *   noisy   print an unrelated line on stdout before the result
  *   hang    never exit, so the test can cancel the run
  *   frames  print three frames, spaced, then exit
+ *   slow    print four frames 400ms apart, then exit — long enough for the test
+ *           to check that streaming keeps the pod's idle clock reset
  */
 import { readFileSync } from "node:fs";
 
@@ -23,16 +25,18 @@ if (mode === "crash") {
 }
 if (mode === "hang") {
   setInterval(() => {}, 1000);
-} else if (mode === "frames") {
+} else if (mode === "frames" || mode === "slow") {
+  const total = mode === "slow" ? 4 : 3;
+  const every = mode === "slow" ? 400 : 50;
   let n = 0;
   const timer = setInterval(() => {
     console.log(
       JSON.stringify({ chunks: [{ type: "text-delta", id: `${++n}` }] }),
     );
-    if (n === 3) {
+    if (n === total) {
       clearInterval(timer);
     }
-  }, 50);
+  }, every);
 } else {
   if (mode === "noisy") console.log("a runtime warning nobody asked for");
   console.log(

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
-import { buildOptions, promptFromUserMessage } from "./claude-code";
+import {
+  buildOptions,
+  promptForRun,
+  promptFromUserMessage,
+} from "./claude-code";
 
 /** A minimal valid wire input; each test overrides what it cares about. */
 function input(
@@ -58,6 +62,47 @@ describe("promptFromUserMessage", () => {
     expect(promptFromUserMessage("nope")).toBe("");
     expect(promptFromUserMessage({})).toBe("");
     expect(promptFromUserMessage({ parts: [{ type: "file" }] })).toBe("");
+  });
+});
+
+describe("promptForRun", () => {
+  const repoWorkspace = {
+    cwd: "/repo",
+    repo: { owner: "o", name: "n", connectedGithub: true },
+    branch: "thread-42",
+  } as HarnessStreamInputWire["workspace"];
+
+  test("a first attempt gets the turn's message, nothing else", () => {
+    expect(promptForRun(input())).toBe("hi");
+  });
+
+  test("a continuation appends where to look for the interrupted work", () => {
+    const prompt = promptForRun(
+      input({
+        workspace: repoWorkspace,
+        resume: { reason: "the sandbox was replaced" },
+      }),
+    );
+    // The task itself must survive, and the continuation must come after it.
+    expect(prompt.startsWith("hi")).toBe(true);
+    expect(prompt).toContain("CONTINUING this task");
+    expect(prompt).toContain("the sandbox was replaced");
+    // git/gh, on this task's branch: the repo is the only state that outlives
+    // the pod, so the prompt has to point at it.
+    expect(prompt).toContain("git log");
+    expect(prompt).toContain("gh pr list --head thread-42");
+    // The two instructions a resumed autonomous run must not miss.
+    expect(prompt).toContain("do not start the task over");
+    expect(prompt).toContain("never open a second one");
+  });
+
+  test("a continuation with no checkout names no branch", () => {
+    const prompt = promptForRun(
+      input({ resume: { reason: "the studio pod restarted" } }),
+    );
+    expect(prompt).toContain("the studio pod restarted");
+    expect(prompt).toContain("<branch>");
+    expect(prompt).not.toContain("undefined");
   });
 });
 

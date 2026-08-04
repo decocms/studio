@@ -19,6 +19,23 @@ harness runs and stream their output as SSE, proxy preview HTTP/WebSocket traffi
 to the dev server, publish work back to git on shutdown, and report health so
 Studio can tell a live sandbox from a dead one.
 
+### Dispatch is single-writer per run
+
+One run id, one harness. A dispatch for a run that is already in flight is a
+TAKEOVER: the daemon cancels the run it displaces, waits for that process group
+to die, and only then execs the replacement. Studio sends exactly that when the
+pod driving a run was replaced and another picked the work up, and the invariant
+it buys is that two `claude` processes never share one checkout.
+
+Two properties the consumer depends on, both asserted in `daemon-e2e/`:
+
+- **Every run ends with a `done` frame** — clean finish, crash, or cancel. A body
+  that ends without one means the connection died, not the run, and only that
+  case may be continued elsewhere.
+- **A streaming or keepalive-ticking run counts as activity** (`/idle`). Without
+  it a run that has been producing output for an hour reports as untouched since
+  its dispatch request arrived, and the idle reaper deletes the pod mid-turn.
+
 ## Layout
 
 | Path | What it owns |

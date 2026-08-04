@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addUsage,
+  cacheHitRatio,
   calculateUsageStats,
   emptyUsageStats,
   sanitizeProviderMetadata,
@@ -225,5 +226,34 @@ describe("calculateUsageStats — cache fields", () => {
     const result = calculateUsageStats(messages);
     expect(result.cacheReadTokens).toBe(230);
     expect(result.cacheWriteTokens).toBe(10);
+  });
+});
+
+describe("cacheHitRatio", () => {
+  // The observed bug: dividing cache reads by the UNCACHED remainder reported
+  // 5,039,266%. `inputTokens` is the whole prompt, so cache reads are a subset.
+  test("is a share of the whole prompt, never above 100%", () => {
+    expect(
+      cacheHitRatio({
+        ...emptyUsageStats(),
+        inputTokens: 1_728_952,
+        cacheReadTokens: 1_612_565,
+        cacheWriteTokens: 116_355,
+      }),
+    ).toBeCloseTo(0.9327, 4);
+  });
+
+  test("caps a provider that reports cache outside inputTokens", () => {
+    expect(
+      cacheHitRatio({
+        ...emptyUsageStats(),
+        inputTokens: 32,
+        cacheReadTokens: 1_612_565,
+      }),
+    ).toBe(1);
+  });
+
+  test("is zero with no prompt", () => {
+    expect(cacheHitRatio(emptyUsageStats())).toBe(0);
   });
 });

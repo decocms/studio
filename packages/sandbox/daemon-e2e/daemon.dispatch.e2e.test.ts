@@ -26,9 +26,13 @@ const toBody = (obj: unknown) => JSON.stringify(obj);
  * One frame of the dispatch response, inlined: this suite owns its wire
  * contract. The body is newline-delimited frames — blank lines are the daemon's
  * keepalive — and only the last one can carry `error`.
+ *
+ * `done` flags that last frame. The daemon always sends one, so a body that ends
+ * without it tells the consumer the connection died rather than the run.
  */
 interface DispatchFrame {
   chunks: unknown[];
+  done?: boolean;
   error?: { code: string; message: string } | null;
 }
 
@@ -160,6 +164,7 @@ describe("daemon e2e: dispatch", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({
       chunks: [],
+      done: true,
       error: { code: "unknown_harness", message: expect.any(String) },
     });
   });
@@ -231,6 +236,7 @@ describe("daemon e2e: dispatch runs a harness", () => {
   ): Promise<{
     chunks: unknown[];
     error: DispatchFrame["error"];
+    done: boolean;
     at: number[];
   }> {
     const res = await dispatch(mode, runId);
@@ -239,12 +245,16 @@ describe("daemon e2e: dispatch runs a harness", () => {
     const chunks: unknown[] = [];
     const at: number[] = [];
     let error: DispatchFrame["error"] = null;
+    let done = false;
     for await (const { frame, at: arrivedAt } of readFrames(res)) {
       chunks.push(...frame.chunks);
       at.push(arrivedAt);
-      error = frame.error ?? null;
+      // First reason wins: the harness's own error frame precedes the daemon's
+      // terminal, and the terminal carries none of its own on that path.
+      error ??= frame.error ?? null;
+      if (frame.done) done = true;
     }
-    return { chunks, error, at };
+    return { chunks, error, done, at };
   }
 
   it(
@@ -252,6 +262,9 @@ describe("daemon e2e: dispatch runs a harness", () => {
     async () => {
       const body = await result("ok", "run-ok");
       expect(body.error).toBeNull();
+      // A finished run always says so — that is what stops a consumer from
+      // continuing a turn that already ended.
+      expect(body.done).toBe(true);
       expect(body.chunks).toHaveLength(1);
       const echoed = JSON.parse(
         (body.chunks[0] as { delta: string }).delta,
@@ -273,6 +286,9 @@ describe("daemon e2e: dispatch runs a harness", () => {
       const body = await result("crash", "run-crash");
       expect(body.chunks).toEqual([]);
       expect(body.error?.code).toBe("harness_crashed");
+      // Terminal, and flagged as such: a crash is the run ending, not the
+      // connection dropping, so the consumer must report it rather than retry.
+      expect(body.done).toBe(true);
     },
     HOOK_TIMEOUT_MS,
   );
@@ -295,6 +311,82 @@ describe("daemon e2e: dispatch runs a harness", () => {
       expect(body.chunks).toHaveLength(3);
       // Spaced by the stub, so arriving together means the daemon buffered.
       expect(body.at.at(-1)! - body.at[0]!).toBeGreaterThan(20);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "streaming keeps the pod's idle clock reset, so a long run isn't reaped",
+    async () => {
+      // `activity.Bump()` fires on the dispatch REQUEST too, so the run has to
+      // outlast the window we then assert on — hence the spaced-out stub. Without
+      // a per-frame bump the daemon reports a run that has been streaming for
+      // seconds as untouched since its request arrived, and the operator's idle
+      // reaper deletes the pod mid-turn.
+      const startedAt = Date.now();
+      const body = await result("slow", "run-slow");
+      expect(body.done).toBe(true);
+      expect(body.chunks).toHaveLength(4);
+      const ran = Date.now() - startedAt;
+      expect(ran).toBeGreaterThan(1_200);
+
+      const idle = (await (await fetch(url(d, "/_sandbox/idle"))).json()) as {
+        idleMs: number;
+      };
+      // Idle since the LAST frame, not since the dispatch began.
+      expect(idle.idleMs).toBeLessThan(ran);
+      expect(idle.idleMs).toBeLessThan(800);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "a re-dispatch of a live run takes it over instead of running a second harness",
+    async () => {
+      // This is what Studio sends when the pod driving a run died and another
+      // picked the work up: same runId, a fresh request. Two `claude` processes
+      // in one checkout is the failure being prevented — the displaced run must
+      // be gone before the replacement's harness starts.
+      const runId = "run-takeover";
+      const first = dispatch("hang", runId);
+      const firstRes = await first;
+      expect(firstRes.status).toBe(200);
+
+      // Read the displaced run's body in the background so we learn exactly when
+      // the daemon ended it, and with what.
+      const displaced = (async () => {
+        const frames: DispatchFrame[] = [];
+        let endedAt = 0;
+        for await (const { frame } of readFrames(firstRes)) frames.push(frame);
+        endedAt = Date.now();
+        return { frames, endedAt };
+      })();
+
+      // Let the daemon exec the hanging harness before displacing it.
+      await new Promise((r) => setTimeout(r, 500));
+
+      const secondRes = await dispatch("frames", runId);
+      expect(secondRes.status).toBe(200);
+      let secondFirstFrameAt = 0;
+      const secondChunks: unknown[] = [];
+      let secondDone = false;
+      for await (const { frame, at } of readFrames(secondRes)) {
+        secondFirstFrameAt ||= at;
+        secondChunks.push(...frame.chunks);
+        if (frame.done) secondDone = true;
+      }
+
+      const { frames, endedAt } = await displaced;
+      // The displaced run ended, and said why — it did not outlive the takeover.
+      const terminal = frames.at(-1);
+      expect(terminal?.done).toBe(true);
+      expect(terminal?.error?.code).toBe("cancelled");
+      // And it ended BEFORE the replacement produced anything: the daemon waits
+      // for the old process group to die before exec'ing the new harness.
+      expect(secondFirstFrameAt).toBeGreaterThanOrEqual(endedAt);
+      // The replacement ran to completion on its own.
+      expect(secondChunks).toHaveLength(3);
+      expect(secondDone).toBe(true);
     },
     HOOK_TIMEOUT_MS,
   );

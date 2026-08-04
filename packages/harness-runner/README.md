@@ -14,6 +14,8 @@ Runs coding-agent harnesses inside a sandbox pod, one process per run.
 The Go daemon execs this process for each dispatched run, writes a
 `{harnessId, input}` envelope to stdin, and reads NDJSON frames
 (`{chunks, error}`) off stdout as they are produced. stderr is the pod's log.
+The daemon adds the run's terminal `done` frame itself — this process only emits
+what the harness produced.
 
 The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
 is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
@@ -27,6 +29,12 @@ harness is implemented today, `claude-code`, driven by the Claude Agent SDK.
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
+- Continue an interrupted turn rather than redoing it. `input.resume` means a
+  previous attempt was cut short by infrastructure and its conversation is gone;
+  the work itself is in the checkout and in git (a replaced pod clones the branch
+  the dying daemon pushed on SIGTERM), so the prompt sends the model to
+  `git status` / `git log` / `gh pr list` first and forbids opening a second pull
+  request.
 
 ## Usage
 

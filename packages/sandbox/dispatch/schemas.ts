@@ -39,9 +39,20 @@ export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
  * `error` appears only on the last frame, and ALONGSIDE `chunks` rather than
  * instead of them: a crash mid-turn still has to surface the work it did, and
  * the consumer's error path is what records the run as failed.
+ *
+ * `done` marks the run's LAST frame, and the daemon always sends one — clean
+ * finish, crash or cancel. A body that ends without it means the connection
+ * broke, not the run: the pod is gone mid-turn and the turn has to be continued
+ * elsewhere. Without this flag those two are indistinguishable, and continuing a
+ * run that actually finished duplicates its work (a second pull request, for
+ * one).
  */
 export const harnessRunResultSchema = z.object({
   chunks: z.array(z.unknown()),
+  done: z
+    .boolean()
+    .nullish()
+    .transform((d) => d ?? false),
   error: z
     .object({ code: z.string(), message: z.string() })
     .nullish()
@@ -137,6 +148,24 @@ export const harnessStreamInputSchema = z
      * prepareRun (Phase B), absent on ws-path runs.
      */
     runFenceToken: z.string().optional(),
+    /**
+     * Set when this dispatch CONTINUES a turn a previous attempt started and
+     * infrastructure cut short — the Studio pod driving it died, or the sandbox
+     * did. Absent on a first attempt.
+     *
+     * The work already done is not in the harness's context (a new pod has no
+     * SDK transcript), it is on disk and in git: the same checkout when the pod
+     * survived, otherwise a fresh clone of the branch the dying daemon pushed on
+     * SIGTERM. So the harness's job here is to READ that state and carry on —
+     * never to start the task over.
+     */
+    resume: z
+      .object({
+        /** Why the previous attempt stopped, for the prompt and the log. */
+        reason: z.string(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

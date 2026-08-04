@@ -194,23 +194,28 @@ describe("turn framing", () => {
   });
 
   test("usage and cost ride on the finish chunk", () => {
-    const [, finish] = turnFinishChunks({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      total_cost_usd: 0.42,
-      usage: {
-        input_tokens: 10,
-        output_tokens: 5,
-        cache_read_input_tokens: 100,
-        cache_creation_input_tokens: 20,
+    const [, finish] = turnFinishChunks(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        total_cost_usd: 0.42,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 100,
+          cache_creation_input_tokens: 20,
+        },
       },
-    });
+      130,
+    );
     expect((finish as { messageMetadata: unknown }).messageMetadata).toEqual({
       usage: {
-        inputTokens: 10,
+        // The whole prompt, cache included — `input_tokens` alone is only the
+        // uncached remainder, and consumers divide by this field.
+        inputTokens: 130,
         outputTokens: 5,
-        totalTokens: 15,
+        totalTokens: 135,
         contextTokens: 130,
         cachedInputTokens: 100,
         inputTokenDetails: {
@@ -221,6 +226,41 @@ describe("turn framing", () => {
         providerMetadata: { openrouter: { usage: { cost: 0.42 } } },
       },
     });
+  });
+
+  // `result.usage` sums EVERY API call of the session, so deriving the context
+  // size from it grew past the model's context window on a long turn
+  // (1.7M/1M observed). Only the last call's prompt measures context fill.
+  test("context size comes from the last request, not the session total", () => {
+    const translator = new UiChunkTranslator();
+    for (const cacheRead of [800_000, 812_565]) {
+      translator.translate({
+        type: "assistant",
+        uuid: `u-${cacheRead}`,
+        message: {
+          content: [],
+          usage: { input_tokens: 32, cache_read_input_tokens: cacheRead },
+        },
+      });
+    }
+    const [, finish] = turnFinishChunks(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        usage: {
+          input_tokens: 32,
+          output_tokens: 6703,
+          cache_read_input_tokens: 1_612_565,
+          cache_creation_input_tokens: 116_355,
+        },
+      },
+      translator.contextTokens,
+    );
+    const { usage } = (
+      finish as { messageMetadata: { usage: { contextTokens: number } } }
+    ).messageMetadata;
+    expect(usage.contextTokens).toBe(812_597);
   });
 
   test("failed result emits error before finish", () => {

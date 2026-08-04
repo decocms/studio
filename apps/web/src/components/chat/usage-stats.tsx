@@ -5,7 +5,10 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { Activity } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { UsageStats as UsageStatsType } from "@/lib/usage-utils.ts";
+import {
+  cacheHitRatio,
+  type UsageStats as UsageStatsType,
+} from "@/lib/usage-utils.ts";
 import { formatDuration } from "@/lib/format-time.ts";
 
 const RING_SIZE = 16;
@@ -47,9 +50,7 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
             <>
               <span className="text-muted">cache hit</span>
               <span className="text-right tabular-nums">
-                {inputTokens > 0
-                  ? `${((usage.cacheReadTokens / inputTokens) * 100).toFixed(0)}%`
-                  : "0%"}
+                {`${(cacheHitRatio(usage) * 100).toFixed(0)}%`}
               </span>
             </>
           )}
@@ -141,9 +142,7 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
                 <>
                   <span className="opacity-60">cache hit</span>
                   <span className="text-right tabular-nums">
-                    {(usage?.inputTokens ?? 0) > 0
-                      ? `${(((usage?.cacheReadTokens ?? 0) / usage!.inputTokens) * 100).toFixed(0)}%`
-                      : "0%"}
+                    {`${(cacheHitRatio(usage!) * 100).toFixed(0)}%`}
                   </span>
                 </>
               )}
@@ -248,9 +247,7 @@ export function SessionStats({
             <>
               <span className="text-muted">cache hit</span>
               <span className="text-right tabular-nums">
-                {inputTokens > 0
-                  ? `${(((usage?.cacheReadTokens ?? 0) / inputTokens) * 100).toFixed(0)}%`
-                  : "0%"}
+                {`${(cacheHitRatio(usage!) * 100).toFixed(0)}%`}
               </span>
             </>
           )}

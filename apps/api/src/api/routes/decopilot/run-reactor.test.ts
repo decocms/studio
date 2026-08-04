@@ -92,7 +92,10 @@ describe("run reactor", () => {
     );
 
     expect(updates).toHaveLength(1);
-    expect(updates[0]!.status).toBe("failed");
+    // The `failed` status itself comes from the `in_progress`-guarded
+    // `forceFailIfInProgress`, NOT from this update — an unguarded status write
+    // here stamped `failed` over runs the projector had already completed.
+    expect(updates[0]!.status).toBeUndefined();
     expect(updates[0]!.failure_reason).toBe(
       "Run stalled — no progress within the idle timeout window",
     );
@@ -138,6 +141,56 @@ describe("run reactor", () => {
 
     expect(updates[0]!.failure_reason).toBeUndefined();
     expect(updates[0]!.failure_kind).toBeUndefined();
+  });
+
+  // A late `RUN_FAILED` for a run the projector already settled must be a
+  // no-op. Before the guard, this write had no `status` predicate and stamped
+  // `failed` over a `completed` thread — and permanently, because every
+  // projector transition is itself guarded on `in_progress`.
+  test("RUN_FAILED does not overwrite an already-settled thread", async () => {
+    const updates: Record<string, unknown>[] = [];
+    let guardCalls = 0;
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          status: "completed",
+        }),
+        // What Postgres answers for a row that is no longer `in_progress`.
+        forceFailIfInProgress: async () => {
+          guardCalls++;
+          return false;
+        },
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_FAILED",
+            taskId: "run_1",
+            orgId: "org_1",
+            reason: "error",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(guardCalls).toBe(1);
+    expect(updates).toEqual([]);
   });
 
   test("RUN_STARTED clears any stale failure_reason/failure_kind from a prior run", async () => {

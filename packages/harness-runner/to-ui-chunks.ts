@@ -34,7 +34,21 @@ export interface SdkAssistantMessage {
   /** Content blocks are `unknown`: every field read below is guarded, so an
    *  SDK block shape this translator has not met yet is skipped, not crashed
    *  on. */
-  message: { id?: string; content: unknown[] };
+  message: {
+    id?: string;
+    content: unknown[];
+    /** Per-API-call token counts. Unlike `result.usage` (cumulative over the
+     *  whole session) this is the one request the model just served, which is
+     *  the only thing that measures context fill. */
+    usage?: SdkUsage;
+  };
+}
+
+interface SdkUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 export interface SdkUserMessage {
@@ -48,13 +62,9 @@ export interface SdkResultMessage {
   subtype: string;
   is_error: boolean;
   result?: string;
-  /** Anthropic-shaped token counts for the whole turn. */
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    cache_read_input_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+  /** Anthropic-shaped token counts, summed over every API call of the session
+   *  — NOT one request. Fine for cost/in/out; useless as a context size. */
+  usage?: SdkUsage;
   /** The CLI's own cost estimate for the turn, in USD. */
   total_cost_usd?: number;
 }
@@ -98,6 +108,13 @@ export class UiChunkTranslator {
   /** tool_use ids seen this turn — guards the ordering contract above. */
   private readonly announcedToolCalls = new Set<string>();
   private blockSeq = 0;
+  /**
+   * Prompt tokens of the most recent API call — how full the model's context
+   * actually was. Read by `turnFinishChunks`; `result.usage` cannot supply it
+   * because it sums every call of the session (a long turn's cached prompts
+   * stack up past the context window).
+   */
+  contextTokens = 0;
 
   /**
    * Chunks for one SDK message, in emission order. Unknown message types and
@@ -120,6 +137,13 @@ export class UiChunkTranslator {
   }
 
   private translateAssistant(message: SdkAssistantMessage): UIMessageChunk[] {
+    const usage = message.message.usage;
+    if (usage) {
+      this.contextTokens =
+        (usage.input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0);
+    }
     const chunks: UIMessageChunk[] = [];
     for (const block of message.message.content) {
       if (!isRecord(block)) continue;
@@ -210,7 +234,10 @@ export function turnStartChunks(messageId: string): UIMessageChunk[] {
  * turn that opened its PR and then reported `failed` is exactly what omitting it
  * produced.
  */
-export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
+export function turnFinishChunks(
+  result: SdkResultMessage,
+  contextTokens = 0,
+): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = [];
   if (result.is_error) {
     chunks.push({
@@ -219,7 +246,7 @@ export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
     });
   }
   chunks.push({ type: "finish-step" });
-  const usage = turnUsage(result);
+  const usage = turnUsage(result, contextTokens);
   chunks.push({
     type: "finish",
     finishReason: result.is_error ? ("error" as const) : ("stop" as const),
@@ -232,29 +259,42 @@ export function turnFinishChunks(result: SdkResultMessage): UIMessageChunk[] {
  * The turn's usage in the `messageMetadata.usage` shape Studio stores and the
  * chat UI reads (`apps/api/src/harnesses/lib/usage-accumulator.ts`).
  *
- * One turn is one step here, so cumulative and per-step totals coincide. The
- * cost is the CLI's own estimate — it is reported under `openrouter` because
- * that is the only slot the UI reads a dollar figure from, and this harness
- * bills through OpenRouter; it is not OpenRouter's own accounting.
+ * `result.usage` is cumulative over the turn's API calls, which is what the
+ * in/out/cache totals want. `contextTokens` is the exception — it must be the
+ * LAST call's prompt size (the UI divides it by the context window), so it
+ * comes from the translator, not from here.
+ *
+ * The cost is the CLI's own estimate — it is reported under `openrouter`
+ * because that is the only slot the UI reads a dollar figure from, and this
+ * harness bills through OpenRouter; it is not OpenRouter's own accounting.
  */
-function turnUsage(result: SdkResultMessage): Record<string, unknown> | null {
+function turnUsage(
+  result: SdkResultMessage,
+  contextTokens: number,
+): Record<string, unknown> | null {
   const usage = result.usage;
   if (!usage) return null;
-  const inputTokens = usage.input_tokens ?? 0;
+  const noCacheTokens = usage.input_tokens ?? 0;
   const outputTokens = usage.output_tokens ?? 0;
   const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
   const cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
+  // Anthropic bills the cached portions as their own counters, so
+  // `input_tokens` is only the uncached remainder. `inputTokens` in Studio's
+  // shape is the WHOLE prompt (`usage-accumulator` derives `noCacheTokens` by
+  // subtracting cache from it) — report it that way or every consumer that
+  // divides by it is off by the cache.
+  const inputTokens = noCacheTokens + cacheReadTokens + cacheWriteTokens;
   const cost = result.total_cost_usd ?? 0;
   return {
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
-    contextTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+    contextTokens,
     cachedInputTokens: cacheReadTokens,
     inputTokenDetails: {
       cacheReadTokens,
       cacheWriteTokens,
-      noCacheTokens: inputTokens,
+      noCacheTokens,
     },
     ...(cost > 0
       ? { providerMetadata: { openrouter: { usage: { cost } } } }

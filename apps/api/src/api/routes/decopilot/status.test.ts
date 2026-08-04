@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveThreadStatus } from "./status";
+import { resolveCleanRunStatus, resolveThreadStatus } from "./status";
 
 describe("resolveThreadStatus", () => {
   test("stop with no text -> completed", () => {
@@ -125,5 +125,28 @@ describe("resolveThreadStatus", () => {
 
   test("undefined -> failed", () => {
     expect(resolveThreadStatus(undefined, [])).toBe("failed");
+  });
+});
+
+describe("resolveCleanRunStatus", () => {
+  // The bug this exists to prevent: the sandbox `claude-code` harness ended a
+  // turn without an AI-SDK finish chunk, the live reactor read that absence as a
+  // failure and wrote `failed`, and the projector's `in_progress`-guarded
+  // completion could no longer correct it. Every successful run in the org —
+  // reply, comment, PR and all — was stored as failed with no reason.
+  test("absent finishReason -> completed, not failed", () => {
+    expect(resolveCleanRunStatus(undefined, [])).toBe("completed");
+    expect(resolveThreadStatus(undefined, [])).toBe("failed");
+  });
+
+  test("a present finishReason is classified exactly as before", () => {
+    expect(resolveCleanRunStatus("stop", [])).toBe("completed");
+    expect(resolveCleanRunStatus("length", [])).toBe("failed");
+    expect(resolveCleanRunStatus("error", [])).toBe("failed");
+  });
+
+  test("a tool-approval pause still pauses", () => {
+    const parts = [{ type: "tool-user_ask", state: "input-available" }];
+    expect(resolveCleanRunStatus("tool-calls", parts)).toBe("requires_action");
   });
 });

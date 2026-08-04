@@ -39,9 +39,15 @@ export interface IngestRunInput {
   /** Re-checked per chunk; when it returns false the chunk is dropped (no
    *  publish, no hook). Defaults to always-true. */
   fenceOk?: () => boolean | Promise<boolean>;
-  /** Fired after a NEW (deduped) chunk's publish is confirmed and the
-   *  contiguous `ackSeq` floor has advanced. */
-  onPublished?: (seq: number) => void;
+  /**
+   * Fired after a NEW (deduped) chunk's publish is confirmed and the contiguous
+   * `ackSeq` floor has advanced. AWAITED: a caller that persists the floor as a
+   * durable resume point (see `initialAckSeq`) needs the write to land before
+   * the next chunk publishes — a floor that lags the stream by even one chunk
+   * makes the next attempt start below what this one already published, and
+   * those seqs are then dropped as duplicates.
+   */
+  onPublished?: (seq: number) => void | Promise<void>;
   /**
    * Durable resume floor: the contiguous acked seq already in JetStream from a
    * prior session (read from `getAckedSeq` at session-open time). Chunks with
@@ -175,7 +181,7 @@ export async function ingestRun(
         // ackSeq == seq every time; on out-of-order delivery ackSeq advances to
         // the filled contiguous boundary when the gap is closed.
         if (ackSeq > prevAckSeq) {
-          input.onPublished?.(ackSeq);
+          await input.onPublished?.(ackSeq);
         }
         yield chunk;
       }

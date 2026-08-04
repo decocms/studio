@@ -92,7 +92,7 @@ import {
 } from "./model-permissions";
 import { normalizeClientModels } from "./normalize-client-models";
 import type { RunRegistry } from "./run-registry";
-import { resolveThreadStatus } from "./status";
+import { resolveCleanRunStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
@@ -180,6 +180,26 @@ export interface AgentSandboxUiStreamInput {
    * does not pay the DB read.
    */
   loadOriginalMessages?: () => Promise<UIMessage[] | undefined>;
+  /**
+   * Seq this run's chunks continue from — the highest seq a PREVIOUS attempt of
+   * this same (runId, fenceToken) already published, 0 for a fresh run.
+   *
+   * Only a sandbox-hosted harness can have a previous attempt: its agent loop
+   * runs in a pod that outlives the Studio process, so when this pod dies mid-run
+   * another one resumes the same fence. Its chunks must EXTEND that log, never
+   * restart it: the projector requires a strictly contiguous seq sequence and
+   * drops anything at or below what it has folded
+   * (`assertContiguousAndDedup`), so a restarted counter republishes seqs the
+   * dead attempt owns — every one of them dropped, including the `{done}` that
+   * terminates the run.
+   */
+  startSeq?: number;
+  /** Mirrors `startSeq` into `ingestRun`'s contiguous-floor bookkeeping so the
+   *  first chunk after a resume is treated as contiguous rather than a hole. */
+  initialAckSeq?: number;
+  /** Persist the contiguous floor as it advances; awaited per chunk. This is
+   *  what makes `startSeq` available to the next attempt. */
+  onPublished?: (seq: number) => void | Promise<void>;
 }
 
 /**
@@ -203,7 +223,7 @@ export function buildAgentSandboxUiStream(
 ): ReadableStream {
   // Route through the shared ingestRun unit. Raw chunks → JetStream (seq-keyed
   // dedup); hooks + title injection fire once; ZERO DB writes here.
-  let seq = 0;
+  let seq = input.startSeq ?? 0;
   async function* seqChunks(): AsyncGenerator<{
     seq: number;
     chunk: UIMessageChunk;
@@ -223,6 +243,10 @@ export function buildAgentSandboxUiStream(
             chunks: seqChunks(),
             errorMessageId: input.errorMessageId,
             originalMessages,
+            ...(input.initialAckSeq !== undefined
+              ? { initialAckSeq: input.initialAckSeq }
+              : {}),
+            ...(input.onPublished ? { onPublished: input.onPublished } : {}),
           },
           {
             streamBuffer: input.streamBuffer,
@@ -1295,6 +1319,31 @@ async function prepareRun(
         PREPARE_RUN_STATUS_STAGES[2],
       );
     }
+    // Where this dispatch's chunks continue from, and whether it is continuing
+    // anything at all.
+    //
+    // `run_acked_seq` is the highest contiguous seq published for the CURRENT
+    // attempt's fence — durable, and cleared when the fence is minted
+    // (`setRunFence`), so it is per-attempt by construction. A non-zero value
+    // therefore means one thing: a previous Studio process published this run's
+    // first N chunks and then died before finishing the turn. This dispatch is
+    // that turn's continuation.
+    //
+    // Only a sandbox-hosted harness can be in that position. Decopilot's agent
+    // loop lives in this process and dies with it, so a recovered run has nothing
+    // still executing anywhere and starts over from seq 0 — its floor is never
+    // read and never written.
+    const sandboxHosted = harnessRunsInSandbox(harnessId);
+    const resumeFromSeq = sandboxHosted
+      ? await ctx.storage.threads.getAckedSeq(mem.thread.id)
+      : 0;
+    if (resumeFromSeq > 0) {
+      console.log("[dispatch] resuming a sandbox-hosted turn", {
+        runId: mem.thread.id,
+        fromSeq: resumeFromSeq,
+      });
+    }
+
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
@@ -1315,11 +1364,21 @@ async function prepareRun(
             PREPARE_RUN_STATUS_STAGES[3],
           );
         }
-        const sandboxClient = harnessRunsInSandbox(harnessId)
+        const sandboxClient = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
               harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
+              // Tell the harness it is picking up an interrupted turn: its own
+              // context is gone, but the work is in the checkout and in git.
+              ...(resumeFromSeq > 0
+                ? {
+                    resume: {
+                      reason:
+                        "the Studio process driving the previous attempt stopped",
+                    },
+                  }
+                : {}),
               // The one branch derivation every sandbox consumer shares. The
               // sandbox proxy derives the claim handle from it too, so a
               // divergence here provisions a second pod (or 404s the proxy).
@@ -1385,6 +1444,29 @@ async function prepareRun(
         // through the exact same publish path as every other chunk (see
         // with-liveness-heartbeat.ts's module doc for the full contract).
         chunks: withLivenessHeartbeat(dispatchHarnessChunks()),
+        // Resume bookkeeping, sandbox-hosted runs only (see `resumeFromSeq`).
+        // `startSeq` makes this attempt EXTEND the dead attempt's log; the
+        // awaited `onPublished` write is what lets the next one do the same.
+        //
+        // Affordable per chunk here, unlike Decopilot's token-level stream: a
+        // sandbox-hosted harness reports whole steps, so a long turn is tens to
+        // hundreds of chunks. The one race left is a pod that dies between a
+        // chunk's publish ack and this write — the next attempt then re-uses that
+        // one seq, and JetStream/the projector keep the first chunk and drop the
+        // second. That chunk is always the continuation's `start`, whose loss
+        // just leaves its parts on the interrupted message. Cheap and benign.
+        ...(sandboxHosted
+          ? {
+              startSeq: resumeFromSeq,
+              initialAckSeq: resumeFromSeq,
+              onPublished: (seq: number) =>
+                ctx.storage.threads.bumpAckedSeq(
+                  mem.thread.id,
+                  runFenceToken,
+                  seq,
+                ),
+            }
+          : {}),
         // Deterministic per turn (runId + fence) so a synthesized error
         // message dedupes across the live write + projector retries while
         // distinct turns of the same thread never collide. See message-ids.ts.
@@ -1452,7 +1534,14 @@ async function prepareRun(
             const heapBefore = FINISH_TRACE ? safeMemoryUsage() : null;
             const saveStart = performance.now();
 
-            const threadStatus = resolveThreadStatus(
+            // `resolveCleanRunStatus`, NOT `resolveThreadStatus`: this hook
+            // only runs on a stream that reached its end without an in-band
+            // error chunk (that path is `hooks.onError`, which fails the run
+            // before this fires). A harness whose turn ends without an AI-SDK
+            // finish chunk therefore must not be failed here — see the
+            // function's doc for why disagreeing with the projector is
+            // unrecoverable.
+            const threadStatus = resolveCleanRunStatus(
               finishReason,
               responseMessage?.parts as {
                 type: string;

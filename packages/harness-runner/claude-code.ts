@@ -46,6 +46,63 @@ export interface HarnessRunResult {
  */
 export type EmitFrame = (frame: HarnessRunResult) => void;
 
+/**
+ * The instruction that turns a restarted turn into a continuation.
+ *
+ * A resumed run has no transcript to inherit — a new pod's SDK session is empty,
+ * and even in the same pod the session is only remembered once a turn COMPLETED
+ * (see `sessionFile`). What it does have is the work itself: the checkout, and on
+ * a replaced pod a clone of the branch the dying daemon pushed on SIGTERM. So
+ * this tells the model where to look rather than what was done — the repo is the
+ * source of truth, and it is the only one that survives the pod.
+ *
+ * The "update, don't open a second one" line is load-bearing: without it a
+ * continuation that finds its own finished work opens a duplicate pull request.
+ */
+function resumeInstruction(
+  resume: { reason: string },
+  branch: string | null,
+): string {
+  const ref = branch ? `\`${branch}\`` : "this task's branch";
+  return [
+    "",
+    "---",
+    "",
+    "IMPORTANT — you are CONTINUING this task, not starting it. A previous " +
+      `attempt was cut short by infrastructure (${resume.reason}), not by you, ` +
+      "and its conversation is gone. Whatever it finished is on disk and in git.",
+    "",
+    "Before anything else, find out where it got to:",
+    "- `git status` and `git diff` — uncommitted work in this checkout",
+    `- \`git log --oneline -20\` — commits on ${ref}, including any the previous`,
+    "  attempt's sandbox pushed as it shut down",
+    `- \`gh pr list --head ${branch ?? "<branch>"}\` — whether a pull request already exists`,
+    "",
+    "Then CONTINUE that work — do not start the task over, and do not redo a " +
+      "step that is already committed. If a pull request already exists for " +
+      "this branch, push to it; never open a second one.",
+  ].join("\n");
+}
+
+/**
+ * The whole prompt for one dispatch: the turn's message, plus the continuation
+ * instruction when this dispatch is picking up an interrupted turn. Pure, so the
+ * unit test owns the wording.
+ */
+export function promptForRun(input: HarnessStreamInputWire): string {
+  const prompt = promptFromUserMessage(input.userMessage);
+  if (!input.resume) return prompt;
+  // Appended, not prepended: it has to be the last thing the model reads, after
+  // the task's own "how to finish" instructions.
+  return (
+    prompt +
+    resumeInstruction(
+      input.resume,
+      input.workspace.cwd === null ? null : input.workspace.branch,
+    )
+  );
+}
+
 /** Extract the prompt text from Studio's opaque `userMessage` wire object. */
 export function promptFromUserMessage(userMessage: unknown): string {
   if (typeof userMessage !== "object" || userMessage === null) return "";
@@ -160,7 +217,7 @@ export async function runClaudeCode(
 
   try {
     const stream = query({
-      prompt: promptFromUserMessage(input.userMessage),
+      prompt: promptForRun(input),
       options: buildOptions({ input, sessionId, resume: stored.length > 0 }),
     });
 
@@ -229,7 +286,14 @@ export async function runClaudeCode(
       // which fails the whole run instead of just forgetting.
       await Bun.write(file, sessionId);
       startTurn(messageId ?? `msg_${message.uuid}`);
-      emit({ chunks: [...turnFinishChunks(message as SdkResultMessage)] });
+      emit({
+        chunks: [
+          ...turnFinishChunks(
+            message as SdkResultMessage,
+            translator.contextTokens,
+          ),
+        ],
+      });
       return;
     }
     fail("claude-code ended without a result");

@@ -54,10 +54,12 @@ async function handleTerminalStatus(
   // SSE for instant UX — the durable projector workflow owns the terminal DB transition.
   // (RUN_FAILED below still writes directly, but the projector path now runs
   // unconditionally for both topologies too — so for stream-driven failures that write
-  // RACES the projector's `markRunFailed` on the same terminal state. The write here
-  // remains the sole DB terminal only for desktop pre-publish setup failures
+  // RACES the projector's `markRunFailed` on the same terminal state. Both sides of
+  // that race are now guarded on `in_progress`, so whichever lands first wins and the
+  // loser is a no-op; neither can stamp a terminal over an already-settled one. The
+  // write here remains the sole DB terminal for desktop pre-publish setup failures
   // (`failPreparedRun`) and for reaped/cancelled/ghost force-fails, which never reach
-  // the projector. See the T3 report's follow-up for the race.)
+  // the projector.)
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {
@@ -178,8 +180,18 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           run_started_at: null,
         });
       } else {
+        // Guarded on `in_progress`, exactly like every other terminal writer
+        // (`markRunFailed`, `completeRunIfNotCompleted`,
+        // `requiresActionIfInProgress`). An unguarded write here could stamp
+        // `failed` over a run the projector had already settled as
+        // `completed` — and it won that race permanently, because the
+        // projector's own transitions refuse to overwrite a terminal row.
+        const transitioned = await storage.forceFailIfInProgress(
+          event.taskId,
+          event.orgId,
+        );
+        if (!transitioned) return;
         await storage.update(event.taskId, event.orgId, {
-          status: "failed",
           run_config: null,
           run_started_at: null,
           // A reaped run stalled (no progress within the idle window); record a

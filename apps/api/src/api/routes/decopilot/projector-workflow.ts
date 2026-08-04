@@ -7,7 +7,7 @@ import { StreamGapError, StreamIdleTimeoutError } from "./nats-chunk-source";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
 import { ProgressBumpThrottle, tapProgressStream } from "./progress-bump";
-import { resolveThreadStatus } from "./status";
+import { resolveCleanRunStatus } from "./status";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { foldedToUIMessage } from "./projector-seed";
 
@@ -257,22 +257,13 @@ export async function runProjectorWorkflowBody(
   try {
     const { outcome } = await projectFn(input, orgId, currentThreadTitle);
     // Map the harness finish-reason → terminal status. `failed` = in-band
-    // harness error chunk; otherwise resolveThreadStatus inspects the
-    // finish-reason + final parts (requires_action = tool-approval pause).
-    //
-    // ABSENT finish-reason ⇒ completed. The desktop/relay path (and any stream
-    // that ends on a `{done}` marker without an AI-SDK `finish` chunk) carries
-    // NO finishReason; `resolveThreadStatus(undefined, …)` returns "failed",
-    // which would wrongly fail every clean relay run. The pre-unification
-    // projector mapped any non-errored run to `completed` regardless of
-    // finishReason, so we preserve that here and only consult resolveThreadStatus
-    // when a finishReason is actually present (hosted streams: stop / tool-calls /
-    // length / error are all classified by it, including legitimate failures).
+    // harness error chunk; otherwise `resolveCleanRunStatus` inspects the
+    // finish-reason + final parts (requires_action = tool-approval pause,
+    // absent finish-reason = completed). Shared with the live reactor's finish
+    // hook on purpose — see its doc.
     const mapped = outcome?.failed
       ? "failed"
-      : outcome?.finishReason == null
-        ? "completed"
-        : resolveThreadStatus(outcome.finishReason, outcome.finalParts);
+      : resolveCleanRunStatus(outcome?.finishReason, outcome?.finalParts);
     if (mapped === "failed") {
       // The run ended with an in-band harness error chunk: mark it failed
       // (not completed). This is a SUCCESSFUL projection of a FAILED run —
