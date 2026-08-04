@@ -90,4 +90,31 @@ describe("TaskBoardStorage comments", () => {
     );
     expect(ownDelete).toBe(true);
   });
+
+  it("rejects resolving a reply — resolved is a thread-root-only property", async () => {
+    const root = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "root",
+    });
+    const reply = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      parentId: root!.id,
+      body: "reply",
+    });
+    expect(reply).not.toBeNull();
+
+    // Before fix: any reply could be marked resolved, a no-op the UI can't
+    // reflect since resolved only renders on the root.
+    const result = await storage.updateComment({
+      id: reply!.id,
+      organizationId: "org_test",
+      callerId: "user_123",
+      resolved: true,
+    });
+    expect(result).toBeNull();
+  });
 });
