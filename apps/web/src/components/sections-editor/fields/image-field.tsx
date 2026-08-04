@@ -18,6 +18,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
+import { resolveTargetConfigId } from "./resolve-target-config-id";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -66,25 +67,6 @@ export function ImageField({
     onChange(next);
   }
 
-  /**
-   * Pick which bucket a drop-on-field upload should target.
-   *   - 1 config: that one
-   *   - 2+ configs: the last-used (from localStorage), if it's still present
-   *   - 0 configs, or 2+ without a prior selection: null → open the dialog
-   *     so the user can configure / pick a bucket explicitly
-   */
-  function resolveTargetConfigId(): string | null {
-    if (lockedConfig) return lockedConfig.id;
-    const configs = configsQuery.data?.configs ?? [];
-    if (configs.length === 1) return configs[0]!.id;
-    if (configs.length === 0) return null;
-    const lastSelected =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(LAST_CONFIG_KEY)
-        : null;
-    return configs.some((c) => c.id === lastSelected) ? lastSelected : null;
-  }
-
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
     const list = Array.from(files).filter((f) =>
@@ -95,7 +77,13 @@ export function ImageField({
       return;
     }
 
-    const targetConfigId = resolveTargetConfigId();
+    const targetConfigId = resolveTargetConfigId(
+      configsQuery.data?.configs ?? [],
+      lockedConfig?.id,
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LAST_CONFIG_KEY)
+        : null,
+    );
     if (!targetConfigId) {
       // No deterministic target — defer to the dialog so the user can
       // pick a bucket (or be guided to configure one). The dialog won't

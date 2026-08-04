@@ -18,6 +18,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
+import { resolveTargetConfigId } from "./resolve-target-config-id";
 
 function ExtBadge({ ext }: { ext: string }) {
   if (!ext) return null;
@@ -51,18 +52,6 @@ export function FileField({
     sandbox?.siteSlug,
   );
 
-  function resolveTargetConfigId(): string | null {
-    if (lockedConfig) return lockedConfig.id;
-    const configs = configsQuery.data?.configs ?? [];
-    if (configs.length === 1) return configs[0]!.id;
-    if (configs.length === 0) return null;
-    const lastSelected =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(LAST_CONFIG_KEY)
-        : null;
-    return configs.some((c) => c.id === lastSelected) ? lastSelected : null;
-  }
-
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
     let list = Array.from(files);
@@ -75,7 +64,13 @@ export function FileField({
       }
     }
 
-    const targetConfigId = resolveTargetConfigId();
+    const targetConfigId = resolveTargetConfigId(
+      configsQuery.data?.configs ?? [],
+      lockedConfig?.id,
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LAST_CONFIG_KEY)
+        : null,
+    );
     if (!targetConfigId) {
       setPickerOpen(true);
       return;
