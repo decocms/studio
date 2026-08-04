@@ -1274,7 +1274,7 @@ function ActivitySection({
   const me: CommentAuthor = {
     id: session?.user?.id ?? "me",
     name: session?.user?.name ?? t("taskBoard.taskDialog.commentYouLabel"),
-    image: (session?.user as { image?: string | null } | undefined)?.image,
+    image: session?.user?.image,
   };
   const comments = useTaskBoardComments(item.id);
 
