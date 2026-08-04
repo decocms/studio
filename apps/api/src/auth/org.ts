@@ -9,11 +9,6 @@ import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
-import { OrganizationBillingStorage } from "@/storage/organization-billing";
-import {
-  anyBenefitDeliverable,
-  enqueueBenefitsSync,
-} from "@/billing/sync-org-benefits";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -88,36 +83,6 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
 }
 
 /**
- * Drop a user's paid seat (if any) + log the transition. Called from the
- * afterAddMember / afterRemoveMember organization hooks — see
- * OrganizationBillingStorage.releaseSeat for the invariant this maintains.
- */
-export async function releaseSeat(
-  organizationId: string,
-  userId: string,
-  changedBy: string,
-): Promise<void> {
-  const database = getDb();
-  const storage = new OrganizationBillingStorage(database.db);
-  // The paid-seat count changed, so the benefits it buys change too. The
-  // pending marker commits with the release; the DBOS workflow + scheduled
-  // sweep deliver the gateway grant durably. Enqueue is fail-soft — a failed
-  // enqueue is exactly what the sweep exists for.
-  const { released, benefitsReferenceId } = await storage.releaseSeat(
-    organizationId,
-    userId,
-    changedBy,
-    { markBenefitsPending: anyBenefitDeliverable() },
-  );
-  if (!released || !benefitsReferenceId) return;
-  try {
-    await enqueueBenefitsSync(organizationId, benefitsReferenceId, "apply");
-  } catch (err) {
-    console.error("Failed to enqueue benefit sync (sweep covers):", err);
-  }
-}
-
-/**
  * Create default MCP connections for a new organization
  * This is deferred to run after the Better Auth request completes
  * to avoid deadlocks when issuing tokens
@@ -127,15 +92,11 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
     const database = getDb();
     const settings = getSettings();
 
-    // Billing identity FIRST (cheapest, most load-bearing): orgs created from
-    // now on are legacy = false — the per-seat plan applies to them once
-    // STUDIO_BILLING_ENFORCED turns on. Orgs that predate migration 139 were
-    // backfilled legacy = true there. If this insert (or this whole hook)
-    // fails, the missing row fails OPEN in resolveOrgFromPath (treated as
-    // legacy) — never bricks the org.
+    // The row the Stripe webhook binds the org's subscription onto; a
+    // missing row reads as "not subscribed" (fail-soft).
     await database.db
       .insertInto("organization_billing")
-      .values({ organization_id: organizationId, legacy: false })
+      .values({ organization_id: organizationId })
       .onConflict((oc) => oc.column("organization_id").doNothing())
       .execute();
 

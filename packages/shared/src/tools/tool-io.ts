@@ -954,45 +954,13 @@ export interface StudioToolIO {
       user: { email: string; name: string; image?: string | undefined };
     };
   };
-  ORGANIZATION_SEATS_GET: {
-    input: { [x: string]: never };
-    output: {
-      billing: {
-        legacy: boolean;
-        billingMode: string;
-        status: string;
-        includedReportUrl: string | null;
-      } | null;
-      paidSeatUserIds: string[];
-    };
-  };
-  ORGANIZATION_SEATS_SET: {
-    input: { seats: { userId: string; seat: "paid" | "free" }[] };
-    output: {
-      applied: { userId: string; seat: "paid" | "free" }[];
-      paidSeatCount: number;
-      benefitsSyncQueued: boolean;
-    };
-  };
   ORGANIZATION_BILLING_CHECKOUT_START: {
     input: { [x: string]: never };
-    output: { url: string; quantity: number };
-  };
-  ORGANIZATION_SEATS_PREVIEW: {
-    input: { quantity: number };
-    output: { amountDueCents: number; currency: string };
+    output: { url: string };
   };
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
     output: { url: string };
-  };
-  ORGANIZATION_INCLUDED_REPORT_SET: {
-    input: { url: string | null };
-    output: { includedReportUrl: string | null; benefitsSyncQueued: boolean };
-  };
-  ORGANIZATION_REPORT_RUN_PAID: {
-    input: { url?: string | undefined };
-    output: { url: string; started: boolean };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {

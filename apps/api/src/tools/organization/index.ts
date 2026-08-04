@@ -42,14 +42,6 @@ export { ORGANIZATION_MEMBER_REMOVE } from "./member-remove";
 export { ORGANIZATION_MEMBER_LIST } from "./member-list";
 export { ORGANIZATION_MEMBER_UPDATE_ROLE } from "./member-update-role";
 
-// Seats (per-seat billing)
-export { ORGANIZATION_SEATS_GET, ORGANIZATION_SEATS_SET } from "./seats";
-export {
-  ORGANIZATION_BILLING_CHECKOUT_START,
-  ORGANIZATION_SEATS_PREVIEW,
-} from "./billing-checkout";
-export {
-  ORGANIZATION_BILLING_PORTAL,
-  ORGANIZATION_INCLUDED_REPORT_SET,
-} from "./billing-portal";
-export { ORGANIZATION_REPORT_RUN_PAID } from "./report-run-paid";
+// Billing (per-org subscription)
+export { ORGANIZATION_BILLING_CHECKOUT_START } from "./billing-checkout";
+export { ORGANIZATION_BILLING_PORTAL } from "./billing-portal";

@@ -1,8 +1,9 @@
 import z from "zod";
 import { gatewayAdminConfigured } from "../../billing/gateway-admin";
 import { createTopUpCheckoutSession } from "../../billing/stripe-api";
-import { defineTool } from "../../core/define-tool";
 import { getPublicUrl } from "../../core/server-constants";
+import { getSettings } from "../../settings";
+import { defineTool } from "../../core/define-tool";
 import {
   requireAuth,
   requireOrganization,
@@ -11,13 +12,9 @@ import {
 import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
-import { getSettings } from "../../settings";
 
-// Ceiling for a single top-up request. Stripe's own `unit_amount` cap is
-// 99999999 (~$999,999.99) and computeTopUpChargeCents() multiplies
-// amountCents up further by the fee percent, so an unbounded amount here can
-// overflow Stripe's limit and surface as an opaque 500 instead of a clean
-// input-validation error.
+// Ceiling per top-up — Stripe's unit_amount cap is ~$1M and the fee
+// multiplies further; unbounded amounts surface as an opaque 500.
 const MAX_TOPUP_AMOUNT_CENTS = 1_000_000; // $10,000.00
 
 export const AI_PROVIDER_TOPUP_URL = defineTool({
@@ -47,13 +44,12 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
 
-    // Single-Stripe migration (3.7): when this deployment owns billing
-    // (Stripe secret + gateway admin — the credit MUST be deliverable) the
-    // deco top-up goes through the MESH checkout: one Stripe customer, one
-    // card, the webhook credits the gateway. BRL is charged in centavos and
-    // credited as its USD equivalent (live rate locked at session creation —
-    // exchange-rate.ts, ported from the gateway's legacy checkout). The
-    // legacy fallback below dies with ai-gateway#15.
+    // Single-Stripe: when this deployment owns billing (Stripe secret +
+    // gateway admin — the credit MUST be deliverable) the deco top-up goes
+    // through the MESH checkout: one Stripe customer, one card, the webhook
+    // credits the gateway. BRL is charged in centavos and credited as its
+    // USD equivalent (rate locked at session creation — exchange-rate.ts).
+    // The adapter fallback below dies with the gateway's Stripe module.
     const settings = getSettings();
     if (
       input.providerId === "deco" &&

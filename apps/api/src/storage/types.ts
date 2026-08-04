@@ -1216,18 +1216,10 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/**
- * Per-org billing identity (see migration 139). Platform-written only:
- * migration backfill, org-creation hook, Stripe webhooks — NEVER writable by
- * org members (billing in the org `metadata` would be, via
- * ORGANIZATION_UPDATE). `legacy = true` orgs are exempt from seat
- * enforcement forever.
- */
+/** Per-org billing identity (migration 139). Platform-written only —
+ *  never writable by org members. */
 export interface OrganizationBillingTable {
   organization_id: string;
-  legacy: boolean;
-  /** "self_serve" (Stripe, charge on apply) | "invoiced" (contract orgs). */
-  billing_mode: ColumnType<string, string | undefined, string>;
   /** Subscription status: "none" | "active" | "past_due" | "canceled". */
   status: ColumnType<string, string | undefined, string>;
   stripe_customer_id: ColumnType<
@@ -1245,29 +1237,6 @@ export interface OrganizationBillingTable {
     Date | string | null | undefined,
     Date | string | null
   >;
-  /** The one site whose weekly report re-run the subscription includes. */
-  included_report_url: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  /** Which site's weekly run is CURRENTLY armed on the reports service
-   *  (migration 143) — maintained by the benefits-sync workflow so a choice
-   *  change can disarm the old site. */
-  armed_report_url: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  /** Pending benefit-sync marker (migration 141): non-null = a gateway
-   *  allowance grant for the latest seat change hasn't been confirmed.
-   *  Written in the SAME transaction as the seat change; the value is the
-   *  grant's idempotency key at the gateway. */
-  benefits_reference_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
   /** High-water mark of the newest applied Stripe event's `created` time
    *  (migration 142) — older webhook deliveries are skipped, so out-of-order
    *  redeliveries can never regress subscription state. */
@@ -1278,34 +1247,6 @@ export interface OrganizationBillingTable {
   >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
-/**
- * Presence = this member holds a paid seat. Absence = free seat (readonly +
- * no AI when STUDIO_BILLING_ENFORCED is on). Seats are monetization, NOT
- * governance: orthogonal to Better Auth roles — an org owner can hold a free
- * seat (the report-funnel onboarding case).
- */
-export interface OrganizationPaidSeatTable {
-  organization_id: string;
-  user_id: string;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/**
- * Append-only seat-transition log, written in the same transaction as the
- * organization_paid_seat change. For `invoiced` orgs this is the billing
- * source (end-of-cycle invoicing reads who held a paid seat when); rows are
- * appended only for ACTUAL transitions.
- */
-export interface SeatChangeLogTable {
-  id: ColumnType<string, string | undefined, never>;
-  organization_id: string;
-  user_id: string;
-  /** "paid" | "free" — the state the seat transitioned TO. */
-  seat: string;
-  changed_by: string;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1884,8 +1825,6 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
   organization_billing: OrganizationBillingTable;
-  organization_paid_seat: OrganizationPaidSeatTable;
-  seat_change_log: SeatChangeLogTable;
 
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;

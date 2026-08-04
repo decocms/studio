@@ -14,8 +14,6 @@ import { applyStripeEvent, type StripeEvent } from "./stripe-webhook";
 // deliveries skipped) and terminal deletes (exempt + unbind), which together
 // make Stripe's unordered redeliveries unable to resurrect a canceled org.
 const ORG = "org_stripe_1";
-const ORG_LEGACY = "org_stripe_legacy";
-const ORG_INVOICED = "org_stripe_invoiced";
 const ORG_BASIL = "org_stripe_basil";
 
 // Event-created timeline (epoch seconds).
@@ -54,7 +52,7 @@ describe("applyStripeEvent", () => {
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    const orgs = [ORG, ORG_LEGACY, ORG_INVOICED, ORG_BASIL];
+    const orgs = [ORG, ORG_BASIL];
     await database.db
       .insertInto("organization")
       .values(
@@ -68,16 +66,7 @@ describe("applyStripeEvent", () => {
       .execute();
     await database.db
       .insertInto("organization_billing")
-      .values([
-        { organization_id: ORG, legacy: false },
-        { organization_id: ORG_LEGACY, legacy: true },
-        {
-          organization_id: ORG_INVOICED,
-          legacy: false,
-          billing_mode: "invoiced",
-        },
-        { organization_id: ORG_BASIL, legacy: false },
-      ])
+      .values([{ organization_id: ORG }, { organization_id: ORG_BASIL }])
       .execute();
     storage = new OrganizationBillingStorage(database.db);
   });
@@ -86,7 +75,7 @@ describe("applyStripeEvent", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("checkout.session.completed binds the subscription and marks the grant", async () => {
+  it("checkout.session.completed binds the subscription", async () => {
     const result = await applyStripeEvent(
       storage,
       checkout(
@@ -105,7 +94,6 @@ describe("applyStripeEvent", () => {
     expect(billing?.stripeCustomerId).toBe("cus_1");
     expect(billing?.stripeSubscriptionId).toBe("sub_1");
     expect(billing?.status).toBe("active");
-    expect(billing?.benefitsReferenceId).toBe("stripe-checkout:cs_1");
     expect(billing?.lastStripeEventAt?.getTime()).toBe(T1 * 1000);
   });
 
@@ -121,17 +109,11 @@ describe("applyStripeEvent", () => {
     const billing = await storage.getBilling(ORG);
     expect(billing?.status).toBe("past_due");
     expect(billing?.currentPeriodEnd?.getTime()).toBe(PERIOD_1 * 1000);
-    // Deterministic per (sub, status, period): a redelivery re-marks the SAME
-    // reference — one gateway rebase, not two.
-    const referenceId = `stripe-sub:sub_1:past_due:${PERIOD_1 * 1000}`;
-    expect(billing?.benefitsReferenceId).toBe(referenceId);
 
-    // Redelivery of the exact same event: same state, same reference.
+    // Redelivery of the exact same event: same state, still handled.
     const redelivered = await applyStripeEvent(storage, updated);
     expect(redelivered.handled).toBe(true);
-    const after = await storage.getBilling(ORG);
-    expect(after?.status).toBe("past_due");
-    expect(after?.benefitsReferenceId).toBe(referenceId);
+    expect((await storage.getBilling(ORG))?.status).toBe("past_due");
   });
 
   it("skips a stale subscription.updated (out-of-order delivery)", async () => {
@@ -147,7 +129,7 @@ describe("applyStripeEvent", () => {
     expect((await storage.getBilling(ORG))?.status).toBe("past_due");
   });
 
-  it("invoice.paid is the monthly clock: reactivates and re-marks per invoice id", async () => {
+  it("invoice.paid is the monthly clock: reactivates and refreshes the period", async () => {
     const paid = event(
       "invoice.paid",
       { id: "in_42", subscription: "sub_1", period_end: PERIOD_2 },
@@ -159,14 +141,11 @@ describe("applyStripeEvent", () => {
     const billing = await storage.getBilling(ORG);
     expect(billing?.status).toBe("active");
     expect(billing?.currentPeriodEnd?.getTime()).toBe(PERIOD_2 * 1000);
-    expect(billing?.benefitsReferenceId).toBe("stripe-invoice:in_42");
 
-    // Stripe redelivery collapses into the same reference and state.
+    // Stripe redelivery collapses into the same state.
     const redelivered = await applyStripeEvent(storage, paid);
     expect(redelivered.handled).toBe(true);
-    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBe(
-      "stripe-invoice:in_42",
-    );
+    expect((await storage.getBilling(ORG))?.status).toBe("active");
   });
 
   it("subscription.deleted cancels service and unbinds the subscription", async () => {
@@ -236,7 +215,7 @@ describe("applyStripeEvent", () => {
     expect(billing?.lastStripeEventAt?.getTime()).toBe(T6 * 1000);
   });
 
-  it("checkout refuses unpaid sessions and legacy/invoiced orgs", async () => {
+  it("checkout refuses unpaid sessions", async () => {
     const unpaid = await applyStripeEvent(
       storage,
       checkout({
@@ -247,20 +226,6 @@ describe("applyStripeEvent", () => {
       }),
     );
     expect(unpaid).toEqual({ handled: false, reason: "payment not confirmed" });
-
-    for (const orgId of [ORG_LEGACY, ORG_INVOICED]) {
-      const refused = await applyStripeEvent(
-        storage,
-        checkout({ id: "cs_x", subscription: "sub_x", metadata: { orgId } }),
-      );
-      expect(refused).toEqual({
-        handled: false,
-        reason: "org is not self-serve",
-      });
-      expect(
-        (await storage.getBilling(orgId))?.stripeSubscriptionId,
-      ).toBeNull();
-    }
   });
 
   it("reads Basil (2025-03-31) payload shapes; rebinds are refused", async () => {
@@ -334,7 +299,6 @@ describe("applyStripeEvent", () => {
     expect(paid.handled).toBe(true);
     const billing = await storage.getBilling(ORG_BASIL);
     expect(billing?.status).toBe("active");
-    expect(billing?.benefitsReferenceId).toBe("stripe-invoice:in_b1");
   });
 
   it("unknown orgs/subscriptions and non-subscription checkouts are acked no-ops", async () => {
@@ -363,73 +327,61 @@ describe("applyStripeEvent", () => {
     expect(unhandled.handled).toBe(false);
   });
 
-  it("top-up: paid payment-mode checkout returns the gateway credit intent", async () => {
-    const before = await storage.getBilling(ORG_LEGACY);
+  it("top-up: paid payment-mode checkout returns the gateway credit intent, no billing writes", async () => {
+    const before = await storage.getBilling(ORG_BASIL);
     const result = await applyStripeEvent(
       storage,
       event("checkout.session.completed", {
         id: "cs_topup_1",
         mode: "payment",
         payment_status: "paid",
-        metadata: { kind: "topup", orgId: ORG_LEGACY, creditCents: "1000" },
+        metadata: { kind: "topup", orgId: ORG_BASIL, creditCents: "1000" },
       }),
     );
-    // Deliberately allowed for LEGACY orgs — credits are orthogonal to seats.
     expect(result).toEqual({
       handled: true,
-      organizationId: ORG_LEGACY,
+      organizationId: ORG_BASIL,
       topUp: { creditCents: 1000, referenceId: "stripe-topup:cs_topup_1" },
     });
-    // No billing-row writes: top-ups never touch subscription state.
-    expect(await storage.getBilling(ORG_LEGACY)).toEqual(before);
+    // Top-ups never touch subscription state (no watermark either).
+    expect(await storage.getBilling(ORG_BASIL)).toEqual(before);
   });
 
-  it("top-up: unpaid sessions and bad metadata are acked no-ops", async () => {
-    const unpaid = await applyStripeEvent(
-      storage,
-      event("checkout.session.completed", {
+  it("top-up: unpaid, bad-metadata, wrong-mode and id-less sessions are acked no-ops", async () => {
+    const cases: Array<Record<string, unknown>> = [
+      {
         id: "cs_topup_2",
         mode: "payment",
         payment_status: "unpaid",
         metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
-      }),
-    );
-    expect(unpaid.handled).toBe(false);
-
-    const badAmount = await applyStripeEvent(
-      storage,
-      event("checkout.session.completed", {
+      },
+      {
         id: "cs_topup_3",
         mode: "payment",
         payment_status: "paid",
         metadata: { kind: "topup", orgId: ORG, creditCents: "-5" },
-      }),
-    );
-    expect(badAmount.handled).toBe(false);
-
-    // A topup-kind session in subscription mode is malformed — rejected.
-    const wrongMode = await applyStripeEvent(
-      storage,
-      event("checkout.session.completed", {
+      },
+      {
         id: "cs_topup_4",
         mode: "subscription",
         payment_status: "paid",
         metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
-      }),
-    );
-    expect(wrongMode.handled).toBe(false);
-
-    // No session id ⇒ no deterministic dedupe key ⇒ a credit intent here
-    // could double-credit on redelivery. Acked no-op instead.
-    const noId = await applyStripeEvent(
-      storage,
-      event("checkout.session.completed", {
+      },
+      {
+        // No session id ⇒ no deterministic dedupe key ⇒ a credit intent
+        // here could double-credit on redelivery.
         mode: "payment",
         payment_status: "paid",
         metadata: { kind: "topup", orgId: ORG, creditCents: "1000" },
-      }),
-    );
-    expect(noId.handled).toBe(false);
+      },
+    ];
+    for (const object of cases) {
+      const result = await applyStripeEvent(
+        storage,
+        event("checkout.session.completed", object),
+      );
+      expect(result.handled).toBe(false);
+    }
   });
 
   it("top-up: async_payment_succeeded yields the SAME referenceId as completed — the double-credit defense for delayed payment methods", async () => {

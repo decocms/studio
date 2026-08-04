@@ -274,18 +274,11 @@ export function resolveConfig(
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
     aiGatewayAdminToken: envVars.DECO_AI_GATEWAY_ADMIN_TOKEN,
-    seatAllowanceCents: toPositiveIntegerOrDefault(
-      "STUDIO_SEAT_ALLOWANCE_CENTS",
-      envVars.STUDIO_SEAT_ALLOWANCE_CENTS,
-      500,
-    ),
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
-    stripeSeatPriceId: envVars.STRIPE_SEAT_PRICE_ID,
-    // Capped at 100: a fee percent above that is a fat-fingered misconfig
-    // (e.g. "150" typed for "15"), and computeTopUpChargeCents() would
-    // otherwise silently charge customers more than double their top-up
-    // amount instead of failing fast at boot.
+    stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
+    // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
+    // that would silently more-than-double every top-up charge.
     topupFeePercent: toPositiveIntegerOrDefault(
       "STUDIO_TOPUP_FEE_PERCENT",
       envVars.STUDIO_TOPUP_FEE_PERCENT,
@@ -295,7 +288,6 @@ export function resolveConfig(
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
-    billingEnforced: toBool(envVars.STUDIO_BILLING_ENFORCED),
     // MCP caching is on by default in production, off in development. Set
     // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
     mcpCacheEnabled: toBoolWithDefault(

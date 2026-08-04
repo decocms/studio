@@ -1,5 +1,5 @@
 /**
- * POST /api/_stripe/webhook — Stripe event intake (per-seat billing).
+ * POST /api/_stripe/webhook — Stripe event intake (org-subscription billing).
  *
  * Instance-level (underscore namespace, mounted before the /api/:org
  * catch-all) and deliberately OUTSIDE any session/admin auth: the caller is

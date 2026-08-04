@@ -60,5 +60,8 @@
  * after coding-agent execution moved exclusively into the native app. It also
  * adds `validateHostedThread` as the first background-tool workflow step so
  * durable jobs from the retired desktop transport fail before doing work.
+ *
+ * Version 7 removes the per-seat billing workflows (`syncOrgBenefitsWorkflow`
+ * + `benefitsSyncSweep`); in-flight v6 instances strand by design.
  */
-export const DBOS_WORKFLOW_VERSION = "6";
+export const DBOS_WORKFLOW_VERSION = "7";

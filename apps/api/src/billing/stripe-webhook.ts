@@ -1,51 +1,21 @@
 /**
- * Stripe webhook intake for per-seat self-serve billing. The checkout
- * creator that sets metadata.orgId is ORGANIZATION_BILLING_CHECKOUT_START
- * (tools/organization/billing-checkout.ts); the customer portal (cancel /
- * card update) is still future work. On deployments without
- * STRIPE_WEBHOOK_SECRET this module is dormant.
+ * Stripe webhook intake — the SOURCE OF TRUTH writer for organization_billing
+ * subscription state. Dormant without STRIPE_WEBHOOK_SECRET.
  *
- * The webhook is the SOURCE OF TRUTH writer for organization_billing's
- * subscription state. Stripe guarantees neither delivery order nor
- * exactly-once, so safety comes from two rules rather than trust:
- *  - `last_stripe_event_at` high-water mark: an event whose `created` is
- *    older than the newest applied one is skipped (same-second ties apply
- *    last-write-wins — the accepted 1s ceiling).
- *  - customer.subscription.deleted is EXEMPT from the mark (terminal in
- *    Stripe — a deleted subscription never comes back) and UNBINDS
- *    stripe_subscription_id, so late events for a dead subscription resolve
- *    to nothing and a re-subscribe binds a fresh subscription cleanly.
- * Benefit grants are additionally deduped at the gateway by deterministic
- * referenceIds, and state + grant intent commit in one row update.
+ * Stripe guarantees neither order nor exactly-once; two rules make that safe:
+ *  - `last_stripe_event_at` high-water mark: older deliveries are skipped.
+ *  - subscription.deleted is terminal: exempt from the mark and UNBINDS the
+ *    subscription id, so late events for it resolve to nothing.
  *
- * Events:
- *  - checkout.session.completed / ...async_payment_succeeded → bind
- *    customer/subscription to the org (metadata.orgId, set by our checkout
- *    creator) once payment_status is "paid"; status active, grant. Refuses
- *    legacy / non-self-serve orgs and rebinding over a live different
- *    subscription (the refused-but-paid orphan subscription is canceled).
- *  - customer.subscription.updated → mirror status + current period end.
- *  - customer.subscription.deleted → status canceled + unbind; grant
- *    recomputes to 0 (the sync workflow zeroes self_serve orgs whose
- *    subscription isn't good).
- *  - invoice.paid → THE MONTHLY CLOCK: refresh period end + re-grant with
- *    referenceId = invoice id, which is what makes the gateway allowance
- *    reset per billing cycle (no cron anywhere).
+ * Events: checkout completion binds customer/subscription once paid (a
+ * rebind over a live different subscription is refused and the orphan
+ * canceled); subscription.updated mirrors status + period end; deleted
+ * cancels + unbinds; invoice.paid is THE MONTHLY CLOCK (period refresh,
+ * unpaid→paid recovery, and the future quota-reset anchor — no cron).
  *
- * Payment-success events (checkout completion, invoice.paid) additionally
- * RECONCILE the subscription quantity onto the paid-seat rows — the
- * self-healing loop for a SEATS_SET whose Stripe mirror failed or whose
- * pending_if_incomplete update expired. Success anchors only: reconciling on
- * failure events would loop charge attempts on a failing card.
- *
- * Payload compat: API version 2025-03-31 (Basil) moved invoice.subscription
- * under invoice.parent.subscription_details and the subscription's
- * current_period_end onto items.data[] — handlers read both shapes.
- *
- * Signature: Stripe's v1 scheme (HMAC-SHA256 over `${t}.${rawBody}`),
- * timing-safe, ±5 min timestamp tolerance (replay window), any v1 entry may
- * match (secret rotation sends one per active secret). Hand-rolled on
- * purpose — the Stripe SDK isn't a dependency anywhere in this repo.
+ * Handlers read both pre- and post-Basil (2025-03-31) payload shapes.
+ * Signature: Stripe v1 (HMAC-SHA256, timing-safe, ±5 min tolerance, any v1
+ * entry may match for secret rotation).
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -54,14 +24,8 @@ import {
   OrganizationBillingStorage,
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
-import {
-  cancelSubscription,
-  reconcileSeatQuantity,
-  StripeApiError,
-} from "./stripe-api";
+import { cancelSubscription, StripeApiError } from "./stripe-api";
 import { creditGatewayTopUp } from "./gateway-admin";
-import { hasChargeableSubscription } from "./subscription-state";
-import { enqueueBenefitsSync } from "./sync-org-benefits";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
 
@@ -216,15 +180,13 @@ export type HandledStripeEvent =
   | {
       handled: false;
       reason: string;
-      /** A LIVE subscription the customer paid for that we refused to bind
-       *  (rebind guard) — the route wrapper cancels it so nothing keeps
-       *  charging a card that bought no service. */
+      /** Paid-for subscription we refused to bind — the route wrapper
+       *  cancels it so it stops charging. */
       orphanSubscriptionId?: string;
     }
   | {
       handled: true;
       organizationId: string;
-      benefitsReferenceId?: string;
       /** A paid AI-credit top-up to forward to the gateway (route wrapper
        *  credits it; a failure THROWS so Stripe redelivers — Stripe is the
        *  retry queue, the gateway referenceId dedupe makes replays no-ops). */
@@ -232,11 +194,9 @@ export type HandledStripeEvent =
     };
 
 /**
- * Apply one Stripe event to billing state. Pure-ish over the storage: returns
- * what changed so the route can enqueue the benefit delivery AFTER the write
- * committed. Unknown org / unknown event types / stale deliveries are
- * acknowledged no-ops — Stripe must get its 200 either way, redelivery
- * wouldn't help.
+ * Apply one Stripe event to billing state. Pure-ish over the storage.
+ * Unknown org / unknown event types / stale deliveries are acknowledged
+ * no-ops — Stripe must get its 200 either way, redelivery wouldn't help.
  */
 export async function applyStripeEvent(
   storage: OrganizationBillingStorage,
@@ -251,9 +211,8 @@ export async function applyStripeEvent(
       if (!organizationId) return { handled: false, reason: "no orgId" };
 
       // AI-credit top-up (mode=payment, metadata.kind=topup — set by our own
-      // checkout creator). Orthogonal to seats: NO billing-row writes, no
-      // watermark, and deliberately allowed for legacy orgs (credits always
-      // were). The gateway credit happens in the route wrapper.
+      // checkout creator). Orthogonal to the subscription: NO billing-row
+      // writes, no watermark. The gateway credit happens in the route wrapper.
       if (s(rec(obj.metadata)?.kind) === "topup") {
         if (obj.mode !== "payment") {
           return { handled: false, reason: "topup with wrong mode" };
@@ -274,10 +233,9 @@ export async function applyStripeEvent(
         }
         const creditCents = Number(rec(obj.metadata)?.creditCents);
         if (!Number.isInteger(creditCents) || creditCents <= 0) {
-          // Money was captured but the credit can't be computed — our own
+          // Money captured but the credit can't be computed — our own
           // checkout creator wrote this metadata, so this is a bug. Loud but
-          // still 200-acked: throwing would redeliver a deterministic failure
-          // for days and risk Stripe pausing the whole endpoint.
+          // 200-acked: throwing would redeliver a deterministic failure.
           console.error(
             "stripe webhook: paid topup with bad metadata — credit NOT applied",
             {
@@ -309,19 +267,8 @@ export async function applyStripeEvent(
       }
       const billing = await storage.getBilling(organizationId);
       if (!billing) return { handled: false, reason: "unknown org" };
-      // metadata.orgId comes from our checkout creator, but never let it
-      // rebind billing it must not touch: self-serve, non-legacy orgs only,
-      // and never an org still bound to a DIFFERENT subscription (deleted
-      // unbinds, so a legitimate re-subscribe passes).
-      if (billing.legacy || billing.billingMode !== "self_serve") {
-        console.error("stripe webhook: refused checkout bind", {
-          organizationId,
-          eventId: event.id,
-          legacy: billing.legacy,
-          billingMode: billing.billingMode,
-        });
-        return { handled: false, reason: "org is not self-serve" };
-      }
+      // Never rebind over a DIFFERENT live subscription (deleted unbinds,
+      // so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
       if (
         billing.stripeSubscriptionId &&
@@ -341,19 +288,13 @@ export async function applyStripeEvent(
       if (isStale(event, billing)) {
         return { handled: false, reason: "stale event" };
       }
-      const referenceId = `stripe-checkout:${s(obj.id) ?? crypto.randomUUID()}`;
       await storage.updateStripeState(organizationId, {
         stripeCustomerId: idOf(obj.customer),
         stripeSubscriptionId: subscriptionId,
         status: "active",
-        benefitsReferenceId: referenceId,
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return {
-        handled: true,
-        organizationId,
-        benefitsReferenceId: referenceId,
-      };
+      return { handled: true, organizationId };
     }
 
     case "customer.subscription.updated":
@@ -369,24 +310,13 @@ export async function applyStripeEvent(
         return { handled: false, reason: "stale event" };
       }
       const status = isDeleted ? "canceled" : mapSubscriptionStatus(obj.status);
-      const periodEnd = subscriptionPeriodEnd(obj);
-      // Status changes move the effective grant (canceled → 0) — re-deliver.
-      // Deterministic per (sub, status, period) so redeliveries collapse.
-      const referenceId = `stripe-sub:${subscriptionId}:${status}:${
-        periodEnd?.getTime() ?? 0
-      }`;
       await storage.updateStripeState(billing.organizationId, {
         status,
-        currentPeriodEnd: periodEnd,
+        currentPeriodEnd: subscriptionPeriodEnd(obj),
         ...(isDeleted && { stripeSubscriptionId: null }),
-        benefitsReferenceId: referenceId,
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return {
-        handled: true,
-        organizationId: billing.organizationId,
-        benefitsReferenceId: referenceId,
-      };
+      return { handled: true, organizationId: billing.organizationId };
     }
 
     case "invoice.paid": {
@@ -398,22 +328,14 @@ export async function applyStripeEvent(
       if (isStale(event, billing)) {
         return { handled: false, reason: "stale event" };
       }
-      // THE monthly reset: deterministic reference (invoice id) so Stripe
-      // redeliveries collapse into one gateway rebase per cycle. Setting
-      // active here is also the unpaid→paid recovery path; a truly deleted
-      // subscription can't reach this (deleted unbinds the id).
-      const referenceId = `stripe-invoice:${s(obj.id) ?? crypto.randomUUID()}`;
+      // THE monthly clock: refresh period end; active here is also the
+      // unpaid→paid recovery (a deleted subscription can't reach this).
       await storage.updateStripeState(billing.organizationId, {
         status: "active",
         currentPeriodEnd: epochToDate(obj.period_end),
-        benefitsReferenceId: referenceId,
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return {
-        handled: true,
-        organizationId: billing.organizationId,
-        benefitsReferenceId: referenceId,
-      };
+      return { handled: true, organizationId: billing.organizationId };
     }
 
     default:
@@ -421,46 +343,7 @@ export async function applyStripeEvent(
   }
 }
 
-/** Events that prove the customer's card WORKS — the only anchors we let
- *  trigger a quantity reconciliation (re-applying a quantity can charge; a
- *  failure-path anchor would loop charge attempts on a failing card). */
-const RECONCILE_EVENT_TYPES = new Set([
-  "checkout.session.completed",
-  "checkout.session.async_payment_succeeded",
-  "invoice.paid",
-]);
-
-/**
- * Converge Stripe's subscription quantity onto the org's seat rows. This is
- * the self-healing half of the SEATS_SET mirror: rows commit before the
- * Stripe call there, so a failed/pending proration (declined card, expired
- * pending_update, pod death mid-request) leaves quantity < rows — every paid
- * invoice re-converges it, monthly at worst. Fail-soft: a miss is retried by
- * the next cycle's event.
- */
-async function reconcileQuantityWithRows(
-  storage: OrganizationBillingStorage,
-  organizationId: string,
-): Promise<void> {
-  const [billing, paidSeatUserIds] = await Promise.all([
-    storage.getBilling(organizationId),
-    storage.listPaidSeatUserIds(organizationId),
-  ]);
-  if (!hasChargeableSubscription(billing)) return;
-  const corrected = await reconcileSeatQuantity({
-    subscriptionId: billing.stripeSubscriptionId,
-    targetQuantity: paidSeatUserIds.length,
-  });
-  if (corrected) {
-    console.error("stripe webhook: reconciled diverged seat quantity", {
-      organizationId,
-      targetQuantity: paidSeatUserIds.length,
-    });
-  }
-}
-
-/** Route-facing wrapper: apply + durable benefit delivery (fail-soft — the
- *  pending marker is committed, the scheduled sweep covers a lost enqueue). */
+/** Route-facing wrapper: apply, then clean up refused-but-paid orphans. */
 export async function processStripeEvent(
   event: StripeEvent,
 ): Promise<HandledStripeEvent> {
@@ -476,29 +359,9 @@ export async function processStripeEvent(
       referenceId: result.topUp.referenceId,
     });
   }
-  if (result.handled && result.benefitsReferenceId) {
-    try {
-      await enqueueBenefitsSync(
-        result.organizationId,
-        result.benefitsReferenceId,
-        "apply",
-      );
-    } catch (err) {
-      console.error("Failed to enqueue benefit sync (sweep covers):", err);
-    }
-  }
-  if (result.handled && RECONCILE_EVENT_TYPES.has(event.type)) {
-    try {
-      await reconcileQuantityWithRows(storage, result.organizationId);
-    } catch (err) {
-      console.error("Failed to reconcile seat quantity (next cycle):", err);
-    }
-  }
-  // The customer PAID for this subscription and the org refused it — cancel
-  // so it stops charging. NOT fail-soft: the route 200-acks refusals (no
-  // Stripe redelivery), so a transient cancel failure must escape to the
-  // route's 500 to make Stripe redeliver this refusal and retry the cancel.
-  // Already-gone (400 canceled / 404 missing) is success.
+  // Cancel a refused-but-paid subscription so it stops charging. NOT
+  // fail-soft: a transient failure must 500 the route so Stripe redelivers
+  // and the cancel retries. Already-gone (400/404) is success.
   if (!result.handled && result.orphanSubscriptionId) {
     try {
       await cancelSubscription(result.orphanSubscriptionId);

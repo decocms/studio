@@ -1,7 +1,6 @@
 /**
- * AI-gateway admin client shared by the billing flows (allowance grants,
- * top-up credits). Every call is idempotent at the gateway per referenceId
- * (unique ledger index), so callers may retry freely.
+ * AI-gateway admin client for top-up credits. Idempotent at the gateway per
+ * referenceId (unique ledger index), so callers may retry freely.
  */
 
 import { getSettings } from "../settings";
@@ -13,7 +12,7 @@ export function gatewayAdminConfigured(): boolean {
   return settings.aiGatewayEnabled && !!settings.aiGatewayAdminToken;
 }
 
-export async function postGatewayAdmin(
+async function postGatewayAdmin(
   path: string,
   body: Record<string, unknown>,
   label: string,

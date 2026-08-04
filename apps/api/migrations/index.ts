@@ -155,6 +155,7 @@ import * as migration153taskboardlatestassistantpartindex from "./153-task-board
 import * as migration154taskboardqaactivity from "./154-task-board-qa-activity.ts";
 import * as migration155taskboardreviewclaims from "./155-task-board-review-claims.ts";
 import * as migration156taskboardconflictactivity from "./156-task-board-conflict-activity.ts";
+import * as migration157dropseatbilling from "./157-drop-seat-billing.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -336,6 +337,7 @@ const migrations: Record<string, Migration> = {
   "154-task-board-qa-activity": migration154taskboardqaactivity,
   "155-task-board-review-claims": migration155taskboardreviewclaims,
   "156-task-board-conflict-activity": migration156taskboardconflictactivity,
+  "157-drop-seat-billing": migration157dropseatbilling,
 };
 
 export default migrations;
