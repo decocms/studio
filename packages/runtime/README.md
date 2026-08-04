@@ -139,7 +139,7 @@ that context as the second `execute()` argument; it should not read ambient HTTP
 objects or reconstruct Studio identity from process-wide state.
 
 Bindings describe MCP capabilities that a connection implements. `withBindings()`
-resolves those bindings for a request, while `BindingOf`, `AgentOf`, and
+resolves those bindings for a request, while `BindingOf` and
 `proxyConnectionForId()` provide typed access patterns for consumers that need to
 call them.
 
@@ -194,7 +194,6 @@ bun run lint
 | `@decocms/runtime/bindings` | Binding declarations, registry helpers, and binding initialization |
 | `@decocms/runtime/asset-server` | Static and single-page-application asset serving |
 | `@decocms/runtime/tools` | Tool creation plus prompt, resource, agent, and authentication primitives |
-| `@decocms/runtime/decopilot` | Decopilot application helpers |
 | `@decocms/runtime/triggers` | Trigger definitions, configuration tools, and callback delivery |
 | `@decocms/runtime/trigger-storage` | In-memory, Studio KV, and JSON-file trigger storage adapters |
 
