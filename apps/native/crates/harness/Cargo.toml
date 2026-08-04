@@ -26,9 +26,18 @@ tracing = { workspace = true }
 #
 # No `libc`/`nix` dependency: the workspace denies `unsafe_code` (see
 # `apps/native/Cargo.toml`'s `[workspace.lints.rust]`), and every raw
-# `kill(2)`/`setpgid(2)` FFI call requires `unsafe`. Process-GROUP
-# signaling instead shells out to `kill(1)` — POSIX-portable, zero `unsafe`,
-# no extra dependency.
+# `kill(2)`/`setpgid(2)` FFI call requires `unsafe`. Process-GROUP signaling
+# instead enumerates the group with `pgrep -g` and shells out to `kill(1)`
+# once per POSITIVE pid — zero `unsafe`, no extra dependency.
+#
+# Only that positive form is portable, and this crate uses no other. `kill
+# -SIG -<pgid>` is NOT: procps-ng reads a leading-`-` target as a signal spec
+# wherever it appears, is left with an empty pid list, and signals the CALLER's
+# own process group — measured on procps-ng 3.3.17 and 4.0.4 alike, so this is
+# not an old-distro problem. BSD `kill(1)` accepts it, which is why the
+# divergence only ever shows up on Linux. A negative target therefore needs an
+# explicit `--` separator; see `local-api`'s `process_util::group_signal_argv`,
+# the one place in `apps/native` that still spells one.
 portable-pty = "0.9"
 
 [dev-dependencies]
