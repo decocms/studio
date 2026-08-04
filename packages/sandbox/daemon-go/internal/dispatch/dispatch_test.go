@@ -3,53 +3,73 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
 // A run that produces nothing must still put bytes on the wire — that silence is
-// what kills Studio's fetch mid-run. Comments, so the client's frame parser
-// (which only reads `data:` lines) ignores them.
-func TestHeartbeatWritesCommentsWhileQuiet(t *testing.T) {
+// what kills Studio's fetch mid-run. Whitespace, so the result stays parseable
+// JSON without the client needing any framing to skip it.
+func TestKeepaliveWritesWhitespaceWhileQuiet(t *testing.T) {
 	rec := httptest.NewRecorder()
-	sse := newSseWriter(rec)
-	var chunks atomic.Int64
+	body := newBodyWriter(rec)
 
 	restore := dispatchHeartbeat
 	dispatchHeartbeat = 5 * time.Millisecond
 	defer func() { dispatchHeartbeat = restore }()
 
-	stop := startHeartbeat(context.Background(), sse, "claude-code", "run-1", &chunks)
+	stop := startKeepalive(context.Background(), body, "claude-code", "run-1")
 	time.Sleep(60 * time.Millisecond)
 	stop()
+	body.write(harnessFailure("harness_crashed", "boom"))
 
-	body := rec.Body.String()
-	if !strings.Contains(body, ": heartbeat ") {
-		t.Fatalf("expected heartbeat comments, got %q", body)
+	// Whatever the keepalive wrote, the whole body still has to parse as one
+	// result — that is the entire contract with the client.
+	var result struct {
+		Chunks []json.RawMessage `json:"chunks"`
+		Error  *struct {
+			Code string `json:"code"`
+		} `json:"error"`
 	}
-	if strings.Contains(body, "data:") {
-		t.Fatalf("heartbeat must not emit data frames, got %q", body)
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("keepalive broke the JSON body: %v (%q)", err, rec.Body.String())
+	}
+	if result.Error == nil || result.Error.Code != "harness_crashed" {
+		t.Fatalf("error lost: %q", rec.Body.String())
+	}
+	if !strings.HasPrefix(rec.Body.String(), "\n") {
+		t.Fatalf("expected keepalive bytes before the result, got %q", rec.Body.String())
 	}
 }
 
-// Once the consumer is gone, further writes must be swallowed — never a panic,
-// never a bogus harness_crashed.
-func TestSseWriterGuardsWriteAfterClose(t *testing.T) {
-	rec := httptest.NewRecorder()
-	sse := newSseWriter(rec)
-	if !sse.WriteEvent(map[string]any{"type": "ui-message-chunk", "chunk": 1}) {
-		t.Fatal("first write must succeed")
+// Once the consumer is gone, further writes must be swallowed — never a panic.
+func TestBodyWriterSwallowsWritesAfterAFailure(t *testing.T) {
+	body := newBodyWriter(&failingWriter{})
+	if body.write([]byte("x")) {
+		t.Fatal("a failed write must report failure")
 	}
-	sse.Close()
 	for i := 0; i < 100; i++ {
-		if sse.WriteEvent(map[string]any{"type": "ui-message-chunk", "chunk": i}) {
-			t.Fatal("write after close must report failure, not succeed")
+		if body.write([]byte("x")) {
+			t.Fatal("write after failure must report failure, not succeed")
 		}
 	}
 }
+
+// A ResponseWriter whose body write always fails (a hung-up client).
+type failingWriter struct{ header http.Header }
+
+func (f *failingWriter) Header() http.Header {
+	if f.header == nil {
+		f.header = http.Header{}
+	}
+	return f.header
+}
+func (f *failingWriter) Write([]byte) (int, error) { return 0, errors.New("client gone") }
+func (f *failingWriter) WriteHeader(int)           {}
 
 func TestValidateHarnessInputRejectsEmpty(t *testing.T) {
 	if reason := ValidateHarnessInput(json.RawMessage(`{}`)); reason == "" {

@@ -139,7 +139,7 @@ RUN arch="$(dpkg --print-architecture)" \
   && gh --version
 
 # The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
-# CLI it drives. The daemon spawns the runner over loopback HTTP — see
+# CLI it drives. The daemon execs the runner once per run — see
 # daemon-go/internal/dispatch/runner.go and packages/harness-runner/README.md.
 #
 # The two versions are ONE release train and must move together: the SDK pins

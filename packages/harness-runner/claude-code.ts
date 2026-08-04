@@ -2,15 +2,11 @@
  * The `claude-code` harness: one Studio dispatch → one Claude Agent SDK turn.
  *
  * Runs inside the sandbox pod, next to the checkout the daemon already cloned.
- * Studio hands over a `HarnessStreamInputWire`; this returns the same
- * `DispatchSSEEvent` stream any harness returns, so the daemon and every
- * consumer upstream of it are unchanged.
- *
- * v1 is deliberately turn-buffered, not incremental: chunks accumulate and
- * flush when the SDK reports `result`. That is what makes the assistant
- * `messageId` derivable (it is the Anthropic message id of the turn, so a
- * re-delivered turn dedupes) and it keeps the wire quiet during long tool
- * runs. Studio's own `withLivenessHeartbeat` covers the silence.
+ * Studio hands over a `HarnessStreamInputWire`; this returns the turn's whole
+ * `UIMessageChunk[]`, which is all a turn ever is here — the SDK reports
+ * nothing Studio can render until `result`. That is also what makes the
+ * assistant `messageId` derivable (the Anthropic message id of the turn, so a
+ * re-delivered turn dedupes).
  *
  * Tools come from two places and neither needs configuring here: Claude Code's
  * built-ins operate on the checkout, and Studio's org tools arrive over MCP
@@ -18,11 +14,9 @@
  * the isolation boundary, and there is no UI to answer a prompt.
  */
 
-import { getSessionInfo, query } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
-import type { DispatchSSEEvent } from "@decocms/sandbox/dispatch/schemas";
-import { sessionIdForThread } from "./session-id";
 import {
   turnFinishChunks,
   turnStartChunks,
@@ -35,6 +29,12 @@ const ENVS = {
   MODEL_ENV: "CLAUDE_CODE_MODEL",
   EXECUTABLE_ENV: "CLAUDE_CODE_PATH",
 };
+
+/** One turn's output. `error` accompanies whatever the turn managed to produce. */
+export interface HarnessRunResult {
+  chunks: unknown[];
+  error?: { code: string; message: string } | null;
+}
 
 /** Extract the prompt text from Studio's opaque `userMessage` wire object. */
 export function promptFromUserMessage(userMessage: unknown): string {
@@ -56,22 +56,17 @@ export function promptFromUserMessage(userMessage: unknown): string {
 }
 
 /**
- * This process's environment merged with the run's, for the CLI the SDK spawns.
+ * Where this thread's Claude Code session id is remembered.
  *
- * The daemon spawns this runner once and reuses it across runs, so the model
- * credential arrives per run on the wire rather than in this process's env —
- * which is why it has to be merged in here. `Options.env` REPLACES the
- * subprocess environment rather than merging, so the inherited half (PATH,
- * HOME, the CLI's own config) has to be carried explicitly.
+ * Stored, not derived: one file under the same config dir as the transcript the
+ * SDK keeps, so the id and the session it names live and die together. Resuming
+ * an id the SDK never persisted fails the whole run, so "no file" has to mean
+ * "no session", and it does.
  */
-function runEnvironment(
-  runEnv: Record<string, string> | undefined,
-): Record<string, string> {
-  const merged: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) merged[key] = value;
-  }
-  return Object.assign(merged, runEnv);
+function sessionFile(threadId: string): string {
+  const dir =
+    process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME ?? "."}/.claude`;
+  return `${dir}/deco-sessions/${threadId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
@@ -79,19 +74,13 @@ export function buildOptions(args: {
   input: HarnessStreamInputWire;
   sessionId: string;
   resume: boolean;
-  abortController: AbortController;
-  /** The run's tenant env (model credential). Wins over this process's. */
-  runEnv?: Record<string, string>;
 }): Options {
   const { input, sessionId, resume } = args;
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
-  const env = runEnvironment(args.runEnv);
-  const model = env[ENVS.MODEL_ENV];
-  const executable = env[ENVS.EXECUTABLE_ENV];
+  const model = process.env[ENVS.MODEL_ENV];
+  const executable = process.env[ENVS.EXECUTABLE_ENV];
   return {
-    abortController: args.abortController,
-    env,
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     // The pod is the isolation boundary and no approval UI exists upstream.
@@ -122,34 +111,21 @@ export function buildOptions(args: {
   };
 }
 
-function uiEvent(chunk: unknown): DispatchSSEEvent {
-  return { type: "ui-message-chunk", chunk };
-}
-
 /**
- * Run one turn. Yields `ui-message-chunk` events followed by nothing — the
- * caller writes the terminal `done`. An SDK throw becomes an `error` event
- * AFTER whatever the turn had already produced, so a crash mid-turn still
- * shows the work instead of an empty message.
+ * Run one turn and return its chunks. An SDK throw becomes `error` alongside
+ * whatever the turn had already produced, so a crash mid-turn still shows the
+ * work instead of an empty message.
  */
-export async function* runClaudeCode(
+export async function runClaudeCode(
   input: HarnessStreamInputWire,
-  signal: AbortSignal,
-  runEnv?: Record<string, string>,
-): AsyncGenerator<DispatchSSEEvent> {
-  const sessionId = sessionIdForThread(input.threadId);
-  const cwd = input.workspace.cwd ?? undefined;
-  // Resuming a session that was never persisted (fresh pod, org-fs mount
-  // empty) makes the SDK fail the run, so ask before assuming.
-  const existing = await getSessionInfo(
-    sessionId,
-    cwd ? { dir: cwd } : {},
-  ).catch(() => undefined);
-
-  const abortController = new AbortController();
-  const onAbort = () => abortController.abort();
-  if (signal.aborted) abortController.abort();
-  signal.addEventListener("abort", onAbort, { once: true });
+): Promise<HarnessRunResult> {
+  const file = sessionFile(input.threadId);
+  const stored = (
+    await Bun.file(file)
+      .text()
+      .catch(() => "")
+  ).trim();
+  const sessionId = stored || crypto.randomUUID();
 
   const translator = new UiChunkTranslator();
   const buffered: unknown[] = [];
@@ -158,13 +134,7 @@ export async function* runClaudeCode(
   try {
     const stream = query({
       prompt: promptFromUserMessage(input.userMessage),
-      options: buildOptions({
-        input,
-        sessionId,
-        resume: existing !== undefined,
-        abortController,
-        runEnv,
-      }),
+      options: buildOptions({ input, sessionId, resume: stored.length > 0 }),
     });
 
     const startedAt = Date.now();
@@ -180,7 +150,7 @@ export async function* runClaudeCode(
       // A failed MCP connection is not an error the SDK raises — the tools just
       // aren't in the model's list, and the run reads as "the agent ignored its
       // instructions". The init message is the only place that distinguishes
-      // the two, so log it: stderr reaches the daemon's stdout (pod logs).
+      // the two, so log it.
       if (message.type === "system" && message.subtype === "init") {
         console.error(
           `[claude-code] mcp: ${
@@ -200,45 +170,46 @@ export async function* runClaudeCode(
       }
       for (const chunk of translator.translate(message)) buffered.push(chunk);
       if (message.type !== "result") continue;
+      // Remember the session only once a turn completed on it. ponytail: a
+      // failed turn therefore starts the next one fresh, losing the history —
+      // the alternative is resuming a session the SDK may have left unwritten,
+      // which fails the whole run instead of just forgetting.
+      await Bun.write(file, sessionId);
       const id = messageId ?? `msg_${message.uuid}`;
-      for (const chunk of turnStartChunks(id)) yield uiEvent(chunk);
-      for (const chunk of buffered) yield uiEvent(chunk);
-      for (const chunk of turnFinishChunks(message as SdkResultMessage)) {
-        yield uiEvent(chunk);
-      }
-      return;
+      return {
+        chunks: [
+          ...turnStartChunks(id),
+          ...buffered,
+          ...turnFinishChunks(message as SdkResultMessage),
+        ],
+      };
     }
-
-    // The stream ended without a `result`. Cancellation is the client's doing
-    // and needs no error; anything else is a harness failure.
-    if (signal.aborted) return;
-    yield* flushPartial(
+    return failed(buffered, messageId, "claude-code ended without a result");
+  } catch (err) {
+    return failed(
       buffered,
       messageId,
-      "claude-code ended without a result",
+      err instanceof Error ? err.message : String(err),
     );
-  } catch (err) {
-    if (signal.aborted) return;
-    const detail = err instanceof Error ? err.message : String(err);
-    yield* flushPartial(buffered, messageId, detail);
-  } finally {
-    signal.removeEventListener("abort", onAbort);
   }
 }
 
-/** Emit whatever the failed turn produced, then the error. */
-function* flushPartial(
+/** Whatever the failed turn produced, plus the error that ended it. */
+function failed(
   buffered: unknown[],
   messageId: string | undefined,
-  errorText: string,
-): Generator<DispatchSSEEvent> {
-  if (buffered.length > 0) {
-    for (const chunk of turnStartChunks(messageId ?? `msg_${Date.now()}`)) {
-      yield uiEvent(chunk);
-    }
-    for (const chunk of buffered) yield uiEvent(chunk);
-    yield uiEvent({ type: "finish-step" });
-    yield uiEvent({ type: "finish", finishReason: "error" });
-  }
-  yield { type: "error", code: "harness_crashed", message: errorText };
+  message: string,
+): HarnessRunResult {
+  return {
+    chunks:
+      buffered.length > 0
+        ? [
+            ...turnStartChunks(messageId ?? `msg_${Date.now()}`),
+            ...buffered,
+            { type: "finish-step" },
+            { type: "finish", finishReason: "error" },
+          ]
+        : [],
+    error: { code: "harness_crashed", message },
+  };
 }

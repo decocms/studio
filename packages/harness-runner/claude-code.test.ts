@@ -30,7 +30,6 @@ function options(overrides: Partial<HarnessStreamInputWire> = {}) {
     input: input(overrides),
     sessionId: "11111111-1111-5111-8111-111111111111",
     resume: false,
-    abortController: new AbortController(),
   });
 }
 
@@ -105,7 +104,6 @@ describe("buildOptions", () => {
       input: input(),
       sessionId: "sid",
       resume: false,
-      abortController: new AbortController(),
     });
     expect(fresh.sessionId).toBe("sid");
     expect(fresh.resume).toBeUndefined();
@@ -114,39 +112,19 @@ describe("buildOptions", () => {
       input: input(),
       sessionId: "sid",
       resume: true,
-      abortController: new AbortController(),
     });
     expect(resumed.resume).toBe("sid");
     expect(resumed.sessionId).toBeUndefined();
   });
 
-  test("hands the run's credential to the CLI, alongside the inherited env", () => {
-    const opts = buildOptions({
-      input: input(),
-      sessionId: "sid",
-      resume: false,
-      abortController: new AbortController(),
-      runEnv: { ANTHROPIC_API_KEY: "sk-run" },
-    });
-    // Without this the SDK spawns the CLI with no credential at all, which
-    // surfaces as "Not logged in · Please run /login".
-    expect(opts.env?.ANTHROPIC_API_KEY).toBe("sk-run");
-    // `Options.env` REPLACES the subprocess env, so PATH has to survive.
-    expect(opts.env?.PATH).toBe(process.env.PATH);
-  });
-
-  test("the run's env wins over this process's", () => {
-    process.env.CLAUDE_CODE_MODEL = "from-process";
+  test("takes the model pin from this process's environment", () => {
+    // Exec-per-run: the run's env IS this process's, so nothing is threaded
+    // through the wire and `Options.env` is left unset — the SDK defaults it to
+    // process.env, which is exactly the credential the CLI needs.
+    process.env.CLAUDE_CODE_MODEL = "from-env";
     try {
-      expect(options().model).toBe("from-process");
-      const opts = buildOptions({
-        input: input(),
-        sessionId: "sid",
-        resume: false,
-        abortController: new AbortController(),
-        runEnv: { CLAUDE_CODE_MODEL: "from-run" },
-      });
-      expect(opts.model).toBe("from-run");
+      expect(options().model).toBe("from-env");
+      expect(options().env).toBeUndefined();
     } finally {
       delete process.env.CLAUDE_CODE_MODEL;
     }

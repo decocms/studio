@@ -30,6 +30,24 @@ export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
 ]);
 export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
 
+/**
+ * One harness run's whole output — the body of `POST /_sandbox/dispatch`.
+ *
+ * A turn only exists at its end (the harness buffers until the SDK reports a
+ * result), so the wire is request/response rather than a stream. `error` is
+ * reported ALONGSIDE `chunks`, never instead of them: a crash mid-turn still has
+ * to surface the work it did, and the consumer's error path is what records the
+ * run as failed.
+ */
+export const harnessRunResultSchema = z.object({
+  chunks: z.array(z.unknown()),
+  error: z
+    .object({ code: z.string(), message: z.string() })
+    .nullish()
+    .transform((e) => e ?? null),
+});
+export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
+
 const chatMessageSchema = z.record(z.string(), z.unknown()); // opaque to link-protocol
 
 const modelSelectionSchema = z

@@ -2507,6 +2507,11 @@ function tenantAttrs(tenant: RunnerTenant | null): {
  */
 export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   const out: EnsureOptions = {};
+  // The handle's slug source. Dropping it made `resurrectByHandle` fall back to
+  // `repo.branch` (the derived git ref, not the synthetic isolation key), so the
+  // re-ensure computed a DIFFERENT handle and posted a SECOND SandboxClaim for
+  // one thread — while the handle the caller was waiting on stayed unknown.
+  if (opts.branch) out.branch = opts.branch;
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;

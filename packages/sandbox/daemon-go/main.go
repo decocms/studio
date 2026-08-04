@@ -77,21 +77,20 @@ type daemon struct {
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
 
-	broadcaster   *events.Broadcaster
-	sniffer       *proc.PortSniffer
-	store         *config.Store
-	installState  *setup.InstallState
-	lifecycle     *lifecycle.Manager
-	phases        *proc.PhaseManager
-	tasks         *proc.TaskManager
-	branchStatus  *gitx.BranchStatusMonitor
-	orchestrator  *setup.Orchestrator
-	prober        *probe.Prober
-	proxyHandler  *proxy.Handler
-	dispatchReg   *dispatch.Registry
-	dispatchDeps  dispatch.Deps
-	harnessRunner *dispatch.Runner
-	orgFsLinks    *orgfs.Links
+	broadcaster  *events.Broadcaster
+	sniffer      *proc.PortSniffer
+	store        *config.Store
+	installState *setup.InstallState
+	lifecycle    *lifecycle.Manager
+	phases       *proc.PhaseManager
+	tasks        *proc.TaskManager
+	branchStatus *gitx.BranchStatusMonitor
+	orchestrator *setup.Orchestrator
+	prober       *probe.Prober
+	proxyHandler *proxy.Handler
+	dispatchReg  *dispatch.Registry
+	dispatchDeps dispatch.Deps
+	orgFsLinks   *orgfs.Links
 
 	fileChangedMu    sync.Mutex
 	fileChangedTimer *time.Timer
@@ -418,9 +417,9 @@ func (d *daemon) shutdown() {
 
 	d.tasks.Shutdown()
 	d.branchStatus.Stop()
-	// Before the publish, and unconditionally: the runner holds harness CLIs that
+	// Before the publish, and unconditionally: a running harness holds CLIs that
 	// would otherwise keep writing into the tree the publish is about to commit.
-	d.harnessRunner.Shutdown()
+	d.dispatchReg.CancelAll()
 
 	cfg := d.store.Read()
 	if cfg != nil && cfg.Branch() != "" {
@@ -664,16 +663,15 @@ func main() {
 	)
 
 	d.dispatchReg = dispatch.NewRegistry()
-	d.harnessRunner = dispatch.NewRunner()
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
 		AllowedHosts:     offloadHosts,
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
-		Runner:           d.harnessRunner,
 		// The tenant env Studio pushed on the config channel — the harness's model
-		// credential lives there, and the runner subprocess does not inherit it.
+		// credential lives there, and it reaches the harness as its spawn
+		// environment, so it dies with the run.
 		// Plus GH_TOKEN, so the harness can open the pull request its prompt asks
 		// for: `git push` already works off the credentialed `origin`, but `gh`
 		// reads a token from the environment and there is none in the pod.

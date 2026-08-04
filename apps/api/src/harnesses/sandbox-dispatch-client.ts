@@ -5,25 +5,23 @@
  * Decopilot runs in-process (`InProcessSandboxClient`); the Claude Agent SDK
  * cannot — it is a TS library that drives the `claude` CLI, and it belongs next
  * to the checkout. So this client provisions the pod, POSTs the same
- * `HarnessStreamInputWire` to the daemon's `/_sandbox/dispatch`, and turns the
- * SSE response back into the `UIMessageChunk` iterable every consumer upstream
+ * `HarnessStreamInputWire` to the daemon's `/_sandbox/dispatch`, and yields the
+ * turn it answers with as the `UIMessageChunk` iterable every consumer upstream
  * already expects. Nothing downstream of `dispatch()` can tell the difference.
  *
  * STUDIO-OWNED, like its in-process sibling: it closes over StudioContext, so
  * it cannot live in `@decocms/sandbox`.
  *
- * Transport note: this holds the SSE response open for the whole run rather
- * than pushing turns back over a new route. The daemon already speaks exactly
- * this envelope, so there is no new wire, no new table and no new subject —
- * and Studio keeps the one thing a push model gives up, which is knowing
- * precisely when the run ended. The harness itself buffers per turn, so the
- * connection is quiet during work; `withLivenessHeartbeat` upstream covers
- * that silence.
+ * Transport note: one request per run, held open for its whole length. A turn's
+ * output only exists at its end (the harness buffers until the SDK reports a
+ * result), so there is nothing to stream — and Studio keeps the one thing a
+ * push model gives up, which is knowing precisely when the run ended.
+ * `withLivenessHeartbeat` upstream covers the silence.
  */
 
 import type { UIMessageChunk } from "ai";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
-import { dispatchSSEEventSchema } from "@decocms/sandbox/dispatch/schemas";
+import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
@@ -236,6 +234,10 @@ async function* dispatchToDaemon(args: {
   input: HarnessStreamInput;
   signal?: AbortSignal;
 }): AsyncIterable<UIMessageChunk> {
+  // Attribute the outcome. A transport-level failure here arrives as a bare
+  // "operation timed out" with no run, no handle and no duration on it, which is
+  // indistinguishable from a model error until you go read pod logs.
+  const startedAt = Date.now();
   const res = await args.provider.proxyDaemonRequest(
     args.handle,
     "/_sandbox/dispatch",
@@ -250,105 +252,33 @@ async function* dispatchToDaemon(args: {
       ...(args.signal ? { signal: args.signal } : {}),
     },
   );
-  if (!res.ok || !res.body) {
-    // A non-200 here is the daemon rejecting the envelope (bad input,
-    // tombstoned run, unauthorized) — it never produced a stream, so surface
-    // it as a throw rather than an empty successful run.
+  if (!res.ok) {
+    // A non-200 is the daemon rejecting the envelope (bad input, tombstoned
+    // run, unauthorized) — it never ran the harness, so surface it as a throw
+    // rather than an empty successful run.
     const detail = await res.text().catch(() => res.statusText);
     throw new Error(
       `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`,
     );
   }
-  // Attribute the end of the stream. A transport-level failure here arrives as
-  // a bare "operation timed out" with no run, no handle and no duration on it,
-  // which is indistinguishable from a model error until you go read pod logs.
-  const startedAt = Date.now();
-  let chunks = 0;
-  try {
-    for await (const chunk of readDispatchSSE(res.body, args.signal)) {
-      chunks++;
-      yield chunk;
-    }
-  } catch (err) {
-    console.error("[sandbox-dispatch] stream failed", {
-      runId: args.runId,
-      handle: args.handle,
-      chunks,
-      elapsedMs: Date.now() - startedAt,
-      aborted: args.signal?.aborted ?? false,
-      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-    });
-    throw err;
+  const parsed = harnessRunResultSchema.safeParse(
+    await res.json().catch(() => null),
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `sandbox dispatch returned a malformed result: ${parsed.error.message}`,
+    );
   }
-  console.log("[sandbox-dispatch] stream done", {
+  const { chunks, error } = parsed.data;
+  console.log("[sandbox-dispatch] run done", {
     runId: args.runId,
     handle: args.handle,
-    chunks,
+    chunks: chunks.length,
     elapsedMs: Date.now() - startedAt,
+    error: error?.code ?? null,
   });
-}
-
-/**
- * Yield chunks from the daemon's dispatch SSE stream.
- *
- * `error` throws (the consumer's error path is what records a failed run) and
- * `done` ends it. A stream that ends WITHOUT `done` means the harness died
- * mid-run, which must not look like a clean finish — the daemon usually turns
- * that into an `error` event itself, but if the connection drops it cannot, so
- * this checks too.
- */
-export async function* readDispatchSSE(
-  body: ReadableStream<Uint8Array>,
-  signal?: AbortSignal,
-): AsyncIterable<UIMessageChunk> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-  let sawDone = false;
-  try {
-    while (!signal?.aborted) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      // SSE frames are separated by a blank line; the daemon writes exactly one
-      // `data:` line per frame plus `:`-prefixed comments.
-      let boundary = buffered.indexOf("\n\n");
-      while (boundary !== -1) {
-        const frame = buffered.slice(0, boundary);
-        buffered = buffered.slice(boundary + 2);
-        boundary = buffered.indexOf("\n\n");
-        const payload = frameData(frame);
-        if (payload === null) continue;
-        const parsed = dispatchSSEEventSchema.safeParse(payload);
-        if (!parsed.success) continue;
-        const event = parsed.data;
-        if (event.type === "done") {
-          sawDone = true;
-          return;
-        }
-        if (event.type === "error") {
-          throw new Error(`${event.code}: ${event.message}`);
-        }
-        yield event.chunk as UIMessageChunk;
-      }
-    }
-    if (!sawDone && !signal?.aborted) {
-      throw new Error("sandbox dispatch stream ended before done");
-    }
-  } finally {
-    reader.cancel().catch(() => {});
-  }
-}
-
-/** The parsed JSON of a frame's `data:` line, or null if it carries none. */
-function frameData(frame: string): unknown {
-  for (const line of frame.split("\n")) {
-    if (!line.startsWith("data:")) continue;
-    try {
-      return JSON.parse(line.slice("data:".length).trim());
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  // Partial work first, THEN the throw: the consumer's error path is what
+  // records the run as failed, and it must not also lose what the turn produced.
+  yield* chunks as UIMessageChunk[];
+  if (error) throw new Error(`${error.code}: ${error.message}`);
 }
