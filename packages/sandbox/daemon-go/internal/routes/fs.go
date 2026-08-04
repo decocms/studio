@@ -90,6 +90,24 @@ func Read(deps FsDeps) http.HandlerFunc {
 		}
 		stat, err := os.Stat(filePath)
 		if err != nil {
+			// Decofile fallback: `.deco/blocks.gen.json` is commonly gitignored
+			// (a multi-MB single line the runtime regenerates on dev cold-start),
+			// so a fresh sandbox has the block sources but not the merged file.
+			// Rebuild it on the fly from the sibling `.deco/blocks/*.json` so the
+			// CMS is readable before the dev server boots. Returned un-numbered:
+			// the decofile is consumed as one blob and the client's line-number
+			// strip is a no-op on content that lacks the `^\d+\t` prefix.
+			if filepath.Base(filePath) == decofile.GenBasename {
+				blocksDir := filepath.Join(filepath.Dir(filePath), decofile.BlocksDirname)
+				if merged, ok := decofile.GenerateFromBlocksDeduped(blocksDir); ok {
+					httpx.JSON(w, 200, map[string]any{
+						"kind":      "text",
+						"content":   merged,
+						"lineCount": 1,
+					})
+					return
+				}
+			}
 			httpx.Error(w, 400, fmt.Sprintf("File not found: %s", body.Path))
 			return
 		}
