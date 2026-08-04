@@ -83,6 +83,18 @@ export interface TaskBoardItemThreadRef {
   title: string | null;
   lastMessage: string | null;
   hasPreview: boolean;
+  /** False when the thread was created and never used — see
+   *  `TaskBoardItemThreadRef` in `apps/api/src/storage/types.ts`. */
+  hasMessages: boolean;
+  createdAt: string;
+}
+
+/** A tag attached to a task, plus who attached it and when. */
+export interface TaskBoardItemTagRef {
+  id: string;
+  name: string;
+  color: string | null;
+  createdBy: string;
   createdAt: string;
 }
 
@@ -96,7 +108,10 @@ export interface TaskBoardItem {
   assigneeId: string | null;
   assignedBy: string | null;
   dueDate: string | null;
+  /** Manual drag-to-reorder position within a lane, ascending. */
+  sortOrder: number;
   threads: TaskBoardItemThreadRef[];
+  tags: TaskBoardItemTagRef[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
