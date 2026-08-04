@@ -99,8 +99,8 @@ jobs:
         run: cd packages/sandbox/daemon-go && go build -o bin/daemon .
 
       - name: Run daemon e2e tests
-        # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
-        # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
+        # All daemon e2e specs end in `.e2e.test.ts`; the helpers file is
+        # `.e2e.helpers.ts` and is not matched.
         # DAEMON_E2E_CMD is what makes the suite implementation-agnostic; the
         # default it falls back to is this same binary.
         env:

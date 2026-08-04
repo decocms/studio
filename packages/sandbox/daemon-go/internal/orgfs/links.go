@@ -172,8 +172,8 @@ func (l *Links) RepointForRun(threadId string) bool {
 }
 
 // ensureRepoLinkLocked drops `<repoDir>/org → ../org` and excludes it so the
-// shutdown `git add -A` never commits it. At dispatch time, not boot — a link in
-// place first makes `git clone` refuse the non-empty dir.
+// shutdown `git add -A` never commits it. At the first linked operation, not
+// boot — a link in place first makes `git clone` refuse the non-empty dir.
 func (l *Links) ensureRepoLinkLocked() {
 	if l.RepoDir == "" {
 		return

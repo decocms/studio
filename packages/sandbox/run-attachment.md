@@ -20,7 +20,7 @@ workspace configuration directly from the native terminal runtime.
 | Runtime path | How run context reaches the workspace |
 | --- | --- |
 | Hosted Decopilot with `agent-sandbox` | Studio provisions or reuses the sandbox, then calls `/_sandbox/tools/sync`. Thread identity is sent on filesystem and exec calls so the daemon can repoint run-specific links. |
-| Studio Native coding-agent terminal | The Rust terminal runtime launches the selected local CLI in the chosen workspace. It does not send a daemon dispatch envelope or use hosted run attachment. |
+| Studio Native coding-agent terminal | The Rust terminal runtime launches the selected local CLI in the chosen workspace. It does not use hosted run attachment. |
 
 Catalog fetching and file writing remain daemon-owned. The lifecycle gap is
 limited to hosted sandbox runs and the topology-specific calls and headers used

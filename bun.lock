@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.161.0",
+      "version": "4.164.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -114,7 +114,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.161.0",
+      "version": "4.164.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -234,7 +234,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.27.2",
+      "version": "1.28.1",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -287,7 +287,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.35.6",
+      "version": "1.36.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -296,15 +296,13 @@
         "zod": "4.3.6",
       },
       "devDependencies": {
-        "@nats-io/jetstream": "3.4.0",
-        "@nats-io/nats-core": "3.4.0",
         "@types/bun": "latest",
         "typescript": "^7.0.2",
       },
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.13.5",
+      "version": "0.15.0",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -893,7 +891,7 @@
 
     "@nats-io/nats-core": ["@nats-io/nats-core@3.4.0", "", { "dependencies": { "@nats-io/nkeys": "2.0.3", "@nats-io/nuid": "3.0.0" } }, "sha512-QMDM86EUNm+wudlKC67HLar/KHHQUvJGLfb4jbahje3pUk3K9afeck9fwsxBZF0eUFox6T/TA6m/t+lQqf+QsQ=="],
 
-    "@nats-io/nkeys": ["@nats-io/nkeys@2.0.3", "", { "dependencies": { "tweetnacl": "^1.0.3" } }, "sha512-JVt56GuE6Z89KUkI4TXUbSI9fmIfAmk6PMPknijmuL72GcD+UgIomTcRWiNvvJKxA01sBbmIPStqJs5cMRBC3A=="],
+    "@nats-io/nkeys": ["@nats-io/nkeys@1.2.0-8", "", { "dependencies": { "tweetnacl": "^1.0.3" } }, "sha512-o6nfNYySzVZL7mIJA+ejD3JdMFbLn9VWtptM2cnHh4jeF/FvhPhCkn8BH4jQE7asCV/SSialu6jGhsAFV1FKkQ=="],
 
     "@nats-io/nuid": ["@nats-io/nuid@3.0.0", "", {}, "sha512-QbXZDrxmYlrn5AD06gYcUTmEHwxn96HBQMIk7XTjDlEcx6FPzVBBPjp4AMRh1lEv6B4iJ6Xb/Uz61JugPXFRQg=="],
 
@@ -3481,7 +3479,9 @@
 
     "@mdx-js/mdx/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
-    "@nats-io/jwt/@nats-io/nkeys": ["@nats-io/nkeys@1.2.0-8", "", { "dependencies": { "tweetnacl": "^1.0.3" } }, "sha512-o6nfNYySzVZL7mIJA+ejD3JdMFbLn9VWtptM2cnHh4jeF/FvhPhCkn8BH4jQE7asCV/SSialu6jGhsAFV1FKkQ=="],
+    "@nats-io/nats-core/@nats-io/nkeys": ["@nats-io/nkeys@2.0.3", "", { "dependencies": { "tweetnacl": "^1.0.3" } }, "sha512-JVt56GuE6Z89KUkI4TXUbSI9fmIfAmk6PMPknijmuL72GcD+UgIomTcRWiNvvJKxA01sBbmIPStqJs5cMRBC3A=="],
+
+    "@nats-io/transport-node/@nats-io/nkeys": ["@nats-io/nkeys@2.0.3", "", { "dependencies": { "tweetnacl": "^1.0.3" } }, "sha512-JVt56GuE6Z89KUkI4TXUbSI9fmIfAmk6PMPknijmuL72GcD+UgIomTcRWiNvvJKxA01sBbmIPStqJs5cMRBC3A=="],
 
     "@opentelemetry/exporter-logs-otlp-grpc/@opentelemetry/core": ["@opentelemetry/core@2.2.0", "", { "dependencies": { "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-FuabnnUm8LflnieVxs6eP7Z383hgQU4W1e3KJS6aOG3RxWxcHyBxH8fDMHNgu/gFx/M2jvTOW/4/PHhLz6bjWw=="],
 

@@ -16,8 +16,6 @@
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./org-fs": "./org-fs.ts",
-    "./dispatch": "./dispatch/index.ts",
-    "./dispatch/*": "./dispatch/*.ts",
     "./proxy/http": "./proxy/http.ts",
     "./proxy/websocket": "./proxy/websocket.ts"
   },
@@ -29,8 +27,6 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@nats-io/jetstream": "3.4.0",
-    "@nats-io/nats-core": "3.4.0",
     "@types/bun": "latest",
     "typescript": "^7.0.2"
   }

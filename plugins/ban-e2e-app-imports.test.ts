@@ -68,10 +68,10 @@ describe("ban-e2e-app-imports", () => {
       "packages/e2e/fixtures/dropped.ts",
       `import { jetstream } from "@nats-io/jetstream";\n` +
         `import { encodeSubjectToken } from "@decocms/tunnel/subject";\n` +
-        `import type { Capability } from "@decocms/sandbox/dispatch";\n` +
+        `import type { SandboxId } from "@decocms/sandbox/id";\n` +
         `import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";\n` +
         `export const all = [jetstream, encodeSubjectToken, DEFAULT_THREAD_TITLE];\n` +
-        `export type C = Capability;\n`,
+        `export type S = SandboxId;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(4);

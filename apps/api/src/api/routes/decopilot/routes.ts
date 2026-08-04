@@ -737,9 +737,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     taskId: string;
     thread: Thread;
     organization: { id: string };
-    userId: string;
   }): Promise<void> {
-    const { ctx, taskId, thread, organization, userId } = args;
+    const { ctx, taskId, thread, organization } = args;
     assertPersistedHostedRuntime(
       thread.harness_id,
       thread.sandbox_provider_kind,
@@ -827,10 +826,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       type: "CANCEL",
       taskId,
     });
-    cancelBroadcast.publishControlFrame(userId, {
-      type: "cancel",
-      runId: taskId,
-    });
     const producedRunFailed = cancelTransitions.some(
       (t) => t.event.type === "RUN_FAILED",
     );
@@ -870,13 +865,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   }
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
+    const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
     assertPersistedHostedRuntime(
       thread.harness_id,
       thread.sandbox_provider_kind,
     );
-    await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
+    await cancelActiveThreadRun({ ctx, taskId, thread, organization });
     return c.json({ cancelled: true, async: true }, 202);
   });
 
@@ -935,7 +930,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
+    const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
     assertPersistedHostedRuntime(
       thread.harness_id,
@@ -960,7 +955,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         taskId,
         thread,
         organization,
-        userId,
       });
     } else {
       // Removed a QUEUED turn: its request message was already persisted at

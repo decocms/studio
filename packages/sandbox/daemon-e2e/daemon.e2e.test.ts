@@ -3,8 +3,8 @@
  *
  * Spawns the daemon under test (see daemon.e2e.helpers.ts — swap the binary via
  * DAEMON_E2E_CMD) and exercises real HTTP/SSE endpoints. Every assertion is a
- * black-box contract; no daemon source is imported. Git/exec, reverse-proxy,
- * and dispatch live in sibling daemon.e2e.*.test.ts files.
+ * black-box contract; no daemon source is imported. Git/exec and reverse-proxy
+ * live in sibling daemon.e2e.*.test.ts files.
  *
  * Privilege note: some daemon paths (gitSync) request a uid/gid=1000 drop, but
  * the daemon runs under Bun, which silently ignores spawn uid/gid — so the
@@ -177,6 +177,23 @@ describe("daemon e2e: smoke, CORS, dual-prefix", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("Not found");
+  });
+
+  it("removed dispatch routes return 404", async () => {
+    for (const prefix of ["/_sandbox", "/_decopilot_vm"]) {
+      const dispatch = await fetch(url(d, `${prefix}/dispatch`), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: "{}",
+      });
+      expect(dispatch.status).toBe(404);
+
+      const cancel = await fetch(url(d, `${prefix}/runs/run-1`), {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      expect(cancel.status).toBe(404);
+    }
   });
 
   // Dual-serve compat (T11): both the canonical /_sandbox/* and legacy
@@ -909,11 +926,6 @@ describe("daemon e2e: auth on mutating routes", () => {
     { name: "setup/install", path: "/_sandbox/setup/install", body: "" },
     { name: "setup/start", path: "/_sandbox/setup/start", body: "" },
     { name: "tasks/kill-all", path: "/_sandbox/tasks/kill-all", body: "" },
-    {
-      name: "dispatch",
-      path: "/_sandbox/dispatch",
-      body: toBody({ harnessId: "x", input: {} }),
-    },
   ];
 
   for (const m of MUTATING) {
@@ -948,11 +960,4 @@ describe("daemon e2e: auth on mutating routes", () => {
       expect(res.status).not.toBe(401);
     });
   }
-
-  it("DELETE /_sandbox/runs/:id without bearer → 401", async () => {
-    const res = await fetch(url(d, "/_sandbox/runs/run-1"), {
-      method: "DELETE",
-    });
-    expect(res.status).toBe(401);
-  });
 });

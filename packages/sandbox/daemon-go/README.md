@@ -14,10 +14,9 @@ implementation — the TypeScript daemon it replaced was deleted.
 ## Responsibilities
 
 Clone and set up the repo, install dependencies, run the dev script and other
-project tasks under a PTY, serve filesystem and Git operations, dispatch agent
-harness runs and stream their output as SSE, proxy preview HTTP/WebSocket traffic
-to the dev server, publish work back to git on shutdown, and report health so
-Studio can tell a live sandbox from a dead one.
+project tasks under a PTY, serve filesystem and Git operations, proxy preview
+HTTP/WebSocket traffic to the dev server, publish work back to git on shutdown,
+and report health so Studio can tell a live sandbox from a dead one.
 
 ## Layout
 
@@ -26,7 +25,6 @@ Studio can tell a live sandbox from a dead one.
 | `main.go` | Env contract, wiring, HTTP server, shutdown |
 | `internal/routes/` | HTTP surface: `/health`, `/_sandbox/*`, fs, git, bash, exec, tasks, tools, events |
 | `internal/setup/` | Clone, install, golden cache, dep metrics, orchestration |
-| `internal/dispatch/` | Agent run dispatch, harness runner, offloaded fetch |
 | `internal/gitx/` | Git: checkout, rebase, publish, branch status, protected-branch guard |
 | `internal/proc/` | PTY spawn, task manager, log tee, ring buffer, port sniffer |
 | `internal/config/` | Tenant config store: classify, merge, validate, persist |
@@ -34,7 +32,7 @@ Studio can tell a live sandbox from a dead one.
 | `internal/orgfs/` | Links half of org-fs (the privileged mounter is the sidecar in `../orgfs/`) |
 | `internal/proxy/` | Preview HTTP + WebSocket proxy |
 | `internal/probe/`, `internal/lifecycle/` | Health probe and lifecycle state |
-| `internal/auth/`, `internal/urlallow/` | Bearer-token auth and the offload-fetch allowlist |
+| `internal/auth/`, `internal/urlallow/` | Bearer-token auth and the URL-transfer allowlist |
 | `internal/telemetry/` | OTLP metrics export |
 | `internal/worktree/` | Worktree lock |
 
@@ -48,7 +46,7 @@ Set by the sandbox template, not by the daemon:
 | `DAEMON_BOOT_ID` | Boot identity echoed by `/health`; how Studio detects a restart |
 | `APP_ROOT` (or `WORKDIR`) | Workspace root — `repo/` checkout, daemon state, log tees |
 | `PROXY_PORT` (or `DAEMON_PORT`) | Listen port |
-| `OFFLOAD_ALLOWED_HOSTS` | Allowlist for offloaded fetch; empty fails closed |
+| `OFFLOAD_ALLOWED_HOSTS` | Allowlist for URL-backed file transfers; empty fails closed |
 | `ORGFS_SIDECAR_CONFIG_PATH` / `ORGFS_SIDECAR_STATUS_PATH` | Org-fs relay to the mounter sidecar; org-fs is inert without them |
 
 `/health` is unauthenticated on purpose: Studio polls it and marks the sandbox
@@ -78,5 +76,5 @@ Docker boot smoke test on every PR touching this package.
 - Nothing in TypeScript may import from this directory. The contract between
   Studio and the daemon is HTTP, and `daemon-e2e/` is where it is asserted.
 - Route behavior changes belong here **and** in `daemon-e2e/` in the same PR.
-- Treat every route parameter, filesystem path, proxy target, and dispatch frame
+- Treat every route parameter, filesystem path, URL transfer, and proxy target
   as untrusted input; keep path containment at the filesystem boundary.

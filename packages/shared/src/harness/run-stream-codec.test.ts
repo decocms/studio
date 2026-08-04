@@ -6,13 +6,13 @@ import {
   serializeUnfencedDone,
   parseRunStreamMsgId,
   buildChunkMsgId,
+  MAX_PUBLISH_BYTES,
   FRAG_INDEX_HEADER,
   FRAG_TOTAL_HEADER,
   decodeMessage,
   reassembleFragments,
   type RawMsg,
 } from "./run-stream-codec";
-import { MAX_PUBLISH_BYTES } from "./offload-messages";
 
 const dec = (u: Uint8Array) => JSON.parse(new TextDecoder().decode(u));
 

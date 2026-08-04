@@ -54,8 +54,8 @@ This is an atomic native cutover:
 
 ### OpenCode stacked extension
 
-- OpenCode is a native terminal identity only. It is not added to the shared
-  hosted/headless `HarnessId` or the AI SDK dispatch schemas.
+- OpenCode is a native terminal identity only. It is not part of the hosted
+  Decopilot contract.
 - Studio qualifies OpenCode 1.18.10 or newer. Availability requires its
   version plus a bounded, credential-free, plugin-free database query because
   a working `--version` alone does not prove the TUI runtime can initialize.

@@ -239,7 +239,6 @@ export class S3Service {
     orgId: string,
     key: string,
     expiresIn = 3600,
-    _opts?: { requireFetchable?: boolean },
   ): Promise<string> {
     const s3Key = buildS3Key(orgId, key);
     return getSignedUrl(

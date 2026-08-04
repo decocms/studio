@@ -1,7 +1,7 @@
 # @decocms/sandbox
 
 Runs Studio coding workloads through AgentSandbox with lifecycle, filesystem,
-dispatch, and proxy contracts.
+and proxy contracts.
 
 | Attribute | Value |
 | --- | --- |
@@ -15,7 +15,7 @@ dispatch, and proxy contracts.
 `@decocms/sandbox` owns the boundary between Studio and an execution environment
 used by coding agents. A sandbox contains a project checkout and a **Go daemon**
 (`daemon-go/`, one static binary, PID 1 of the pod) that performs filesystem, Git,
-process, dispatch, and preview-proxy operations. It is the only daemon
+process, and preview-proxy operations. It is the only daemon
 implementation; the TypeScript one it replaced is deleted, and its black-box
 contract now lives in `daemon-e2e/`.
 
@@ -33,7 +33,6 @@ never becomes another user's execution context.
 - Provision or attach to isolated execution environments.
 - Build and run the authenticated Go daemon inside each environment.
 - Expose asynchronous filesystem, Git, task, terminal, and preview operations.
-- Carry agent dispatch streams between Studio, the daemon, and a harness.
 - Proxy HTTP and WebSocket traffic to development servers inside a sandbox.
 - Support organization filesystem mounts and cleanup (the privileged mounter
   sidecar in `orgfs/` is the one piece of in-sandbox TypeScript left).
@@ -62,27 +61,16 @@ export async function ensureSandbox(
 }
 ```
 
-Dispatch producers and consumers share schemas from the package instead of
-redeclaring wire objects:
-
-```ts
-import { harnessStreamInputSchema } from "@decocms/sandbox/dispatch";
-
-const input = harnessStreamInputSchema.parse(untrustedInput);
-```
-
 ## Architecture
 
-The package has four major layers:
+The package has three major layers:
 
 1. **Provider layer** — `AgentSandboxProvider` owns lifecycle and proxy operations
    through the Kubernetes agent-sandbox operator.
 2. **Daemon layer** — the Go daemon (`daemon-go/`) serves HTTP inside the sandbox
-   on port `9000`. Authenticated routes perform project, process, Git,
-   filesystem, and dispatch work.
-3. **Dispatch layer** — versioned Zod schemas and relay helpers carry harness input,
-   output, control frames, and task state.
-4. **Proxy and filesystem layer** — HTTP/WebSocket helpers expose development
+   on port `9000`. Authenticated routes perform project, Git, filesystem, and
+   process work.
+3. **Proxy and filesystem layer** — HTTP/WebSocket helpers expose development
    servers, while organization filesystem helpers manage mounted Studio content.
 
 A logical sandbox is identified by `SandboxId`, which pairs a `userId` with an
@@ -133,7 +121,6 @@ bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
 Run focused host-side tests while iterating:
 
 ```bash
-bun test packages/sandbox/dispatch
 bun test packages/sandbox/orgfs
 ```
 
@@ -160,13 +147,11 @@ bun run lint
 - A sandbox handle may guard a public preview URL, but it never authorizes daemon
   control requests. Treat preview URLs as sensitive links and daemon tokens as
   credentials.
-- Treat every dispatch frame, route parameter, filesystem path, and proxy target
-  as untrusted input. Parse protocol objects with the exported schemas and keep
-  path containment checks at filesystem boundaries.
+- Treat every daemon request, route parameter, filesystem path, and proxy target
+  as untrusted input. Validate protocol objects and keep path containment checks
+  at filesystem boundaries.
 - Offloaded fetch destinations must match the allowlist derived from trusted
   server configuration. An empty or invalid allowlist fails closed.
-- NATS Core provides transport, not durable delivery. Dispatch state, retry
-  behavior, deduplication, and cancellation must remain explicit.
 - Side-effecting work must not be retried unless the operation is idempotent or
   protected by a claim/fence.
 
@@ -210,8 +195,6 @@ preview contract.
 | `@decocms/sandbox/provider/agent-sandbox` | Kubernetes agent-sandbox provider implementation |
 | `@decocms/sandbox/daemon-client` | Authenticated daemon HTTP client |
 | `@decocms/sandbox/org-fs` | Organization filesystem client and contracts |
-| `@decocms/sandbox/dispatch` | Dispatch schemas, relay, versioning, and fixtures namespace |
-| `@decocms/sandbox/dispatch/*` | Individual dispatch modules |
 | `@decocms/sandbox/proxy/http` | HTTP preview proxy primitives |
 | `@decocms/sandbox/proxy/websocket` | WebSocket preview proxy primitives |
 
@@ -225,7 +208,6 @@ path.
 | `daemon-go/` | The sandbox daemon (Go). Runs as PID 1 inside every sandbox pod. |
 | `daemon-e2e/` | Black-box HTTP/SSE conformance suite for whatever binary `DAEMON_E2E_CMD` names; defaults to `daemon-go/bin/daemon`. |
 | `server/` | Host-side providers and the authenticated daemon client. |
-| `dispatch/` | Versioned dispatch schemas and NATS relay helpers shared by both ends. |
 | `orgfs/` | Org-filesystem client, WebDAV handler, and the privileged mounter sidecar image entrypoint. |
 | `proxy/` | HTTP/WebSocket preview-proxy primitives used by Studio. |
 | `image/` | Sandbox container image (Dockerfile + bundled skills). |
@@ -233,7 +215,7 @@ path.
 
 ## Related documentation
 
-- [Run attachment and dispatch lifecycle](./run-attachment.md)
+- [Hosted run attachment design](./run-attachment.md)
 - [Sandbox image skills and features](./image/skills-features.md)
 - [Repository guidelines](../../AGENTS.md)
 - [Testing strategy](../../TESTING.md)

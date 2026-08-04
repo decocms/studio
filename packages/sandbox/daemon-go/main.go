@@ -19,7 +19,6 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/activity"
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
-	"github.com/decocms/studio/sandbox-daemon/internal/dispatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
@@ -31,7 +30,6 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/routes"
 	"github.com/decocms/studio/sandbox-daemon/internal/setup"
 	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
-	"github.com/decocms/studio/sandbox-daemon/internal/toolscatalog"
 	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
 
@@ -77,21 +75,18 @@ type daemon struct {
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
 
-	broadcaster   *events.Broadcaster
-	sniffer       *proc.PortSniffer
-	store         *config.Store
-	installState  *setup.InstallState
-	lifecycle     *lifecycle.Manager
-	phases        *proc.PhaseManager
-	tasks         *proc.TaskManager
-	branchStatus  *gitx.BranchStatusMonitor
-	orchestrator  *setup.Orchestrator
-	prober        *probe.Prober
-	proxyHandler  *proxy.Handler
-	dispatchReg   *dispatch.Registry
-	dispatchDeps  dispatch.Deps
-	harnessRunner *dispatch.Runner
-	orgFsLinks    *orgfs.Links
+	broadcaster  *events.Broadcaster
+	sniffer      *proc.PortSniffer
+	store        *config.Store
+	installState *setup.InstallState
+	lifecycle    *lifecycle.Manager
+	phases       *proc.PhaseManager
+	tasks        *proc.TaskManager
+	branchStatus *gitx.BranchStatusMonitor
+	orchestrator *setup.Orchestrator
+	prober       *probe.Prober
+	proxyHandler *proxy.Handler
+	orgFsLinks   *orgfs.Links
 
 	fileChangedMu    sync.Mutex
 	fileChangedTimer *time.Timer
@@ -261,12 +256,10 @@ func (d *daemon) authed(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// linked ensures this run's org-fs links before the handler runs. Hosted
-// harnesses drive the sandbox through fs/exec without a /dispatch envelope, so
-// the links must be ensured here too, keyed on x-thread-id. Applied to the fs
-// and exec routes only: gating /orgfs-config would deadlock provisioning on
-// mounts that appear only after that POST, and gating /setup/clone would create
-// `repo/org` ahead of the clone.
+// linked ensures this run's org-fs links before its first linked operation,
+// keyed on x-thread-id. Applied to the fs and exec routes only: gating
+// /orgfs-config would deadlock provisioning on mounts that appear only after
+// that POST, and gating /setup/clone would create `repo/org` ahead of the clone.
 func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
 	return d.authed(func(w http.ResponseWriter, r *http.Request) {
 		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
@@ -318,14 +311,6 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("GET "+pre+"/scripts", h.scripts)
 	mux.HandleFunc("OPTIONS "+pre, corsPreflight)
 	mux.HandleFunc("OPTIONS "+pre+"/", corsPreflight)
-
-	// Dispatch checks the token itself, so it can answer over SSE.
-	mux.HandleFunc("POST "+pre+"/dispatch", func(w http.ResponseWriter, r *http.Request) {
-		d.dispatchReg.HandleDispatch(w, r, d.dispatchDeps)
-	})
-	mux.HandleFunc("DELETE "+pre+"/runs/{runId}", func(w http.ResponseWriter, r *http.Request) {
-		d.dispatchReg.HandleCancel(w, r, d.getToken)
-	})
 
 	mux.HandleFunc("GET "+pre+"/config", d.authed(h.configRead))
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
@@ -418,9 +403,6 @@ func (d *daemon) shutdown() {
 
 	d.tasks.Shutdown()
 	d.branchStatus.Stop()
-	// Before the publish, and unconditionally: the runner holds harness CLIs that
-	// would otherwise keep writing into the tree the publish is about to commit.
-	d.harnessRunner.Shutdown()
 
 	cfg := d.store.Read()
 	if cfg != nil && cfg.Branch() != "" {
@@ -525,11 +507,11 @@ func main() {
 	tmpDir := filepath.Join(appRoot, "tmp")
 	os.MkdirAll(repoDir, 0o755)
 
-	var offloadHosts []string
+	var transferAllowedHosts []string
 	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {
 		h = strings.TrimSpace(h)
 		if h != "" {
-			offloadHosts = append(offloadHosts, h)
+			transferAllowedHosts = append(transferAllowedHosts, h)
 		}
 	}
 
@@ -658,33 +640,6 @@ func main() {
 			"node-local golden tier only — remote restore/publish is skipped")
 	}
 
-	catalogSync := toolscatalog.NewCoalescer(
-		toolscatalog.Opts{AppRoot: appRoot, RepoDir: repoDir},
-		toolscatalog.DefaultSyncMinInterval,
-	)
-
-	d.dispatchReg = dispatch.NewRegistry()
-	d.harnessRunner = dispatch.NewRunner()
-	d.dispatchDeps = dispatch.Deps{
-		DaemonToken:      d.getToken,
-		AppRoot:          appRoot,
-		AllowedHosts:     offloadHosts,
-		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
-		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
-		Runner:           d.harnessRunner,
-		// Point `org/output` at this run's thread subtree, and refresh `.deco/tools/`
-		// from its MCP endpoint, before the harness can touch either. Degrades to no
-		// link; never blocks the run.
-		BeforeRun: func(info dispatch.RunInfo) {
-			d.orgFsLinks.RepointForRun(info.ThreadId)
-			catalogSync.Sync(toolscatalog.Endpoint{
-				URL:       info.McpURL,
-				Headers:   info.McpHeaders,
-				ExpiresAt: info.McpExpiresAt,
-			})
-		},
-	}
-
 	fsDeps := routes.FsDeps{
 		AppRoot: appRoot,
 		RepoDir: repoDir,
@@ -692,7 +647,7 @@ func main() {
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
-		AllowedHosts:     offloadHosts,
+		AllowedHosts:     transferAllowedHosts,
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 	}
 	gitDeps := routes.GitDeps{

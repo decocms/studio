@@ -54,7 +54,7 @@ describe("ban-cross-tree-imports", () => {
   test("bans relative apps/api reach-in from a packages/ file", async () => {
     const f = fixture(
       "packages/sandbox/y.ts",
-      `import { p } from "../../../../apps/api/src/harnesses/offload-messages";\nexport const b = p;\n`,
+      `import { p } from "../../../../apps/api/src/core/studio-context";\nexport const b = p;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(1);

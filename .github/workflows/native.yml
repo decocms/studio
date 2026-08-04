@@ -233,11 +233,6 @@ jobs:
   #            file-changed (1) — missing features, benign.
   #    Shrinking this file is the goal; growing it needs a reason on the line.
   #
-  #    `daemon.dispatch.e2e.test.ts` is DELIBERATELY excluded after the native
-  #    terminal cutover. Cloud sandboxes still own `/_sandbox/dispatch` and
-  #    `/_sandbox/runs`; local-api now launches Claude Code, Codex, and OpenCode
-  #    only through the scoped terminal routes covered by apps/native/e2e.
-  #
   #    `daemon.proxy.e2e.test.ts` + `daemon.ws-proxy.e2e.test.ts` (12 tests,
   #    formerly "all pass") are DELIBERATELY excluded from this curated set
   #    as of the port-router split (`local_api::ServerHandle`'s dedicated
@@ -511,7 +506,7 @@ jobs:
   #    Runs the plain Node stub (packages/sandbox/daemon-e2e/
   #    stub-daemon.mjs), not the Rust binary — ubuntu-latest is fine since
   #    nothing here is macOS-specific (no cargo build at all). Asserts the
-  #    documented 76 pass / 27 fail table from the daemon parity contract via the
+  #    documented 73 pass / 27 fail table from the daemon parity contract via the
   #    same exact-set allowlist checker as job 2 — this table already
   #    documents (and this job tolerates, by pinning it into the allowlist
   #    like every other entry) the one env-leakage self-check failure

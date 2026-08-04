@@ -194,18 +194,7 @@ export class DevObjectStorage implements BoundObjectStorage {
    * The /api/dev-assets/ route is still used by external clients (e.g. the UI)
    * via the stable files endpoint (/api/:org/files/:key).
    */
-  async presignedGetUrl(
-    key: string,
-    _expiresIn?: number,
-    opts?: { requireFetchable?: boolean },
-  ): Promise<string> {
-    if (opts?.requireFetchable) {
-      // DevObjectStorage only produces inline data: URLs, which a remote daemon
-      // cannot fetch. Throw before reading/encoding the (possibly large) blob.
-      throw new Error(
-        "object storage returned a not fetchable (data:) URL; configure real S3/R2/MinIO for large-payload offload",
-      );
-    }
+  async presignedGetUrl(key: string, _expiresIn?: number): Promise<string> {
     const path = filePath(this.orgId, key);
     const bytes = await readFile(path);
     const contentType = detectContentType(key);

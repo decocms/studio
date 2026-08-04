@@ -18,7 +18,14 @@
  *   done:             runId:fenceToken:done:finalSeq
  */
 import type { UIMessageChunk } from "ai";
-import { MAX_PUBLISH_BYTES } from "./offload-messages";
+
+/**
+ * Per-message byte budget for the Decopilot JetStream hop. NATS rejects any
+ * message larger than the server's `max_payload` (1 MiB by default), so stream
+ * chunks stay below that ceiling to leave room for subject and protocol
+ * framing.
+ */
+export const MAX_PUBLISH_BYTES = 768 * 1024;
 
 // --- Subject + msgId scheme --------------------------------------------------
 

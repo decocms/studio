@@ -240,7 +240,7 @@ endpoint fixes it for both models. *(hole 09)*
 - A reconciliation sweep, shaped like the DBOS sweep already running, for
   sessions and pods whose org, thread or vMCP disappeared. *(R12)*
 - A ready session returns early instead of re-running `ensure` + re-minting keys
-  on every dispatch turn. *(R8)*
+  on every hosted turn. *(R8)*
 
 ---
 
