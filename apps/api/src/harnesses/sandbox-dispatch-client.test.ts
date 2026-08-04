@@ -5,8 +5,18 @@ import {
   dispatchWithContinuation,
   harnessRunsInSandbox,
   isUnreachableStatus,
+  ndjsonLines,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+
+function bodyOf(text: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+}
 
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
@@ -66,6 +76,25 @@ describe("the dispatch result wire", () => {
       true,
     );
     expect(harnessRunResultSchema.parse({ chunks: [] }).done).toBe(false);
+  });
+});
+
+describe("ndjsonLines", () => {
+  test("a corrupt line throws a clear error instead of a bare SyntaxError", async () => {
+    const seen: unknown[] = [];
+    let thrown: unknown;
+    try {
+      for await (const line of ndjsonLines(
+        bodyOf('{"chunks":[]}\nnot json\n'),
+      )) {
+        seen.push(line);
+      }
+    } catch (err) {
+      thrown = err;
+    }
+    expect(seen).toEqual([{ chunks: [] }]);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/non-JSON line/);
   });
 });
 
