@@ -92,7 +92,11 @@ export function pickSoleTaskRepo(
  * How a claude-code task run gets its repo, from the org's `mcp-github`
  * connections:
  * - `{ repo }` — one importable repository, bound before dispatch.
- * - `"pick"` — several, so the run picks one with `TASK_ADD_REPO` mid-run.
+ * - `{ choices }` — several, so the run picks one with `TASK_ADD_REPO` mid-run.
+ *   The list travels with the choice so the PROMPT can name the candidates: the
+ *   model would otherwise open with a `TASK_ADD_REPO` call just to find out what
+ *   exists, and a tool description can't carry them (it is built once at module
+ *   load, with no org in scope).
  * - `null` — none imported, so this harness can't run the task at all.
  *
  * Never throws: a lookup failure degrades to the Decopilot path rather than
@@ -100,7 +104,17 @@ export function pickSoleTaskRepo(
  * logged — "why did this task run Decopilot?" (or "why did it have to pick?")
  * is otherwise invisible.
  */
-export type TaskRepoChoice = { repo: TaskRepo } | "pick" | null;
+export type TaskRepoChoice =
+  | { repo: TaskRepo }
+  | { choices: TaskRepoChoiceOption[] }
+  | null;
+
+/** One repository the run may clone, as the prompt names it. */
+export interface TaskRepoChoiceOption {
+  connectionId: string;
+  /** `owner/name`. */
+  repo: string;
+}
 
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
@@ -112,9 +126,20 @@ export async function resolveTaskRepoChoice(
     });
     const repo = pickSoleTaskRepo(items);
     if (repo) return { repo };
-    const distinct = new Set(
-      selectLoadableRepos(items).map((r) => repoKey(r.owner, r.repo)),
-    );
+    // One entry per REPOSITORY: importing a repo routinely leaves two loadable
+    // connections behind (org-shared + per-agent), and offering the same repo
+    // twice reads as two different choices.
+    const byRepo = new Map<string, TaskRepoChoiceOption>();
+    for (const r of selectLoadableRepos(items)) {
+      const key = repoKey(r.owner, r.repo);
+      if (!byRepo.has(key)) {
+        byRepo.set(key, {
+          connectionId: r.connectionId,
+          repo: `${r.owner}/${r.repo}`,
+        });
+      }
+    }
+    const distinct = byRepo;
     if (distinct.size === 0) {
       console.warn(
         `[task-board] claude-code skipped for org ${organizationId}: ` +
@@ -126,7 +151,7 @@ export async function resolveTaskRepoChoice(
       `[task-board] claude-code for org ${organizationId}: ` +
         `${distinct.size} importable repos — the run picks one with TASK_ADD_REPO`,
     );
-    return "pick";
+    return { choices: [...distinct.values()] };
   } catch (err) {
     console.warn("[task-board] repo lookup for claude-code failed", err);
     return null;
@@ -165,7 +190,7 @@ export async function claudeCodeEnabledForOrg(
 export function buildClaudeCodeTaskPrompt(
   task: { id: string; title: string; description: string | null },
   repo: TaskRepo | null,
-  opts?: SuperAgentPromptOpts,
+  opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
   const lines: string[] = [
     "You've been assigned this task. Complete it and finish with a pull request.",
@@ -181,13 +206,24 @@ export function buildClaudeCodeTaskPrompt(
     "",
     repo
       ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and \`gh\` are authenticated.`
-      : "Your working directory is EMPTY: this organization has several repositories, so " +
-          "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` — with no " +
-          "arguments it lists the repositories, and with a connectionId it clones that one " +
-          "into your working directory and waits for the checkout. Do not read files, run " +
-          "`git`, or run `gh` before it returns; there is nothing there yet. Once it " +
-          "returns, the repository is checked out on its own branch and `git` and `gh` are " +
-          "authenticated.",
+      : [
+          "Your working directory is EMPTY: this organization has several repositories, so " +
+            "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
+            "connectionId of the repository this task is about. It clones that repository " +
+            "into your working directory and waits for the checkout, so once it returns the " +
+            "repository is there on its own branch and `git` and `gh` are authenticated. " +
+            "Do not read files, run `git`, or run `gh` before it returns; there is nothing " +
+            "there yet.",
+          "",
+          "Repositories in this organization:",
+          ...(opts?.repoChoices ?? []).map(
+            (c) => `- ${c.repo} (connectionId: ${c.connectionId})`,
+          ),
+          opts?.repoChoices?.length
+            ? "Pick the one the task is about. If the task doesn't say and the names don't " +
+              "settle it, take the first."
+            : "Call `mcp__studio__TASK_ADD_REPO` with no arguments to list them.",
+        ].join("\n"),
     "",
   );
 

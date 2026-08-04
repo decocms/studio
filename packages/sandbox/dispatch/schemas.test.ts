@@ -281,10 +281,20 @@ describe("harnessStreamInputSchema (v3)", () => {
         workspace: { cwd: "/tmp" },
       }).success,
     ).toBe(false);
+    // `/repo` with no repo facts is VALID: a sandbox-hosted task run can be
+    // dispatched into the (empty) working directory before its repo is chosen,
+    // and clone one into that same directory mid-run (`TASK_ADD_REPO`). The
+    // branch is still required — it names the ref the daemon checks out.
     expect(
       harnessStreamInputSchema.safeParse({
         ...minimalV3,
         workspace: { cwd: "/repo", branch: "main" },
+      }).success,
+    ).toBe(true);
+    expect(
+      harnessStreamInputSchema.safeParse({
+        ...minimalV3,
+        workspace: { cwd: "/repo" },
       }).success,
     ).toBe(false);
   });

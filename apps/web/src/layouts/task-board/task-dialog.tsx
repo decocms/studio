@@ -1279,8 +1279,17 @@ function ActivitySection({
   const comments = useTaskBoardComments(item.id);
 
   /** A comment's author, resolved from the org's members; falls back to the id
-   *  so a comment from a since-removed member still renders. */
+   *  so a comment from a since-removed member still renders. The Super Agent
+   *  writes its own comments during a task run and is not a member, so it is
+   *  resolved first — `isAgent` is what renders its glyph. */
   const authorOf = (userId: string): CommentAuthor => {
+    if (userId === SUPER_AGENT_ASSIGNEE_ID) {
+      return {
+        id: userId,
+        name: t("taskBoard.taskDialog.superAgentLabel"),
+        isAgent: true,
+      };
+    }
     if (userId === me.id) return me;
     const member = memberByUserId.get(userId);
     return {

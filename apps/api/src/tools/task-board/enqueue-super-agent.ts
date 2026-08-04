@@ -149,10 +149,15 @@ export async function enqueueSuperAgentForTask(
     : null;
 
   if (choice) {
-    const repo = choice === "pick" ? null : choice.repo;
+    const repo = "repo" in choice ? choice.repo : null;
     await enqueueAgentRunForTask(ctx, task, {
       title: `Super Agent: ${task.title}`,
-      prompt: buildClaudeCodeTaskPrompt(task, repo, opts),
+      prompt: buildClaudeCodeTaskPrompt(task, repo, {
+        ...opts,
+        // Names the candidates in the prompt so the run doesn't spend its first
+        // step asking what exists.
+        ...("choices" in choice ? { repoChoices: choice.choices } : {}),
+      }),
       temperature: 0.5,
       harnessId: "claude-code",
       ...(repo ? { repo } : {}),

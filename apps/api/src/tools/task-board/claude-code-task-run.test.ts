@@ -184,3 +184,22 @@ describe("buildClaudeCodeTaskPrompt with no repo (several in the org)", () => {
     expect(prompt).toContain("in_review");
   });
 });
+
+describe("buildClaudeCodeTaskPrompt repo choices", () => {
+  test("names the candidate repos so the run doesn't have to ask", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null, {
+      repoChoices: [
+        { connectionId: "conn_1", repo: "acme/web" },
+        { connectionId: "conn_2", repo: "acme/api" },
+      ],
+    });
+    expect(prompt).toContain("acme/web (connectionId: conn_1)");
+    expect(prompt).toContain("acme/api (connectionId: conn_2)");
+    expect(prompt).toContain("Pick the one the task is about");
+  });
+
+  test("falls back to the listing call when no candidates were resolved", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null);
+    expect(prompt).toContain("with no arguments to list them");
+  });
+});
