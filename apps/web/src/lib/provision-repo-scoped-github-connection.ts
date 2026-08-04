@@ -1,6 +1,8 @@
 import type { ConnectionEntity } from "@/sdk";
 import {
+  findReusableRepoConnection,
   GITHUB_SCOPED_PERMISSIONS,
+  isOrgSharedConnection,
   mintRepoTokenWithChecksFallback,
 } from "@decocms/shared/github-repo-scope";
 
@@ -42,6 +44,49 @@ export function normalizeRepositoryId(value: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * The org's repo-scoped GitHub connections, as the collection tool returns
+ * them. Narrow on purpose: only what repo identity needs.
+ */
+type ExistingConnection = {
+  id: string;
+  status?: string;
+  metadata: Record<string, unknown> | null;
+};
+
+/**
+ * Look for a connection that already covers this repository.
+ *
+ * ponytail: read-then-create, so two imports of the same repo racing in two
+ * tabs can still both create. Rare, self-healing on the next import, and the
+ * consumers dedupe on read — a uniqueness constraint would have to live on a
+ * value inside the metadata JSON, which is not worth a migration for that.
+ */
+async function findExistingRepoConnection(params: {
+  selfCallTool: McpCallTool;
+  appName: string | null | undefined;
+  owner: string;
+  repo: string;
+}): Promise<ExistingConnection | null> {
+  const { selfCallTool, appName, owner, repo } = params;
+  if (!appName) return null;
+  try {
+    const res = (await selfCallTool({
+      name: "COLLECTION_CONNECTIONS_LIST",
+      arguments: {
+        where: { field: ["app_name"], operator: "eq", value: appName },
+      },
+    })) as { structuredContent?: { items?: ExistingConnection[] } };
+    const items = res.structuredContent?.items ?? [];
+    return findReusableRepoConnection(items, owner, repo);
+  } catch (err) {
+    // A failed lookup must not block the import: fall through and provision.
+    // Worst case we create the duplicate this function exists to avoid.
+    console.warn("[github-import] existing repo connection lookup failed", err);
+    return null;
+  }
+}
+
 export async function provisionRepoScopedGithubConnection(params: {
   orgSlug: string;
   sourceConnection: ConnectionEntity;
@@ -52,7 +97,7 @@ export async function provisionRepoScopedGithubConnection(params: {
   selfCallTool: McpCallTool;
   /** Mark the connection as available to every agent ("Add repo" flow). */
   orgShared?: boolean;
-}): Promise<{ childConnectionId: string }> {
+}): Promise<{ childConnectionId: string; reused: boolean }> {
   const {
     orgSlug,
     sourceConnection,
@@ -63,6 +108,33 @@ export async function provisionRepoScopedGithubConnection(params: {
     selfCallTool,
     orgShared,
   } = params;
+
+  // One repository, one connection. Reusing skips the mint entirely — the
+  // existing connection's grant refreshes itself through the normal token path.
+  //
+  // A repo imported before `checks:read` was requested keeps its narrower
+  // permission set; re-importing no longer widens it. Delete the connection and
+  // import again if the PR Checks tab 403s.
+  const existing = await findExistingRepoConnection({
+    selfCallTool,
+    appName: sourceConnection.app_name,
+    owner,
+    repo,
+  });
+  if (existing) {
+    // "Add repo" on a repo an agent already imported promotes that connection
+    // to org-shared rather than minting a second one beside it.
+    if (orgShared && !isOrgSharedConnection(existing)) {
+      await selfCallTool({
+        name: "COLLECTION_CONNECTIONS_UPDATE",
+        arguments: {
+          id: existing.id,
+          data: { metadata: { ...(existing.metadata ?? {}), orgShared: true } },
+        },
+      });
+    }
+    return { childConnectionId: existing.id, reused: true };
+  }
 
   type MintResult = {
     isError?: boolean;
@@ -197,5 +269,5 @@ export async function provisionRepoScopedGithubConnection(params: {
     throw new Error("Failed to persist the repo-scoped token");
   }
 
-  return { childConnectionId };
+  return { childConnectionId, reused: false };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  findReusableRepoConnection,
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
@@ -337,5 +338,96 @@ describe("isOrgSharedConnection", () => {
     expect(isOrgSharedConnection({ metadata: { orgShared: "yes" } })).toBe(
       false,
     );
+  });
+});
+
+describe("findReusableRepoConnection", () => {
+  const repoConn = (
+    id: string,
+    owner: string,
+    repo: string,
+    extra?: Record<string, unknown>,
+  ) => ({
+    id,
+    status: "active",
+    metadata: {
+      ...extra,
+      repoScope: { installationId: 1, owner, repo },
+    },
+  });
+
+  it("finds nothing when the repo was never imported", () => {
+    expect(findReusableRepoConnection([], "acme", "web")).toBeNull();
+    expect(
+      findReusableRepoConnection(
+        [repoConn("c1", "acme", "api")],
+        "acme",
+        "web",
+      ),
+    ).toBeNull();
+  });
+
+  it("ignores the bare org connection (no repoScope)", () => {
+    expect(
+      findReusableRepoConnection(
+        [{ id: "c0", status: "active", metadata: { orgShared: true } }],
+        "acme",
+        "web",
+      ),
+    ).toBeNull();
+  });
+
+  it("reuses the connection already covering the repo", () => {
+    expect(
+      findReusableRepoConnection([repoConn("c1", "acme", "web")], "acme", "web")
+        ?.id,
+    ).toBe("c1");
+  });
+
+  it("prefers the org-shared connection — it outlives any single agent", () => {
+    expect(
+      findReusableRepoConnection(
+        [
+          repoConn("c_agent", "acme", "web"),
+          repoConn("c_shared", "acme", "web", { orgShared: true }),
+        ],
+        "acme",
+        "web",
+      )?.id,
+    ).toBe("c_shared");
+  });
+
+  it("matches owner/repo case-insensitively, like GitHub", () => {
+    expect(
+      findReusableRepoConnection([repoConn("c1", "Acme", "Web")], "acme", "web")
+        ?.id,
+    ).toBe("c1");
+  });
+
+  it("skips inactive connections", () => {
+    expect(
+      findReusableRepoConnection(
+        [{ ...repoConn("c1", "acme", "web"), status: "inactive" }],
+        "acme",
+        "web",
+      ),
+    ).toBeNull();
+  });
+
+  it("tolerates a connection list without a status field", () => {
+    expect(
+      findReusableRepoConnection(
+        [
+          {
+            id: "c1",
+            metadata: {
+              repoScope: { installationId: 1, owner: "acme", repo: "web" },
+            },
+          },
+        ],
+        "acme",
+        "web",
+      )?.id,
+    ).toBe("c1");
   });
 });

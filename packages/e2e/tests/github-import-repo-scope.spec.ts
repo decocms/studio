@@ -432,6 +432,227 @@ test.describe("GitHub import repo-scoped connections", () => {
   });
 
   /**
+   * Scenario 2b — a repo connection someone else holds survives the teardown.
+   *
+   * Import reuses an existing connection when the org already has that
+   * repository, so "the child belongs to this agent" no longer holds. Two ways
+   * it can be someone else's:
+   *   - `metadata.orgShared` — the org's own "Add repo" connection;
+   *   - still aggregated by another agent after this one is deleted.
+   *
+   * Both must survive WITH their token: the revoke used to run before the
+   * delete, so relying on the ON DELETE RESTRICT FK to block the delete would
+   * still leave a live connection holding a revoked grant.
+   */
+  test("deleting an agent keeps an org-shared repo connection and its token", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const user = await signUpViaApi(ctx);
+    const org = user.orgSlug;
+
+    const orgConn = await createHttpConnection(ctx, org, {
+      title: `Org GitHub ${Date.now()}`,
+      url: "https://example.com/mcp",
+    });
+
+    // The org's shared repo connection — "Add repo", not owned by any agent.
+    const shared = await callSelfMcpTool<{ item: { id: string } }>(
+      ctx,
+      org,
+      "COLLECTION_CONNECTIONS_CREATE",
+      {
+        data: {
+          title: `GitHub: acme/shared ${Date.now()}`,
+          app_name: "mcp-github",
+          connection_type: "HTTP",
+          connection_url: "https://example.com/mcp",
+          metadata: {
+            orgShared: true,
+            repoScope: {
+              sourceConnectionId: orgConn.id,
+              installationId: 1,
+              owner: "acme",
+              repo: "shared",
+              permissions: { contents: "write" },
+            },
+          },
+        },
+      },
+    );
+    const sharedId = shared.item.id;
+
+    const agent = await callSelfMcpTool<{ item: { id: string } }>(
+      ctx,
+      org,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      {
+        data: {
+          title: `shared-consumer ${Date.now()}`,
+          metadata: {
+            githubRepo: {
+              owner: "acme",
+              name: "shared",
+              url: "https://github.com/acme/shared",
+              installationId: 1,
+              connectionId: sharedId,
+            },
+          },
+          connections: [{ connection_id: sharedId }],
+        },
+      },
+    );
+
+    const tokenRes = await ctx.post(
+      `/api/${org}/connections/${sharedId}/oauth-token`,
+      {
+        data: { accessToken: "ghs_e2e_dummy", expiresIn: 3600 },
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    expect(tokenRes.ok()).toBe(true);
+
+    const db = await connectDevDb();
+    try {
+      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_DELETE", {
+        id: agent.item.id,
+      });
+
+      // The agent is gone...
+      const agentRow = await db.query(
+        "SELECT 1 FROM connections WHERE id = $1",
+        [agent.item.id],
+      );
+      expect(agentRow.rowCount).toBe(0);
+
+      // ...but the org keeps its repo, token included.
+      const sharedRow = await db.query(
+        "SELECT 1 FROM connections WHERE id = $1",
+        [sharedId],
+      );
+      expect(sharedRow.rowCount).toBe(1);
+      const tokRows = await db.query(
+        'SELECT 1 FROM downstream_tokens WHERE "connectionId" = $1',
+        [sharedId],
+      );
+      expect(tokRows.rowCount).toBe(1);
+    } finally {
+      await db.end();
+      await ctx.dispose();
+    }
+  });
+
+  test("deleting one agent keeps a repo connection another agent still aggregates", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const user = await signUpViaApi(ctx);
+    const org = user.orgSlug;
+
+    const orgConn = await createHttpConnection(ctx, org, {
+      title: `Org GitHub ${Date.now()}`,
+      url: "https://example.com/mcp",
+    });
+
+    // NOT org-shared: a plain repo child, but two agents were imported against
+    // the same repository, so both list it.
+    const child = await callSelfMcpTool<{ item: { id: string } }>(
+      ctx,
+      org,
+      "COLLECTION_CONNECTIONS_CREATE",
+      {
+        data: {
+          title: `GitHub: acme/two-agents ${Date.now()}`,
+          app_name: "mcp-github",
+          connection_type: "HTTP",
+          connection_url: "https://example.com/mcp",
+          metadata: {
+            repoScope: {
+              sourceConnectionId: orgConn.id,
+              installationId: 1,
+              owner: "acme",
+              repo: "two-agents",
+              permissions: { contents: "write" },
+            },
+          },
+        },
+      },
+    );
+    const childId = child.item.id;
+
+    const makeAgent = (label: string) =>
+      callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: `${label} ${Date.now()}`,
+            metadata: {
+              githubRepo: {
+                owner: "acme",
+                name: "two-agents",
+                url: "https://github.com/acme/two-agents",
+                installationId: 1,
+                connectionId: childId,
+              },
+            },
+            connections: [{ connection_id: childId }],
+          },
+        },
+      );
+    const first = await makeAgent("first");
+    const second = await makeAgent("second");
+
+    const tokenRes = await ctx.post(
+      `/api/${org}/connections/${childId}/oauth-token`,
+      {
+        data: { accessToken: "ghs_e2e_dummy", expiresIn: 3600 },
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    expect(tokenRes.ok()).toBe(true);
+
+    const db = await connectDevDb();
+    try {
+      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_DELETE", {
+        id: first.item.id,
+      });
+
+      // The second agent still holds the repo — connection and token intact.
+      const childRow = await db.query(
+        "SELECT 1 FROM connections WHERE id = $1",
+        [childId],
+      );
+      expect(childRow.rowCount).toBe(1);
+      const tokRows = await db.query(
+        'SELECT 1 FROM downstream_tokens WHERE "connectionId" = $1',
+        [childId],
+      );
+      expect(tokRows.rowCount).toBe(1);
+      const aggRows = await db.query(
+        "SELECT 1 FROM connection_aggregations WHERE child_connection_id = $1",
+        [childId],
+      );
+      expect(aggRows.rowCount).toBe(1);
+
+      // Deleting the LAST holder does tear it down — the rule is "someone else
+      // holds it", not "never delete".
+      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_DELETE", {
+        id: second.item.id,
+      });
+      const goneRow = await db.query(
+        "SELECT 1 FROM connections WHERE id = $1",
+        [childId],
+      );
+      expect(goneRow.rowCount).toBe(0);
+    } finally {
+      await db.end();
+      await ctx.dispose();
+    }
+  });
+
+  /**
    * Scenario 3 — runtime refresh of a repo grant.
    *
    * A source-less repo-scoped child has no org-parent soft link. Calling a tool

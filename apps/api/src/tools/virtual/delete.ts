@@ -5,7 +5,10 @@
  */
 
 import { z } from "zod";
-import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import {
+  getRepoScope,
+  isOrgSharedConnection,
+} from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -102,7 +105,8 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
       await deleteAgentPrompts(ctx.orgFs, input.id, getUserId(ctx) ?? "system");
     }
 
-    // Tear down the per-agent repo-scoped mcp-github child connection (if any).
+    // Tear down this agent's repo-scoped mcp-github child connection, if the
+    // connection is in fact this agent's alone (see the checks below).
     // Best-effort: the agent is already deleted, so a cleanup hiccup must not
     // fail the user's delete (worst case it orphans a child whose minted token
     // self-expires within ~1h). Self-revoke the token first, then delete the
@@ -116,12 +120,27 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
           childConnectionId,
           organization.id,
         );
-        // No need to check whether the child is aggregated under another agent:
-        // the import flow creates a fresh child per agent (1:1), and the
-        // ON DELETE RESTRICT FK on connection_aggregations.child_connection_id
-        // makes connections.delete throw (caught + logged below) rather than
-        // orphan a still-referenced child.
-        if (child && getRepoScope(child)) {
+        // A repo connection is NOT this agent's to delete when someone else
+        // holds it. Import reuses an existing connection for a repository the
+        // org already has, so the old 1:1 child-per-agent assumption is gone:
+        //
+        //  - org-shared ("Add repo") belongs to the org, not to any agent;
+        //  - still-aggregated means another agent lists it (this agent's own
+        //    rows were dropped by `virtualMcps.delete` above).
+        //
+        // Both checks run BEFORE the revoke. Relying on the ON DELETE RESTRICT
+        // FK to stop the delete is not enough: the token would already have
+        // been revoked by then, leaving a live connection with a dead grant.
+        const heldBySomeoneElse =
+          child &&
+          (isOrgSharedConnection(child) ||
+            (
+              await ctx.storage.virtualMcps.listByConnectionId(
+                organization.id,
+                childConnectionId,
+              )
+            ).length > 0);
+        if (child && getRepoScope(child) && !heldBySomeoneElse) {
           const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
           const tok = await tokenStorage.get(childConnectionId);
           if (tok?.accessToken) {

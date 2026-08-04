@@ -294,15 +294,16 @@ function PickerContent({
         };
       }
 
-      const { childConnectionId } = await provisionRepoScopedGithubConnection({
-        orgSlug: org.slug,
-        sourceConnection: effectiveConnection,
-        installationId,
-        owner: repo.owner,
-        repo: repo.name,
-        githubCallTool: (req) => githubClient.callTool(req),
-        selfCallTool: (req) => selfClient.callTool(req),
-      });
+      const { childConnectionId, reused } =
+        await provisionRepoScopedGithubConnection({
+          orgSlug: org.slug,
+          sourceConnection: effectiveConnection,
+          installationId,
+          owner: repo.owner,
+          repo: repo.name,
+          githubCallTool: (req) => githubClient.callTool(req),
+          selfCallTool: (req) => selfClient.callTool(req),
+        });
 
       let createdAgentId: string | null = null;
 
@@ -358,9 +359,12 @@ function PickerContent({
           item: payload.item,
         };
       } catch (err) {
-        // Rollback: leave nothing behind. If the agent was created, delete it
-        // (which also tears down its repo-scoped child via server-side cleanup);
-        // always attempt the child delete as a harmless belt-and-suspenders.
+        // Rollback: leave nothing behind THAT WE CREATED. If the agent was
+        // created, delete it (which also tears down its repo-scoped child via
+        // server-side cleanup); then the child, as belt-and-suspenders.
+        //
+        // A reused connection predates this import and other agents may hold
+        // it — rolling it back would revoke a repo the org still uses.
         if (createdAgentId) {
           await selfClient
             .callTool({
@@ -369,12 +373,14 @@ function PickerContent({
             })
             .catch(() => {});
         }
-        await selfClient
-          .callTool({
-            name: "COLLECTION_CONNECTIONS_DELETE",
-            arguments: { id: childConnectionId, force: true },
-          })
-          .catch(() => {});
+        if (!reused) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: childConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
         throw err;
       }
     },

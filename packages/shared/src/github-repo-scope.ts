@@ -1,14 +1,16 @@
 /**
  * Repo-scoped GitHub connection — shared, pure helpers.
  *
- * A "repo-scoped" mcp-github connection is a per-agent child connection for
- * exactly one repository. New refreshable repo children persist a GitHub MCP
- * repo grant in downstream_tokens and refresh through the normal OAuth-shaped
- * token path. Legacy repo children may still carry `sourceConnectionId` so
- * callers can mint with deco/mcp-github's MINT_REPO_TOKEN during compatibility
- * flows. The repo grant metadata lives on the connection's metadata under
- * `repoScope`; its presence also marks the connection as a disposable per-agent
- * child for teardown.
+ * A "repo-scoped" mcp-github connection is a child connection for exactly one
+ * repository, shared by every agent that imported that repository (see
+ * `findReusableRepoConnection`). New refreshable repo children persist a GitHub
+ * MCP repo grant in downstream_tokens and refresh through the normal
+ * OAuth-shaped token path. Legacy repo children may still carry
+ * `sourceConnectionId` so callers can mint with deco/mcp-github's
+ * MINT_REPO_TOKEN during compatibility flows. The repo grant metadata lives on
+ * the connection's metadata under `repoScope`; its presence marks the
+ * connection as disposable once its LAST holder goes away, not as any single
+ * agent's to tear down.
  *
  * Pure module (no DB / network / node deps) so both the server
  * (oauth/github-mint) and the web import flow (github-repo-picker) can import it.
@@ -198,4 +200,33 @@ export function isOrgSharedConnection(connection: {
   metadata: Record<string, unknown> | null;
 }): boolean {
   return connection.metadata?.orgShared === true;
+}
+
+/** GitHub treats owner/repo case-insensitively; repo identity must too. */
+const repoIdentity = (owner: string, repo: string) =>
+  `${owner}/${repo}`.toLowerCase();
+
+/**
+ * An existing connection that already grants access to `owner/repo`, or null.
+ *
+ * One repository should have ONE connection. Provisioning used to mint and
+ * create unconditionally, so importing a repo org-wide and then again from an
+ * agent left two connections behind for the same repository — which every
+ * consumer of `getRepoScope` then had to dedupe (and mostly didn't: the task
+ * board read the duplicate as "which repo?" and refused to run).
+ *
+ * The org-shared connection wins when both exist: it outlives any single agent,
+ * so reusing it can't hand an agent a connection that disappears with a
+ * teammate's agent.
+ */
+export function findReusableRepoConnection<
+  T extends { status?: string; metadata: Record<string, unknown> | null },
+>(connections: T[] | undefined | null, owner: string, repo: string): T | null {
+  const wanted = repoIdentity(owner, repo);
+  const matches = (connections ?? []).filter((connection) => {
+    if (connection.status && connection.status !== "active") return false;
+    const scope = getRepoScope(connection);
+    return scope !== null && repoIdentity(scope.owner, scope.repo) === wanted;
+  });
+  return matches.find(isOrgSharedConnection) ?? matches[0] ?? null;
 }
