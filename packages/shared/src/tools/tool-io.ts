@@ -502,6 +502,63 @@ export interface StudioToolIO {
       }[];
     };
   };
+  TASK_BOARD_COMMENT_LIST: {
+    input: { taskBoardItemId: string };
+    output: {
+      comments: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        authorId: string;
+        body: string;
+        resolved: boolean;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_COMMENT_CREATE: {
+    input: {
+      taskBoardItemId: string;
+      body: string;
+      parentId?: string | null | undefined;
+    };
+    output: {
+      comment: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        authorId: string;
+        body: string;
+        resolved: boolean;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  TASK_BOARD_COMMENT_UPDATE: {
+    input: {
+      id: string;
+      body?: string | undefined;
+      resolved?: boolean | undefined;
+    };
+    output: {
+      comment: {
+        id: string;
+        taskBoardItemId: string;
+        parentId: string | null;
+        authorId: string;
+        body: string;
+        resolved: boolean;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  TASK_BOARD_COMMENT_DELETE: {
+    input: { id: string };
+    output: { success: boolean };
+  };
   BRAND_CONTEXT_LIST: {
     input: { includeArchived?: boolean | undefined };
     output: {

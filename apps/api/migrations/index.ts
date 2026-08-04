@@ -157,6 +157,7 @@ import * as migration155taskboardreviewclaims from "./155-task-board-review-clai
 import * as migration156taskboardconflictactivity from "./156-task-board-conflict-activity.ts";
 import * as migration157dropseatbilling from "./157-drop-seat-billing.ts";
 import * as migration158dropgithubchildsingleparent from "./158-drop-github-child-single-parent.ts";
+import * as migration159taskboardcomments from "./159-task-board-comments.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -341,6 +342,7 @@ const migrations: Record<string, Migration> = {
   "157-drop-seat-billing": migration157dropseatbilling,
   "158-drop-github-child-single-parent":
     migration158dropgithubchildsingleparent,
+  "159-task-board-comments": migration159taskboardcomments,
 };
 
 export default migrations;

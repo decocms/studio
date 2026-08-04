@@ -224,6 +224,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_REVIEW_DECISION",
   "TASK_BOARD_PROMOTE_TO_PRODUCTION",
   "TASK_BOARD_ACTIVITY_LIST",
+  "TASK_BOARD_COMMENT_LIST",
+  "TASK_BOARD_COMMENT_CREATE",
+  "TASK_BOARD_COMMENT_UPDATE",
+  "TASK_BOARD_COMMENT_DELETE",
 ] as const;
 
 /**
@@ -1059,6 +1063,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List a task board item's change history",
     category: "Task Board",
   },
+  {
+    name: "TASK_BOARD_COMMENT_LIST",
+    description: "List a task board item's comment threads",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_CREATE",
+    description: "Post a comment or a reply on a task board item",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_UPDATE",
+    description: "Edit a comment, or resolve/unresolve a comment thread",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COMMENT_DELETE",
+    description: "Delete a comment (a thread root takes its replies)",
+    category: "Task Board",
+  },
 ];
 
 // ============================================================================
@@ -1155,6 +1179,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
       "TASK_BOARD_ACTIVITY_LIST",
+      "TASK_BOARD_COMMENT_LIST",
+      "TASK_BOARD_COMMENT_CREATE",
+      "TASK_BOARD_COMMENT_UPDATE",
+      "TASK_BOARD_COMMENT_DELETE",
     ],
   },
   // Organization

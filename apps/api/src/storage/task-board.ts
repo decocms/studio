@@ -20,6 +20,42 @@ import type {
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
+/** One comment on a task, as the tools return it. `parentId` null = thread root;
+ *  `resolved` only means anything on a root. */
+export interface TaskBoardComment {
+  id: string;
+  taskBoardItemId: string;
+  parentId: string | null;
+  authorId: string;
+  body: string;
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function commentFromDbRow(row: {
+  id: string;
+  task_board_item_id: string;
+  parent_id: string | null;
+  author_id: string;
+  body: string;
+  resolved: boolean;
+  created_at: Date | string;
+  updated_at: Date | string;
+}): TaskBoardComment {
+  const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : v);
+  return {
+    id: row.id,
+    taskBoardItemId: row.task_board_item_id,
+    parentId: row.parent_id,
+    authorId: row.author_id,
+    body: row.body,
+    resolved: row.resolved,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
+}
+
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 function extractPartText(payload: unknown): string | null {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
@@ -804,6 +840,119 @@ export class TaskBoardStorage {
           ? row.occurred_at.toISOString()
           : row.occurred_at,
     }));
+  }
+
+  /** A task's comments, oldest first (thread order). Tenant-scoped through the
+   *  task, which is the only thing carrying an org. Flat — the caller nests
+   *  roots and replies by `parentId`. */
+  async listComments(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment[]> {
+    const rows = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("item.organization_id", "=", organizationId)
+      .where("c.task_board_item_id", "=", taskBoardItemId)
+      .orderBy("c.created_at", "asc")
+      .execute();
+    return rows.map((row) => commentFromDbRow(row));
+  }
+
+  /** Post a comment (or a reply, when `parentId` is set). Returns null when the
+   *  task isn't in this org, so a caller can't comment across tenants. */
+  async createComment(params: {
+    taskBoardItemId: string;
+    organizationId: string;
+    parentId?: string | null;
+    authorId: string;
+    body: string;
+  }): Promise<TaskBoardComment | null> {
+    const task = await this.db
+      .selectFrom("task_board_items")
+      .select("id")
+      .where("id", "=", params.taskBoardItemId)
+      .where("organization_id", "=", params.organizationId)
+      .executeTakeFirst();
+    if (!task) return null;
+
+    // A reply hangs off a root of the same task; replying to a reply would give
+    // the UI a depth it can't render, so flatten it onto the root.
+    let parentId: string | null = null;
+    if (params.parentId) {
+      const parent = await this.db
+        .selectFrom("task_board_comments")
+        .select(["id", "parent_id"])
+        .where("id", "=", params.parentId)
+        .where("task_board_item_id", "=", params.taskBoardItemId)
+        .executeTakeFirst();
+      if (!parent) return null;
+      parentId = parent.parent_id ?? parent.id;
+    }
+
+    const row = await this.db
+      .insertInto("task_board_comments")
+      .values({
+        id: generatePrefixedId("cmt"),
+        task_board_item_id: params.taskBoardItemId,
+        parent_id: parentId,
+        author_id: params.authorId,
+        body: params.body,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return commentFromDbRow(row);
+  }
+
+  /** Edit a comment's body and/or a thread's resolved flag. Null when the
+   *  comment isn't in this org. */
+  async updateComment(params: {
+    id: string;
+    organizationId: string;
+    body?: string;
+    resolved?: boolean;
+  }): Promise<TaskBoardComment | null> {
+    const owned = await this.commentInOrg(params.id, params.organizationId);
+    if (!owned) return null;
+
+    const row = await this.db
+      .updateTable("task_board_comments")
+      .set({
+        ...(params.body === undefined ? {} : { body: params.body }),
+        ...(params.resolved === undefined ? {} : { resolved: params.resolved }),
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", params.id)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
+  }
+
+  /** Delete a comment; a root takes its replies with it (FK cascade). False
+   *  when the comment isn't in this org. */
+  async deleteComment(id: string, organizationId: string): Promise<boolean> {
+    const owned = await this.commentInOrg(id, organizationId);
+    if (!owned) return false;
+    await this.db
+      .deleteFrom("task_board_comments")
+      .where("id", "=", id)
+      .execute();
+    return true;
+  }
+
+  private async commentInOrg(
+    id: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .select("c.id")
+      .where("c.id", "=", id)
+      .where("item.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return !!row;
   }
 
   private itemFromDbRow(row: {

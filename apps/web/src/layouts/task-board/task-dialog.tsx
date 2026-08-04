@@ -86,6 +86,14 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
+import { authClient } from "@/lib/auth-client";
+import {
+  CommentThreadCard,
+  NewCommentComposer,
+  type CommentAuthor,
+  type TaskComment,
+} from "./task-comments";
+import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -1242,9 +1250,10 @@ function LinksSection({
 }
 
 /**
- * Activity feed: the task's change timeline (created, moved, (re)assigned) and
- * its linked agent sessions, interleaved oldest-first. Consecutive timeline
- * events render as one run joined by a rail; a thread renders as a card.
+ * Activity feed: the task's change timeline (created, moved, (re)assigned), its
+ * linked agent sessions and its comment threads, interleaved oldest-first.
+ * Consecutive timeline events render as one run joined by a rail; a thread or a
+ * comment renders as a card. A composer at the bottom starts a new thread.
  */
 function ActivitySection({
   item,
@@ -1259,11 +1268,46 @@ function ActivitySection({
 }) {
   const t = useT();
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  const me: CommentAuthor = {
+    id: session?.user?.id ?? "me",
+    name: session?.user?.name ?? t("taskBoard.taskDialog.commentYouLabel"),
+    image: (session?.user as { image?: string | null } | undefined)?.image,
+  };
+  const comments = useTaskBoardComments(item.id);
+
+  /** A comment's author, resolved from the org's members; falls back to the id
+   *  so a comment from a since-removed member still renders. */
+  const authorOf = (userId: string): CommentAuthor => {
+    if (userId === me.id) return me;
+    const member = memberByUserId.get(userId);
+    return {
+      id: userId,
+      name: member?.user?.name ?? userId,
+      image: member?.user?.image,
+    };
+  };
+  const threads: TaskComment[] = comments.threads.map((thread) => ({
+    id: thread.id,
+    author: authorOf(thread.authorId),
+    body: thread.body,
+    createdAt: thread.createdAt,
+    resolved: thread.resolved,
+    replies: thread.replies.map((reply) => ({
+      id: reply.id,
+      author: authorOf(reply.authorId),
+      body: reply.body,
+      createdAt: reply.createdAt,
+      replies: [],
+    })),
+  }));
 
   type Ev =
     | { kind: "activity"; at: number; activity: TaskBoardActivity }
-    | { kind: "thread"; at: number; thread: TaskBoardItemThread };
+    | { kind: "thread"; at: number; thread: TaskBoardItemThread }
+    | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
     ...(activity ?? []).map(
       (a): Ev => ({
@@ -1279,18 +1323,28 @@ function ActivitySection({
         thread,
       }),
     ),
+    ...threads.map(
+      (comment): Ev => ({
+        kind: "comment",
+        at: new Date(comment.createdAt).getTime(),
+        comment,
+      }),
+    ),
   ].sort((a, b) => a.at - b.at);
-
-  if (events.length === 0) return null;
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
     | { type: "timeline"; items: TaskBoardActivity[] }
     | { type: "thread"; thread: TaskBoardItemThread }
+    | { type: "comment"; comment: TaskComment }
   )[] = [];
   for (const ev of events) {
     if (ev.kind === "thread") {
       blocks.push({ type: "thread", thread: ev.thread });
+      continue;
+    }
+    if (ev.kind === "comment") {
+      blocks.push({ type: "comment", comment: ev.comment });
       continue;
     }
     const last = blocks[blocks.length - 1];
@@ -1300,27 +1354,55 @@ function ActivitySection({
 
   return (
     <div className="flex flex-col gap-5 pb-2">
-      <span className="text-sm font-medium text-muted-foreground">
+      <span className="text-sm font-medium text-foreground">
         {t("taskBoard.taskDialog.activityLabel")}
       </span>
-      {blocks.map((block, i) =>
-        block.type === "timeline" ? (
-          <TimelineBlock
-            // Blocks are positional runs of the same feed, so the index IS the
-            // identity here — there's no stabler key for a group.
-            key={`timeline-${i}`}
-            items={block.items}
-            memberByUserId={memberByUserId}
-          />
-        ) : (
+
+      {blocks.map((block, i) => {
+        if (block.type === "timeline") {
+          return (
+            <TimelineBlock
+              // Blocks are positional runs of the same feed, so the index IS
+              // the identity here — there's no stabler key for a group.
+              key={`timeline-${i}`}
+              items={block.items}
+              memberByUserId={memberByUserId}
+            />
+          );
+        }
+        if (block.type === "comment") {
+          return (
+            <CommentThreadCard
+              key={`comment-${block.comment.id}`}
+              thread={block.comment}
+              me={me}
+              onReply={(body) =>
+                comments.post.mutate({ body, parentId: block.comment.id })
+              }
+              onDelete={(commentId) => comments.remove.mutate(commentId)}
+              onToggleResolved={() =>
+                comments.setResolved.mutate({
+                  id: block.comment.id,
+                  resolved: !block.comment.resolved,
+                })
+              }
+            />
+          );
+        }
+        return (
           <ThreadActivityItem
             key={`thread-${block.thread.threadId}`}
             thread={block.thread}
             startedBy={startedBy}
             onOpen={onOpenThread}
           />
-        ),
-      )}
+        );
+      })}
+
+      <NewCommentComposer
+        me={me}
+        onSubmit={(body) => comments.post.mutate({ body })}
+      />
     </div>
   );
 }
