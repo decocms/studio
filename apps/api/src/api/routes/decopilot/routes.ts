@@ -496,6 +496,21 @@ async function validate(
     requestedSandboxProviderKind: sandboxProviderKind,
     requestedBranch: branch,
   });
+
+  // Autonomous runs take no follow-up. Checked HERE — before the hosted-runtime
+  // assert — because an autonomous run is pinned to `claude-code`, which that
+  // assert refuses first with the (wrong, for this row) desktop-app message.
+  // Enforced in `validate()`, which only the messages POST calls, and NOT in
+  // `prepareRun`: the run's own dispatch goes through `enqueueThreadRun`, so a
+  // gate on the shared path would reject the very turn that created the thread.
+  // The composer disables itself on the same flag; this is what makes it more
+  // than a UI suggestion.
+  if (lockedThread?.metadata?.read_only === true) {
+    throw new HTTPException(409, {
+      message: "Thread is read only and cannot accept new messages",
+    });
+  }
+
   assertHostedRuntime(effectiveHarnessId, effectiveSandboxProviderKind);
 
   const resolvedModels = await resolvePerRequestModels(ctx, tier);
@@ -709,11 +724,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
 
-      // Autonomous runs take no follow-up. Enforced HERE, at the user-message
-      // entry, and NOT in `prepareRun`: the run's own dispatch goes through
-      // `enqueueThreadRun`, so a gate on the shared path would reject the very
-      // turn that created the thread. The composer disables itself on the same
-      // flag; this is what makes it more than a UI suggestion.
+      // Re-assert against the canonical row: a task-board run can mark the
+      // thread read-only between `validate()`'s read and this one.
       if (existingThread?.metadata?.read_only === true) {
         throw new HTTPException(409, {
           message: "Thread is read only and cannot accept new messages",
