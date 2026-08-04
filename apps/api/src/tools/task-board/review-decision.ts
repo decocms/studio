@@ -221,10 +221,19 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       // The newest linked PR is the one under review (the same one
       // `mergeLinkedPr` just tried to merge) — detect and act on it.
       const pr = prs[0];
+      // Best-effort, like the poll path in `prs-get` — a dispatch failure (no
+      // model configured, queue error) must never fail this decision: the
+      // approval + bounce-to-in_progress + activity write already committed,
+      // so surfacing an error here would report failure on an otherwise-
+      // successful reviewer decision while burning a conflict-resolution
+      // attempt with no run enqueued.
       const resolving = pr
         ? await reactToApprovedPrConflict(ctx, organizationId, current, {
             pr: { number: pr.number, url: pr.url },
             conflict: await fetchPrConflict(ctx, organizationId, pr),
+          }).catch((err) => {
+            console.error("[task-board] conflict auto-resolve failed", err);
+            return false;
           })
         : false;
       if (resolving) {
