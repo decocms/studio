@@ -54,3 +54,31 @@ describe("mcpEndpointUrl", () => {
     ).toBe("https://studio.example.com/mcp/virtual-mcp/vir_123");
   });
 });
+
+describe("mcpEndpointUrl task-run", () => {
+  // The task-run surface is scoped by PATH, not by a tool argument — the per-run
+  // key is minted with full access, so a threadId input would let one run act on
+  // another run's sandbox.
+  it("a task-run endpoint carries the run thread id in the path", () => {
+    expect(
+      mcpEndpointUrl({
+        publicUrl,
+        agentId: "vir_ignored",
+        organization,
+        target: "task-run",
+        threadId: "thrd 1/2",
+      }),
+    ).toBe("https://studio.example.com/api/acme/mcp/task-run/thrd%201%2F2");
+  });
+
+  it("a task-run endpoint without a thread id throws before a key is minted", () => {
+    expect(() =>
+      mcpEndpointUrl({
+        publicUrl,
+        agentId: "vir_1",
+        organization,
+        target: "task-run",
+      }),
+    ).toThrow(/threadId is required/);
+  });
+});

@@ -47,6 +47,7 @@ import { ensureSandbox } from "@/tools/sandbox/start";
 import {
   getThreadGithubRepo,
   syntheticBranchToGitRef,
+  threadBranch,
 } from "@/tools/sandbox/thread-repo";
 
 /**
@@ -161,16 +162,29 @@ export class SandboxDispatchClient implements SandboxClient {
   /**
    * Where the harness works, and on what.
    *
-   * `cwd: "/repo"` is only meaningful with a repo behind it — the wire shape
-   * makes that explicit, and it is the honest thing to send: a run whose thread
-   * has no bound repo got an `ephemeral` sandbox with no checkout, so naming a
-   * working directory there would describe a directory that doesn't exist.
+   * `cwd: "/repo"` normally comes with a repo behind it. The one case it doesn't
+   * is a task run dispatched on the bare `thread:<id>` key: that run got its own
+   * (repo-less) sandbox precisely so it could clone a repo into this directory
+   * mid-run with `TASK_ADD_REPO`, and the daemon creates the directory at boot,
+   * so pointing the harness at it up front is honest — and it is the only way
+   * the harness ends up standing in the checkout, since its cwd is fixed when
+   * the process spawns.
+   *
+   * A thread with no repo on any OTHER key shares the `ephemeral` sandbox, which
+   * has no checkout at all — `cwd: null` stays correct there.
    */
   private async resolveWorkspace(
     threadId: string,
   ): Promise<HarnessStreamInput["workspace"]> {
     const repo = await getThreadGithubRepo(this.ctx, threadId);
-    if (!repo) return { cwd: null };
+    if (!repo) {
+      return this.branch === threadBranch(threadId)
+        ? {
+            cwd: SANDBOX_REPO_CWD,
+            branch: syntheticBranchToGitRef(this.branch),
+          }
+        : { cwd: null };
+    }
     return {
       cwd: SANDBOX_REPO_CWD,
       repo: {
@@ -219,12 +233,16 @@ export class SandboxDispatchClient implements SandboxClient {
       // daemon rejects the envelope outright, and the org's tools (moving
       // the task on the board, for one) would be unreachable anyway.
       //
-      // The management surface, NOT the agent's own: super-agent task runs
+      // The task-run surface, NOT the agent's own: super-agent task runs
       // dispatch as Decopilot, which by design aggregates no connections
       // (`storage/virtual.ts` findById returns `connections: []`) because
       // hosted Decopilot reaches TASK_BOARD_* by `subtask`-delegating to the
       // Task Manager agent. This harness has no `subtask`, so pointing it at
       // the agent's virtual MCP yielded `connected` with zero tools.
+      //
+      // Scoped to this run (thread id in the path) and narrow: the task-board
+      // tools plus `TASK_ADD_REPO`. It used to be `/mcp/self` — every management
+      // tool Studio has, ~200 of them, for the two this harness calls.
       //
       // ponytail: one surface, not both — the agent's aggregated connections
       // are not merged in. Add a second MCP server on the wire if a
@@ -234,7 +252,8 @@ export class SandboxDispatchClient implements SandboxClient {
         this.virtualMcpId,
         organization,
         `${this.harnessId}-run`,
-        "management",
+        "task-run",
+        input.threadId,
       ),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.

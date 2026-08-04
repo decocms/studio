@@ -446,7 +446,7 @@ export async function* runDecopilotStream(
       }
     | undefined;
   const codingWorkspace =
-    input.workspace.cwd === "/repo"
+    input.workspace.cwd === "/repo" && input.workspace.repo
       ? {
           repo: input.workspace.repo,
           branch: input.workspace.branch,

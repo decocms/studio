@@ -6,7 +6,7 @@ import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import {
   buildClaudeCodeTaskPrompt,
   claudeCodeEnabledForOrg,
-  resolveSoleTaskRepo,
+  resolveTaskRepoChoice,
 } from "./claude-code-task-run";
 
 /**
@@ -139,21 +139,23 @@ export async function enqueueSuperAgentForTask(
   // BEFORE the write; here the claim is the enforcement.
   await claimTaskExecution(ctx, task);
 
-  // Sandbox-hosted claude-code takes the task when the org opted in AND the
-  // repo is unambiguous — it must be chosen before dispatch (see
-  // `claude-code-task-run.ts`). Anything else runs Decopilot exactly as before,
-  // so no existing board behavior changes until both conditions hold.
-  const repo = (await claudeCodeEnabledForOrg(ctx, task.organizationId))
-    ? await resolveSoleTaskRepo(ctx, task.organizationId)
+  // Sandbox-hosted claude-code takes the task when the org opted in AND has a
+  // repo it could work in — bound before dispatch when there's exactly one,
+  // otherwise chosen mid-run with `TASK_ADD_REPO` (see
+  // `claude-code-task-run.ts`). An org with no repos imported runs Decopilot
+  // exactly as before.
+  const choice = (await claudeCodeEnabledForOrg(ctx, task.organizationId))
+    ? await resolveTaskRepoChoice(ctx, task.organizationId)
     : null;
 
-  if (repo) {
+  if (choice) {
+    const repo = choice === "pick" ? null : choice.repo;
     await enqueueAgentRunForTask(ctx, task, {
       title: `Super Agent: ${task.title}`,
       prompt: buildClaudeCodeTaskPrompt(task, repo, opts),
       temperature: 0.5,
       harnessId: "claude-code",
-      repo,
+      ...(repo ? { repo } : {}),
     });
     return;
   }

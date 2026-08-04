@@ -28,12 +28,15 @@ const MCP_KEY_TTL_SECONDS = 3600;
  * - `"management"` — `/api/<slug>/mcp/self`: Studio's own management tools
  *   (TASK_BOARD_*, connections, agents...). Needed by any out-of-process
  *   harness expected to act on Studio itself.
+ * - `"task-run"` — `/api/<slug>/mcp/task-run/<threadId>`: the narrow surface for
+ *   a sandbox-hosted task run (task board + `TASK_ADD_REPO`), scoped to the run
+ *   in the path. `agentId` is unused; the run thread id identifies it.
  *
  * Explicit per caller rather than inferred from the agent: a run that silently
  * picks the wrong surface reports `connected` with an empty tool list, which
  * reads as "the agent ignored its instructions" instead of a misconfiguration.
  */
-export type McpEndpointTarget = "agent-tools" | "management";
+export type McpEndpointTarget = "agent-tools" | "management" | "task-run";
 
 export class MissingOrganizationSlugError extends Error {
   constructor(organizationId: string) {
@@ -58,13 +61,23 @@ export function mcpEndpointUrl(args: {
   agentId: string;
   organization: { id: string; slug?: string };
   target: McpEndpointTarget;
+  /** Required by `target: "task-run"` — the run the surface is scoped to. */
+  threadId?: string;
 }): string {
-  const { publicUrl, agentId, organization, target } = args;
+  const { publicUrl, agentId, organization, target, threadId } = args;
   if (target === "agent-tools") {
     return `${publicUrl}/mcp/virtual-mcp/${agentId}`;
   }
   if (!organization.slug) {
     throw new MissingOrganizationSlugError(organization.id);
+  }
+  if (target === "task-run") {
+    if (!threadId) {
+      throw new Error(
+        "a task-run MCP endpoint is scoped to a run: threadId is required",
+      );
+    }
+    return `${publicUrl}/api/${organization.slug}/mcp/task-run/${encodeURIComponent(threadId)}`;
   }
   return `${publicUrl}/api/${organization.slug}/mcp/self`;
 }
@@ -75,6 +88,8 @@ export async function mintMcpEndpoint(
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
   target: McpEndpointTarget = "agent-tools",
+  /** Required by `target: "task-run"`. */
+  threadId?: string,
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -87,6 +102,7 @@ export async function mintMcpEndpoint(
     agentId,
     organization,
     target,
+    ...(threadId ? { threadId } : {}),
   });
   const apiKey = await ctx.boundAuth.apiKey.create({
     name: apiKeyName,

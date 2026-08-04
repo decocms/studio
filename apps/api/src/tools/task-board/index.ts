@@ -1,3 +1,4 @@
+export { TASK_ADD_REPO } from "./add-repo";
 export { TASK_BOARD_ITEM_CREATE } from "./create";
 export { TASK_BOARD_ITEM_LIST } from "./list";
 export { TASK_BOARD_ITEM_UPDATE } from "./update";

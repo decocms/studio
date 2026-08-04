@@ -194,6 +194,16 @@ export function resolveSandboxBranch(args: {
   /** Explicit branch for this run, when the caller has one. */
   runBranch?: string | null;
 }): string {
+  // A run dispatched on the BARE `thread:<id>` key keeps it, repo or not: that
+  // is a sandbox-hosted task run that started with no repo and had one bound
+  // mid-run by `TASK_ADD_REPO`. Deriving from the repo instead would move the
+  // key (and therefore the claim handle) out from under the pod the agent loop
+  // is running in, so a re-dispatch would 404 the live pod and fork an empty
+  // one. Only the bare key qualifies — `load_repo` always includes a connection
+  // id, so its repo-switch isolation is untouched.
+  if (args.runBranch && args.runBranch === threadBranch(args.threadId)) {
+    return args.runBranch;
+  }
   if (args.threadRepo) {
     return threadBranch(args.threadId, args.threadRepo.connectionId);
   }
