@@ -231,15 +231,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       }
     }
 
-    // Broadcast the delegation flip (assignee + forced To Do), or a new linked
-    // thread, so every open board reflects it live. Plain edits already
-    // round-trip through the mutation's optimistic patch + invalidate.
-    if (becameSuperAgent) {
-      emitTaskBoardUpdated(organizationId, item);
-      await reactToSuperAgentDelegation(ctx, item);
-    } else if (input.linkThreadId) {
+    // Broadcast EVERY change so open boards reflect it live. Not just the
+    // browser's own edits (those also patch optimistically): an agent calling
+    // this tool over MCP — e.g. moving its task to In Review — has no client
+    // mutation to invalidate, so without this the card only moves on refresh.
+    // Same for a teammate's board.
+    if (hasFieldUpdate || input.linkThreadId) {
       emitTaskBoardUpdated(organizationId, item);
     }
+    if (becameSuperAgent) await reactToSuperAgentDelegation(ctx, item);
 
     return { item };
   },
