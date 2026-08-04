@@ -91,7 +91,8 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
 export const TASK_BOARD_COMMENT_UPDATE = defineTool({
   name: "TASK_BOARD_COMMENT_UPDATE",
   description:
-    "Edit a comment's body, or resolve/unresolve a comment thread (root only).",
+    "Edit your own comment's body, or resolve/unresolve a comment thread " +
+    "(root only, any org member may toggle it).",
   annotations: {
     title: "Update Task Comment",
     readOnlyHint: false,
@@ -111,10 +112,15 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
     const comment = await ctx.storage.taskBoard.updateComment({
       id: input.id,
       organizationId: requireOrg(ctx),
+      callerId: getUserId(ctx)!,
       body: input.body,
       resolved: input.resolved,
     });
-    if (!comment) throw new Error("Comment not found");
+    if (!comment) {
+      throw new Error(
+        "Comment not found, or you can only edit your own comments",
+      );
+    }
     return { comment };
   },
 });
@@ -122,7 +128,7 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
 export const TASK_BOARD_COMMENT_DELETE = defineTool({
   name: "TASK_BOARD_COMMENT_DELETE",
   description:
-    "Delete a comment. Deleting a thread root deletes its replies too.",
+    "Delete your own comment. Deleting a thread root deletes its replies too.",
   annotations: {
     title: "Delete Task Comment",
     readOnlyHint: false,
@@ -138,6 +144,7 @@ export const TASK_BOARD_COMMENT_DELETE = defineTool({
     const deleted = await ctx.storage.taskBoard.deleteComment(
       input.id,
       requireOrg(ctx),
+      getUserId(ctx)!,
     );
     return { success: deleted };
   },
