@@ -67,6 +67,11 @@ Set these in `.env` alongside the compose file:
 | `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | Public URLs for the app |
 | `DATABASE_URL` | see below | PostgreSQL connection string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credentials for the bundled Postgres (postgres compose file only) |
+| `STUDIO_TOPUP_FEE_PERCENT` | `15` | Percentage fee applied to AI Gateway credit top-ups. Accepts `0`–`100`; set to `0` to waive the fee entirely for a self-hosted deployment |
+
+<Callout type="tip">
+  `STUDIO_TOPUP_FEE_PERCENT` only matters if you enable Stripe-backed billing (`STRIPE_SECRET_KEY` / `STRIPE_ORG_PRICE_ID`). Most self-hosted deployments don't set these and can ignore it.
+</Callout>
 
 The container runs as user `1001:1001` and persists data to the `studio-data` volume; the bundled Postgres persists to `postgres-data`.
 
