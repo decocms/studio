@@ -64,9 +64,7 @@ export default defineConfig({
             find: /^@\/components\/file-picker\/file-picker-dialog$/,
             replacement: stub("file-picker-dialog.tsx"),
           },
-          // FieldLabel (nearly every field widget) reads the per-virtual-MCP
-          // fieldDescriptionTooltips setting via useVirtualMCP, which also
-          // calls useProjectContext() — same problem as above.
+          // FieldLabel's useVirtualMCP call hits the same useProjectContext() issue as above.
           {
             find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
             replacement: stub("use-virtual-mcp.ts"),

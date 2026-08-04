@@ -8,10 +8,7 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
-// Generic over the parent form schema, same pattern as ProductionUrlField —
-// callers pass `form.control` without casting. Bound to
-// `metadata.fieldDescriptionTooltips`; opt-in, default (unset/false) keeps
-// the blocks form's existing inline-description layout unchanged.
+// Generic over the parent form schema, same pattern as ProductionUrlField.
 export interface FieldDescriptionTooltipsFieldProps<T extends FieldValues> {
   control: Control<T>;
 }
