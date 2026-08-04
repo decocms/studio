@@ -162,7 +162,7 @@ export function SavedSectionEditor({
               aria-hidden
             />
             <nav
-              aria-label="Editing breadcrumb"
+              aria-label={t("sandbox.savedSectionEditor.editingBreadcrumb")}
               className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
             >
               {headerCrumbs.map((crumb, index) => {

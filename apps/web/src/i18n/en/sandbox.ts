@@ -581,6 +581,7 @@ export const sandbox = {
     "Path (relative to repo root) to the directory containing package.json. Leave blank for the repo root.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
+  "sandbox.savedSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Global section — changes save automatically and apply everywhere it's used.",
   "sandbox.savedSectionEditor.invalidJsonError":
