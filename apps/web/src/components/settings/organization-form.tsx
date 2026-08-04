@@ -7,7 +7,6 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -18,23 +17,10 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { track } from "@/lib/posthog-client";
-import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
 
 // TODO(i18n): validation messages at module scope, move schema into component if needed
 const organizationSettingsSchema = z.object({
   name: z.string().min(1, "Name is required").max(255, "Name is too long"),
-  slug: z
-    .string()
-    .min(1, "Slug is required")
-    .max(50, "Slug is too long")
-    .regex(
-      /^[a-z0-9-]+$/,
-      "Slug must contain only lowercase letters, numbers, and hyphens",
-    )
-    .refine(
-      (slug) => !isReservedOrganizationSlug(slug),
-      "This organization URL is reserved by Studio",
-    ),
   logo: z.string().optional(),
 });
 
@@ -103,7 +89,6 @@ function CompactLogoUpload({
 
 export function OrganizationForm() {
   const t = useT();
-  const navigate = useNavigate();
   const { org } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
@@ -112,7 +97,6 @@ export function OrganizationForm() {
     resolver: zodResolver(organizationSettingsSchema),
     values: {
       name: org.name ?? "",
-      slug: org.slug ?? "",
       logo: org.logo ?? "",
     },
   });
@@ -121,7 +105,6 @@ export function OrganizationForm() {
     mutationFn: async (data: OrganizationSettingsFormValues) => {
       const updateData: Record<string, unknown> = {
         name: data.name,
-        slug: data.slug,
       };
 
       if (data.logo) {
@@ -141,7 +124,7 @@ export function OrganizationForm() {
 
       return result;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       track("organization_settings_updated", {
         organization_id: org.id,
         fields: Object.keys(variables),
@@ -151,13 +134,6 @@ export function OrganizationForm() {
         queryKey: KEYS.activeOrganization(org.slug),
       });
       toast.success(t("settings.organizationForm.updateSuccess"));
-
-      if (data?.data?.slug && data.data.slug !== org.slug) {
-        navigate({
-          to: "/$org/settings/general",
-          params: { org: data.data.slug },
-        });
-      }
     },
     onError: (error, variables) => {
       track("organization_settings_update_failed", {
@@ -252,52 +228,29 @@ export function OrganizationForm() {
         />
         <SettingsCardItem
           title={t("settings.organizationForm.urlTitle")}
+          description={t("settings.organizationForm.urlDescription")}
           action={
-            <div className="flex items-center w-[280px] rounded-md border border-input bg-input/30 focus-within:ring-2 focus-within:ring-ring/50 overflow-hidden">
+            // Read-only: the slug anchors org URLs (/api/:org/..., /$org/...);
+            // renaming it would silently break every saved link and API
+            // integration, so it can't be edited from here (see
+            // ORGANIZATION_UPDATE, which rejects slug changes for the same
+            // reason).
+            <div className="flex items-center w-[280px] rounded-md border border-input bg-muted/40 overflow-hidden">
               {urlOrigin && (
                 <span className="pl-3 text-sm text-muted-foreground select-none">
                   {urlOrigin}
                 </span>
               )}
-              <Controller
-                control={form.control}
-                name="slug"
-                render={({ field }) => (
-                  <input
-                    id="org-slug"
-                    value={field.value ?? ""}
-                    name={field.name}
-                    ref={field.ref}
-                    placeholder={t("settings.organizationForm.slugPlaceholder")}
-                    className="flex-1 min-w-0 bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
-                    onChange={(e) => {
-                      const sanitized = e.target.value
-                        .toLowerCase()
-                        .replace(/[^a-z0-9-]/g, "");
-                      form.setValue("slug", sanitized, {
-                        shouldDirty: true,
-                        shouldTouch: true,
-                        shouldValidate: true,
-                      });
-                      scheduleSave();
-                    }}
-                    onBlur={() => {
-                      field.onBlur();
-                      flushAndSave();
-                    }}
-                  />
-                )}
-              />
+              <span className="flex-1 min-w-0 px-2 py-1.5 text-sm text-foreground truncate">
+                {org.slug}
+              </span>
             </div>
           }
         />
-        {(errors.name || errors.slug || errors.logo) && (
+        {(errors.name || errors.logo) && (
           <div className="px-5 pb-3 flex flex-col gap-1">
             {errors.name && (
               <p className="text-xs text-destructive">{errors.name.message}</p>
-            )}
-            {errors.slug && (
-              <p className="text-xs text-destructive">{errors.slug.message}</p>
             )}
             {errors.logo && (
               <p className="text-xs text-destructive">{errors.logo.message}</p>
