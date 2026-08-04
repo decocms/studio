@@ -1,25 +1,17 @@
 /**
- * Public surface. `agent-sandbox` sits behind its own subpath export
- * (./provider/agent-sandbox) because its SDK is heavy and not every deploy
- * needs it. The public contract retains the persisted desktop kind while the
- * native migration is rolled out; the hosted API constructs only agent-sandbox.
+ * Public agent-sandbox provider surface. The implementation sits behind its
+ * own subpath export because its SDK is heavy and not every deploy needs it.
  */
 
 export type {
   EnsureOptions,
-  LegacySandboxProviderKind,
   ProxyRequestInit,
-  SandboxProviderKind,
   Sandbox,
   SandboxId,
   Workload,
 } from "./types";
 export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";
-export {
-  normalizeSandboxProviderKind,
-  sandboxIdKey,
-  sandboxProviderKindSchema,
-} from "./types";
+export { sandboxIdKey } from "./types";
 // Needed by Studio callers (hosted Decopilot runs) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.
 export { computeHandle } from "./shared";

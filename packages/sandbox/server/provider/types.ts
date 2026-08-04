@@ -1,6 +1,4 @@
-/** Hosted AgentSandbox contracts. Persisted kind unions remain below for wire compatibility. */
-
-import { z } from "zod";
+/** Hosted AgentSandbox contracts. */
 
 export interface SandboxId {
   userId: string;
@@ -122,25 +120,6 @@ export interface ProxyRequestInit {
   headers: Headers;
   body: BodyInit | null;
   signal?: AbortSignal;
-}
-
-/**
- * Persisted on `sandboxMap` and `sandbox_runner_state.sandbox_provider_kind`.
- * When widening, keep `SandboxRecord.sandboxProviderKind` in sync.
- */
-export const sandboxProviderKindSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-]);
-
-export type SandboxProviderKind = z.infer<typeof sandboxProviderKindSchema>;
-
-export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-export function normalizeSandboxProviderKind(
-  kind: LegacySandboxProviderKind,
-): SandboxProviderKind {
-  return kind === "cluster" ? "agent-sandbox" : kind;
 }
 
 export function sandboxIdKey(id: SandboxId): string {

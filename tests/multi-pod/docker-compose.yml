@@ -120,7 +120,6 @@ services:
       # Hosted sandbox infrastructure is available. No sandbox is provisioned
       # in these scenarios because the mock AI never emits sandbox tool calls.
       STUDIO_AGENT_SANDBOX_ENABLED: "true"
-      STUDIO_SANDBOX_PROVIDER: agent-sandbox # rollback compatibility only
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name

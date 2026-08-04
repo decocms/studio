@@ -151,25 +151,12 @@ function resolveAliasedEnv(
   return value || legacyValue;
 }
 
-function resolveAgentSandboxEnabled(
-  rawEnabled: string | undefined,
-  legacyProvider: string | undefined,
-): boolean {
-  const explicit = rawEnabled?.trim();
-  if (explicit === "true" || explicit === "1") return true;
-  if (explicit === "false" || explicit === "0") return false;
-  if (explicit) {
-    throw new Error(
-      `Invalid STUDIO_AGENT_SANDBOX_ENABLED="${rawEnabled}" — expected "true", "false", "1", or "0".`,
-    );
-  }
-
-  const legacy = (legacyProvider ?? "").trim();
-  if (legacy === "" || legacy === "user-desktop") return false;
-  if (legacy === "agent-sandbox" || legacy === "cluster") return true;
-
+function resolveAgentSandboxEnabled(raw: string | undefined): boolean {
+  const value = (raw ?? "").trim();
+  if (value === "" || value === "false" || value === "0") return false;
+  if (value === "true" || value === "1") return true;
   throw new Error(
-    `Unknown STUDIO_SANDBOX_PROVIDER="${legacyProvider}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
+    `Invalid STUDIO_AGENT_SANDBOX_ENABLED="${raw}" — expected "true", "false", "1", or "0".`,
   );
 }
 
@@ -334,7 +321,6 @@ export function resolveConfig(
     ),
     agentSandboxEnabled: resolveAgentSandboxEnabled(
       envVars.STUDIO_AGENT_SANDBOX_ENABLED,
-      envVars.STUDIO_SANDBOX_PROVIDER,
     ),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
 

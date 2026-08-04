@@ -86,7 +86,6 @@ configMap:
     # sandbox-env's sentinel.token, or the daemon handshake fails and claims never
     # go Ready ("environment variable override is not allowed ... DAEMON_TOKEN").
     STUDIO_AGENT_SANDBOX_ENABLED: "true"
-    STUDIO_SANDBOX_PROVIDER: "agent-sandbox" # rollback compatibility
     STUDIO_ENV: "<env>"                                   # e.g. prod
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<env>"  # = studio-sandbox-<STUDIO_ENV>
     # STUDIO_SANDBOX_SENTINEL_TOKEN → via ExternalSecret (== sandbox-env.sentinel.token)

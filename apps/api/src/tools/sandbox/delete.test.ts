@@ -1,7 +1,10 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
+import type {
+  SandboxMap,
+  SandboxProviderKind,
+  SandboxRecord,
+} from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 // Mock the one hosted runner BEFORE importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});

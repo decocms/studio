@@ -28,10 +28,9 @@ describe("resolveConfig agent-sandbox capability", () => {
     expect(result.settings.agentSandboxEnabled).toBe(true);
   });
 
-  it("prefers the canonical capability flag over the legacy provider env", () => {
+  it("disables the capability explicitly", () => {
     const result = resolveConfig(flags, {
       STUDIO_AGENT_SANDBOX_ENABLED: "false",
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
     });
 
     expect(result.settings.agentSandboxEnabled).toBe(false);
@@ -43,51 +42,20 @@ describe("resolveConfig agent-sandbox capability", () => {
     ).toThrow(/Invalid STUDIO_AGENT_SANDBOX_ENABLED/);
   });
 
-  it("falls back from an empty canonical flag to the legacy provider env", () => {
+  it("treats an empty capability flag as disabled", () => {
     const result = resolveConfig(flags, {
       STUDIO_AGENT_SANDBOX_ENABLED: "",
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
-    });
-
-    expect(result.settings.agentSandboxEnabled).toBe(true);
-  });
-
-  it("accepts the legacy canonical provider kind", () => {
-    const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
-    });
-
-    expect(result.settings.agentSandboxEnabled).toBe(true);
-  });
-
-  it("enables the capability for legacy cluster", () => {
-    const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "cluster",
-    });
-
-    expect(result.settings.agentSandboxEnabled).toBe(true);
-  });
-
-  it("keeps the capability disabled for legacy user-desktop", () => {
-    const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "user-desktop",
     });
 
     expect(result.settings.agentSandboxEnabled).toBe(false);
   });
 
-  it("trims surrounding whitespace/newlines instead of throwing", () => {
+  it("trims the capability flag", () => {
     const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox\n",
+      STUDIO_AGENT_SANDBOX_ENABLED: " true\n",
     });
 
     expect(result.settings.agentSandboxEnabled).toBe(true);
-  });
-
-  it("still throws for a genuinely unknown value", () => {
-    expect(() =>
-      resolveConfig(flags, { STUDIO_SANDBOX_PROVIDER: "bogus" }),
-    ).toThrow(/Unknown STUDIO_SANDBOX_PROVIDER/);
   });
 });
 

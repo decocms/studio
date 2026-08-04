@@ -28,8 +28,7 @@ never becomes another user's execution context.
 
 ## Responsibilities
 
-- Define stable sandbox identities, provider kinds, references, and lifecycle
-  contracts.
+- Define stable sandbox identities, references, and lifecycle contracts.
 - Provision or attach to isolated execution environments.
 - Build and run the authenticated Go daemon inside each environment.
 - Expose asynchronous filesystem, Git, task, terminal, and preview operations.
@@ -42,10 +41,6 @@ never becomes another user's execution context.
 Studio enables hosted sandbox infrastructure with
 `STUDIO_AGENT_SANDBOX_ENABLED=true`. The API owns that deployment capability;
 the provider package only defines sandbox contracts and implementations.
-`user-desktop` survives only as a persisted provider kind on old rows.
-During the rolling compatibility window, deployments also set
-`STUDIO_SANDBOX_PROVIDER=agent-sandbox` so an older API image remains
-rollback-compatible.
 
 Code that works with the hosted provider names it directly:
 
@@ -162,7 +157,7 @@ bun run lint
 | `agent-sandbox` | Isolated Kubernetes workloads | Agent-sandbox operator and routed daemon HTTP/WebSocket |
 
 Production deployments with hosted sandboxes must set
-`STUDIO_AGENT_SANDBOX_ENABLED=true` (plus the temporary rollback alias above).
+`STUDIO_AGENT_SANDBOX_ENABLED=true`.
 The old `host`, `local-docker` and `user-desktop` provider modes are not
 supported by the hosted API.
 

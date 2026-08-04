@@ -34,8 +34,7 @@ installed (it ships the CRDs + controller).
   match `mesh.namespace` and `mesh.serviceAccountName`; this chart grants that
   identity the runner permissions in `agent-sandbox-system`.
 - The Studio release must explicitly set
-  `STUDIO_AGENT_SANDBOX_ENABLED=true` and, during the rolling compatibility
-  window, `STUDIO_SANDBOX_PROVIDER=agent-sandbox` for rollback safety.
+  `STUDIO_AGENT_SANDBOX_ENABLED=true`.
 - The Studio release for THIS environment must point its runner at
   the env-suffixed SandboxTemplate by setting
   `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>` in the studio
@@ -119,7 +118,6 @@ serviceAccount:
 configMap:
   meshConfig:
     STUDIO_AGENT_SANDBOX_ENABLED: "true"
-    STUDIO_SANDBOX_PROVIDER: "agent-sandbox" # rollback compatibility
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
     # The next three values are required only when previewGateway.enabled=true.
