@@ -12,6 +12,9 @@
  *    thinking blocks and native tool use — so no translation layer is needed.
  *    `ANTHROPIC_API_KEY` must be explicitly empty there or it wins over
  *    `ANTHROPIC_AUTH_TOKEN` and the run fails on the wrong credential.
+ *    `deco` (the Deco AI Gateway) provisions OpenRouter keys used against
+ *    openrouter.ai directly, so it takes the same path — as it does in every
+ *    other provider switch (`provider-from-secret`, `studio-provider`).
  *
  * Anything else fails loudly at dispatch. The alternative — provisioning a pod
  * with a credential the SDK cannot use — surfaces as an opaque model error
@@ -43,9 +46,9 @@ export interface ClaudeCodeCredential {
 export class UnsupportedClaudeCodeProviderError extends Error {
   constructor(providerId: string) {
     super(
-      `the claude-code harness needs an Anthropic or OpenRouter model credential; ` +
-        `this run's model resolves to "${providerId}". Point the agent's thinking ` +
-        `model at an Anthropic or OpenRouter key, or run it with Decopilot.`,
+      `the claude-code harness needs an Anthropic, OpenRouter or Deco model ` +
+        `credential; this run's model resolves to "${providerId}". Point the ` +
+        `agent's thinking model at one of those, or run it with Decopilot.`,
     );
     this.name = "UnsupportedClaudeCodeProviderError";
   }
@@ -71,7 +74,7 @@ export function claudeCodeEnvFromCredential(
       ANTHROPIC_BASE_URL: baseUrl ?? null,
     };
   }
-  if (providerId === "openrouter") {
+  if (providerId === "openrouter" || providerId === "deco") {
     return {
       CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.openrouter,
       // Empty, not absent: a non-empty API key takes precedence over the auth

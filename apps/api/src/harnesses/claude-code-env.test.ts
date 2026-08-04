@@ -61,8 +61,19 @@ describe("claudeCodeEnvFromCredential", () => {
     ).toBe("");
   });
 
+  test("a deco key takes the OpenRouter path — it is an OpenRouter key", () => {
+    expect(
+      claudeCodeEnvFromCredential({ providerId: "deco", apiKey: "deco-1" }),
+    ).toEqual({
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: "deco-1",
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+    });
+  });
+
   test("any other provider fails loudly, with the provider named", () => {
-    for (const providerId of ["google", "openai", "deco", "future"]) {
+    for (const providerId of ["google", "openai", "future"]) {
       expect(() =>
         claudeCodeEnvFromCredential({ providerId, apiKey: "k" }),
       ).toThrow(UnsupportedClaudeCodeProviderError);
