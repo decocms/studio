@@ -25,6 +25,10 @@ import type {
   StdioConnectionParameters,
 } from "../tools/connection/schema";
 import { isStdioParameters } from "../tools/connection/schema";
+import {
+  createNoRedirectFetch,
+  guardAgainstPrivateUrl,
+} from "../tools/registry/discover-tools";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
@@ -438,26 +442,44 @@ export class ConnectionStorage implements ConnectionStoragePort {
     }
 
     try {
+      // connection_url is user-supplied — a plain `fetch` here would let a
+      // URL that resolves privately (or 302s to one) reach an internal/
+      // metadata address on every test call, even if the address was safe at
+      // create/update time. Reuse the same SSRF guard the fetch-tools path
+      // applies, plus a no-redirect fetch to close the redirect-based bypass.
+      const guardError = await guardAgainstPrivateUrl(
+        connection.connection_url,
+      );
+      if (guardError) {
+        return {
+          healthy: false,
+          latencyMs: Date.now() - startTime,
+        };
+      }
+
       const httpParams = connection.connection_headers as {
         headers?: Record<string, string>;
       } | null;
 
-      const response = await fetch(connection.connection_url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(connection.connection_token && {
-            Authorization: `Bearer ${connection.connection_token}`,
+      const response = await createNoRedirectFetch()(
+        connection.connection_url,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(connection.connection_token && {
+              Authorization: `Bearer ${connection.connection_token}`,
+            }),
+            ...httpParams?.headers,
+            ...headers,
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "ping",
+            id: 1,
           }),
-          ...httpParams?.headers,
-          ...headers,
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "ping",
-          id: 1,
-        }),
-      });
+      );
 
       return {
         healthy: response.ok || response.status === 404,
