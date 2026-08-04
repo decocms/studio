@@ -192,6 +192,22 @@ worth catching at template time rather than letting the API server reject
 {{- end }}
 {{- end }}
 
+{{/*
+Catch warmPool.enabled=true left at the default warmPool.size (0): the
+SandboxWarmPool renders with replicas: 0, a no-op that pre-warms nothing
+while still looking "enabled" — the same balloon-with-0-replicas trap
+validateNodePlaceholder already guards against below. Skipped when
+autoscaling is on, since the HPA drives replicas post-render regardless of
+this static value.
+*/}}
+{{- define "sandbox-env.validateWarmPoolSize" -}}
+{{- if and .Values.warmPool.enabled (not .Values.warmPool.autoscaling.enabled) }}
+{{- if lt (int .Values.warmPool.size) 1 }}
+{{- fail (printf "sandbox-env: warmPool.enabled=true requires warmPool.size >= 1 (got %v) — a pool with 0 replicas pre-warms nothing." .Values.warmPool.size) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
