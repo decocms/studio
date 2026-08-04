@@ -500,13 +500,20 @@ describe("resolveConfig topup fee percent", () => {
   it("rejects a non-numeric value at boot (fail-fast, not a silent default)", () => {
     expect(() =>
       resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "free" }),
-    ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a positive integer");
+    ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be a non-negative integer");
   });
 
   it("rejects a value above 100 instead of silently overcharging top-ups", () => {
     expect(() =>
       resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "150" }),
     ).toThrow("STUDIO_TOPUP_FEE_PERCENT must be at most 100");
+  });
+
+  it("allows 0 to waive the fee entirely (self-hosted deployments)", () => {
+    expect(
+      resolveConfig(flags, { STUDIO_TOPUP_FEE_PERCENT: "0" }).settings
+        .topupFeePercent,
+    ).toBe(0);
   });
 });
 

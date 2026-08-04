@@ -105,6 +105,26 @@ function toPositiveIntegerOrDefault(
   return toPositiveIntegerOrUndefined(name, value, max) ?? defaultValue;
 }
 
+/** Like `toPositiveIntegerOrDefault`, but 0 is a valid value (e.g. a fee a
+ *  self-hosted deployment wants to disable outright). */
+function toNonNegativeIntegerOrDefault(
+  name: string,
+  value: string | undefined,
+  defaultValue: number,
+  max?: number,
+): number {
+  if (value === undefined || value === "") return defaultValue;
+
+  const numberValue = Number(value);
+  if (!Number.isSafeInteger(numberValue) || numberValue < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  if (max !== undefined && numberValue > max) {
+    throw new Error(`${name} must be at most ${max}`);
+  }
+  return numberValue;
+}
+
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
 function toBoolWithDefault(
   value: string | undefined,
@@ -278,8 +298,9 @@ export function resolveConfig(
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
     // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
-    // that would silently more-than-double every top-up charge.
-    topupFeePercent: toPositiveIntegerOrDefault(
+    // that would silently more-than-double every top-up charge. 0 is valid —
+    // a self-hosted deployment may want to waive the fee entirely.
+    topupFeePercent: toNonNegativeIntegerOrDefault(
       "STUDIO_TOPUP_FEE_PERCENT",
       envVars.STUDIO_TOPUP_FEE_PERCENT,
       15,
