@@ -17,6 +17,50 @@ import { join } from "node:path";
 
 /** Sandbox workdirs live under this directory of the app root. */
 const WORKTREES_DIR = "worktrees";
+const ACCOUNT_STORAGE_DOMAIN = "decocms-native-account-storage-v1\0";
+const DEFAULT_UPSTREAM_URL = "https://studio.decocms.com";
+
+export interface SandboxAccountPathScope {
+  upstreamUrl: string;
+  accountSub: string;
+}
+
+const STANDALONE_ACCOUNT_PATH_SCOPE: SandboxAccountPathScope = {
+  upstreamUrl: DEFAULT_UPSTREAM_URL,
+  accountSub: "local-desktop-user",
+};
+
+/**
+ * Black-box mirror of the durable native account directory contract:
+ *
+ *   accounts/v1/sha256("decocms-native-account-storage-v1\\0" + storageKey)
+ *   storageKey = `v1:<host-byte-length>:<host><subject>`
+ *
+ * The helper deliberately owns the wire/filesystem expectation instead of
+ * importing Rust implementation code. Non-standalone fixtures pass their
+ * authenticated upstream URL + subject explicitly; standalone fixtures use
+ * the shipped upstream and STANDALONE_TEST_ACCOUNT subject by default.
+ */
+export function accountRootFor(
+  appRoot: string,
+  account: SandboxAccountPathScope = STANDALONE_ACCOUNT_PATH_SCOPE,
+): string {
+  const withoutScheme = account.upstreamUrl.startsWith("https://")
+    ? account.upstreamUrl.slice("https://".length)
+    : account.upstreamUrl.startsWith("http://")
+      ? account.upstreamUrl.slice("http://".length)
+      : account.upstreamUrl;
+  const upstreamHost = (withoutScheme.split(/[/?#]/, 1)[0] ?? "").toLowerCase();
+  if (upstreamHost === "" || account.accountSub === "") {
+    throw new Error("sandbox account path scope must include host and subject");
+  }
+  const storageKey = `v1:${Buffer.byteLength(upstreamHost, "utf8")}:${upstreamHost}${account.accountSub}`;
+  const directory = createHash("sha256")
+    .update(ACCOUNT_STORAGE_DOMAIN)
+    .update(storageKey)
+    .digest("hex");
+  return join(appRoot, "accounts", "v1", directory);
+}
 
 /** Mirrors `sanitize` in `sandbox/repo_store.rs`. */
 function sanitize(segment: string): string | null {
@@ -127,12 +171,24 @@ export function computeHandle(cloneUrl: string, branch: string): string {
   return [...scope, branchComponent].join("/");
 }
 
-/** A handle's workdir under an app root. Handles nest — they contain `/`. */
-export function sandboxDirFor(appRoot: string, handle: string): string {
-  return join(appRoot, WORKTREES_DIR, ...handle.split("/"));
+/** A handle's account-owned workdir. Handles nest — they contain `/`. */
+export function sandboxDirFor(
+  appRoot: string,
+  handle: string,
+  account?: SandboxAccountPathScope,
+): string {
+  return join(
+    accountRootFor(appRoot, account),
+    WORKTREES_DIR,
+    ...handle.split("/"),
+  );
 }
 
 /** The checkout directory for a handle, under an app root. */
-export function repoDirFor(appRoot: string, handle: string): string {
-  return join(sandboxDirFor(appRoot, handle), "repo");
+export function repoDirFor(
+  appRoot: string,
+  handle: string,
+  account?: SandboxAccountPathScope,
+): string {
+  return join(sandboxDirFor(appRoot, handle, account), "repo");
 }

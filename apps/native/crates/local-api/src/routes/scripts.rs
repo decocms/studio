@@ -92,15 +92,19 @@ use crate::tasks::{
 /// explicit Start installs a fresh generation.
 async fn resolve(
     state: &AppState,
-    epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
     headers: &HeaderMap,
 ) -> Result<SandboxTarget, ApiError> {
     let Some(handle) = crate::sandbox::handle_from_headers(headers) else {
         return state
-            .resolve_sandbox_target_for_account(epoch, None)
+            .resolve_sandbox_target_for_account(account, None)
             .map_err(ApiError::conflict);
     };
-    match state.sandbox_manager.adopt_for_account(epoch, handle).await {
+    match state
+        .sandbox_manager
+        .adopt_for_account(account, handle)
+        .await
+    {
         Ok(Some(sandbox)) => Ok(SandboxTarget::from_sandbox(&sandbox)),
         Ok(None) => Err(ApiError::not_found(format!(
             "unknown sandbox handle: {handle}"
@@ -118,15 +122,15 @@ pub async fn list(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let authorization = super::sandbox_account::authorize(&state).await?;
-    let epoch = authorization.epoch();
-    let target = resolve(&state, epoch, &headers).await?;
+    let account = authorization.account();
+    let target = resolve(&state, account, &headers).await?;
     let snapshot = target.config.snapshot();
     let pm = pm_name(&snapshot.config);
     let cwd = pm_path(&snapshot.config).unwrap_or_else(|| target.repo_dir.clone());
     let scripts = discover_scripts(&cwd, pm.as_deref());
     state
         .sandbox_manager
-        .with_account_epoch(epoch, || {
+        .with_sandbox_account(account, || {
             emit_if_changed(&target.broadcaster, &cwd, &scripts)
         })
         .map_err(ApiError::conflict)?;
@@ -177,13 +181,14 @@ pub async fn exec(
     body: Bytes,
 ) -> Result<Response, ApiError> {
     let authorization = super::sandbox_account::authorize(&state).await?;
+    let account = authorization.account().clone();
     exec_with_admission(
         State(state),
         headers,
         AxumPath(name),
         body,
-        authorization.epoch(),
-        (),
+        account,
+        authorization,
     )
     .await
 }
@@ -202,10 +207,10 @@ pub(crate) async fn exec_with_admission<Admission>(
     headers: HeaderMap,
     AxumPath(name): AxumPath<String>,
     body: Bytes,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: crate::sandbox::manager::SandboxAccount,
     admission_guard: Admission,
 ) -> Result<Response, ApiError> {
-    let target = resolve(&state, account_epoch, &headers).await?;
+    let target = resolve(&state, &account, &headers).await?;
     let snapshot = target.config.snapshot();
     let Some(pm) = pm_name(&snapshot.config) else {
         return Err(ApiError::conflict(
@@ -333,7 +338,7 @@ pub(crate) async fn exec_with_admission<Admission>(
         .unwrap_or((None, false));
     state
         .sandbox_manager
-        .validate_account_epoch(account_epoch)
+        .validate_sandbox_account(&account)
         .map_err(ApiError::conflict)?;
     Ok(Json(json!({
         "taskId": id,
@@ -354,16 +359,17 @@ pub async fn exec_kill(
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     let authorization = super::sandbox_account::authorize(&state).await?;
-    exec_kill_for_account(state, headers, name, authorization.epoch()).await
+    let account = authorization.account().clone();
+    exec_kill_for_account(state, headers, name, account).await
 }
 
 pub(crate) async fn exec_kill_for_account(
     state: AppState,
     headers: HeaderMap,
     name: String,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: crate::sandbox::manager::SandboxAccount,
 ) -> Result<Json<Value>, ApiError> {
-    let target = resolve(&state, account_epoch, &headers).await?;
+    let target = resolve(&state, &account, &headers).await?;
     let matching: Vec<String> = target
         .tasks
         .list(Some(&[TaskStatus::Running]))
@@ -374,7 +380,7 @@ pub(crate) async fn exec_kill_for_account(
 
     let killed = state
         .sandbox_manager
-        .with_account_epoch(account_epoch, || {
+        .with_sandbox_account(&account, || {
             matching
                 .iter()
                 .filter(|id| matches!(target.tasks.kill(id, KillSignal::Term), Some(true)))
@@ -871,13 +877,16 @@ mod tests {
             .expect("configure package manager");
 
         let (dropped_tx, dropped_rx) = oneshot::channel();
-        let account_epoch = state.sandbox_manager.account_epoch();
+        let account = state
+            .sandbox_manager
+            .test_account()
+            .expect("test sandbox account");
         let response_task = tokio::spawn(exec_with_admission(
             State(state),
             HeaderMap::new(),
             AxumPath("slow".to_string()),
             Bytes::from_static(br#"{"mode":"await","timeoutMs":1000}"#),
-            account_epoch,
+            account,
             DropProbe(Some(dropped_tx)),
         ));
 

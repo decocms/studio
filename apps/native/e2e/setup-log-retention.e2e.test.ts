@@ -57,6 +57,7 @@ import {
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   readSseUntil,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -165,7 +166,7 @@ describeLocalApi(
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      a = await startLocalApi();
+      a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {

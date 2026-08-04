@@ -15,8 +15,12 @@ use serde_json::{json, Map, Value};
 use crate::config::ConfigStore;
 use crate::events::Broadcaster;
 use crate::log_store::LogStore;
+use crate::mutation::{MutationCoordinator, MutationShutdownOutcome};
+use crate::routes::threads::db::RtAccountScope;
 use crate::setup::{SetupOrchestrator, SetupShutdownResult, Step};
 use crate::tasks::{KillSignal, TaskRegistry, TaskStatus};
+
+use super::account_storage::AccountStorage;
 
 const BRANCH_STATUS_POLL_INTERVAL: Duration = Duration::from_secs(3);
 const ACCOUNT_TRANSITION_MATERIALIZATION_DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -33,6 +37,47 @@ impl AccountEpoch {
     #[cfg(test)]
     pub(crate) const fn for_test() -> Self {
         Self(0)
+    }
+}
+
+/// Complete proof of the authenticated account authorized to touch managed
+/// sandbox state. The opaque epoch fences delayed work, while the verified
+/// storage root binds every durable path and registry operation to the exact
+/// upstream issuer + subject.
+#[derive(Clone)]
+pub(crate) struct SandboxAccount {
+    epoch: AccountEpoch,
+    storage_key: Arc<str>,
+    storage: AccountStorage,
+    gate: Arc<MaterializationGate>,
+}
+
+impl SandboxAccount {
+    pub(crate) fn epoch(&self) -> AccountEpoch {
+        self.epoch
+    }
+
+    pub(crate) fn storage_key(&self) -> &str {
+        &self.storage_key
+    }
+
+    pub(crate) fn storage(&self) -> &AccountStorage {
+        &self.storage
+    }
+
+    /// Revalidate both the ephemeral transition ticket and durable marker.
+    /// Long-lived org mounts/WebDAV calls use this immediately before every
+    /// admission so a retired account object cannot recreate resources.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        self.storage.verify()?;
+        self.gate.validate_binding(self.epoch, &self.storage_key)
+    }
+
+    /// Cleanup-only durable proof retained by a transition after normal
+    /// admission has closed. This verifies the exact marker but deliberately
+    /// does not reopen or claim current-account authority.
+    pub(crate) fn verify_retired_storage(&self) -> Result<(), String> {
+        self.storage.verify()
     }
 }
 
@@ -98,7 +143,8 @@ pub struct Sandbox {
     pub tasks: Arc<TaskRegistry>,
     pub broadcaster: Arc<Broadcaster>,
     pub setup: Arc<SetupOrchestrator>,
-    account_epoch: AccountEpoch,
+    pub mutations: Arc<MutationCoordinator>,
+    account: SandboxAccount,
     registry_monitor_started: AtomicBool,
     branch_monitor_started: AtomicBool,
     /// Last `[org-fs]` outcome announced for this sandbox, so `ensure` — which
@@ -114,7 +160,7 @@ pub struct SandboxManager {
     app_root: PathBuf,
     registry: super::registry::SandboxRegistry,
     closing: AtomicBool,
-    sandboxes: Mutex<HashMap<String, Arc<Sandbox>>>,
+    sandboxes: Mutex<HashMap<SandboxKey, Arc<Sandbox>>>,
     /// Operation locks, one per handle currently being (or about to be)
     /// ensured. The lock covers the WHOLE config -> clone/checkout -> cascade
     /// scheduling operation, not just the `Sandbox`'s map insertion: two
@@ -124,12 +170,12 @@ pub struct SandboxManager {
     /// once first requested, so the map stays bounded by the number of
     /// DISTINCT (virtualMcpId, branch) pairs a session ever dispatches, not by
     /// call volume.
-    locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    locks: Mutex<HashMap<SandboxKey, Arc<tokio::sync::Mutex<()>>>>,
     /// `preview_label(handle) → handle`, lazily built from the registry and
     /// dropped whenever a registry row changes. The preview proxy resolves a
     /// label on EVERY asset request; without this it walked `worktrees/`
     /// recursively and hashed every handle per request.
-    preview_labels: std::sync::RwLock<Option<HashMap<String, String>>>,
+    preview_labels: std::sync::RwLock<HashMap<String, HashMap<String, String>>>,
     /// The handle whose dev server the reverse proxy serves for a plain
     /// (headerless) preview request — see [`SandboxManager::active`]. A
     /// browser iframe navigation cannot attach the `x-decocms-sandbox-handle`
@@ -138,28 +184,27 @@ pub struct SandboxManager {
     /// most-recently-dispatched thread's sandbox is what the preview shows.
     /// The webview can also set it explicitly on thread focus (see
     /// `POST /_sandbox/preview-handle`) for switching threads without re-running.
-    active_handle: Mutex<Option<String>>,
-    /// Change feed for `active_handle` — headerless `/_sandbox/events`
-    /// streams follow the ACTIVE sandbox across changes (a stream opened
-    /// before any sandbox existed would otherwise stay pinned to the
-    /// process-global broadcaster forever, rendering a blank drawer —
-    /// observed live 2026-07-22). `set_active` publishes; the events route
-    /// watches.
-    active_watch: tokio::sync::watch::Sender<Option<String>>,
+    /// Account-scoped active-handle feeds. Durable values live in
+    /// `sandbox_active`; these senders are only live fan-out.
+    active_watches: Mutex<HashMap<String, tokio::sync::watch::Sender<Option<String>>>>,
     /// Per-handle process-generation feeds. An explicit xterm/SSE stream must
     /// follow a stopped sandbox when Resume replaces its in-memory `Sandbox`
     /// Arc, independently of whichever other chat is currently active.
     generation_watches: Mutex<GenerationWatchMap>,
+    org_mounts: super::org_mount::OrgMountManager,
     materialization_gate: Arc<MaterializationGate>,
     account_transition_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 type GenerationWatchMap =
-    HashMap<(AccountEpoch, String), tokio::sync::watch::Sender<Option<Arc<Sandbox>>>>;
+    HashMap<(String, AccountEpoch, String), tokio::sync::watch::Sender<Option<Arc<Sandbox>>>>;
+type SandboxKey = (String, String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxShutdownResult {
+    pub account_id: String,
     pub handle: String,
+    pub mutations: MutationShutdownOutcome,
     pub result: SetupShutdownResult,
 }
 
@@ -184,9 +229,19 @@ struct TerminalEnsureMaterialized {
 
 #[derive(Default)]
 struct MaterializationState {
-    closed: bool,
+    boundary: AccountBoundary,
     active: usize,
     epoch: u64,
+    storage_key: Option<Arc<str>>,
+    bound_epoch: Option<AccountEpoch>,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum AccountBoundary {
+    #[default]
+    Open,
+    Transitioning,
+    Poisoned,
 }
 
 struct MaterializationGate {
@@ -201,17 +256,23 @@ struct MaterializationAdmission {
 
 struct MaterializationClosure {
     gate: Arc<MaterializationGate>,
+    completed: bool,
 }
+
+type RetiredAccountBinding = Option<(AccountEpoch, Arc<str>)>;
 
 /// Owns the native half of an account transition. Acquisition advances the
 /// account epoch and closes sandbox publication atomically. The caller keeps
-/// this guard through terminal cancellation and artifact cleanup; dropping it
-/// is the only operation that reopens publication for the next account.
-#[must_use = "dropping the account transition guard reopens sandbox materialization"]
+/// this guard through terminal cancellation and artifact cleanup. Publication
+/// reopens only through [`SandboxAccountTransitionGuard::complete`]; dropping
+/// an incomplete guard poisons the boundary so a replacement identity cannot
+/// inherit partially reaped state.
+#[must_use = "an account transition must be explicitly completed"]
 pub(crate) struct SandboxAccountTransitionGuard {
     manager: Arc<SandboxManager>,
     _transition: tokio::sync::OwnedMutexGuard<()>,
     closure: MaterializationClosure,
+    retired: Option<SandboxAccount>,
 }
 
 impl MaterializationGate {
@@ -229,11 +290,70 @@ impl MaterializationGate {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.closed {
-            return Err("sandbox account transition is in progress".to_string());
+        match state.boundary {
+            AccountBoundary::Open => {}
+            AccountBoundary::Transitioning => {
+                return Err("sandbox account transition is in progress".to_string());
+            }
+            AccountBoundary::Poisoned => {
+                return Err("sandbox account transition is poisoned".to_string());
+            }
         }
         if state.epoch != epoch.0 {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
+        }
+        Ok(())
+    }
+
+    fn bind(&self, epoch: AccountEpoch, storage_key: Arc<str>) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match state.boundary {
+            AccountBoundary::Open => {}
+            AccountBoundary::Transitioning => {
+                return Err("sandbox account transition is in progress".to_string());
+            }
+            AccountBoundary::Poisoned => {
+                return Err("sandbox account transition is poisoned".to_string());
+            }
+        }
+        if state.epoch != epoch.0 {
+            return Err(STALE_ACCOUNT_EPOCH.to_string());
+        }
+        match &state.storage_key {
+            Some(current) if current.as_ref() != storage_key.as_ref() => {
+                return Err("sandbox account scope changed without a completed transition".into());
+            }
+            Some(_) => {}
+            None => {
+                state.storage_key = Some(storage_key);
+                state.bound_epoch = Some(epoch);
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_binding(&self, epoch: AccountEpoch, storage_key: &str) -> Result<(), String> {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match state.boundary {
+            AccountBoundary::Open => {}
+            AccountBoundary::Transitioning => {
+                return Err("sandbox account transition is in progress".to_string());
+            }
+            AccountBoundary::Poisoned => {
+                return Err("sandbox account transition is poisoned".to_string());
+            }
+        }
+        if state.epoch != epoch.0 {
+            return Err(STALE_ACCOUNT_EPOCH.to_string());
+        }
+        if state.storage_key.as_deref() != Some(storage_key) || state.bound_epoch != Some(epoch) {
+            return Err("sandbox account is not the current bound scope".to_string());
         }
         Ok(())
     }
@@ -246,8 +366,12 @@ impl MaterializationGate {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.closed {
-            return Err("sandbox account transition is in progress".to_string());
+        if state.boundary != AccountBoundary::Open {
+            return Err(match state.boundary {
+                AccountBoundary::Poisoned => "sandbox account transition is poisoned",
+                _ => "sandbox account transition is in progress",
+            }
+            .to_string());
         }
         if state.epoch != epoch.0 {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
@@ -263,8 +387,12 @@ impl MaterializationGate {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.closed {
-            return Err("sandbox account transition is in progress".to_string());
+        if state.boundary != AccountBoundary::Open {
+            return Err(match state.boundary {
+                AccountBoundary::Poisoned => "sandbox account transition is poisoned",
+                _ => "sandbox account transition is in progress",
+            }
+            .to_string());
         }
         if state.epoch != epoch.0 {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
@@ -273,26 +401,46 @@ impl MaterializationGate {
         Ok(MaterializationAdmission { gate: self.clone() })
     }
 
-    fn advance_and_close(self: &Arc<Self>) -> Result<MaterializationClosure, String> {
+    fn advance_and_close(
+        self: &Arc<Self>,
+    ) -> Result<(MaterializationClosure, RetiredAccountBinding), String> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(next_epoch) = state.epoch.checked_add(1) else {
-            // No ticket can safely describe a later account. Permanently
-            // closing publication is safer than wrapping and accepting an
-            // ancient request as current.
-            state.closed = true;
-            // `send_replace` advances the watch version even though the
-            // value cannot advance, terminating long-lived account-scoped
-            // streams as part of the fail-closed path.
-            self.epoch_watch.send_replace(AccountEpoch(state.epoch));
-            return Err("sandbox account epoch exhausted".to_string());
-        };
-        state.epoch = next_epoch;
-        state.closed = true;
-        self.epoch_watch.send_replace(AccountEpoch(next_epoch));
-        Ok(MaterializationClosure { gate: self.clone() })
+        let retired = state.storage_key.clone().map(|storage_key| {
+            (
+                state.bound_epoch.unwrap_or(AccountEpoch(state.epoch)),
+                storage_key,
+            )
+        });
+        match state.boundary {
+            AccountBoundary::Transitioning => {
+                return Err("sandbox account transition is already in progress".to_string());
+            }
+            AccountBoundary::Poisoned => {
+                // A later transition is an explicit retry of the same cleanup.
+                // The poisoned epoch already invalidated every old ticket.
+                state.boundary = AccountBoundary::Transitioning;
+            }
+            AccountBoundary::Open => {
+                let Some(next_epoch) = state.epoch.checked_add(1) else {
+                    state.boundary = AccountBoundary::Poisoned;
+                    self.epoch_watch.send_replace(AccountEpoch(state.epoch));
+                    return Err("sandbox account epoch exhausted".to_string());
+                };
+                state.epoch = next_epoch;
+                state.boundary = AccountBoundary::Transitioning;
+                self.epoch_watch.send_replace(AccountEpoch(next_epoch));
+            }
+        }
+        Ok((
+            MaterializationClosure {
+                gate: self.clone(),
+                completed: false,
+            },
+            retired,
+        ))
     }
 }
 
@@ -343,20 +491,49 @@ impl MaterializationClosure {
             changed.await;
         }
     }
+
+    fn complete(&mut self) -> Result<(), String> {
+        let mut state = self
+            .gate
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.boundary != AccountBoundary::Transitioning {
+            return Err("sandbox account transition is not active".to_string());
+        }
+        if state.active != 0 {
+            return Err("sandbox materialization is still active".to_string());
+        }
+        state.storage_key = None;
+        state.bound_epoch = None;
+        state.boundary = AccountBoundary::Open;
+        self.completed = true;
+        self.gate.changed.notify_waiters();
+        Ok(())
+    }
 }
 
 impl Drop for MaterializationClosure {
     fn drop(&mut self) {
-        self.gate
+        if self.completed {
+            return;
+        }
+        let mut state = self
+            .gate
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .closed = false;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.boundary == AccountBoundary::Transitioning {
+            state.boundary = AccountBoundary::Poisoned;
+        }
         self.gate.changed.notify_waiters();
     }
 }
 
 impl SandboxAccountTransitionGuard {
+    pub(crate) fn retired_account(&self) -> Option<&SandboxAccount> {
+        self.retired.as_ref()
+    }
     /// Wait only for the short in-memory insertion + durable registration
     /// commit section, then stop every generation visible in the snapshot.
     /// A timeout returns before the snapshot, so callers never receive a
@@ -364,6 +541,13 @@ impl SandboxAccountTransitionGuard {
     pub(crate) async fn drain_and_stop_live(&self) -> Result<usize, String> {
         self.drain_and_stop_live_with_timeout(ACCOUNT_TRANSITION_MATERIALIZATION_DRAIN_TIMEOUT)
             .await
+    }
+
+    /// Reopen account admission only after every cleanup phase owned by the
+    /// caller has succeeded. Any early return drops an incomplete closure and
+    /// leaves the boundary poisoned for an explicit retry.
+    pub(crate) fn complete(mut self) -> Result<(), String> {
+        self.closure.complete()
     }
 
     async fn drain_and_stop_live_with_timeout(&self, timeout: Duration) -> Result<usize, String> {
@@ -376,28 +560,61 @@ impl SandboxAccountTransitionGuard {
                 )
             })?;
 
+        let Some(retired) = self.retired_account() else {
+            if self.manager.lock_sandboxes().is_empty() {
+                return Ok(0);
+            }
+            return Err(
+                "sandbox account transition has live generations but no retired account identity"
+                    .to_string(),
+            );
+        };
+        retired.verify_retired_storage()?;
         let handles = self
             .manager
             .lock_sandboxes()
-            .keys()
-            .cloned()
+            .iter()
+            .filter(|((scope, _), sandbox)| {
+                scope == retired.storage_key() && sandbox.account.epoch() == retired.epoch()
+            })
+            .map(|((_, handle), _)| handle.clone())
             .collect::<Vec<_>>();
         let mut stopped = 0;
         let mut failures = Vec::new();
         for handle in handles {
-            match self.manager.stop_registered_generation(&handle).await {
+            match self
+                .manager
+                .stop_registered_generation(retired, &handle)
+                .await
+            {
                 Ok(Some(_)) => stopped += 1,
                 Ok(None) => {}
                 Err(error) => failures.push(format!("{handle}: {error}")),
             }
         }
-        let current_epoch = self.manager.account_epoch();
         self.manager
             .generation_watches
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .retain(|(epoch, _), _| *epoch == current_epoch);
+            .retain(|(scope, epoch, _), _| {
+                scope != retired.storage_key() || *epoch != retired.epoch()
+            });
         if failures.is_empty() {
+            self.manager
+                .active_watches
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(retired.storage_key());
+            self.manager
+                .preview_labels
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(retired.storage_key());
+            self.manager
+                .locks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .retain(|(scope, _), _| scope != retired.storage_key());
             Ok(stopped)
         } else {
             Err(format!(
@@ -439,20 +656,34 @@ impl SandboxManager {
     pub fn new(app_root: PathBuf) -> Arc<Self> {
         let registry = super::registry::SandboxRegistry::open(app_root.clone())
             .unwrap_or_else(|error| panic!("native sandbox registry failed to open: {error}"));
-        let persisted_active = registry.active_handle().ok().flatten();
         Arc::new(Self {
+            org_mounts: super::org_mount::OrgMountManager::new(app_root.clone()),
             app_root,
             registry,
             closing: AtomicBool::new(false),
             sandboxes: Mutex::new(HashMap::new()),
             locks: Mutex::new(HashMap::new()),
-            preview_labels: std::sync::RwLock::new(None),
-            active_handle: Mutex::new(persisted_active.clone()),
-            active_watch: tokio::sync::watch::channel(persisted_active).0,
+            preview_labels: std::sync::RwLock::new(HashMap::new()),
+            active_watches: Mutex::new(HashMap::new()),
             generation_watches: Mutex::new(HashMap::new()),
             materialization_gate: Arc::new(MaterializationGate::default()),
             account_transition_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_account(&self) -> Result<SandboxAccount, String> {
+        let scope = RtAccountScope::new("test.invalid", "local-desktop-user")
+            .expect("valid test account scope");
+        self.test_account_for_scope(&scope)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_account_for_scope(
+        &self,
+        scope: &RtAccountScope,
+    ) -> Result<SandboxAccount, String> {
+        self.sandbox_account(self.account_epoch(), scope)
     }
 
     /// The sandbox the reverse proxy serves for a headerless preview request:
@@ -461,25 +692,21 @@ impl SandboxManager {
     /// to the global (non-git) orchestrator, exactly as before.
     #[cfg(test)]
     fn active(&self) -> Option<Arc<Sandbox>> {
-        let handle = self.active_handle.lock().ok()?.clone()?;
-        self.get(&handle)
+        let account = self.test_account().ok()?;
+        self.active_for_account(&account).ok().flatten()
     }
 
     pub(crate) fn active_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.validate_account_epoch(epoch)?;
-        let handle = self
-            .active_handle
-            .lock()
-            .map_err(|_| "sandbox active handle lock poisoned".to_string())?
-            .clone();
+        self.validate_sandbox_account(account)?;
+        let handle = self.registry.active_handle_for_account(account.storage())?;
         let resolved = match handle {
-            Some(handle) => self.get_for_account(epoch, &handle)?,
+            Some(handle) => self.get_for_account(account, &handle)?,
             None => None,
         };
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         Ok(resolved)
     }
 
@@ -492,8 +719,25 @@ impl SandboxManager {
     /// back to the last-focused sandbox via [`Self::resurrect_active_for_account`] —
     /// `active_handle` above is in-memory only and starts `None` every boot.
     /// Subscribe to active-handle changes (see `active_watch`).
-    pub fn watch_active(&self) -> tokio::sync::watch::Receiver<Option<String>> {
-        self.active_watch.subscribe()
+    pub(crate) fn watch_active_for_account(
+        &self,
+        account: &SandboxAccount,
+    ) -> Result<tokio::sync::watch::Receiver<Option<String>>, String> {
+        self.validate_sandbox_account(account)?;
+        let current = self.registry.active_handle_for_account(account.storage())?;
+        let mut watches = self
+            .active_watches
+            .lock()
+            .map_err(|_| "sandbox active watch lock poisoned".to_string())?;
+        let sender = watches
+            .entry(account.storage_key().to_string())
+            .or_insert_with(|| tokio::sync::watch::channel(current.clone()).0);
+        if *sender.borrow() != current {
+            sender.send_replace(current);
+        }
+        let receiver = sender.subscribe();
+        self.validate_sandbox_account(account)?;
+        Ok(receiver)
     }
 
     /// Subscribe to replacements of one durable handle's in-memory process
@@ -502,18 +746,22 @@ impl SandboxManager {
     /// that is still following this handle.
     fn watch_generation(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> tokio::sync::watch::Receiver<Option<Arc<Sandbox>>> {
         let current = self
-            .get(handle)
-            .filter(|sandbox| sandbox.account_epoch == epoch);
+            .get(account, handle)
+            .filter(|sandbox| sandbox.account.epoch() == account.epoch());
         let mut watches = self
             .generation_watches
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sender = watches
-            .entry((epoch, handle.to_string()))
+            .entry((
+                account.storage_key().to_string(),
+                account.epoch(),
+                handle.to_string(),
+            ))
             .or_insert_with(|| {
                 let (sender, _receiver) = tokio::sync::watch::channel(current.clone());
                 sender
@@ -526,25 +774,26 @@ impl SandboxManager {
 
     pub(crate) fn watch_generation_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<tokio::sync::watch::Receiver<Option<Arc<Sandbox>>>, String> {
-        self.validate_account_epoch(epoch)?;
-        let receiver = self.watch_generation(epoch, handle);
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let receiver = self.watch_generation(account, handle);
+        self.validate_sandbox_account(account)?;
         Ok(receiver)
     }
 
     fn publish_generation(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
         generation: Option<Arc<Sandbox>>,
     ) {
         debug_assert!(
-            generation
-                .as_ref()
-                .is_none_or(|sandbox| sandbox.account_epoch == epoch),
+            generation.as_ref().is_none_or(|sandbox| {
+                sandbox.account.epoch() == account.epoch()
+                    && sandbox.account.storage_key() == account.storage_key()
+            }),
             "generation published to the wrong account epoch"
         );
         let mut watches = self
@@ -552,7 +801,11 @@ impl SandboxManager {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sender = watches
-            .entry((epoch, handle.to_string()))
+            .entry((
+                account.storage_key().to_string(),
+                account.epoch(),
+                handle.to_string(),
+            ))
             .or_insert_with(|| {
                 let (sender, _receiver) = tokio::sync::watch::channel(None);
                 sender
@@ -560,127 +813,102 @@ impl SandboxManager {
         sender.send_replace(generation);
     }
 
-    fn set_active_at(&self, epoch: AccountEpoch, handle: &str) -> Result<(), String> {
-        let _admission = self.admit_materialization(epoch)?;
-        self.registry.set_active(handle)?;
-        if let Ok(mut guard) = self.active_handle.lock() {
-            *guard = Some(handle.to_string());
+    fn set_active_at(&self, account: &SandboxAccount, handle: &str) -> Result<(), String> {
+        self.validate_sandbox_account(account)?;
+        let _admission = self.admit_materialization(account.epoch())?;
+        self.registry
+            .set_active_for_account(account.storage(), handle)?;
+        if let Some(sender) = self
+            .active_watches
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(account.storage_key())
+        {
+            sender.send_replace(Some(handle.to_string()));
         }
-        // Keep the pre-registry files readable during the migration window.
-        super::persist::write_active_handle(&self.app_root, handle);
-        let _ = self.active_watch.send(Some(handle.to_string()));
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_active(&self, handle: &str) -> Result<(), String> {
-        self.set_active_at(self.account_epoch(), handle)
     }
 
     pub(crate) fn set_active_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<(), String> {
-        self.set_active_at(epoch, handle)
+        self.set_active_at(account, handle)
     }
 
     /// The worktree handle a virtual MCP uses for `branch`, via the registry —
     /// the routes the shell calls carry `(virtualMcpId, branch)`, never a
     /// clone URL, and the handle is derived from the repository.
-    fn handle_for_virtual_mcp(
-        &self,
-        virtual_mcp_id: &str,
-        branch: &str,
-    ) -> Result<Option<String>, String> {
-        // Normalized here, at the ONE lookup funnel every shell route uses,
-        // so a thread that persisted `main` before the never-on-main rule
-        // resolves to the staging sandbox instead of resurrecting the old one.
-        self.registry
-            .handle_for_virtual_mcp(virtual_mcp_id, super::normalize_branch(Some(branch)))
-    }
-
     pub(crate) fn handle_for_virtual_mcp_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         virtual_mcp_id: &str,
         branch: &str,
     ) -> Result<Option<String>, String> {
-        self.validate_account_epoch(epoch)?;
-        let handle = self.handle_for_virtual_mcp(virtual_mcp_id, branch)?;
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let handle = self.registry.handle_for_virtual_mcp_for_account(
+            account.storage(),
+            virtual_mcp_id,
+            super::normalize_branch(Some(branch)),
+        )?;
+        self.validate_sandbox_account(account)?;
         Ok(handle)
     }
 
     /// Whether `handle` has durable config, independently of whether this
     /// process has materialized its live Rust objects yet.
-    fn is_registered(&self, handle: &str) -> Result<bool, String> {
-        self.registry.contains(handle)
-    }
-
     pub(crate) fn is_registered_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<bool, String> {
-        self.validate_account_epoch(epoch)?;
-        let registered = self.is_registered(handle)?;
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let registered = self
+            .registry
+            .contains_for_account(account.storage(), handle)?;
+        self.validate_sandbox_account(account)?;
         Ok(registered)
     }
 
     /// Durable active pointer without materializing or starting its sandbox.
-    fn registered_active_handle(&self) -> Result<Option<String>, String> {
-        self.registry.active_handle()
-    }
-
     pub(crate) fn registered_active_handle_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
     ) -> Result<Option<String>, String> {
-        self.validate_account_epoch(epoch)?;
-        let handle = self.registered_active_handle()?;
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let handle = self.registry.active_handle_for_account(account.storage())?;
+        self.validate_sandbox_account(account)?;
         Ok(handle)
     }
 
     /// Returns the durable record for lifecycle/API responses.
-    fn registry_record(
-        &self,
-        handle: &str,
-    ) -> Result<Option<super::registry::SandboxRecord>, String> {
-        self.registry.record(handle)
-    }
-
     pub(crate) fn registry_record_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<super::registry::SandboxRecord>, String> {
-        self.validate_account_epoch(epoch)?;
-        let record = self.registry_record(handle)?;
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let record = self
+            .registry
+            .record_for_account(account.storage(), handle)?;
+        self.validate_sandbox_account(account)?;
         Ok(record)
     }
 
     /// Every durable sandbox this virtual MCP has claimed — the registry-backed
     /// replacement for walking `worktrees/` and reading sidecars on request
     /// paths.
-    fn records_for_virtual_mcp(
-        &self,
-        virtual_mcp_id: &str,
-    ) -> Result<Vec<super::registry::SandboxRecord>, String> {
-        self.registry.records_for_virtual_mcp(virtual_mcp_id)
-    }
-
     pub(crate) fn records_for_virtual_mcp_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         virtual_mcp_id: &str,
     ) -> Result<Vec<super::registry::SandboxRecord>, String> {
-        self.validate_account_epoch(epoch)?;
-        let records = self.records_for_virtual_mcp(virtual_mcp_id)?;
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let records = self
+            .registry
+            .records_for_virtual_mcp_for_account(account.storage(), virtual_mcp_id)?;
+        self.validate_sandbox_account(account)?;
         Ok(records)
     }
 
@@ -689,36 +917,36 @@ impl SandboxManager {
     /// Served from an in-memory map so the preview proxy's per-asset lookups
     /// never touch the filesystem or the database; the map is rebuilt from
     /// the registry after any registration change.
-    fn handle_for_preview_label(&self, label: &str) -> Option<String> {
-        if let Some(cached) = self
-            .preview_labels
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
+    fn handle_for_preview_label(&self, account: &SandboxAccount, label: &str) -> Option<String> {
+        if let Some(cached) = self.preview_labels.read().ok()?.get(account.storage_key()) {
             return cached.get(label).cloned();
         }
-        let handles = self.registry.handles().ok()?;
+        let handles = self.registry.handles_for_account(account.storage()).ok()?;
         let map: HashMap<String, String> = handles
             .into_iter()
-            .map(|handle| (super::preview_label(&handle), handle))
+            .map(|handle| {
+                (
+                    super::preview_label_for_scope(account.storage_key(), &handle),
+                    handle,
+                )
+            })
             .collect();
         let found = map.get(label).cloned();
-        *self
-            .preview_labels
+        self.preview_labels
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(map);
+            .ok()?
+            .insert(account.storage_key().to_string(), map);
         found
     }
 
     pub(crate) fn handle_for_preview_label_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         label: &str,
     ) -> Result<Option<String>, String> {
-        self.validate_account_epoch(epoch)?;
-        let handle = self.handle_for_preview_label(label);
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let handle = self.handle_for_preview_label(account, label);
+        self.validate_sandbox_account(account)?;
         Ok(handle)
     }
 
@@ -728,6 +956,17 @@ impl SandboxManager {
     /// Host fence needs only the registry row.
     #[cfg(test)]
     pub(crate) fn register_for_test(&self, clone_url: &str, branch: &str) -> String {
+        let account = self.test_account().expect("test account");
+        self.register_for_test_account(&account, clone_url, branch)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn register_for_test_account(
+        &self,
+        account: &SandboxAccount,
+        clone_url: &str,
+        branch: &str,
+    ) -> String {
         let config = super::GitSandboxConfig {
             clone_url: clone_url.to_string(),
             branch: Some(branch.to_string()),
@@ -735,24 +974,22 @@ impl SandboxManager {
             ..Default::default()
         };
         let handle = self
-            .resolve_handle_for_config(&config, normalized_branch(&config))
+            .resolve_handle_for_config(account, &config, normalized_branch(&config))
             .expect("scopeable clone url");
-        let sandbox_path = self.app_root.join(super::WORKTREES_DIR).join(&handle);
-        let workdir = sandbox_path.join("repo");
         self.registry
-            .upsert_config(&handle, &config, &sandbox_path, &workdir)
+            .upsert_config_for_account(account.storage(), &handle, &config)
             .expect("register test sandbox");
-        self.invalidate_preview_labels();
+        self.invalidate_preview_labels(account);
         handle
     }
 
     /// Drop the label map so the next lookup rebuilds it. Called wherever a
     /// registry row is created or replaced.
-    fn invalidate_preview_labels(&self) {
-        *self
-            .preview_labels
+    fn invalidate_preview_labels(&self, account: &SandboxAccount) {
+        self.preview_labels
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(account.storage_key());
     }
 
     /// `<host>/<owner>/<repo>/<branch>` — the worktree's path under
@@ -800,6 +1037,7 @@ impl SandboxManager {
 
     fn resolve_handle_for_config(
         &self,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
         branch: &str,
     ) -> Result<String, String> {
@@ -813,7 +1051,7 @@ impl SandboxManager {
         };
         let existing = self
             .registry
-            .records_for_virtual_mcp(&cfg.virtual_mcp_id)?
+            .records_for_virtual_mcp_for_account(account.storage(), &cfg.virtual_mcp_id)?
             .into_iter()
             .filter(|record| matches_config(record))
             .max_by_key(|record| (record.handle == expected, record.last_seen_at));
@@ -821,11 +1059,14 @@ impl SandboxManager {
             return Ok(existing.handle);
         }
 
-        let expected_record = self.registry.record(&expected)?;
+        let expected_record = self
+            .registry
+            .record_for_account(account.storage(), &expected)?;
         if expected_record.as_ref().is_some_and(matches_config) {
             return Ok(expected);
         }
-        let expected_sidecar = super::persist::read_sidecar(&self.app_root, &expected);
+        let expected_sidecar =
+            super::persist::read_sidecar_for_account(account.storage(), &expected)?;
         if expected_sidecar.as_ref().is_some_and(|config| {
             normalized_branch(config) == branch
                 && super::repo_store::repo_scope(&config.clone_url) == expected_scope
@@ -843,8 +1084,11 @@ impl SandboxManager {
                 "sandbox handle {expected} is already occupied by a different branch"
             ));
         }
-        let fallback_record = self.registry.record(&fallback)?;
-        let fallback_sidecar = super::persist::read_sidecar(&self.app_root, &fallback);
+        let fallback_record = self
+            .registry
+            .record_for_account(account.storage(), &fallback)?;
+        let fallback_sidecar =
+            super::persist::read_sidecar_for_account(account.storage(), &fallback)?;
         let fallback_sidecar_mismatch = fallback_sidecar.as_ref().is_some_and(|config| {
             normalized_branch(config) != branch
                 || super::repo_store::repo_scope(&config.clone_url) != expected_scope
@@ -887,7 +1131,18 @@ impl SandboxManager {
     ///
     /// Never fails the caller. A sandbox without an org filesystem still runs.
     async fn ensure_org_filesystem(&self, sandbox: &Sandbox, handle: &str, org_slug: &str) {
-        let linked = super::org_view::ensure_org_view(&self.app_root, handle, org_slug).await;
+        let account = &sandbox.account;
+        if let Err(error) = self.validate_sandbox_account(account) {
+            self.report_org_fs(
+                sandbox,
+                format!(
+                    "[org-fs] account authorization expired before building the org/ view for '{org_slug}': {error}\r\n"
+                ),
+            )
+            .await;
+            return;
+        }
+        let linked = super::org_view::ensure_org_view(account.storage(), handle, org_slug).await;
         if !linked {
             self.report_org_fs(
                 sandbox,
@@ -899,7 +1154,18 @@ impl SandboxManager {
             return;
         }
 
-        let mounted = super::org_mount::wait_ready(&self.app_root, org_slug).await;
+        let mounted = match self.wait_org_mount_ready(account, org_slug).await {
+            Ok(mounted) => mounted,
+            Err(error) => {
+                tracing::warn!(
+                    account_id = account.storage().id(),
+                    org_slug,
+                    %error,
+                    "failed to wait for account-scoped org filesystem"
+                );
+                false
+            }
+        };
         // Announce only when the answer CHANGES for this sandbox. `ensure`
         // runs on every dispatch, and each run re-announced — so a chat with
         // ten turns printed ten identical `ready` lines into the setup
@@ -923,6 +1189,39 @@ impl SandboxManager {
             )
         };
         self.report_org_fs(sandbox, line).await;
+    }
+
+    /// Begin warming one organization's mounts under the exact authenticated
+    /// sandbox account. The mount manager remains private so routes cannot
+    /// bypass the account proof.
+    pub(crate) fn warm_org_mount(
+        &self,
+        account: &SandboxAccount,
+        org_slug: &str,
+    ) -> Result<(), String> {
+        self.validate_sandbox_account(account)?;
+        self.org_mounts.warm(account, org_slug)
+    }
+
+    pub(crate) async fn wait_org_mount_ready(
+        &self,
+        account: &SandboxAccount,
+        org_slug: &str,
+    ) -> Result<bool, String> {
+        self.validate_sandbox_account(account)?;
+        self.org_mounts.wait_ready(account, org_slug).await
+    }
+
+    /// Cleanup-only transition path. `drain_account` accepts the retained
+    /// retired identity after normal admission has closed and leaves a
+    /// tombstone until cleanup has positively completed.
+    pub(crate) async fn retire_org_mounts(&self, account: &SandboxAccount) -> Result<(), String> {
+        account.verify_retired_storage()?;
+        self.org_mounts.drain_account(account).await
+    }
+
+    pub(crate) async fn shutdown_org_mounts(&self) -> Result<(), String> {
+        self.org_mounts.drain_all().await
     }
 
     /// One `[org-fs]` line into this sandbox's setup transcript.
@@ -949,40 +1248,46 @@ impl SandboxManager {
     /// A git-backed run stays under its own handle or it doesn't run at all.
     #[cfg(test)]
     fn workdir_for(&self, cfg: &GitSandboxConfig) -> PathBuf {
+        let account = self.test_account().expect("test account");
         // An unscopeable clone URL is not a git-backed sandbox; fall back to
         // the global repo dir exactly as a config with no repository does.
         let Some(handle) = self
-            .resolve_handle_for_config(cfg, normalized_branch(cfg))
+            .resolve_handle_for_config(&account, cfg, normalized_branch(cfg))
             .ok()
             .or_else(|| Self::compute_handle(&cfg.clone_url, normalized_branch(cfg)))
         else {
             return self.app_root.join("repo");
         };
-        crate::sandbox::worktree_repo_dir(&self.app_root, &handle)
+        account
+            .storage()
+            .workdir(&handle)
+            .expect("safe test handle")
     }
 
     /// Looks up an already-created sandbox by handle — used by
     /// `routes/proxy.rs` to resolve the sniffed dev port for a specific
     /// handle. Returns `None` for a handle never `ensure()`-d (never
     /// creates one — that's `ensure()`'s job).
-    fn get(&self, handle: &str) -> Option<Arc<Sandbox>> {
-        self.lock_sandboxes().get(handle).cloned()
+    fn get(&self, account: &SandboxAccount, handle: &str) -> Option<Arc<Sandbox>> {
+        self.lock_sandboxes()
+            .get(&(account.storage_key().to_string(), handle.to_string()))
+            .cloned()
     }
 
     pub(crate) fn get_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.validate_account_epoch(epoch)?;
-        let sandbox = self.get(handle);
-        if sandbox
-            .as_ref()
-            .is_some_and(|sandbox| sandbox.account_epoch != epoch)
-        {
+        self.validate_sandbox_account(account)?;
+        let sandbox = self.get(account, handle);
+        if sandbox.as_ref().is_some_and(|sandbox| {
+            sandbox.account.epoch() != account.epoch()
+                || sandbox.account.storage_key() != account.storage_key()
+        }) {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
         }
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         Ok(sandbox)
     }
 
@@ -1004,6 +1309,11 @@ impl SandboxManager {
         self.closing.store(true, Ordering::SeqCst);
         for sandbox in self.snapshot() {
             sandbox.setup.close();
+            // `begin_shutdown` closes admission and signals owners before it
+            // constructs the returned future. Dropping that first-phase
+            // future is intentional here; `shutdown_all` owns the bounded
+            // quiescence wait after every sandbox has been fenced.
+            drop(sandbox.mutations.begin_shutdown(TASK_TERM_GRACE));
         }
     }
 
@@ -1018,9 +1328,12 @@ impl SandboxManager {
         self.begin_shutdown();
         let sandboxes = self.snapshot();
         join_all(sandboxes.into_iter().map(|sandbox| async move {
+            let mutations = sandbox.mutations.begin_shutdown(term_grace).await;
             let result = sandbox.setup.shutdown(term_grace, kill_grace).await;
             SandboxShutdownResult {
+                account_id: sandbox.account.storage().id().to_string(),
                 handle: sandbox.handle.clone(),
+                mutations,
                 result,
             }
         }))
@@ -1032,6 +1345,32 @@ impl SandboxManager {
     /// account-derived sandbox resolution or materialization.
     pub(crate) fn account_epoch(&self) -> AccountEpoch {
         self.materialization_gate.account_epoch()
+    }
+
+    /// Mint the complete managed-sandbox account proof while the caller holds
+    /// the upstream session transition guard. Opening the private storage root
+    /// happens between two epoch checks; a concurrent transition may leave an
+    /// empty account directory, but can never publish it as the current scope.
+    pub(crate) fn sandbox_account(
+        &self,
+        epoch: AccountEpoch,
+        scope: &RtAccountScope,
+    ) -> Result<SandboxAccount, String> {
+        self.materialization_gate.validate(epoch)?;
+        let storage_key: Arc<str> = Arc::from(scope.storage_key());
+        let storage = AccountStorage::open(&self.app_root, &storage_key)?;
+        self.materialization_gate.bind(epoch, storage_key.clone())?;
+        storage.verify()?;
+        Ok(SandboxAccount {
+            epoch,
+            storage_key,
+            storage,
+            gate: self.materialization_gate.clone(),
+        })
+    }
+
+    pub(crate) fn validate_sandbox_account(&self, account: &SandboxAccount) -> Result<(), String> {
+        account.validate()
     }
 
     /// Revalidate a ticket immediately before an account-derived side effect.
@@ -1051,16 +1390,14 @@ impl SandboxManager {
         self.materialization_gate.watch_account_epoch(epoch)
     }
 
-    /// Linearize one synchronous account-derived commit with epoch advance.
-    /// This is for device-local/global handlers whose actual mutation is a
-    /// non-async queue insertion or registry update; long work must not run in
-    /// this closure.
-    pub(crate) fn with_account_epoch<T>(
+    pub(crate) fn with_sandbox_account<T>(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         commit: impl FnOnce() -> T,
     ) -> Result<T, String> {
-        let _admission = self.admit_materialization(epoch)?;
+        self.validate_sandbox_account(account)?;
+        let _admission = self.admit_materialization(account.epoch)?;
+        account.storage.verify()?;
         Ok(commit())
     }
 
@@ -1079,11 +1416,24 @@ impl SandboxManager {
         self: &Arc<Self>,
     ) -> Result<SandboxAccountTransitionGuard, String> {
         let transition = self.account_transition_lock.clone().lock_owned().await;
-        let closure = self.materialization_gate.advance_and_close()?;
+        let (closure, retired) = self.materialization_gate.advance_and_close()?;
+        let retired = match retired {
+            Some((epoch, storage_key)) => {
+                let storage = AccountStorage::open(&self.app_root, &storage_key)?;
+                Some(SandboxAccount {
+                    epoch,
+                    storage_key,
+                    storage,
+                    gate: self.materialization_gate.clone(),
+                })
+            }
+            None => None,
+        };
         Ok(SandboxAccountTransitionGuard {
             manager: self.clone(),
             _transition: transition,
             closure,
+            retired,
         })
     }
 
@@ -1109,39 +1459,42 @@ impl SandboxManager {
     ///   "unknown handle".
     #[cfg(test)]
     async fn resurrect(self: &Arc<Self>, handle: &str) -> Result<Option<Arc<Sandbox>>, String> {
-        self.resurrect_at(self.account_epoch(), handle).await
+        self.resurrect_at(&self.test_account()?, handle).await
     }
 
     pub(crate) async fn resurrect_for_account(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.resurrect_at(epoch, handle).await
+        self.resurrect_at(account, handle).await
     }
 
     async fn resurrect_at(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.validate_account_epoch(epoch)?;
-        if let Some(sandbox) = self.get_for_account(epoch, handle)? {
+        self.validate_sandbox_account(account)?;
+        if let Some(sandbox) = self.get_for_account(account, handle)? {
             if !sandbox.tasks.is_admission_closed() {
                 return Ok(Some(sandbox));
             }
         }
-        let cfg = match self.registry.record(handle)? {
+        let cfg = match self
+            .registry
+            .record_for_account(account.storage(), handle)?
+        {
             Some(record) => record.config,
-            None => match super::persist::read_sidecar(&self.app_root, handle) {
+            None => match super::persist::read_sidecar_for_account(account.storage(), handle)? {
                 Some(config) => config,
                 None => {
-                    self.validate_account_epoch(epoch)?;
+                    self.validate_sandbox_account(account)?;
                     return Ok(None);
                 }
             },
         };
-        let sandbox = self.provision_at(epoch, &cfg).await?;
+        let sandbox = self.provision_at(account, &cfg).await?;
         tracing::info!(
             handle = %handle,
             "sandbox resurrected from its persisted config (in-memory state was lost, likely a backend restart)"
@@ -1157,34 +1510,31 @@ impl SandboxManager {
     /// plain non-git path.
     #[cfg(test)]
     async fn resurrect_active(self: &Arc<Self>) -> Result<Option<Arc<Sandbox>>, String> {
-        self.resurrect_active_at(self.account_epoch()).await
+        self.resurrect_active_at(&self.test_account()?).await
     }
 
     pub(crate) async fn resurrect_active_for_account(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.resurrect_active_at(epoch).await
+        self.resurrect_active_at(account).await
     }
 
     async fn resurrect_active_at(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        if let Some(sandbox) = self.active_for_account(epoch)? {
+        if let Some(sandbox) = self.active_for_account(account)? {
             if !sandbox.tasks.is_admission_closed() {
                 return Ok(Some(sandbox));
             }
         }
-        let handle = self
-            .registry
-            .active_handle()?
-            .or_else(|| super::persist::read_active_handle(&self.app_root));
-        self.validate_account_epoch(epoch)?;
+        let handle = self.registry.active_handle_for_account(account.storage())?;
+        self.validate_sandbox_account(account)?;
         let Some(handle) = handle else {
             return Ok(None);
         };
-        self.resurrect_at(epoch, &handle).await
+        self.resurrect_at(account, &handle).await
     }
 
     /// Materialize only the in-process routing objects for a persisted
@@ -1194,54 +1544,64 @@ impl SandboxManager {
     /// chooses to resume the sandbox.
     #[cfg(test)]
     async fn adopt(&self, handle: &str) -> Result<Option<Arc<Sandbox>>, String> {
-        self.adopt_at(self.account_epoch(), handle).await
+        self.adopt_at(&self.test_account()?, handle).await
     }
 
     pub(crate) async fn adopt_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.adopt_at(epoch, handle).await
+        self.adopt_at(account, handle).await
     }
 
     async fn adopt_at(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.validate_account_epoch(epoch)?;
-        if let Some(sandbox) = self.get_for_account(epoch, handle)? {
+        self.validate_sandbox_account(account)?;
+        if let Some(sandbox) = self.get_for_account(account, handle)? {
             return Ok(Some(sandbox));
         }
-        let handle_lock = self.handle_lock(handle);
+        let handle_lock = self.handle_lock(account, handle);
         let _permit = handle_lock.lock().await;
-        if let Some(sandbox) = self.get_for_account(epoch, handle)? {
+        if let Some(sandbox) = self.get_for_account(account, handle)? {
             return Ok(Some(sandbox));
         }
-        let materialization = self.admit_materialization(epoch)?;
+        let materialization = self.admit_materialization(account.epoch())?;
         // Re-read durable state only after winning the same handle lock used
         // by Stop. Reading before the lock can capture desired=running, wait
         // behind Stop, then accidentally reopen a generation after Stop has
         // durably changed the row to desired=stopped.
-        let Some(record) = self.registry.record(handle)? else {
+        let Some(record) = self
+            .registry
+            .record_for_account(account.storage(), handle)?
+        else {
             return Ok(None);
         };
+        crate::routes::fs::recover_mutation_stages(
+            &account.storage().mutation_root(handle)?,
+            &account.storage().workdir(handle)?,
+        )
+        .await
+        .map_err(|error| format!("failed to recover sandbox mutations: {error}"))?;
         let stopped = record.desired_status == "stopped";
         let sandbox = if stopped {
-            self.get_or_create_stopped_locked(epoch, handle)?
+            self.get_or_create_stopped_locked(account, handle)?
         } else {
-            self.get_or_create_locked(epoch, handle)?
+            self.get_or_create_locked(account, handle)?
         };
         let branch = normalized_branch(&record.config).to_string();
         if let Err(error) = self.apply_config(&sandbox, &record.config, &branch) {
-            self.lock_sandboxes().remove(handle);
+            self.lock_sandboxes()
+                .remove(&(account.storage_key().to_string(), handle.to_string()));
             return Err(error);
         }
         drop(materialization);
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         Self::monitor_branch_status(&sandbox);
-        self.publish_generation(epoch, handle, Some(sandbox.clone()));
+        self.publish_generation(account, handle, Some(sandbox.clone()));
         tracing::info!(
             handle,
             "adopted persisted sandbox metadata without starting it"
@@ -1263,16 +1623,16 @@ impl SandboxManager {
     /// materializing it.
     #[cfg(test)]
     async fn stop_registered(&self, handle: &str) -> Result<Option<usize>, String> {
-        self.stop_registered_generation(handle).await
+        self.stop_registered_generation(&self.test_account()?, handle)
+            .await
     }
 
     pub(crate) async fn stop_registered_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        self.stop_registered_generation_at(Some(epoch), handle)
-            .await
+        self.stop_registered_generation(account, handle).await
     }
 
     /// Intent-named alias for callers deleting the whole sandbox generation.
@@ -1282,16 +1642,16 @@ impl SandboxManager {
     /// reporting or a later resume.
     #[cfg(test)]
     async fn delete_registered(&self, handle: &str) -> Result<Option<usize>, String> {
-        self.stop_registered_generation(handle).await
+        self.stop_registered_generation(&self.test_account()?, handle)
+            .await
     }
 
     pub(crate) async fn delete_registered_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        self.stop_registered_generation_at(Some(epoch), handle)
-            .await
+        self.stop_registered_generation(account, handle).await
     }
 
     /// Quiesce only live synthetic sandboxes owned by one exact Studio agent
@@ -1310,38 +1670,41 @@ impl SandboxManager {
         virtual_mcp_id: &str,
         thread_id: &str,
     ) -> Result<usize, String> {
-        self.delete_live_thread_sandboxes_at(None, virtual_mcp_id, thread_id)
+        self.delete_live_thread_sandboxes_at(&self.test_account()?, virtual_mcp_id, thread_id)
             .await
     }
 
     pub(crate) async fn delete_live_thread_sandboxes_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         virtual_mcp_id: &str,
         thread_id: &str,
     ) -> Result<usize, String> {
-        self.delete_live_thread_sandboxes_at(Some(epoch), virtual_mcp_id, thread_id)
+        self.delete_live_thread_sandboxes_at(account, virtual_mcp_id, thread_id)
             .await
     }
 
     async fn delete_live_thread_sandboxes_at(
         &self,
-        epoch: Option<AccountEpoch>,
+        account: &SandboxAccount,
         virtual_mcp_id: &str,
         thread_id: &str,
     ) -> Result<usize, String> {
-        if let Some(epoch) = epoch {
-            self.validate_account_epoch(epoch)?;
-        }
+        self.validate_sandbox_account(account)?;
         if virtual_mcp_id.is_empty() || thread_id.is_empty() {
             return Ok(0);
         }
-        let handles = self.lock_sandboxes().keys().cloned().collect::<Vec<_>>();
+        let handles = self
+            .lock_sandboxes()
+            .keys()
+            .filter(|(scope, _)| scope == account.storage_key())
+            .map(|(_, handle)| handle.clone())
+            .collect::<Vec<_>>();
         let mut deleted = 0;
         let mut failures = Vec::new();
         for handle in handles {
             match self
-                .delete_live_thread_sandbox(epoch, &handle, virtual_mcp_id, thread_id)
+                .delete_live_thread_sandbox(account, &handle, virtual_mcp_id, thread_id)
                 .await
             {
                 Ok(true) => deleted += 1,
@@ -1361,17 +1724,18 @@ impl SandboxManager {
 
     async fn delete_live_thread_sandbox(
         &self,
-        epoch: Option<AccountEpoch>,
+        account: &SandboxAccount,
         handle: &str,
         virtual_mcp_id: &str,
         thread_id: &str,
     ) -> Result<bool, String> {
-        let handle_lock = self.handle_lock(handle);
+        let handle_lock = self.handle_lock(account, handle);
         let _permit = handle_lock.lock().await;
-        if let Some(epoch) = epoch {
-            self.validate_account_epoch(epoch)?;
-        }
-        let Some(record) = self.registry.record(handle)? else {
+        self.validate_sandbox_account(account)?;
+        let Some(record) = self
+            .registry
+            .record_for_account(account.storage(), handle)?
+        else {
             return Ok(false);
         };
         if record.config.virtual_mcp_id != virtual_mcp_id
@@ -1382,23 +1746,28 @@ impl SandboxManager {
         {
             return Ok(false);
         }
-        let Some(sandbox) = self.get(handle) else {
+        let Some(sandbox) = self.get(account, handle) else {
             return Ok(false);
         };
-        if epoch.is_some_and(|epoch| sandbox.account_epoch != epoch) {
+        if sandbox.account.epoch() != account.epoch() {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
         }
 
         let killed = match close_and_reap_generation(&sandbox).await {
             Ok(killed) => killed,
             Err(message) => {
-                self.registry
-                    .mark_state(handle, "stopped", "failed", Some(&message))?;
+                self.registry.mark_state_for_account(
+                    account.storage(),
+                    handle,
+                    "stopped",
+                    "failed",
+                    Some(&message),
+                )?;
                 return Err(message);
             }
         };
         let still_current = self
-            .get(handle)
+            .get(account, handle)
             .is_some_and(|current| Arc::ptr_eq(&current, &sandbox));
         if !still_current {
             return Ok(false);
@@ -1406,10 +1775,16 @@ impl SandboxManager {
         sandbox
             .setup
             .transition_lifecycle(json!({ "phase": "idle" }));
-        self.lock_sandboxes().remove(handle);
-        self.publish_generation(sandbox.account_epoch, handle, None);
-        self.registry
-            .mark_state(handle, "stopped", "stopped", None)?;
+        self.lock_sandboxes()
+            .remove(&(account.storage_key().to_string(), handle.to_string()));
+        self.publish_generation(account, handle, None);
+        self.registry.mark_state_for_account(
+            account.storage(),
+            handle,
+            "stopped",
+            "stopped",
+            None,
+        )?;
         tracing::info!(
             handle,
             virtual_mcp_id,
@@ -1420,61 +1795,61 @@ impl SandboxManager {
         Ok(true)
     }
 
-    async fn stop_registered_generation(&self, handle: &str) -> Result<Option<usize>, String> {
-        self.stop_registered_generation_at(None, handle).await
-    }
-
-    async fn stop_registered_generation_at(
+    async fn stop_registered_generation(
         &self,
-        epoch: Option<AccountEpoch>,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        if let Some(epoch) = epoch {
-            self.validate_account_epoch(epoch)?;
-        }
-        if !self.registry.contains(handle)? {
+        account.verify_retired_storage()?;
+        if !self
+            .registry
+            .contains_for_account(account.storage(), handle)?
+        {
             return Ok(None);
         }
 
         loop {
-            let Some(sandbox) = self.get(handle) else {
-                let handle_lock = self.handle_lock(handle);
+            let Some(sandbox) = self.get(account, handle) else {
+                let handle_lock = self.handle_lock(account, handle);
                 let _permit = handle_lock.lock().await;
-                if let Some(epoch) = epoch {
-                    self.validate_account_epoch(epoch)?;
-                }
+                account.verify_retired_storage()?;
                 // A concurrent ensure may have inserted the generation before
                 // releasing the lock we just acquired. Restart the preemption
                 // phase so it is closed and reaped outside this lock too.
-                if self.get(handle).is_some() {
+                if self.get(account, handle).is_some() {
                     continue;
                 }
                 let record = self
                     .registry
-                    .record(handle)?
+                    .record_for_account(account.storage(), handle)?
                     .ok_or_else(|| format!("unknown sandbox handle: {handle}"))?;
                 let observed = if record.sandbox_path.is_dir() {
                     "stopped"
                 } else {
                     "absent"
                 };
-                self.registry
-                    .mark_state(handle, "stopped", observed, record.error.as_deref())?;
+                self.registry.mark_state_for_account(
+                    account.storage(),
+                    handle,
+                    "stopped",
+                    observed,
+                    record.error.as_deref(),
+                )?;
                 return Ok(Some(0));
             };
-            if epoch.is_some_and(|epoch| sandbox.account_epoch != epoch) {
+            if sandbox.account.epoch() != account.epoch()
+                || sandbox.account.storage_key() != account.storage_key()
+            {
                 return Err(STALE_ACCOUNT_EPOCH.to_string());
             }
 
             let termination = close_and_reap_generation(&sandbox).await;
 
-            let handle_lock = self.handle_lock(handle);
+            let handle_lock = self.handle_lock(account, handle);
             let _permit = handle_lock.lock().await;
-            if let Some(epoch) = epoch {
-                self.validate_account_epoch(epoch)?;
-            }
+            account.verify_retired_storage()?;
             let still_current = self
-                .get(handle)
+                .get(account, handle)
                 .is_some_and(|current| Arc::ptr_eq(&current, &sandbox));
             if !still_current {
                 // Another stop already evicted this snapshot and a later
@@ -1486,18 +1861,29 @@ impl SandboxManager {
             let killed = match termination {
                 Ok(killed) => killed,
                 Err(message) => {
-                    self.registry
-                        .mark_state(handle, "stopped", "failed", Some(&message))?;
+                    self.registry.mark_state_for_account(
+                        account.storage(),
+                        handle,
+                        "stopped",
+                        "failed",
+                        Some(&message),
+                    )?;
                     return Err(message);
                 }
             };
             sandbox
                 .setup
                 .transition_lifecycle(json!({ "phase": "idle" }));
-            self.lock_sandboxes().remove(handle);
-            self.publish_generation(sandbox.account_epoch, handle, None);
-            self.registry
-                .mark_state(handle, "stopped", "stopped", None)?;
+            self.lock_sandboxes()
+                .remove(&(account.storage_key().to_string(), handle.to_string()));
+            self.publish_generation(account, handle, None);
+            self.registry.mark_state_for_account(
+                account.storage(),
+                handle,
+                "stopped",
+                "stopped",
+                None,
+            )?;
             return Ok(Some(killed));
         }
     }
@@ -1507,54 +1893,57 @@ impl SandboxManager {
     /// worktree and durable registry row so the branch can later be recreated.
     #[cfg(test)]
     async fn remove_registered(&self, handle: &str) -> Result<Option<usize>, String> {
-        self.remove_registered_at(None, handle).await
+        self.remove_registered_at(&self.test_account()?, handle)
+            .await
     }
 
     pub(crate) async fn remove_registered_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        self.remove_registered_at(Some(epoch), handle).await
+        self.remove_registered_at(account, handle).await
     }
 
     async fn remove_registered_at(
         &self,
-        epoch: Option<AccountEpoch>,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        if let Some(epoch) = epoch {
-            self.validate_account_epoch(epoch)?;
-        }
-        if !self.registry.contains(handle)? {
+        account.verify_retired_storage()?;
+        if !self
+            .registry
+            .contains_for_account(account.storage(), handle)?
+        {
             return Ok(None);
         }
 
         let mut killed = 0usize;
         loop {
-            let Some(stopped) = self.stop_registered_generation_at(epoch, handle).await? else {
+            let Some(stopped) = self.stop_registered_generation(account, handle).await? else {
                 return Ok(None);
             };
             killed = killed.saturating_add(stopped);
 
-            let handle_lock = self.handle_lock(handle);
+            let handle_lock = self.handle_lock(account, handle);
             let _permit = handle_lock.lock().await;
-            if let Some(epoch) = epoch {
-                self.validate_account_epoch(epoch)?;
-            }
+            account.verify_retired_storage()?;
 
             // A provision can win the gap after Stop releases the operation
             // lock. Preempt that replacement before deleting the directory;
             // once this lock is held with no live generation, provision and
             // git mutations are fenced until reclamation is complete.
-            if self.get(handle).is_some() {
+            if self.get(account, handle).is_some() {
                 continue;
             }
-            let Some(record) = self.registry.record(handle)? else {
+            let Some(record) = self
+                .registry
+                .record_for_account(account.storage(), handle)?
+            else {
                 return Ok(None);
             };
 
-            let root = crate::sandbox::worktree_root(&self.app_root, handle);
+            let root = account.storage().worktree_root(handle)?;
             match tokio::fs::remove_dir_all(&root).await {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1567,25 +1956,31 @@ impl SandboxManager {
 
             // Removing the directory is not enough: the shared canonical repo
             // still records it as a git worktree until it is pruned.
-            super::repo_store::prune_worktrees(&self.app_root, &record.config.clone_url).await;
-
-            self.registry.remove(handle)?;
-            self.invalidate_preview_labels();
-            let was_active = {
-                let mut active = self
-                    .active_handle
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let was_active = active.as_deref() == Some(handle);
-                if was_active {
-                    *active = None;
-                }
-                was_active
-            };
-            if was_active {
-                let _ = self.active_watch.send(None);
+            if let Some(canonical) = account
+                .storage()
+                .canonical_repo_dir(&record.config.clone_url)?
+            {
+                super::repo_store::prune_canonical_repo(&canonical).await;
             }
-            tracing::info!(handle, killed, "sandbox reclaimed: worktree removed");
+
+            self.registry
+                .remove_for_account(account.storage(), handle)?;
+            self.invalidate_preview_labels(account);
+            let active = self.registry.active_handle_for_account(account.storage())?;
+            if let Some(sender) = self
+                .active_watches
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(account.storage_key())
+            {
+                sender.send_replace(active);
+            }
+            tracing::info!(
+                account = account.storage().id(),
+                handle,
+                killed,
+                "sandbox reclaimed: worktree removed"
+            );
             return Ok(Some(killed));
         }
     }
@@ -1596,10 +1991,10 @@ impl SandboxManager {
     /// cancellation stop account B's replacement generation.
     async fn stop_exact_generation(&self, sandbox: &Arc<Sandbox>) -> Result<Option<usize>, String> {
         let termination = close_and_reap_generation(sandbox).await;
-        let handle_lock = self.handle_lock(&sandbox.handle);
+        let handle_lock = self.handle_lock(&sandbox.account, &sandbox.handle);
         let _permit = handle_lock.lock().await;
         let still_current = self
-            .get(&sandbox.handle)
+            .get(&sandbox.account, &sandbox.handle)
             .is_some_and(|current| Arc::ptr_eq(&current, sandbox));
         if !still_current {
             return termination.map(Some);
@@ -1607,18 +2002,31 @@ impl SandboxManager {
         let killed = match termination {
             Ok(killed) => killed,
             Err(message) => {
-                self.registry
-                    .mark_state(&sandbox.handle, "stopped", "failed", Some(&message))?;
+                self.registry.mark_state_for_account(
+                    sandbox.account.storage(),
+                    &sandbox.handle,
+                    "stopped",
+                    "failed",
+                    Some(&message),
+                )?;
                 return Err(message);
             }
         };
         sandbox
             .setup
             .transition_lifecycle(json!({ "phase": "idle" }));
-        self.lock_sandboxes().remove(&sandbox.handle);
-        self.publish_generation(sandbox.account_epoch, &sandbox.handle, None);
-        self.registry
-            .mark_state(&sandbox.handle, "stopped", "stopped", None)?;
+        self.lock_sandboxes().remove(&(
+            sandbox.account.storage_key().to_string(),
+            sandbox.handle.clone(),
+        ));
+        self.publish_generation(&sandbox.account, &sandbox.handle, None);
+        self.registry.mark_state_for_account(
+            sandbox.account.storage(),
+            &sandbox.handle,
+            "stopped",
+            "stopped",
+            None,
+        )?;
         Ok(Some(killed))
     }
 
@@ -1627,28 +2035,31 @@ impl SandboxManager {
     /// admitted, preventing old/new servers from racing for the same port.
     pub(crate) async fn restart_registered_for_account(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        self.restart_registered_at(epoch, handle).await
+        self.restart_registered_at(account, handle).await
     }
 
     async fn restart_registered_at(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Option<usize>, String> {
-        self.validate_account_epoch(epoch)?;
-        if !self.registry.contains(handle)? {
+        self.validate_sandbox_account(account)?;
+        if !self
+            .registry
+            .contains_for_account(account.storage(), handle)?
+        {
             return Ok(None);
         }
-        let handle_lock = self.handle_lock(handle);
+        let handle_lock = self.handle_lock(account, handle);
         let _permit = handle_lock.lock().await;
-        self.validate_account_epoch(epoch)?;
-        let Some(sandbox) = self.get(handle) else {
+        self.validate_sandbox_account(account)?;
+        let Some(sandbox) = self.get(account, handle) else {
             return Ok(None);
         };
-        if sandbox.account_epoch != epoch {
+        if sandbox.account.epoch() != account.epoch() {
             return Err(STALE_ACCOUNT_EPOCH.to_string());
         }
         let task_ids: Vec<String> = sandbox
@@ -1662,10 +2073,20 @@ impl SandboxManager {
         if !sandbox.setup.resume_from(Step::Start) {
             return Err("setup worker is unavailable".to_string());
         }
-        self.registry
-            .mark_state(handle, "running", "starting", None)?;
-        self.registry
-            .mark_observed(handle, "starting", None, Some("start"))?;
+        self.registry.mark_state_for_account(
+            account.storage(),
+            handle,
+            "running",
+            "starting",
+            None,
+        )?;
+        self.registry.mark_observed_for_account(
+            account.storage(),
+            handle,
+            "starting",
+            None,
+            Some("start"),
+        )?;
         Ok(Some(killed))
     }
 
@@ -1677,31 +2098,31 @@ impl SandboxManager {
     /// install is still running.
     #[cfg(test)]
     async fn provision(self: &Arc<Self>, cfg: &GitSandboxConfig) -> Result<Arc<Sandbox>, String> {
-        self.provision_at(self.account_epoch(), cfg).await
+        self.provision_at(&self.test_account()?, cfg).await
     }
 
     pub(crate) async fn provision_for_account(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Arc<Sandbox>, String> {
-        self.provision_at(epoch, cfg).await
+        self.provision_at(account, cfg).await
     }
 
     async fn provision_at(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Arc<Sandbox>, String> {
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         if self.is_closing() {
             return Err("sandbox manager is shutting down".to_string());
         }
         let branch = normalized_branch(cfg).to_string();
-        let handle = self.resolve_handle_for_config(cfg, &branch)?;
-        let handle_lock = self.handle_lock(&handle);
+        let handle = self.resolve_handle_for_config(account, cfg, &branch)?;
+        let handle_lock = self.handle_lock(account, &handle);
         let _permit = handle_lock.lock().await;
-        self.provision_locked(epoch, cfg, &handle, &branch).await
+        self.provision_locked(account, cfg, &handle, &branch).await
     }
 
     /// Fail-fast control-plane variant for callers that already retain a
@@ -1713,40 +2134,40 @@ impl SandboxManager {
         self: &Arc<Self>,
         cfg: &GitSandboxConfig,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.try_provision_at(self.account_epoch(), cfg).await
+        self.try_provision_at(&self.test_account()?, cfg).await
     }
 
     pub(crate) async fn try_provision_for_account(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.try_provision_at(epoch, cfg).await
+        self.try_provision_at(account, cfg).await
     }
 
     async fn try_provision_at(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Option<Arc<Sandbox>>, String> {
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         if self.is_closing() {
             return Err("sandbox manager is shutting down".to_string());
         }
         let branch = normalized_branch(cfg).to_string();
-        let handle = self.resolve_handle_for_config(cfg, &branch)?;
-        let handle_lock = self.handle_lock(&handle);
+        let handle = self.resolve_handle_for_config(account, cfg, &branch)?;
+        let handle_lock = self.handle_lock(account, &handle);
         let Ok(_permit) = handle_lock.try_lock_owned() else {
             return Ok(None);
         };
-        self.provision_locked(epoch, cfg, &handle, &branch)
+        self.provision_locked(account, cfg, &handle, &branch)
             .await
             .map(Some)
     }
 
     async fn provision_locked(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
         handle: &str,
         branch: &str,
@@ -1755,35 +2176,41 @@ impl SandboxManager {
             return Err("sandbox manager is shutting down".to_string());
         }
 
-        let materialization = self.admit_materialization(epoch)?;
-        self.evict_closed_generation_locked(handle);
-        let was_known = self.get(handle).is_some();
-        let previous_record = self.registry.record(handle)?;
+        self.validate_sandbox_account(account)?;
+        let materialization = self.admit_materialization(account.epoch())?;
+        self.evict_closed_generation_locked(account, handle);
+        let was_known = self.get(account, handle).is_some();
+        let previous_record = self
+            .registry
+            .record_for_account(account.storage(), handle)?;
         let canonical_config = merge_durable_config(cfg, previous_record.as_ref())?;
-        let sandbox = self.get_or_create_locked(epoch, handle)?;
+        crate::routes::fs::recover_mutation_stages(
+            &account.storage().mutation_root(handle)?,
+            &account.storage().workdir(handle)?,
+        )
+        .await
+        .map_err(|error| format!("failed to recover sandbox mutations: {error}"))?;
+        let sandbox = self.get_or_create_locked(account, handle)?;
         let was_running = dev_task_running(&sandbox);
         let pipeline_in_flight = sandbox.setup.is_running() || sandbox.setup.pending_count() > 0;
         let transition = match self.apply_config(&sandbox, &canonical_config, branch) {
             Ok(transition) => transition,
             Err(error) => {
                 if !was_known {
-                    self.lock_sandboxes().remove(handle);
+                    self.lock_sandboxes()
+                        .remove(&(account.storage_key().to_string(), handle.to_string()));
                 }
                 return Err(error);
             }
         };
-        let sandbox_path = self
-            .app_root
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(handle);
         self.registry
-            .upsert_config(handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
+            .upsert_config_for_account(account.storage(), handle, &canonical_config)?;
         // This is the complete materialization commit: the Arc is visible in
         // `sandboxes` and its durable row makes it addressable by Stop. Keep
         // the manager-wide account-transition drain independent of org I/O,
         // sidecars, monitors, checkout, and setup.
         drop(materialization);
-        self.invalidate_preview_labels();
+        self.invalidate_preview_labels(account);
         // The sandbox's view onto the shared org filesystem. Best-effort by
         // design (see `org_view`): a sandbox whose view cannot be built still
         // runs, the agent simply has no org files — the same outcome as a
@@ -1791,10 +2218,10 @@ impl SandboxManager {
         if let Some(org_slug) = canonical_config.org_slug.as_deref() {
             self.ensure_org_filesystem(&sandbox, handle, org_slug).await;
         }
-        self.set_active_at(epoch, handle)?;
-        super::persist::write_sidecar(&self.app_root, handle, &canonical_config);
-        self.validate_account_epoch(epoch)?;
-        self.publish_generation(epoch, handle, Some(sandbox.clone()));
+        self.set_active_at(account, handle)?;
+        super::persist::write_sidecar_for_account(account.storage(), handle, &canonical_config)?;
+        self.validate_sandbox_account(account)?;
+        self.publish_generation(account, handle, Some(sandbox.clone()));
         Self::monitor_branch_status(&sandbox);
 
         if transition == "no-op" && (was_running || pipeline_in_flight) {
@@ -1817,9 +2244,14 @@ impl SandboxManager {
             let error = previous_record
                 .as_ref()
                 .and_then(|record| record.error.as_deref());
-            self.registry
-                .mark_state(handle, "running", observed, error)?;
-            self.validate_account_epoch(epoch)?;
+            self.registry.mark_state_for_account(
+                account.storage(),
+                handle,
+                "running",
+                observed,
+                error,
+            )?;
+            self.validate_sandbox_account(account)?;
             return Ok(sandbox);
         }
 
@@ -1849,7 +2281,7 @@ impl SandboxManager {
         if !repo_valid {
             repair_invalid_workdir_owned(
                 &sandbox,
-                self.app_root.clone(),
+                account.storage().clone(),
                 canonical_config.clone_url.clone(),
             )
             .await?;
@@ -1879,9 +2311,13 @@ impl SandboxManager {
         }
         if !sandbox.setup.resume_from(step) {
             let message = format!("setup worker rejected the {} step", step.as_str());
-            let _ = self
-                .registry
-                .mark_state(handle, "running", "failed", Some(&message));
+            let _ = self.registry.mark_state_for_account(
+                account.storage(),
+                handle,
+                "running",
+                "failed",
+                Some(&message),
+            );
             return Err(format!("sandbox {handle} {message}"));
         }
         let observed = if step == Step::Start {
@@ -1889,11 +2325,21 @@ impl SandboxManager {
         } else {
             "provisioning"
         };
-        self.registry
-            .mark_state(handle, "running", observed, None)?;
-        self.registry
-            .mark_observed(handle, observed, None, Some(step.as_str()))?;
-        self.validate_account_epoch(epoch)?;
+        self.registry.mark_state_for_account(
+            account.storage(),
+            handle,
+            "running",
+            observed,
+            None,
+        )?;
+        self.registry.mark_observed_for_account(
+            account.storage(),
+            handle,
+            observed,
+            None,
+            Some(step.as_str()),
+        )?;
+        self.validate_sandbox_account(account)?;
         Ok(sandbox)
     }
 
@@ -1908,6 +2354,7 @@ impl SandboxManager {
         let manager = Arc::downgrade(self);
         let sandbox_generation = Arc::downgrade(sandbox);
         let handle = sandbox.handle.clone();
+        let account = sandbox.account.clone();
         tokio::spawn(async move {
             loop {
                 let event = match receiver.recv().await {
@@ -1953,17 +2400,22 @@ impl SandboxManager {
                 let Some(generation) = sandbox_generation.upgrade() else {
                     return;
                 };
-                let Some(current) = manager.get(&handle) else {
+                if account.validate().is_err() {
+                    return;
+                }
+                let Some(current) = manager.get(&account, &handle) else {
                     return;
                 };
                 if !Arc::ptr_eq(&generation, &current) {
                     return;
                 }
-                if let Err(error) =
-                    manager
-                        .registry
-                        .mark_observed(&handle, observed, error, resume_step)
-                {
+                if let Err(error) = manager.registry.mark_observed_for_account(
+                    account.storage(),
+                    &handle,
+                    observed,
+                    error,
+                    resume_step,
+                ) {
                     tracing::warn!(handle, %error, "failed to persist sandbox lifecycle observation");
                 }
             }
@@ -1984,26 +2436,26 @@ impl SandboxManager {
         self: &Arc<Self>,
         cfg: &GitSandboxConfig,
     ) -> Result<Arc<Sandbox>, String> {
-        self.ensure_at(self.account_epoch(), cfg).await
+        self.ensure_at(&self.test_account()?, cfg).await
     }
 
     #[cfg(test)]
     pub(crate) async fn ensure_for_account(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Arc<Sandbox>, String> {
-        self.ensure_at(epoch, cfg).await
+        self.ensure_at(account, cfg).await
     }
 
     #[cfg(test)]
     async fn ensure_at(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
     ) -> Result<Arc<Sandbox>, String> {
         let sandbox = self
-            .ensure_inner_at(epoch, cfg, std::future::ready(()))
+            .ensure_inner_at(account, cfg, std::future::ready(()))
             .await?;
         self.monitor_registry_lifecycle(&sandbox);
         Self::monitor_branch_status(&sandbox);
@@ -2018,16 +2470,17 @@ impl SandboxManager {
     /// the in-flight ensure to the manager-owned coordinator.
     pub(crate) async fn ensure_for_terminal(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
         cancel: tokio::sync::watch::Receiver<bool>,
         teardown_on_cancel: bool,
     ) -> Result<Arc<Sandbox>, TerminalEnsureError> {
         let manager = self.clone();
+        let account = account.clone();
         let config = cfg.clone();
         tokio::spawn(async move {
             manager
-                .ensure_for_terminal_owned(epoch, &config, cancel, teardown_on_cancel)
+                .ensure_for_terminal_owned(account, &config, cancel, teardown_on_cancel)
                 .await
         })
         .await
@@ -2040,7 +2493,7 @@ impl SandboxManager {
 
     async fn ensure_for_terminal_owned(
         self: &Arc<Self>,
-        epoch: AccountEpoch,
+        account: SandboxAccount,
         cfg: &GitSandboxConfig,
         mut cancel: tokio::sync::watch::Receiver<bool>,
         teardown_on_cancel: bool,
@@ -2060,7 +2513,7 @@ impl SandboxManager {
         let config = cfg.clone();
         let mut ensure_task = tokio::spawn(async move {
             let sandbox = manager
-                .ensure_inner_with_control(epoch, &config, std::future::ready(()), Some(control))
+                .ensure_inner_with_control(&account, &config, std::future::ready(()), Some(control))
                 .await?;
             manager.monitor_registry_lifecycle(&sandbox);
             Self::monitor_branch_status(&sandbox);
@@ -2170,27 +2623,27 @@ impl SandboxManager {
     where
         F: std::future::Future<Output = ()>,
     {
-        self.ensure_inner_at(self.account_epoch(), cfg, after_lock)
+        self.ensure_inner_at(&self.test_account()?, cfg, after_lock)
             .await
     }
 
     #[cfg(test)]
     async fn ensure_inner_at<F>(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
         after_lock: F,
     ) -> Result<Arc<Sandbox>, String>
     where
         F: std::future::Future<Output = ()>,
     {
-        self.ensure_inner_with_control(epoch, cfg, after_lock, None)
+        self.ensure_inner_with_control(account, cfg, after_lock, None)
             .await
     }
 
     async fn ensure_inner_with_control<F>(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         cfg: &GitSandboxConfig,
         after_lock: F,
         mut terminal_control: Option<TerminalEnsureControl>,
@@ -2198,12 +2651,12 @@ impl SandboxManager {
     where
         F: std::future::Future<Output = ()>,
     {
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         if self.is_closing() {
             return Err("sandbox manager is shutting down".to_string());
         }
         let branch = normalized_branch(cfg).to_string();
-        let handle = self.resolve_handle_for_config(cfg, &branch)?;
+        let handle = self.resolve_handle_for_config(account, cfg, &branch)?;
 
         // Serialize the ENTIRE ensure operation for one handle. The previous
         // implementation released this lock immediately after inserting the
@@ -2211,7 +2664,7 @@ impl SandboxManager {
         // `clone::run()` against the same not-yet-created `.git` directory.
         // That produced intermittent successful `ensure()` results backed by
         // a missing/half-created worktree under the full parallel test suite.
-        let handle_lock = self.handle_lock(&handle);
+        let handle_lock = self.handle_lock(account, &handle);
         let _permit = if let Some(control) = terminal_control.as_mut() {
             tokio::select! {
                 biased;
@@ -2227,7 +2680,7 @@ impl SandboxManager {
         // operation lock. Remember the generation visible on entry so a
         // concurrent Stop cannot turn this in-flight owner into an implicit
         // restart after `after_lock` releases its process.
-        let generation_at_entry = self.get(&handle);
+        let generation_at_entry = self.get(account, &handle);
         after_lock.await;
 
         if generation_at_entry
@@ -2242,7 +2695,7 @@ impl SandboxManager {
             // snapshot above.
             let was_durably_stopped = self
                 .registry
-                .record(&handle)?
+                .record_for_account(account.storage(), &handle)?
                 .is_some_and(|record| record.desired_status == "stopped");
             if !was_durably_stopped {
                 return Err("sandbox generation stopped during ensure".to_string());
@@ -2259,18 +2712,22 @@ impl SandboxManager {
             return Err(TERMINAL_ENSURE_CANCELED.to_string());
         }
 
-        let materialization = self.admit_materialization(epoch)?;
-        self.evict_closed_generation_locked(&handle);
-        let previous_record = self.registry.record(&handle)?;
+        let materialization = self.admit_materialization(account.epoch())?;
+        self.evict_closed_generation_locked(account, &handle);
+        let previous_record = self
+            .registry
+            .record_for_account(account.storage(), &handle)?;
         let canonical_config = merge_durable_config(cfg, previous_record.as_ref())?;
-        let sandbox = self.get_or_create_locked(epoch, &handle)?;
+        crate::routes::fs::recover_mutation_stages(
+            &account.storage().mutation_root(&handle)?,
+            &account.storage().workdir(&handle)?,
+        )
+        .await
+        .map_err(|error| format!("failed to recover sandbox mutations: {error}"))?;
+        let sandbox = self.get_or_create_locked(account, &handle)?;
         let transition = self.apply_config(&sandbox, &canonical_config, &branch)?;
-        let sandbox_path = self
-            .app_root
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
         self.registry
-            .upsert_config(&handle, &canonical_config, &sandbox_path, &sandbox.workdir)?;
+            .upsert_config_for_account(account.storage(), &handle, &canonical_config)?;
         // The Arc and durable row are now one Stop-addressable generation.
         // Terminal coordination and all repository/setup work happen outside
         // the manager-wide drain lease.
@@ -2294,7 +2751,7 @@ impl SandboxManager {
                 return Err(TERMINAL_ENSURE_CANCELED.to_string());
             }
         }
-        self.invalidate_preview_labels();
+        self.invalidate_preview_labels(account);
         // The sandbox's view onto the shared org filesystem. Best-effort by
         // design (see `org_view`): a sandbox whose view cannot be built still
         // runs, the agent simply has no org files — the same outcome as a
@@ -2305,7 +2762,7 @@ impl SandboxManager {
         }
         // This dispatch's sandbox becomes the headerless-preview target only
         // after its complete identity is durably registered.
-        self.set_active_at(epoch, &handle)?;
+        self.set_active_at(account, &handle)?;
         // Persist the exact config that got this handle here — see the
         // `persist` module doc: `compute_handle` is a one-way hash, so this
         // sidecar is the only way a LATER process (a restarted one that
@@ -2313,9 +2770,9 @@ impl SandboxManager {
         // via [`Self::resurrect_for_account`]. Written only after `apply_config` above
         // succeeded, so a rejected/invalid patch never persists a bogus
         // sidecar.
-        super::persist::write_sidecar(&self.app_root, &handle, &canonical_config);
-        self.validate_account_epoch(epoch)?;
-        self.publish_generation(epoch, &handle, Some(sandbox.clone()));
+        super::persist::write_sidecar_for_account(account.storage(), &handle, &canonical_config)?;
+        self.validate_sandbox_account(account)?;
+        self.publish_generation(account, &handle, Some(sandbox.clone()));
 
         // Repeated dispatches dominate this path. For an unchanged live
         // sandbox, one branch probe preserves the checkout guarantee; the
@@ -2346,12 +2803,20 @@ impl SandboxManager {
         );
         if !clone_ok {
             let message = "git clone/checkout failed; inspect the setup log, then verify the repository exists and this machine's Git credentials can access it";
-            let _ = self
-                .registry
-                .mark_state(&handle, "running", "failed", Some(message));
-            let _ = self
-                .registry
-                .mark_observed(&handle, "failed", Some(message), Some("clone"));
+            let _ = self.registry.mark_state_for_account(
+                account.storage(),
+                &handle,
+                "running",
+                "failed",
+                Some(message),
+            );
+            let _ = self.registry.mark_observed_for_account(
+                account.storage(),
+                &handle,
+                "failed",
+                Some(message),
+                Some("clone"),
+            );
             return Err(format!("sandbox {handle}: {message}"));
         }
         if git_path == "current-checkout" && sandbox.broadcaster.subscriber_count() > 0 {
@@ -2368,15 +2833,29 @@ impl SandboxManager {
             // changed) → run the full install → start cascade.
             if !sandbox.setup.resume_from(Step::Install) {
                 let message = "setup worker rejected the install/start cascade";
-                let _ = self
-                    .registry
-                    .mark_state(&handle, "running", "failed", Some(message));
+                let _ = self.registry.mark_state_for_account(
+                    account.storage(),
+                    &handle,
+                    "running",
+                    "failed",
+                    Some(message),
+                );
                 return Err(format!("sandbox {handle} {message}"));
             }
-            self.registry
-                .mark_state(&handle, "running", "provisioning", None)?;
-            self.registry
-                .mark_observed(&handle, "provisioning", None, Some("install"))?;
+            self.registry.mark_state_for_account(
+                account.storage(),
+                &handle,
+                "running",
+                "provisioning",
+                None,
+            )?;
+            self.registry.mark_observed_for_account(
+                account.storage(),
+                &handle,
+                "provisioning",
+                None,
+                Some("install"),
+            )?;
         } else if !dev_task_running(&sandbox) {
             // Config unchanged AND no dev server is running for this
             // sandbox — e.g. a FRESH app process (the previous launch's
@@ -2392,23 +2871,47 @@ impl SandboxManager {
             );
             if !sandbox.setup.resume_from(Step::Start) {
                 let message = "setup worker rejected the dev-server restart";
-                let _ = self
-                    .registry
-                    .mark_state(&handle, "running", "failed", Some(message));
+                let _ = self.registry.mark_state_for_account(
+                    account.storage(),
+                    &handle,
+                    "running",
+                    "failed",
+                    Some(message),
+                );
                 return Err(format!("sandbox {handle} {message}"));
             }
-            self.registry
-                .mark_state(&handle, "running", "starting", None)?;
-            self.registry
-                .mark_observed(&handle, "starting", None, Some("start"))?;
+            self.registry.mark_state_for_account(
+                account.storage(),
+                &handle,
+                "running",
+                "starting",
+                None,
+            )?;
+            self.registry.mark_observed_for_account(
+                account.storage(),
+                &handle,
+                "starting",
+                None,
+                Some("start"),
+            )?;
         } else {
-            self.registry
-                .mark_state(&handle, "running", "running", None)?;
-            self.registry
-                .mark_observed(&handle, "running", None, Some("start"))?;
+            self.registry.mark_state_for_account(
+                account.storage(),
+                &handle,
+                "running",
+                "running",
+                None,
+            )?;
+            self.registry.mark_observed_for_account(
+                account.storage(),
+                &handle,
+                "running",
+                None,
+                Some("start"),
+            )?;
         }
 
-        self.validate_account_epoch(epoch)?;
+        self.validate_sandbox_account(account)?;
         Ok(sandbox)
     }
 
@@ -2418,26 +2921,27 @@ impl SandboxManager {
     /// partially-built value is being inserted.
     fn get_or_create_locked(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Arc<Sandbox>, String> {
-        self.get_or_create_locked_with_state(epoch, handle, false)
+        self.get_or_create_locked_with_state(account, handle, false)
     }
 
     fn get_or_create_stopped_locked(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
     ) -> Result<Arc<Sandbox>, String> {
-        self.get_or_create_locked_with_state(epoch, handle, true)
+        self.get_or_create_locked_with_state(account, handle, true)
     }
 
     fn get_or_create_locked_with_state(
         &self,
-        epoch: AccountEpoch,
+        account: &SandboxAccount,
         handle: &str,
         stopped: bool,
     ) -> Result<Arc<Sandbox>, String> {
+        self.validate_sandbox_account(account)?;
         // One lock acquisition linearizes close-vs-create: if shutdown sets
         // `closing` while an ensure already holds this guard, its insertion is
         // visible to shutdown's later snapshot; if shutdown wins first, no new
@@ -2446,24 +2950,22 @@ impl SandboxManager {
         if self.is_closing() {
             return Err("sandbox manager is shutting down".to_string());
         }
-        if let Some(sandbox) = sandboxes.get(handle) {
-            if sandbox.account_epoch != epoch {
+        let key = (account.storage_key().to_string(), handle.to_string());
+        if let Some(sandbox) = sandboxes.get(&key) {
+            if sandbox.account.epoch() != account.epoch() {
                 return Err(STALE_ACCOUNT_EPOCH.to_string());
             }
             return Ok(sandbox.clone());
         }
 
-        let sandbox_root = crate::sandbox::worktree_root(&self.app_root, handle);
-        let workdir = sandbox_root.join("repo");
-        std::fs::create_dir_all(&workdir)
-            .map_err(|e| format!("failed to create sandbox workdir {workdir:?}: {e}"))?;
+        let workdir = account.storage().workdir(handle)?;
 
         let config = Arc::new(ConfigStore::new());
         // `<app_root>/worktrees/<handle>/logs` — a sibling of `repo` above,
         // this handle's OWN durable log home (see the `log_store` module doc).
         // Isolated per handle so two branches of the same repo never share
         // (or race) a "setup"/"dev" transcript.
-        let logs = Arc::new(LogStore::new(sandbox_root.join("logs")));
+        let logs = Arc::new(LogStore::new(account.storage().logs_dir(handle)?));
         let child_lifetime_lock = self.app_root.join(".decocms").join("child-lifetime.lock");
         let tasks = Arc::new(if stopped {
             TaskRegistry::new_closed_with_child_lifetime_lock(logs, child_lifetime_lock)
@@ -2471,9 +2973,9 @@ impl SandboxManager {
             TaskRegistry::new_with_child_lifetime_lock(logs, child_lifetime_lock)
         });
         let broadcaster = Arc::new(Broadcaster::new());
-        let setup = SetupOrchestrator::new(
+        let setup = SetupOrchestrator::new_for_sandbox(
             workdir.clone(),
-            self.app_root.clone(),
+            account.storage().clone(),
             config.clone(),
             tasks.clone(),
             broadcaster.clone(),
@@ -2488,12 +2990,13 @@ impl SandboxManager {
             tasks,
             broadcaster,
             setup,
-            account_epoch: epoch,
+            mutations: Arc::new(MutationCoordinator::new()),
+            account: account.clone(),
             registry_monitor_started: AtomicBool::new(false),
             branch_monitor_started: AtomicBool::new(false),
             org_fs_announced: Mutex::new(None),
         });
-        sandboxes.insert(handle.to_string(), sandbox.clone());
+        sandboxes.insert(key, sandbox.clone());
         Ok(sandbox)
     }
 
@@ -2501,13 +3004,14 @@ impl SandboxManager {
     /// generation instead of trying to reopen its permanent close fence.
     /// The caller holds this handle's async operation lock, so no two resume
     /// paths can install competing replacements.
-    fn evict_closed_generation_locked(&self, handle: &str) -> bool {
+    fn evict_closed_generation_locked(&self, account: &SandboxAccount, handle: &str) -> bool {
         let mut sandboxes = self.lock_sandboxes();
+        let key = (account.storage_key().to_string(), handle.to_string());
         let closed = sandboxes
-            .get(handle)
+            .get(&key)
             .is_some_and(|sandbox| sandbox.tasks.is_admission_closed());
         if closed {
-            sandboxes.remove(handle);
+            sandboxes.remove(&key);
         }
         closed
     }
@@ -2566,10 +3070,14 @@ impl SandboxManager {
     /// directly against a sandbox's worktree (bypassing this manager) can
     /// serialize against a concurrent stop/reclaim of the SAME handle — see
     /// `intercept::sandbox_ops::route`'s `git/publish|discard|rebase` arms.
-    pub(crate) fn handle_lock(&self, handle: &str) -> Arc<tokio::sync::Mutex<()>> {
+    pub(crate) fn handle_lock(
+        &self,
+        account: &SandboxAccount,
+        handle: &str,
+    ) -> Arc<tokio::sync::Mutex<()>> {
         let mut guard = self.lock_locks();
         guard
-            .entry(handle.to_string())
+            .entry((account.storage_key().to_string(), handle.to_string()))
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
             .clone()
     }
@@ -2638,7 +3146,7 @@ impl SandboxManager {
         Ok(outcome.transition.to_string())
     }
 
-    fn lock_sandboxes(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Sandbox>>> {
+    fn lock_sandboxes(&self) -> std::sync::MutexGuard<'_, HashMap<SandboxKey, Arc<Sandbox>>> {
         match self.sandboxes.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -2647,7 +3155,7 @@ impl SandboxManager {
 
     fn lock_locks(
         &self,
-    ) -> std::sync::MutexGuard<'_, HashMap<String, Arc<tokio::sync::Mutex<()>>>> {
+    ) -> std::sync::MutexGuard<'_, HashMap<SandboxKey, Arc<tokio::sync::Mutex<()>>>> {
         match self.locks.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -2685,11 +3193,11 @@ async fn checkout_is_current_owned(sandbox: &Arc<Sandbox>, config: Value) -> Res
 
 async fn repair_invalid_workdir_owned(
     sandbox: &Arc<Sandbox>,
-    app_root: PathBuf,
+    storage: AccountStorage,
     clone_url: String,
 ) -> Result<(), String> {
     let workdir = sandbox.workdir.clone();
-    let canonical = super::repo_store::canonical_repo_dir(&app_root, &clone_url);
+    let canonical = storage.canonical_repo_dir(&clone_url)?;
     let generation = sandbox.tasks.clone();
     let operation_generation = generation.clone();
     crate::routes::git::run_owned_git_probe(
@@ -2737,21 +3245,33 @@ async fn repair_invalid_workdir_owned(
 /// publishes terminal state. That is what makes the registry's terminal proof
 /// trustworthy instead of dropping an owner and stranding its entry Running.
 async fn close_and_reap_generation(sandbox: &Sandbox) -> Result<usize, String> {
-    // Close the setup queue first, then the registry-owned generation fence.
-    // The latter waits for every direct route or setup registration that won
-    // admission before taking one all-inclusive exposed+internal snapshot.
+    // Close both admission paths before awaiting either one. Filesystem
+    // mutation owners and commit permits must quiesce before process reap can
+    // certify this generation stopped; otherwise a detached write could land
+    // in the worktree after Stop returned.
     sandbox.setup.close();
+    let mutations = sandbox.mutations.begin_shutdown(TASK_TERM_GRACE).await;
     let result = sandbox
         .tasks
         .close_and_kill_all_and_wait(TASK_TERM_GRACE, TASK_KILL_REAP_DEADLINE)
         .await;
-    if result.remaining.is_empty() {
+    if mutations.is_quiescent() && result.remaining.is_empty() {
         return Ok(result.term_signaled);
     }
-    Err(format!(
-        "could not reap process task(s): {}",
-        result.remaining.join(", ")
-    ))
+    let mut failures = Vec::new();
+    if !mutations.is_quiescent() {
+        failures.push(format!(
+            "filesystem mutations did not quiesce (owners_remaining={}, commit_quiescent={})",
+            mutations.owners_remaining, mutations.commit_quiescent
+        ));
+    }
+    if !result.remaining.is_empty() {
+        failures.push(format!(
+            "could not reap process task(s): {}",
+            result.remaining.join(", ")
+        ));
+    }
+    Err(failures.join("; "))
 }
 
 const TASK_TERM_GRACE: Duration = Duration::from_secs(2);
@@ -3281,6 +3801,7 @@ mod tests {
     fn persisted_legacy_handle_is_reused_after_hash_upgrade() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-legacy-handle".to_string(),
             clone_url: "https://github.com/acme/legacy-handle.git".to_string(),
@@ -3291,18 +3812,16 @@ mod tests {
         let legacy = SandboxManager::legacy_compute_handle(&config.clone_url, branch).unwrap();
         let current = SandboxManager::compute_handle(&config.clone_url, branch).unwrap();
         assert_ne!(legacy, current);
-        let sandbox_path = app_root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&legacy);
-        let workdir = sandbox_path.join("repo");
         manager
             .registry
-            .upsert_config(&legacy, &config, &sandbox_path, &workdir)
+            .upsert_config_for_account(account.storage(), &legacy, &config)
             .unwrap();
+        let workdir = account.storage().workdir(&legacy).unwrap();
 
         assert_eq!(
-            manager.resolve_handle_for_config(&config, branch).unwrap(),
+            manager
+                .resolve_handle_for_config(&account, &config, branch)
+                .unwrap(),
             legacy
         );
         assert_eq!(manager.workdir_for(&config), workdir);
@@ -3310,7 +3829,7 @@ mod tests {
         let mut formerly_colliding = config.clone();
         formerly_colliding.branch = Some("feature-foo".to_string());
         let collision_safe = manager
-            .resolve_handle_for_config(&formerly_colliding, "feature-foo")
+            .resolve_handle_for_config(&account, &formerly_colliding, "feature-foo")
             .unwrap();
         assert_eq!(
             collision_safe,
@@ -3318,18 +3837,9 @@ mod tests {
         );
         assert_ne!(collision_safe, legacy);
         assert_ne!(collision_safe, current);
-        let collision_path = app_root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&collision_safe);
         manager
             .registry
-            .upsert_config(
-                &collision_safe,
-                &formerly_colliding,
-                &collision_path,
-                &collision_path.join("repo"),
-            )
+            .upsert_config_for_account(account.storage(), &collision_safe, &formerly_colliding)
             .unwrap();
     }
 
@@ -3340,6 +3850,7 @@ mod tests {
     fn workdir_for_is_per_handle_and_never_the_shared_repo_dir() {
         let root = tempfile::tempdir().expect("tempdir");
         let manager = SandboxManager::new(root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = |branch: Option<&str>| GitSandboxConfig {
             virtual_mcp_id: "vmcp-1".to_string(),
             clone_url: "https://github.com/acme/site.git".to_string(),
@@ -3349,9 +3860,8 @@ mod tests {
 
         let main = manager.workdir_for(&config(Some("work")));
         assert!(
-            main.starts_with(root.path().join(crate::sandbox::WORKTREES_DIR))
-                && main.ends_with("repo"),
-            "expected <app_root>/worktrees/<handle>/repo, got {main:?}"
+            main.starts_with(account.storage().worktrees_root().unwrap()) && main.ends_with("repo"),
+            "expected <account_root>/worktrees/<handle>/repo, got {main:?}"
         );
         // The shared dir every non-git-backed run uses — see `lib.rs`.
         assert_ne!(main, root.path().join("repo"));
@@ -3360,10 +3870,7 @@ mod tests {
         // the `None`/empty -> staging default (never-on-main), so the
         // fallback lands exactly where a later successful ensure will put
         // the checkout.
-        let staging = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join("acme/site/staging/repo");
+        let staging = account.storage().workdir("acme/site/staging").unwrap();
         assert_eq!(staging, manager.workdir_for(&config(None)));
         assert_eq!(staging, manager.workdir_for(&config(Some(""))));
         // The handle is now a multi-segment path (`<host>/<owner>/<repo>/<branch>`),
@@ -3392,15 +3899,15 @@ mod tests {
     async fn generation_watch_is_scoped_to_one_handle_and_survives_replacement() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
-        let epoch = manager.account_epoch();
-        let mut watched = manager.watch_generation(epoch, "sandbox-a");
+        let account = manager.test_account().unwrap();
+        let mut watched = manager.watch_generation(&account, "sandbox-a");
 
         let first = {
-            let lock = manager.handle_lock("sandbox-a");
+            let lock = manager.handle_lock(&account, "sandbox-a");
             let _permit = lock.lock().await;
-            manager.get_or_create_locked(epoch, "sandbox-a").unwrap()
+            manager.get_or_create_locked(&account, "sandbox-a").unwrap()
         };
-        manager.publish_generation(epoch, "sandbox-a", Some(first.clone()));
+        manager.publish_generation(&account, "sandbox-a", Some(first.clone()));
         watched.changed().await.unwrap();
         assert!(Arc::ptr_eq(
             watched.borrow_and_update().as_ref().unwrap(),
@@ -3410,28 +3917,30 @@ mod tests {
         // Unrelated focus/generation traffic cannot consume or retarget A's
         // notification channel.
         let other = {
-            let lock = manager.handle_lock("sandbox-b");
+            let lock = manager.handle_lock(&account, "sandbox-b");
             let _permit = lock.lock().await;
-            manager.get_or_create_locked(epoch, "sandbox-b").unwrap()
+            manager.get_or_create_locked(&account, "sandbox-b").unwrap()
         };
-        manager.publish_generation(epoch, "sandbox-b", Some(other));
+        manager.publish_generation(&account, "sandbox-b", Some(other));
         assert!(
             tokio::time::timeout(Duration::from_millis(25), watched.changed())
                 .await
                 .is_err()
         );
 
-        manager.lock_sandboxes().remove("sandbox-a");
-        manager.publish_generation(epoch, "sandbox-a", None);
+        manager
+            .lock_sandboxes()
+            .remove(&(account.storage_key().to_string(), "sandbox-a".to_string()));
+        manager.publish_generation(&account, "sandbox-a", None);
         watched.changed().await.unwrap();
         assert!(watched.borrow_and_update().is_none());
 
         let replacement = {
-            let lock = manager.handle_lock("sandbox-a");
+            let lock = manager.handle_lock(&account, "sandbox-a");
             let _permit = lock.lock().await;
-            manager.get_or_create_locked(epoch, "sandbox-a").unwrap()
+            manager.get_or_create_locked(&account, "sandbox-a").unwrap()
         };
-        manager.publish_generation(epoch, "sandbox-a", Some(replacement.clone()));
+        manager.publish_generation(&account, "sandbox-a", Some(replacement.clone()));
         watched.changed().await.unwrap();
         assert!(Arc::ptr_eq(
             watched.borrow_and_update().as_ref().unwrap(),
@@ -3554,6 +4063,7 @@ mod tests {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-reclaim".to_string(),
             clone_url: clone_url.clone(),
@@ -3563,7 +4073,7 @@ mod tests {
 
         let sandbox = manager.ensure(&cfg).await.expect("ensure succeeds");
         let handle = sandbox.handle.clone();
-        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        let worktree = account.storage().worktree_root(&handle).unwrap();
         // Let the queued install/start cascade settle, so the removal below is
         // not racing a setup child that is still writing into the workdir.
         tokio::time::timeout(Duration::from_secs(10), async {
@@ -3578,7 +4088,10 @@ mod tests {
         // Uncommitted work is NOT a veto — the primitive removes it anyway.
         std::fs::write(sandbox.workdir.join("uncommitted.txt"), "unsaved\n").unwrap();
         assert_eq!(
-            manager.registered_active_handle().unwrap().as_deref(),
+            manager
+                .registered_active_handle_for_account(&account)
+                .unwrap()
+                .as_deref(),
             Some(handle.as_str()),
             "ensure activates the handle it provisioned"
         );
@@ -3591,17 +4104,28 @@ mod tests {
             .expect("a registered handle is not unknown");
 
         assert!(!worktree.exists(), "the worktree directory must be gone");
-        assert!(!manager.is_registered(&handle).unwrap());
-        assert!(manager.registry_record(&handle).unwrap().is_none());
-        assert!(manager.registered_active_handle().unwrap().is_none());
-        assert!(manager.active().is_none());
-        assert!(manager.get(&handle).is_none());
+        assert!(!manager
+            .is_registered_for_account(&account, &handle)
+            .unwrap());
         assert!(manager
-            .handle_for_virtual_mcp(&cfg.virtual_mcp_id, "work")
+            .registry_record_for_account(&account, &handle)
+            .unwrap()
+            .is_none());
+        assert!(manager
+            .registered_active_handle_for_account(&account)
+            .unwrap()
+            .is_none());
+        assert!(manager.active().is_none());
+        assert!(manager.get(&account, &handle).is_none());
+        assert!(manager
+            .handle_for_virtual_mcp_for_account(&account, &cfg.virtual_mcp_id, "work")
             .unwrap()
             .is_none());
 
-        let canonical = crate::sandbox::repo_store::canonical_repo_dir(app_root.path(), &clone_url)
+        let canonical = account
+            .storage()
+            .canonical_repo_dir(&clone_url)
+            .unwrap()
             .expect("keyable clone url");
         let listed = git_stdout(&canonical, &["worktree", "list"]);
         assert!(
@@ -3637,6 +4161,7 @@ mod tests {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = Arc::new(SandboxManager::new(app_root.path().to_path_buf()));
+        let account = manager.test_account().unwrap();
         let cfg = GitSandboxConfig {
             virtual_mcp_id: "vmcp-race".to_string(),
             clone_url,
@@ -3646,7 +4171,7 @@ mod tests {
 
         let sandbox = manager.ensure(&cfg).await.expect("ensure succeeds");
         let handle = sandbox.handle.clone();
-        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        let worktree = account.storage().worktree_root(&handle).unwrap();
         tokio::time::timeout(Duration::from_secs(10), async {
             while sandbox.setup.is_running() || sandbox.setup.pending_count() > 0 {
                 tokio::task::yield_now().await;
@@ -3658,7 +4183,7 @@ mod tests {
 
         // Stand in for `sandbox_ops::route`'s git-op guard: a "publish" in
         // flight, holding the handle lock for as long as its git command runs.
-        let git_op_lock = manager.handle_lock(&handle);
+        let git_op_lock = manager.handle_lock(&account, &handle);
         let git_op_guard = git_op_lock.lock().await;
 
         let reclaim = tokio::spawn({
@@ -3727,7 +4252,7 @@ mod tests {
         assert_eq!(initial.data["meta"]["workingTreeDirty"], false);
 
         std::fs::write(sandbox.workdir.join("untracked.txt"), "changed\n").unwrap();
-        let changed = tokio::time::timeout(Duration::from_secs(5), async {
+        let changed = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 let event = events.recv().await.expect("branch monitor stays live");
                 if event.name == "branch"
@@ -3903,9 +4428,14 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let handle = manager.register_for_test(&clone_url, "work");
         let sandbox = manager.adopt(&handle).await.unwrap().unwrap();
-        let config = manager.registry_record(&handle).unwrap().unwrap().config;
+        let config = manager
+            .registry_record_for_account(&account, &handle)
+            .unwrap()
+            .unwrap()
+            .config;
 
         let controller = crate::tasks::ProcessController::new();
         let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
@@ -3944,7 +4474,7 @@ mod tests {
             ensure.await.unwrap().is_err(),
             "the closed generation cannot finish ensure successfully"
         );
-        assert!(manager.get(&handle).is_none());
+        assert!(manager.get(&account, &handle).is_none());
     }
 
     #[tokio::test]
@@ -3960,6 +4490,7 @@ mod tests {
 
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-preempt-provision".to_string(),
             clone_url: format!("http://{address}/acme/repo.git"),
@@ -3984,7 +4515,7 @@ mod tests {
 
         assert_eq!(killed, 1);
         assert!(sandbox.setup.is_closed());
-        assert!(manager.get(&sandbox.handle).is_none());
+        assert!(manager.get(&account, &sandbox.handle).is_none());
     }
 
     #[tokio::test]
@@ -3992,6 +4523,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let handle = manager.register_for_test(&clone_url, "probe-stop");
         let sandbox = manager.adopt(&handle).await.unwrap().unwrap();
         let marker = sandbox.workdir.join("must-survive-stop.txt");
@@ -4000,7 +4532,7 @@ mod tests {
             .unwrap();
         let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
         let flow_sandbox = sandbox.clone();
-        let flow_root = app_root.path().to_path_buf();
+        let flow_storage = account.storage().clone();
         let flow_clone_url = clone_url.clone();
         let probe_then_repair = tokio::spawn(async move {
             let probe_generation = flow_sandbox.tasks.clone();
@@ -4018,7 +4550,7 @@ mod tests {
             )
             .await?;
             if !repo_valid {
-                repair_invalid_workdir_owned(&flow_sandbox, flow_root, flow_clone_url).await?;
+                repair_invalid_workdir_owned(&flow_sandbox, flow_storage, flow_clone_url).await?;
             }
             Ok::<(), String>(())
         });
@@ -4040,6 +4572,7 @@ mod tests {
     async fn terminal_cancellation_before_materialization_creates_no_generation() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-terminal-pre-materialization".to_string(),
             clone_url: "https://github.com/acme/terminal-pre-materialization.git".to_string(),
@@ -4048,13 +4581,13 @@ mod tests {
         };
         let handle =
             SandboxManager::compute_handle(&config.clone_url, normalized_branch(&config)).unwrap();
-        let permit = manager.handle_lock(&handle).lock_owned().await;
+        let permit = manager.handle_lock(&account, &handle).lock_owned().await;
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        let epoch = manager.account_epoch();
         let ensure_manager = manager.clone();
+        let ensure_account = account.clone();
         let mut ensure = tokio::spawn(async move {
             ensure_manager
-                .ensure_for_terminal(epoch, &config, cancel_rx, true)
+                .ensure_for_terminal(&ensure_account, &config, cancel_rx, true)
                 .await
         });
 
@@ -4070,13 +4603,15 @@ mod tests {
             .expect("pre-materialization cancellation does not wait for the handle lock")
             .unwrap();
         assert!(matches!(result, Err(TerminalEnsureError::Canceled)));
-        assert!(manager.get(&handle).is_none());
-        assert!(!manager.is_registered(&handle).unwrap());
+        assert!(manager.get(&account, &handle).is_none());
+        assert!(!manager
+            .is_registered_for_account(&account, &handle)
+            .unwrap());
 
         drop(permit);
         tokio::task::yield_now().await;
         assert!(
-            manager.get(&handle).is_none(),
+            manager.get(&account, &handle).is_none(),
             "the canceled manager-owned ensure cannot create a delayed generation"
         );
     }
@@ -4093,6 +4628,7 @@ mod tests {
         });
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-terminal-synthetic".to_string(),
             clone_url: format!("http://{address}/acme/terminal-synthetic.git"),
@@ -4102,11 +4638,11 @@ mod tests {
         let handle =
             SandboxManager::compute_handle(&config.clone_url, normalized_branch(&config)).unwrap();
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        let epoch = manager.account_epoch();
         let ensure_manager = manager.clone();
+        let ensure_account = account.clone();
         let ensure = tokio::spawn(async move {
             ensure_manager
-                .ensure_for_terminal(epoch, &config, cancel_rx, true)
+                .ensure_for_terminal(&ensure_account, &config, cancel_rx, true)
                 .await
         });
         tokio::time::timeout(Duration::from_secs(5), accepted_rx)
@@ -4114,7 +4650,7 @@ mod tests {
             .expect("terminal ensure reaches the deliberately stalled remote")
             .expect("stalled remote remains available");
         let materialized = manager
-            .get(&handle)
+            .get(&account, &handle)
             .expect("clone starts only after the generation is materialized");
 
         cancel_tx.send(true).unwrap();
@@ -4126,10 +4662,10 @@ mod tests {
 
         assert!(matches!(result, Err(TerminalEnsureError::Canceled)));
         assert!(materialized.tasks.is_admission_closed());
-        assert!(manager.get(&handle).is_none());
+        assert!(manager.get(&account, &handle).is_none());
         assert_eq!(
             manager
-                .registry_record(&handle)
+                .registry_record_for_account(&account, &handle)
                 .unwrap()
                 .unwrap()
                 .desired_status,
@@ -4149,6 +4685,7 @@ mod tests {
         });
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-terminal-shared".to_string(),
             clone_url: format!("http://{address}/acme/terminal-shared.git"),
@@ -4158,11 +4695,11 @@ mod tests {
         let handle =
             SandboxManager::compute_handle(&config.clone_url, normalized_branch(&config)).unwrap();
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        let epoch = manager.account_epoch();
         let ensure_manager = manager.clone();
+        let ensure_account = account.clone();
         let ensure = tokio::spawn(async move {
             ensure_manager
-                .ensure_for_terminal(epoch, &config, cancel_rx, false)
+                .ensure_for_terminal(&ensure_account, &config, cancel_rx, false)
                 .await
         });
         tokio::time::timeout(Duration::from_secs(5), accepted_rx)
@@ -4170,7 +4707,7 @@ mod tests {
             .expect("terminal ensure reaches the deliberately stalled remote")
             .expect("stalled remote remains available");
         let materialized = manager
-            .get(&handle)
+            .get(&account, &handle)
             .expect("clone starts only after the generation is materialized");
 
         cancel_tx.send(true).unwrap();
@@ -4181,7 +4718,7 @@ mod tests {
         assert!(matches!(result, Err(TerminalEnsureError::Canceled)));
         assert!(
             manager
-                .get(&handle)
+                .get(&account, &handle)
                 .is_some_and(|current| Arc::ptr_eq(&current, &materialized)),
             "a shared branch remains manager-owned after this terminal leaves"
         );
@@ -4200,6 +4737,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let exact = manager.register_for_test(&clone_url, "thread:thread-1");
         let suffix = manager.register_for_test(&clone_url, "thread:thread-1/retry-2");
         let prefix_collision = manager.register_for_test(&clone_url, "thread:thread-10");
@@ -4220,8 +4758,8 @@ mod tests {
             0,
             "a reused thread id cannot cross the virtual-MCP fence"
         );
-        assert!(manager.get(&exact).is_some());
-        assert!(manager.get(&suffix).is_some());
+        assert!(manager.get(&account, &exact).is_some());
+        assert!(manager.get(&account, &suffix).is_some());
 
         assert_eq!(
             manager
@@ -4230,17 +4768,17 @@ mod tests {
                 .unwrap(),
             2
         );
-        assert!(manager.get(&exact).is_none());
-        assert!(manager.get(&suffix).is_none());
+        assert!(manager.get(&account, &exact).is_none());
+        assert!(manager.get(&account, &suffix).is_none());
         for handle in [&prefix_collision, &shared] {
             let sandbox = manager
-                .get(handle)
+                .get(&account, handle)
                 .expect("prefix collisions and real branches remain live");
             assert!(!sandbox.tasks.is_admission_closed());
         }
         assert_eq!(
             manager
-                .registry_record(&exact)
+                .registry_record_for_account(&account, &exact)
                 .unwrap()
                 .unwrap()
                 .desired_status,
@@ -4248,7 +4786,7 @@ mod tests {
         );
         assert_eq!(
             manager
-                .registry_record(&prefix_collision)
+                .registry_record_for_account(&account, &prefix_collision)
                 .unwrap()
                 .unwrap()
                 .desired_status,
@@ -4261,27 +4799,43 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
-        let real = manager.register_for_test(&clone_url, "feature/shared");
-        let synthetic = manager.register_for_test(&clone_url, "thread:thread-1/retry");
-        let malformed = manager.register_for_test(&clone_url, "thread:");
-        let inside = manager.register_for_test(&clone_url, "thread:inside-transition");
+        let account = manager.test_account().unwrap();
+        let real = manager.register_for_test_account(&account, &clone_url, "feature/shared");
+        let synthetic =
+            manager.register_for_test_account(&account, &clone_url, "thread:thread-1/retry");
+        let malformed = manager.register_for_test_account(&account, &clone_url, "thread:");
+        let inside =
+            manager.register_for_test_account(&account, &clone_url, "thread:inside-transition");
         let mut old_generations = Vec::new();
         for handle in [&real, &synthetic, &malformed] {
-            old_generations.push(manager.adopt(handle).await.unwrap().unwrap());
+            old_generations.push(
+                manager
+                    .adopt_for_account(&account, handle)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
         }
 
         // Model an old-account operation already inside the short
         // Arc-insertion/durable-registration section.
-        let old_epoch = manager.account_epoch();
         let inside_admission = manager
             .materialization_gate
-            .admit(old_epoch)
+            .admit(account.epoch())
             .expect("account gate starts open");
-        let transition_guard = Arc::new(manager.begin_account_transition().await.unwrap());
-        let draining_guard = transition_guard.clone();
-        let transition = tokio::spawn(async move { draining_guard.drain_and_stop_live().await });
+        let inside_generation = {
+            let handle_lock = manager.handle_lock(&account, &inside);
+            let _permit = handle_lock.lock().await;
+            manager.get_or_create_locked(&account, &inside).unwrap()
+        };
+        manager.publish_generation(&account, &inside, Some(inside_generation.clone()));
+        old_generations.push(inside_generation);
+        let transition_guard = manager.begin_account_transition().await.unwrap();
+        let mut transition = Box::pin(transition_guard.drain_and_stop_live());
         assert!(
-            !transition.is_finished(),
+            tokio::time::timeout(Duration::from_millis(25), &mut transition)
+                .await
+                .is_err(),
             "snapshot waits for an operation already inside materialization"
         );
 
@@ -4297,46 +4851,38 @@ mod tests {
         )
         .unwrap();
         assert!(manager
-            .provision_for_account(old_epoch, &before_config)
+            .provision_for_account(&account, &before_config)
             .await
             .is_err());
-        assert!(!manager.is_registered(&before_handle).unwrap());
-
-        let inside_generation = {
-            let handle_lock = manager.handle_lock(&inside);
-            let _permit = handle_lock.lock().await;
-            manager.get_or_create_locked(old_epoch, &inside).unwrap()
-        };
-        manager.publish_generation(
-            inside_generation.account_epoch,
-            &inside,
-            Some(inside_generation.clone()),
-        );
-        old_generations.push(inside_generation);
+        assert!(!manager
+            .registry
+            .contains_for_account(account.storage(), &before_handle)
+            .unwrap());
         drop(inside_admission);
 
         assert_eq!(
-            tokio::time::timeout(Duration::from_secs(5), transition)
+            tokio::time::timeout(Duration::from_secs(5), &mut transition)
                 .await
                 .expect("transition drains and sweeps every materialized generation")
-                .unwrap()
                 .unwrap(),
             4
         );
+        drop(transition);
         assert!(
             manager
-                .provision_for_account(manager.account_epoch(), &before_config)
+                .provision_for_account(&account, &before_config)
                 .await
                 .is_err(),
             "the guard keeps publication closed after the sweep"
         );
         for generation in &old_generations {
             assert!(generation.tasks.is_admission_closed());
-            assert!(manager.get(&generation.handle).is_none());
+            assert!(manager.get(&account, &generation.handle).is_none());
             assert!(generation.workdir.is_dir(), "worktree is retained");
             assert_eq!(
                 manager
-                    .registry_record(&generation.handle)
+                    .registry
+                    .record_for_account(account.storage(), &generation.handle)
                     .unwrap()
                     .unwrap()
                     .desired_status,
@@ -4344,15 +4890,20 @@ mod tests {
             );
         }
 
-        drop(transition_guard);
-        let config = manager.registry_record(&real).unwrap().unwrap().config;
-        let next_epoch = manager.account_epoch();
+        let config = manager
+            .registry
+            .record_for_account(account.storage(), &real)
+            .unwrap()
+            .unwrap()
+            .config;
+        transition_guard.complete().unwrap();
+        let next_account = manager.test_account().unwrap();
         let resumed = manager
-            .provision_for_account(next_epoch, &config)
+            .provision_for_account(&next_account, &config)
             .await
             .expect("materialization reopens after the account sweep");
         assert!(!resumed.tasks.is_admission_closed());
-        assert_eq!(resumed.account_epoch, next_epoch);
+        assert_eq!(resumed.account.epoch(), next_account.epoch());
         assert!(!Arc::ptr_eq(&resumed, &old_generations[0]));
     }
 
@@ -4360,15 +4911,15 @@ mod tests {
     async fn account_transition_drain_timeout_does_not_snapshot_or_stop() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let handle = manager.register_for_test(
             "https://github.com/acme/materialization-timeout.git",
             "feature/account-a",
         );
         let sandbox = manager.adopt(&handle).await.unwrap().unwrap();
-        let old_epoch = manager.account_epoch();
         let stuck = manager
             .materialization_gate
-            .admit(old_epoch)
+            .admit(account.epoch())
             .expect("materialization starts admitted");
         let guard = manager.begin_account_transition().await.unwrap();
 
@@ -4379,14 +4930,15 @@ mod tests {
         assert!(error.contains("timed out after 10ms"), "{error}");
         assert!(
             manager
-                .get(&handle)
+                .get(&account, &handle)
                 .is_some_and(|current| Arc::ptr_eq(&current, &sandbox)),
             "timeout returns before taking the stop snapshot"
         );
         assert!(!sandbox.tasks.is_admission_closed());
         assert_eq!(
             manager
-                .registry_record(&handle)
+                .registry
+                .record_for_account(account.storage(), &handle)
                 .unwrap()
                 .unwrap()
                 .desired_status,
@@ -4401,21 +4953,21 @@ mod tests {
                 .expect("a retry snapshots after the stuck admission quiesces"),
             1
         );
-        assert!(manager.get(&handle).is_none());
+        assert!(manager.get(&account, &handle).is_none());
         assert!(sandbox.tasks.is_admission_closed());
         assert_eq!(
             manager
-                .registry_record(&handle)
+                .registry
+                .record_for_account(account.storage(), &handle)
                 .unwrap()
                 .unwrap()
                 .desired_status,
             "stopped"
         );
-        drop(guard);
+        guard.complete().unwrap();
         manager
-            .materialization_gate
-            .admit(manager.account_epoch())
-            .expect("RAII reopens publication when the failed transition is dropped");
+            .test_account()
+            .expect("explicit completion reopens account publication");
     }
 
     #[tokio::test]
@@ -4455,7 +5007,8 @@ mod tests {
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .closed
+                .boundary
+                == AccountBoundary::Poisoned
         );
     }
 
@@ -4475,7 +5028,7 @@ mod tests {
         assert_ne!(old_epoch, next_epoch);
         assert!(manager.watch_account_epoch(old_epoch).is_err());
 
-        drop(transition);
+        transition.complete().unwrap();
         assert_eq!(manager.account_epoch(), next_epoch);
         assert!(manager.watch_account_epoch(next_epoch).is_ok());
     }
@@ -4485,30 +5038,33 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let old_scope = RtAccountScope::new("account-a.invalid", "user-a").unwrap();
+        let old_account = manager.test_account_for_scope(&old_scope).unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-account-epoch".to_string(),
             clone_url,
             branch: Some("work".to_string()),
             ..Default::default()
         };
-        let old_epoch = manager.account_epoch();
         let (resume_stale_tx, resume_stale_rx) = tokio::sync::oneshot::channel();
         let stale_manager = manager.clone();
         let stale_config = config.clone();
+        let stale_account = old_account.clone();
         let stale = tokio::spawn(async move {
             resume_stale_rx.await.unwrap();
             stale_manager
-                .try_provision_for_account(old_epoch, &stale_config)
+                .try_provision_for_account(&stale_account, &stale_config)
                 .await
         });
 
         let transition = manager.begin_account_transition().await.unwrap();
         assert_eq!(transition.drain_and_stop_live().await.unwrap(), 0);
-        drop(transition);
+        transition.complete().unwrap();
 
-        let next_epoch = manager.account_epoch();
+        let next_scope = RtAccountScope::new("account-b.invalid", "user-b").unwrap();
+        let next_account = manager.test_account_for_scope(&next_scope).unwrap();
         let replacement = manager
-            .provision_for_account(next_epoch, &config)
+            .provision_for_account(&next_account, &config)
             .await
             .expect("account B materializes after publication reopens");
         resume_stale_tx.send(()).unwrap();
@@ -4517,13 +5073,16 @@ mod tests {
             Ok(_) => panic!("account A's paused request targeted account B's generation"),
         }
         let resolved = manager
-            .get_for_account(next_epoch, &replacement.handle)
+            .get_for_account(&next_account, &replacement.handle)
             .unwrap()
             .unwrap();
         assert!(Arc::ptr_eq(&resolved, &replacement));
-        assert_eq!(replacement.account_epoch, next_epoch);
+        assert_eq!(
+            replacement.account.storage_key(),
+            next_account.storage_key()
+        );
         assert!(manager
-            .get_for_account(old_epoch, &replacement.handle)
+            .get_for_account(&old_account, &replacement.handle)
             .is_err());
     }
 
@@ -4532,6 +5091,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
 
         let stop_handle = manager.register_for_test(&clone_url, "stop-scope");
         let stop_sandbox = manager.adopt(&stop_handle).await.unwrap().unwrap();
@@ -4560,7 +5120,7 @@ mod tests {
         );
         stop_owner.await.unwrap();
         assert_eq!(stop_controller.requested(), Some(KillSignal::Term));
-        assert!(manager.get(&stop_handle).is_none());
+        assert!(manager.get(&account, &stop_handle).is_none());
 
         let delete_handle = manager.register_for_test(&clone_url, "delete-scope");
         let delete_sandbox = manager.adopt(&delete_handle).await.unwrap().unwrap();
@@ -4589,7 +5149,7 @@ mod tests {
         );
         delete_owner.await.unwrap();
         assert_eq!(delete_controller.requested(), Some(KillSignal::Term));
-        assert!(manager.get(&delete_handle).is_none());
+        assert!(manager.get(&account, &delete_handle).is_none());
     }
 
     #[tokio::test]
@@ -4597,6 +5157,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let handle = manager.register_for_test(&clone_url, "internal-task");
         let sandbox = manager.adopt(&handle).await.unwrap().unwrap();
         let controller = crate::tasks::ProcessController::new();
@@ -4636,7 +5197,7 @@ mod tests {
         assert_eq!(manager.stop_registered(&handle).await.unwrap(), Some(1));
         owner.await.unwrap();
         assert_eq!(controller.requested(), Some(KillSignal::Term));
-        assert!(manager.get(&handle).is_none());
+        assert!(manager.get(&account, &handle).is_none());
     }
 
     #[tokio::test]
@@ -4697,9 +5258,14 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let handle = manager.register_for_test(&clone_url, "work");
         let old = manager.adopt(&handle).await.unwrap().unwrap();
-        let config = manager.registry_record(&handle).unwrap().unwrap().config;
+        let config = manager
+            .registry_record_for_account(&account, &handle)
+            .unwrap()
+            .unwrap()
+            .config;
         let controller = crate::tasks::ProcessController::new();
         old.tasks.insert(running_task_with_log_name(
             "old-setup",
@@ -4710,7 +5276,7 @@ mod tests {
         // Hold the operation lock only to deterministically install a new
         // generation after Stop has completed its preemptive first phase but
         // before it can perform the generation-checked eviction phase.
-        let handle_lock = manager.handle_lock(&handle);
+        let handle_lock = manager.handle_lock(&account, &handle);
         let permit = handle_lock.lock().await;
         let stop_manager = manager.clone();
         let stop_handle = handle.clone();
@@ -4724,21 +5290,17 @@ mod tests {
         old.tasks
             .finalize("old-setup", TaskStatus::Killed, 143, false);
 
-        manager.lock_sandboxes().remove(&handle);
-        let replacement = manager
-            .get_or_create_locked(manager.account_epoch(), &handle)
-            .unwrap();
+        manager
+            .lock_sandboxes()
+            .remove(&(account.storage_key().to_string(), handle.clone()));
+        let replacement = manager.get_or_create_locked(&account, &handle).unwrap();
         manager
             .apply_config(&replacement, &config, normalized_branch(&config))
             .unwrap();
-        manager.publish_generation(
-            replacement.account_epoch,
-            &handle,
-            Some(replacement.clone()),
-        );
+        manager.publish_generation(&account, &handle, Some(replacement.clone()));
         manager
             .registry
-            .mark_state(&handle, "running", "running", None)
+            .mark_state_for_account(account.storage(), &handle, "running", "running", None)
             .unwrap();
         drop(permit);
 
@@ -4750,10 +5312,15 @@ mod tests {
                 .unwrap(),
             Some(1)
         );
-        let current = manager.get(&handle).expect("replacement remains live");
+        let current = manager
+            .get(&account, &handle)
+            .expect("replacement remains live");
         assert!(Arc::ptr_eq(&current, &replacement));
         assert!(!replacement.setup.is_closed());
-        let record = manager.registry_record(&handle).unwrap().unwrap();
+        let record = manager
+            .registry_record_for_account(&account, &handle)
+            .unwrap()
+            .unwrap();
         assert_eq!(record.desired_status, "running");
         assert_eq!(record.observed_status, "running");
     }
@@ -4763,23 +5330,32 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
-        let handle = manager.register_for_test(&clone_url, "work");
-        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        let old_account = manager.test_account().unwrap();
+        let handle = manager.register_for_test_account(&old_account, &clone_url, "work");
+        let worktree = old_account.storage().worktree_root(&handle).unwrap();
         std::fs::create_dir_all(worktree.join("repo")).unwrap();
         std::fs::write(worktree.join("account-b-marker"), b"keep").unwrap();
-        let old = manager.adopt(&handle).await.unwrap().unwrap();
-        let config = manager.registry_record(&handle).unwrap().unwrap().config;
-        let old_epoch = manager.account_epoch();
+        let old = manager
+            .adopt_for_account(&old_account, &handle)
+            .await
+            .unwrap()
+            .unwrap();
+        let config = manager
+            .registry_record_for_account(&old_account, &handle)
+            .unwrap()
+            .unwrap()
+            .config;
 
         // Pause reclaim after it snapshots and closes account A's generation,
         // but before it can take the operation lock for filesystem removal.
-        let handle_lock = manager.handle_lock(&handle);
+        let handle_lock = manager.handle_lock(&old_account, &handle);
         let permit = handle_lock.lock().await;
         let reclaim_manager = manager.clone();
+        let reclaim_account = old_account.clone();
         let reclaim_handle = handle.clone();
         let reclaim = tokio::spawn(async move {
             reclaim_manager
-                .remove_registered_for_account(old_epoch, &reclaim_handle)
+                .remove_registered_for_account(&reclaim_account, &reclaim_handle)
                 .await
         });
         tokio::time::timeout(Duration::from_secs(1), async {
@@ -4790,22 +5366,27 @@ mod tests {
         .await
         .expect("reclaim closes the old generation before waiting for the lock");
 
-        // Advance the account fence and install the replacement while reclaim
-        // is still paused. Releasing the lock must make the stale request fail,
-        // not remove account B's row or worktree.
+        // Advance the account fence and re-bind the same durable account at a
+        // new epoch while reclaim is paused. The storage key is intentionally
+        // unchanged: the generation fence, not path separation, must prevent
+        // the stale request from deleting its replacement.
         let transition = manager.begin_account_transition().await.unwrap();
-        let next_epoch = manager.account_epoch();
-        manager.lock_sandboxes().remove(&handle);
-        let replacement = manager.get_or_create_locked(next_epoch, &handle).unwrap();
+        manager
+            .lock_sandboxes()
+            .remove(&(old_account.storage_key().to_string(), handle.clone()));
+        transition.complete().unwrap();
+        let next_account = manager.test_account().unwrap();
+        let replacement = manager
+            .get_or_create_locked(&next_account, &handle)
+            .unwrap();
         manager
             .apply_config(&replacement, &config, normalized_branch(&config))
             .unwrap();
-        manager.publish_generation(next_epoch, &handle, Some(replacement.clone()));
+        manager.publish_generation(&next_account, &handle, Some(replacement.clone()));
         manager
             .registry
-            .mark_state(&handle, "running", "running", None)
+            .mark_state_for_account(next_account.storage(), &handle, "running", "running", None)
             .unwrap();
-        drop(transition);
         drop(permit);
 
         let error = tokio::time::timeout(Duration::from_secs(2), reclaim)
@@ -4815,11 +5396,19 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, STALE_ACCOUNT_EPOCH);
         assert!(worktree.join("account-b-marker").is_file());
-        assert!(manager.registry_record(&handle).unwrap().is_some());
-        let current = manager.get(&handle).expect("replacement remains live");
+        assert!(manager
+            .registry_record_for_account(&next_account, &handle)
+            .unwrap()
+            .is_some());
+        let current = manager
+            .get(&next_account, &handle)
+            .expect("replacement remains live");
         assert!(Arc::ptr_eq(&current, &replacement));
-        assert_eq!(replacement.account_epoch, next_epoch);
-        let record = manager.registry_record(&handle).unwrap().unwrap();
+        assert_eq!(replacement.account.epoch(), next_account.epoch());
+        let record = manager
+            .registry_record_for_account(&next_account, &handle)
+            .unwrap()
+            .unwrap();
         assert_eq!(record.desired_status, "running");
         assert_eq!(record.observed_status, "running");
     }
@@ -4867,6 +5456,7 @@ mod tests {
     async fn try_provision_fails_fast_while_the_handle_lock_is_owned() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-busy-start".to_string(),
             clone_url: "https://github.com/acme/busy-start.git".to_string(),
@@ -4874,7 +5464,7 @@ mod tests {
             ..Default::default()
         };
         let handle = SandboxManager::compute_handle(&config.clone_url, "work").unwrap();
-        let permit = manager.handle_lock(&handle).lock_owned().await;
+        let permit = manager.handle_lock(&account, &handle).lock_owned().await;
 
         let attempted =
             tokio::time::timeout(Duration::from_millis(100), manager.try_provision(&config))
@@ -4890,6 +5480,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-partial-git".to_string(),
             clone_url,
@@ -4900,20 +5491,16 @@ mod tests {
         // repository scope, so a hardcoded URL would name a different worktree.
         let handle =
             SandboxManager::compute_handle(&config.clone_url, "work").expect("scopeable clone url");
-        let sandbox_path = app_root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        let workdir = sandbox_path.join("repo");
+        let workdir = account.storage().workdir(&handle).unwrap();
         std::fs::create_dir_all(workdir.join(".git")).unwrap();
         std::fs::write(workdir.join("partial-object"), "incomplete clone").unwrap();
         manager
             .registry
-            .upsert_config(&handle, &config, &sandbox_path, &workdir)
+            .upsert_config_for_account(account.storage(), &handle, &config)
             .unwrap();
         manager
             .registry
-            .mark_state(&handle, "stopped", "stopped", None)
+            .mark_state_for_account(account.storage(), &handle, "stopped", "stopped", None)
             .unwrap();
 
         let sandbox = manager.provision(&config).await.unwrap();
@@ -4935,6 +5522,7 @@ mod tests {
         let (_origin, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stale-monitor".to_string(),
             clone_url,
@@ -4961,7 +5549,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 if manager
-                    .registry_record(&current.handle)
+                    .registry_record_for_account(&account, &current.handle)
                     .unwrap()
                     .unwrap()
                     .observed_status
@@ -4980,7 +5568,10 @@ mod tests {
             json!({"state":{"phase":"clone-failed","error":"stale failure"}}),
         );
         tokio::task::yield_now().await;
-        let record = manager.registry_record(&current.handle).unwrap().unwrap();
+        let record = manager
+            .registry_record_for_account(&account, &current.handle)
+            .unwrap()
+            .unwrap();
         assert_eq!(record.observed_status, "running");
         assert_ne!(record.error.as_deref(), Some("stale failure"));
     }
@@ -5071,8 +5662,9 @@ mod tests {
         drop(manager_a);
 
         let manager_b = SandboxManager::new(app_root.path().to_path_buf());
+        let account_b = manager_b.test_account().unwrap();
         assert!(
-            manager_b.get(&handle).is_none(),
+            manager_b.get(&account_b, &handle).is_none(),
             "a fresh manager must start with an empty in-memory map"
         );
 
@@ -5090,7 +5682,7 @@ mod tests {
             "resurrection must land on the SAME (already-cloned) workdir, not a fresh clone"
         );
         assert!(
-            manager_b.get(&handle).is_some(),
+            manager_b.get(&account_b, &handle).is_some(),
             "a resurrected handle must now be known in memory too"
         );
     }
@@ -5110,9 +5702,15 @@ mod tests {
             .await
             .expect("initial ensure succeeds");
         let handle = original.handle.clone();
+        manager_a
+            .stop_registered(&handle)
+            .await
+            .expect("pre-restart sandbox stop succeeds")
+            .expect("sandbox remains registered");
         drop(manager_a);
 
         let manager_b = SandboxManager::new(app_root.path().to_path_buf());
+        let account_b = manager_b.test_account().unwrap();
         let adopted = manager_b
             .adopt(&handle)
             .await
@@ -5121,7 +5719,10 @@ mod tests {
         assert_eq!(adopted.handle, handle);
         assert!(adopted.tasks.list(None).is_empty());
         assert_eq!(adopted.setup.lifecycle_snapshot()["phase"], "idle");
-        let record = manager_b.registry_record(&handle).unwrap().unwrap();
+        let record = manager_b
+            .registry_record_for_account(&account_b, &handle)
+            .unwrap()
+            .unwrap();
         assert_eq!(record.observed_status, "stopped");
     }
 
@@ -5130,6 +5731,7 @@ mod tests {
         let (_root, clone_url) = setup_two_branch_repo();
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let config = GitSandboxConfig {
             virtual_mcp_id: "vmcp-stop-install-fence".to_string(),
             clone_url,
@@ -5149,7 +5751,7 @@ mod tests {
             .emit("lifecycle", json!({"state":{"phase":"installing"}}));
         tokio::time::timeout(Duration::from_secs(2), async {
             while manager
-                .registry_record(&original.handle)
+                .registry_record_for_account(&account, &original.handle)
                 .unwrap()
                 .unwrap()
                 .resume_step
@@ -5207,10 +5809,10 @@ mod tests {
             !original.setup.resume_from(Step::Start),
             "the stopped generation cannot cascade into or enqueue Start"
         );
-        assert!(manager.get(&original.handle).is_none());
+        assert!(manager.get(&account, &original.handle).is_none());
         assert_eq!(
             manager
-                .registry_record(&original.handle)
+                .registry_record_for_account(&account, &original.handle)
                 .unwrap()
                 .unwrap()
                 .resume_step,
@@ -5223,7 +5825,7 @@ mod tests {
         assert!(!resumed.setup.is_closed());
         assert_eq!(
             manager
-                .registry_record(&resumed.handle)
+                .registry_record_for_account(&account, &resumed.handle)
                 .unwrap()
                 .unwrap()
                 .desired_status,
@@ -5305,13 +5907,14 @@ mod tests {
     async fn shutdown_all_closes_and_reaps_every_sandbox_concurrently() {
         let app_root = tempfile::tempdir().unwrap();
         let manager = SandboxManager::new(app_root.path().to_path_buf());
+        let account = manager.test_account().unwrap();
         let mut sandboxes = Vec::new();
         for handle in ["one", "two"] {
-            let lock = manager.handle_lock(handle);
+            let lock = manager.handle_lock(&account, handle);
             let _permit = lock.lock().await;
             sandboxes.push(
                 manager
-                    .get_or_create_locked(manager.account_epoch(), handle)
+                    .get_or_create_locked(&account, handle)
                     .expect("sandbox construction succeeds"),
             );
         }

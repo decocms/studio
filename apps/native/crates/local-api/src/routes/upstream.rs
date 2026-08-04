@@ -162,6 +162,7 @@ const STALE_UPSTREAM_IDENTITY: &str =
 struct UpstreamRequestTicket {
     identity_generation: u64,
     account_epoch: crate::sandbox::manager::AccountEpoch,
+    sandbox_account: Option<crate::sandbox::manager::SandboxAccount>,
     sandbox_manager: Arc<crate::sandbox::SandboxManager>,
     validation_identity_rx: tokio::sync::broadcast::Receiver<upstream::SessionIdentityEvent>,
     body_identity_rx: tokio::sync::broadcast::Receiver<upstream::SessionIdentityEvent>,
@@ -177,6 +178,7 @@ impl UpstreamRequestTicket {
         let authorization = super::sandbox_account::authorize(state).await?;
         let account_epoch = authorization.epoch();
         let identity_generation = authorization.identity_generation();
+        let sandbox_account = authorization.account().clone();
 
         // Subscribe before releasing `authorization`'s subject-transition
         // guard. Account replacement therefore either happened before this
@@ -192,12 +194,83 @@ impl UpstreamRequestTicket {
         Ok(Self {
             identity_generation,
             account_epoch,
+            sandbox_account: Some(sandbox_account),
             sandbox_manager: state.sandbox_manager.clone(),
             validation_identity_rx,
             body_identity_rx,
             validation_account_rx,
             body_account_rx,
         })
+    }
+
+    /// Fence a generic app-API request even when no upstream account exists.
+    /// Local interceptors perform their own account admission; an ordinary
+    /// proxy request must still reach the canonical upstream-style 401 while
+    /// signed out instead of being mistaken for a sandbox operation.
+    async fn capture_identity(
+        state: &AppState,
+        session: &upstream::UpstreamSession,
+    ) -> Result<Self, ApiError> {
+        let transition = session.begin_transition().await;
+        let identity_generation = transition.generation();
+        super::sandbox_account::validate_expected_generation(identity_generation)?;
+        let account_epoch = state.sandbox_manager.account_epoch();
+        super::sandbox_account::validate_expected_epoch(account_epoch)?;
+
+        let validation_identity_rx = session.subscribe_identity();
+        let body_identity_rx = session.subscribe_identity();
+        let validation_account_rx = state
+            .sandbox_manager
+            .watch_account_epoch(account_epoch)
+            .map_err(ApiError::conflict)?;
+        let body_account_rx = validation_account_rx.clone();
+        drop(transition);
+
+        Ok(Self {
+            identity_generation,
+            account_epoch,
+            sandbox_account: None,
+            sandbox_manager: state.sandbox_manager.clone(),
+            validation_identity_rx,
+            body_identity_rx,
+            validation_account_rx,
+            body_account_rx,
+        })
+    }
+
+    /// Revalidate an exact-path terminal MCP capability without reacquiring
+    /// the transition gate held by the spawn owner that minted it. Subscribe
+    /// first, then compare both monotonic boundaries; [`Self::validate`]
+    /// closes the saturation case by rejecting queued notifications too.
+    async fn capture_scoped_mcp(
+        state: &AppState,
+        session: &upstream::UpstreamSession,
+        identity: crate::terminal::registry::ScopedMcpIdentity,
+    ) -> Result<Self, ApiError> {
+        let validation_identity_rx = session.subscribe_identity();
+        let body_identity_rx = session.subscribe_identity();
+        let validation_account_rx = state
+            .sandbox_manager
+            .watch_account_epoch(identity.account_epoch)
+            .map_err(|_| ApiError::conflict(STALE_UPSTREAM_IDENTITY))?;
+        let body_account_rx = validation_account_rx.clone();
+
+        let mut ticket = Self {
+            identity_generation: identity.identity_generation,
+            account_epoch: identity.account_epoch,
+            sandbox_account: None,
+            sandbox_manager: state.sandbox_manager.clone(),
+            validation_identity_rx,
+            body_identity_rx,
+            validation_account_rx,
+            body_account_rx,
+        };
+        if session.identity_generation() != identity.identity_generation
+            || ticket.validate().is_err()
+        {
+            return Err(ApiError::conflict(STALE_UPSTREAM_IDENTITY));
+        }
+        Ok(ticket)
     }
 
     /// Recreate subscriptions for a previously captured admission ticket.
@@ -232,6 +305,7 @@ impl UpstreamRequestTicket {
         Ok(Self {
             identity_generation,
             account_epoch,
+            sandbox_account: None,
             sandbox_manager: state.sandbox_manager.clone(),
             validation_identity_rx,
             body_identity_rx,
@@ -373,6 +447,10 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     tracing::debug!(method = %parts.method, path = %path, "app-api proxy: incoming request");
 
     let session = upstream::global();
+    let scoped_mcp_identity = parts
+        .extensions
+        .get::<crate::terminal::registry::ScopedMcpIdentity>()
+        .copied();
     let auth_path = path_and_query.split('?').next().unwrap_or(&path_and_query);
     let is_auth_path = path.starts_with(AUTH_PATH_PREFIX);
     let is_sign_out = parts.method == Method::POST && auth_path == AUTH_SIGN_OUT_PATH;
@@ -381,7 +459,14 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     // admitted for the account that sent it before body buffering too.
     let needs_identity_ticket = is_sign_out || (!is_auth_path && path != PUBLIC_NO_AUTH_PATH);
     let mut identity_ticket = if needs_identity_ticket {
-        match UpstreamRequestTicket::capture(&state, &session).await {
+        let capture = if let Some(identity) = scoped_mcp_identity {
+            UpstreamRequestTicket::capture_scoped_mcp(&state, &session, identity).await
+        } else if is_sign_out {
+            UpstreamRequestTicket::capture(&state, &session).await
+        } else {
+            UpstreamRequestTicket::capture_identity(&state, &session).await
+        };
+        match capture {
             Ok(ticket) => Some(ticket),
             Err(error) => return error.into_response(),
         }
@@ -1421,6 +1506,82 @@ pub(crate) async fn call_org_tool_for_identity(
     })
 }
 
+/// Identity-pinned admission for one WebDAV request.
+///
+/// The request captures this once, before its body is read, and carries it
+/// through every upstream operation and the eventual response stream. The
+/// inner ticket is the same generation/epoch fence used by the generic app
+/// proxy; the retained [`crate::sandbox::manager::SandboxAccount`]
+/// additionally binds local junk and mount state to the verified account
+/// storage root.
+pub(crate) struct OrgRequestTicket {
+    inner: UpstreamRequestTicket,
+    account: crate::sandbox::manager::SandboxAccount,
+}
+
+impl OrgRequestTicket {
+    pub(crate) async fn capture(state: &AppState) -> Result<Self, ApiError> {
+        let inner = UpstreamRequestTicket::capture(state, &upstream::global()).await?;
+        let account = inner
+            .sandbox_account
+            .as_ref()
+            .expect("ordinary ingress tickets always carry a sandbox account")
+            .clone();
+        Ok(Self { inner, account })
+    }
+
+    pub(crate) fn account_id(&self) -> &str {
+        self.account.storage().id()
+    }
+
+    pub(crate) fn validate(&mut self) -> Result<(), UpstreamCallError> {
+        self.account
+            .validate()
+            .map_err(|_| UpstreamCallError::StaleIdentity)?;
+        self.validate_identity()
+    }
+
+    pub(crate) fn validate_identity(&mut self) -> Result<(), UpstreamCallError> {
+        self.inner
+            .validate()
+            .map_err(|_| UpstreamCallError::StaleIdentity)
+    }
+
+    pub(crate) async fn validation_changed(&mut self) {
+        self.inner.validation_changed().await;
+    }
+
+    /// Linearize one device-local commit with account replacement. The
+    /// closure must remain synchronous and small; network and filesystem I/O
+    /// use validate-before/after instead.
+    pub(crate) fn with_account_commit<T>(
+        &mut self,
+        commit: impl FnOnce() -> T,
+    ) -> Result<T, UpstreamCallError> {
+        self.validate_identity()?;
+        self.inner
+            .sandbox_manager
+            .with_sandbox_account(&self.account, commit)
+            .map_err(|_| UpstreamCallError::StaleIdentity)
+    }
+
+    /// Fence even locally-produced WebDAV bodies. This is what terminates a
+    /// presigned object stream when the signed-in account changes after its
+    /// headers have already been returned.
+    pub(crate) fn fence_response(self, response: Response) -> Response {
+        let Self { mut inner, account } = self;
+        if account.validate().is_err() || inner.validate().is_err() {
+            return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+        }
+        let (parts, body) = response.into_parts();
+        let body = Body::from_stream(body.into_data_stream().take_until(inner.changed()));
+        // Preserve Content-Length for WebDAV HEAD and fixed-size reads. If a
+        // transition truncates a streaming GET, the resulting short body is
+        // deliberately observable to rclone as an incomplete transfer.
+        Response::from_parts(parts, body)
+    }
+}
+
 /// Why an authenticated upstream call never produced a response at all. A
 /// non-2xx response is NOT one of these — it comes back as `Ok`, so the
 /// caller decides what its status means.
@@ -1430,6 +1591,10 @@ pub(crate) enum UpstreamCallError {
     NotSignedIn,
     /// Network/timeout reaching the deployment.
     Unreachable(String),
+    /// The authenticated subject or its sandbox account epoch changed after
+    /// admission. WebDAV maps this to 409 and never retries with replacement
+    /// credentials.
+    StaleIdentity,
 }
 
 /// Send one authenticated request to an arbitrary upstream path and hand the
@@ -1444,34 +1609,40 @@ pub(crate) enum UpstreamCallError {
 /// same server-side token attachment — a caller never sees or supplies the
 /// upstream bearer.
 pub(crate) async fn send_org_request(
+    ticket: &mut OrgRequestTicket,
     method: Method,
     path_and_query: &str,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<reqwest::Response, UpstreamCallError> {
     let session = upstream::global();
-    let token = session
-        .access_token()
-        .await
-        .map_err(|_| UpstreamCallError::NotSignedIn)?;
+    ticket.validate()?;
+    let token_result = session.access_token().await;
+    ticket.validate_identity()?;
+    let token = token_result.map_err(|_| UpstreamCallError::NotSignedIn)?;
     let mut headers = headers;
     // Cookie leads for the same reason as the proxy branch — see
     // [`attach_persisted_cookie`].
     let cookie_attached = attach_persisted_cookie(&mut headers, &session).await;
-    send_with_retry(
+    ticket.validate_identity()?;
+    let result = send_with_retry_for_identity(
         &session,
-        &method,
-        path_and_query,
-        &headers,
-        &body,
-        token,
-        cookie_attached,
+        RetriableUpstreamRequest {
+            method,
+            path_and_query,
+            headers: &headers,
+            body: &body,
+            token,
+            cookie_leads: cookie_attached,
+        },
+        &mut ticket.inner,
     )
-    .await
-    .map_err(|error| match error {
+    .await;
+    ticket.validate_identity()?;
+    result.map_err(|error| match error {
         ProxyError::Network(msg) => UpstreamCallError::Unreachable(msg),
         ProxyError::HardUnauthorized => UpstreamCallError::NotSignedIn,
-        ProxyError::StaleIdentity => UpstreamCallError::NotSignedIn,
+        ProxyError::StaleIdentity => UpstreamCallError::StaleIdentity,
     })
 }
 
@@ -1483,6 +1654,7 @@ pub(crate) async fn send_org_request(
 /// re-authenticate from the forwarded headers (`boundAuth.organization.*`)
 /// die on Better Auth's api-key plugin probing the bearer — the exact
 /// failure the browser never sees because it only ever sends the cookie.
+#[cfg(test)]
 async fn send_with_retry(
     session: &upstream::UpstreamSession,
     method: &Method,
@@ -2087,6 +2259,7 @@ mod tests {
             UpstreamRequestTicket {
                 identity_generation,
                 account_epoch,
+                sandbox_account: None,
                 sandbox_manager: manager,
                 validation_identity_rx,
                 body_identity_rx,
@@ -2095,6 +2268,48 @@ mod tests {
             },
             identity_tx,
         )
+    }
+
+    #[tokio::test]
+    async fn scoped_terminal_mcp_identity_is_lock_free_but_rejects_stale_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(dir.path());
+        let session = UpstreamSession::new(
+            "https://studio.example".to_string(),
+            Arc::new(MemoryTokenStore::new()),
+        );
+        let identity = crate::terminal::registry::ScopedMcpIdentity {
+            account_epoch: state.sandbox_manager.account_epoch(),
+            identity_generation: session.identity_generation(),
+        };
+
+        let mut admitted = UpstreamRequestTicket::capture_scoped_mcp(&state, &session, identity)
+            .await
+            .expect("the identity that minted the terminal capability is current");
+        admitted.validate().unwrap();
+
+        let wrong_generation = crate::terminal::registry::ScopedMcpIdentity {
+            identity_generation: identity.identity_generation + 1,
+            ..identity
+        };
+        assert!(
+            UpstreamRequestTicket::capture_scoped_mcp(&state, &session, wrong_generation)
+                .await
+                .is_err()
+        );
+
+        state
+            .sandbox_manager
+            .begin_account_transition()
+            .await
+            .unwrap()
+            .complete()
+            .unwrap();
+        assert!(
+            UpstreamRequestTicket::capture_scoped_mcp(&state, &session, identity)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -2165,6 +2380,41 @@ mod tests {
         assert!(tokio::time::timeout(Duration::from_secs(1), body.next())
             .await
             .expect("identity-fenced body did not terminate")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn webdav_body_fence_preserves_length_and_terminates_on_identity_change() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let scope =
+            crate::routes::threads::db::RtAccountScope::new("test.invalid", "local-desktop-user")
+                .unwrap();
+        let epoch = manager.account_epoch();
+        let account = manager.sandbox_account(epoch, &scope).unwrap();
+        let (mut inner, identity_tx) = identity_ticket_for_test(manager, 11);
+        inner.sandbox_account = Some(account.clone());
+        let ticket = OrgRequestTicket { inner, account };
+        let response = Response::builder()
+            .header(header::CONTENT_LENGTH, "16")
+            .body(Body::from("account-a-secret"))
+            .unwrap();
+        let response = ticket.fence_response(response);
+        assert_eq!(
+            response.headers().get(header::CONTENT_LENGTH).unwrap(),
+            "16"
+        );
+
+        identity_tx
+            .send(upstream::SessionIdentityEvent {
+                generation: 12,
+                user_sub: Some("account-b".to_string()),
+            })
+            .unwrap();
+        let mut body = response.into_body().into_data_stream();
+        assert!(tokio::time::timeout(Duration::from_secs(1), body.next())
+            .await
+            .expect("WebDAV identity-fenced body did not terminate")
             .is_none());
     }
 

@@ -8,10 +8,10 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, ErrorCode, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
+use super::account_storage::AccountStorage;
 use super::manager::{GitSandboxConfig, SandboxManager};
 
 /// Registry schema version, stored as a `sandbox_metadata` row — NOT
@@ -19,7 +19,7 @@ use super::manager::{GitSandboxConfig, SandboxManager};
 /// that both subsystems share one `studio.db`. v4 is the merge itself; the
 /// v0–v3 ladder lived in the retired `sandboxes.sqlite` and was dropped with
 /// it, so any pre-merge file simply reads as fresh.
-const CURRENT_SCHEMA_VERSION: i64 = 4;
+const CURRENT_SCHEMA_VERSION: i64 = 5;
 const SCHEMA_VERSION_KEY: &str = "registry_schema_version";
 
 #[derive(Debug)]
@@ -36,18 +36,6 @@ enum RegistryOpenError {
 impl RegistryOpenError {
     fn sqlite(context: &'static str, source: rusqlite::Error) -> Self {
         Self::Sqlite { context, source }
-    }
-
-    fn is_corruption(&self) -> bool {
-        match self {
-            Self::Corrupt(_) => true,
-            Self::Sqlite { source, .. } => matches!(
-                source.sqlite_error_code(),
-                Some(ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase)
-            ),
-            Self::FutureVersion(_) => false,
-            Self::UnsupportedVersion(_) => false,
-        }
     }
 }
 
@@ -84,7 +72,6 @@ pub(crate) struct SandboxRecord {
 }
 
 pub(crate) struct SandboxRegistry {
-    app_root: PathBuf,
     database_path: Option<PathBuf>,
     connection: Mutex<Connection>,
 }
@@ -115,49 +102,42 @@ impl SandboxRegistry {
         };
 
         let registry = Self {
-            app_root,
             database_path: persistent_path,
             connection: Mutex::new(connection),
         };
         registry.secure_database_files()?;
-        // The in-memory branch exists only for old unit fixtures that share
-        // the process temp root; importing arbitrary real `/tmp/sandboxes`
-        // sidecars would couple those otherwise isolated tests together.
-        if registry.database_path.is_some() {
-            registry.import_legacy_sidecars()?;
-        }
-        registry.reconcile_after_process_start()?;
         Ok(registry)
     }
 
-    pub(crate) fn upsert_config(
+    pub(crate) fn upsert_config_for_account(
         &self,
+        storage: &AccountStorage,
         handle: &str,
         config: &GitSandboxConfig,
-        sandbox_path: &Path,
-        workdir_path: &Path,
     ) -> Result<(), String> {
         validate_identity(handle, config)?;
+        storage.verify()?;
+        let account_scope = storage.storage_key();
         let now = now_unix_seconds();
         let config_json = serde_json::to_string(config)
             .map_err(|error| format!("failed to serialize sandbox config: {error}"))?;
-        self.connection()
+        let mut connection = self.connection();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| format!("failed to begin sandbox upsert: {error}"))?;
+        transaction
             .execute(
                 r#"
                 INSERT INTO sandboxes (
-                    handle, virtual_mcp_id, clone_url, branch, config_json,
-                    sandbox_path, workdir_path, desired_status,
+                    account_scope, handle, clone_url, branch, config_json, desired_status,
                     observed_status, resume_step, error,
                     created_at, updated_at, last_seen_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running',
-                          'provisioning', 'clone', NULL, ?8, ?8, ?8)
-                ON CONFLICT(handle) DO UPDATE SET
-                    virtual_mcp_id = excluded.virtual_mcp_id,
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 'running',
+                          'provisioning', 'clone', NULL, ?6, ?6, ?6)
+                ON CONFLICT(account_scope, handle) DO UPDATE SET
                     clone_url = excluded.clone_url,
                     branch = excluded.branch,
                     config_json = excluded.config_json,
-                    sandbox_path = excluded.sandbox_path,
-                    workdir_path = excluded.workdir_path,
                     desired_status = 'running',
                     observed_status = 'provisioning',
                     error = NULL,
@@ -165,13 +145,11 @@ impl SandboxRegistry {
                     last_seen_at = excluded.last_seen_at
                 "#,
                 params![
+                    account_scope,
                     handle,
-                    config.virtual_mcp_id,
                     config.clone_url,
                     normalized_branch(config),
                     config_json,
-                    sandbox_path.to_string_lossy(),
-                    workdir_path.to_string_lossy(),
                     now,
                 ],
             )
@@ -179,60 +157,78 @@ impl SandboxRegistry {
         // Additive: a second agent joining a repo+branch someone else already
         // opened must not displace the first, or the first's handle lookup
         // stops resolving while its sandbox is still very much alive.
-        self.connection()
+        transaction
             .execute(
-                "INSERT OR IGNORE INTO sandbox_agents (handle, virtual_mcp_id, created_at)
-                 VALUES (?1, ?2, ?3)",
-                params![handle, config.virtual_mcp_id, now],
+                "INSERT OR IGNORE INTO sandbox_agents (
+                    account_scope, handle, virtual_mcp_id, created_at
+                 ) VALUES (?1, ?2, ?3, ?4)",
+                params![account_scope, handle, config.virtual_mcp_id, now],
             )
             .map_err(|error| format!("failed to record agent for sandbox {handle}: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit sandbox {handle}: {error}"))?;
+        drop(connection);
         self.secure_database_files()?;
         Ok(())
     }
 
-    pub(crate) fn record(&self, handle: &str) -> Result<Option<SandboxRecord>, String> {
+    pub(crate) fn record_for_account(
+        &self,
+        storage: &AccountStorage,
+        handle: &str,
+    ) -> Result<Option<SandboxRecord>, String> {
+        storage.verify()?;
         let mut rows = self.query_records(
-            "SELECT handle, config_json, sandbox_path, workdir_path,
+            "SELECT handle, config_json,
                     desired_status, observed_status, resume_step,
                     error, created_at, updated_at, last_seen_at
-             FROM sandboxes WHERE handle = ?1",
-            [handle],
+             FROM sandboxes WHERE account_scope = ?1 AND handle = ?2",
+            params![storage.storage_key(), handle],
+            storage,
         )?;
         Ok(rows.pop())
     }
 
-    /// Every durable sandbox this virtual MCP has claimed, joined through
-    /// `sandbox_agents` — the `virtual_mcp_id` COLUMN on `sandboxes` only
-    /// remembers whichever virtual MCP wrote last (see `handle_for_virtual_mcp`).
+    /// Every durable sandbox this virtual MCP has claimed, joined through the
+    /// account-scoped `sandbox_agents` association table.
     ///
     /// This is the registry-backed replacement for walking `worktrees/` and
     /// reading sidecars on request paths: one indexed query instead of a
     /// recursive directory scan per request.
-    pub(crate) fn records_for_virtual_mcp(
+    pub(crate) fn records_for_virtual_mcp_for_account(
         &self,
+        storage: &AccountStorage,
         virtual_mcp_id: &str,
     ) -> Result<Vec<SandboxRecord>, String> {
+        storage.verify()?;
         self.query_records(
-            "SELECT s.handle, s.config_json, s.sandbox_path, s.workdir_path,
+            "SELECT s.handle, s.config_json,
                     s.desired_status, s.observed_status, s.resume_step,
                     s.error, s.created_at, s.updated_at, s.last_seen_at
              FROM sandboxes s
-             JOIN sandbox_agents a ON a.handle = s.handle
-             WHERE a.virtual_mcp_id = ?1
+             JOIN sandbox_agents a
+               ON a.account_scope = s.account_scope AND a.handle = s.handle
+             WHERE s.account_scope = ?1 AND a.virtual_mcp_id = ?2
              ORDER BY s.handle",
-            [virtual_mcp_id],
+            params![storage.storage_key(), virtual_mcp_id],
+            storage,
         )
     }
 
     /// Every registered handle. The set is one row per worktree on this
     /// machine — small by construction.
-    pub(crate) fn handles(&self) -> Result<Vec<String>, String> {
+    pub(crate) fn handles_for_account(
+        &self,
+        storage: &AccountStorage,
+    ) -> Result<Vec<String>, String> {
+        storage.verify()?;
         let connection = self.connection();
         let mut statement = connection
-            .prepare("SELECT handle FROM sandboxes ORDER BY handle")
+            .prepare("SELECT handle FROM sandboxes WHERE account_scope = ?1 ORDER BY handle")
             .map_err(|error| format!("failed to list sandbox handles: {error}"))?;
         let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
+            .query_map([storage.storage_key()], |row| row.get::<_, String>(0))
             .map_err(|error| format!("failed to list sandbox handles: {error}"))?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("failed to list sandbox handles: {error}"))
@@ -242,6 +238,7 @@ impl SandboxRegistry {
         &self,
         sql: &str,
         params: P,
+        storage: &AccountStorage,
     ) -> Result<Vec<SandboxRecord>, String> {
         let connection = self.connection();
         let mut statement = connection
@@ -255,12 +252,10 @@ impl SandboxRegistry {
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
-                    row.get::<_, i64>(9)?,
-                    row.get::<_, i64>(10)?,
                 ))
             })
             .map_err(|error| format!("failed to read sandboxes: {error}"))?;
@@ -270,8 +265,6 @@ impl SandboxRegistry {
             let (
                 handle,
                 config_json,
-                sandbox_path,
-                workdir_path,
                 desired_status,
                 observed_status,
                 resume_step,
@@ -283,11 +276,15 @@ impl SandboxRegistry {
             let config = serde_json::from_str(&config_json).map_err(|error| {
                 format!("sandbox {handle} has an invalid stored config: {error}")
             })?;
+            super::account_storage::validate_managed_handle(&handle)?;
+            validate_identity(&handle, &config)?;
+            let sandbox_path = storage.worktree_root(&handle)?;
+            let workdir_path = sandbox_path.join("repo");
             records.push(SandboxRecord {
                 handle,
                 config,
-                sandbox_path: PathBuf::from(sandbox_path),
-                workdir_path: PathBuf::from(workdir_path),
+                sandbox_path,
+                workdir_path,
                 desired_status,
                 observed_status,
                 resume_step,
@@ -300,11 +297,17 @@ impl SandboxRegistry {
         Ok(records)
     }
 
-    pub(crate) fn contains(&self, handle: &str) -> Result<bool, String> {
+    pub(crate) fn contains_for_account(
+        &self,
+        storage: &AccountStorage,
+        handle: &str,
+    ) -> Result<bool, String> {
+        storage.verify()?;
         self.connection()
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sandboxes WHERE handle = ?1)",
-                [handle],
+                "SELECT EXISTS(SELECT 1 FROM sandboxes \
+                 WHERE account_scope = ?1 AND handle = ?2)",
+                params![storage.storage_key(), handle],
                 |row| row.get(0),
             )
             .map_err(|error| format!("failed to look up sandbox {handle}: {error}"))
@@ -318,21 +321,23 @@ impl SandboxRegistry {
     /// can bridge them without a filesystem scan.
     ///
     /// `None` when this virtual MCP has no worktree for that branch yet.
-    pub(crate) fn handle_for_virtual_mcp(
+    pub(crate) fn handle_for_virtual_mcp_for_account(
         &self,
+        storage: &AccountStorage,
         virtual_mcp_id: &str,
         branch: &str,
     ) -> Result<Option<String>, String> {
-        // Joined through `sandbox_agents` rather than read off `sandboxes`:
-        // several agents can share one repo+branch sandbox, and the column on
-        // `sandboxes` only remembers the latest of them.
+        storage.verify()?;
+        // Several agents can share one repo+branch sandbox; the association
+        // table preserves every claimant without conflating account scopes.
         self.connection()
             .query_row(
                 "SELECT s.handle FROM sandboxes s
-                 JOIN sandbox_agents a ON a.handle = s.handle
-                 WHERE a.virtual_mcp_id = ?1 AND s.branch = ?2
+                 JOIN sandbox_agents a
+                   ON a.account_scope = s.account_scope AND a.handle = s.handle
+                 WHERE s.account_scope = ?1 AND a.virtual_mcp_id = ?2 AND s.branch = ?3
                  ORDER BY s.last_seen_at DESC LIMIT 1",
-                [virtual_mcp_id, branch],
+                params![storage.storage_key(), virtual_mcp_id, branch],
                 |row| row.get(0),
             )
             .optional()
@@ -341,8 +346,14 @@ impl SandboxRegistry {
             })
     }
 
-    pub(crate) fn set_active(&self, handle: &str) -> Result<(), String> {
-        if !self.contains(handle)? {
+    pub(crate) fn set_active_for_account(
+        &self,
+        storage: &AccountStorage,
+        handle: &str,
+    ) -> Result<(), String> {
+        storage.verify()?;
+        let account_scope = storage.storage_key();
+        if !self.contains_for_account(storage, handle)? {
             return Err(format!("unknown sandbox handle: {handle}"));
         }
         let now = now_unix_seconds();
@@ -358,15 +369,17 @@ impl SandboxRegistry {
             .map_err(|error| format!("failed to begin active-sandbox update: {error}"))?;
         transaction
             .execute(
-                "INSERT INTO sandbox_metadata (key, value) VALUES ('active_handle', ?1) \
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                [handle],
+                "INSERT INTO sandbox_active (account_scope, handle, updated_at) \
+                 VALUES (?1, ?2, ?3) ON CONFLICT(account_scope) DO UPDATE SET \
+                 handle = excluded.handle, updated_at = excluded.updated_at",
+                params![account_scope, handle, now],
             )
             .map_err(|error| format!("failed to persist active sandbox: {error}"))?;
         transaction
             .execute(
-                "UPDATE sandboxes SET last_seen_at = ?2, updated_at = ?2 WHERE handle = ?1",
-                params![handle, now],
+                "UPDATE sandboxes SET last_seen_at = ?3, updated_at = ?3 \
+                 WHERE account_scope = ?1 AND handle = ?2",
+                params![account_scope, handle, now],
             )
             .map_err(|error| format!("failed to touch active sandbox: {error}"))?;
         transaction
@@ -375,30 +388,38 @@ impl SandboxRegistry {
         self.secure_database_files()
     }
 
-    pub(crate) fn active_handle(&self) -> Result<Option<String>, String> {
+    pub(crate) fn active_handle_for_account(
+        &self,
+        storage: &AccountStorage,
+    ) -> Result<Option<String>, String> {
+        storage.verify()?;
         self.connection()
             .query_row(
-                "SELECT value FROM sandbox_metadata WHERE key = 'active_handle'",
-                [],
+                "SELECT handle FROM sandbox_active WHERE account_scope = ?1",
+                [storage.storage_key()],
                 |row| row.get(0),
             )
             .optional()
             .map_err(|error| format!("failed to read active sandbox: {error}"))
     }
 
-    pub(crate) fn mark_state(
+    pub(crate) fn mark_state_for_account(
         &self,
+        storage: &AccountStorage,
         handle: &str,
         desired_status: &str,
         observed_status: &str,
         error: Option<&str>,
     ) -> Result<(), String> {
+        storage.verify()?;
         let changed = self
             .connection()
             .execute(
-                "UPDATE sandboxes SET desired_status = ?2, observed_status = ?3, \
-                 error = ?4, updated_at = ?5, last_seen_at = ?5 WHERE handle = ?1",
+                "UPDATE sandboxes SET desired_status = ?3, observed_status = ?4, \
+                 error = ?5, updated_at = ?6, last_seen_at = ?6 \
+                 WHERE account_scope = ?1 AND handle = ?2",
                 params![
+                    storage.storage_key(),
                     handle,
                     desired_status,
                     observed_status,
@@ -413,20 +434,23 @@ impl SandboxRegistry {
         self.secure_database_files()
     }
 
-    pub(crate) fn mark_observed(
+    pub(crate) fn mark_observed_for_account(
         &self,
+        storage: &AccountStorage,
         handle: &str,
         observed_status: &str,
         error: Option<&str>,
         resume_step: Option<&str>,
     ) -> Result<(), String> {
+        storage.verify()?;
         let changed = self
             .connection()
             .execute(
-                "UPDATE sandboxes SET observed_status = ?2, error = ?3, \
-                 resume_step = COALESCE(?4, resume_step), updated_at = ?5, \
-                 last_seen_at = ?5 WHERE handle = ?1",
+                "UPDATE sandboxes SET observed_status = ?3, error = ?4, \
+                 resume_step = COALESCE(?5, resume_step), updated_at = ?6, \
+                 last_seen_at = ?6 WHERE account_scope = ?1 AND handle = ?2",
                 params![
+                    storage.storage_key(),
                     handle,
                     observed_status,
                     error,
@@ -443,138 +467,30 @@ impl SandboxRegistry {
         self.secure_database_files()
     }
 
-    /// Forget a sandbox: its row, the agent claims that hang off it, and the
-    /// active pointer when it named this handle.
-    ///
-    /// Unknown handles are a no-op success — the caller asked for the row to be
-    /// gone, and it is. `sandbox_agents` rows go with it through the schema's
-    /// `ON DELETE CASCADE` (foreign keys are enabled per connection).
-    ///
-    /// The active-pointer clear mirrors `reconcile_after_process_start`, which
-    /// drops the pointer when the sandbox it names is no longer usable: a
-    /// pointer to a row that does not exist resolves to nothing, and
-    /// `set_active` refuses to re-create it.
-    pub(crate) fn remove(&self, handle: &str) -> Result<(), String> {
+    /// Forget one account's sandbox row. Agent claims and the account's active
+    /// pointer are removed by the schema's scoped `ON DELETE CASCADE` foreign
+    /// keys. Unknown handles are an idempotent success.
+    pub(crate) fn remove_for_account(
+        &self,
+        storage: &AccountStorage,
+        handle: &str,
+    ) -> Result<(), String> {
+        storage.verify()?;
         let mut connection = self.connection();
-        // IMMEDIATE for the same reason as `set_active`: this transaction
-        // writes twice and must not be handed SQLITE_BUSY without the busy
-        // timeout applying.
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| format!("failed to begin sandbox removal: {error}"))?;
         transaction
-            .execute("DELETE FROM sandboxes WHERE handle = ?1", [handle])
-            .map_err(|error| format!("failed to remove sandbox {handle}: {error}"))?;
-        transaction
             .execute(
-                "DELETE FROM sandbox_metadata WHERE key = 'active_handle' AND value = ?1",
-                [handle],
+                "DELETE FROM sandboxes WHERE account_scope = ?1 AND handle = ?2",
+                params![storage.storage_key(), handle],
             )
-            .map_err(|error| {
-                format!("failed to clear the active pointer for sandbox {handle}: {error}")
-            })?;
+            .map_err(|error| format!("failed to remove sandbox {handle}: {error}"))?;
         transaction
             .commit()
             .map_err(|error| format!("failed to commit sandbox removal: {error}"))?;
         self.secure_database_files()
     }
-
-    fn import_legacy_sidecars(&self) -> Result<(), String> {
-        let sandboxes_root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
-        for handle in super::persist::handles_with_sidecars(&self.app_root) {
-            if self.contains(&handle)? {
-                continue;
-            }
-            let Some(config) = super::persist::read_sidecar(&self.app_root, &handle) else {
-                continue;
-            };
-            let sandbox_path = sandboxes_root.join(&handle);
-            let workdir_path = sandbox_path.join("repo");
-            self.upsert_config(&handle, &config, &sandbox_path, &workdir_path)?;
-            if is_valid_git_worktree(&workdir_path) {
-                self.mark_observed(&handle, "stopped", None, Some("install"))?;
-            }
-            self.mark_state(&handle, "running", "stopped", None)?;
-        }
-
-        if self.active_handle()?.is_none() {
-            if let Some(handle) = super::persist::read_active_handle(&self.app_root) {
-                if self.contains(&handle)? {
-                    self.set_active(&handle)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// A new backend process owns none of the prior process handles. Retained
-    /// worktrees are still valid, but any formerly transitional/running state
-    /// is observed as stopped until `ensure` re-adopts and starts it.
-    fn reconcile_after_process_start(&self) -> Result<(), String> {
-        let root = self.app_root.join(crate::sandbox::WORKTREES_DIR);
-        let mut connection = self.connection();
-        // IMMEDIATE for the same reason as `set_active` above — this one
-        // reads every row and then writes, and runs at EVERY registry open,
-        // so it is the one most likely to meet a concurrent writer.
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| format!("failed to begin sandbox reconciliation: {error}"))?;
-        {
-            let mut statement = transaction
-                .prepare("SELECT handle, sandbox_path, workdir_path FROM sandboxes")
-                .map_err(|error| format!("failed to prepare sandbox reconciliation: {error}"))?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        PathBuf::from(row.get::<_, String>(1)?),
-                        PathBuf::from(row.get::<_, String>(2)?),
-                    ))
-                })
-                .map_err(|error| format!("failed to enumerate sandboxes: {error}"))?;
-            for row in rows {
-                let (handle, sandbox_path, workdir_path) =
-                    row.map_err(|error| format!("failed to read sandbox row: {error}"))?;
-                let expected = root.join(&handle);
-                let valid = sandbox_path == expected
-                    && workdir_path == expected.join("repo")
-                    && sandbox_path.is_dir()
-                    && is_valid_git_worktree(&workdir_path);
-                let (observed, error): (&str, Option<&str>) = if valid {
-                    ("stopped", None)
-                } else {
-                    (
-                        "absent",
-                        Some(
-                            "sandbox workdir is missing, not a valid git worktree, or outside the managed root",
-                        ),
-                    )
-                };
-                transaction
-                    .execute(
-                        "UPDATE sandboxes SET observed_status = ?2, error = ?3, updated_at = ?4 \
-                         WHERE handle = ?1",
-                        params![handle, observed, error, now_unix_seconds()],
-                    )
-                    .map_err(|db_error| {
-                        format!("failed to reconcile sandbox {handle}: {db_error}")
-                    })?;
-            }
-        }
-        transaction
-            .execute(
-                "DELETE FROM sandbox_metadata WHERE key = 'active_handle' AND NOT EXISTS (\
-                 SELECT 1 FROM sandboxes WHERE handle = sandbox_metadata.value \
-                 AND observed_status != 'absent')",
-                [],
-            )
-            .map_err(|error| format!("failed to reconcile active sandbox: {error}"))?;
-        transaction
-            .commit()
-            .map_err(|error| format!("failed to commit sandbox reconciliation: {error}"))?;
-        self.secure_database_files()
-    }
-
     fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection
             .lock()
@@ -597,26 +513,8 @@ fn open_persistent_registry(path: &Path) -> Result<Connection, String> {
     // They are operational errors, not evidence that user data is corrupt.
     prepare_private_database_file(path)?;
 
-    match open_configured_connection(Some(path)) {
-        Ok(connection) => Ok(connection),
-        Err(error) if error.is_corruption() => {
-            let reason = error.to_string();
-            let quarantined = quarantine_database_files(path)?;
-            tracing::warn!(
-                database = ?path,
-                ?quarantined,
-                %reason,
-                "sandbox: quarantined corrupt registry and rebuilding from sidecars"
-            );
-            prepare_private_database_file(path)?;
-            open_configured_connection(Some(path)).map_err(|rebuild_error| {
-                format!(
-                    "failed to rebuild native sandbox registry after quarantining corruption ({reason}): {rebuild_error}"
-                )
-            })
-        }
-        Err(error) => Err(format!("failed to open native sandbox registry: {error}")),
-    }
+    open_configured_connection(Some(path))
+        .map_err(|error| format!("failed to open native sandbox registry: {error}"))
 }
 
 fn open_configured_connection(path: Option<&Path>) -> Result<Connection, RegistryOpenError> {
@@ -674,56 +572,82 @@ fn ensure_schema(connection: &mut Connection) -> Result<(), RegistryOpenError> {
         )
         .map_err(|error| RegistryOpenError::sqlite("failed to create metadata table", error))?;
 
-    // Fail closed on a version this build does not understand, in either
-    // direction. An ABSENT row is a fresh database (pre-merge files never
-    // carried it and are treated as fresh); anything other than absent-or-
-    // current is a database this build must not touch.
-    let stored: Option<i64> = transaction
+    // Absence is fresh only when no sandbox tables exist. An unversioned
+    // existing registry has no trustworthy account owner and must never be
+    // silently adopted into the authenticated account that happened to boot
+    // first.
+    let stored_raw: Option<String> = transaction
         .query_row(
             "SELECT value FROM sandbox_metadata WHERE key = ?1",
             [SCHEMA_VERSION_KEY],
-            |row| row.get::<_, String>(0),
+            |row| row.get(0),
         )
         .optional()
-        .map_err(|error| RegistryOpenError::sqlite("failed to read schema version", error))?
-        .and_then(|value| value.parse::<i64>().ok());
+        .map_err(|error| RegistryOpenError::sqlite("failed to read schema version", error))?;
+    let stored = stored_raw
+        .as_deref()
+        .map(|value| {
+            value.parse::<i64>().map_err(|_| {
+                RegistryOpenError::Corrupt(format!(
+                    "sandbox registry schema version is not an integer: {value:?}"
+                ))
+            })
+        })
+        .transpose()?;
     match stored {
         Some(version) if version > CURRENT_SCHEMA_VERSION => {
             return Err(RegistryOpenError::FutureVersion(version));
         }
-        Some(version) if version < CURRENT_SCHEMA_VERSION => {
+        Some(version) if version < 4 => {
             return Err(RegistryOpenError::UnsupportedVersion(version));
         }
         _ => {}
+    }
+
+    if stored.is_none() && has_unversioned_registry_tables(&transaction)? {
+        return Err(RegistryOpenError::UnsupportedVersion(0));
+    }
+
+    if stored == Some(4) {
+        quarantine_v4_registry(&transaction)?;
     }
 
     transaction
         .execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS sandboxes (
-                handle TEXT PRIMARY KEY NOT NULL,
-                virtual_mcp_id TEXT NOT NULL,
+                account_scope TEXT NOT NULL,
+                handle TEXT NOT NULL,
                 clone_url TEXT NOT NULL,
                 branch TEXT NOT NULL,
                 config_json TEXT NOT NULL,
-                sandbox_path TEXT NOT NULL,
-                workdir_path TEXT NOT NULL,
                 desired_status TEXT NOT NULL,
                 observed_status TEXT NOT NULL,
                 resume_step TEXT NOT NULL DEFAULT 'clone',
                 error TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
-                last_seen_at INTEGER NOT NULL
-            );
+                last_seen_at INTEGER NOT NULL,
+                PRIMARY KEY (account_scope, handle)
+            ) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS sandbox_agents (
-                handle TEXT NOT NULL REFERENCES sandboxes(handle) ON DELETE CASCADE,
+                account_scope TEXT NOT NULL,
+                handle TEXT NOT NULL,
                 virtual_mcp_id TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
-                PRIMARY KEY (handle, virtual_mcp_id)
-            );
+                PRIMARY KEY (account_scope, handle, virtual_mcp_id),
+                FOREIGN KEY (account_scope, handle)
+                    REFERENCES sandboxes(account_scope, handle) ON DELETE CASCADE
+            ) WITHOUT ROWID;
             CREATE INDEX IF NOT EXISTS sandbox_agents_by_agent
-                ON sandbox_agents(virtual_mcp_id);
+                ON sandbox_agents(account_scope, virtual_mcp_id);
+            CREATE TABLE IF NOT EXISTS sandbox_active (
+                account_scope TEXT PRIMARY KEY NOT NULL,
+                handle TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (account_scope, handle)
+                    REFERENCES sandboxes(account_scope, handle) ON DELETE CASCADE
+            ) WITHOUT ROWID;
             "#,
         )
         .map_err(|error| RegistryOpenError::sqlite("failed to create schema", error))?;
@@ -745,88 +669,227 @@ fn validate_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
     connection
         .prepare(
             r#"
-            SELECT handle, virtual_mcp_id, clone_url, branch, config_json,
-                   sandbox_path, workdir_path, desired_status, observed_status,
-                   resume_step, error, created_at, updated_at, last_seen_at
+            SELECT account_scope, handle, clone_url, branch, config_json,
+                   desired_status, observed_status, resume_step, error,
+                   created_at, updated_at, last_seen_at
             FROM sandboxes LIMIT 0
             "#,
         )
-        .map_err(|error| RegistryOpenError::sqlite("sandbox table does not match v3", error))?;
+        .map_err(|error| RegistryOpenError::sqlite("sandbox table does not match v5", error))?;
     connection
         .prepare("SELECT key, value FROM sandbox_metadata LIMIT 0")
-        .map_err(|error| RegistryOpenError::sqlite("metadata table does not match v3", error))?;
+        .map_err(|error| RegistryOpenError::sqlite("metadata table does not match v5", error))?;
     connection
-        .prepare("SELECT handle, virtual_mcp_id, created_at FROM sandbox_agents LIMIT 0")
-        .map_err(|error| RegistryOpenError::sqlite("agent table does not match v3", error))?;
+        .prepare(
+            "SELECT account_scope, handle, virtual_mcp_id, created_at \
+             FROM sandbox_agents LIMIT 0",
+        )
+        .map_err(|error| RegistryOpenError::sqlite("agent table does not match v5", error))?;
+    connection
+        .prepare("SELECT account_scope, handle, updated_at FROM sandbox_active LIMIT 0")
+        .map_err(|error| RegistryOpenError::sqlite("active table does not match v5", error))?;
+    validate_primary_key(connection, "sandboxes", &["account_scope", "handle"])?;
+    validate_primary_key(
+        connection,
+        "sandbox_agents",
+        &["account_scope", "handle", "virtual_mcp_id"],
+    )?;
+    validate_primary_key(connection, "sandbox_active", &["account_scope"])?;
+    validate_without_rowid(connection, "sandboxes")?;
+    validate_without_rowid(connection, "sandbox_agents")?;
+    validate_without_rowid(connection, "sandbox_active")?;
+    validate_scoped_foreign_key(connection, "sandbox_agents")?;
+    validate_scoped_foreign_key(connection, "sandbox_active")?;
+    validate_agent_index(connection)?;
     Ok(())
 }
 
-/// Moves a corrupt SQLite database and its live journal companions aside
-/// without deleting anything. Each rename is atomic; if a later companion
-/// fails to move, earlier moves are rolled back before startup returns an
-/// error, so callers never intentionally proceed with a split set.
-fn quarantine_database_files(path: &Path) -> Result<Vec<PathBuf>, String> {
-    let sources = crate::fs_util::sqlite_file_family(path);
-    let tag = format!(
-        "corrupt-{}-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos(),
-        std::process::id()
-    );
-    let mut moves = Vec::new();
-    for source in sources {
-        match std::fs::symlink_metadata(&source) {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(format!(
-                    "failed to inspect corrupt sandbox registry file {source:?}: {error}"
-                ));
-            }
-        }
-        set_private_permissions(&source)?;
-        let mut destination = source.as_os_str().to_os_string();
-        destination.push(format!(".{tag}"));
-        let destination = PathBuf::from(destination);
-        if destination.exists() {
-            return Err(format!(
-                "refusing to overwrite existing sandbox registry quarantine {destination:?}"
-            ));
-        }
-        moves.push((source, destination));
-    }
-
-    let mut moved = Vec::new();
-    for (source, destination) in &moves {
-        if let Err(error) = std::fs::rename(source, destination) {
-            let mut rollback_errors = Vec::new();
-            for (prior_source, prior_destination) in moved.iter().rev() {
-                if let Err(rollback_error) = std::fs::rename(prior_destination, prior_source) {
-                    rollback_errors.push(format!(
-                        "{prior_destination:?} -> {prior_source:?}: {rollback_error}"
-                    ));
-                }
-            }
-            let rollback = if rollback_errors.is_empty() {
-                String::new()
-            } else {
-                format!("; rollback also failed: {}", rollback_errors.join(", "))
-            };
-            return Err(format!(
-                "failed to quarantine corrupt sandbox registry {source:?}: {error}{rollback}"
-            ));
-        }
-        moved.push((source.clone(), destination.clone()));
-    }
-
-    crate::fs_util::sync_parent_dir(path)
-        .map_err(|error| format!("failed to sync sandbox registry directory {path:?}: {error}"))?;
-    Ok(moved
+fn validate_primary_key(
+    connection: &Connection,
+    table: &str,
+    expected: &[&str],
+) -> Result<(), RegistryOpenError> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v5 primary key", error))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)?))
+        })
+        .map_err(|error| RegistryOpenError::sqlite("failed to read v5 primary key", error))?;
+    let mut actual = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| RegistryOpenError::sqlite("failed to collect v5 primary key", error))?
         .into_iter()
-        .map(|(_, destination)| destination)
-        .collect())
+        .filter(|(_, position)| *position > 0)
+        .collect::<Vec<_>>();
+    actual.sort_by_key(|(_, position)| *position);
+    let actual = actual
+        .into_iter()
+        .map(|(column, _)| column)
+        .collect::<Vec<_>>();
+    if actual != expected {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "{table} primary key does not match v5: {actual:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_without_rowid(connection: &Connection, table: &str) -> Result<(), RegistryOpenError> {
+    let without_rowid: i64 = connection
+        .query_row(&format!("PRAGMA table_list({table})"), [], |row| row.get(4))
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v5 table SQL", error))?;
+    if without_rowid != 1 {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "{table} is not a v5 WITHOUT ROWID table"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_scoped_foreign_key(
+    connection: &Connection,
+    table: &str,
+) -> Result<(), RegistryOpenError> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA foreign_key_list({table})"))
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v5 foreign keys", error))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(6)?,
+            ))
+        })
+        .map_err(|error| RegistryOpenError::sqlite("failed to read v5 foreign keys", error))?;
+    let actual = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| RegistryOpenError::sqlite("failed to collect v5 foreign keys", error))?;
+    let valid = matches!(actual.as_slice(), [
+        (first_id, 0, first_target, first_from, first_to, first_delete),
+        (second_id, 1, second_target, second_from, second_to, second_delete),
+    ] if first_id == second_id
+        && first_target == "sandboxes"
+        && second_target == "sandboxes"
+        && first_from == "account_scope"
+        && first_to == "account_scope"
+        && second_from == "handle"
+        && second_to == "handle"
+        && first_delete.eq_ignore_ascii_case("CASCADE")
+        && second_delete.eq_ignore_ascii_case("CASCADE"));
+    if !valid {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "{table} foreign key does not match v5: {actual:?}"
+        )));
+    }
+    let mut check = connection
+        .prepare(&format!("PRAGMA foreign_key_check({table})"))
+        .map_err(|error| RegistryOpenError::sqlite("failed to check v5 foreign keys", error))?;
+    if check
+        .exists([])
+        .map_err(|error| RegistryOpenError::sqlite("failed to read v5 foreign-key check", error))?
+    {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "{table} contains rows that violate its v5 foreign key"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_agent_index(connection: &Connection) -> Result<(), RegistryOpenError> {
+    let mut index_list = connection
+        .prepare("PRAGMA index_list(sandbox_agents)")
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v5 index list", error))?;
+    let entries = index_list
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .map_err(|error| RegistryOpenError::sqlite("failed to read v5 index list", error))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| RegistryOpenError::sqlite("failed to collect v5 index list", error))?;
+    if !entries.iter().any(|(name, unique, origin, partial)| {
+        name == "sandbox_agents_by_agent" && *unique == 0 && origin == "c" && *partial == 0
+    }) {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "sandbox agent index metadata does not match v5: {entries:?}"
+        )));
+    }
+    let mut statement = connection
+        .prepare("PRAGMA index_info(sandbox_agents_by_agent)")
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect v5 agent index", error))?;
+    let actual = statement
+        .query_map([], |row| row.get::<_, String>(2))
+        .map_err(|error| RegistryOpenError::sqlite("failed to read v5 agent index", error))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| RegistryOpenError::sqlite("failed to collect v5 agent index", error))?;
+    if actual != ["account_scope", "virtual_mcp_id"] {
+        return Err(RegistryOpenError::Corrupt(format!(
+            "sandbox agent index does not match v5: {actual:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn has_unversioned_registry_tables(connection: &Connection) -> Result<bool, RegistryOpenError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN (\
+                'sandboxes', 'sandbox_agents', 'sandbox_active',\
+                'sandboxes_unowned_v4', 'sandbox_agents_unowned_v4',\
+                'sandbox_unowned_metadata_v4'\
+            ))",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| RegistryOpenError::sqlite("failed to inspect unversioned schema", error))
+}
+
+fn validate_v4_schema(connection: &Connection) -> Result<(), RegistryOpenError> {
+    connection
+        .prepare(
+            "SELECT handle, virtual_mcp_id, clone_url, branch, config_json, \
+             sandbox_path, workdir_path, desired_status, observed_status, \
+             resume_step, error, created_at, updated_at, last_seen_at \
+             FROM sandboxes LIMIT 0",
+        )
+        .map_err(|error| RegistryOpenError::sqlite("sandbox table does not match v4", error))?;
+    connection
+        .prepare("SELECT handle, virtual_mcp_id, created_at FROM sandbox_agents LIMIT 0")
+        .map_err(|error| RegistryOpenError::sqlite("agent table does not match v4", error))?;
+    Ok(())
+}
+
+/// v4 rows carried no account owner. Preserve them for manual recovery, but
+/// create an empty v5 namespace instead of assigning them to the first user
+/// who signs in after upgrading.
+fn quarantine_v4_registry(connection: &Connection) -> Result<(), RegistryOpenError> {
+    validate_v4_schema(connection)?;
+    connection
+        .execute_batch(
+            r#"
+            DROP INDEX IF EXISTS sandbox_agents_by_agent;
+            CREATE TABLE sandbox_unowned_metadata_v4 (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            );
+            INSERT INTO sandbox_unowned_metadata_v4 (key, value)
+                SELECT key, value FROM sandbox_metadata WHERE key = 'active_handle';
+            DELETE FROM sandbox_metadata WHERE key = 'active_handle';
+            ALTER TABLE sandbox_agents RENAME TO sandbox_agents_unowned_v4;
+            ALTER TABLE sandboxes RENAME TO sandboxes_unowned_v4;
+            "#,
+        )
+        .map_err(|error| RegistryOpenError::sqlite("failed to quarantine v4 registry", error))
 }
 
 fn prepare_private_database_file(path: &Path) -> Result<(), String> {
@@ -853,6 +916,7 @@ fn normalized_branch(config: &GitSandboxConfig) -> &str {
 /// a blocking subprocess during async application startup. A normal clone has
 /// a `.git` directory; a linked worktree has a small `.git` file pointing at
 /// the canonical repository's `.git/worktrees/<name>` administrative dir.
+#[cfg(test)]
 fn is_valid_git_worktree(workdir: &Path) -> bool {
     if !workdir.is_dir() {
         return false;
@@ -942,6 +1006,10 @@ mod tests {
         std::fs::write(workdir.join(".git/HEAD"), b"ref: refs/heads/main\n").unwrap();
     }
 
+    fn account_storage(root: &Path, key: &str) -> AccountStorage {
+        AccountStorage::open(root, key).unwrap()
+    }
+
     /// A handle is `<repo scope>/<branch>` and names no agent, so two agents
     /// on one repo+branch share the sandbox. The second must not evict the
     /// first from its own handle lookup — that is what one `virtual_mcp_id`
@@ -953,16 +1021,13 @@ mod tests {
         let branch = first.branch.clone().unwrap();
         let handle =
             SandboxManager::compute_handle(&first.clone_url, &branch).expect("scopeable clone url");
-        let sandbox_path = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        let workdir_path = sandbox_path.join("repo");
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        let workdir_path = storage.workdir(&handle).unwrap();
         create_git_checkout(&workdir_path);
 
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
         registry
-            .upsert_config(&handle, &first, &sandbox_path, &workdir_path)
+            .upsert_config_for_account(&storage, &handle, &first)
             .unwrap();
 
         let second = GitSandboxConfig {
@@ -970,27 +1035,31 @@ mod tests {
             ..first.clone()
         };
         registry
-            .upsert_config(&handle, &second, &sandbox_path, &workdir_path)
+            .upsert_config_for_account(&storage, &handle, &second)
             .unwrap();
 
         // Same repo + branch => one sandbox, reachable by BOTH agents.
         assert_eq!(
             registry
-                .handle_for_virtual_mcp(&first.virtual_mcp_id, &branch)
+                .handle_for_virtual_mcp_for_account(&storage, &first.virtual_mcp_id, &branch,)
                 .unwrap()
                 .as_deref(),
             Some(handle.as_str())
         );
         assert_eq!(
             registry
-                .handle_for_virtual_mcp(&second.virtual_mcp_id, &branch)
+                .handle_for_virtual_mcp_for_account(&storage, &second.virtual_mcp_id, &branch,)
                 .unwrap()
                 .as_deref(),
             Some(handle.as_str())
         );
         let sandbox_rows: i64 = registry
             .connection()
-            .query_row("SELECT COUNT(*) FROM sandboxes", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sandboxes WHERE account_scope = ?1",
+                [storage.storage_key()],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(sandbox_rows, 1, "two agents must not fork two sandboxes");
     }
@@ -1001,30 +1070,33 @@ mod tests {
         let cfg = config();
         let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
             .expect("scopeable clone url");
-        let sandbox_path = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        let workdir_path = sandbox_path.join("repo");
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        let workdir_path = storage.workdir(&handle).unwrap();
         create_git_checkout(&workdir_path);
 
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
         registry
-            .upsert_config(&handle, &cfg, &sandbox_path, &workdir_path)
+            .upsert_config_for_account(&storage, &handle, &cfg)
             .unwrap();
-        registry.set_active(&handle).unwrap();
+        registry.set_active_for_account(&storage, &handle).unwrap();
         registry
-            .mark_state(&handle, "running", "running", None)
+            .mark_state_for_account(&storage, &handle, "running", "running", None)
             .unwrap();
         drop(registry);
 
         let reopened = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        let record = reopened.record(&handle).unwrap().unwrap();
+        let record = reopened
+            .record_for_account(&storage, &handle)
+            .unwrap()
+            .unwrap();
         assert_eq!(record.config, cfg);
         assert_eq!(record.desired_status, "running");
-        assert_eq!(record.observed_status, "stopped");
+        assert_eq!(record.observed_status, "running");
         assert_eq!(
-            reopened.active_handle().unwrap().as_deref(),
+            reopened
+                .active_handle_for_account(&storage)
+                .unwrap()
+                .as_deref(),
             Some(handle.as_str())
         );
 
@@ -1046,104 +1118,468 @@ mod tests {
     }
 
     #[test]
-    fn imports_sidecar_and_active_pointer_once() {
-        let root = tempfile::tempdir().unwrap();
-        let cfg = config();
-        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
-            .expect("scopeable clone url");
-        create_git_checkout(
-            &root
-                .path()
-                .join(crate::sandbox::WORKTREES_DIR)
-                .join(&handle)
-                .join("repo"),
-        );
-        super::super::persist::write_sidecar(root.path(), &handle, &cfg);
-        super::super::persist::write_active_handle(root.path(), &handle);
-
-        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        assert_eq!(registry.record(&handle).unwrap().unwrap().config, cfg);
-        assert_eq!(
-            registry.active_handle().unwrap().as_deref(),
-            Some(handle.as_str())
-        );
-    }
-
-    #[test]
     fn refuses_to_activate_an_unknown_handle() {
         let root = tempfile::tempdir().unwrap();
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        let storage = account_storage(root.path(), "v1:test-account-a");
         assert_eq!(
-            registry.set_active("phantom").unwrap_err(),
+            registry
+                .set_active_for_account(&storage, "phantom")
+                .unwrap_err(),
             "unknown sandbox handle: phantom"
         );
     }
 
     #[test]
-    fn reconciliation_clears_active_when_its_workdir_is_missing() {
+    fn registry_reopen_never_inspects_unverified_global_worktree_paths() {
         let root = tempfile::tempdir().unwrap();
         let cfg = config();
         let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
             .expect("scopeable clone url");
-        let sandbox_path = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        let workdir_path = sandbox_path.join("repo");
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        let sandbox_path = storage.worktree_root(&handle).unwrap();
+        let workdir_path = storage.workdir(&handle).unwrap();
         create_git_checkout(&workdir_path);
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
         registry
-            .upsert_config(&handle, &cfg, &sandbox_path, &workdir_path)
+            .upsert_config_for_account(&storage, &handle, &cfg)
             .unwrap();
-        registry.set_active(&handle).unwrap();
+        registry.set_active_for_account(&storage, &handle).unwrap();
         drop(registry);
         std::fs::remove_dir_all(&sandbox_path).unwrap();
 
         let reopened = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        assert!(reopened.active_handle().unwrap().is_none());
         assert_eq!(
-            reopened.record(&handle).unwrap().unwrap().observed_status,
-            "absent"
+            reopened
+                .active_handle_for_account(&storage)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        assert_eq!(
+            reopened
+                .record_for_account(&storage, &handle)
+                .unwrap()
+                .unwrap()
+                .observed_status,
+            "provisioning"
         );
     }
 
-    /// Reclaim drops the row, the agent claims that hang off it, and — because
-    /// this handle was the active one — the active pointer too. A pointer left
-    /// naming a removed handle is exactly what
-    /// `reconcile_after_process_start` exists to clear on the next boot.
     #[test]
-    fn remove_drops_the_row_its_agents_and_the_active_pointer() {
+    fn same_handle_is_isolated_by_account_for_rows_active_and_paths() {
         let root = tempfile::tempdir().unwrap();
+        let storage_a = account_storage(root.path(), "v1:test-account-a");
+        let storage_b = account_storage(root.path(), "v1:test-account-b");
+        let first = config();
+        let branch = first.branch.as_deref().unwrap();
+        let handle = SandboxManager::compute_handle(&first.clone_url, branch).unwrap();
+        let second = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-account-b".to_string(),
+            ..first.clone()
+        };
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+
+        registry
+            .upsert_config_for_account(&storage_a, &handle, &first)
+            .unwrap();
+        registry
+            .upsert_config_for_account(&storage_b, &handle, &second)
+            .unwrap();
+        registry
+            .set_active_for_account(&storage_a, &handle)
+            .unwrap();
+        registry
+            .set_active_for_account(&storage_b, &handle)
+            .unwrap();
+
+        let record_a = registry
+            .record_for_account(&storage_a, &handle)
+            .unwrap()
+            .unwrap();
+        let record_b = registry
+            .record_for_account(&storage_b, &handle)
+            .unwrap()
+            .unwrap();
+        assert_eq!(record_a.config.virtual_mcp_id, first.virtual_mcp_id);
+        assert_eq!(record_b.config.virtual_mcp_id, second.virtual_mcp_id);
+        assert_ne!(record_a.sandbox_path, record_b.sandbox_path);
+        assert_eq!(
+            record_a.sandbox_path,
+            storage_a.worktree_root(&handle).unwrap()
+        );
+        assert_eq!(
+            record_b.sandbox_path,
+            storage_b.worktree_root(&handle).unwrap()
+        );
+        assert_eq!(
+            registry
+                .active_handle_for_account(&storage_a)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        assert_eq!(
+            registry
+                .active_handle_for_account(&storage_b)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+    }
+
+    #[test]
+    fn failed_agent_association_rolls_back_the_sandbox_row() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path(), "v1:test-account-a");
         let cfg = config();
-        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
-            .expect("scopeable clone url");
-        let sandbox_path = root
+        let handle =
+            SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap()).unwrap();
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry
+            .connection()
+            .execute_batch(
+                "CREATE TRIGGER fail_sandbox_agent BEFORE INSERT ON sandbox_agents \
+                 BEGIN SELECT RAISE(ABORT, 'agent insert failed'); END;",
+            )
+            .unwrap();
+
+        let error = registry
+            .upsert_config_for_account(&storage, &handle, &cfg)
+            .unwrap_err();
+        assert!(error.contains("agent insert failed"), "{error}");
+        assert!(!registry.contains_for_account(&storage, &handle).unwrap());
+    }
+
+    #[test]
+    fn scoped_foreign_keys_cascade_agent_and_active_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        let cfg = config();
+        let handle =
+            SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap()).unwrap();
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry
+            .upsert_config_for_account(&storage, &handle, &cfg)
+            .unwrap();
+        registry.set_active_for_account(&storage, &handle).unwrap();
+        registry
+            .connection()
+            .execute(
+                "DELETE FROM sandboxes WHERE account_scope = ?1 AND handle = ?2",
+                params![storage.storage_key(), handle],
+            )
+            .unwrap();
+
+        let connection = registry.connection();
+        let agents: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sandbox_agents WHERE account_scope = ?1",
+                [storage.storage_key()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let active: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sandbox_active WHERE account_scope = ?1",
+                [storage.storage_key()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((agents, active), (0, 0));
+    }
+
+    #[test]
+    fn malformed_database_handle_is_rejected_before_path_derivation() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        let cfg = config();
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        registry
+            .connection()
+            .execute(
+                "INSERT INTO sandboxes (
+                    account_scope, handle, clone_url, branch, config_json,
+                    desired_status, observed_status, resume_step,
+                    created_at, updated_at, last_seen_at
+                 ) VALUES (?1, '../../outside', ?2, ?3, ?4,
+                           'running', 'stopped', 'clone', 1, 1, 1)",
+                params![
+                    storage.storage_key(),
+                    cfg.clone_url,
+                    normalized_branch(&cfg),
+                    serde_json::to_string(&cfg).unwrap(),
+                ],
+            )
+            .unwrap();
+
+        let error = registry
+            .record_for_account(&storage, "../../outside")
+            .unwrap_err();
+        assert!(error.contains("not path-safe"), "{error}");
+        assert!(!storage.root().join("outside").exists());
+    }
+
+    #[test]
+    fn v4_rows_are_explicitly_quarantined_and_not_adopted() {
+        let root = tempfile::tempdir().unwrap();
+        let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
+        let cfg = config();
+        let handle =
+            SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap()).unwrap();
+        let legacy_sandbox = root
             .path()
             .join(crate::sandbox::WORKTREES_DIR)
             .join(&handle);
-        let workdir_path = sandbox_path.join("repo");
-        create_git_checkout(&workdir_path);
+        let legacy_workdir = legacy_sandbox.join("repo");
+        create_git_checkout(&legacy_workdir);
+
+        let connection = Connection::open(&database_path).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE sandbox_metadata (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE sandboxes (
+                    handle TEXT PRIMARY KEY NOT NULL,
+                    virtual_mcp_id TEXT NOT NULL,
+                    clone_url TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    config_json TEXT NOT NULL,
+                    sandbox_path TEXT NOT NULL,
+                    workdir_path TEXT NOT NULL,
+                    desired_status TEXT NOT NULL,
+                    observed_status TEXT NOT NULL,
+                    resume_step TEXT NOT NULL DEFAULT 'clone',
+                    error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    last_seen_at INTEGER NOT NULL
+                );
+                CREATE TABLE sandbox_agents (
+                    handle TEXT NOT NULL REFERENCES sandboxes(handle) ON DELETE CASCADE,
+                    virtual_mcp_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (handle, virtual_mcp_id)
+                );
+                CREATE INDEX sandbox_agents_by_agent ON sandbox_agents(virtual_mcp_id);
+                "#,
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sandbox_metadata(key, value) VALUES (?1, '4')",
+                [SCHEMA_VERSION_KEY],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sandbox_metadata(key, value) VALUES ('active_handle', ?1)",
+                [&handle],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sandboxes (
+                    handle, virtual_mcp_id, clone_url, branch, config_json,
+                    sandbox_path, workdir_path, desired_status, observed_status,
+                    resume_step, error, created_at, updated_at, last_seen_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running', 'running',
+                           'start', NULL, 1, 1, 1)",
+                params![
+                    handle,
+                    cfg.virtual_mcp_id,
+                    cfg.clone_url,
+                    normalized_branch(&cfg),
+                    serde_json::to_string(&cfg).unwrap(),
+                    legacy_sandbox.to_string_lossy(),
+                    legacy_workdir.to_string_lossy(),
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sandbox_agents(handle, virtual_mcp_id, created_at) \
+                 VALUES (?1, ?2, 1)",
+                params![handle, cfg.virtual_mcp_id],
+            )
+            .unwrap();
+        drop(connection);
 
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        registry
-            .upsert_config(&handle, &cfg, &sandbox_path, &workdir_path)
-            .unwrap();
-        registry.set_active(&handle).unwrap();
-
-        registry.remove(&handle).unwrap();
-
-        assert!(!registry.contains(&handle).unwrap());
-        assert!(registry.record(&handle).unwrap().is_none());
-        assert!(registry.active_handle().unwrap().is_none());
+        let storage = account_storage(root.path(), "v1:test-account-a");
         assert!(registry
-            .handle_for_virtual_mcp(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap())
+            .record_for_account(&storage, &handle)
             .unwrap()
             .is_none());
-        let agent_rows: i64 = registry
-            .connection()
-            .query_row("SELECT COUNT(*) FROM sandbox_agents", [], |row| row.get(0))
+        let connection = registry.connection();
+        let count = |table: &str| -> i64 {
+            connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap()
+        };
+        assert_eq!(count("sandboxes"), 0);
+        assert_eq!(count("sandbox_agents"), 0);
+        assert_eq!(count("sandbox_active"), 0);
+        assert_eq!(count("sandboxes_unowned_v4"), 1);
+        assert_eq!(count("sandbox_agents_unowned_v4"), 1);
+        let legacy_active: String = connection
+            .query_row(
+                "SELECT value FROM sandbox_unowned_metadata_v4 WHERE key = 'active_handle'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(agent_rows, 0, "agent claims must cascade with the sandbox");
+        assert_eq!(legacy_active, handle);
+        assert!(legacy_sandbox.exists(), "quarantine preserves legacy files");
+    }
+
+    #[test]
+    fn unversioned_existing_registry_tables_fail_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
+        Connection::open(&database_path)
+            .unwrap()
+            .execute("CREATE TABLE sandboxes (handle TEXT PRIMARY KEY)", [])
+            .unwrap();
+
+        let error = SandboxRegistry::open(root.path().to_path_buf())
+            .err()
+            .expect("unversioned registry must not be adopted");
+        assert!(error.contains("unsupported sandbox registry schema version 0"));
+        let connection = Connection::open(database_path).unwrap();
+        let columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(sandboxes)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(columns, ["handle"]);
+    }
+
+    #[test]
+    fn stamped_v5_with_split_scope_and_handle_foreign_keys_fails_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
+        drop(SandboxRegistry::open(root.path().to_path_buf()).unwrap());
+        let connection = Connection::open(&database_path).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                DROP INDEX sandbox_agents_by_agent;
+                DROP TABLE sandbox_agents;
+                CREATE TABLE sandbox_agents (
+                    account_scope TEXT NOT NULL,
+                    handle TEXT NOT NULL,
+                    virtual_mcp_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (account_scope, handle, virtual_mcp_id),
+                    FOREIGN KEY (account_scope)
+                        REFERENCES sandboxes(account_scope) ON DELETE CASCADE,
+                    FOREIGN KEY (handle)
+                        REFERENCES sandboxes(handle) ON DELETE CASCADE
+                ) WITHOUT ROWID;
+                CREATE INDEX sandbox_agents_by_agent
+                    ON sandbox_agents(account_scope, virtual_mcp_id);
+                "#,
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = SandboxRegistry::open(root.path().to_path_buf())
+            .err()
+            .expect("split foreign keys must not satisfy the v5 account boundary");
+        assert!(error.contains("foreign key does not match v5"), "{error}");
+        assert!(database_path.exists());
+    }
+
+    /// Reclaim drops only the named account's row, agent claims, and active
+    /// pointer even when a second account owns the same durable handle.
+    #[test]
+    fn remove_drops_only_one_accounts_row_agents_and_active_pointer() {
+        let root = tempfile::tempdir().unwrap();
+        let storage_a = account_storage(root.path(), "v1:test-account-a");
+        let storage_b = account_storage(root.path(), "v1:test-account-b");
+        let cfg_a = config();
+        let cfg_b = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-account-b".to_string(),
+            ..cfg_a.clone()
+        };
+        let handle =
+            SandboxManager::compute_handle(&cfg_a.clone_url, cfg_a.branch.as_deref().unwrap())
+                .expect("scopeable clone url");
+        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
+        for (storage, cfg) in [(&storage_a, &cfg_a), (&storage_b, &cfg_b)] {
+            let workdir = storage.workdir(&handle).unwrap();
+            create_git_checkout(&workdir);
+            registry
+                .upsert_config_for_account(storage, &handle, cfg)
+                .unwrap();
+            registry.set_active_for_account(storage, &handle).unwrap();
+        }
+
+        registry.remove_for_account(&storage_a, &handle).unwrap();
+
+        assert!(!registry.contains_for_account(&storage_a, &handle).unwrap());
+        assert!(registry
+            .record_for_account(&storage_a, &handle)
+            .unwrap()
+            .is_none());
+        assert!(registry
+            .active_handle_for_account(&storage_a)
+            .unwrap()
+            .is_none());
+        assert!(registry
+            .handle_for_virtual_mcp_for_account(
+                &storage_a,
+                &cfg_a.virtual_mcp_id,
+                cfg_a.branch.as_deref().unwrap(),
+            )
+            .unwrap()
+            .is_none());
+
+        assert!(registry.contains_for_account(&storage_b, &handle).unwrap());
+        assert_eq!(
+            registry
+                .active_handle_for_account(&storage_b)
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        assert_eq!(
+            registry
+                .handle_for_virtual_mcp_for_account(
+                    &storage_b,
+                    &cfg_b.virtual_mcp_id,
+                    cfg_b.branch.as_deref().unwrap(),
+                )
+                .unwrap()
+                .as_deref(),
+            Some(handle.as_str())
+        );
+        let agent_rows_a: i64 = registry
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sandbox_agents WHERE account_scope = ?1",
+                [storage_a.storage_key()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let agent_rows_b: i64 = registry
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sandbox_agents WHERE account_scope = ?1",
+                [storage_b.storage_key()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((agent_rows_a, agent_rows_b), (0, 1));
     }
 
     /// Removing one sandbox must not disturb another's active pointer.
@@ -1154,32 +1590,35 @@ mod tests {
         let mut removed = config();
         removed.branch = Some("feature/other".to_string());
 
+        let storage = account_storage(root.path(), "v1:test-account-a");
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
         let mut handles = Vec::new();
         for cfg in [&kept, &removed] {
             let handle =
                 SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
                     .expect("scopeable clone url");
-            let sandbox_path = root
-                .path()
-                .join(crate::sandbox::WORKTREES_DIR)
-                .join(&handle);
-            let workdir_path = sandbox_path.join("repo");
-            create_git_checkout(&workdir_path);
+            create_git_checkout(&storage.workdir(&handle).unwrap());
             registry
-                .upsert_config(&handle, cfg, &sandbox_path, &workdir_path)
+                .upsert_config_for_account(&storage, &handle, cfg)
                 .unwrap();
             handles.push(handle);
         }
-        registry.set_active(&handles[0]).unwrap();
+        registry
+            .set_active_for_account(&storage, &handles[0])
+            .unwrap();
 
-        registry.remove(&handles[1]).unwrap();
+        registry.remove_for_account(&storage, &handles[1]).unwrap();
 
         assert_eq!(
-            registry.active_handle().unwrap().as_deref(),
+            registry
+                .active_handle_for_account(&storage)
+                .unwrap()
+                .as_deref(),
             Some(handles[0].as_str())
         );
-        assert!(registry.contains(&handles[0]).unwrap());
+        assert!(registry
+            .contains_for_account(&storage, &handles[0])
+            .unwrap());
     }
 
     /// The idempotent contract the delete intercept promises: asking for a
@@ -1188,8 +1627,9 @@ mod tests {
     fn removing_an_unknown_handle_is_a_no_op_success() {
         let root = tempfile::tempdir().unwrap();
         let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        registry.remove("phantom").unwrap();
-        assert!(!registry.contains("phantom").unwrap());
+        let storage = account_storage(root.path(), "v1:test-account-a");
+        registry.remove_for_account(&storage, "phantom").unwrap();
+        assert!(!registry.contains_for_account(&storage, "phantom").unwrap());
     }
 
     #[test]
@@ -1236,62 +1676,57 @@ mod tests {
     }
 
     #[test]
-    fn quarantines_corruption_and_rebuilds_from_valid_sidecars() {
+    fn malformed_registry_fails_closed_without_moving_shared_thread_data() {
         let root = tempfile::tempdir().unwrap();
-        let cfg = config();
-        let handle = SandboxManager::compute_handle(&cfg.clone_url, cfg.branch.as_deref().unwrap())
-            .expect("scopeable clone url");
-        let workdir_path = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle)
-            .join("repo");
-        create_git_checkout(&workdir_path);
-        super::super::persist::write_sidecar(root.path(), &handle, &cfg);
-        super::super::persist::write_active_handle(root.path(), &handle);
-
         let database_path = root.path().join(crate::STUDIO_DB_FILE_NAME);
-        let corrupt_bytes = b"this is not a sqlite database";
-        std::fs::write(&database_path, corrupt_bytes).unwrap();
+        let connection = Connection::open(&database_path).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA user_version = 73;
+                CREATE TABLE thread_sentinel (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+                INSERT INTO thread_sentinel VALUES ('thread-a', 'must survive');
+                CREATE TABLE sandbox_metadata (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE sandboxes (handle TEXT PRIMARY KEY NOT NULL);
+                "#,
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sandbox_metadata(key, value) VALUES (?1, ?2)",
+                params![SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION.to_string()],
+            )
+            .unwrap();
+        drop(connection);
 
-        let registry = SandboxRegistry::open(root.path().to_path_buf()).unwrap();
-        assert_eq!(registry.record(&handle).unwrap().unwrap().config, cfg);
-        assert_eq!(
-            registry.active_handle().unwrap().as_deref(),
-            Some(handle.as_str())
-        );
+        let error = SandboxRegistry::open(root.path().to_path_buf())
+            .err()
+            .expect("malformed stamped schema must fail closed");
+        assert!(error.contains("does not match v5"), "{error}");
 
-        let quarantine = std::fs::read_dir(root.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .find(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("studio.db.corrupt-"))
-            })
-            .expect("corrupt database must be retained beside its replacement");
-        assert_eq!(std::fs::read(quarantine).unwrap(), corrupt_bytes);
-
-        let connection = registry.connection();
-        let stored: String = connection
+        let connection = Connection::open(&database_path).unwrap();
+        let sentinel: String = connection
             .query_row(
-                "SELECT value FROM sandbox_metadata WHERE key = ?1",
-                [SCHEMA_VERSION_KEY],
+                "SELECT body FROM thread_sentinel WHERE id = 'thread-a'",
+                [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(stored, CURRENT_SCHEMA_VERSION.to_string());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&database_path)
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777;
-            assert_eq!(mode, 0o600);
-        }
+        assert_eq!(sentinel, "must survive");
+        let user_version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(user_version, 73);
+        assert!(database_path.exists());
+        assert!(!std::fs::read_dir(root.path()).unwrap().any(|entry| {
+            entry
+                .ok()
+                .and_then(|entry| entry.file_name().into_string().ok())
+                .is_some_and(|name| name.contains(".corrupt-"))
+        }));
     }
 
     #[test]

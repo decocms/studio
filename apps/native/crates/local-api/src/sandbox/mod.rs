@@ -34,14 +34,6 @@
 /// exactly the kind of thing that drifts.
 pub(crate) const WORKTREES_DIR: &str = "worktrees";
 
-/// The one derivation of a sandbox's directory and its repo workdir. The
-/// registry persists these paths and `git worktree` registers them, so every
-/// site must produce byte-identical joins — a second spelling is a sandbox
-/// that can never be found again.
-pub(crate) fn worktree_root(app_root: &std::path::Path, handle: &str) -> std::path::PathBuf {
-    app_root.join(WORKTREES_DIR).join(handle)
-}
-
 /// The traversal-safety core every handle validator shares: a handle is a
 /// multi-segment RELATIVE path under the worktrees root, so no segment may be
 /// empty, `.` or `..`, and no `\` may appear anywhere. Layers with stricter
@@ -56,11 +48,7 @@ pub(crate) fn handle_is_path_safe(handle: &str) -> bool {
             .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
-#[cfg(test)]
-pub(crate) fn worktree_repo_dir(app_root: &std::path::Path, handle: &str) -> std::path::PathBuf {
-    worktree_root(app_root, handle).join("repo")
-}
-
+pub(crate) mod account_storage;
 pub(crate) mod dev_port;
 pub mod manager;
 pub mod org_mount;
@@ -248,10 +236,25 @@ const MAX_PREVIEW_LABEL: usize = 63;
 /// silent collision here routes a preview at the wrong sandbox. The slug is
 /// truncated from the FRONT so the branch, the part that differs between two
 /// sandboxes of one repo, is the part that survives.
-pub fn preview_label(handle: &str) -> String {
+#[cfg(test)]
+fn preview_label(handle: &str) -> String {
+    preview_label_with_identity(handle.as_bytes(), handle)
+}
+
+pub(crate) fn preview_label_for_scope(account_scope: &str, handle: &str) -> String {
+    let identity = format!(
+        "decocms-preview-v2\0{}:{}{}",
+        account_scope.len(),
+        account_scope,
+        handle
+    );
+    preview_label_with_identity(identity.as_bytes(), handle)
+}
+
+fn preview_label_with_identity(identity: &[u8], handle: &str) -> String {
     use sha2::{Digest, Sha256};
 
-    let digest = Sha256::digest(handle.as_bytes());
+    let digest = Sha256::digest(identity);
     let hash: String = digest
         .iter()
         .take(4)

@@ -35,7 +35,7 @@ use serde_json::{json, Value};
 
 use crate::error::ApiError;
 use crate::routes::upstream;
-use crate::sandbox::manager::AccountEpoch;
+use crate::sandbox::manager::SandboxAccount;
 use crate::sandbox::GitSandboxConfig;
 use crate::setup::detect_runtime::runtime_for_package_manager;
 use crate::state::AppState;
@@ -92,7 +92,7 @@ pub(crate) fn preview_host_base() -> &'static str {
 ///
 /// Per-handle rather than one shared origin: cookies ignore the port, so a
 /// single host put every sandbox in one jar. `None` before the listener binds.
-fn preview_url(handle: &str) -> Option<String> {
+fn preview_url(account_scope: &str, handle: &str) -> Option<String> {
     let port = match PREVIEW_PORT.load(Ordering::Relaxed) {
         0 => return None,
         port => port,
@@ -107,7 +107,7 @@ fn preview_url(handle: &str) -> Option<String> {
     if base.contains('.') {
         // ONE label, derived from the handle — a handle itself contains `/`
         // and would turn the host into `github.com` with the rest as a path.
-        let label = crate::sandbox::preview_label(handle);
+        let label = crate::sandbox::preview_label_for_scope(account_scope, handle);
         Some(format!("{}://{label}.{base}:{port}/", preview_scheme()))
     } else {
         Some(format!("{}://{base}:{port}/", preview_scheme()))
@@ -143,7 +143,7 @@ pub(crate) const EPHEMERAL_BRANCH: &str = "ephemeral";
 pub(crate) fn branch_for_virtual_mcp(
     state: &AppState,
     virtual_mcp_id: &str,
-    account_epoch: AccountEpoch,
+    account: &SandboxAccount,
 ) -> Result<String, String> {
     if virtual_mcp_id.is_empty() {
         return Ok(EPHEMERAL_BRANCH.to_string());
@@ -155,22 +155,20 @@ pub(crate) fn branch_for_virtual_mcp(
     let mut fallback = None;
     for record in state
         .sandbox_manager
-        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
+        .records_for_virtual_mcp_for_account(account, virtual_mcp_id)?
     {
         let Some(branch) = record.config.branch.clone().filter(|b| !b.is_empty()) else {
             continue;
         };
         if state
             .sandbox_manager
-            .is_registered_for_account(account_epoch, &record.handle)?
+            .is_registered_for_account(account, &record.handle)?
         {
             return Ok(branch);
         }
         fallback.get_or_insert(branch);
     }
-    state
-        .sandbox_manager
-        .validate_account_epoch(account_epoch)?;
+    state.sandbox_manager.validate_sandbox_account(account)?;
     Ok(fallback.unwrap_or_else(|| EPHEMERAL_BRANCH.to_string()))
 }
 
@@ -282,6 +280,13 @@ async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &B
     {
         return error.into_response();
     }
+    let initial_account = match state
+        .sandbox_manager
+        .sandbox_account(initial_account_epoch, &scope)
+    {
+        Ok(account) => account,
+        Err(error) => return manager_error(error).into_response(),
+    };
     let initial_identity_generation = initial_account_guard.generation();
     drop(initial_account_guard);
 
@@ -316,8 +321,13 @@ async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &B
         Err(error) => return error.into_response(),
     };
     let account_epoch = state.sandbox_manager.account_epoch();
+    let account = match state.sandbox_manager.sandbox_account(account_epoch, &scope) {
+        Ok(account) => account,
+        Err(error) => return manager_error(error).into_response(),
+    };
     if _account_guard.generation() != initial_identity_generation
-        || account_epoch != initial_account_epoch
+        || account.epoch() != initial_account.epoch()
+        || account.storage_key() != initial_account.storage_key()
     {
         return ApiError::conflict(
             "Your Studio account changed while this request was running. Try again.",
@@ -341,23 +351,23 @@ async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &B
             "items" => {
                 if let Some(items) = answer.get_mut("items").and_then(Value::as_array_mut) {
                     for entity in items.iter_mut() {
-                        enrich_entity(state, entity, &user_id, account_epoch)?;
+                        enrich_entity(state, entity, &user_id, &account)?;
                     }
                 }
             }
             "item" => {
                 if let Some(item) = answer.get_mut("item") {
-                    enrich_entity(state, item, &user_id, account_epoch)?;
+                    enrich_entity(state, item, &user_id, &account)?;
                 }
             }
-            _ => enrich_entity(state, &mut answer, &user_id, account_epoch)?,
+            _ => enrich_entity(state, &mut answer, &user_id, &account)?,
         }
         Ok(())
     })();
     if let Err(error) = enrich_result {
         return manager_error(error).into_response();
     }
-    if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+    if let Err(error) = state.sandbox_manager.validate_sandbox_account(&account) {
         return manager_error(error).into_response();
     }
     Json(answer).into_response()
@@ -368,7 +378,7 @@ fn enrich_entity(
     state: &AppState,
     entity: &mut Value,
     user_id: &str,
-    account_epoch: AccountEpoch,
+    account: &SandboxAccount,
 ) -> Result<(), String> {
     let Some(id) = entity.get("id").and_then(Value::as_str).map(str::to_string) else {
         return Ok(());
@@ -380,7 +390,7 @@ fn enrich_entity(
     // this machine's own. `user-desktop` entries from OTHER users survive —
     // they are what tells the shell a teammate's desktop owns a branch.
     strip_hosted_sandbox_entries(entity);
-    let local = local_sandbox_entries(state, &id, account_epoch)?;
+    let local = local_sandbox_entries(state, &id, account)?;
     if !local.is_empty() {
         merge_sandbox_map(entity, user_id, local);
     }
@@ -429,7 +439,7 @@ fn strip_hosted_sandbox_entries(entity: &mut Value) {
 pub(super) fn local_sandbox_sessions(
     state: &AppState,
     virtual_mcp_id: &str,
-    account_epoch: AccountEpoch,
+    account: &SandboxAccount,
 ) -> Result<Vec<Value>, String> {
     if virtual_mcp_id.is_empty() {
         return Ok(Vec::new());
@@ -437,7 +447,7 @@ pub(super) fn local_sandbox_sessions(
     let mut sessions = Vec::new();
     for record in state
         .sandbox_manager
-        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
+        .records_for_virtual_mcp_for_account(account, virtual_mcp_id)?
     {
         let handle = record.handle.clone();
         let stored = record.config.branch.as_deref();
@@ -450,7 +460,7 @@ pub(super) fn local_sandbox_sessions(
         }
         // A preview origin is only meaningful while something is serving it,
         // and it is per-handle: each sandbox has its own host.
-        let preview = preview_url(&handle);
+        let preview = preview_url(account.storage_key(), &handle);
         let preview_url = (record.observed_status == "running")
             .then_some(preview.as_deref())
             .flatten();
@@ -469,16 +479,14 @@ pub(super) fn local_sandbox_sessions(
             },
         ));
     }
-    state
-        .sandbox_manager
-        .validate_account_epoch(account_epoch)?;
+    state.sandbox_manager.validate_sandbox_account(account)?;
     Ok(sessions)
 }
 
 fn local_sandbox_entries(
     state: &AppState,
     virtual_mcp_id: &str,
-    account_epoch: AccountEpoch,
+    account: &SandboxAccount,
 ) -> Result<Vec<(String, Value)>, String> {
     if virtual_mcp_id.is_empty() {
         return Ok(Vec::new());
@@ -486,7 +494,7 @@ fn local_sandbox_entries(
     let mut entries = Vec::new();
     for record in state
         .sandbox_manager
-        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
+        .records_for_virtual_mcp_for_account(account, virtual_mcp_id)?
     {
         let handle = record.handle;
         let config = record.config;
@@ -516,10 +524,7 @@ fn local_sandbox_entries(
         // Omitting a dead sandbox is self-correcting: the shell auto-starts,
         // `SANDBOX_START` provisions it here, and the next read publishes
         // it with a preview origin that is actually listening.
-        let Some(sandbox) = state
-            .sandbox_manager
-            .get_for_account(account_epoch, &handle)?
-        else {
+        let Some(sandbox) = state.sandbox_manager.get_for_account(account, &handle)? else {
             continue;
         };
         if sandbox.tasks.is_admission_closed() {
@@ -535,16 +540,14 @@ fn local_sandbox_entries(
             branch,
             json!({
                 "sandboxHandle": handle,
-                "previewUrl": preview_url(&handle),
+                "previewUrl": preview_url(account.storage_key(), &handle),
                 // For user-desktop the daemon IS the preview origin.
-                "sandboxApiUrl": preview_url(&handle),
+                "sandboxApiUrl": preview_url(account.storage_key(), &handle),
                 "sandboxProviderKind": "user-desktop",
             }),
         ));
     }
-    state
-        .sandbox_manager
-        .validate_account_epoch(account_epoch)?;
+    state.sandbox_manager.validate_sandbox_account(account)?;
     Ok(entries)
 }
 
@@ -623,7 +626,7 @@ async fn delete(state: &AppState, org: &str, body: &Bytes) -> Response {
     };
 
     let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        authorization.account_epoch(),
+        authorization.account(),
         virtual_mcp_id,
         branch,
     ) {
@@ -638,12 +641,12 @@ async fn delete(state: &AppState, org: &str, body: &Bytes) -> Response {
     let outcome = if remove_worktree {
         state
             .sandbox_manager
-            .remove_registered_for_account(authorization.account_epoch(), &handle)
+            .remove_registered_for_account(authorization.account(), &handle)
             .await
     } else {
         state
             .sandbox_manager
-            .delete_registered_for_account(authorization.account_epoch(), &handle)
+            .delete_registered_for_account(authorization.account(), &handle)
             .await
     };
     match outcome {
@@ -677,7 +680,8 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         Ok(authorization) => authorization,
         Err(error) => return error.into_response(),
     };
-    let initial_account_epoch = initial_authorization.account_epoch();
+    let initial_account = initial_authorization.account().clone();
+    let initial_account_epoch = initial_account.epoch();
     let initial_identity_generation = initial_authorization.identity_generation();
     drop(initial_authorization);
 
@@ -696,7 +700,7 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     // identifiers. The response is discarded before any field is inspected.
     if let Err(error) = state
         .sandbox_manager
-        .validate_account_epoch(initial_account_epoch)
+        .validate_sandbox_account(&initial_account)
     {
         return manager_error(error).into_response();
     }
@@ -749,7 +753,8 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         Ok(authorization) => authorization,
         Err(error) => return error.into_response(),
     };
-    if authorization.account_epoch() != initial_account_epoch
+    if authorization.account().epoch() != initial_account.epoch()
+        || authorization.account().storage_key() != initial_account.storage_key()
         || authorization.identity_generation() != initial_identity_generation
     {
         return manager_error("sandbox request belongs to a stale account epoch".to_string())
@@ -757,12 +762,12 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     }
     if let Err(error) = state
         .sandbox_manager
-        .validate_account_epoch(initial_account_epoch)
+        .validate_sandbox_account(authorization.account())
     {
         return manager_error(error).into_response();
     }
     let existed = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        authorization.account_epoch(),
+        authorization.account(),
         virtual_mcp_id,
         &resolved_branch,
     ) {
@@ -771,7 +776,7 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     };
     let sandbox = match state
         .sandbox_manager
-        .try_provision_for_account(authorization.account_epoch(), &config)
+        .try_provision_for_account(authorization.account(), &config)
         .await
     {
         Ok(Some(sandbox)) => sandbox,
@@ -793,13 +798,13 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     // to ask for. Clone/install/start continue on the serialized setup worker
     // where Stop can cancel them.
     let reported_branch =
-        match branch_for_virtual_mcp(state, virtual_mcp_id, authorization.account_epoch()) {
+        match branch_for_virtual_mcp(state, virtual_mcp_id, authorization.account()) {
             Ok(branch) => branch,
             Err(error) => return manager_error(error).into_response(),
         };
 
     Json(json!({
-        "previewUrl": preview_url(&handle),
+        "previewUrl": preview_url(authorization.account().storage_key(), &handle),
         "sandboxHandle": handle,
         "branch": reported_branch,
         "isNewVm": !existed,
@@ -953,11 +958,11 @@ mod tests {
         // Ordering matters: an unbound listener must report no preview URL
         // rather than a bogus `localhost:0`, which the shell would try to load.
         set_preview_port(0);
-        assert_eq!(preview_url("h1"), None);
+        assert_eq!(preview_url("account", "h1"), None);
 
         set_preview_port(51_234);
         assert_eq!(
-            preview_url("h1").as_deref(),
+            preview_url("account", "h1").as_deref(),
             Some("http://localhost:51234/")
         );
         set_preview_port(0);
@@ -983,24 +988,30 @@ mod tests {
     fn handles_share_one_origin_until_a_real_domain_is_configured() {
         set_preview_port(51_234);
         assert_eq!(
-            preview_url("alpha").as_deref(),
+            preview_url("account", "alpha").as_deref(),
             Some("http://localhost:51234/")
         );
-        assert_eq!(preview_url("alpha"), preview_url("beta"));
+        assert_eq!(
+            preview_url("account", "alpha"),
+            preview_url("account", "beta")
+        );
         set_preview_port(0);
     }
 
     /// A registered handle plus the worktree directory the reclaim path
     /// operates on. No clone: these tests are about the dispatch decision, not
     /// about git.
-    fn registered_sandbox(root: &std::path::Path) -> (AppState, String, std::path::PathBuf) {
+    fn registered_sandbox(
+        root: &std::path::Path,
+    ) -> (AppState, SandboxAccount, String, std::path::PathBuf) {
         let state = super::super::test_state(root);
+        let account = state.sandbox_manager.test_account().unwrap();
         let handle = state
             .sandbox_manager
             .register_for_test("https://github.com/acme/site.git", "feature-x");
-        let worktree = crate::sandbox::worktree_root(root, &handle);
+        let worktree = account.storage().worktree_root(&handle).unwrap();
         std::fs::create_dir_all(worktree.join("repo")).unwrap();
-        (state, handle, worktree)
+        (state, account, handle, worktree)
     }
 
     async fn delete_body(state: &AppState, body: Value) -> (StatusCode, Value) {
@@ -1018,7 +1029,7 @@ mod tests {
     #[tokio::test]
     async fn delete_keeps_the_worktree_unless_the_caller_asks_for_it_to_go() {
         let root = tempfile::tempdir().unwrap();
-        let (state, handle, worktree) = registered_sandbox(root.path());
+        let (state, account, handle, worktree) = registered_sandbox(root.path());
 
         for body in [
             json!({ "virtualMcpId": "test-agent", "branch": "feature-x" }),
@@ -1032,7 +1043,7 @@ mod tests {
             assert!(worktree.is_dir(), "stop must never remove the worktree");
             assert!(state
                 .sandbox_manager
-                .is_registered_for_account(state.sandbox_manager.account_epoch(), &handle)
+                .is_registered_for_account(&account, &handle)
                 .unwrap());
         }
     }
@@ -1040,7 +1051,7 @@ mod tests {
     #[tokio::test]
     async fn delete_with_remove_worktree_reclaims_the_directory_and_the_row() {
         let root = tempfile::tempdir().unwrap();
-        let (state, handle, worktree) = registered_sandbox(root.path());
+        let (state, account, handle, worktree) = registered_sandbox(root.path());
 
         let (status, answer) = delete_body(
             &state,
@@ -1053,7 +1064,7 @@ mod tests {
         assert!(!worktree.exists());
         assert!(!state
             .sandbox_manager
-            .is_registered_for_account(state.sandbox_manager.account_epoch(), &handle)
+            .is_registered_for_account(&account, &handle)
             .unwrap());
 
         // And it stays idempotent: the second call finds nothing to do.

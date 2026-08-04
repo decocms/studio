@@ -17,6 +17,7 @@ import {
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   type LocalApi,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -53,7 +54,7 @@ const CASES: Case[] = [
 describeLocalApi("local-api e2e: auth matrix", () => {
   let a: LocalApi;
   beforeAll(async () => {
-    a = await startLocalApi();
+    a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
   }, HOOK_TIMEOUT_MS);
   afterAll(async () => {
     await stopLocalApi(a);

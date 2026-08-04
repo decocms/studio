@@ -68,12 +68,10 @@ pub(super) async fn try_dispatch(
         Ok(authorization) => authorization,
         Err(error) => return Some(error.into_response()),
     };
-    let account_epoch = authorization.account_epoch();
-
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
     let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        account_epoch,
+        authorization.account(),
         &virtual_mcp_id,
         &branch,
     ) {
@@ -88,7 +86,7 @@ pub(super) async fn try_dispatch(
     };
     let sandbox = match state
         .sandbox_manager
-        .adopt_for_account(account_epoch, &handle)
+        .adopt_for_account(authorization.account(), &handle)
         .await
     {
         Ok(Some(sandbox)) => sandbox,
@@ -164,7 +162,7 @@ async fn route(
     authorization: Authorization,
 ) -> Response {
     let state = State(target.clone());
-    let account_epoch = authorization.account_epoch();
+    let account = authorization.account().clone();
     // The handle MUST be carried in the header, not left to `state_for_sandbox`.
     //
     // That helper retargets `repo_dir`/`config`/`setup`/`tasks`, which is
@@ -187,7 +185,7 @@ async fn route(
             headers,
             AxumPath((*name).to_string()),
             body,
-            account_epoch,
+            account.clone(),
             authorization,
         )
         .await
@@ -220,21 +218,21 @@ async fn route(
         // lock. Without holding it here too, a reclaim can `rm -rf` the
         // worktree out from under an in-flight publish/discard/rebase.
         (&Method::POST, ["git", "publish"]) => {
-            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let handle_lock = target.sandbox_manager.handle_lock(&account, handle);
             let _guard = handle_lock.lock().await;
             crate::routes::git::publish(state, body)
                 .await
                 .into_response()
         }
         (&Method::POST, ["git", "discard"]) => {
-            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let handle_lock = target.sandbox_manager.handle_lock(&account, handle);
             let _guard = handle_lock.lock().await;
             crate::routes::git::discard(state, body)
                 .await
                 .into_response()
         }
         (&Method::POST, ["git", "rebase"]) => {
-            let handle_lock = target.sandbox_manager.handle_lock(handle);
+            let handle_lock = target.sandbox_manager.handle_lock(&account, handle);
             let _guard = handle_lock.lock().await;
             crate::routes::git::rebase(state, body)
                 .await
@@ -249,22 +247,22 @@ async fn route(
         (&Method::POST, ["git", "judge-review"]) => super::git_assist::judge_review(),
 
         (&Method::POST, ["setup", "clone"]) => {
-            crate::routes::setup::clone_for_account(target.clone(), headers, account_epoch)
+            crate::routes::setup::clone_for_account(target.clone(), headers, account.clone())
                 .await
                 .into_response()
         }
         (&Method::POST, ["setup", "install"]) => {
-            crate::routes::setup::install_for_account(target.clone(), headers, account_epoch)
+            crate::routes::setup::install_for_account(target.clone(), headers, account.clone())
                 .await
                 .into_response()
         }
         (&Method::POST, ["setup", "start"]) => {
-            crate::routes::setup::start_for_account(target.clone(), headers, account_epoch)
+            crate::routes::setup::start_for_account(target.clone(), headers, account.clone())
                 .await
                 .into_response()
         }
         (&Method::POST, ["setup", "stop"]) => {
-            crate::routes::setup::stop_for_account(target.clone(), headers, account_epoch)
+            crate::routes::setup::stop_for_account(target.clone(), headers, account.clone())
                 .await
                 .into_response()
         }
@@ -273,7 +271,7 @@ async fn route(
             target.clone(),
             headers,
             (*name).to_string(),
-            _authorization.account_epoch(),
+            account.clone(),
         )
         .await
         .into_response(),
@@ -286,7 +284,7 @@ async fn route(
         .into_response(),
     };
     if revalidate_response {
-        if let Err(error) = target.sandbox_manager.validate_account_epoch(account_epoch) {
+        if let Err(error) = target.sandbox_manager.validate_sandbox_account(&account) {
             return manager_error(error).into_response();
         }
     }

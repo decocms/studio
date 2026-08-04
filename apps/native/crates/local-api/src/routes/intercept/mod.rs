@@ -127,7 +127,23 @@ pub async fn try_intercept(
     // Idempotent and O(1) — an org that is ready, in flight, or cooling off
     // returns immediately, which matters because this runs on every request.
     if is_org_scoped(org, &rest) {
-        crate::sandbox::org_mount::warm(&state.app_root, org);
+        match crate::routes::sandbox_account::authorize(state).await {
+            Ok(authorization) => {
+                if let Err(error) = state
+                    .sandbox_manager
+                    .warm_org_mount(authorization.account(), org)
+                {
+                    tracing::debug!(%error, org, "could not warm account-scoped org filesystem");
+                }
+            }
+            Err(error) => {
+                tracing::debug!(
+                    status = %error.status,
+                    org,
+                    "could not authorize org filesystem warmup"
+                );
+            }
+        }
     }
 
     if let Some(response) = sandbox_fs::try_dispatch(state, method, org, &rest, body).await {

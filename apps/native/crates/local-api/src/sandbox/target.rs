@@ -70,13 +70,13 @@ impl AppState {
     /// plan D1/O3). An empty handle string is treated as absent.
     pub(crate) fn resolve_sandbox_target_for_account(
         &self,
-        epoch: crate::sandbox::manager::AccountEpoch,
+        account: &crate::sandbox::manager::SandboxAccount,
         handle: Option<&str>,
     ) -> Result<SandboxTarget, String> {
         let handle = handle.filter(|s| !s.is_empty());
         let sandbox = match handle {
-            Some(h) => self.sandbox_manager.get_for_account(epoch, h)?,
-            None => self.sandbox_manager.active_for_account(epoch)?,
+            Some(h) => self.sandbox_manager.get_for_account(account, h)?,
+            None => self.sandbox_manager.active_for_account(account)?,
         };
         Ok(match sandbox {
             Some(sb) => SandboxTarget::from_sandbox(&sb),
@@ -174,10 +174,11 @@ mod tests {
         // bare origin only needs to outlive this call — `dir` dropping at the
         // end of the test is fine (the async install/start pipeline operates
         // on the already-cloned workdir, never the origin again).
+        let account = state.sandbox_manager.test_account().unwrap();
         state
             .sandbox_manager
             .ensure_for_account(
-                state.sandbox_manager.account_epoch(),
+                &account,
                 &GitSandboxConfig {
                     virtual_mcp_id: vmcp.to_string(),
                     clone_url: bare_str.to_string(),
@@ -193,10 +194,10 @@ mod tests {
     async fn known_handle_resolves_to_that_sandboxs_arcs() {
         let state = fresh_state();
         let sandbox = ensure_one_sandbox(&state, "vmcp-target-known").await;
-        let epoch = state.sandbox_manager.account_epoch();
+        let account = state.sandbox_manager.test_account().unwrap();
 
         let target = state
-            .resolve_sandbox_target_for_account(epoch, Some(&sandbox.handle))
+            .resolve_sandbox_target_for_account(&account, Some(&sandbox.handle))
             .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert!(Arc::ptr_eq(&target.tasks, &sandbox.tasks));
@@ -211,10 +212,10 @@ mod tests {
         // `ensure()` marks its handle active, so a headerless resolve follows
         // the active sandbox — NOT the global orchestrator.
         let sandbox = ensure_one_sandbox(&state, "vmcp-target-active").await;
-        let epoch = state.sandbox_manager.account_epoch();
+        let account = state.sandbox_manager.test_account().unwrap();
 
         let target = state
-            .resolve_sandbox_target_for_account(epoch, None)
+            .resolve_sandbox_target_for_account(&account, None)
             .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert!(Arc::ptr_eq(&target.tasks, &sandbox.tasks));
@@ -224,8 +225,9 @@ mod tests {
     #[test]
     fn no_handle_without_active_resolves_to_the_global_target() {
         let state = fresh_state();
+        let account = state.sandbox_manager.test_account().unwrap();
         let target = state
-            .resolve_sandbox_target_for_account(state.sandbox_manager.account_epoch(), None)
+            .resolve_sandbox_target_for_account(&account, None)
             .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         assert!(Arc::ptr_eq(&target.tasks, &state.tasks));
@@ -241,12 +243,10 @@ mod tests {
         // resolves to global (the observability divergence from `dev_port`,
         // which would return `None` here) — see this module's doc.
         let _sandbox = ensure_one_sandbox(&state, "vmcp-target-unknown").await;
+        let account = state.sandbox_manager.test_account().unwrap();
 
         let target = state
-            .resolve_sandbox_target_for_account(
-                state.sandbox_manager.account_epoch(),
-                Some("never-ensured-handle"),
-            )
+            .resolve_sandbox_target_for_account(&account, Some("never-ensured-handle"))
             .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         assert!(Arc::ptr_eq(&target.tasks, &state.tasks));
@@ -256,9 +256,10 @@ mod tests {
     #[test]
     fn empty_handle_is_treated_as_absent() {
         let state = fresh_state();
+        let account = state.sandbox_manager.test_account().unwrap();
         // Empty string -> global (no active sandbox in this fixture).
         let target = state
-            .resolve_sandbox_target_for_account(state.sandbox_manager.account_epoch(), Some(""))
+            .resolve_sandbox_target_for_account(&account, Some(""))
             .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         // sanity: the global setup is idle

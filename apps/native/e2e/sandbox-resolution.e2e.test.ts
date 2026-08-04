@@ -33,6 +33,7 @@ import {
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
   listTasks,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -124,7 +125,7 @@ describeLocalApi(
     beforeAll(async () => {
       fixture = setupFixtureRepo();
       handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-      a = await startLocalApi();
+      a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       expect(
         await ensureSandbox(a, virtualMcpId, fixture.bareDir, "main"),
       ).toBe(handle);
@@ -186,7 +187,7 @@ describeLocalApi(
     });
 
     it("GET /_sandbox/repo-dir headerless is a 404 when NO sandbox has ever been dispatched (never the unrelated global repo_dir)", async () => {
-      const fresh = await startLocalApi();
+      const fresh = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       try {
         const res = await fetch(url(fresh, "/_sandbox/repo-dir"), {
           headers: jsonAuthHeaders(),
@@ -231,7 +232,7 @@ describeLocalApi(
     });
 
     it('byte-parity guard: POST /_sandbox/setup/start headerless on a FRESH instance (nothing ever dispatched) is still 200 { enqueued: "start" } — never regress the pinned daemon.git.e2e.test.ts "setup routes" oracle', async () => {
-      const fresh = await startLocalApi();
+      const fresh = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       try {
         const res = await fetch(url(fresh, "/_sandbox/setup/start"), {
           method: "POST",

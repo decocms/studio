@@ -57,7 +57,6 @@ pub(super) async fn try_dispatch(
         Ok(authorization) => authorization,
         Err(error) => return Some(error.into_response()),
     };
-    let account_epoch = authorization.account_epoch();
     if *method != Method::POST {
         return Some(
             ApiError::new(
@@ -75,7 +74,7 @@ pub(super) async fn try_dispatch(
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
     let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        account_epoch,
+        authorization.account(),
         &virtual_mcp_id,
         &branch,
     ) {
@@ -91,7 +90,7 @@ pub(super) async fn try_dispatch(
 
     let record = match state
         .sandbox_manager
-        .registry_record_for_account(account_epoch, &handle)
+        .registry_record_for_account(authorization.account(), &handle)
     {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -109,7 +108,7 @@ pub(super) async fn try_dispatch(
 
     let sandbox = match state
         .sandbox_manager
-        .adopt_for_account(account_epoch, &handle)
+        .adopt_for_account(authorization.account(), &handle)
         .await
     {
         Ok(Some(sandbox)) => sandbox,
@@ -167,7 +166,10 @@ pub(super) async fn try_dispatch(
         _ => unreachable!("operation was checked against OPERATIONS"),
     };
     if read_only {
-        if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+        if let Err(error) = state
+            .sandbox_manager
+            .validate_sandbox_account(authorization.account())
+        {
             return Some(manager_error(error).into_response());
         }
     }
@@ -292,10 +294,11 @@ mod tests {
         }
 
         let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+        let account = state.sandbox_manager.test_account().unwrap();
         state
             .sandbox_manager
             .ensure_for_terminal(
-                state.sandbox_manager.account_epoch(),
+                &account,
                 &GitSandboxConfig {
                     virtual_mcp_id: virtual_mcp_id.to_string(),
                     clone_url: bare_string,
@@ -355,20 +358,21 @@ mod tests {
         let sandbox = ensure_sandbox(&first_state, "vir_restart", "main").await;
         let workdir = sandbox.workdir.clone();
         let handle = sandbox.handle.clone();
+        let first_account = first_state.sandbox_manager.test_account().unwrap();
         first_state
             .sandbox_manager
-            .stop_registered_for_account(first_state.sandbox_manager.account_epoch(), &handle)
+            .stop_registered_for_account(&first_account, &handle)
             .await
             .expect("stop registered sandbox");
         drop(sandbox);
         drop(first_state);
 
         let restarted_state = super::super::test_state(root.path());
-        let restarted_epoch = restarted_state.sandbox_manager.account_epoch();
+        let restarted_account = restarted_state.sandbox_manager.test_account().unwrap();
         assert!(
             restarted_state
                 .sandbox_manager
-                .get_for_account(restarted_epoch, &handle)
+                .get_for_account(&restarted_account, &handle)
                 .unwrap()
                 .is_none(),
             "fresh manager starts with an empty live-object cache"
@@ -393,7 +397,7 @@ mod tests {
         assert!(
             restarted_state
                 .sandbox_manager
-                .get_for_account(restarted_epoch, &handle)
+                .get_for_account(&restarted_account, &handle)
                 .unwrap()
                 .is_some(),
             "the durable sandbox was metadata-adopted"
@@ -405,13 +409,13 @@ mod tests {
 
         let config = restarted_state
             .sandbox_manager
-            .registry_record_for_account(restarted_epoch, &handle)
+            .registry_record_for_account(&restarted_account, &handle)
             .unwrap()
             .unwrap()
             .config;
         let resumed = restarted_state
             .sandbox_manager
-            .provision_for_account(restarted_epoch, &config)
+            .provision_for_account(&restarted_account, &config)
             .await
             .expect("explicit provision installs a fresh open generation");
         assert!(!resumed.tasks.is_admission_closed());

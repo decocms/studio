@@ -270,7 +270,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
         local_api::EmbeddedOptions::new(control.expected_host(), browser_origin.clone());
     embedded.listener_host = Some(control.listener_host());
     embedded.ui_assets = bundled_ui;
-    embedded.preview_cookie_selftest = selftest_mode;
+    embedded.runtime_selftest = selftest_mode;
     // Built BEFORE StartOptions so the staged-version channel and restart
     // callback exist for local-api's `/api/config` rewrite and
     // `/_local/update/restart` route; the background task itself only spawns

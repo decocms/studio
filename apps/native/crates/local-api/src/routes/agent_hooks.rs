@@ -756,6 +756,8 @@ mod tests {
             mcp_path: "/mcp".to_string(),
             title_environment: harness::title::TitleEnvironment::default(),
             expected_provider_session_id: None,
+            account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+            identity_generation: 0,
         });
         let observation =
             |event_type: &str, properties: serde_json::Value, turn: Option<(u64, &str)>| {

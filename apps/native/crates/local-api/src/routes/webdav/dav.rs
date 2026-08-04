@@ -8,7 +8,7 @@
 //! `propResponse`, `multistatus`, `parseRange`), with one deliberate
 //! addition: the TS daemon ran ONE server per mounted volume at the origin
 //! root, so its hrefs started at `/`. Here every volume is served under a
-//! shared prefix (`/_sandbox/orgfs/<org>/<volume>`), and rclone's webdav
+//! shared prefix (`/_sandbox/orgfs/<account-id>/<org>/<volume>`), and rclone's webdav
 //! backend computes an entry's remote name by slicing its endpoint path off
 //! the front of `href` (`backend/webdav/webdav.go`'s `listAll`). So hrefs
 //! MUST carry that prefix or every listing resolves to the wrong name.
@@ -37,19 +37,24 @@ pub struct OrgFsNode {
 /// in-volume path, and the URL prefix every `href` in the response must carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestTarget {
+    /// Opaque digest of the account storage root that owns this mount.
+    pub account_id: String,
     pub org: String,
     pub volume: String,
     /// Decoded, normalized in-volume path (`""` = volume root).
     pub path: String,
-    /// e.g. `/_sandbox/orgfs/acme/home` — no trailing slash.
+    /// e.g. `/_sandbox/orgfs/<account-id>/acme/home` — no trailing slash.
     pub mount_prefix: String,
 }
 
 /// Why a request path could not be resolved to a volume entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetError {
-    /// Fewer than `<org>/<volume>` segments — not addressable.
+    /// Fewer than `<account-id>/<org>/<volume>` segments — not addressable.
     NotAVolume,
+    /// The account digest, organization, or volume is not a canonical mount
+    /// segment. Reject this before authentication or request-body reads.
+    InvalidMount,
     /// A `.` or `..` segment. `OrgFs` normalizes these upstream anyway;
     /// refusing here keeps the local surface from having an opinion at all.
     Traversal,
@@ -69,28 +74,75 @@ pub fn xml_escape(s: &str) -> String {
     out
 }
 
-fn decode(segment: &str) -> String {
-    urlencoding::decode(segment)
-        .map(|s| s.into_owned())
-        .unwrap_or_else(|_| segment.to_string())
+fn decode(segment: &str) -> Option<String> {
+    let bytes = segment.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return None;
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    urlencoding::decode(segment).ok().map(|s| s.into_owned())
 }
 
-/// Resolve `<org>/<volume>/<in-volume path>` from the router-relative path,
+const MAX_RAW_PATH_BYTES: usize = 16 * 1024;
+const MAX_DECODED_PATH_BYTES: usize = 4 * 1024;
+const MAX_SEGMENT_BYTES: usize = 255;
+
+fn is_safe_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment.len() <= MAX_SEGMENT_BYTES
+        && segment != "."
+        && segment != ".."
+        && !segment.contains(['/', '\\', '\0'])
+}
+
+fn is_account_id(segment: &str) -> bool {
+    segment.len() == 64
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Resolve `<account-id>/<org>/<volume>/<in-volume path>` from the
+/// router-relative path,
 /// deriving the href prefix from the original (pre-`nest()`) path so this
 /// module never hardcodes where it is mounted.
 pub fn parse_target(
     original_path: &str,
     relative_path: &str,
 ) -> Result<RequestTarget, TargetError> {
+    if original_path.len() > MAX_RAW_PATH_BYTES || relative_path.len() > MAX_RAW_PATH_BYTES {
+        return Err(TargetError::Traversal);
+    }
     let rel: Vec<&str> = relative_path.split('/').filter(|s| !s.is_empty()).collect();
-    if rel.len() < 2 {
+    if rel.len() < 3 {
         return Err(TargetError::NotAVolume);
     }
-    let rest = &rel[2..];
+    let account_id = decode(rel[0]).ok_or(TargetError::InvalidMount)?;
+    let org = decode(rel[1]).ok_or(TargetError::InvalidMount)?;
+    let volume = decode(rel[2]).ok_or(TargetError::InvalidMount)?;
+    if rel[0] != account_id
+        || !is_account_id(&account_id)
+        || !is_safe_segment(&org)
+        || !is_safe_segment(&volume)
+        || !crate::sandbox::org_view::ORG_VOLUMES.contains(&volume.as_str())
+    {
+        return Err(TargetError::InvalidMount);
+    }
+    let rest = &rel[3..];
     let mut segments = Vec::with_capacity(rest.len());
     for raw in rest {
-        let decoded = decode(raw);
-        if decoded == "." || decoded == ".." {
+        let decoded = decode(raw).ok_or(TargetError::Traversal)?;
+        if !is_safe_segment(&decoded) {
             return Err(TargetError::Traversal);
         }
         segments.push(decoded);
@@ -100,10 +152,16 @@ pub fn parse_target(
     let prefix_len = original.len().saturating_sub(rest.len());
     let mount_prefix = format!("/{}", original[..prefix_len].join("/"));
 
+    let path = segments.join("/");
+    if path.len() > MAX_DECODED_PATH_BYTES {
+        return Err(TargetError::Traversal);
+    }
+
     Ok(RequestTarget {
-        org: decode(rel[0]),
-        volume: decode(rel[1]),
-        path: segments.join("/"),
+        account_id,
+        org,
+        volume,
+        path,
         mount_prefix,
     })
 }
@@ -279,6 +337,9 @@ pub fn parse_destination(
     host: Option<&str>,
 ) -> Result<String, u16> {
     let raw = destination.trim();
+    if raw.len() > MAX_RAW_PATH_BYTES {
+        return Err(400);
+    }
     let path = match raw
         .strip_prefix("http://")
         .or_else(|| raw.strip_prefix("https://"))
@@ -304,18 +365,24 @@ pub fn parse_destination(
     }
     let mut segments = Vec::new();
     for raw in rest.split('/').filter(|s| !s.is_empty()) {
-        let decoded = decode(raw);
-        if decoded == "." || decoded == ".." {
+        let decoded = decode(raw).ok_or(400u16)?;
+        if !is_safe_segment(&decoded) {
             return Err(400);
         }
         segments.push(decoded);
     }
-    Ok(segments.join("/"))
+    let path = segments.join("/");
+    if path.len() > MAX_DECODED_PATH_BYTES {
+        return Err(400);
+    }
+    Ok(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ACCOUNT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     fn node(path: &str, is_dir: bool, size: u64) -> OrgFsNode {
         OrgFsNode {
@@ -337,33 +404,46 @@ mod tests {
     #[test]
     fn parse_target_splits_org_volume_and_path() {
         let t = parse_target(
-            "/_sandbox/orgfs/acme/home/docs/a.md",
-            "/acme/home/docs/a.md",
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/docs/a.md",
+            "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/docs/a.md",
         )
         .unwrap();
+        assert_eq!(t.account_id, ACCOUNT);
         assert_eq!(t.org, "acme");
         assert_eq!(t.volume, "home");
         assert_eq!(t.path, "docs/a.md");
-        assert_eq!(t.mount_prefix, "/_sandbox/orgfs/acme/home");
+        assert_eq!(
+            t.mount_prefix,
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home"
+        );
     }
 
     #[test]
     fn parse_target_handles_the_volume_root_with_and_without_a_trailing_slash() {
         for (original, relative) in [
-            ("/_sandbox/orgfs/acme/home", "/acme/home"),
-            ("/_sandbox/orgfs/acme/home/", "/acme/home/"),
+            (
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+            ),
+            (
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/",
+            ),
         ] {
             let t = parse_target(original, relative).unwrap();
             assert_eq!(t.path, "");
-            assert_eq!(t.mount_prefix, "/_sandbox/orgfs/acme/home");
+            assert_eq!(
+                t.mount_prefix,
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home"
+            );
         }
     }
 
     #[test]
     fn parse_target_decodes_percent_encoded_segments() {
         let t = parse_target(
-            "/_sandbox/orgfs/acme/home/my%20docs/a%2Bb.md",
-            "/acme/home/my%20docs/a%2Bb.md",
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/my%20docs/a%2Bb.md",
+            "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/my%20docs/a%2Bb.md",
         )
         .unwrap();
         assert_eq!(t.path, "my docs/a+b.md");
@@ -372,33 +452,119 @@ mod tests {
     #[test]
     fn parse_target_rejects_a_bare_org_and_traversal_segments() {
         assert_eq!(
-            parse_target("/_sandbox/orgfs/acme", "/acme"),
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme"
+            ),
             Err(TargetError::NotAVolume)
         );
         assert_eq!(
-            parse_target("/_sandbox/orgfs/acme/home/../x", "/acme/home/../x"),
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/../x",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/../x"
+            ),
             Err(TargetError::Traversal)
         );
         assert_eq!(
-            parse_target("/_sandbox/orgfs/acme/home/%2e%2e/x", "/acme/home/%2e%2e/x"),
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/%2e%2e/x",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/%2e%2e/x"
+            ),
+            Err(TargetError::Traversal)
+        );
+        assert_eq!(
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%2Fb",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%2Fb"
+            ),
+            Err(TargetError::Traversal)
+        );
+        assert_eq!(
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%5Cb",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%5Cb"
+            ),
+            Err(TargetError::Traversal)
+        );
+        assert_eq!(
+            parse_target(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%ZZb",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%ZZb"
+            ),
+            Err(TargetError::Traversal)
+        );
+
+        let oversized_segment = "x".repeat(MAX_SEGMENT_BYTES + 1);
+        let relative = format!("/{ACCOUNT}/acme/home/{oversized_segment}");
+        let original = format!("/_sandbox/orgfs{relative}");
+        assert_eq!(
+            parse_target(&original, &relative),
             Err(TargetError::Traversal)
         );
     }
 
     #[test]
+    fn parse_target_rejects_noncanonical_mount_segments() {
+        for (original, relative) in [
+            (
+                "/_sandbox/orgfs/short/acme/home",
+                "/short/acme/home",
+            ),
+            (
+                "/_sandbox/orgfs/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/acme/home",
+                "/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/acme/home",
+            ),
+            (
+                "/_sandbox/orgfs/%61aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+                "/%61aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+            ),
+            (
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme%2Fother/home",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme%2Fother/home",
+            ),
+            (
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/public-skills",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/public-skills",
+            ),
+            (
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme%ZZ/home",
+                "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme%ZZ/home",
+            ),
+        ] {
+            assert_eq!(
+                parse_target(original, relative),
+                Err(TargetError::InvalidMount),
+                "{relative} must not name a mount"
+            );
+        }
+    }
+
+    #[test]
     fn href_carries_the_mount_prefix_and_encodes_each_segment() {
         assert_eq!(
-            href_for("/_sandbox/orgfs/acme/home", "my docs/a.md", false),
-            "/_sandbox/orgfs/acme/home/my%20docs/a.md"
+            href_for(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+                "my docs/a.md",
+                false
+            ),
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/my%20docs/a.md"
         );
         assert_eq!(
-            href_for("/_sandbox/orgfs/acme/home", "my docs", true),
-            "/_sandbox/orgfs/acme/home/my%20docs/"
+            href_for(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+                "my docs",
+                true
+            ),
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/my%20docs/"
         );
         // The volume root is a collection: prefix plus exactly one slash.
         assert_eq!(
-            href_for("/_sandbox/orgfs/acme/home", "", true),
-            "/_sandbox/orgfs/acme/home/"
+            href_for(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home",
+                "",
+                true
+            ),
+            "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/"
         );
     }
 
@@ -468,33 +634,41 @@ mod tests {
 
     #[test]
     fn destination_resolves_absolute_urls_and_bare_paths() {
-        let prefix = "/_sandbox/orgfs/acme/home";
+        let prefix = "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home";
         assert_eq!(
             parse_destination(
-                "http://127.0.0.1:4000/_sandbox/orgfs/acme/home/b%20.md",
+                "http://127.0.0.1:4000/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/b%20.md",
                 prefix,
                 Some("127.0.0.1:4000")
             ),
             Ok("b .md".to_string())
         );
         assert_eq!(
-            parse_destination("/_sandbox/orgfs/acme/home/docs/b.md", prefix, None),
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/docs/b.md",
+                prefix,
+                None
+            ),
             Ok("docs/b.md".to_string())
         );
         // Destination == the volume root.
         assert_eq!(
-            parse_destination("/_sandbox/orgfs/acme/home/", prefix, None),
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/",
+                prefix,
+                None
+            ),
             Ok(String::new())
         );
     }
 
     #[test]
     fn destination_outside_this_mount_is_a_bad_gateway() {
-        let prefix = "/_sandbox/orgfs/acme/home";
+        let prefix = "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home";
         // Different host.
         assert_eq!(
             parse_destination(
-                "http://evil.example/_sandbox/orgfs/acme/home/b.md",
+                "http://evil.example/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/b.md",
                 prefix,
                 Some("127.0.0.1:4000")
             ),
@@ -502,18 +676,48 @@ mod tests {
         );
         // Different volume.
         assert_eq!(
-            parse_destination("/_sandbox/orgfs/acme/outputs/b.md", prefix, None),
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/outputs/b.md",
+                prefix,
+                None
+            ),
             Err(502)
         );
         // Prefix match must land on a segment boundary.
         assert_eq!(
-            parse_destination("/_sandbox/orgfs/acme/homework/b.md", prefix, None),
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/homework/b.md",
+                prefix,
+                None
+            ),
             Err(502)
         );
         assert_eq!(
-            parse_destination("/_sandbox/orgfs/acme/home/../x", prefix, None),
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/../x",
+                prefix,
+                None
+            ),
             Err(400)
         );
+        assert_eq!(
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%2Fb",
+                prefix,
+                None
+            ),
+            Err(400)
+        );
+        assert_eq!(
+            parse_destination(
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/a%5Cb",
+                prefix,
+                None
+            ),
+            Err(400)
+        );
+        let oversized = format!("{prefix}/{}", "x".repeat(MAX_SEGMENT_BYTES + 1));
+        assert_eq!(parse_destination(&oversized, prefix, None), Err(400));
     }
 
     #[test]

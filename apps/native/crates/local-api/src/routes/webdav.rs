@@ -10,10 +10,11 @@
 //! depends on, so they are reproduced verbatim; see `dav.rs` for the pure
 //! translation half (and the one deliberate divergence: hrefs carry this
 //! router's mount prefix, because the daemon served one volume per origin
-//! root and this serves every volume under `/_sandbox/orgfs/:org/:volume`).
+//! root and this serves every volume under
+//! `/_sandbox/orgfs/:account_id/:org/:volume`).
 //!
 //! Mounted as a nested catchall rather than a set of `:param` routes: the
-//! request pathname after `<org>/<volume>` IS the in-volume path, so the
+//! request pathname after `<account-id>/<org>/<volume>` IS the in-volume path, so the
 //! router must not have an opinion about how many segments it has, whether
 //! it ends in a slash, or which extension method addresses it (`PROPFIND`,
 //! `MKCOL` and `MOVE` are not `Method` constants axum can route on).
@@ -56,14 +57,16 @@ mod junk;
 mod org_fs;
 
 use axum::body::{Body, Bytes};
-use axum::extract::OriginalUri;
-use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::extract::{OriginalUri, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use axum::Router;
 
 use self::dav::{OrgFsNode, RequestTarget, TargetError};
-use self::org_fs::{OrgFs, OrgFsError, UpstreamOrgFs};
+use self::org_fs::{OrgFs, OrgFsError, SharedOrgRequestTicket, UpstreamOrgFs};
+use crate::routes::upstream::OrgRequestTicket;
+use crate::sandbox::org_mount::MOUNT_ACCOUNT_HEADER;
 use crate::state::AppState;
 
 type Request = axum::extract::Request;
@@ -84,22 +87,113 @@ pub fn router() -> Router<AppState> {
         .fallback(any(handle))
 }
 
-async fn handle(OriginalUri(original): OriginalUri, req: Request) -> Response {
+async fn handle(
+    State(state): State<AppState>,
+    OriginalUri(original): OriginalUri,
+    req: Request,
+) -> Response {
     let target = match dav::parse_target(original.path(), req.uri().path()) {
         Ok(target) => target,
         Err(TargetError::NotAVolume) => {
             return text(StatusCode::NOT_FOUND, "Not Found");
         }
-        Err(TargetError::Traversal) => {
+        Err(TargetError::Traversal | TargetError::InvalidMount) => {
             return text(StatusCode::BAD_REQUEST, "Bad Request");
         }
     };
-    let fs = UpstreamOrgFs::new(&target.org, &target.volume);
-    serve(&fs, &target, req).await
+    let identity = match WebDavIdentity::capture(&state).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    if target.account_id != identity.account_id
+        || !mount_account_header_matches(req.headers(), &identity.account_id)
+    {
+        return stale_identity_response();
+    }
+
+    let fs = UpstreamOrgFs::new(&target.org, &target.volume, identity.ticket.clone());
+    let response = serve_inner(&fs, &target, req, Some(&identity)).await;
+    identity.fence_response(response).await
+}
+
+struct WebDavIdentity {
+    account_id: String,
+    ticket: SharedOrgRequestTicket,
+}
+
+impl WebDavIdentity {
+    async fn capture(state: &AppState) -> Result<Self, Response> {
+        let ticket = OrgRequestTicket::capture(state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let account_id = ticket.account_id().to_string();
+        Ok(Self {
+            account_id,
+            ticket: std::sync::Arc::new(tokio::sync::Mutex::new(Some(ticket))),
+        })
+    }
+
+    async fn read_body(&self, body: Body, limit: usize) -> Result<Bytes, Response> {
+        let mut guard = self.ticket.lock().await;
+        let Some(ticket) = guard.as_mut() else {
+            return Err(stale_identity_response());
+        };
+        if ticket.validate().is_err() {
+            return Err(stale_identity_response());
+        }
+        let result = tokio::select! {
+            biased;
+            _ = ticket.validation_changed() => return Err(stale_identity_response()),
+            result = axum::body::to_bytes(body, limit) => result,
+        };
+        if ticket.validate_identity().is_err() {
+            return Err(stale_identity_response());
+        }
+        result.map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large"))
+    }
+
+    async fn with_account_commit<T>(&self, commit: impl FnOnce(&str) -> T) -> Result<T, Response> {
+        let mut guard = self.ticket.lock().await;
+        let Some(ticket) = guard.as_mut() else {
+            return Err(stale_identity_response());
+        };
+        ticket
+            .with_account_commit(|| commit(&self.account_id))
+            .map_err(|_| stale_identity_response())
+    }
+
+    async fn fence_response(&self, response: Response) -> Response {
+        let ticket = self.ticket.lock().await.take();
+        match ticket {
+            Some(ticket) => ticket.fence_response(response),
+            None => stale_identity_response(),
+        }
+    }
+}
+
+fn mount_account_header_matches(headers: &HeaderMap, account_id: &str) -> bool {
+    let mut values = headers.get_all(MOUNT_ACCOUNT_HEADER).iter();
+    let matches = values
+        .next()
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == account_id);
+    matches && values.next().is_none()
+}
+
+fn stale_identity_response() -> Response {
+    text(
+        StatusCode::CONFLICT,
+        "Studio account changed while the filesystem request was running",
+    )
 }
 
 /// The protocol core, over any [`OrgFs`] — see this module's tests.
-async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response {
+async fn serve_inner(
+    fs: &dyn OrgFs,
+    target: &RequestTarget,
+    req: Request,
+    identity: Option<&WebDavIdentity>,
+) -> Response {
     let (parts, body) = req.into_parts();
     let method = parts.method;
     let headers = parts.headers;
@@ -132,36 +226,75 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
     // junk name falls through (a deliberate rename must not silently lose
     // data).
     if dav::is_mac_junk(path) {
-        let (org, volume) = (target.org.as_str(), target.volume.as_str());
+        let (account_id, org, volume) = (
+            target.account_id.as_str(),
+            target.org.as_str(),
+            target.volume.as_str(),
+        );
         match method.as_str() {
             "PUT" => {
-                let bytes = match axum::body::to_bytes(body, MAX_PUT_BYTES).await {
+                let bytes = match read_request_body(identity, body, junk::MAX_TOTAL_BYTES).await {
                     Ok(bytes) => bytes,
-                    Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large"),
+                    Err(response) => return response,
                 };
-                junk::put(org, volume, path, bytes, false);
+                let stored = match account_commit(identity, || {
+                    junk::put(account_id, org, volume, path, bytes, false)
+                })
+                .await
+                {
+                    Ok(stored) => stored,
+                    Err(response) => return response,
+                };
+                if !stored {
+                    return text(StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large");
+                }
                 return empty(StatusCode::CREATED);
             }
             "MKCOL" => {
-                junk::put(org, volume, path, Bytes::new(), true);
+                if let Err(response) = account_commit(identity, || {
+                    let stored = junk::put(account_id, org, volume, path, Bytes::new(), true);
+                    debug_assert!(stored, "an empty junk directory must fit in the store");
+                })
+                .await
+                {
+                    return response;
+                }
                 return empty(StatusCode::CREATED);
             }
             "MOVE" => {
-                junk::remove(org, volume, path);
+                if let Err(response) =
+                    account_commit(identity, || junk::remove(account_id, org, volume, path)).await
+                {
+                    return response;
+                }
                 return empty(StatusCode::CREATED);
             }
             "DELETE" => {
-                junk::remove(org, volume, path);
+                if let Err(response) =
+                    account_commit(identity, || junk::remove(account_id, org, volume, path)).await
+                {
+                    return response;
+                }
                 return empty(StatusCode::NO_CONTENT);
             }
             "GET" | "HEAD" => {
-                let Some(node) = junk::stat(org, volume, path) else {
+                let snapshot = account_commit(identity, || {
+                    junk::stat(account_id, org, volume, path).map(|node| {
+                        let body = junk::get(account_id, org, volume, path).unwrap_or_default();
+                        (node, body)
+                    })
+                })
+                .await;
+                let Some((node, bytes)) = (match snapshot {
+                    Ok(snapshot) => snapshot,
+                    Err(response) => return response,
+                }) else {
                     return text(StatusCode::NOT_FOUND, "Not Found");
                 };
                 let body = if method == Method::HEAD {
                     Body::empty()
                 } else {
-                    Body::from(junk::get(org, volume, path).unwrap_or_default())
+                    Body::from(bytes)
                 };
                 return base_headers(Response::builder(), &dav::http_date(node.updated_at_secs))
                     .header(header::CONTENT_LENGTH, node.size)
@@ -169,7 +302,12 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
                     .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR));
             }
             "PROPFIND" => {
-                let Some(node) = junk::stat(org, volume, path) else {
+                let node =
+                    account_commit(identity, || junk::stat(account_id, org, volume, path)).await;
+                let Some(node) = (match node {
+                    Ok(node) => node,
+                    Err(response) => return response,
+                }) else {
                     return text(StatusCode::NOT_FOUND, "Not Found");
                 };
                 return multistatus(&[dav::prop_response(&target.mount_prefix, &node)]);
@@ -281,9 +419,9 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
         }
 
         "PUT" => {
-            let bytes = match axum::body::to_bytes(body, MAX_PUT_BYTES).await {
+            let bytes = match read_request_body(identity, body, MAX_PUT_BYTES).await {
                 Ok(bytes) => bytes,
-                Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large"),
+                Err(response) => return response,
             };
             let content_type = headers
                 .get(header::CONTENT_TYPE)
@@ -334,6 +472,36 @@ async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response
             .body(Body::from("Method Not Allowed"))
             .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR)),
     }
+}
+
+async fn read_request_body(
+    identity: Option<&WebDavIdentity>,
+    body: Body,
+    limit: usize,
+) -> Result<Bytes, Response> {
+    match identity {
+        Some(identity) => identity.read_body(body, limit).await,
+        None => axum::body::to_bytes(body, limit)
+            .await
+            .map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Payload Too Large")),
+    }
+}
+
+async fn account_commit<T>(
+    identity: Option<&WebDavIdentity>,
+    commit: impl FnOnce() -> T,
+) -> Result<T, Response> {
+    match identity {
+        Some(identity) => identity.with_account_commit(|_| commit()).await,
+        None => Ok(commit()),
+    }
+}
+
+/// Called only after an account's mount attempts, rclone children, and
+/// kernel attachments have been drained. Keeping this narrow export here
+/// prevents the mount manager from reaching into the shadow-store module.
+pub(crate) fn purge_junk_account(account_id: &str) {
+    junk::purge_account(account_id);
 }
 
 /// The volume root (`""`) is an implicit collection with no manifest entry,
@@ -402,6 +570,12 @@ mod tests {
     use axum::body::Bytes;
     use std::collections::BTreeMap;
     use std::sync::Mutex;
+
+    const ACCOUNT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    async fn serve(fs: &dyn OrgFs, target: &RequestTarget, req: Request) -> Response {
+        serve_inner(fs, target, req, None).await
+    }
 
     /// An in-memory volume. Only the WebDAV translation is under test here —
     /// the upstream HTTP client has its own unit tests in `org_fs.rs`.
@@ -555,14 +729,15 @@ mod tests {
         }
     }
 
-    const PREFIX: &str = "/_sandbox/orgfs/acme/home";
+    const PREFIX: &str = "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home";
 
     fn target(volume: &str, path: &str) -> RequestTarget {
         RequestTarget {
+            account_id: ACCOUNT.to_string(),
             org: "acme".to_string(),
             volume: volume.to_string(),
             path: path.to_string(),
-            mount_prefix: format!("/_sandbox/orgfs/acme/{volume}"),
+            mount_prefix: format!("/_sandbox/orgfs/{ACCOUNT}/acme/{volume}"),
         }
     }
 
@@ -580,6 +755,20 @@ mod tests {
         request_to("/", method, headers, body)
     }
 
+    fn body_must_not_be_read_request(uri: &str, account_header: &str) -> Request {
+        let stream = futures::stream::poll_fn(
+            |_| -> std::task::Poll<Option<Result<Bytes, std::convert::Infallible>>> {
+                panic!("request body was polled before mount identity was rejected")
+            },
+        );
+        axum::http::Request::builder()
+            .method(Method::PUT)
+            .uri(uri)
+            .header(MOUNT_ACCOUNT_HEADER, account_header)
+            .body(Body::from_stream(stream))
+            .unwrap()
+    }
+
     async fn body_string(res: Response) -> String {
         let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
             .await
@@ -593,6 +782,22 @@ mod tests {
             ("docs/a.md", b"alpha"),
             ("docs/.DS_Store", b"junk"),
         ])
+    }
+
+    #[test]
+    fn mount_account_header_must_be_one_exact_opaque_id() {
+        let mut headers = HeaderMap::new();
+        assert!(!mount_account_header_matches(&headers, ACCOUNT));
+
+        headers.insert(MOUNT_ACCOUNT_HEADER, HeaderValue::from_static(ACCOUNT));
+        assert!(mount_account_header_matches(&headers, ACCOUNT));
+        assert!(!mount_account_header_matches(
+            &headers,
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ));
+
+        headers.append(MOUNT_ACCOUNT_HEADER, HeaderValue::from_static(ACCOUNT));
+        assert!(!mount_account_header_matches(&headers, ACCOUNT));
     }
 
     #[tokio::test]
@@ -790,7 +995,7 @@ mod tests {
                     ("host", "127.0.0.1:4000"),
                     (
                         "destination",
-                        "http://127.0.0.1:4000/_sandbox/orgfs/acme/home/docs/b.md",
+                        "http://127.0.0.1:4000/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/docs/b.md",
                     ),
                 ],
                 b"",
@@ -822,7 +1027,10 @@ mod tests {
             &target("home", "docs/a.md"),
             request(
                 "MOVE",
-                &[("destination", "/_sandbox/orgfs/acme/home/docs/a.md")],
+                &[(
+                    "destination",
+                    "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/home/docs/a.md",
+                )],
                 b"",
             ),
         )
@@ -837,7 +1045,10 @@ mod tests {
             &target("home", "docs/a.md"),
             request(
                 "MOVE",
-                &[("destination", "/_sandbox/orgfs/acme/outputs/a.md")],
+                &[(
+                    "destination",
+                    "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/outputs/a.md",
+                )],
                 b"",
             ),
         )
@@ -869,7 +1080,10 @@ mod tests {
     #[tokio::test]
     async fn public_volumes_reject_every_mutating_verb() {
         let move_headers: &[(&str, &str)] =
-            &[("destination", "/_sandbox/orgfs/acme/public-skills/b.md")];
+            &[(
+                "destination",
+                "/_sandbox/orgfs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/acme/public/b.md",
+            )];
         let cases: [(&str, &[(&str, &str)]); 4] = [
             ("PUT", &[]),
             ("DELETE", &[]),
@@ -880,7 +1094,7 @@ mod tests {
             let fs = sample_fs();
             let res = serve(
                 &fs,
-                &target("public-skills", "docs/a.md"),
+                &target("public", "docs/a.md"),
                 request(method, headers, b"x"),
             )
             .await;
@@ -899,7 +1113,7 @@ mod tests {
     async fn public_volumes_still_serve_reads() {
         let res = serve(
             &sample_fs(),
-            &target("public-skills", "MEMORY.md"),
+            &target("public", "MEMORY.md"),
             request("GET", &[], b""),
         )
         .await;
@@ -971,18 +1185,26 @@ mod tests {
         use tower::ServiceExt;
 
         let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let authorization = crate::routes::sandbox_account::authorize(&state)
+            .await
+            .unwrap();
+        let account_id = authorization.account().storage().id().to_string();
+        drop(authorization);
         let app: Router = Router::new()
             .nest("/_sandbox", Router::new().nest("/orgfs", router()))
-            .with_state(crate::routes::intercept::test_state(root.path()));
+            .with_state(state);
 
-        for (uri, method) in [
-            ("/_sandbox/orgfs/acme/public-skills/deep/nested/a.md", "PUT"),
-            ("/_sandbox/orgfs/acme/public-skills/", "MKCOL"),
-            ("/_sandbox/orgfs/acme/public-skills", "DELETE"),
-        ] {
+        for (suffix, method) in [("deep/nested/a.md", "PUT"), ("", "MKCOL"), ("", "DELETE")] {
+            let uri = format!("/_sandbox/orgfs/{account_id}/acme/public/{suffix}");
             let res = app
                 .clone()
-                .oneshot(request_to(uri, method, &[], b"x"))
+                .oneshot(request_to(
+                    &uri,
+                    method,
+                    &[(MOUNT_ACCOUNT_HEADER, &account_id)],
+                    b"x",
+                ))
                 .await
                 .unwrap();
             assert_eq!(res.status(), StatusCode::FORBIDDEN, "{method} {uri}");
@@ -991,9 +1213,11 @@ mod tests {
 
     #[tokio::test]
     async fn handle_rejects_a_path_that_names_no_volume() {
+        let root = tempfile::tempdir().unwrap();
         let res = handle(
-            OriginalUri("/_sandbox/orgfs/acme".parse().unwrap()),
-            request_to("/acme", "PROPFIND", &[], b""),
+            State(crate::routes::intercept::test_state(root.path())),
+            OriginalUri(format!("/_sandbox/orgfs/{ACCOUNT}/acme").parse().unwrap()),
+            request_to(&format!("/{ACCOUNT}/acme"), "PROPFIND", &[], b""),
         )
         .await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -1001,11 +1225,42 @@ mod tests {
 
     #[tokio::test]
     async fn handle_rejects_a_traversal_segment_before_reaching_upstream() {
+        let root = tempfile::tempdir().unwrap();
         let res = handle(
-            OriginalUri("/_sandbox/orgfs/acme/home/../etc".parse().unwrap()),
-            request_to("/acme/home/../etc", "GET", &[], b""),
+            State(crate::routes::intercept::test_state(root.path())),
+            OriginalUri(
+                format!("/_sandbox/orgfs/{ACCOUNT}/acme/home/../etc")
+                    .parse()
+                    .unwrap(),
+            ),
+            request_to(&format!("/{ACCOUNT}/acme/home/../etc"), "GET", &[], b""),
         )
         .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn handle_rejects_stale_path_or_header_identity_before_reading_the_body() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let authorization = crate::routes::sandbox_account::authorize(&state)
+            .await
+            .unwrap();
+        let current = authorization.account().storage().id().to_string();
+        drop(authorization);
+        let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+        for (path_account, header_account) in [(current.as_str(), other), (other, current.as_str())]
+        {
+            let relative = format!("/{path_account}/acme/home/file.txt");
+            let original = format!("/_sandbox/orgfs{relative}");
+            let response = handle(
+                State(state.clone()),
+                OriginalUri(original.parse().unwrap()),
+                body_must_not_be_read_request(&relative, header_account),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::CONFLICT);
+        }
     }
 }

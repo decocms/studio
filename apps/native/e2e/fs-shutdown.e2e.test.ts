@@ -26,6 +26,7 @@ import { afterEach, expect, it } from "bun:test";
 import {
   describeLocalApi,
   jsonAuthHeaders,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -81,7 +82,10 @@ afterEach(async () => {
 
 describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
   it("cancels a staged download, keeps completed work local and unpushed, and leaves no partial worktree file", async () => {
-    const first = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
+    const first = await startLocalApi(
+      { LOCAL_API_TOKEN_STORE: "memory" },
+      STANDALONE_TEST_ACCOUNT,
+    );
     api = first;
     const bare = configureOriginFixture(first);
     const repo = join(first.workdir, "repo");
@@ -185,7 +189,7 @@ describeLocalApi("local-api e2e: filesystem shutdown ordering", () => {
     // detached filesystem owner retained the previous server lifecycle.
     const restarted = await startLocalApi(
       { LOCAL_API_TOKEN_STORE: "memory" },
-      { workdir: first.workdir },
+      { ...STANDALONE_TEST_ACCOUNT, workdir: first.workdir },
     );
     api = restarted;
     const health = await fetch(url(restarted, "/health"));

@@ -20,10 +20,25 @@ pub(crate) struct ResolvedThread {
     pub fence: RtThreadFence,
 }
 
+/// Black-box native suites run the standalone bearer server without an
+/// interactive upstream login. The opt-in runner feature may pin one test
+/// subject so those suites can exercise the authenticated account contract.
+/// Shipping builds do not compile this seam.
+#[cfg(all(not(test), feature = "e2e-runner"))]
+fn e2e_account_sub() -> Option<String> {
+    std::env::var("LOCAL_API_E2E_ACCOUNT_SUB")
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
 #[cfg(not(test))]
 pub(crate) async fn current_account_scope_result(
 ) -> Result<Option<RtAccountScope>, upstream::tokens::TokenStoreError> {
     let session = upstream::global();
+    #[cfg(feature = "e2e-runner")]
+    if let Some(user_id) = e2e_account_sub() {
+        return Ok(RtAccountScope::new(session.host(), user_id));
+    }
     let Some(user_id) = session.current_user_sub_result().await? else {
         return Ok(None);
     };
@@ -65,12 +80,16 @@ pub(crate) async fn lock_account_scope(
 ) -> ApiResult<upstream::SessionTransitionGuard> {
     let session = upstream::global();
     let transition = session.begin_transition().await;
-    let current_user_id = transition.current_user_sub_result().await.map_err(|error| {
+    let stored_user_id = transition.current_user_sub_result().await.map_err(|error| {
         tracing::warn!(%error, "could not verify Studio account under transition fence");
         ApiError::internal(
             "We couldn't confirm your Studio account. Restart Studio and try again; if needed, sign in again.",
         )
     })?;
+    #[cfg(feature = "e2e-runner")]
+    let current_user_id = e2e_account_sub().or(stored_user_id);
+    #[cfg(not(feature = "e2e-runner"))]
+    let current_user_id = stored_user_id;
     if !account_scope_matches(expected, session.host(), current_user_id.as_deref()) {
         return Err(ApiError::conflict(
             "Your Studio account changed while this request was waiting. Try again.",

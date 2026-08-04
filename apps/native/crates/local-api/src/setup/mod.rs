@@ -128,6 +128,7 @@ pub struct SetupOrchestrator {
     /// between the global orchestrator (`<app_root>/repo`) and a per-handle
     /// one (`<app_root>/sandboxes/<handle>/repo`).
     pub(crate) app_root: PathBuf,
+    account_storage: Option<crate::sandbox::account_storage::AccountStorage>,
     pub(crate) config: Arc<ConfigStore>,
     pub(crate) tasks: Arc<TaskRegistry>,
     pub(crate) broadcaster: Arc<Broadcaster>,
@@ -165,10 +166,40 @@ impl SetupOrchestrator {
         tasks: Arc<TaskRegistry>,
         broadcaster: Arc<Broadcaster>,
     ) -> Arc<Self> {
+        Self::new_inner(repo_dir, app_root, None, config, tasks, broadcaster)
+    }
+
+    pub(crate) fn new_for_sandbox(
+        repo_dir: PathBuf,
+        account_storage: crate::sandbox::account_storage::AccountStorage,
+        config: Arc<ConfigStore>,
+        tasks: Arc<TaskRegistry>,
+        broadcaster: Arc<Broadcaster>,
+    ) -> Arc<Self> {
+        let app_root = account_storage.root().to_path_buf();
+        Self::new_inner(
+            repo_dir,
+            app_root,
+            Some(account_storage),
+            config,
+            tasks,
+            broadcaster,
+        )
+    }
+
+    fn new_inner(
+        repo_dir: PathBuf,
+        app_root: PathBuf,
+        account_storage: Option<crate::sandbox::account_storage::AccountStorage>,
+        config: Arc<ConfigStore>,
+        tasks: Arc<TaskRegistry>,
+        broadcaster: Arc<Broadcaster>,
+    ) -> Arc<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
         let this = Arc::new(Self {
             repo_dir,
             app_root,
+            account_storage,
             config,
             tasks,
             broadcaster,
@@ -201,6 +232,16 @@ impl SetupOrchestrator {
             *this.lock_worker() = Some(worker);
         }
         this
+    }
+
+    pub(crate) fn canonical_repo_dir(&self, clone_url: &str) -> Result<Option<PathBuf>, String> {
+        match &self.account_storage {
+            Some(storage) => storage.canonical_repo_dir(clone_url),
+            None => Ok(crate::sandbox::repo_store::canonical_repo_dir(
+                &self.app_root,
+                clone_url,
+            )),
+        }
     }
 
     /// Maps a [`crate::config::classify::Transition`] kind string (the same

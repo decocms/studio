@@ -241,12 +241,6 @@ describeLocalApi("local-api e2e: native thread-tool interception", () => {
       LOCAL_API_TOKEN_STORE: "memory",
     });
     try {
-      const capabilities = await fetch(
-        url(signedOut, "/_local/agent-capabilities"),
-        { headers: authHeaders() },
-      );
-      expect(capabilities.status).toBe(200);
-
       const create = await callTool(
         signedOut,
         "signed-out-org",
@@ -260,7 +254,9 @@ describeLocalApi("local-api e2e: native thread-tool interception", () => {
         },
       );
       expect(create.status).toBe(401);
-      expect(await create.json()).toEqual({ error: "unauthorized" });
+      expect(await create.json()).toEqual({
+        error: "Your Studio session expired. Sign in again.",
+      });
     } finally {
       await stopLocalApi(signedOut);
     }

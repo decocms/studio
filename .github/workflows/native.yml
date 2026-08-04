@@ -211,10 +211,12 @@ jobs:
   #    A NEW failure (regression) or a VANISHED one (allowlist gone stale)
   #    both fail this job via apps/native/scripts/ci/check-junit-allowlist.mjs.
   #
-  #    What the 27 pinned names are, and which are choices vs. gaps:
+  #    What the 30 pinned names are, and which are choices vs. gaps:
   #      - auth/CORS tightening (6) — local-api is stricter on purpose.
   #      - no-publish-on-close shutdown (2) — worktrees are durable on a
   #        user's machine, unlike a pod's; see local-api's routes/git.rs.
+  #      - retired orgfs-config relay (3) — native account-scoped in-process
+  #        org mounts no longer use the daemon sidecar control-file transport.
   #      - UNIMPLEMENTED in local-api, not a design decision (19). The
   #        sandbox daemons grew these; the Rust crate has not been ported:
   #          * url-transfer SSRF gate (11) — write_from_url / upload_to_url
@@ -303,6 +305,7 @@ jobs:
         run: |
           LOCAL_API_BIN="$GITHUB_WORKSPACE/apps/native/target/release/local-api"
           export DAEMON_E2E_CMD="[\"$LOCAL_API_BIN\"]"
+          export LOCAL_API_E2E_ACCOUNT_SUB="daemon-parity"
           cd packages/sandbox
           bun test daemon-e2e/daemon.e2e.test.ts \
                    daemon-e2e/daemon.sse-shapes.e2e.test.ts \

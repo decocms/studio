@@ -120,11 +120,19 @@ fn split_remote(url: &str) -> Option<(String, String)> {
 /// Best-effort by design: a canonical repo that doesn't exist yet, or a `git`
 /// that fails, is not a reason to fail the caller's operation — the worst case
 /// is a stale entry that the next prune clears.
+#[cfg(test)]
 pub(super) async fn prune_worktrees(app_root: &Path, clone_url: &str) {
     let Some(canonical) = canonical_repo_dir(app_root, clone_url) else {
         return;
     };
-    prune_repo(&canonical).await;
+    prune_canonical_repo(&canonical).await;
+}
+
+/// Prune a canonical repository path already resolved through authenticated
+/// account storage. The caller performs marker and managed-path verification
+/// before git touches the repository.
+pub(super) async fn prune_canonical_repo(canonical: &Path) {
+    prune_repo(canonical).await;
 }
 
 /// Prune every canonical repo in the store.

@@ -687,7 +687,7 @@ mod tests {
             .await
             .expect("stale pre-connected watch must finish promptly")
             .is_none());
-        drop(transition);
+        transition.complete().unwrap();
 
         let epoch = manager.account_epoch();
         let epoch_rx = manager.watch_account_epoch(epoch).unwrap();
@@ -699,7 +699,7 @@ mod tests {
             .await
             .expect("open watch must finish promptly on account transition")
             .is_none());
-        drop(transition);
+        transition.complete().unwrap();
     }
 
     #[test]

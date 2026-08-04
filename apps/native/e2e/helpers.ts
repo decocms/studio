@@ -28,6 +28,12 @@ import { describe as bunDescribe, expect } from "bun:test";
  *  under either harness. */
 const LOCAL_API_TOKEN = "d".repeat(32);
 
+/** Canonical account fixture for standalone suites that exercise durable
+ * sandbox state. Auth-specific suites omit this and remain signed out. */
+export const STANDALONE_TEST_ACCOUNT = {
+  accountSub: "local-desktop-user",
+} as const;
+
 // CI cold-start occasionally exceeds Bun's default 5s hook timeout under
 // load. Each test spawns a fresh process, so give hooks generous headroom —
 // mirrors HOOK_TIMEOUT_MS in daemon.e2e.helpers.ts.
@@ -281,6 +287,8 @@ async function waitForPreviewPort(
 interface StartLocalApiOptions {
   workdir?: string;
   tokenStore?: { kind: "memory" } | { kind: "keychain"; service: string };
+  /** Feature-gated identity seam for the black-box runner only. */
+  accountSub?: string;
 }
 
 export async function startLocalApi(
@@ -325,6 +333,9 @@ async function startLocalApiCommand(
       LOCAL_API_WORKDIR: workdir,
       LOCAL_API_PORT: String(port),
       ...extraEnv,
+      // Always overwrite the ambient process value. An omitted fixture must
+      // remain genuinely signed out even when a parent shell carries junk.
+      LOCAL_API_E2E_ACCOUNT_SUB: opts.accountSub ?? "",
       // Black-box suites default to memory and cannot override this through
       // `extraEnv`. Persistence-specific macOS tests opt into a unique,
       // disposable Keychain service explicitly through `opts.tokenStore`.

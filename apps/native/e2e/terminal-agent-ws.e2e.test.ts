@@ -35,7 +35,12 @@ import {
   stopLocalApi,
   url,
 } from "./helpers";
-import { computeHandle, repoDirFor } from "./sandbox-handle";
+import {
+  accountRootFor,
+  computeHandle,
+  repoDirFor,
+  type SandboxAccountPathScope,
+} from "./sandbox-handle";
 import { hasCliFlag } from "./fixtures/cli-flags.mjs";
 
 const ORG = "terminal-ws-org";
@@ -74,6 +79,7 @@ const CODEX_PREFLIGHT_SECRET_ENV = [
   "OPENCODE_CONFIG_CONTENT",
   "STUDIO_OPENCODE_SESSION_ID",
 ] as const;
+const AUTHENTICATED_ACCOUNT_SUB = "sandbox-e2e-user";
 
 type HarnessId = (typeof PROVIDERS)[number];
 
@@ -807,6 +813,14 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
     };
   };
 
+  const sandboxAccountPathScope = (): SandboxAccountPathScope => {
+    if (!upstream) throw new Error("authenticated upstream did not start");
+    return {
+      upstreamUrl: upstream.url,
+      accountSub: AUTHENTICATED_ACCOUNT_SUB,
+    };
+  };
+
   beforeAll(async () => {
     gitFixture = setupFixtureRepo();
     expect(git(gitFixture.bareDir, ["symbolic-ref", "--short", "HEAD"])).toBe(
@@ -1031,6 +1045,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             repoDirFor(
               api.workdir,
               computeHandle(gitFixture.bareDir, FIXTURE_BRANCH),
+              sandboxAccountPathScope(),
             ),
           );
           expect(git(expectedCwd, ["branch", "--show-current"])).toBe(
@@ -1081,9 +1096,16 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             expectCodexHookTrustPreflight(preflights[0]!, expectedCwd, 1, true);
           }
           expect(firstLaunches[0]?.cwd).toBe(expectedCwd);
-          expect(existsSync(join(api.workdir, ".decocms", "rclone", ORG))).toBe(
-            false,
-          );
+          expect(
+            existsSync(
+              join(
+                accountRootFor(api.workdir, sandboxAccountPathScope()),
+                ".decocms",
+                "rclone",
+                ORG,
+              ),
+            ),
+          ).toBe(false);
 
           const firstExit = await terminateAndWaitForExit(
             first,
@@ -1120,6 +1142,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
             repoDirFor(
               api.workdir,
               computeHandle(gitFixture.bareDir, FIXTURE_BRANCH),
+              sandboxAccountPathScope(),
             ),
           );
           const launches = await waitForLaunchRecords(
@@ -1191,261 +1214,254 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
     );
   }
 
-  it(
-    "Claude falls back from a missing resume to a fresh process on the same WebSocket",
-    async () => {
-      if (!api) throw new Error("local-api did not start");
-      if (!gitFixture) throw new Error("git fixture was not initialized");
-      const provider = "claude-code";
-      const seedPrompt = "seed-claude-recovery";
-      const seedRequestId = "seed-claude-recovery-request";
-      const seed = await connectTerminal(
+  it("Claude falls back from a missing resume to a fresh process on the same WebSocket", async () => {
+    if (!api) throw new Error("local-api did not start");
+    if (!gitFixture) throw new Error("git fixture was not initialized");
+    const provider = "claude-code";
+    const seedPrompt = "seed-claude-recovery";
+    const seedRequestId = "seed-claude-recovery-request";
+    const seed = await connectTerminal(
+      api,
+      CLAUDE_RECOVERY_THREAD_ID,
+      privateHeaders,
+    );
+
+    let recoveryCwd: string;
+    try {
+      seed.socket.send(
+        JSON.stringify({
+          type: "start",
+          harnessId: provider,
+          rows: 30,
+          cols: 100,
+          initialPrompt: seedPrompt,
+          requestId: seedRequestId,
+        }),
+      );
+      await waitForFrame(
+        seed,
+        (frame) => frame.type === "ready",
+        "Claude recovery seed ready frame",
+      );
+      await waitForOutput(
+        seed,
+        `STUB_READY:${provider}:${CLAUDE_STALE_SESSION_ID}`,
+      );
+      await waitForFrame(
+        seed,
+        (frame) =>
+          frame.type === "prompt_accepted" && frame.requestId === seedRequestId,
+        "Claude recovery seed prompt acceptance",
+      );
+      await waitForOutput(seed, `STUB_REPLY:${provider}:${seedPrompt}`);
+      await waitForFrame(
+        seed,
+        (frame) =>
+          frame.type === "state" &&
+          frame.logicalState === "completed" &&
+          frame.threadStatus === "completed",
+        "Claude recovery seed completion",
+      );
+      await waitForProviderCheckpoint(
         api,
         CLAUDE_RECOVERY_THREAD_ID,
         privateHeaders,
       );
 
-      let recoveryCwd: string;
-      try {
-        seed.socket.send(
-          JSON.stringify({
-            type: "start",
-            harnessId: provider,
-            rows: 30,
-            cols: 100,
-            initialPrompt: seedPrompt,
-            requestId: seedRequestId,
-          }),
-        );
-        await waitForFrame(
-          seed,
-          (frame) => frame.type === "ready",
-          "Claude recovery seed ready frame",
-        );
-        await waitForOutput(
-          seed,
-          `STUB_READY:${provider}:${CLAUDE_STALE_SESSION_ID}`,
-        );
-        await waitForFrame(
-          seed,
-          (frame) =>
-            frame.type === "prompt_accepted" &&
-            frame.requestId === seedRequestId,
-          "Claude recovery seed prompt acceptance",
-        );
-        await waitForOutput(seed, `STUB_REPLY:${provider}:${seedPrompt}`);
-        await waitForFrame(
-          seed,
-          (frame) =>
-            frame.type === "state" &&
-            frame.logicalState === "completed" &&
-            frame.threadStatus === "completed",
-          "Claude recovery seed completion",
-        );
-        await waitForProviderCheckpoint(
-          api,
-          CLAUDE_RECOVERY_THREAD_ID,
-          privateHeaders,
-        );
+      recoveryCwd = realpathSync(
+        repoDirFor(
+          api.workdir,
+          computeHandle(gitFixture.bareDir, CLAUDE_RECOVERY_BRANCH),
+          sandboxAccountPathScope(),
+        ),
+      );
+      const seedLaunches = await waitForLaunchRecords(
+        launchLog,
+        provider,
+        1,
+        recoveryCwd,
+      );
+      expect(seedLaunches).toHaveLength(1);
+      expect(seedLaunches[0]?.resumeId).toBeNull();
+      expect(seedLaunches[0]?.simulatedMissingResume).toBeUndefined();
+      const seedExit = await terminateAndWaitForExit(seed, seedLaunches[0]!);
+      expect(seedExit.expected).toBe(true);
+      expect(processIsAlive(seedLaunches[0]!.pid)).toBe(false);
+    } finally {
+      seed.socket.close();
+    }
 
-        recoveryCwd = realpathSync(
-          repoDirFor(
-            api.workdir,
-            computeHandle(gitFixture.bareDir, CLAUDE_RECOVERY_BRANCH),
-          ),
-        );
-        const seedLaunches = await waitForLaunchRecords(
-          launchLog,
-          provider,
-          1,
-          recoveryCwd,
-        );
-        expect(seedLaunches).toHaveLength(1);
-        expect(seedLaunches[0]?.resumeId).toBeNull();
-        expect(seedLaunches[0]?.simulatedMissingResume).toBeUndefined();
-        const seedExit = await terminateAndWaitForExit(seed, seedLaunches[0]!);
-        expect(seedExit.expected).toBe(true);
-        expect(processIsAlive(seedLaunches[0]!.pid)).toBe(false);
-      } finally {
-        seed.socket.close();
-      }
+    const recovered = await connectTerminal(
+      api,
+      CLAUDE_RECOVERY_THREAD_ID,
+      privateHeaders,
+    );
+    let recoveredLaunch: LaunchRecord;
+    try {
+      recovered.socket.send(
+        JSON.stringify({
+          type: "start",
+          harnessId: provider,
+          rows: 30,
+          cols: 100,
+        }),
+      );
+      const ready = await waitForFrame(
+        recovered,
+        (frame) => frame.type === "ready",
+        "fresh Claude ready frame after missing resume",
+      );
+      expect(ready.harnessId).toBe(provider);
+      expect(ready.physicalState).toBe("running");
+      await waitForOutput(
+        recovered,
+        `STUB_READY:${provider}:${CLAUDE_RECOVERED_SESSION_ID}`,
+      );
 
-      const recovered = await connectTerminal(
+      const launches = await waitForLaunchRecords(
+        launchLog,
+        provider,
+        3,
+        recoveryCwd,
+      );
+      expect(launches).toHaveLength(3);
+      expect(launches.map((launch) => launch.resumeId)).toEqual([
+        null,
+        CLAUDE_STALE_SESSION_ID,
+        null,
+      ]);
+      expect(launches[1]?.simulatedMissingResume).toBe(true);
+      expect(launches[1]?.args).toContain("--resume");
+      expect(launches[2]?.simulatedMissingResume).toBeUndefined();
+      expect(launches[2]?.args).not.toContain("--resume");
+      recoveredLaunch = launches[2]!;
+      expect(new Set(launches.map((launch) => launch.pid)).size).toBe(3);
+      expect(processIsAlive(launches[0]!.pid)).toBe(false);
+      expect(processIsAlive(launches[1]!.pid)).toBe(false);
+      expect(processIsAlive(launches[2]!.pid)).toBe(true);
+      expect(
+        recovered.frames.filter((frame) => frame.type === "ready"),
+      ).toHaveLength(1);
+      expect(recovered.frames.some((frame) => frame.type === "exit")).toBe(
+        false,
+      );
+      expectMissingClaudeResumeDiagnosticHidden(
+        recovered,
+        CLAUDE_STALE_SESSION_ID,
+      );
+
+      const recoveryPrompt = "prompt-after-claude-recovery";
+      const recoveryRequestId = "prompt-after-claude-recovery-request";
+      recovered.socket.send(
+        JSON.stringify({
+          type: "submit_prompt",
+          text: recoveryPrompt,
+          requestId: recoveryRequestId,
+        }),
+      );
+      await waitForFrame(
+        recovered,
+        (frame) =>
+          frame.type === "prompt_accepted" &&
+          frame.requestId === recoveryRequestId,
+        "prompt acceptance after Claude recovery",
+      );
+      const expectedReply = `STUB_REPLY:${provider}:${recoveryPrompt}`;
+      await waitForOutput(recovered, expectedReply);
+      expect(recovered.output.value.split(expectedReply)).toHaveLength(2);
+      await waitForOutput(recovered, `STUB_COMPLETED:${provider}`);
+      await waitForFrame(
+        recovered,
+        (frame) =>
+          frame.type === "state" &&
+          frame.logicalState === "completed" &&
+          frame.threadStatus === "completed",
+        "Claude completion after fresh recovery",
+      );
+      await waitForProviderCheckpoint(
         api,
         CLAUDE_RECOVERY_THREAD_ID,
         privateHeaders,
       );
-      let recoveredLaunch: LaunchRecord;
-      try {
-        recovered.socket.send(
-          JSON.stringify({
-            type: "start",
-            harnessId: provider,
-            rows: 30,
-            cols: 100,
-          }),
-        );
-        const ready = await waitForFrame(
-          recovered,
-          (frame) => frame.type === "ready",
-          "fresh Claude ready frame after missing resume",
-        );
-        expect(ready.harnessId).toBe(provider);
-        expect(ready.physicalState).toBe("running");
-        await waitForOutput(
-          recovered,
-          `STUB_READY:${provider}:${CLAUDE_RECOVERED_SESSION_ID}`,
-        );
-
-        const launches = await waitForLaunchRecords(
-          launchLog,
-          provider,
-          3,
-          recoveryCwd,
-        );
-        expect(launches).toHaveLength(3);
-        expect(launches.map((launch) => launch.resumeId)).toEqual([
-          null,
-          CLAUDE_STALE_SESSION_ID,
-          null,
-        ]);
-        expect(launches[1]?.simulatedMissingResume).toBe(true);
-        expect(launches[1]?.args).toContain("--resume");
-        expect(launches[2]?.simulatedMissingResume).toBeUndefined();
-        expect(launches[2]?.args).not.toContain("--resume");
-        recoveredLaunch = launches[2]!;
-        expect(new Set(launches.map((launch) => launch.pid)).size).toBe(3);
-        expect(processIsAlive(launches[0]!.pid)).toBe(false);
-        expect(processIsAlive(launches[1]!.pid)).toBe(false);
-        expect(processIsAlive(launches[2]!.pid)).toBe(true);
-        expect(
-          recovered.frames.filter((frame) => frame.type === "ready"),
-        ).toHaveLength(1);
-        expect(recovered.frames.some((frame) => frame.type === "exit")).toBe(
-          false,
-        );
-        expectMissingClaudeResumeDiagnosticHidden(
-          recovered,
-          CLAUDE_STALE_SESSION_ID,
-        );
-
-        const recoveryPrompt = "prompt-after-claude-recovery";
-        const recoveryRequestId = "prompt-after-claude-recovery-request";
-        recovered.socket.send(
-          JSON.stringify({
-            type: "submit_prompt",
-            text: recoveryPrompt,
-            requestId: recoveryRequestId,
-          }),
-        );
-        await waitForFrame(
-          recovered,
+      expect(
+        recovered.frames.filter(
           (frame) =>
             frame.type === "prompt_accepted" &&
             frame.requestId === recoveryRequestId,
-          "prompt acceptance after Claude recovery",
-        );
-        const expectedReply = `STUB_REPLY:${provider}:${recoveryPrompt}`;
-        await waitForOutput(recovered, expectedReply);
-        expect(recovered.output.value.split(expectedReply)).toHaveLength(2);
-        await waitForOutput(recovered, `STUB_COMPLETED:${provider}`);
-        await waitForFrame(
-          recovered,
-          (frame) =>
-            frame.type === "state" &&
-            frame.logicalState === "completed" &&
-            frame.threadStatus === "completed",
-          "Claude completion after fresh recovery",
-        );
-        await waitForProviderCheckpoint(
-          api,
-          CLAUDE_RECOVERY_THREAD_ID,
-          privateHeaders,
-        );
-        expect(
-          recovered.frames.filter(
-            (frame) =>
-              frame.type === "prompt_accepted" &&
-              frame.requestId === recoveryRequestId,
-          ),
-        ).toHaveLength(1);
-        expectMissingClaudeResumeDiagnosticHidden(
-          recovered,
-          CLAUDE_STALE_SESSION_ID,
-        );
-
-        const recoveredExit = await terminateAndWaitForExit(
-          recovered,
-          recoveredLaunch,
-        );
-        expect(recoveredExit.expected).toBe(true);
-      } finally {
-        recovered.socket.close();
-      }
-
-      expect(processIsAlive(recoveredLaunch.pid)).toBe(false);
-      const resumed = await connectTerminal(
-        api,
-        CLAUDE_RECOVERY_THREAD_ID,
-        privateHeaders,
+        ),
+      ).toHaveLength(1);
+      expectMissingClaudeResumeDiagnosticHidden(
+        recovered,
+        CLAUDE_STALE_SESSION_ID,
       );
-      try {
-        resumed.socket.send(
-          JSON.stringify({
-            type: "start",
-            harnessId: provider,
-            rows: 30,
-            cols: 100,
-          }),
-        );
-        const ready = await waitForFrame(
-          resumed,
-          (frame) => frame.type === "ready",
-          "Claude ready frame after recovered checkpoint",
-        );
-        expect(ready.harnessId).toBe(provider);
-        expect(ready.physicalState).toBe("running");
-        await waitForOutput(
-          resumed,
-          `STUB_READY:${provider}:${CLAUDE_RECOVERED_SESSION_ID}`,
-        );
 
-        const launches = await waitForLaunchRecords(
-          launchLog,
-          provider,
-          4,
-          recoveryCwd,
-        );
-        expect(launches).toHaveLength(4);
-        expect(launches.map((launch) => launch.resumeId)).toEqual([
-          null,
-          CLAUDE_STALE_SESSION_ID,
-          null,
-          CLAUDE_RECOVERED_SESSION_ID,
-        ]);
-        expect(launches[3]?.simulatedMissingResume).toBeUndefined();
-        const resumeIndex = launches[3]!.args.indexOf("--resume");
-        expect(launches[3]!.args.slice(resumeIndex, resumeIndex + 2)).toEqual([
-          "--resume",
-          CLAUDE_RECOVERED_SESSION_ID,
-        ]);
-        expect(processIsAlive(launches[3]!.pid)).toBe(true);
-        expectMissingClaudeResumeDiagnosticHidden(
-          resumed,
-          CLAUDE_STALE_SESSION_ID,
-        );
+      const recoveredExit = await terminateAndWaitForExit(
+        recovered,
+        recoveredLaunch,
+      );
+      expect(recoveredExit.expected).toBe(true);
+    } finally {
+      recovered.socket.close();
+    }
 
-        const resumedExit = await terminateAndWaitForExit(
-          resumed,
-          launches[3]!,
-        );
-        expect(resumedExit.expected).toBe(true);
-      } finally {
-        resumed.socket.close();
-      }
-    },
-    HOOK_TIMEOUT_MS,
-  );
+    expect(processIsAlive(recoveredLaunch.pid)).toBe(false);
+    const resumed = await connectTerminal(
+      api,
+      CLAUDE_RECOVERY_THREAD_ID,
+      privateHeaders,
+    );
+    try {
+      resumed.socket.send(
+        JSON.stringify({
+          type: "start",
+          harnessId: provider,
+          rows: 30,
+          cols: 100,
+        }),
+      );
+      const ready = await waitForFrame(
+        resumed,
+        (frame) => frame.type === "ready",
+        "Claude ready frame after recovered checkpoint",
+      );
+      expect(ready.harnessId).toBe(provider);
+      expect(ready.physicalState).toBe("running");
+      await waitForOutput(
+        resumed,
+        `STUB_READY:${provider}:${CLAUDE_RECOVERED_SESSION_ID}`,
+      );
+
+      const launches = await waitForLaunchRecords(
+        launchLog,
+        provider,
+        4,
+        recoveryCwd,
+      );
+      expect(launches).toHaveLength(4);
+      expect(launches.map((launch) => launch.resumeId)).toEqual([
+        null,
+        CLAUDE_STALE_SESSION_ID,
+        null,
+        CLAUDE_RECOVERED_SESSION_ID,
+      ]);
+      expect(launches[3]?.simulatedMissingResume).toBeUndefined();
+      const resumeIndex = launches[3]!.args.indexOf("--resume");
+      expect(launches[3]!.args.slice(resumeIndex, resumeIndex + 2)).toEqual([
+        "--resume",
+        CLAUDE_RECOVERED_SESSION_ID,
+      ]);
+      expect(processIsAlive(launches[3]!.pid)).toBe(true);
+      expectMissingClaudeResumeDiagnosticHidden(
+        resumed,
+        CLAUDE_STALE_SESSION_ID,
+      );
+
+      const resumedExit = await terminateAndWaitForExit(resumed, launches[3]!);
+      expect(resumedExit.expected).toBe(true);
+    } finally {
+      resumed.socket.close();
+    }
+  }, 60_000);
 
   it(
     "Codex preserves its confirmed resume checkpoint across a SIGKILL before the resume hook",
@@ -1509,6 +1525,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           repoDirFor(
             api.workdir,
             computeHandle(gitFixture.bareDir, CODEX_RESTART_BRANCH),
+            sandboxAccountPathScope(),
           ),
         );
         const launches = await waitForLaunchRecords(

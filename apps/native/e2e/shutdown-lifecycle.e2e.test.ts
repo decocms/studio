@@ -31,6 +31,7 @@ import {
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -256,7 +257,10 @@ describeLocalApi("local-api e2e: integrated graceful shutdown", () => {
   it.skipIf(process.platform === "win32")(
     "SIGKILL relaunch stays pre-ready until the old task process group is gone",
     async () => {
-      const api = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
+      const api = await startLocalApi(
+        { LOCAL_API_TOKEN_STORE: "memory" },
+        STANDALONE_TEST_ACCOUNT,
+      );
       firstApi = api;
       workdir = api.workdir;
       const marker = `native-crash-fence-${randomUUID()}`;
@@ -293,7 +297,7 @@ describeLocalApi("local-api e2e: integrated graceful shutdown", () => {
       // every TERM-resistant group member has been KILLed and reaped.
       const relaunchOutcome = startLocalApi(
         { LOCAL_API_TOKEN_STORE: "memory" },
-        { workdir: api.workdir },
+        { ...STANDALONE_TEST_ACCOUNT, workdir: api.workdir },
       ).then(
         (restarted) => {
           restartedApi = restarted;
@@ -333,7 +337,10 @@ describeLocalApi("local-api e2e: integrated graceful shutdown", () => {
   it.skipIf(process.platform === "win32")(
     "reaps a TERM-resistant process group, closes an open SSE stream, and releases the same-root lock",
     async () => {
-      const api = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
+      const api = await startLocalApi(
+        { LOCAL_API_TOKEN_STORE: "memory" },
+        STANDALONE_TEST_ACCOUNT,
+      );
       firstApi = api;
       const appRoot = api.workdir;
       workdir = appRoot;
@@ -430,7 +437,7 @@ describeLocalApi("local-api e2e: integrated graceful shutdown", () => {
       // aborted/awaited and every lock owner was dropped before process exit.
       const restarted = await startLocalApi(
         { LOCAL_API_TOKEN_STORE: "memory" },
-        { workdir: appRoot },
+        { ...STANDALONE_TEST_ACCOUNT, workdir: appRoot },
       );
       restartedApi = restarted;
       expect(restarted.workdir).toBe(appRoot);

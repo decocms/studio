@@ -45,6 +45,7 @@ import {
   jsonAuthHeaders,
   listTasks,
   readSseUntil,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -246,7 +247,7 @@ async function establishThenKill(vmcpSuffix: string): Promise<{
   const fixture = setupFixtureRepo();
   const virtualMcpId = `sandbox-restart-e2e-${vmcpSuffix}`;
   const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-  const a = await startLocalApi();
+  const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
   expect(await ensureSandbox(a, virtualMcpId, fixture.bareDir)).toBe(handle);
   // `ensure()` returns once clone/checkout are done but install+start
   // cascade asynchronously — wait for the REAL dev server before killing,
@@ -289,7 +290,7 @@ describeLocalApi(
     it("drives the UI control-plane contract: ensure boots once, disk replay feeds setup/dev xterms, Stop kills, and Restart skips clone/install", async () => {
       const fixture = setupFixtureRepo();
       cleanupDirs = [fixture.root];
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
 
       const handle = await ensureSandbox(
@@ -418,7 +419,7 @@ describeLocalApi(
       });
       const fixture = setupFixtureRepo(slowPackageJson);
       cleanupDirs = [fixture.root];
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       const handle = await ensureSandbox(
         a,
@@ -475,7 +476,10 @@ describeLocalApi(
 
       // Relaunch against the SAME workdir — a fresh process, empty
       // in-memory `SandboxManager`, but the workdir/sidecar/logs survive.
-      const b = await startLocalApi({}, { workdir });
+      const b = await startLocalApi(
+        {},
+        { ...STANDALONE_TEST_ACCOUNT, workdir },
+      );
       liveApi = b;
 
       // Confirm the in-memory state really was forgotten (this is the
@@ -540,7 +544,10 @@ describeLocalApi(
         await establishThenKill("explicit-handle");
       cleanupDirs = [fixtureRoot, workdir];
 
-      const b = await startLocalApi({}, { workdir });
+      const b = await startLocalApi(
+        {},
+        { ...STANDALONE_TEST_ACCOUNT, workdir },
+      );
       liveApi = b;
 
       // This is exactly the frontend's FIRST attempt in `restart()`
@@ -564,7 +571,7 @@ describeLocalApi(
     }, 45_000);
 
     it("an explicit handle with NO sidecar (never ensure()-d in ANY lifetime) is still a loud 404, never a silent success", async () => {
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       const res = await fetch(url(a, "/_sandbox/setup/start"), {
         method: "POST",
@@ -579,7 +586,7 @@ describeLocalApi(
     }, 30_000);
 
     it("headerless setup/start on a process that never persisted an active handle still 200s the byte-parity global path (no regression)", async () => {
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       const res = await fetch(url(a, "/_sandbox/setup/start"), {
         method: "POST",
@@ -595,7 +602,7 @@ describeLocalApi(
       const fixture = setupFixtureRepo();
       const virtualMcpId = "sandbox-restart-e2e-stop";
       const handle = computeHandle(fixture.bareDir, normalizeBranch("main"));
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       cleanupDirs = [fixture.root];
       expect(await ensureSandbox(a, virtualMcpId, fixture.bareDir)).toBe(
@@ -638,7 +645,7 @@ describeLocalApi(
     }, 30_000);
 
     it("setup/stop returns a 400 'nothing to stop' when no dev/start task is running", async () => {
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       const res = await fetch(url(a, "/_sandbox/setup/stop"), {
         method: "POST",
@@ -650,7 +657,7 @@ describeLocalApi(
     }, 30_000);
 
     it("setup/stop with an explicit unknown handle is a 404, never a silent no-op", async () => {
-      const a = await startLocalApi();
+      const a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
       liveApi = a;
       const res = await fetch(url(a, "/_sandbox/setup/stop"), {
         method: "POST",
@@ -668,7 +675,10 @@ describeLocalApi(
       const { workdir, fixtureRoot, handle } =
         await establishThenKill("stop-no-resurrect");
       cleanupDirs = [fixtureRoot, workdir];
-      const b = await startLocalApi({}, { workdir });
+      const b = await startLocalApi(
+        {},
+        { ...STANDALONE_TEST_ACCOUNT, workdir },
+      );
       liveApi = b;
 
       const res = await fetch(url(b, "/_sandbox/setup/stop"), {

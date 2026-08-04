@@ -353,7 +353,7 @@ pub struct LaunchRequest<'a> {
     /// Newest checkpoint read before the new `starting` row is reserved.
     pub provider_session_id: Option<&'a str>,
     pub cancellation: &'a PreparationCancellation,
-    pub account_epoch: crate::sandbox::manager::AccountEpoch,
+    pub account: &'a crate::sandbox::manager::SandboxAccount,
     pub identity_generation: u64,
 }
 
@@ -362,7 +362,7 @@ pub async fn prepare(
     db: &'static ThreadsDb,
     request: LaunchRequest<'_>,
 ) -> Result<PreparedLaunch, LaunchContextError> {
-    require_account_epoch(state, request.account_epoch)?;
+    require_sandbox_account(state, request.account)?;
     require_active_preparation(request.cancellation)?;
     let thread = db
         .rt_get_thread_for_fence(request.fence)
@@ -379,13 +379,13 @@ pub async fn prepare(
             result?;
         },
     }
-    require_account_epoch(state, request.account_epoch)?;
+    require_sandbox_account(state, request.account)?;
     let virtual_mcp = load_virtual_mcp(
         state,
         request.fence,
         &thread,
         request.cancellation,
-        request.account_epoch,
+        request.account,
         request.identity_generation,
     )
     .await?;
@@ -396,14 +396,14 @@ pub async fn prepare(
         &thread,
         &virtual_mcp,
         request.cancellation,
-        request.account_epoch,
+        request.account,
     )
     .await?;
     require_active_preparation(request.cancellation)?;
     let system_prompt = tokio::select! {
         biased;
         () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
-        prompt = build_system_prompt(state, request.fence, &thread, &virtual_mcp, &cwd) => prompt,
+        prompt = build_system_prompt(request.account, request.fence, &thread, &virtual_mcp, &cwd) => prompt,
     };
     require_active_preparation(request.cancellation)?;
     let credentials = crate::sandbox::org_mount::local_credentials()
@@ -417,9 +417,9 @@ pub async fn prepare(
     // Managed filesystem operations run to completion inside the preparation
     // phase. Dropping a Tokio filesystem future on cancellation can leave its
     // blocking worker writing after lifecycle cleanup has already returned.
-    require_account_epoch(state, request.account_epoch)?;
+    require_sandbox_account(state, request.account)?;
     create_private_dir(&state_dir).await?;
-    require_account_epoch(state, request.account_epoch)?;
+    require_sandbox_account(state, request.account)?;
     require_active_preparation(request.cancellation)?;
     let hook_url = format!(
         "{}/_local/agent-hooks/{}",
@@ -555,7 +555,7 @@ pub async fn prepare(
         }
     }
 
-    require_account_epoch(state, request.account_epoch)?;
+    require_sandbox_account(state, request.account)?;
     require_active_preparation(request.cancellation)?;
 
     Ok(PreparedLaunch {
@@ -577,7 +577,7 @@ async fn load_virtual_mcp(
     fence: &RtThreadFence,
     thread: &RtThread,
     cancellation: &PreparationCancellation,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
     identity_generation: u64,
 ) -> Result<Value, LaunchContextError> {
     let input = json!({ "id": thread.virtual_mcp_id });
@@ -586,7 +586,7 @@ async fn load_virtual_mcp(
         () = cancellation.cancelled() => return Err(LaunchContextError::Canceled),
         response = crate::routes::upstream::call_org_tool_for_identity(
             state,
-            account_epoch,
+            account.epoch(),
             identity_generation,
             &fence.organization_id,
             "COLLECTION_VIRTUAL_MCP_GET",
@@ -629,7 +629,7 @@ async fn resolve_cwd(
     thread: &RtThread,
     virtual_mcp: &Value,
     cancellation: &PreparationCancellation,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
 ) -> Result<PathBuf, LaunchContextError> {
     let sandbox_branch = crate::sandbox::normalize_branch(thread.branch.as_deref());
     let teardown_on_cancel = match crate::sandbox::synthetic_thread_id(sandbox_branch) {
@@ -654,7 +654,7 @@ async fn resolve_cwd(
         return state
             .sandbox_manager
             .ensure_for_terminal(
-                account_epoch,
+                account,
                 &config,
                 cancellation.subscribe(),
                 teardown_on_cancel,
@@ -672,22 +672,28 @@ async fn resolve_cwd(
     }
 
     require_active_preparation(cancellation)?;
-    require_account_epoch(state, account_epoch)?;
-    let org_dir = crate::sandbox::org_view::org_mount_root(&state.app_root, &fence.organization_id)
-        .ok_or_else(|| LaunchContextError::Workspace("invalid organization path".to_string()))?;
-    crate::sandbox::org_mount::warm(&state.app_root, &fence.organization_id);
-    tokio::fs::create_dir_all(&org_dir).await?;
+    require_sandbox_account(state, account)?;
+    let org_dir =
+        crate::sandbox::org_view::ensure_org_mount_root(account.storage(), &fence.organization_id)
+            .await?
+            .ok_or_else(|| {
+                LaunchContextError::Workspace("invalid organization path".to_string())
+            })?;
+    state
+        .sandbox_manager
+        .warm_org_mount(account, &fence.organization_id)
+        .map_err(LaunchContextError::Workspace)?;
     require_active_preparation(cancellation)?;
     Ok(org_dir)
 }
 
-fn require_account_epoch(
+fn require_sandbox_account(
     state: &AppState,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
 ) -> Result<(), LaunchContextError> {
     state
         .sandbox_manager
-        .validate_account_epoch(account_epoch)
+        .validate_sandbox_account(account)
         .map_err(|_| LaunchContextError::Canceled)
 }
 
@@ -702,7 +708,7 @@ fn require_active_preparation(
 }
 
 async fn build_system_prompt(
-    state: &AppState,
+    account: &crate::sandbox::manager::SandboxAccount,
     fence: &RtThreadFence,
     thread: &RtThread,
     virtual_mcp: &Value,
@@ -720,9 +726,10 @@ async fn build_system_prompt(
         ));
     }
 
-    let org_dir = crate::sandbox::org_view::org_mount_root(&state.app_root, &fence.organization_id)
-        .filter(|path| path == cwd)
-        .or_else(|| cwd.parent().map(|parent| parent.join("org")));
+    let org_dir =
+        crate::sandbox::org_view::org_mount_root(account.storage(), &fence.organization_id)
+            .filter(|path| path == cwd)
+            .or_else(|| cwd.parent().map(|parent| parent.join("org")));
     if let Some(org_dir) = org_dir.filter(|path| path.exists()) {
         sections.push(crate::sandbox::org_prompt::build(
             &org_dir,
@@ -2023,6 +2030,17 @@ fn shell_quote_path(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn sandbox_account_fixture() -> (
+        tempfile::TempDir,
+        AppState,
+        crate::sandbox::manager::SandboxAccount,
+    ) {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let account = state.sandbox_manager.test_account().unwrap();
+        (root, state, account)
+    }
+
     async fn linked_worktree_metadata(common_dir: &Path, worktree: &Path) -> PathBuf {
         let git_dir = common_dir.join("worktrees/thread");
         tokio::fs::create_dir_all(&git_dir).await.unwrap();
@@ -2437,6 +2455,7 @@ mod tests {
     fn claude_normal_launches_bypass_permissions_before_resume() {
         let fence = test_fence("account", "thread");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_root, _state, account) = sandbox_account_fixture();
         for approval_mode in ["default", "auto"] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2448,7 +2467,7 @@ mod tests {
                 mcp_token: "mcp",
                 provider_session_id: Some("session"),
                 cancellation: &cancellation,
-                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                account: &account,
                 identity_generation: 0,
             };
             let mut argv = Vec::new();
@@ -2474,6 +2493,7 @@ mod tests {
     fn claude_plan_and_readonly_launches_never_bypass_permissions() {
         let fence = test_fence("account", "thread");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_root, _state, account) = sandbox_account_fixture();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2485,7 +2505,7 @@ mod tests {
                 mcp_token: "mcp",
                 provider_session_id: None,
                 cancellation: &cancellation,
-                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                account: &account,
                 identity_generation: 0,
             };
             let mut argv = Vec::new();
@@ -2503,6 +2523,7 @@ mod tests {
     fn codex_workspace_trust_override_is_launch_scoped_and_precedes_resume() {
         let fence = test_fence("account", "thread");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_root, _state, account) = sandbox_account_fixture();
         let request = LaunchRequest {
             fence: &fence,
             terminal_session_id: "terminal",
@@ -2513,7 +2534,7 @@ mod tests {
             mcp_token: "mcp",
             provider_session_id: Some("session"),
             cancellation: &cancellation,
-            account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+            account: &account,
             identity_generation: 0,
         };
         let trust_root = Path::new("/tmp/quote-\"-backslash-\\-café");
@@ -2552,6 +2573,7 @@ mod tests {
     fn codex_plan_and_readonly_launches_remain_sandboxed_read_only() {
         let fence = test_fence("account", "thread");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_root, _state, account) = sandbox_account_fixture();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2563,7 +2585,7 @@ mod tests {
                 mcp_token: "mcp",
                 provider_session_id: None,
                 cancellation: &cancellation,
-                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                account: &account,
                 identity_generation: 0,
             };
             let mut argv = Vec::new();
@@ -2589,6 +2611,7 @@ mod tests {
     fn codex_auto_launch_is_yolo_without_separate_approval_or_sandbox_flags() {
         let fence = test_fence("account", "thread");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_root, _state, account) = sandbox_account_fixture();
         let request = LaunchRequest {
             fence: &fence,
             terminal_session_id: "terminal",
@@ -2599,7 +2622,7 @@ mod tests {
             mcp_token: "mcp",
             provider_session_id: None,
             cancellation: &cancellation,
-            account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+            account: &account,
             identity_generation: 0,
         };
         let mut argv = Vec::new();
@@ -2866,7 +2889,7 @@ mod tests {
             }
         });
         let cancellation = PreparationCancellation::test_uncancelled();
-        let account_epoch = state.sandbox_manager.account_epoch();
+        let account = state.sandbox_manager.test_account().unwrap();
 
         let error = resolve_cwd(
             &state,
@@ -2874,7 +2897,7 @@ mod tests {
             &thread,
             &virtual_mcp,
             &cancellation,
-            account_epoch,
+            &account,
         )
         .await
         .unwrap_err();
@@ -2884,14 +2907,19 @@ mod tests {
             .expect("test clone URL is scopeable");
         assert!(!state
             .sandbox_manager
-            .is_registered_for_account(account_epoch, &handle)
+            .is_registered_for_account(&account, &handle)
             .unwrap());
         assert!(state
             .sandbox_manager
-            .get_for_account(account_epoch, &handle)
+            .get_for_account(&account, &handle)
             .unwrap()
             .is_none());
-        assert!(!crate::sandbox::worktree_root(root.path(), &handle).exists());
+        assert!(!account
+            .storage()
+            .root()
+            .join(crate::sandbox::WORKTREES_DIR)
+            .join(&handle)
+            .exists());
     }
 
     #[tokio::test]
@@ -2970,6 +2998,7 @@ mod tests {
     async fn opencode_normal_launches_enable_auto_before_exact_session_resume() {
         let fence = test_fence("account", "thread-one");
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_account_root, _state, account) = sandbox_account_fixture();
         for approval_mode in ["default", "auto"] {
             let root = tempfile::tempdir().unwrap();
             let request = LaunchRequest {
@@ -2982,7 +3011,7 @@ mod tests {
                 mcp_token: "mcp-token",
                 provider_session_id: Some("ses_exact"),
                 cancellation: &cancellation,
-                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                account: &account,
                 identity_generation: 0,
             };
             let mut argv = Vec::new();
@@ -3016,6 +3045,7 @@ mod tests {
     #[tokio::test]
     async fn opencode_readonly_and_plan_launches_never_enable_auto() {
         let cancellation = PreparationCancellation::test_uncancelled();
+        let (_account_root, _state, account) = sandbox_account_fixture();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let root = tempfile::tempdir().unwrap();
             let fence = test_fence("account", "thread-one");
@@ -3029,7 +3059,7 @@ mod tests {
                 mcp_token: "mcp-token",
                 provider_session_id: None,
                 cancellation: &cancellation,
-                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                account: &account,
                 identity_generation: 0,
             };
             let mut argv = Vec::new();

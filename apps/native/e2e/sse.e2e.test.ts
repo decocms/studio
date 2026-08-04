@@ -16,6 +16,7 @@ import {
   jsonAuthHeaders,
   type LocalApi,
   readSseUntil,
+  STANDALONE_TEST_ACCOUNT,
   startLocalApi,
   stopLocalApi,
   url,
@@ -24,7 +25,7 @@ import {
 describeLocalApi("local-api e2e: SSE framing", () => {
   let a: LocalApi;
   beforeAll(async () => {
-    a = await startLocalApi();
+    a = await startLocalApi({}, STANDALONE_TEST_ACCOUNT);
   }, HOOK_TIMEOUT_MS);
   afterAll(async () => {
     await stopLocalApi(a);

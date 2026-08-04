@@ -151,7 +151,7 @@ struct SessionSpawnOwner {
     key: SessionKey,
     preparation: PreparationReservation,
     upstream_session: upstream::UpstreamSession,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: crate::sandbox::manager::SandboxAccount,
     identity_generation: u64,
 }
 
@@ -313,11 +313,24 @@ pub async fn start(
     })?)?;
     let size = terminal_size(parsed.rows.unwrap_or(30), parsed.cols.unwrap_or(100))?;
     validate_approval_mode(&parsed.approval_mode)?;
-    let (db, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
+    let scope = authority::current_account_scope().await?;
+    let account_guard = authority::lock_account_scope(&scope).await?;
+    let resolved = authority::resolve_scoped_thread(
+        &state,
+        scope.clone(),
+        &org,
+        &thread_id,
+        ThreadAccess::ActiveOwner,
+    )?;
+    let account = super::sandbox_account::admit_scope(&state, &scope)?;
+    drop(account_guard);
+    let db = resolved.db;
+    let fence = resolved.fence;
     let managed = ensure_session(
         &state,
         db,
         &fence,
+        &account,
         StartOptions {
             harness,
             approval_mode: parsed.approval_mode,
@@ -357,15 +370,15 @@ pub async fn delete(
     }
 
     let preparation = state.agent_sessions.cancel_preparation(&fence);
-    let had_preparation = preparation.had_preparations();
+    let cleanup_fences = preparation.fences();
     preparation.wait().await.map_err(|error| {
         tracing::warn!(%error, thread_id = %fence.thread_id, "coding agent preparation did not stop before close");
         ApiError::internal(
             "We couldn't close the coding agent preparation. Restart Studio and try again.",
         )
     })?;
-    if had_preparation {
-        launch_context::cleanup_managed_state(&state.app_root, &fence)
+    for cleanup_fence in cleanup_fences {
+        launch_context::cleanup_managed_state(&state.app_root, &cleanup_fence)
             .await
             .map_err(|error| {
                 tracing::warn!(%error, thread_id = %fence.thread_id, "could not clean canceled coding agent preparation");
@@ -373,6 +386,9 @@ pub async fn delete(
                     "We couldn't clean up the canceled coding agent preparation. Restart Studio and try again.",
                 )
             })?;
+        state
+            .agent_sessions
+            .complete_managed_cleanup(&cleanup_fence);
     }
     if let Some(session) = db
         .rt_get_live_terminal_session_fenced(&fence)
@@ -407,12 +423,13 @@ pub async fn websocket(
     let account_guard = authority::lock_account_scope(&scope).await?;
     let resolved = authority::resolve_scoped_thread(
         &state,
-        scope,
+        scope.clone(),
         &org,
         &thread_id,
         ThreadAccess::ActiveOwner,
     )?;
-    let account_epoch = state.sandbox_manager.account_epoch();
+    let account = super::sandbox_account::admit_scope(&state, &scope)?;
+    let account_epoch = account.epoch();
     let account_epoch_rx = state
         .sandbox_manager
         .watch_account_epoch(account_epoch)
@@ -422,7 +439,7 @@ pub async fn websocket(
     let fence = resolved.fence;
     Ok(ws
         .max_message_size(MAX_CONTROL_FRAME_BYTES)
-        .on_upgrade(move |socket| serve_socket(socket, state, db, fence, account_epoch_rx))
+        .on_upgrade(move |socket| serve_socket(socket, state, db, fence, account, account_epoch_rx))
         .into_response())
 }
 
@@ -431,6 +448,7 @@ async fn serve_socket(
     state: AppState,
     db: &'static ThreadsDb,
     fence: RtThreadFence,
+    account: crate::sandbox::manager::SandboxAccount,
     mut account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
 ) {
     let handshake = match receive_handshake(&mut socket, db, &fence, &mut account_epoch_rx).await {
@@ -454,7 +472,7 @@ async fn serve_socket(
     let requested_size = handshake.options.size;
     let Some(managed_result) = until_account_change(
         &mut account_epoch_rx,
-        ensure_session(&state, db, &fence, handshake.options),
+        ensure_session(&state, db, &fence, &account, handshake.options),
     )
     .await
     else {
@@ -923,6 +941,7 @@ async fn ensure_session(
     state: &AppState,
     db: &'static ThreadsDb,
     fence: &RtThreadFence,
+    account: &crate::sandbox::manager::SandboxAccount,
     options: StartOptions,
 ) -> ApiResult<ManagedTerminal> {
     let start_lock = state.agent_sessions.start_lock(fence);
@@ -931,6 +950,10 @@ async fn ensure_session(
         let _start_guard = start_lock.clone().lock_owned().await;
         let _account_transition = upstream_session.begin_transition().await;
         validate_initial_start_admission(db, fence, options.harness).await?;
+        state
+            .sandbox_manager
+            .validate_sandbox_account(account)
+            .map_err(|error| account_start_error(options.harness, error))?;
         if let Some(managed) = reusable_managed_session(state, fence, options.harness) {
             reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
             state.agent_sessions.notify_lifecycle(fence);
@@ -946,6 +969,10 @@ async fn ensure_session(
     let start_guard = start_lock.lock_owned().await;
     let initial_account_transition = upstream_session.begin_transition().await;
     validate_initial_start_admission(db, fence, options.harness).await?;
+    state
+        .sandbox_manager
+        .validate_sandbox_account(account)
+        .map_err(|error| account_start_error(options.harness, error))?;
     if let Some(managed) = reusable_managed_session(state, fence, options.harness) {
         reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
         state.agent_sessions.notify_lifecycle(fence);
@@ -984,7 +1011,6 @@ async fn ensure_session(
         .map_err(|error| terminal_start_error(options.harness, error))?;
     let (terminal_session_id, preparation) =
         reserve_durable_start(&state.agent_sessions, db, fence, options.harness)?;
-    let account_epoch = state.sandbox_manager.account_epoch();
     let identity_generation = initial_account_transition.generation();
     drop(initial_account_transition);
     drop(start_guard);
@@ -1005,7 +1031,7 @@ async fn ensure_session(
             key,
             preparation,
             upstream_session,
-            account_epoch,
+            account: account.clone(),
             identity_generation,
         }
         .run(),
@@ -1259,7 +1285,7 @@ impl SessionSpawnOwner {
             key,
             preparation,
             upstream_session,
-            account_epoch,
+            account,
             identity_generation,
         } = self;
         let mut may_recover_missing_claude_resume =
@@ -1290,7 +1316,7 @@ impl SessionSpawnOwner {
                 mcp_token: &mcp_token,
                 provider_session_id: provider_session_id.as_deref(),
                 cancellation: &cancellation,
-                account_epoch,
+                account: &account,
                 identity_generation,
             },
         )
@@ -1322,7 +1348,7 @@ impl SessionSpawnOwner {
                 &upstream_session,
                 &fence,
                 &launch,
-                account_epoch,
+                &account,
                 identity_generation,
             )
             .await
@@ -1409,6 +1435,8 @@ impl SessionSpawnOwner {
                         mcp_path: launch.mcp_path.clone(),
                         title_environment: launch.title_environment.clone(),
                         expected_provider_session_id: provider_session_id.clone(),
+                        account_epoch: account.epoch(),
+                        identity_generation,
                     });
             let started = state
                 .agent_sessions
@@ -1489,7 +1517,7 @@ impl SessionSpawnOwner {
                         mcp_token: &mcp_token,
                         provider_session_id: None,
                         cancellation: &cancellation,
-                        account_epoch,
+                        account: &account,
                         identity_generation,
                     },
                 )
@@ -1618,6 +1646,10 @@ async fn probe_missing_claude_resume(
     session: &TerminalSession,
     lifecycle: &mut tokio::sync::broadcast::Receiver<RtThreadFence>,
 ) -> bool {
+    tracing::debug!(
+        terminal_session_id,
+        "probing a provisional Claude resume checkpoint"
+    );
     let checkpoint_is_valid = || {
         db.rt_get_terminal_session_fenced(fence, terminal_session_id)
             .map(|row| {
@@ -1628,8 +1660,19 @@ async fn probe_missing_claude_resume(
             })
     };
     match checkpoint_is_valid() {
-        Ok(true) => return false,
-        Ok(false) => {}
+        Ok(true) => {
+            tracing::debug!(
+                terminal_session_id,
+                "provisional Claude resume already produced a valid checkpoint"
+            );
+            return false;
+        }
+        Ok(false) => {
+            tracing::debug!(
+                terminal_session_id,
+                "provisional Claude resume has not produced a checkpoint"
+            );
+        }
         Err(error) => {
             tracing::warn!(%error, terminal_session_id, "could not validate Claude resume checkpoint");
             return false;
@@ -1642,6 +1685,7 @@ async fn probe_missing_claude_resume(
     tokio::pin!(timeout);
     loop {
         tokio::select! {
+            biased;
             exit = &mut exit => {
                 let row = match db.rt_get_terminal_session_fenced(fence, terminal_session_id) {
                     Ok(Some(row)) => row,
@@ -1651,6 +1695,16 @@ async fn probe_missing_claude_resume(
                         return false;
                     }
                 };
+                tracing::debug!(
+                    terminal_session_id,
+                    provider_session_present = row.provider_session_id.is_some(),
+                    provider_session_matches = row.provider_session_id.as_deref()
+                        == Some(expected_provider_session_id),
+                    blocks_prior_provider_resume = row.blocks_prior_provider_resume,
+                    rejected_provider_session_matches = row.rejected_provider_session_id.as_deref()
+                        == Some(expected_provider_session_id),
+                    "inspecting an exited provisional Claude resume"
+                );
                 if row.provider_session_id.as_deref() == Some(expected_provider_session_id)
                     && !row.blocks_prior_provider_resume
                 {
@@ -1664,11 +1718,25 @@ async fn probe_missing_claude_resume(
                         == Some(expected_provider_session_id);
                 }
                 let replay = session.replay_from(0);
-                if !is_missing_claude_resume_exit(
+                let missing_resume = is_missing_claude_resume_exit(
                     &exit,
                     &replay,
                     expected_provider_session_id,
-                ) {
+                );
+                tracing::debug!(
+                    terminal_session_id,
+                    exit_code = exit.code,
+                    exit_requested = exit.requested,
+                    output_complete = exit.output_complete,
+                    process_error = exit.error.is_some(),
+                    replay_requested_from = replay.requested_from,
+                    replay_available_from = replay.available_from,
+                    replay_next_offset = replay.next_offset,
+                    replay_truncated = replay.truncated,
+                    missing_resume,
+                    "classified an exited provisional Claude resume"
+                );
+                if !missing_resume {
                     return false;
                 }
                 match db.rt_confirm_terminal_resume_rejected_fenced(
@@ -1702,7 +1770,14 @@ async fn probe_missing_claude_resume(
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return false,
                 }
             }
-            () = &mut timeout => return false,
+            () = &mut timeout => {
+                tracing::debug!(
+                    terminal_session_id,
+                    session_state = ?session.snapshot().state,
+                    "provisional Claude resume exceeded its recovery probe"
+                );
+                return false;
+            },
         }
     }
 }
@@ -1808,7 +1883,7 @@ async fn acquire_spawn_admission_fences(
     upstream_session: &upstream::UpstreamSession,
     fence: &RtThreadFence,
     launch: &PreparedLaunch,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    sandbox_account: &crate::sandbox::manager::SandboxAccount,
     identity_generation: u64,
 ) -> Result<SpawnAdmissionFences, SpawnFenceError> {
     let claude_state = match launch.claude_state_path() {
@@ -1832,7 +1907,7 @@ async fn acquire_spawn_admission_fences(
         .map_err(SpawnFenceError::Account)?;
     state
         .sandbox_manager
-        .validate_account_epoch(account_epoch)
+        .validate_sandbox_account(sandbox_account)
         .map_err(SpawnFenceError::Account)?;
     Ok(SpawnAdmissionFences {
         account,
@@ -2618,7 +2693,7 @@ mod tests {
             .expect("stalled terminal wait must be canceled promptly")
             .unwrap()
             .is_none());
-        drop(transition);
+        transition.complete().unwrap();
 
         let epoch = manager.account_epoch();
         let mut ready_rx = manager.watch_account_epoch(epoch).unwrap();
@@ -2628,7 +2703,7 @@ mod tests {
             None,
             "an epoch change must win over an already-ready sensitive frame"
         );
-        drop(transition);
+        transition.complete().unwrap();
     }
 
     #[test]

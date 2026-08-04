@@ -74,7 +74,7 @@ pub(super) async fn try_dispatch(
             &virtual_mcp_id,
             &branch,
             body,
-            authorization.account_epoch(),
+            authorization.account(),
         )
         .await,
     )
@@ -85,7 +85,7 @@ async fn invoke(
     virtual_mcp_id: &str,
     branch: &str,
     body: &Bytes,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
 ) -> Response {
     let Some(parsed) = serde_json::from_slice::<Value>(body)
         .ok()
@@ -100,7 +100,7 @@ async fn invoke(
     // Keyed by (virtualMcpId, branch); the worktree handle is derived from the
     // repository, so the registry is what bridges them.
     let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        account_epoch,
+        account,
         virtual_mcp_id,
         branch,
     ) {
@@ -110,10 +110,7 @@ async fn invoke(
         }
         Err(error) => return manager_error(error).into_response(),
     };
-    let sandbox = match state
-        .sandbox_manager
-        .get_for_account(account_epoch, &handle)
-    {
+    let sandbox = match state.sandbox_manager.get_for_account(account, &handle) {
         Ok(Some(sandbox)) => sandbox,
         Ok(None) => {
             return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response()
@@ -148,7 +145,7 @@ async fn invoke(
         Some(HeaderValue::from_static("application/json")),
     )
     .await;
-    match state.sandbox_manager.validate_account_epoch(account_epoch) {
+    match state.sandbox_manager.validate_sandbox_account(account) {
         Ok(()) => response,
         Err(error) => manager_error(error).into_response(),
     }

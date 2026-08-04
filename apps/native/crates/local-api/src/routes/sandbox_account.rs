@@ -2,7 +2,7 @@
 //! state without first passing through an intercepted Studio thread tool.
 
 use crate::error::ApiResult;
-use crate::sandbox::manager::AccountEpoch;
+use crate::sandbox::manager::{AccountEpoch, SandboxAccount};
 use crate::state::AppState;
 
 #[derive(Clone, Copy)]
@@ -26,13 +26,17 @@ tokio::task_local! {
 }
 
 pub(crate) struct Authorization {
-    epoch: AccountEpoch,
+    account: SandboxAccount,
     _account: upstream::SessionTransitionGuard,
 }
 
 impl Authorization {
     pub(crate) fn epoch(&self) -> AccountEpoch {
-        self.epoch
+        self.account.epoch()
+    }
+
+    pub(crate) fn account(&self) -> &SandboxAccount {
+        &self.account
     }
 
     /// The upstream identity generation captured by the same transition
@@ -50,11 +54,43 @@ impl Authorization {
 /// manager rejects the ticket after an account transition.
 pub(crate) async fn authorize(state: &AppState) -> ApiResult<Authorization> {
     let scope = super::threads::authority::current_account_scope().await?;
-    let account = super::threads::authority::lock_account_scope(&scope).await?;
+    let account_guard = super::threads::authority::lock_account_scope(&scope).await?;
+    let account = admit_scope(state, &scope)?;
     Ok(Authorization {
-        epoch: state.sandbox_manager.account_epoch(),
-        _account: account,
+        account,
+        _account: account_guard,
     })
+}
+
+/// Mint the exact managed-sandbox capability for a scope whose upstream
+/// transition guard is already held by the caller.
+pub(crate) fn admit_scope(
+    state: &AppState,
+    scope: &super::threads::db::RtAccountScope,
+) -> ApiResult<SandboxAccount> {
+    let epoch = state.sandbox_manager.account_epoch();
+    validate_expected_epoch(epoch)?;
+    state
+        .sandbox_manager
+        .sandbox_account(epoch, scope)
+        .map_err(account_admission_error)
+}
+
+fn account_admission_error(error: String) -> crate::error::ApiError {
+    tracing::warn!(%error, "could not admit the current native sandbox account");
+    if error.contains("stale account epoch")
+        || error.contains("account transition")
+        || error.contains("transition is poisoned")
+        || error.contains("current bound scope")
+    {
+        crate::error::ApiError::conflict(
+            "Your Studio account changed while this request was running. Try again.",
+        )
+    } else {
+        crate::error::ApiError::internal(
+            "We couldn't open this account's local sandbox storage. Restart Studio and try again.",
+        )
+    }
 }
 
 pub(crate) async fn with_expected_identity<F>(expected: ExpectedIdentity, future: F) -> F::Output

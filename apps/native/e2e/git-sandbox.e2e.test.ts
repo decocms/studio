@@ -40,7 +40,11 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { computeHandle, repoDirFor } from "./sandbox-handle";
+import {
+  computeHandle,
+  repoDirFor,
+  type SandboxAccountPathScope,
+} from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -92,6 +96,7 @@ const PACKAGE_JSON = JSON.stringify({
   scripts: { dev: "node server.js" },
 });
 const ORG = "git-sandbox-e2e";
+const AUTHENTICATED_ACCOUNT_SUB = "sandbox-e2e-user";
 
 /** Builds a bare "origin" with two branches (`branch-a`, `branch-b`), each
  * carrying a distinguishing `BRANCH.txt` + a real bindable dev server —
@@ -130,6 +135,7 @@ function setupFixtureRepo(): { root: string; bareDir: string } {
 
 async function ensureAndWriteSandboxFile(
   a: LocalApi,
+  account: SandboxAccountPathScope,
   virtualMcpId: string,
   cloneUrl: string,
   branch: string,
@@ -153,7 +159,7 @@ async function ensureAndWriteSandboxFile(
   // writing into or asserting on the materialized checkout.
   await waitForPreviewBody(a, expectedHandle);
 
-  const repoDir = repoDirFor(a.workdir, expectedHandle);
+  const repoDir = repoDirFor(a.workdir, expectedHandle, account);
   const write = await fetch(
     url(
       a,
@@ -208,12 +214,17 @@ describeLocalApi(
   () => {
     let a: LocalApi;
     let upstream: ReturnType<typeof startAuthenticatedUpstream>;
+    let account: SandboxAccountPathScope;
     let fixture: { root: string; bareDir: string };
     const virtualMcpId = "git-sandbox-e2e-vmcp";
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
       upstream = startAuthenticatedUpstream();
+      account = {
+        upstreamUrl: upstream.url,
+        accountSub: AUTHENTICATED_ACCOUNT_SUB,
+      };
       a = await startLocalApi({ DECOCMS_UPSTREAM_URL: upstream.url });
       await signInAndCompleteSession(a);
     }, HOOK_TIMEOUT_MS);
@@ -227,12 +238,13 @@ describeLocalApi(
     it("isolates two branches of the same repo into two independent workdirs, each with its own running (sniffed-port) preview", async () => {
       const handleA = computeHandle(fixture.bareDir, "branch-a");
       const handleB = computeHandle(fixture.bareDir, "branch-b");
-      const repoA = repoDirFor(a.workdir, handleA);
-      const repoB = repoDirFor(a.workdir, handleB);
+      const repoA = repoDirFor(a.workdir, handleA, account);
+      const repoB = repoDirFor(a.workdir, handleB, account);
 
       // (a) Materialize branch A and write through its scoped bridge.
       await ensureAndWriteSandboxFile(
         a,
+        account,
         virtualMcpId,
         fixture.bareDir,
         "branch-a",
@@ -247,6 +259,7 @@ describeLocalApi(
       // (b) Ensure branch B — same repo, a SECOND independent handle.
       await ensureAndWriteSandboxFile(
         a,
+        account,
         virtualMcpId,
         fixture.bareDir,
         "branch-b",

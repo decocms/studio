@@ -11,9 +11,9 @@
 //!
 //! Unlike the daemon, this route sits BEHIND the `/_sandbox` guard (bearer +
 //! Origin allowlist, wired in `router.rs`) — the contract doc deliberately
-//! tightens the daemon's no-auth `/_sandbox/events` for local-api (see
-//! the native local-API contract); no auth handling lives in
-//! this file itself.
+//! tightens the daemon's no-auth `/_sandbox/events` for local-api. Embedded
+//! requests additionally resolve the current `SandboxAccount` before any
+//! target or snapshot is selected.
 //!
 //! ## Ownership boundary vs. the native module-ownership contract
 //!
@@ -146,16 +146,17 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
         Ok(authorization) => authorization,
         Err(error) => return error.into_response(),
     };
-    let account_epoch = authorization.epoch();
+    let account = authorization.account().clone();
     drop(authorization);
-    events_for_account(state, q, account_epoch).await
+    events_for_account(state, q, account).await
 }
 
 pub(crate) async fn events_for_account(
     state: AppState,
     q: EventsQuery,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: crate::sandbox::manager::SandboxAccount,
 ) -> Response {
+    let account_epoch = account.epoch();
     // Resolve WHICH orchestrator quadruple this stream observes: a strict,
     // metadata-only-adopted per-handle sandbox (`?handle=`), the active sandbox
     // (headerless), or the process-global one. Every per-target read below
@@ -165,7 +166,7 @@ pub(crate) async fn events_for_account(
     let target = match explicit_handle.as_deref() {
         Some(handle) => match state
             .sandbox_manager
-            .adopt_for_account(account_epoch, handle)
+            .adopt_for_account(&account, handle)
             .await
         {
             Ok(Some(sandbox)) => crate::sandbox::SandboxTarget::from_sandbox(&sandbox),
@@ -185,7 +186,7 @@ pub(crate) async fn events_for_account(
                     .into_response();
             }
         },
-        None => match state.resolve_sandbox_target_for_account(account_epoch, None) {
+        None => match state.resolve_sandbox_target_for_account(&account, None) {
             Ok(target) => target,
             Err(error) => {
                 return crate::error::ApiError::conflict(error).into_response();
@@ -207,11 +208,14 @@ pub(crate) async fn events_for_account(
     // Headerless streams follow the active sandbox. Explicit streams follow
     // one durable handle's process generations, so Stop -> Resume remains
     // observable even if another chat becomes active in between.
-    let mut active_rx = state.sandbox_manager.watch_active();
+    let mut active_rx = match state.sandbox_manager.watch_active_for_account(&account) {
+        Ok(receiver) => receiver,
+        Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+    };
     let mut generation_rx = match explicit_handle.as_deref() {
         Some(handle) => match state
             .sandbox_manager
-            .watch_generation_for_account(account_epoch, handle)
+            .watch_generation_for_account(&account, handle)
         {
             Ok(receiver) => receiver,
             Err(error) => return crate::error::ApiError::conflict(error).into_response(),
@@ -229,7 +233,7 @@ pub(crate) async fn events_for_account(
     let mut body_account_epoch_rx = account_epoch_rx.clone();
 
     let initial = initial_frames(&target).await;
-    if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+    if let Err(error) = state.sandbox_manager.validate_sandbox_account(&account) {
         return crate::error::ApiError::conflict(error).into_response();
     }
 
@@ -240,6 +244,7 @@ pub(crate) async fn events_for_account(
     let mut heartbeat_setup = target.setup.clone();
     let mut current_broadcaster = target.broadcaster.clone();
     let task_state = state.clone();
+    let task_account = account.clone();
     tokio::spawn(async move {
         for frame in initial {
             // `borrow()` deliberately does not mark a notification seen. A
@@ -312,7 +317,7 @@ pub(crate) async fn events_for_account(
                     }
                     let now_active = active_rx.borrow_and_update().clone();
                     let new_target = match task_state.resolve_sandbox_target_for_account(
-                        account_epoch,
+                        &task_account,
                         now_active.as_deref(),
                     ) {
                         Ok(target) => target,
@@ -363,6 +368,11 @@ pub(crate) async fn events_for_account(
             .map(|frame| (Ok::<_, Infallible>(frame), rx))
     });
     let account_changed = async move {
+        // Retain the complete storage-bound capability for the whole body,
+        // not just its epoch number. The epoch watch terminates delivery on
+        // replacement; ownership of this proof prevents the stream from
+        // ever being rebound to a later account with the same handle.
+        let _account = account;
         if *body_account_epoch_rx.borrow() != account_epoch {
             return;
         }
@@ -526,39 +536,45 @@ mod tests {
     #[tokio::test]
     async fn explicit_stream_adopts_durable_metadata_and_replays_without_starting() {
         let root = tempfile::tempdir().unwrap();
+        let origin = tempfile::tempdir().unwrap();
+        init_repo(origin.path(), "feature/replay");
         let config = crate::sandbox::GitSandboxConfig {
             virtual_mcp_id: "vmcp-replay-after-restart".to_string(),
-            clone_url: "https://example.invalid/acme/repo.git".to_string(),
+            clone_url: origin.path().to_string_lossy().into_owned(),
             branch: Some("feature/replay".to_string()),
             ..Default::default()
         };
-        let handle = crate::sandbox::SandboxManager::compute_handle(
-            &config.clone_url,
-            config.branch.as_deref().unwrap(),
-        )
-        .expect("scopeable clone url");
-        let sandbox_root = root
-            .path()
-            .join(crate::sandbox::WORKTREES_DIR)
-            .join(&handle);
-        init_repo(&sandbox_root.join("repo"), "feature/replay");
-        tokio::fs::create_dir_all(sandbox_root.join("logs/app"))
+        let handle = {
+            let first = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+            let account = first.test_account().expect("test sandbox account");
+            let sandbox = first
+                .ensure_for_account(&account, &config)
+                .await
+                .expect("fixture sandbox is durably registered");
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while sandbox.setup.is_running() || sandbox.setup.pending_count() > 0 {
+                    tokio::task::yield_now().await;
+                }
+            })
             .await
-            .unwrap();
-        tokio::fs::write(
-            sandbox_root.join("logs/app/setup"),
-            "retained before restart\n",
-        )
-        .await
-        .unwrap();
-        crate::sandbox::persist::write_sidecar(root.path(), &handle, &config);
+            .expect("fixture setup reaches a terminal phase before retained log write");
+            sandbox
+                .tasks
+                .logs()
+                .append(
+                    &crate::log_store::app_key("setup"),
+                    "retained before restart\n",
+                )
+                .await;
+            sandbox.handle.clone()
+        };
 
-        // Opening a fresh manager imports the legacy sidecar into SQLite but
+        // Opening a fresh manager over the same account-scoped registry
         // deliberately leaves its live object cache empty.
         let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
-        let account_epoch = manager.account_epoch();
+        let account = manager.test_account().expect("test sandbox account");
         assert!(manager
-            .get_for_account(account_epoch, &handle)
+            .get_for_account(&account, &handle)
             .unwrap()
             .is_none());
         let state = state_with_manager(root.path(), manager.clone());
@@ -572,7 +588,7 @@ mod tests {
         .await;
         assert_eq!(response.status(), StatusCode::OK);
         let adopted = manager
-            .get_for_account(account_epoch, &handle)
+            .get_for_account(&account, &handle)
             .unwrap()
             .expect("metadata was adopted");
         assert!(
@@ -605,7 +621,10 @@ mod tests {
         .expect("branch and retained log replay arrived");
         assert!(branch.contains(r#""branch":"feature/replay""#));
         assert!(replay.contains(r#""source":"setup""#));
-        assert!(replay.contains(r#""data":"retained before restart\n""#));
+        assert!(
+            replay.contains(r#"retained before restart\n"#),
+            "unexpected replay frame: {replay}"
+        );
     }
 
     #[tokio::test]
@@ -632,9 +651,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
         let state = state_with_manager(root.path(), manager.clone());
-        let epoch = manager.account_epoch();
+        let account = manager.test_account().expect("test sandbox account");
 
-        let response = events_for_account(state, EventsQuery { handle: None }, epoch).await;
+        let response = events_for_account(state, EventsQuery { handle: None }, account).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         // `events_for_account` has already spawned its producer, which may

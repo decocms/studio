@@ -883,10 +883,17 @@ pub struct RtAccountScope {
 }
 
 impl RtAccountScope {
+    const MAX_UPSTREAM_HOST_BYTES: usize = 512;
+    const MAX_USER_ID_BYTES: usize = 3 * 1024;
+
     pub fn new(upstream_host: impl Into<String>, user_id: impl Into<String>) -> Option<Self> {
         let upstream_host = upstream_host.into().trim().to_ascii_lowercase();
         let user_id = user_id.into();
-        if upstream_host.is_empty() || user_id.is_empty() {
+        if upstream_host.is_empty()
+            || upstream_host.len() > Self::MAX_UPSTREAM_HOST_BYTES
+            || user_id.is_empty()
+            || user_id.len() > Self::MAX_USER_ID_BYTES
+        {
             return None;
         }
         Some(Self {
@@ -3501,6 +3508,29 @@ mod tests {
         assert!(!is_thread_status(""));
         assert!(!is_thread_status("cancelled"));
         assert!(!is_thread_status("In_Progress"));
+    }
+
+    #[test]
+    fn account_scope_rejects_empty_or_oversized_external_identity() {
+        assert!(RtAccountScope::new("", "user").is_none());
+        assert!(RtAccountScope::new("studio.example", "").is_none());
+        assert!(RtAccountScope::new(
+            "h".repeat(RtAccountScope::MAX_UPSTREAM_HOST_BYTES + 1),
+            "user"
+        )
+        .is_none());
+        assert!(RtAccountScope::new(
+            "studio.example",
+            "u".repeat(RtAccountScope::MAX_USER_ID_BYTES + 1)
+        )
+        .is_none());
+
+        let maximum = RtAccountScope::new(
+            "h".repeat(RtAccountScope::MAX_UPSTREAM_HOST_BYTES),
+            "u".repeat(RtAccountScope::MAX_USER_ID_BYTES),
+        )
+        .expect("identity at the documented bounds remains valid");
+        assert!(maximum.storage_key().len() <= 4 * 1024);
     }
 
     fn schema_version(path: &Path) -> u32 {

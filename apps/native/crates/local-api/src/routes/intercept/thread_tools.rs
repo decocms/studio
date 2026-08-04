@@ -26,6 +26,7 @@ use crate::routes::threads::db::{
     DbError, RtAccountScope, RtThreadListOptions, RtThreadPatch, ThreadsDb,
 };
 use crate::routes::threads::shared_db;
+use crate::sandbox::manager::SandboxAccount;
 use crate::state::AppState;
 
 use super::sandbox_authority::manager_error;
@@ -74,6 +75,13 @@ fn parse_json(body: &Bytes) -> Result<Value, ApiError> {
         return Ok(json!({}));
     }
     crate::http_util::json_body(body)
+}
+
+fn sandbox_account_for_scope(
+    state: &AppState,
+    scope: &RtAccountScope,
+) -> Result<SandboxAccount, ApiError> {
+    crate::routes::sandbox_account::admit_scope(state, scope)
 }
 
 fn expect_object<'a>(value: &'a Value, path: &str) -> Result<&'a Map<String, Value>, ApiError> {
@@ -754,7 +762,10 @@ async fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         }
         let changes_workspace_identity = workspace_identity_changes(&patch, &thread);
         if patch.hidden == Some(true) || changes_workspace_identity {
-            let account_epoch = state.sandbox_manager.account_epoch();
+            let account = match sandbox_account_for_scope(state, scope) {
+                Ok(account) => account,
+                Err(error) => return error.into_response(),
+            };
             // The per-thread lifecycle lock keeps this generation stable.
             // Release the process-wide account transition gate before any
             // bounded preparation or child-process drain.
@@ -771,8 +782,7 @@ async fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
                 }
             }
             if let Err(error) =
-                quiesce_thread_sandbox(state, account_epoch, &thread.id, &thread.virtual_mcp_id)
-                    .await
+                quiesce_thread_sandbox(state, &account, &thread.id, &thread.virtual_mcp_id).await
             {
                 return error.into_response();
             }
@@ -881,20 +891,23 @@ async fn cancel_preparing_terminal(
     fence: &crate::routes::threads::db::RtThreadFence,
 ) -> Result<(), ApiError> {
     let preparation = state.agent_sessions.cancel_preparation(fence);
-    let had_preparation = preparation.had_preparations();
+    let cleanup_fences = preparation.fences();
     preparation.wait().await.map_err(|error| {
         ApiError::internal(format!(
             "could not stop coding agent preparation before cleanup: {error}"
         ))
     })?;
-    if had_preparation {
-        crate::terminal::launch_context::cleanup_managed_state(&state.app_root, fence)
+    for cleanup_fence in cleanup_fences {
+        crate::terminal::launch_context::cleanup_managed_state(&state.app_root, &cleanup_fence)
             .await
             .map_err(|error| {
                 ApiError::internal(format!(
                     "could not clean canceled coding agent preparation: {error}"
                 ))
             })?;
+        state
+            .agent_sessions
+            .complete_managed_cleanup(&cleanup_fence);
     }
     let live = db
         .rt_get_live_terminal_session_fenced(fence)
@@ -923,13 +936,13 @@ async fn cancel_preparing_terminal(
 /// one chat is archived, deleted, or changes workspace identity.
 async fn quiesce_thread_sandbox(
     state: &AppState,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &SandboxAccount,
     thread_id: &str,
     virtual_mcp_id: &str,
 ) -> Result<(), ApiError> {
     state
         .sandbox_manager
-        .delete_live_thread_sandboxes_for_account(account_epoch, virtual_mcp_id, thread_id)
+        .delete_live_thread_sandboxes_for_account(account, virtual_mcp_id, thread_id)
         .await
         .map(|_| ())
         .map_err(manager_error)
@@ -970,7 +983,10 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
     };
     let db = resolved.db;
     let item = resolved.thread;
-    let account_epoch = state.sandbox_manager.account_epoch();
+    let account = match sandbox_account_for_scope(state, scope) {
+        Ok(account) => account,
+        Err(error) => return error.into_response(),
+    };
     match db.rt_mark_thread_delete_pending(&fence) {
         Ok(true) => {}
         Ok(false) => return ApiError::not_found("thread not found").into_response(),
@@ -992,7 +1008,7 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         return ApiError::internal(format!("could not stop coding agent: {error}")).into_response();
     }
     if let Err(error) =
-        quiesce_thread_sandbox(state, account_epoch, &item.id, &item.virtual_mcp_id).await
+        quiesce_thread_sandbox(state, &account, &item.id, &item.virtual_mcp_id).await
     {
         return error.into_response();
     }
@@ -1015,6 +1031,8 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
                     .await
             {
                 tracing::warn!(%error, thread_id = %fence.thread_id, "could not remove deleted chat agent state");
+            } else {
+                state.agent_sessions.complete_managed_cleanup(&fence);
             }
             Json(json!({ "item": item })).into_response()
         }
@@ -2046,13 +2064,20 @@ mod tests {
                 "local-desktop-user",
             )
             .unwrap();
-        let handle = state
+        let account = state
             .sandbox_manager
-            .register_for_test("https://github.com/acme/routing-old-sandbox.git", &branch);
-        let account_epoch = state.sandbox_manager.account_epoch();
+            .test_account_for_scope(
+                &RtAccountScope::new("test.invalid", "local-desktop-user").unwrap(),
+            )
+            .unwrap();
+        let handle = state.sandbox_manager.register_for_test_account(
+            &account,
+            "https://github.com/acme/routing-old-sandbox.git",
+            &branch,
+        );
         let old_generation = state
             .sandbox_manager
-            .adopt_for_account(account_epoch, &handle)
+            .adopt_for_account(&account, &handle)
             .await
             .unwrap()
             .expect("synthetic sandbox is live before the identity patch");
@@ -2074,7 +2099,7 @@ mod tests {
         );
         assert!(state
             .sandbox_manager
-            .get_for_account(account_epoch, &handle)
+            .get_for_account(&account, &handle)
             .unwrap()
             .is_none());
         assert!(old_generation.tasks.is_admission_closed());
@@ -2082,7 +2107,7 @@ mod tests {
         assert_eq!(
             state
                 .sandbox_manager
-                .registry_record_for_account(account_epoch, &handle)
+                .registry_record_for_account(&account, &handle)
                 .unwrap()
                 .unwrap()
                 .desired_status,

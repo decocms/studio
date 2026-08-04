@@ -33,22 +33,26 @@
 //! fails, a future restart falls back to the pre-existing "unknown handle" /
 //! "no active sandbox" behavior.
 
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use crate::fs_util::{atomic_replace, atomic_replace_with_hook, sync_parent_dir};
+#[cfg(test)]
+use crate::fs_util::atomic_replace_with_hook;
+use crate::fs_util::{atomic_replace, sync_parent_dir};
 
+use super::account_storage::AccountStorage;
 use super::manager::{GitSandboxConfig, SandboxManager};
 
-const ACTIVE_HANDLE_RELATIVE_PATH: &str = "worktrees/.active-handle";
 const SIDECAR_FILE_NAME: &str = "sandbox-config.json";
+const SIDECAR_VERSION: u8 = 2;
+const MAX_SIDECAR_BYTES: u64 = 256 * 1024;
 
-fn active_handle_write_lock() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AccountSidecar {
+    version: u8,
+    account_scope: String,
+    config: GitSandboxConfig,
 }
 
 /// Whether `handle` is safe to use as a RELATIVE path under the worktree root.
@@ -76,30 +80,35 @@ fn is_safe_handle_component(handle: &str) -> bool {
 }
 
 /// Whether `dir` is a sandbox directory — i.e. carries a sidecar.
+#[cfg(test)]
 pub(crate) fn sidecar_exists(dir: &Path) -> bool {
-    dir.join(SIDECAR_FILE_NAME).is_file()
+    std::fs::symlink_metadata(dir.join(SIDECAR_FILE_NAME))
+        .is_ok_and(|metadata| metadata.file_type().is_file() && !metadata.file_type().is_symlink())
 }
 
-/// Every handle under `<app_root>/worktrees` that carries a sidecar.
-///
-/// Walks down to wherever a sidecar actually IS rather than assuming one
-/// level. A handle is `<host>/<owner>/<repo>/<branch>`, so a scan that reads
-/// one level and treats each directory name as a handle finds `github.com`
-/// and nothing else — every caller of it silently sees zero sandboxes.
-///
-/// One shared walk on purpose: this is the third site that needed it, and the
-/// first two were found only after the one-level version had already shipped
-/// a silent empty result.
-pub(crate) fn handles_with_sidecars(app_root: &Path) -> Vec<String> {
-    let root = app_root.join(crate::sandbox::WORKTREES_DIR);
+/// Current-account resurrection catalog. Legacy top-level sidecars are never
+/// walked, and a marker replacement after the account ticket was minted fails
+/// before any config is returned.
+#[cfg(test)]
+pub(crate) fn handles_with_sidecars_for_account(
+    storage: &AccountStorage,
+) -> Result<Vec<String>, String> {
+    storage.verify()?;
+    let root = storage.worktrees_root()?;
     let mut pending = vec![root.clone()];
     let mut handles = Vec::new();
     while let Some(dir) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "failed to read sandbox sidecar directory {dir:?}: {error}"
+                ));
+            }
         };
         for entry in entries.flatten() {
-            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
                 continue;
             }
             let path = entry.path();
@@ -107,21 +116,25 @@ pub(crate) fn handles_with_sidecars(app_root: &Path) -> Vec<String> {
                 pending.push(path);
                 continue;
             }
-            if let Some(handle) = path
+            let Some(handle) = path
                 .strip_prefix(&root)
                 .ok()
-                .and_then(|rel| rel.to_str())
-                .map(|rel| rel.replace('\\', "/"))
-            {
+                .and_then(|relative| relative.to_str())
+                .map(|relative| relative.replace('\\', "/"))
+            else {
+                continue;
+            };
+            if super::account_storage::validate_managed_handle(&handle).is_ok() {
                 handles.push(handle);
             }
         }
     }
-    handles
+    handles.sort();
+    Ok(handles)
 }
 
-fn sidecar_path(app_root: &Path, handle: &str) -> PathBuf {
-    crate::sandbox::worktree_root(app_root, handle).join(SIDECAR_FILE_NAME)
+fn account_sidecar_path(storage: &AccountStorage, handle: &str) -> Result<PathBuf, String> {
+    Ok(storage.worktree_root(handle)?.join(SIDECAR_FILE_NAME))
 }
 
 fn config_handle(cfg: &GitSandboxConfig) -> Option<String> {
@@ -136,136 +149,95 @@ fn config_matches_handle(cfg: &GitSandboxConfig, handle: &str) -> bool {
         || SandboxManager::hashed_compute_handle(&cfg.clone_url, branch).as_deref() == Some(handle)
 }
 
-/// Best-effort write of `cfg` as `handle`'s resurrection sidecar. Called by
-/// `SandboxManager::ensure` after a successful config apply.
-pub(crate) fn write_sidecar(app_root: &Path, handle: &str, cfg: &GitSandboxConfig) {
-    if !is_safe_handle_component(handle) || !config_matches_handle(cfg, handle) {
-        tracing::warn!(
-            handle,
-            "sandbox: refusing to persist mismatched sidecar identity"
-        );
-        return;
-    }
-    let path = sidecar_path(app_root, handle);
-    match serde_json::to_vec_pretty(cfg) {
-        Ok(bytes) => {
-            if let Err(err) = atomic_replace(&path, &bytes) {
-                tracing::warn!(handle, ?path, %err, "sandbox: failed to atomically write resurrection sidecar");
-            }
-        }
-        Err(err) => {
-            tracing::warn!(handle, %err, "sandbox: failed to serialize resurrection sidecar");
-        }
-    }
-}
-
-/// Reads back `handle`'s sidecar, if any. `None` covers both "never written"
-/// and "unreadable/corrupt" — either way there's nothing safe to resurrect
-/// from, so the caller treats both the same as "genuinely unknown handle".
-pub(crate) fn read_sidecar(app_root: &Path, handle: &str) -> Option<GitSandboxConfig> {
-    if !is_safe_handle_component(handle) {
-        tracing::warn!(
-            handle,
-            "sandbox: refusing unsafe resurrection sidecar handle"
-        );
-        return None;
-    }
-    let bytes = std::fs::read(sidecar_path(app_root, handle)).ok()?;
-    let cfg: GitSandboxConfig = serde_json::from_slice(&bytes).ok()?;
-    if !config_matches_handle(&cfg, handle) {
-        tracing::warn!(
-            handle,
-            "sandbox: resurrection sidecar identity does not match its path"
-        );
-        return None;
-    }
-    Some(cfg)
-}
-
-fn active_handle_path(app_root: &Path) -> PathBuf {
-    app_root.join(ACTIVE_HANDLE_RELATIVE_PATH)
-}
-
-/// Best-effort write of the last-`set_active`-d handle.
-pub(crate) fn write_active_handle(app_root: &Path, handle: &str) {
-    if !is_safe_handle_component(handle) {
-        tracing::warn!(handle, "sandbox: refusing to persist unsafe active handle");
-        return;
-    }
-    if let Err(err) = write_active_handle_with_hook(app_root, handle, |_| Ok(())) {
-        let path = active_handle_path(app_root);
-        tracing::warn!(handle, ?path, %err, "sandbox: failed to atomically persist active handle");
-    }
-}
-
-fn write_active_handle_with_hook<F>(
-    app_root: &Path,
+pub(crate) fn write_sidecar_for_account(
+    storage: &AccountStorage,
     handle: &str,
-    before_rename: F,
-) -> io::Result<()>
-where
-    F: FnOnce(&Path) -> io::Result<()>,
-{
-    if !is_safe_handle_component(handle) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "active handle is not a safe path component",
+    cfg: &GitSandboxConfig,
+) -> Result<(), String> {
+    storage.verify()?;
+    if !is_safe_handle_component(handle) || !config_matches_handle(cfg, handle) {
+        return Err("sandbox sidecar identity does not match its handle".to_string());
+    }
+    let sidecar = AccountSidecar {
+        version: SIDECAR_VERSION,
+        account_scope: storage.storage_key().to_string(),
+        config: cfg.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&sidecar)
+        .map_err(|error| format!("failed to serialize sandbox sidecar: {error}"))?;
+    if bytes.len() as u64 > MAX_SIDECAR_BYTES {
+        return Err(format!(
+            "sandbox sidecar exceeds the {MAX_SIDECAR_BYTES}-byte limit"
         ));
     }
-    // `set_active` is reachable from dispatch and preview focus concurrently.
-    // Serialize the complete temp-write + rename so disk always reflects one
-    // whole writer and hook/failure tests have deterministic critical-section
-    // semantics rather than merely relying on unique temp names.
-    let _guard = active_handle_write_lock();
-    let path = active_handle_path(app_root);
-    atomic_replace_with_hook(&path, handle.as_bytes(), before_rename)
+    let path = account_sidecar_path(storage, handle)?;
+    atomic_replace(&path, &bytes)
+        .map_err(|error| format!("failed to persist sandbox sidecar {path:?}: {error}"))?;
+    storage.worktree_root(handle)?;
+    let metadata = std::fs::symlink_metadata(&path)
+        .map_err(|error| format!("failed to inspect sandbox sidecar {path:?}: {error}"))?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(format!(
+            "persisted sandbox sidecar is not a regular file: {path:?}"
+        ));
+    }
+    storage.verify()
 }
 
-/// Reads back the persisted active handle. `None` for a fresh `app_root` (or
-/// an empty/unreadable file) — a genuinely fresh process, or one that only
-/// ever used the plain non-git path.
-pub(crate) fn read_active_handle(app_root: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(active_handle_path(app_root)).ok()?;
-    if !is_safe_handle_component(&raw) {
-        return None;
+pub(crate) fn read_sidecar_for_account(
+    storage: &AccountStorage,
+    handle: &str,
+) -> Result<Option<GitSandboxConfig>, String> {
+    storage.verify()?;
+    if !is_safe_handle_component(handle) {
+        return Ok(None);
     }
-    Some(raw)
+    let path = account_sidecar_path(storage, handle)?;
+    let bytes = match read_bounded_regular_file(&path, MAX_SIDECAR_BYTES) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("failed to read sandbox sidecar {path:?}: {error}")),
+    };
+    let sidecar: AccountSidecar = match serde_json::from_slice(&bytes) {
+        Ok(sidecar) => sidecar,
+        Err(_) => return Ok(None),
+    };
+    if sidecar.version != SIDECAR_VERSION
+        || sidecar.account_scope != storage.storage_key()
+        || !config_matches_handle(&sidecar.config, handle)
+    {
+        return Ok(None);
+    }
+    storage.worktree_root(handle)?;
+    storage.verify()?;
+    Ok(Some(sidecar.config))
+}
+
+fn read_bounded_regular_file(path: &Path, limit: u64) -> io::Result<Option<Vec<u8>>> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Ok(None);
+    }
+    if metadata.len() > limit {
+        return Ok(None);
+    }
+    let file = std::fs::File::open(path)?;
+    let opened = file.metadata()?;
+    if !opened.is_file() || opened.len() > limit {
+        return Ok(None);
+    }
+    let mut bytes = Vec::with_capacity(opened.len() as usize);
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Ok(None);
+    }
+    Ok(Some(bytes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier};
-
-    /// A handle nests (`<host>/<owner>/<repo>/<branch>`), so a scan that reads
-    /// one level of `worktrees/` and calls each name a handle finds only
-    /// `github.com` — and every caller silently reports zero sandboxes. That
-    /// shipped three times: the registry import, the git repo-dir walk, and
-    /// the shell's `sandboxMap` publisher (which left the events stream
-    /// disabled, so no clone output ever reached the terminal).
-    #[test]
-    fn finds_sidecars_nested_under_a_multi_segment_handle() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let app_root = root.path();
-        let handle = "acme/repo/feature-x";
-
-        let mut cfg = sample_cfg();
-        cfg.clone_url = "https://github.com/acme/repo.git".to_string();
-        cfg.branch = Some("feature-x".to_string());
-        write_sidecar(app_root, handle, &cfg);
-
-        // A directory on the way down is NOT itself a sandbox.
-        std::fs::create_dir_all(
-            app_root
-                .join(crate::sandbox::WORKTREES_DIR)
-                .join("acme/other"),
-        )
-        .expect("mkdir");
-
-        assert_eq!(handles_with_sidecars(app_root), vec![handle.to_string()]);
-        assert!(read_sidecar(app_root, handle).is_some());
-    }
 
     fn sample_cfg() -> GitSandboxConfig {
         GitSandboxConfig {
@@ -285,6 +257,121 @@ mod tests {
         config_handle(&sample_cfg()).expect("scopeable clone url")
     }
 
+    fn account_storage(root: &Path) -> AccountStorage {
+        AccountStorage::open(root, "v1:test-account").unwrap()
+    }
+
+    fn encoded_sidecar(storage: &AccountStorage, config: GitSandboxConfig) -> Vec<u8> {
+        serde_json::to_vec_pretty(&AccountSidecar {
+            version: SIDECAR_VERSION,
+            account_scope: storage.storage_key().to_string(),
+            config,
+        })
+        .unwrap()
+    }
+
+    /// Handles are multi-segment paths, so the account catalog must recurse
+    /// to the directory that actually contains a sidecar.
+    #[test]
+    fn finds_account_sidecars_nested_under_a_multi_segment_handle() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let storage = account_storage(root.path());
+        let mut config = sample_cfg();
+        config.clone_url = "https://github.com/acme/repo.git".to_string();
+        config.branch = Some("feature-x".to_string());
+        let handle = config_handle(&config).unwrap();
+        assert!(handle.contains('/'));
+
+        write_sidecar_for_account(&storage, &handle, &config).unwrap();
+        std::fs::create_dir_all(storage.worktrees_root().unwrap().join("acme/other")).unwrap();
+
+        assert_eq!(
+            handles_with_sidecars_for_account(&storage).unwrap(),
+            std::slice::from_ref(&handle)
+        );
+        assert_eq!(
+            read_sidecar_for_account(&storage, &handle).unwrap(),
+            Some(config)
+        );
+    }
+
+    #[test]
+    fn account_sidecars_are_v2_scoped_and_disjoint_for_the_same_handle() {
+        let root = tempfile::tempdir().unwrap();
+        let account_a = AccountStorage::open(root.path(), "v1:account-a").unwrap();
+        let account_b = AccountStorage::open(root.path(), "v1:account-b").unwrap();
+        let handle = sample_handle();
+        write_sidecar_for_account(&account_a, &handle, &sample_cfg()).unwrap();
+
+        assert_eq!(
+            read_sidecar_for_account(&account_a, &handle)
+                .unwrap()
+                .unwrap()
+                .virtual_mcp_id,
+            "vmcp-1"
+        );
+        assert!(read_sidecar_for_account(&account_b, &handle)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            handles_with_sidecars_for_account(&account_a).unwrap(),
+            [handle]
+        );
+        assert!(handles_with_sidecars_for_account(&account_b)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn copied_or_legacy_raw_sidecar_is_not_adopted_by_an_account() {
+        let root = tempfile::tempdir().unwrap();
+        let account_a = AccountStorage::open(root.path(), "v1:account-a").unwrap();
+        let account_b = AccountStorage::open(root.path(), "v1:account-b").unwrap();
+        let handle = sample_handle();
+        write_sidecar_for_account(&account_a, &handle, &sample_cfg()).unwrap();
+        let from = account_sidecar_path(&account_a, &handle).unwrap();
+        let to = account_sidecar_path(&account_b, &handle).unwrap();
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(from, &to).unwrap();
+        assert!(read_sidecar_for_account(&account_b, &handle)
+            .unwrap()
+            .is_none());
+
+        std::fs::write(&to, serde_json::to_vec(&sample_cfg()).unwrap()).unwrap();
+        assert!(read_sidecar_for_account(&account_b, &handle)
+            .unwrap()
+            .is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn account_sidecar_rejects_symlinks_and_oversized_files_and_replaces_without_following() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let account = AccountStorage::open(root.path(), "v1:account-a").unwrap();
+        let handle = sample_handle();
+        let path = account_sidecar_path(&account, &handle).unwrap();
+        let sentinel = external.path().join("sentinel.json");
+        std::fs::write(&sentinel, b"do-not-touch").unwrap();
+        symlink(&sentinel, &path).unwrap();
+
+        assert!(read_sidecar_for_account(&account, &handle)
+            .unwrap()
+            .is_none());
+        write_sidecar_for_account(&account, &handle, &sample_cfg()).unwrap();
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"do-not-touch");
+        let metadata = std::fs::symlink_metadata(&path).unwrap();
+        assert!(metadata.file_type().is_file());
+        assert!(!metadata.file_type().is_symlink());
+
+        std::fs::write(&path, vec![b'x'; MAX_SIDECAR_BYTES as usize + 1]).unwrap();
+        assert!(read_sidecar_for_account(&account, &handle)
+            .unwrap()
+            .is_none());
+    }
+
     pub(super) fn temp_files(dir: &Path) -> Vec<PathBuf> {
         std::fs::read_dir(dir)
             .unwrap()
@@ -299,12 +386,17 @@ mod tests {
     }
 
     #[test]
-    fn sidecar_round_trips() {
-        let dir = tempfile::tempdir().unwrap();
+    fn account_sidecar_round_trips() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let handle = sample_handle();
-        assert!(read_sidecar(dir.path(), &handle).is_none());
-        write_sidecar(dir.path(), &handle, &sample_cfg());
-        let read_back = read_sidecar(dir.path(), &handle).expect("sidecar readable");
+        assert!(read_sidecar_for_account(&storage, &handle)
+            .unwrap()
+            .is_none());
+        write_sidecar_for_account(&storage, &handle, &sample_cfg()).unwrap();
+        let read_back = read_sidecar_for_account(&storage, &handle)
+            .unwrap()
+            .expect("sidecar readable");
         assert_eq!(read_back.virtual_mcp_id, "vmcp-1");
         assert_eq!(read_back.clone_url, "https://example.com/acme/repo.git");
         assert_eq!(read_back.branch.as_deref(), Some("main"));
@@ -313,8 +405,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_lossy_handle_sidecar_remains_readable_after_hash_upgrade() {
-        let dir = tempfile::tempdir().unwrap();
+    fn account_sidecar_accepts_a_legacy_lossy_handle_after_hash_upgrade() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let mut config = sample_cfg();
         config.branch = Some("feature/foo".to_string());
         let branch = crate::sandbox::normalize_branch(config.branch.as_deref());
@@ -324,44 +417,55 @@ mod tests {
             SandboxManager::compute_handle(&config.clone_url, branch)
         );
 
-        write_sidecar(dir.path(), &legacy, &config);
-        assert_eq!(read_sidecar(dir.path(), &legacy), Some(config));
+        write_sidecar_for_account(&storage, &legacy, &config).unwrap();
+        assert_eq!(
+            read_sidecar_for_account(&storage, &legacy).unwrap(),
+            Some(config)
+        );
     }
 
     #[test]
-    fn missing_sidecar_is_none_not_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(read_sidecar(dir.path(), "never-written").is_none());
+    fn missing_account_sidecar_is_none_not_an_error() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
+        assert!(read_sidecar_for_account(&storage, "never-written")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
-    fn corrupt_sidecar_is_none_not_a_panic() {
-        let dir = tempfile::tempdir().unwrap();
+    fn corrupt_account_sidecar_is_none_not_a_panic() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let handle = sample_handle();
-        let path = sidecar_path(dir.path(), &handle);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let path = account_sidecar_path(&storage, &handle).unwrap();
         std::fs::write(&path, b"not json").unwrap();
-        assert!(read_sidecar(dir.path(), &handle).is_none());
+        assert!(read_sidecar_for_account(&storage, &handle)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
-    fn two_handles_get_independent_sidecars() {
-        let dir = tempfile::tempdir().unwrap();
+    fn two_handles_get_independent_account_sidecars() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let mut cfg_b = sample_cfg();
         cfg_b.branch = Some("feature".to_string());
         let handle_a = sample_handle();
         let handle_b = config_handle(&cfg_b).expect("scopeable clone url");
-        write_sidecar(dir.path(), &handle_a, &sample_cfg());
-        write_sidecar(dir.path(), &handle_b, &cfg_b);
+        write_sidecar_for_account(&storage, &handle_a, &sample_cfg()).unwrap();
+        write_sidecar_for_account(&storage, &handle_b, &cfg_b).unwrap();
         assert_eq!(
-            read_sidecar(dir.path(), &handle_a)
+            read_sidecar_for_account(&storage, &handle_a)
+                .unwrap()
                 .unwrap()
                 .branch
                 .as_deref(),
             Some("main")
         );
         assert_eq!(
-            read_sidecar(dir.path(), &handle_b)
+            read_sidecar_for_account(&storage, &handle_b)
+                .unwrap()
                 .unwrap()
                 .branch
                 .as_deref(),
@@ -370,35 +474,41 @@ mod tests {
     }
 
     #[test]
-    fn valid_json_under_the_wrong_handle_fails_closed() {
-        let dir = tempfile::tempdir().unwrap();
+    fn valid_account_sidecar_under_the_wrong_handle_fails_closed() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let wrong_handle =
             SandboxManager::compute_handle("https://github.com/acme/repo-other", "main")
                 .expect("scopeable clone url");
-        let path = sidecar_path(dir.path(), &wrong_handle);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, serde_json::to_vec(&sample_cfg()).unwrap()).unwrap();
-        assert!(read_sidecar(dir.path(), &wrong_handle).is_none());
+        let path = account_sidecar_path(&storage, &wrong_handle).unwrap();
+        std::fs::write(path, encoded_sidecar(&storage, sample_cfg())).unwrap();
+        assert!(read_sidecar_for_account(&storage, &wrong_handle)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
-    fn unsafe_sidecar_handle_fails_closed_without_path_traversal() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(read_sidecar(dir.path(), "../../outside").is_none());
-        write_sidecar(dir.path(), "../../outside", &sample_cfg());
-        assert!(!dir.path().join("outside").exists());
+    fn unsafe_account_sidecar_handle_fails_closed_without_path_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
+        assert!(read_sidecar_for_account(&storage, "../../outside")
+            .unwrap()
+            .is_none());
+        assert!(write_sidecar_for_account(&storage, "../../outside", &sample_cfg()).is_err());
+        assert!(!storage.root().join("outside").exists());
     }
 
     #[test]
     fn pre_rename_failure_preserves_previous_valid_sidecar_and_cleans_temp() {
-        let dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let handle = sample_handle();
-        let path = sidecar_path(dir.path(), &handle);
-        write_sidecar(dir.path(), &handle, &sample_cfg());
+        let path = account_sidecar_path(&storage, &handle).unwrap();
+        write_sidecar_for_account(&storage, &handle, &sample_cfg()).unwrap();
 
         let mut replacement = sample_cfg();
         replacement.package_manager = Some("bun".to_string());
-        let replacement = serde_json::to_vec_pretty(&replacement).unwrap();
+        let replacement = encoded_sidecar(&storage, replacement);
         let error = atomic_replace_with_hook(&path, &replacement, |_| {
             Err(io::Error::other("injected failure before rename"))
         })
@@ -406,7 +516,8 @@ mod tests {
 
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(
-            read_sidecar(dir.path(), &handle)
+            read_sidecar_for_account(&storage, &handle)
+                .unwrap()
                 .unwrap()
                 .package_manager
                 .as_deref(),
@@ -415,112 +526,18 @@ mod tests {
         assert!(temp_files(path.parent().unwrap()).is_empty());
     }
 
-    #[test]
-    fn active_handle_round_trips() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(read_active_handle(dir.path()).is_none());
-        write_active_handle(dir.path(), "main-abc123");
-        assert_eq!(
-            read_active_handle(dir.path()).as_deref(),
-            Some("main-abc123")
-        );
-    }
-
-    #[test]
-    fn active_handle_overwrites_the_previous_value() {
-        let dir = tempfile::tempdir().unwrap();
-        write_active_handle(dir.path(), "first-handle");
-        write_active_handle(dir.path(), "second-handle");
-        assert_eq!(
-            read_active_handle(dir.path()).as_deref(),
-            Some("second-handle")
-        );
-    }
-
-    #[test]
-    fn pre_rename_failure_preserves_previous_active_handle() {
-        let dir = tempfile::tempdir().unwrap();
-        write_active_handle(dir.path(), "stable-handle");
-
-        write_active_handle_with_hook(dir.path(), "replacement-handle", |_| {
-            Err(io::Error::other("injected failure before rename"))
-        })
-        .unwrap_err();
-
-        assert_eq!(
-            read_active_handle(dir.path()).as_deref(),
-            Some("stable-handle")
-        );
-        assert!(temp_files(active_handle_path(dir.path()).parent().unwrap()).is_empty());
-    }
-
-    #[test]
-    fn concurrent_active_handle_updates_are_serialized_and_never_torn() {
-        const WRITERS: usize = 16;
-        let dir = tempfile::tempdir().unwrap();
-        let app_root = dir.path().to_path_buf();
-        let barrier = Arc::new(Barrier::new(WRITERS));
-        let in_hook = Arc::new(AtomicUsize::new(0));
-        let max_in_hook = Arc::new(AtomicUsize::new(0));
-        let handles: Vec<String> = (0..WRITERS)
-            .map(|index| format!("branch-{index:02}-0123456789abcdef"))
-            .collect();
-
-        let threads: Vec<_> = handles
-            .iter()
-            .cloned()
-            .map(|handle| {
-                let app_root = app_root.clone();
-                let barrier = Arc::clone(&barrier);
-                let in_hook = Arc::clone(&in_hook);
-                let max_in_hook = Arc::clone(&max_in_hook);
-                std::thread::spawn(move || {
-                    barrier.wait();
-                    write_active_handle_with_hook(&app_root, &handle, |_| {
-                        let now = in_hook.fetch_add(1, Ordering::SeqCst) + 1;
-                        max_in_hook.fetch_max(now, Ordering::SeqCst);
-                        std::thread::sleep(std::time::Duration::from_millis(2));
-                        in_hook.fetch_sub(1, Ordering::SeqCst);
-                        Ok(())
-                    })
-                    .unwrap();
-                })
-            })
-            .collect();
-        for thread in threads {
-            thread.join().unwrap();
-        }
-
-        assert_eq!(max_in_hook.load(Ordering::SeqCst), 1);
-        let persisted = read_active_handle(&app_root).expect("one complete active handle");
-        assert!(handles.contains(&persisted));
-        assert!(temp_files(active_handle_path(&app_root).parent().unwrap()).is_empty());
-    }
-
-    #[test]
-    fn empty_active_handle_write_reads_back_as_none() {
-        let dir = tempfile::tempdir().unwrap();
-        write_active_handle(dir.path(), "");
-        assert!(read_active_handle(dir.path()).is_none());
-    }
-
     #[cfg(unix)]
     #[test]
-    fn persistent_files_are_private_from_creation() {
+    fn account_sidecar_is_private_from_creation() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let storage = account_storage(root.path());
         let handle = sample_handle();
-        write_sidecar(dir.path(), &handle, &sample_cfg());
-        write_active_handle(dir.path(), &handle);
-
-        for path in [
-            sidecar_path(dir.path(), &handle),
-            active_handle_path(dir.path()),
-        ] {
-            let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600);
-        }
+        write_sidecar_for_account(&storage, &handle, &sample_cfg()).unwrap();
+        let path = account_sidecar_path(&storage, &handle).unwrap();
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }
 

@@ -13,11 +13,12 @@
 //   (b) Cookie auth: an explicit credential-less session probe is 401, while
 //       the normal credentialed probe is already 204. The latter proves the
 //       real native entry exchanged its one-time IPC capability before React
-//       mounted. Replaying that capability is rejected, and `/_sandbox/tasks`
-//       succeeds with browser credentials and no `Authorization` header.
-//   (c) Native `EventSource` receives the initial sandbox `status` event.
-//       EventSource cannot carry a custom Authorization header, so this is a
-//       direct browser-level proof that the HttpOnly cookie authenticates SSE.
+//       mounted. Replaying that capability is rejected, and the
+//       account-independent `/_auth/status` probe succeeds with browser
+//       credentials and no `Authorization` header.
+//   (c) Native `EventSource` receives an isolated self-test `status` event.
+//       EventSource cannot carry a custom Authorization header, so this proves
+//       the HttpOnly cookie authenticates SSE without bypassing account scope.
 //   (d) Both control and preview use plain `localhost` on separate ports. A
 //       real credentialed request to the preview listener stores and replays
 //       a `SameSite=Strict; HttpOnly` sandbox cookie in WKWebView, then the
@@ -258,7 +259,7 @@
   }
 
   try {
-    const { res, attempts } = await fetchNetworkRetry("/_sandbox/tasks", {
+    const { res, attempts } = await fetchNetworkRetry("/_auth/status", {
       credentials: "include",
       cache: "no-store",
     });
@@ -275,30 +276,18 @@
     };
   }
 
-  // A credential-less unsafe request must be rejected before its handler
-  // mutates the isolated self-test workdir. Verify both the 401 and the
-  // file's continued absence through an authenticated read.
-  const unauthorizedMutationPath = "selftest-unauthorized-mutation.txt";
+  // A credential-less unsafe request must be rejected before the opt-in
+  // self-test progress handler can mutate its fixed diagnostic file.
   try {
-    const write = await fetch("/_sandbox/write", {
+    const write = await fetch("/_local/selftest/progress", {
       method: "POST",
       credentials: "omit",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: unauthorizedMutationPath,
-        content: "this write must never happen",
-      }),
-    });
-    const verification = await fetch("/_sandbox/read", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: unauthorizedMutationPath }),
+      body: JSON.stringify({ at: "credentialless-attempt" }),
     });
     results.credentiallessMutationRejected = {
-      ok: write.status === 401 && verification.status === 400,
+      ok: write.status === 401,
       writeStatus: write.status,
-      verificationStatus: verification.status,
     };
   } catch (e) {
     results.credentiallessMutationRejected = {
@@ -308,20 +297,18 @@
   }
 
   // Hang forensics: after authentication, persist partial results through
-  // the local API's fs/write using the native cookie. No bearer header is
-  // attached. Best-effort: forensics must never decide the run.
+  // the fixed self-test progress route using the native cookie. No bearer
+  // header or caller-controlled path is attached. Best-effort: forensics
+  // must never decide the run.
   async function progress(label) {
     try {
-      await fetch("/_sandbox/write", {
+      await fetch("/_local/selftest/progress", {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          path: "selftest-progress.json",
-          content: JSON.stringify({ at: label, results }, null, 2),
-        }),
+        body: JSON.stringify({ at: label, results }, null, 2),
       });
     } catch {
       /* forensics must never break the run */
@@ -348,7 +335,7 @@
 
   // --- (b) cookie-authenticated native EventSource -------------------
   results.eventSourceStatusEvent = await new Promise((resolve) => {
-    const source = new EventSource("/_sandbox/events");
+    const source = new EventSource("/_local/selftest/events");
     let settled = false;
     const finishEvent = (result) => {
       if (settled) return;

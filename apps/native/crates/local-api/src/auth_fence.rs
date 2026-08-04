@@ -75,11 +75,11 @@ pub(crate) async fn reap_all(state: &AppState) -> Result<(), AccountInstallError
         .begin_account_transition()
         .await
         .map_err(AccountInstallError::AgentReap)?;
+    let retired_account = sandbox_transition.retired_account().cloned();
     let preparation = state.agent_sessions.cancel_all_preparations();
     let preparation_fences = preparation.fences();
     let mut failures = Vec::new();
     let first_preparation_error = preparation.wait().await.err();
-    let first_sandbox_error = sandbox_transition.drain_and_stop_live().await.err();
     let preparation_quiesced = match first_preparation_error {
         None => true,
         Some(first_error) => match preparation.wait().await {
@@ -92,41 +92,62 @@ pub(crate) async fn reap_all(state: &AppState) -> Result<(), AccountInstallError
             }
         },
     };
+
+    failures.extend(state.agent_sessions.terminate_active_sessions().await);
+    let remaining = state.agent_sessions.active_count();
+    if remaining != 0 {
+        failures.push(format!("{remaining} terminal session(s) remain active"));
+    }
+
+    let mut sandboxes_quiesced = false;
     if preparation_quiesced {
         // The first sandbox drain can time out before taking a snapshot while
         // a canceled preparation still owns a materialization admission. The
         // successful preparation retry proves that admission is now gone, so
         // one idempotent drain retry is required before the transition gate
         // may reopen. A successful retry fully recovers the first timeout.
-        if let Some(first_error) = first_sandbox_error {
-            if let Err(error) = sandbox_transition.drain_and_stop_live().await {
-                failures.push(format!(
+        match sandbox_transition.drain_and_stop_live().await {
+            Ok(_) => sandboxes_quiesced = true,
+            Err(first_error) => match sandbox_transition.drain_and_stop_live().await {
+                Ok(_) => sandboxes_quiesced = true,
+                Err(error) => failures.push(format!(
                     "could not stop sandbox processes before changing accounts: {first_error}; retry: {error}"
-                ));
-            }
+                )),
+            },
         }
+
         for fence in &preparation_fences {
-            if let Err(error) =
-                crate::terminal::launch_context::cleanup_managed_state(&state.app_root, fence).await
+            match crate::terminal::launch_context::cleanup_managed_state(&state.app_root, fence)
+                .await
             {
-                failures.push(format!(
-                    "could not clean canceled coding agent preparation for {}: {error}",
+                Ok(()) => state.agent_sessions.complete_managed_cleanup(fence),
+                Err(error) => failures.push(format!(
+                    "could not clean canceled coding agent preparation for thread {}: {error}",
                     fence.thread_id
+                )),
+            }
+        }
+    }
+
+    // Mounts retain request handlers and credentials for the retired account.
+    // Drain them only after every preparation, PTY, and sandbox child is known
+    // quiescent; the transition guard keeps the exact retired account proof so
+    // a poisoned retry cannot accidentally clean the replacement account.
+    if preparation_quiesced && remaining == 0 && sandboxes_quiesced {
+        if let Some(retired) = retired_account.as_ref() {
+            if let Err(error) = state.sandbox_manager.retire_org_mounts(retired).await {
+                failures.push(format!(
+                    "could not retire organization mounts before changing accounts: {error}"
                 ));
             }
         }
-    } else if let Some(error) = first_sandbox_error {
-        failures.push(format!(
-            "could not stop sandbox processes before changing accounts: {error}"
-        ));
     }
-    failures.extend(state.agent_sessions.terminate_active_sessions().await);
-    let remaining = state.agent_sessions.active_count();
-    if failures.is_empty() && remaining == 0 {
+
+    if failures.is_empty() && preparation_quiesced && sandboxes_quiesced {
+        sandbox_transition
+            .complete()
+            .map_err(AccountInstallError::AgentReap)?;
         return Ok(());
-    }
-    if remaining != 0 {
-        failures.push(format!("{remaining} terminal session(s) remain active"));
     }
     Err(AccountInstallError::AgentReap(failures.join("; ")))
 }
@@ -303,27 +324,27 @@ mod tests {
             "https://github.com/acme/auth-synthetic.git",
             "thread:account-a-thread",
         );
-        let account_epoch = state.sandbox_manager.account_epoch();
+        let account = state.sandbox_manager.test_account().unwrap();
         let real = state
             .sandbox_manager
-            .adopt_for_account(account_epoch, &real_handle)
+            .adopt_for_account(&account, &real_handle)
             .await
             .unwrap()
             .unwrap();
         let synthetic = state
             .sandbox_manager
-            .adopt_for_account(account_epoch, &synthetic_handle)
+            .adopt_for_account(&account, &synthetic_handle)
             .await
             .unwrap()
             .unwrap();
 
         reap_all(&state).await.unwrap();
-        let current_epoch = state.sandbox_manager.account_epoch();
+        let current_account = state.sandbox_manager.test_account().unwrap();
 
         for (handle, generation) in [(&real_handle, real), (&synthetic_handle, synthetic)] {
             assert!(state
                 .sandbox_manager
-                .get_for_account(current_epoch, handle)
+                .get_for_account(&current_account, handle)
                 .unwrap()
                 .is_none());
             assert!(generation.tasks.is_admission_closed());
@@ -331,7 +352,7 @@ mod tests {
             assert_eq!(
                 state
                     .sandbox_manager
-                    .registry_record_for_account(current_epoch, handle)
+                    .registry_record_for_account(&current_account, handle)
                     .unwrap()
                     .unwrap()
                     .desired_status,

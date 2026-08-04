@@ -1,6 +1,6 @@
 //! Process-local ownership for interactive coding-agent terminals.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -42,6 +42,7 @@ pub struct HookRegistration {
     pub title_environment: harness::title::TitleEnvironment,
     title_started: Arc<AtomicBool>,
     expected_provider_session_id: Option<Arc<str>>,
+    scoped_mcp_identity: ScopedMcpIdentity,
     opencode_turn: Arc<Mutex<OpenCodeTurnState>>,
 }
 
@@ -55,6 +56,16 @@ pub(crate) struct HookReservation {
     pub mcp_path: String,
     pub title_environment: harness::title::TitleEnvironment,
     pub expected_provider_session_id: Option<String>,
+    pub account_epoch: crate::sandbox::manager::AccountEpoch,
+    pub identity_generation: u64,
+}
+
+/// Identity proof attached to one exact-path terminal MCP capability. The
+/// random bearer is validated before this value enters request extensions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ScopedMcpIdentity {
+    pub account_epoch: crate::sandbox::manager::AccountEpoch,
+    pub identity_generation: u64,
 }
 
 impl std::fmt::Debug for HookRegistration {
@@ -433,21 +444,12 @@ impl Drop for PreparationPhase {
 
 pub(crate) struct PreparationBarrier {
     preparations: Vec<(PreparationKey, Arc<PreparationState>)>,
+    cleanup_fences: Vec<RtThreadFence>,
 }
 
 impl PreparationBarrier {
-    pub(crate) fn had_preparations(&self) -> bool {
-        !self.preparations.is_empty()
-    }
-
     pub(crate) fn fences(&self) -> Vec<RtThreadFence> {
-        let mut fences = Vec::new();
-        for (key, _) in &self.preparations {
-            if !fences.contains(&key.fence) {
-                fences.push(key.fence.clone());
-            }
-        }
-        fences
+        self.cleanup_fences.clone()
     }
 
     pub(crate) async fn wait(&self) -> Result<(), String> {
@@ -544,6 +546,7 @@ pub struct AgentSessionRegistry {
     sessions: Mutex<HashMap<RtThreadFence, ManagedTerminal>>,
     hooks: Mutex<HashMap<String, Arc<HookRegistration>>>,
     preparations: Mutex<HashMap<PreparationKey, Arc<PreparationState>>>,
+    pending_managed_cleanups: Mutex<HashSet<RtThreadFence>>,
     start_locks: Mutex<HashMap<RtThreadFence, Arc<AsyncMutex<()>>>>,
     codex_home_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     claude_state_locks: Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>,
@@ -568,6 +571,7 @@ impl AgentSessionRegistry {
             sessions: Mutex::new(HashMap::new()),
             hooks: Mutex::new(HashMap::new()),
             preparations: Mutex::new(HashMap::new()),
+            pending_managed_cleanups: Mutex::new(HashSet::new()),
             start_locks: Mutex::new(HashMap::new()),
             codex_home_locks: Mutex::new(HashMap::new()),
             claude_state_locks: Mutex::new(HashMap::new()),
@@ -589,6 +593,12 @@ impl AgentSessionRegistry {
 
     fn lock_preparations(&self) -> MutexGuard<'_, HashMap<PreparationKey, Arc<PreparationState>>> {
         self.preparations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn lock_pending_managed_cleanups(&self) -> MutexGuard<'_, HashSet<RtThreadFence>> {
+        self.pending_managed_cleanups
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -685,7 +695,20 @@ impl AgentSessionRegistry {
         for (_, state) in &preparations {
             state.cancel();
         }
-        PreparationBarrier { preparations }
+        let mut pending = self.lock_pending_managed_cleanups();
+        if !preparations.is_empty() {
+            pending.insert(fence.clone());
+        }
+        let cleanup_fences = if pending.contains(fence) {
+            vec![fence.clone()]
+        } else {
+            Vec::new()
+        };
+        drop(pending);
+        PreparationBarrier {
+            preparations,
+            cleanup_fences,
+        }
     }
 
     pub(crate) fn cancel_all_preparations(&self) -> PreparationBarrier {
@@ -697,11 +720,43 @@ impl AgentSessionRegistry {
         for (_, state) in &preparations {
             state.cancel();
         }
-        PreparationBarrier { preparations }
+        let mut pending = self.lock_pending_managed_cleanups();
+        pending.extend(preparations.iter().map(|(key, _)| key.fence.clone()));
+        let cleanup_fences = pending.iter().cloned().collect();
+        drop(pending);
+        PreparationBarrier {
+            preparations,
+            cleanup_fences,
+        }
+    }
+
+    /// A failed managed-state removal survives after its preparation owner is
+    /// gone. Clear the retry item only after the exact fenced paths were
+    /// removed successfully.
+    pub(crate) fn complete_managed_cleanup(&self, fence: &RtThreadFence) {
+        self.lock_pending_managed_cleanups().remove(fence);
     }
 
     pub fn hook(&self, terminal_session_id: &str) -> Option<Arc<HookRegistration>> {
         self.lock_hooks().get(terminal_session_id).cloned()
+    }
+
+    /// Resolve the identity pinned to one live terminal capability for this
+    /// exact MCP path. Every registered token is compared so the matching
+    /// entry's position does not become a token oracle. Paths are public and
+    /// may short-circuit inside the registration.
+    pub(crate) fn scoped_mcp_identity(
+        &self,
+        path: &str,
+        candidate: &str,
+    ) -> Option<ScopedMcpIdentity> {
+        self.lock_hooks().values().fold(None, |authorized, hook| {
+            if hook.authorizes_mcp(path, candidate) {
+                Some(hook.scoped_mcp_identity)
+            } else {
+                authorized
+            }
+        })
     }
 
     /// Whether one live terminal capability authorizes exactly this MCP path.
@@ -709,9 +764,7 @@ impl AgentSessionRegistry {
     /// does not become a token oracle. Paths are public and may short-circuit
     /// inside the registration.
     pub fn authorizes_mcp(&self, path: &str, candidate: &str) -> bool {
-        self.lock_hooks().values().fold(false, |authorized, hook| {
-            hook.authorizes_mcp(path, candidate) | authorized
-        })
+        self.scoped_mcp_identity(path, candidate).is_some()
     }
 
     pub fn subscribe_lifecycle(&self) -> tokio::sync::broadcast::Receiver<RtThreadFence> {
@@ -733,6 +786,8 @@ impl AgentSessionRegistry {
             mcp_path,
             title_environment,
             expected_provider_session_id,
+            account_epoch,
+            identity_generation,
         } = reservation;
         let hook = Arc::new(HookRegistration {
             token: token.into(),
@@ -745,6 +800,10 @@ impl AgentSessionRegistry {
             title_environment,
             title_started: Arc::new(AtomicBool::new(false)),
             expected_provider_session_id: expected_provider_session_id.map(Arc::from),
+            scoped_mcp_identity: ScopedMcpIdentity {
+                account_epoch,
+                identity_generation,
+            },
             opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
         });
         self.lock_hooks().insert(terminal_session_id, hook.clone());
@@ -935,6 +994,10 @@ mod tests {
             title_environment: harness::title::TitleEnvironment::default(),
             title_started: Arc::new(AtomicBool::new(false)),
             expected_provider_session_id: None,
+            scoped_mcp_identity: ScopedMcpIdentity {
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
+            },
             opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
         };
         assert!(hook.authorizes("0123456789abcdef"));
@@ -964,6 +1027,10 @@ mod tests {
             title_environment: harness::title::TitleEnvironment::default(),
             title_started: Arc::new(AtomicBool::new(false)),
             expected_provider_session_id: Some(Arc::from("ses_resume")),
+            scoped_mcp_identity: ScopedMcpIdentity {
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
+            },
             opencode_turn: Arc::new(Mutex::new(OpenCodeTurnState::default())),
         };
 
@@ -1071,11 +1138,17 @@ mod tests {
             .unwrap();
         let phase = reservation.begin_phase().unwrap();
         let barrier = registry.cancel_preparation(&fence);
+        assert_eq!(barrier.fences().as_slice(), std::slice::from_ref(&fence));
 
         assert!(barrier.wait_for(Duration::ZERO).await.is_err());
         drop(phase);
         barrier.wait_for(Duration::from_secs(1)).await.unwrap();
         drop(reservation);
+
+        let retry = registry.cancel_preparation(&fence);
+        assert_eq!(retry.fences().as_slice(), std::slice::from_ref(&fence));
+        registry.complete_managed_cleanup(&fence);
+        assert!(registry.cancel_preparation(&fence).fences().is_empty());
     }
 
     #[tokio::test]

@@ -11,7 +11,7 @@
 
 use crate::error::{ApiError, ApiResult};
 use crate::routes::threads::authority::{self, ThreadAccess};
-use crate::sandbox::manager::AccountEpoch;
+use crate::sandbox::manager::SandboxAccount;
 use crate::state::AppState;
 use tokio::sync::OwnedMutexGuard;
 
@@ -29,14 +29,14 @@ pub(super) enum Access {
 /// the operation holding it.
 #[must_use = "dropping sandbox authority releases its thread lifecycle lock"]
 pub(super) struct Authorization {
-    account_epoch: AccountEpoch,
+    account: SandboxAccount,
     identity_generation: u64,
     _owner_guard: Option<OwnedMutexGuard<()>>,
 }
 
 impl Authorization {
-    pub(super) fn account_epoch(&self) -> AccountEpoch {
-        self.account_epoch
+    pub(super) fn account(&self) -> &SandboxAccount {
+        &self.account
     }
 
     pub(super) fn identity_generation(&self) -> u64 {
@@ -61,12 +61,11 @@ pub(super) async fn authorize(
         // potentially long workspace operation; this is point-in-time account
         // authentication, not tenant ownership for the machine-wide registry.
         let account_guard = authority::lock_account_scope(&scope).await?;
-        let account_epoch = state.sandbox_manager.account_epoch();
-        crate::routes::sandbox_account::validate_expected_epoch(account_epoch)?;
+        let account = crate::routes::sandbox_account::admit_scope(state, &scope)?;
         let identity_generation = account_guard.generation();
         drop(account_guard);
         return Ok(Authorization {
-            account_epoch,
+            account,
             identity_generation,
             _owner_guard: None,
         });
@@ -74,15 +73,14 @@ pub(super) async fn authorize(
 
     if access == Access::Viewer {
         let account_guard = authority::lock_account_scope(&scope).await?;
+        let account = crate::routes::sandbox_account::admit_scope(state, &scope)?;
         let resolved =
             authority::resolve_scoped_thread(state, scope, org, thread_id, ThreadAccess::Viewer)?;
         verify_virtual_mcp(&resolved.thread.virtual_mcp_id, virtual_mcp_id)?;
-        let account_epoch = state.sandbox_manager.account_epoch();
-        crate::routes::sandbox_account::validate_expected_epoch(account_epoch)?;
         let identity_generation = account_guard.generation();
         drop(account_guard);
         return Ok(Authorization {
-            account_epoch,
+            account,
             identity_generation,
             _owner_guard: None,
         });
@@ -100,15 +98,14 @@ pub(super) async fn authorize(
         } else {
             ThreadAccess::ActiveOwner
         };
+        let account = crate::routes::sandbox_account::admit_scope(state, &scope)?;
         let resolved =
             authority::resolve_scoped_thread(state, scope, org, thread_id, thread_access)?;
         verify_virtual_mcp(&resolved.thread.virtual_mcp_id, virtual_mcp_id)?;
-        let account_epoch = state.sandbox_manager.account_epoch();
-        crate::routes::sandbox_account::validate_expected_epoch(account_epoch)?;
         let identity_generation = account_guard.generation();
         drop(account_guard);
         return Ok(Authorization {
-            account_epoch,
+            account,
             identity_generation,
             _owner_guard: None,
         });
@@ -139,18 +136,17 @@ pub(super) async fn authorize(
     // exec, preview, or filesystem I/O would indefinitely block logout and
     // account switching. The thread lifecycle gate remains held through the
     // workspace side effect.
+    let account = crate::routes::sandbox_account::admit_scope(state, &scope)?;
     let resolved =
         authority::resolve_scoped_thread(state, scope, org, thread_id, ThreadAccess::ActiveOwner)?;
     if resolved.fence != initial_fence {
         return Err(ApiError::not_found("sandbox not found"));
     }
     verify_virtual_mcp(&resolved.thread.virtual_mcp_id, virtual_mcp_id)?;
-    let account_epoch = state.sandbox_manager.account_epoch();
-    crate::routes::sandbox_account::validate_expected_epoch(account_epoch)?;
     let identity_generation = account_guard.generation();
     drop(account_guard);
     Ok(Authorization {
-        account_epoch,
+        account,
         identity_generation,
         _owner_guard: Some(owner_guard),
     })
@@ -161,12 +157,11 @@ pub(super) async fn authorize(
 pub(super) async fn require_account(state: &AppState) -> ApiResult<Authorization> {
     let scope = authority::current_account_scope().await?;
     let account_guard = authority::lock_account_scope(&scope).await?;
-    let account_epoch = state.sandbox_manager.account_epoch();
-    crate::routes::sandbox_account::validate_expected_epoch(account_epoch)?;
+    let account = crate::routes::sandbox_account::admit_scope(state, &scope)?;
     let identity_generation = account_guard.generation();
     drop(account_guard);
     Ok(Authorization {
-        account_epoch,
+        account,
         identity_generation,
         _owner_guard: None,
     })
@@ -215,8 +210,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let state = super::super::test_state(root.path());
         let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let scope =
+            crate::routes::threads::db::RtAccountScope::new("test.invalid", "local-desktop-user")
+                .unwrap();
         let authorization = Authorization {
-            account_epoch: state.sandbox_manager.account_epoch(),
+            account: state
+                .sandbox_manager
+                .sandbox_account(state.sandbox_manager.account_epoch(), &scope)
+                .unwrap(),
             identity_generation: 0,
             _owner_guard: Some(lock.clone().lock_owned().await),
         };

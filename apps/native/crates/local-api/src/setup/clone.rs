@@ -472,7 +472,7 @@ async fn clone_fresh_body(
     // ONE bare clone per upstream repository, shared by every sandbox that
     // names it; this worktree only adds a working copy on top. Falls back to a
     // direct clone when the URL isn't one we can key (see `canonical_repo_dir`).
-    let canonical = crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, clone_url);
+    let canonical = orch.canonical_repo_dir(clone_url)?;
     let Some(canonical) = canonical else {
         let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
         let mut clone_args: Vec<&str> = vec!["clone", "--depth", "1"];

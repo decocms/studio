@@ -15,10 +15,12 @@
 //!    HTML-navigation SPA fallback, and one-time `/_local/session/bootstrap`.
 //! 2. `/_sandbox/*` — the guarded sandbox control surface
 //!    wrapped in [`guard`] (standalone Origin + bearer, or embedded exact
-//!    Host/unsafe-Origin + HttpOnly session cookie)
-//!    and each with its own JSON-404 fallback so an unmatched path WITHIN
-//!    one of these prefixes returns `{"error":"Not found: <path>"}` rather
-//!    than falling through to the app-API fallback.
+//!    Host/unsafe-Origin + HttpOnly session cookie). The process-global
+//!    daemon-compat fs/bash/git/config routes are mounted only in standalone
+//!    bearer mode; embedded mode reaches those operations through the
+//!    account-authorized `/api/:org/sandbox/...` interceptor. The sandbox
+//!    prefix has its own JSON-404 fallback, so an unmatched path returns
+//!    `{"error":"Not found: <path>"}` instead of reaching the app-API fallback.
 //! 3. Everything else (no matching prefix and not a public UI response) —
 //!    [`app_or_ui_fallback`] authenticates, removes only the local control
 //!    cookie, then invokes `routes::upstream::proxy`, the app-API
@@ -94,23 +96,26 @@ struct MainRuntime {
     preview_origin: Arc<str>,
 }
 
-pub fn build(
-    state: AppState,
-    auth: ClientAuth,
-    ui_assets: Option<Arc<dyn UiAssetProvider>>,
-    preview_origin: String,
-) -> Router {
-    let guard_state = GuardState {
-        auth: auth.clone(),
-        mode: state.mode,
-        agent_sessions: state.agent_sessions.clone(),
-    };
-    let runtime = MainRuntime {
-        auth: auth.clone(),
-        ui_assets,
-        preview_origin: preview_origin.into(),
-    };
-    let sandbox = Router::new()
+fn runtime_selftest_router(enabled: bool) -> Router<AppState> {
+    if enabled {
+        Router::new()
+            .route("/_local/selftest/events", get(routes::selftest::events))
+            .route(
+                "/_local/selftest/progress",
+                post(routes::selftest::record_progress),
+            )
+    } else {
+        Router::new()
+    }
+}
+
+/// The legacy single-workspace daemon surface. These handlers intentionally
+/// operate on `AppState`'s process-global roots for black-box parity with the
+/// standalone sandbox daemon. A desktop webview must never receive them: its
+/// cookie proves only local-app identity, while the canonical app-API bridge
+/// additionally resolves the signed-in account and exact sandbox generation.
+fn standalone_daemon_router() -> Router<AppState> {
+    Router::new()
         .route("/read", post(routes::fs::read))
         .route("/write", post(routes::fs::write))
         .route("/unlink", post(routes::fs::unlink))
@@ -123,14 +128,6 @@ pub fn build(
         .route("/upload_to_url", post(routes::fs::upload_to_url))
         .route("/tools/sync", post(routes::fs::tools_sync))
         .route("/bash", post(routes::bash::bash))
-        .route("/tasks", get(routes::tasks::list))
-        .route("/tasks/kill-all", post(routes::tasks::kill_all))
-        .route(
-            "/tasks/:id",
-            get(routes::tasks::get).delete(routes::tasks::delete),
-        )
-        .route("/tasks/:id/kill", post(routes::tasks::kill))
-        .route("/tasks/:id/stream", get(routes::tasks::stream))
         .route("/git/status", get(routes::git::status))
         .route("/git/diff", get(routes::git::diff).post(routes::git::diff))
         .route("/git/publish", post(routes::git::publish))
@@ -142,37 +139,68 @@ pub fn build(
                 .post(routes::config::update)
                 .put(routes::config::update),
         )
-        .route("/setup/clone", post(routes::setup::clone))
-        .route("/setup/install", post(routes::setup::install))
-        .route("/setup/ensure", post(routes::setup::ensure))
-        .route("/setup/start", post(routes::setup::start))
-        // NEW — no daemon precedent (see routes::setup::stop's own doc
-        // comment): quiesces a registered sandbox generation; the legacy
-        // headerless non-git fallback stops its running dev/start task
-        // WITHOUT respawning, giving the sandbox drawer's Stop button a
-        // real desktop-local action to call.
-        .route("/setup/stop", post(routes::setup::stop))
-        .route("/orgfs-config", post(routes::orgfs::orgfs_config))
-        // `/_sandbox/orgfs/:org/:volume/**` — the loopback WebDAV surface
-        // rclone mounts as the org filesystem (P1 of
-        // `apps/native/docs/org-fs-plan.md`). Nested as a catchall rather
-        // than routed per path/method: everything after `<org>/<volume>` is
-        // the in-volume path, and PROPFIND/MKCOL/MOVE are extension methods
-        // `axum::routing` has no filter for. Nested BEFORE `.layer(guard)`
-        // below so it inherits the same Origin + bearer/cookie
-        // authentication every other `/_sandbox` route gets.
-        .nest("/orgfs", routes::webdav::router())
-        .route("/scripts", get(routes::scripts::list))
-        .route("/exec/:name", post(routes::scripts::exec))
-        .route("/exec/:name/kill", post(routes::scripts::exec_kill))
-        .route("/events", get(routes::events::events))
-        .route("/preview-handle", post(routes::proxy::set_preview_handle))
-        // GET /_sandbox/repo-dir — see routes::repo_dir's module doc (a
-        // git-backed sandbox's absolute workdir, for the webview's
-        // "Open in VS Code/Cursor" deep link).
-        .route("/repo-dir", get(routes::repo_dir::get))
-        .fallback(sandbox_not_found)
-        .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
+}
+
+pub fn build(
+    state: AppState,
+    auth: ClientAuth,
+    ui_assets: Option<Arc<dyn UiAssetProvider>>,
+    preview_origin: String,
+    runtime_selftest: bool,
+) -> Router {
+    let guard_state = GuardState {
+        auth: auth.clone(),
+        mode: state.mode,
+        agent_sessions: state.agent_sessions.clone(),
+    };
+    let runtime = MainRuntime {
+        auth: auth.clone(),
+        ui_assets,
+        preview_origin: preview_origin.into(),
+    };
+    let sandbox = (if auth.is_embedded() {
+        Router::new()
+    } else {
+        standalone_daemon_router()
+    })
+    .route("/tasks", get(routes::tasks::list))
+    .route("/tasks/kill-all", post(routes::tasks::kill_all))
+    .route(
+        "/tasks/:id",
+        get(routes::tasks::get).delete(routes::tasks::delete),
+    )
+    .route("/tasks/:id/kill", post(routes::tasks::kill))
+    .route("/tasks/:id/stream", get(routes::tasks::stream))
+    .route("/setup/clone", post(routes::setup::clone))
+    .route("/setup/install", post(routes::setup::install))
+    .route("/setup/ensure", post(routes::setup::ensure))
+    .route("/setup/start", post(routes::setup::start))
+    // NEW — no daemon precedent (see routes::setup::stop's own doc
+    // comment): quiesces a registered sandbox generation; the legacy
+    // headerless non-git fallback stops its running dev/start task
+    // WITHOUT respawning, giving the sandbox drawer's Stop button a
+    // real desktop-local action to call.
+    .route("/setup/stop", post(routes::setup::stop))
+    // `/_sandbox/orgfs/:org/:volume/**` — the loopback WebDAV surface
+    // rclone mounts as the org filesystem (P1 of
+    // `apps/native/docs/org-fs-plan.md`). Nested as a catchall rather
+    // than routed per path/method: everything after `<org>/<volume>` is
+    // the in-volume path, and PROPFIND/MKCOL/MOVE are extension methods
+    // `axum::routing` has no filter for. Nested BEFORE `.layer(guard)`
+    // below so it inherits the same Origin + bearer/cookie
+    // authentication every other `/_sandbox` route gets.
+    .nest("/orgfs", routes::webdav::router())
+    .route("/scripts", get(routes::scripts::list))
+    .route("/exec/:name", post(routes::scripts::exec))
+    .route("/exec/:name/kill", post(routes::scripts::exec_kill))
+    .route("/events", get(routes::events::events))
+    .route("/preview-handle", post(routes::proxy::set_preview_handle))
+    // GET /_sandbox/repo-dir — see routes::repo_dir's module doc (a
+    // git-backed sandbox's absolute workdir, for the webview's
+    // "Open in VS Code/Cursor" deep link).
+    .route("/repo-dir", get(routes::repo_dir::get))
+    .fallback(sandbox_not_found)
+    .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     // Literal internal app-API routes. The general app-API catchall is owned
     // by `app_or_ui_fallback`, where public UI navigation can be distinguished
@@ -229,6 +257,7 @@ pub fn build(
         // Mounted in BOTH auth modes so the standalone binary answers its
         // documented 409 and the e2e auth matrix can cover the route.
         .route("/_local/update/restart", post(routes::update::restart))
+        .merge(runtime_selftest_router(runtime_selftest))
         .layer(middleware::from_fn_with_state(guard_state.clone(), guard));
 
     let mut app = Router::new()
@@ -411,7 +440,7 @@ async fn preview_fence(
         Err(error) => return error.into_response(),
     };
     if let Some(base) = fence.base.as_deref() {
-        if !names_a_known_sandbox(&fence.state, authorization.epoch(), req.headers(), base) {
+        if !names_a_known_sandbox(&fence.state, authorization.account(), req.headers(), base) {
             return ApiError::not_found("Not found").into_response();
         }
     }
@@ -424,7 +453,7 @@ async fn preview_fence(
 /// bare `base` itself is NOT accepted.
 fn names_a_known_sandbox(
     state: &AppState,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
     headers: &axum::http::HeaderMap,
     base: &str,
 ) -> bool {
@@ -446,7 +475,7 @@ fn names_a_known_sandbox(
         && !label.contains('.')
         && state
             .sandbox_manager
-            .handle_for_preview_label_for_account(account_epoch, label)
+            .handle_for_preview_label_for_account(account, label)
             .is_ok_and(|handle| handle.is_some())
 }
 
@@ -577,11 +606,13 @@ fn authorize_private(
         // Provider children receive a distinct per-terminal capability, never
         // the browser's whole-API cookie. It bypasses browser Origin checks
         // only for the one exact encoded MCP path registered at launch.
-        if scoped_agent_bearer(req.headers()).is_some_and(|candidate| {
+        let scoped_mcp_identity = scoped_agent_bearer(req.headers()).and_then(|candidate| {
             state
                 .agent_sessions
-                .authorizes_mcp(full_request_path(req), candidate)
-        }) {
+                .scoped_mcp_identity(full_request_path(req), candidate)
+        });
+        if let Some(identity) = scoped_mcp_identity {
+            req.extensions_mut().insert(identity);
             return Ok(None);
         }
         state
@@ -787,6 +818,7 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::{Request as HttpRequest, Uri};
     use bytes::Bytes;
+    use futures::StreamExt;
     use tower::ServiceExt;
 
     use super::*;
@@ -828,6 +860,10 @@ mod tests {
     }
 
     fn embedded_router() -> (Router, tempfile::TempDir) {
+        embedded_router_with_selftest(false)
+    }
+
+    fn embedded_router_with_selftest(runtime_selftest: bool) -> (Router, tempfile::TempDir) {
         let root = tempfile::tempdir().unwrap();
         let state = crate::routes::intercept::test_state(root.path());
         let auth = ClientAuth::embedded(
@@ -844,6 +880,7 @@ mod tests {
                 auth,
                 Some(Arc::new(TestAssets)),
                 "http://localhost:61234".into(),
+                runtime_selftest,
             ),
             root,
         )
@@ -1035,7 +1072,8 @@ mod tests {
         let handle = state
             .sandbox_manager
             .register_for_test("https://github.com/acme/site.git", "work");
-        let label = crate::sandbox::preview_label(&handle);
+        let account = state.sandbox_manager.test_account().unwrap();
+        let label = crate::sandbox::preview_label_for_scope(account.storage_key(), &handle);
         let preview = build_preview(state, 61234, "local.studio.decocms.com", None);
 
         // No `Host` header anywhere — exactly how hyper presents h2.
@@ -1143,6 +1181,67 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn embedded_mode_unmounts_every_process_global_daemon_route() {
+        const ROUTES: &[(Method, &str)] = &[
+            (Method::POST, "/read"),
+            (Method::POST, "/write"),
+            (Method::POST, "/unlink"),
+            (Method::POST, "/mkdir"),
+            (Method::POST, "/rename"),
+            (Method::POST, "/edit"),
+            (Method::POST, "/grep"),
+            (Method::POST, "/glob"),
+            (Method::POST, "/write_from_url"),
+            (Method::POST, "/upload_to_url"),
+            (Method::POST, "/tools/sync"),
+            (Method::POST, "/bash"),
+            (Method::GET, "/git/status"),
+            (Method::GET, "/git/diff"),
+            (Method::POST, "/git/publish"),
+            (Method::POST, "/git/discard"),
+            (Method::POST, "/git/rebase"),
+            (Method::GET, "/config"),
+        ];
+
+        let (app, _root) = embedded_router();
+        let (_, cookie) = bootstrap(&app).await;
+        for (method, path) in ROUTES {
+            let mut req = request(method.clone(), &format!("/_sandbox{path}"));
+            req.headers_mut().insert(
+                header::COOKIE,
+                axum::http::HeaderValue::from_str(&cookie).unwrap(),
+            );
+            if *method != Method::GET {
+                req.headers_mut().insert(
+                    header::ORIGIN,
+                    axum::http::HeaderValue::from_static("http://127.0.0.1:43120"),
+                );
+            }
+            assert_eq!(
+                app.clone().oneshot(req).await.unwrap().status(),
+                StatusCode::NOT_FOUND,
+                "embedded route remained mounted: {method} {path}"
+            );
+        }
+
+        let standalone_root = tempfile::tempdir().unwrap();
+        let standalone = standalone_daemon_router()
+            .with_state(crate::routes::intercept::test_state(standalone_root.path()));
+        for (method, path) in ROUTES {
+            let response = standalone
+                .clone()
+                .oneshot(request(method.clone(), path))
+                .await
+                .unwrap();
+            assert_ne!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "standalone daemon route was lost: {method} {path}"
+            );
+        }
+    }
+
     #[test]
     fn terminal_mcp_bearer_bypasses_browser_auth_for_one_exact_path_only() {
         let root = tempfile::tempdir().unwrap();
@@ -1166,6 +1265,8 @@ mod tests {
                 mcp_path: selected_path.to_string(),
                 title_environment: harness::title::TitleEnvironment::default(),
                 expected_provider_session_id: None,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             });
         let guard = GuardState {
             auth: ClientAuth::embedded(
@@ -1191,6 +1292,15 @@ mod tests {
 
         let mut selected = request_with(selected_path, "mcp-only-secret");
         assert!(authorize_private(&guard, &mut selected).is_ok());
+        assert_eq!(
+            selected
+                .extensions()
+                .get::<crate::terminal::registry::ScopedMcpIdentity>(),
+            Some(&crate::terminal::registry::ScopedMcpIdentity {
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
+            })
+        );
 
         for (path, token) in [
             ("/api/org%20one/mcp/another", "mcp-only-secret"),
@@ -1273,7 +1383,8 @@ mod tests {
         let handle = state
             .sandbox_manager
             .register_for_test("https://github.com/acme/site.git", "work");
-        let label = crate::sandbox::preview_label(&handle);
+        let account = state.sandbox_manager.test_account().unwrap();
+        let label = crate::sandbox::preview_label_for_scope(account.storage_key(), &handle);
         let app = build_preview(state, 61234, "local.studio.decocms.com", None);
 
         let get = |host: &str| {
@@ -1409,6 +1520,80 @@ mod tests {
         assert_eq!(
             app.oneshot(probe).await.unwrap().status(),
             StatusCode::NO_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_selftest_routes_are_opt_in_and_cookie_guarded() {
+        let disabled_root = tempfile::tempdir().unwrap();
+        let disabled = runtime_selftest_router(false)
+            .with_state(crate::routes::intercept::test_state(disabled_root.path()));
+        for (method, path) in [
+            (Method::GET, "/_local/selftest/events"),
+            (Method::POST, "/_local/selftest/progress"),
+        ] {
+            assert_eq!(
+                disabled
+                    .clone()
+                    .oneshot(request(method, path))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
+
+        let (app, root) = embedded_router_with_selftest(true);
+        assert_eq!(
+            app.clone()
+                .oneshot(request(Method::GET, "/_local/selftest/events"))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let (_, cookie) = bootstrap(&app).await;
+        let mut authenticated = request(Method::GET, "/_local/selftest/events");
+        authenticated.headers_mut().insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_str(&cookie).unwrap(),
+        );
+        let response = app.clone().oneshot(authenticated).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/event-stream"
+        );
+        let mut body = response.into_body().into_data_stream();
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(1), body.next())
+            .await
+            .expect("selftest event timed out")
+            .expect("selftest event stream ended")
+            .expect("selftest event failed");
+        assert_eq!(
+            frame,
+            Bytes::from_static(b"event: status\ndata: {\"state\":\"selftest\"}\n\n")
+        );
+
+        std::fs::create_dir_all(root.path().join("repo")).unwrap();
+        let mut progress = request(Method::POST, "/_local/selftest/progress");
+        progress.headers_mut().insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_str(&cookie).unwrap(),
+        );
+        progress.headers_mut().insert(
+            header::ORIGIN,
+            axum::http::HeaderValue::from_static("http://127.0.0.1:43120"),
+        );
+        *progress.body_mut() = Body::from(r#"{"at":"router-test"}"#);
+        assert_eq!(
+            app.oneshot(progress).await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("repo/selftest-progress.json")).unwrap(),
+            r#"{"at":"router-test"}"#
         );
     }
 

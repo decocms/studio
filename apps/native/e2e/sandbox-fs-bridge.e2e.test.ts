@@ -26,7 +26,12 @@ import { join } from "node:path";
 
 import { sleep } from "@decocms/shared/std";
 import { afterAll, beforeAll, expect, it } from "bun:test";
-import { computeHandle, normalizeBranch, repoDirFor } from "./sandbox-handle";
+import {
+  computeHandle,
+  normalizeBranch,
+  repoDirFor,
+  type SandboxAccountPathScope,
+} from "./sandbox-handle";
 
 import {
   signInAndCompleteSession,
@@ -50,6 +55,7 @@ const OTHER_BRANCH = "main";
 const THREAD_ID = "sandbox-authority-thread";
 const THREAD_VIRTUAL_MCP_ID = "sandbox-authority-vmcp";
 const THREAD_BRANCH = `thread:${THREAD_ID}`;
+const AUTHENTICATED_ACCOUNT_SUB = "sandbox-e2e-user";
 
 function git(cwd: string, args: string[]): void {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -176,6 +182,7 @@ describeLocalApi(
   () => {
     let a: LocalApi;
     let upstream: ReturnType<typeof startAuthenticatedUpstream>;
+    let account: SandboxAccountPathScope;
     let fixture: { root: string; bareDir: string };
     let appRoot: string;
     let featureHandle: string;
@@ -186,6 +193,10 @@ describeLocalApi(
     beforeAll(async () => {
       fixture = setupFixtureRepo();
       upstream = startAuthenticatedUpstream();
+      account = {
+        upstreamUrl: upstream.url,
+        accountSub: AUTHENTICATED_ACCOUNT_SUB,
+      };
       a = await startLocalApi({
         DECOCMS_UPSTREAM_URL: upstream.url,
         LOCAL_API_TOKEN_STORE: "memory",
@@ -194,14 +205,14 @@ describeLocalApi(
       appRoot = a.workdir;
 
       featureHandle = await ensureSandbox(a, fixture.bareDir, FEATURE_BRANCH);
-      featureRepo = repoDirFor(appRoot, featureHandle);
+      featureRepo = repoDirFor(appRoot, featureHandle, account);
       await waitForFile(join(featureRepo, "BRANCH.txt"), "feature\n");
 
       // Ensure this one LAST so it remains the active sandbox. Every request
       // below that names FEATURE_BRANCH must nevertheless resolve the feature
       // sandbox from its URL identity.
       otherHandle = await ensureSandbox(a, fixture.bareDir, OTHER_BRANCH);
-      otherRepo = repoDirFor(appRoot, otherHandle);
+      otherRepo = repoDirFor(appRoot, otherHandle, account);
       await waitForFile(join(otherRepo, "BRANCH.txt"), "main\n");
 
       const created = await fetch(
@@ -226,7 +237,7 @@ describeLocalApi(
         THREAD_VIRTUAL_MCP_ID,
       );
       await waitForFile(
-        join(repoDirFor(appRoot, threadHandle), "BRANCH.txt"),
+        join(repoDirFor(appRoot, threadHandle, account), "BRANCH.txt"),
         "main\n",
       );
     }, HOOK_TIMEOUT_MS);

@@ -13,12 +13,16 @@
 //! The trait exists so `webdav.rs` can be exercised against an in-memory
 //! volume — the protocol translation is what needs testing, not reqwest.
 
+use std::sync::Arc;
+
 use axum::body::{Body, Bytes};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use serde_json::Value;
 
 use super::dav::{iso_to_epoch_secs, now_secs, OrgFsNode};
-use crate::routes::upstream::{send_org_request, UpstreamCallError};
+use crate::routes::upstream::{send_org_request, OrgRequestTicket, UpstreamCallError};
+
+pub type SharedOrgRequestTicket = Arc<tokio::sync::Mutex<Option<OrgRequestTicket>>>;
 
 /// Carries an HTTP status so the WebDAV layer can map it to a response —
 /// `org-fs/api.ts::OrgFsApiError`.
@@ -45,6 +49,10 @@ impl From<UpstreamCallError> for OrgFsError {
                 "not signed in to the upstream deployment",
             ),
             UpstreamCallError::Unreachable(msg) => OrgFsError::new(StatusCode::BAD_GATEWAY, msg),
+            UpstreamCallError::StaleIdentity => OrgFsError::new(
+                StatusCode::CONFLICT,
+                "Studio account changed while the filesystem request was running",
+            ),
         }
     }
 }
@@ -95,16 +103,30 @@ pub trait OrgFs: Send + Sync {
 /// per request, since it holds nothing but two strings.
 pub struct UpstreamOrgFs {
     base: String,
+    ticket: Option<SharedOrgRequestTicket>,
 }
 
 impl UpstreamOrgFs {
-    pub fn new(org: &str, volume: &str) -> Self {
+    pub fn new(org: &str, volume: &str, ticket: SharedOrgRequestTicket) -> Self {
         UpstreamOrgFs {
             base: format!(
                 "/api/{}/fs/{}",
                 urlencoding::encode(org),
                 urlencoding::encode(volume)
             ),
+            ticket: Some(ticket),
+        }
+    }
+
+    #[cfg(test)]
+    fn for_url_test(org: &str, volume: &str) -> Self {
+        UpstreamOrgFs {
+            base: format!(
+                "/api/{}/fs/{}",
+                urlencoding::encode(org),
+                urlencoding::encode(volume)
+            ),
+            ticket: None,
         }
     }
 
@@ -128,17 +150,66 @@ impl UpstreamOrgFs {
         headers: HeaderMap,
         body: Bytes,
     ) -> Result<reqwest::Response, OrgFsError> {
-        Ok(send_org_request(method, url, headers, body).await?)
+        let mut guard = self
+            .ticket
+            .as_ref()
+            .expect("production org filesystem always carries an identity ticket")
+            .lock()
+            .await;
+        let ticket = guard.as_mut().ok_or_else(stale_identity)?;
+        Ok(send_org_request(ticket, method, url, headers, body).await?)
+    }
+
+    async fn response_json(&self, response: reqwest::Response) -> Result<Value, OrgFsError> {
+        let mut guard = self
+            .ticket
+            .as_ref()
+            .expect("production org filesystem always carries an identity ticket")
+            .lock()
+            .await;
+        let ticket = guard.as_mut().ok_or_else(stale_identity)?;
+        ticket.validate()?;
+        let result = tokio::select! {
+            biased;
+            _ = ticket.validation_changed() => return Err(stale_identity()),
+            result = response.json::<Value>() => result,
+        };
+        ticket.validate_identity()?;
+        result.map_err(|error| OrgFsError::new(StatusCode::BAD_GATEWAY, error.to_string()))
+    }
+
+    async fn response_bytes(&self, response: reqwest::Response) -> Result<Vec<u8>, OrgFsError> {
+        let mut guard = self
+            .ticket
+            .as_ref()
+            .expect("production org filesystem always carries an identity ticket")
+            .lock()
+            .await;
+        let ticket = guard.as_mut().ok_or_else(stale_identity)?;
+        ticket.validate()?;
+        let result = tokio::select! {
+            biased;
+            _ = ticket.validation_changed() => return Err(stale_identity()),
+            result = response.bytes() => result,
+        };
+        ticket.validate_identity()?;
+        result
+            .map(|bytes| bytes.to_vec())
+            .map_err(|error| OrgFsError::new(StatusCode::BAD_GATEWAY, error.to_string()))
     }
 
     /// Turn a non-2xx upstream response into an [`OrgFsError`], preferring the
     /// contract's `{"error": "..."}` body over a bare status line.
-    async fn fail(response: reqwest::Response) -> OrgFsError {
+    async fn fail(&self, response: reqwest::Response) -> OrgFsError {
         let status = StatusCode::from_u16(response.status().as_u16())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        let detail = response
-            .json::<Value>()
-            .await
+        let body = self.response_json(response).await;
+        if let Err(error) = &body {
+            if error.status == StatusCode::CONFLICT {
+                return error.clone();
+            }
+        }
+        let detail = body
             .ok()
             .and_then(|body| {
                 body.get("error")
@@ -157,6 +228,10 @@ impl UpstreamOrgFs {
         static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
         CLIENT.get_or_init(reqwest::Client::new)
     }
+}
+
+fn stale_identity() -> OrgFsError {
+    UpstreamCallError::StaleIdentity.into()
 }
 
 fn json_accept_headers() -> HeaderMap {
@@ -189,12 +264,9 @@ impl OrgFs for UpstreamOrgFs {
             .send(Method::GET, &url, json_accept_headers(), Bytes::new())
             .await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
-        let body: Value = response
-            .json()
-            .await
-            .map_err(|e| OrgFsError::new(StatusCode::BAD_GATEWAY, e.to_string()))?;
+        let body = self.response_json(response).await?;
         Ok(body
             .get("entries")
             .and_then(Value::as_array)
@@ -211,12 +283,9 @@ impl OrgFs for UpstreamOrgFs {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
-        let body: Value = response
-            .json()
-            .await
-            .map_err(|e| OrgFsError::new(StatusCode::BAD_GATEWAY, e.to_string()))?;
+        let body = self.response_json(response).await?;
         Ok(body.get("entry").and_then(node_from_json))
     }
 
@@ -226,13 +295,9 @@ impl OrgFs for UpstreamOrgFs {
             .send(Method::GET, &url, HeaderMap::new(), Bytes::new())
             .await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
-        response
-            .bytes()
-            .await
-            .map(|bytes| bytes.to_vec())
-            .map_err(|e| OrgFsError::new(StatusCode::BAD_GATEWAY, e.to_string()))
+        self.response_bytes(response).await
     }
 
     async fn read_stream(
@@ -245,13 +310,15 @@ impl OrgFs for UpstreamOrgFs {
             .send(Method::GET, &url, json_accept_headers(), Bytes::new())
             .await?;
         if presign.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(Self::fail(presign).await);
+            return Err(self.fail(presign).await);
         }
         if !presign.status().is_success() {
             return Ok(None); // presign unavailable — buffered fallback
         }
-        let Ok(body) = presign.json::<Value>().await else {
-            return Ok(None);
+        let body = match self.response_json(presign).await {
+            Ok(body) => body,
+            Err(error) if error.status == StatusCode::CONFLICT => return Err(error),
+            Err(_) => return Ok(None),
         };
         let Some(signed) = body.get("url").and_then(Value::as_str) else {
             return Ok(None);
@@ -270,7 +337,21 @@ impl OrgFs for UpstreamOrgFs {
         // A presigned host unreachable from THIS machine (a localhost MinIO
         // endpoint the studio can reach and the desktop cannot) falls back to
         // the buffered read rather than failing the transfer.
-        let Ok(upstream) = request.send().await else {
+        let mut guard = self
+            .ticket
+            .as_ref()
+            .expect("production org filesystem always carries an identity ticket")
+            .lock()
+            .await;
+        let ticket = guard.as_mut().ok_or_else(stale_identity)?;
+        ticket.validate()?;
+        let send_result = tokio::select! {
+            biased;
+            _ = ticket.validation_changed() => return Err(stale_identity()),
+            result = request.send() => result,
+        };
+        ticket.validate_identity()?;
+        let Ok(upstream) = send_result else {
             return Ok(None);
         };
         let status = StatusCode::from_u16(upstream.status().as_u16())
@@ -305,7 +386,7 @@ impl OrgFs for UpstreamOrgFs {
         headers.insert(header::CONTENT_TYPE, content_type);
         let response = self.send(Method::PUT, &url, headers, body).await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
         Ok(())
     }
@@ -316,7 +397,7 @@ impl OrgFs for UpstreamOrgFs {
             .send(Method::POST, &url, json_accept_headers(), Bytes::new())
             .await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
         Ok(())
     }
@@ -327,7 +408,7 @@ impl OrgFs for UpstreamOrgFs {
             .send(Method::DELETE, &url, json_accept_headers(), Bytes::new())
             .await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
         Ok(())
     }
@@ -345,7 +426,7 @@ impl OrgFs for UpstreamOrgFs {
         );
         let response = self.send(Method::POST, &url, headers, body).await?;
         if !response.status().is_success() {
-            return Err(Self::fail(response).await);
+            return Err(self.fail(response).await);
         }
         Ok(())
     }
@@ -358,7 +439,7 @@ mod tests {
 
     #[test]
     fn urls_encode_the_org_volume_and_path() {
-        let fs = UpstreamOrgFs::new("acme corp", "public-skills");
+        let fs = UpstreamOrgFs::for_url_test("acme corp", "public-skills");
         assert_eq!(
             fs.url("list", &[("path", "my docs/a+b.md")]),
             "/api/acme%20corp/fs/public-skills/list?path=my%20docs%2Fa%2Bb.md"
@@ -412,5 +493,7 @@ mod tests {
         let unreachable: OrgFsError = UpstreamCallError::Unreachable("boom".to_string()).into();
         assert_eq!(unreachable.status, StatusCode::BAD_GATEWAY);
         assert_eq!(unreachable.message, "boom");
+        let stale: OrgFsError = UpstreamCallError::StaleIdentity.into();
+        assert_eq!(stale.status, StatusCode::CONFLICT);
     }
 }

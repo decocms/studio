@@ -55,7 +55,7 @@ pub(super) async fn try_dispatch(
             state,
             &virtual_mcp_id,
             branch_filter.as_deref(),
-            authorization.account_epoch(),
+            authorization.account(),
         ) {
             Ok(response) => response,
             Err(error) => manager_error(error).into_response(),
@@ -67,9 +67,9 @@ fn local_sessions(
     state: &AppState,
     virtual_mcp_id: &str,
     branch_filter: Option<&str>,
-    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account: &crate::sandbox::manager::SandboxAccount,
 ) -> Result<Response, String> {
-    let items: Vec<Value> = local_sandbox_sessions(state, virtual_mcp_id, account_epoch)?
+    let items: Vec<Value> = local_sandbox_sessions(state, virtual_mcp_id, account)?
         .into_iter()
         .filter(|local| {
             let branch = local.get("branch").and_then(Value::as_str).unwrap_or("");

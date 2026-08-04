@@ -342,6 +342,14 @@ impl UpstreamSession {
         self.0.identity_tx.subscribe()
     }
 
+    /// Current authenticated-subject generation without acquiring the
+    /// transition gate. Already-admitted, generation-bound capabilities use
+    /// this after subscribing to identity events so they can validate without
+    /// deadlocking against the spawn/cleanup transition that minted them.
+    pub fn identity_generation(&self) -> u64 {
+        self.0.identity_generation.load(Ordering::Acquire)
+    }
+
     /// Acquire the process-wide authenticated-subject transition gate.
     pub async fn begin_transition(&self) -> SessionTransitionGuard {
         SessionTransitionGuard {

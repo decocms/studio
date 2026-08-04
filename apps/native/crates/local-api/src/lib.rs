@@ -145,10 +145,10 @@ pub struct EmbeddedOptions {
     /// is always included as the first bootstrap secret.
     pub additional_bootstrap_secrets: Vec<String>,
     pub ui_assets: Option<Arc<dyn UiAssetProvider>>,
-    /// Mounts the credentialed preview-cookie round-trip probe used by the
+    /// Mounts the isolated control/SSE and preview-cookie probes used by the
     /// real WKWebView boot smoke. Disabled by default and never controlled by
     /// an HTTP query parameter or other runtime request input.
-    pub preview_cookie_selftest: bool,
+    pub runtime_selftest: bool,
 }
 
 impl EmbeddedOptions {
@@ -159,7 +159,7 @@ impl EmbeddedOptions {
             listener_host: None,
             additional_bootstrap_secrets: Vec::new(),
             ui_assets: None,
-            preview_cookie_selftest: false,
+            runtime_selftest: false,
         }
     }
 }
@@ -468,6 +468,18 @@ impl ServerHandle {
             }
         }
 
+        // Org filesystem helpers outlive individual sandbox setup processes,
+        // but must not outlive the server that owns their account credentials.
+        // Sandboxes and terminals are already stopped, so no child can race an
+        // unmount or keep using a retiring account view.
+        let org_mounts_stopped = match state.sandbox_manager.shutdown_org_mounts().await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::error!(%error, "shutdown: organization mounts did not fully stop");
+                false
+            }
+        };
+
         // Defense-in-depth for global, non-setup request tasks: admission is
         // already closed, so this final snapshot is complete and awaited.
         // There is deliberately NO git publish here: local worktrees are
@@ -489,6 +501,7 @@ impl ServerHandle {
         let process_tree_quiescent = terminal_report.all_stopped()
             && global_setup_stopped
             && sandbox_setups_stopped
+            && org_mounts_stopped
             && final_tasks_stopped
             && mutation_quiescence.is_quiescent();
 
@@ -561,15 +574,15 @@ pub async fn start_with_client_auth(
     opts: StartOptions,
     client_auth_mode: ClientAuthMode,
 ) -> Result<ServerHandle, StartError> {
-    let (client_auth, ui_assets, preview_cookie_selftest_origin) = match client_auth_mode {
+    let (client_auth, ui_assets, selftest_control_origin) = match client_auth_mode {
         ClientAuthMode::Bearer => (
             client_auth::ClientAuth::bearer(Arc::<str>::from(opts.token.clone())),
             None,
             None,
         ),
         ClientAuthMode::Embedded(embedded) => {
-            let preview_cookie_selftest_origin = embedded
-                .preview_cookie_selftest
+            let selftest_control_origin = embedded
+                .runtime_selftest
                 .then(|| Arc::<str>::from(embedded.control_origin.clone()));
             let mut bootstrap_secrets =
                 Vec::with_capacity(embedded.additional_bootstrap_secrets.len() + 1);
@@ -625,7 +638,7 @@ pub async fn start_with_client_auth(
             if let Some(host) = expected_host.split(':').next() {
                 routes::intercept::set_preview_host(host.to_string());
             }
-            (auth, embedded.ui_assets, preview_cookie_selftest_origin)
+            (auth, embedded.ui_assets, selftest_control_origin)
         }
     };
 
@@ -725,11 +738,20 @@ pub async fn start_with_client_auth(
 
     // Clear worktree registrations orphaned by a sandbox directory that
     // vanished while the app was down; git would otherwise refuse to re-add a
-    // worktree at that path. Detached and best-effort — it only walks the repo
-    // store, so it must never delay serving.
+    // worktree at that path. Detached and best-effort — it only walks verified
+    // account repo stores, so it must never delay serving.
     let prune_root = state.app_root.clone();
     tokio::spawn(async move {
-        sandbox::repo_store::prune_all(&prune_root).await;
+        match sandbox::account_storage::AccountStorage::discover_existing(&prune_root) {
+            Ok(accounts) => {
+                for account in accounts {
+                    sandbox::repo_store::prune_all(account.root()).await;
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not discover account repo stores for pruning");
+            }
+        }
         // Org mounts outlive the process that served them: a SIGKILLed app
         // leaves the kernel holding NFS mounts backed by nothing, and the
         // sandbox that owns each path can never be re-provisioned there until
@@ -823,12 +845,19 @@ pub async fn start_with_client_auth(
     } else {
         format!("{preview_scheme}://{preview_base}:{preview_port}")
     };
-    let app = router::build(state.clone(), client_auth, ui_assets, preview_csp_origin);
+    let runtime_selftest = selftest_control_origin.is_some();
+    let app = router::build(
+        state.clone(),
+        client_auth,
+        ui_assets,
+        preview_csp_origin,
+        runtime_selftest,
+    );
     let preview_app = router::build_preview(
         state.clone(),
         preview_port,
         preview_base,
-        preview_cookie_selftest_origin,
+        selftest_control_origin,
     );
 
     // Previews follow the listeners' scheme; the webview refuses a plain-http

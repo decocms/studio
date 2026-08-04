@@ -71,7 +71,6 @@ pub(super) async fn try_dispatch(
         Ok(authorization) => authorization,
         Err(error) => return Some(error.into_response()),
     };
-    let account_epoch = authorization.account_epoch();
     if *method != Method::GET {
         return Some(
             ApiError::new(
@@ -86,7 +85,7 @@ pub(super) async fn try_dispatch(
     // so the registry bridges them. No row means never provisioned — the same
     // thing `is_registered(false)` means below.
     let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
-        account_epoch,
+        authorization.account(),
         &virtual_mcp_id,
         &branch,
     ) {
@@ -96,7 +95,7 @@ pub(super) async fn try_dispatch(
     };
     match state
         .sandbox_manager
-        .is_registered_for_account(account_epoch, &handle)
+        .is_registered_for_account(authorization.account(), &handle)
     {
         Ok(true) => {}
         // Never provisioned, or reaped: tell the shell so it can re-start it.
@@ -110,7 +109,7 @@ pub(super) async fn try_dispatch(
             EventsQuery {
                 handle: Some(handle),
             },
-            account_epoch,
+            authorization.account().clone(),
         )
         .await,
     )

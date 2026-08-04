@@ -1,17 +1,17 @@
 //! The per-sandbox view onto the shared org filesystem.
 //!
 //! The org's volumes are mounted ONCE per organization under
-//! `<app_root>/orgs/<org_slug>/`, not once per sandbox: they are org-wide, and
-//! every sandbox is the same user on the same machine, so mounting per sandbox
-//! would run N copies of rclone serving identical content. Each sandbox then
-//! gets a cheap symlink view:
+//! `<account-root>/orgs/<org_slug>/`, not once per sandbox: they are org-wide
+//! inside one authenticated account, so mounting per sandbox would run N
+//! copies of rclone serving identical content. Each sandbox in that account
+//! then gets a cheap symlink view:
 //!
 //! ```text
-//! <app_root>/orgs/<slug>/{home,public,uploads,outputs}   ← the real mounts
-//! <app_root>/worktrees/<handle>/org/home    -> ../../../orgs/<slug>/home
-//! <app_root>/worktrees/<handle>/org/public  -> ../../../orgs/<slug>/public
-//! <app_root>/worktrees/<handle>/org/uploads -> ../../../orgs/<slug>/uploads
-//! <app_root>/worktrees/<handle>/org/outputs -> ../../../orgs/<slug>/outputs
+//! <account-root>/orgs/<slug>/{home,public,uploads,outputs}   ← the mounts
+//! <account-root>/worktrees/<handle>/org/home    -> ../../../orgs/<slug>/home
+//! <account-root>/worktrees/<handle>/org/public  -> ../../../orgs/<slug>/public
+//! <account-root>/worktrees/<handle>/org/uploads -> ../../../orgs/<slug>/uploads
+//! <account-root>/worktrees/<handle>/org/outputs -> ../../../orgs/<slug>/outputs
 //! ```
 //!
 //! ## Why `org` is a SIBLING of `repo`, never inside it
@@ -33,6 +33,8 @@
 //! when the mount later lands on top of the same path.
 
 use std::path::{Path, PathBuf};
+
+use super::account_storage::AccountStorage;
 
 /// The volume directories a sandbox sees under `org/`.
 ///
@@ -57,18 +59,73 @@ pub(crate) fn is_read_only_volume(volume: &str) -> bool {
     volume == "public" || volume.starts_with("public-")
 }
 
-/// `<app_root>/orgs/<org_slug>` — where an organization's volumes mount.
+/// `<account-root>/orgs/<org_slug>` — where an organization's volumes mount.
 ///
 /// Returns `None` for a slug that could escape the store or collapse two orgs
-/// onto one directory, mirroring `repo_store::canonical_repo_dir`'s refusal to
-/// guess.
-pub fn org_mount_root(app_root: &Path, org_slug: &str) -> Option<PathBuf> {
-    Some(app_root.join("orgs").join(safe_segment(org_slug)?))
+/// onto one directory, or when the authenticated account root no longer
+/// verifies. The upstream subject is never accepted as a path component;
+/// [`AccountStorage`] owns the opaque account directory.
+pub(crate) fn org_mount_root(storage: &AccountStorage, org_slug: &str) -> Option<PathBuf> {
+    let root = verified_org_mount_path(storage, org_slug).ok()??;
+    match std::fs::symlink_metadata(&root) {
+        Ok(metadata) if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() => None,
+        Ok(_) => Some(root),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(root),
+        Err(_) => None,
+    }
 }
 
-/// `<app_root>/worktrees/<handle>/org` — the sandbox's view directory.
-pub fn sandbox_org_dir(app_root: &Path, handle: &str) -> Option<PathBuf> {
-    Some(crate::sandbox::worktree_root(app_root, safe_handle(handle)?).join("org"))
+/// Create and return the verified organization root for a direct terminal
+/// cwd. This deliberately stops at `<account-root>/orgs/<slug>`: terminal
+/// launch must not manufacture volume directories or mount ownership.
+///
+/// `Ok(None)` means the slug is not one safe path segment. Storage/marker and
+/// filesystem failures stay distinguishable as `Err` so callers fail closed.
+pub(crate) async fn ensure_org_mount_root(
+    storage: &AccountStorage,
+    org_slug: &str,
+) -> std::io::Result<Option<PathBuf>> {
+    let Some(root) = verified_org_mount_path(storage, org_slug).map_err(std::io::Error::other)?
+    else {
+        return Ok(None);
+    };
+    ensure_real_directory(&root).await?;
+    // Re-open every account-owned ancestor after the async create. This
+    // catches a marker or directory substitution before publishing the cwd.
+    let Some(reverified) =
+        verified_org_mount_path(storage, org_slug).map_err(std::io::Error::other)?
+    else {
+        return Ok(None);
+    };
+    if reverified != root {
+        return Err(std::io::Error::other(
+            "org-fs root changed while it was being created",
+        ));
+    }
+    ensure_real_directory(&root).await?;
+    Ok(Some(root))
+}
+
+fn verified_org_mount_path(
+    storage: &AccountStorage,
+    org_slug: &str,
+) -> Result<Option<PathBuf>, String> {
+    storage.verify()?;
+    let Some(org_slug) = safe_segment(org_slug) else {
+        return Ok(None);
+    };
+    let orgs_root = storage.orgs_root()?;
+    Ok(contained_join(storage.root(), &orgs_root, org_slug))
+}
+
+/// `<account-root>/worktrees/<handle>/org` — the sandbox's view directory.
+pub(crate) fn sandbox_org_dir(storage: &AccountStorage, handle: &str) -> Option<PathBuf> {
+    storage.verify().ok()?;
+    let view = storage
+        .worktree_root(safe_handle(handle)?)
+        .ok()?
+        .join("org");
+    view.starts_with(storage.root()).then_some(view)
 }
 
 /// Create (or repair) the sandbox's `org/` view for `org_slug`.
@@ -81,12 +138,17 @@ pub fn sandbox_org_dir(app_root: &Path, handle: &str) -> Option<PathBuf> {
 /// the agent simply has no org filesystem, which is the same outcome as a
 /// failed mount. Returns whether the full view is in place, so the caller can
 /// report it.
-pub async fn ensure_org_view(app_root: &Path, handle: &str, org_slug: &str) -> bool {
+pub(crate) async fn ensure_org_view(
+    storage: &AccountStorage,
+    handle: &str,
+    org_slug: &str,
+) -> bool {
     let (Some(mount_root), Some(view)) = (
-        org_mount_root(app_root, org_slug),
-        sandbox_org_dir(app_root, handle),
+        org_mount_root(storage, org_slug),
+        sandbox_org_dir(storage, handle),
     ) else {
         tracing::warn!(
+            account_id = storage.id(),
             handle,
             org_slug,
             "refusing to build an unsafe org view path"
@@ -94,8 +156,13 @@ pub async fn ensure_org_view(app_root: &Path, handle: &str, org_slug: &str) -> b
         return false;
     };
 
-    if let Err(error) = tokio::fs::create_dir_all(&view).await {
+    if let Err(error) = ensure_real_directory(&view).await {
         tracing::warn!(%error, ?view, "failed to create the sandbox org view dir");
+        return false;
+    }
+
+    if let Err(error) = ensure_real_directory(&mount_root).await {
+        tracing::warn!(%error, ?mount_root, "failed to create the account org mount root");
         return false;
     }
 
@@ -104,16 +171,43 @@ pub async fn ensure_org_view(app_root: &Path, handle: &str, org_slug: &str) -> b
         let target = mount_root.join(volume);
         // Create the mount point BEFORE linking so the link resolves to an
         // empty directory rather than dangling (see this module's doc).
-        if let Err(error) = tokio::fs::create_dir_all(&target).await {
+        if let Err(error) = ensure_real_directory(&target).await {
             tracing::warn!(%error, ?target, "failed to create the org mount point");
             complete = false;
             continue;
         }
-        if !link_volume(app_root, &view.join(volume), &target).await {
+        if !link_volume(storage.root(), &view.join(volume), &target).await {
             complete = false;
         }
     }
     complete
+}
+
+pub(super) async fn ensure_real_directory(path: &Path) -> std::io::Result<()> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => {
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(std::io::Error::other(format!(
+                    "org-fs path is not a real directory: {path:?}"
+                )));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match tokio::fs::create_dir(path).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+            let metadata = tokio::fs::symlink_metadata(path).await?;
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(std::io::Error::other(format!(
+                    "org-fs path is not a real directory: {path:?}"
+                )));
+            }
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
 }
 
 /// Point `link` at `target`, replacing whatever is there if it disagrees.
@@ -190,9 +284,23 @@ fn safe_handle(handle: &str) -> Option<&str> {
     crate::sandbox::handle_is_path_safe(handle).then_some(handle)
 }
 
+/// Join one validated segment beneath an AccountStorage-owned base and prove
+/// the resulting lexical path remains inside the verified account root.
+fn contained_join(account_root: &Path, base: &Path, segment: &str) -> Option<PathBuf> {
+    if !base.starts_with(account_root) {
+        return None;
+    }
+    let joined = base.join(segment);
+    joined.starts_with(account_root).then_some(joined)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn storage(app_root: &Path, storage_key: &str) -> AccountStorage {
+        AccountStorage::open(app_root, storage_key).expect("account storage")
+    }
 
     /// Pins the shared read-only vocabulary for BOTH enforcement layers
     /// (WebDAV write refusal and the `--read-only` mount flag) — including
@@ -212,37 +320,40 @@ mod tests {
 
     #[test]
     fn refuses_slugs_and_handles_that_would_escape() {
-        let root = Path::new("/app");
+        let root = tempfile::tempdir().expect("tempdir");
+        let storage = storage(root.path(), "https://studio.example\0subject-a");
         for bad in ["", ".", "..", "a/b", "a\\b"] {
-            assert_eq!(org_mount_root(root, bad), None, "slug {bad:?}");
+            assert_eq!(org_mount_root(&storage, bad), None, "slug {bad:?}");
         }
         // A handle is multi-segment, so `/` is legal in one where it is not
         // legal in an org slug — but a segment that would climb out is not.
         for bad in ["", ".", "..", "a\\b", "a/../b", "a//b"] {
-            assert_eq!(sandbox_org_dir(root, bad), None, "handle {bad:?}");
+            assert_eq!(sandbox_org_dir(&storage, bad), None, "handle {bad:?}");
         }
         assert_eq!(
-            sandbox_org_dir(root, "github.com/acme/repo/feat"),
-            Some(PathBuf::from(
-                "/app/worktrees/github.com/acme/repo/feat/org"
-            ))
+            sandbox_org_dir(&storage, "github.com/acme/repo/feat"),
+            Some(
+                storage
+                    .root()
+                    .join("worktrees/github.com/acme/repo/feat/org")
+            )
         );
         assert_eq!(
-            org_mount_root(root, "acme"),
-            Some(PathBuf::from("/app/orgs/acme"))
+            org_mount_root(&storage, "acme"),
+            Some(storage.root().join("orgs/acme"))
         );
     }
 
     #[tokio::test]
     async fn view_links_every_volume_to_the_shared_org_mount() {
         let root = tempfile::tempdir().expect("tempdir");
-        let app_root = root.path();
+        let storage = storage(root.path(), "https://studio.example\0subject-view");
 
-        assert!(ensure_org_view(app_root, "h1", "acme").await);
+        assert!(ensure_org_view(&storage, "h1", "acme").await);
 
         for volume in ORG_VOLUMES {
-            let link = app_root.join("worktrees/h1/org").join(volume);
-            let expected = app_root.join("orgs/acme").join(volume);
+            let link = storage.root().join("worktrees/h1/org").join(volume);
+            let expected = storage.root().join("orgs/acme").join(volume);
             // Resolves to the shared mount point, and the mount point exists
             // so the agent reads an empty dir rather than hitting ENOENT.
             assert_eq!(
@@ -257,38 +368,127 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn direct_terminal_root_creates_only_a_verified_org_directory() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let storage = storage(root.path(), "https://studio.example\0subject-terminal");
+
+        assert!(ensure_org_mount_root(&storage, "../escape")
+            .await
+            .expect("unsafe slug is not an I/O failure")
+            .is_none());
+        let org = ensure_org_mount_root(&storage, "acme")
+            .await
+            .expect("create org root")
+            .expect("safe org slug");
+        assert_eq!(org, storage.root().join("orgs/acme"));
+        assert!(org.is_dir());
+        for volume in ORG_VOLUMES {
+            assert!(!org.join(volume).exists());
+        }
+    }
+
     /// The whole reason the link is relative: an app-support directory that
     /// gets moved or restored from a backup must not break every sandbox.
     /// Also pins the exact shape — an earlier version was one `..` short.
     #[tokio::test]
     async fn links_are_relative_so_the_tree_survives_a_move() {
         let root = tempfile::tempdir().expect("tempdir");
-        assert!(ensure_org_view(root.path(), "h1", "acme").await);
+        let storage = storage(root.path(), "https://studio.example\0subject-relative");
+        assert!(ensure_org_view(&storage, "h1", "acme").await);
 
-        let target = std::fs::read_link(root.path().join("worktrees/h1/org/home")).unwrap();
+        let target = std::fs::read_link(storage.root().join("worktrees/h1/org/home")).unwrap();
         assert_eq!(target, PathBuf::from("../../../orgs/acme/home"));
     }
 
     #[tokio::test]
     async fn ensure_is_idempotent_and_repairs_a_wrong_link() {
         let root = tempfile::tempdir().expect("tempdir");
-        let app_root = root.path();
-        assert!(ensure_org_view(app_root, "h1", "acme").await);
+        let storage = storage(root.path(), "https://studio.example\0subject-repair");
+        assert!(ensure_org_view(&storage, "h1", "acme").await);
         assert!(
-            ensure_org_view(app_root, "h1", "acme").await,
+            ensure_org_view(&storage, "h1", "acme").await,
             "re-run is a no-op"
         );
 
         // Repoint one volume at the wrong org, as a stale view would be.
-        let link = app_root.join("worktrees/h1/org/home");
+        let link = storage.root().join("worktrees/h1/org/home");
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("../../../orgs/other/home", &link).unwrap();
 
-        assert!(ensure_org_view(app_root, "h1", "acme").await);
+        assert!(ensure_org_view(&storage, "h1", "acme").await);
         assert_eq!(
             std::fs::canonicalize(&link).unwrap(),
-            std::fs::canonicalize(app_root.join("orgs/acme/home")).unwrap(),
+            std::fs::canonicalize(storage.root().join("orgs/acme/home")).unwrap(),
             "a link pointing at another org must be repaired"
         );
+    }
+
+    #[tokio::test]
+    async fn identical_handles_in_two_accounts_never_share_an_org_view() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let a = storage(root.path(), "https://studio.example\0subject-a-isolated");
+        let b = storage(root.path(), "https://studio.example\0subject-b-isolated");
+
+        assert!(ensure_org_view(&a, "h1", "acme").await);
+        assert!(ensure_org_view(&b, "h1", "acme").await);
+
+        let a_link = a.root().join("worktrees/h1/org/home");
+        let b_link = b.root().join("worktrees/h1/org/home");
+        assert_ne!(
+            std::fs::canonicalize(&a_link).unwrap(),
+            std::fs::canonicalize(&b_link).unwrap()
+        );
+        assert!(std::fs::canonicalize(&a_link)
+            .unwrap()
+            .starts_with(std::fs::canonicalize(a.root()).unwrap()));
+        assert!(std::fs::canonicalize(&b_link)
+            .unwrap()
+            .starts_with(std::fs::canonicalize(b.root()).unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_storage_whose_account_marker_changed_is_rejected() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let storage = storage(root.path(), "https://studio.example\0subject-marker");
+        std::fs::write(
+            storage.root().join(".account-scope-v1"),
+            b"replacement-account",
+        )
+        .expect("replace marker");
+
+        assert_eq!(org_mount_root(&storage, "acme"), None);
+        assert_eq!(sandbox_org_dir(&storage, "h1"), None);
+        assert!(!ensure_org_view(&storage, "h1", "acme").await);
+    }
+
+    #[tokio::test]
+    async fn a_symlinked_org_slug_is_rejected_without_touching_its_target() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside");
+        let storage = storage(root.path(), "https://studio.example\0subject-org-link");
+        let orgs = storage.orgs_root().expect("orgs root");
+        std::os::unix::fs::symlink(outside.path(), orgs.join("acme")).expect("org symlink");
+
+        assert_eq!(org_mount_root(&storage, "acme"), None);
+        assert!(ensure_org_mount_root(&storage, "acme").await.is_err());
+        assert!(!ensure_org_view(&storage, "h1", "acme").await);
+        for volume in ORG_VOLUMES {
+            assert!(!outside.path().join(volume).exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn a_symlinked_worktree_component_is_rejected_without_touching_its_target() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside");
+        let storage = storage(root.path(), "https://studio.example\0subject-worktree-link");
+        let worktree = storage.worktree_root("h1").expect("worktree root");
+        std::fs::remove_dir(&worktree).expect("remove real worktree");
+        std::os::unix::fs::symlink(outside.path(), &worktree).expect("worktree symlink");
+
+        assert_eq!(sandbox_org_dir(&storage, "h1"), None);
+        assert!(!ensure_org_view(&storage, "h1", "acme").await);
+        assert!(!outside.path().join("org").exists());
     }
 }
