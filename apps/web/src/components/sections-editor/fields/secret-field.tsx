@@ -1,7 +1,7 @@
 import { useT } from "@/i18n/use-t.ts";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 
 const DEFAULT_SECRET_RESOLVE_TYPE = "website/loaders/secret.ts";
 
@@ -48,12 +48,11 @@ export function SecretField({
     const stringValue = typeof value === "string" ? value : "";
     return (
       <div className="space-y-2">
-        <Label htmlFor={path} className="text-sm font-medium">
-          {label}
-        </Label>
-        {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
-        )}
+        <FieldLabel
+          htmlFor={path}
+          label={label}
+          description={schema.description}
+        />
         <Input
           id={path}
           type="password"
@@ -78,12 +77,11 @@ export function SecretField({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={`${path}-name`} className="text-sm font-medium">
-        {label}
-      </Label>
-      {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
-      )}
+      <FieldLabel
+        htmlFor={`${path}-name`}
+        label={label}
+        description={schema.description}
+      />
       <Input
         id={`${path}-name`}
         value={name}

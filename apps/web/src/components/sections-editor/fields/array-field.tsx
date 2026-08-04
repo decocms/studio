@@ -48,6 +48,7 @@ import {
   removeEntryAt,
   resizeArrayEntries,
 } from "./array-entries";
+import { FieldDescriptionTooltip } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { ArrayRowContent, SortableArrayRow } from "./array-row";
 import { SchemaForm, renderField } from "../schema-form";
@@ -461,19 +462,15 @@ export function ArrayField({
 
   return (
     <div className="space-y-2">
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
-          {items.length > 0 && (
-            <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-              {items.length}
-            </span>
-          )}
-        </div>
+      <div className="flex min-w-0 items-center gap-1">
+        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
         {schema.description && (
-          <p className="break-words text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
+          <FieldDescriptionTooltip description={schema.description} />
+        )}
+        {items.length > 0 && (
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+            {items.length}
+          </span>
         )}
       </div>
 

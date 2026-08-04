@@ -3,7 +3,6 @@ import { Image01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -15,6 +14,7 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/hooks/use-file-picker";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
+import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
@@ -148,15 +148,13 @@ export function ImageField({
     // clips the input/button focus rings and right borders (cutting off the
     // URL input + Browse button); the grid track already caps width.
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <div className="min-w-0 space-y-0.5">
-        <Label htmlFor={path} className="text-muted-foreground">
-          {label}
-        </Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
+      <div className="min-w-0">
+        <FieldLabel
+          htmlFor={path}
+          label={label}
+          description={schema.description}
+          labelClassName="text-muted-foreground"
+        />
       </div>
 
       <div

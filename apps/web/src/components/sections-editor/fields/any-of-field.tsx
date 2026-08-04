@@ -20,7 +20,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +41,7 @@ import {
 import { labelFromResolveType } from "../section-types";
 import { suggestBlockId, validateBlockId } from "../page-sections";
 import type { SchemaProperty } from "../resolve-schema";
+import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
@@ -430,7 +430,11 @@ export function AnyOfField({
     return (
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor={path}>{label}</Label>
+          <FieldLabel
+            htmlFor={path}
+            label={label}
+            description={schema.description}
+          />
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
             <SelectTrigger>
               <SelectValue
@@ -454,11 +458,6 @@ export function AnyOfField({
               })}
             </SelectContent>
           </Select>
-          {schema.description && (
-            <p className="text-xs text-muted-foreground">
-              {schema.description}
-            </p>
-          )}
         </div>
         {nestedProps &&
           (isModuleLoaderUnion ? (
@@ -501,7 +500,11 @@ export function AnyOfField({
   // ── Fallback: render a basic text input for unresolved anyOf fields ──
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={path}>{label}</Label>
+      <FieldLabel
+        htmlFor={path}
+        label={label}
+        description={schema.description}
+      />
       <input
         id={path}
         type="text"
@@ -510,9 +513,6 @@ export function AnyOfField({
         className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
         placeholder={schema.description ?? ""}
       />
-      {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
-      )}
     </div>
   );
 }

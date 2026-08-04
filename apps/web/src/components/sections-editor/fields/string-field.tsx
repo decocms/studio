@@ -3,7 +3,6 @@ import { Calendar as CalendarIcon } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Calendar } from "@deco/ui/components/calendar.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import {
   Popover,
   PopoverContent,
@@ -12,6 +11,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 import { RichTextField } from "./rich-text-field";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -164,25 +164,6 @@ function DatePickerInput({
           />
         </PopoverContent>
       </Popover>
-    </div>
-  );
-}
-
-type FieldLabelProps = Readonly<{
-  htmlFor: string;
-  label: string;
-  description?: string;
-}>;
-
-function FieldLabel({ htmlFor, label, description }: FieldLabelProps) {
-  return (
-    <div className="space-y-0.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {description && (
-        <p className="text-xs leading-normal text-muted-foreground">
-          {description}
-        </p>
-      )}
     </div>
   );
 }

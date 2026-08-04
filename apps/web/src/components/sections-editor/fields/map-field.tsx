@@ -1,8 +1,8 @@
 /// <reference types="google.maps" />
 import { useRef, useState } from "react";
-import { Label } from "@deco/ui/components/label.tsx";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 
 const DEFAULT_CENTER = { lat: -21.9, lng: -41.42 };
 const DEFAULT_RADIUS = 100000;
@@ -191,14 +191,11 @@ export function MapField({ schema, value, onChange, path, label }: FieldProps) {
 
   return (
     <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
-      </div>
+      <FieldLabel
+        htmlFor={path}
+        label={label}
+        description={schema.description}
+      />
       {!apiKey ? (
         <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           The map picker is unavailable — set{" "}

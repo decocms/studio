@@ -7,9 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import type { SchemaProperty } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
+import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
   inferInlineUnionIndex,
@@ -86,7 +86,13 @@ export function InlineUnionField(props: FieldProps) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        {label && <Label htmlFor={path}>{label}</Label>}
+        {label && (
+          <FieldLabel
+            htmlFor={path}
+            label={label}
+            description={schema.description}
+          />
+        )}
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>
           <SelectTrigger id={path}>
             <SelectValue
@@ -103,9 +109,6 @@ export function InlineUnionField(props: FieldProps) {
             ))}
           </SelectContent>
         </Select>
-        {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
-        )}
       </div>
 
       {activeBranch &&
