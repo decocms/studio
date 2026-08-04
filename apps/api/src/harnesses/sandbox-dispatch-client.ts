@@ -42,6 +42,7 @@ import {
 import type { StudioContext } from "../core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import {
   getThreadGithubRepo,
@@ -254,6 +255,10 @@ export class SandboxDispatchClient implements SandboxClient {
     // daemon pushed on its way out, and the env push is not optional either —
     // the model credential lives in the daemon's own config, which a fresh pod
     // boots without.
+    // The last handle a dispatch attempt actually ran on, so the release below
+    // targets the pod that survived the continuation rather than one already
+    // replaced. Written per attempt; read once, after the run settles.
+    let lastHandle: string | null = null;
     const dispatchOnce = (
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
@@ -270,6 +275,7 @@ export class SandboxDispatchClient implements SandboxClient {
           },
           ctx,
         );
+        lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
         await pushSandboxEnv(provider, sandbox.sandboxHandle, modelEnv);
@@ -283,12 +289,29 @@ export class SandboxDispatchClient implements SandboxClient {
         });
       })();
 
-    yield* dispatchWithContinuation({
-      runId,
-      resume: this.resume,
-      aborted: () => input.signal?.aborted === true,
-      dispatchOnce,
-    });
+    try {
+      yield* dispatchWithContinuation({
+        runId,
+        resume: this.resume,
+        aborted: () => input.signal?.aborted === true,
+        dispatchOnce,
+      });
+    } finally {
+      // The run is over — cleanly, failed, or aborted. This pod is `cloneOnly`:
+      // one agent loop, no dev server, nothing serving a preview URL. Left
+      // alone it idles to the 15-min claim TTL, which for a 100s run is most of
+      // its billed life. Bring shutdown forward instead.
+      //
+      // In `finally` on purpose: a failed or cancelled run's pod is exactly as
+      // useless as a successful one's. `releaseAfter` only ever moves shutdown
+      // earlier and swallows its own errors, so this cannot fail a run or cut
+      // short a sandbox another turn just extended.
+      if (lastHandle && getSettings().sandboxReleaseOnRunEndEnabled) {
+        await provider
+          .releaseAfter?.(lastHandle, getSettings().sandboxReleaseGraceMs)
+          .catch(() => {});
+      }
+    }
   }
 }
 
