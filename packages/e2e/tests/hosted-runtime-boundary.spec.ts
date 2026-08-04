@@ -204,6 +204,84 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
+  // A read-only thread is an autonomous run (a sandbox-hosted task run): it
+  // answers the one prompt it was dispatched with, so a follow-up would queue
+  // against a run nothing delivers it to. The composer hides itself, but the
+  // wire has to refuse too — otherwise the "read only" claim is decoration.
+  test("refuses a follow-up message on a read-only thread", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const agent = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: "read-only thread boundary",
+            connections: [],
+            status: "active",
+            pinned: false,
+          },
+        },
+      );
+      const thread = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_THREADS_CREATE",
+        { data: { virtual_mcp_id: agent.item.id } },
+      );
+      // The pins a sandbox-hosted task run persists, plus the read-only mark.
+      const update = await db.query(
+        `UPDATE threads
+            SET harness_id = 'claude-code',
+                sandbox_provider_kind = 'agent-sandbox',
+                metadata = jsonb_set(
+                  COALESCE(metadata, '{}'::jsonb),
+                  '{read_only}', 'true'::jsonb, true
+                )
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(update.rowCount).toBe(1);
+
+      const response = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
+        {
+          data: {
+            messages: [
+              {
+                id: "msg-read-only-followup",
+                role: "user",
+                parts: [{ type: "text", text: "Also do this" }],
+              },
+            ],
+            agent: { id: agent.item.id },
+          },
+          headers: { "content-type": "application/json" },
+        },
+      );
+      expect(response.status()).toBe(409);
+      expect(await response.json()).toEqual({
+        error: "Thread is read only and cannot accept new messages",
+      });
+
+      // Refused before persisting: no request message, no dispatched run.
+      const parts = await db.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count
+           FROM thread_message_parts
+          WHERE thread_id = $1`,
+        [thread.item.id],
+      );
+      expect(parts.rows[0]?.count).toBe(0);
+    } finally {
+      await db.end();
+    }
+  });
+
   test("keeps a retired local Decopilot pin readable as hosted", async ({
     authedPage,
   }) => {

@@ -709,6 +709,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
 
+      // Autonomous runs take no follow-up. Enforced HERE, at the user-message
+      // entry, and NOT in `prepareRun`: the run's own dispatch goes through
+      // `enqueueThreadRun`, so a gate on the shared path would reject the very
+      // turn that created the thread. The composer disables itself on the same
+      // flag; this is what makes it more than a UI suggestion.
+      if (existingThread?.metadata?.read_only === true) {
+        throw new HTTPException(409, {
+          message: "Thread is read only and cannot accept new messages",
+        });
+      }
+
       const requestMessage = input.messages.find((m) => m.role !== "system");
       if (!requestMessage) {
         throw new HTTPException(400, {
