@@ -8,6 +8,7 @@ import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { TaskBoardItemPrSchema } from "./schema";
+import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -745,6 +746,17 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
             { status: "done" },
             item.updatedBy,
           );
+          // Every other path that moves a card to Done (the review-decision
+          // auto-merge, "Ship to production") logs a `status_changed` timeline
+          // entry — this reconcile silently skipped it, so a task auto-completed
+          // by a human merging its PR directly on GitHub left no trace of the
+          // move in the Activity feed.
+          await recordTaskActivity(ctx, {
+            taskBoardItemId,
+            action: "status_changed",
+            actorId: null,
+            data: { from: item.status, to: "done" },
+          });
           emitTaskBoardUpdated(organizationId, updated);
         }
       } catch (err) {
