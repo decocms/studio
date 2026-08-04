@@ -598,6 +598,8 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         virtual_mcp_id: automation.virtual_mcp_id,
         harness_id: "decopilot",
         sandbox_provider_kind: "agent-sandbox",
+        routing_locked_at: now,
+        hosted_execution_disabled_at: null,
         hidden: false,
         // Pin v2 (the only write path). Automation runs don't go through the
         // routes.ts first-message site that pins user-message threads v2, so

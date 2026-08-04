@@ -69,9 +69,10 @@ export interface ThreadStoragePort {
     data: ThreadUpdateData,
   ): Promise<Thread>;
   /**
-   * Apply an update only while no runtime has claimed the thread. Used for
-   * agent/branch mutations so a concurrent hosted/native pin cannot race a
-   * preceding read and move a started chat to another execution context.
+   * Apply an update only while both the durable routing lock and the legacy
+   * harness selector remain unset. The dual predicate is the expand-phase CAS:
+   * new pods honor `routing_locked_at`, while `harness_id IS NULL` keeps them
+   * safe when racing an older pod that has not learned to mint the lock yet.
    */
   updateRoutingIfRuntimeUnlocked(
     id: string,
@@ -81,9 +82,9 @@ export interface ThreadStoragePort {
   /**
    * Atomically pin an unlocked thread to the hosted Decopilot runtime. The
    * runtime identifiers are storage-owned constants; callers supply only the
-   * branch and optional message format. The `harness_id IS NULL` predicate is
-   * the lock, while the provider predicate preserves a concurrent partial
-   * native claim.
+   * branch and optional message format. During the expand phase this also
+   * mints `routing_locked_at`, while the existing selector predicates remain
+   * the concurrency guard until every reader switches to the durable lock.
    */
   pinHostedRuntimeIfUnset(
     id: string,

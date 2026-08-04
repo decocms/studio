@@ -965,6 +965,18 @@ export interface ThreadTable {
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
+  /** Durable authority lock; null only while routing may still change. */
+  routing_locked_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  /** Fail-closed marker for historical runtimes that hosted Studio must not execute. */
+  hosted_execution_disabled_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   /** Per-task UI state (e.g., expanded_tools for right-panel tabs) */
   metadata: ColumnType<ThreadMetadata, string | undefined, string>;
   created_at: ColumnType<Date, Date | string, never>;
@@ -1043,6 +1055,10 @@ export interface Thread {
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
+  /** Durable authority lock; null only while routing may still change. */
+  routing_locked_at: string | null;
+  /** Fail-closed marker for historical runtimes that hosted Studio must not execute. */
+  hosted_execution_disabled_at: string | null;
   metadata: ThreadMetadata;
   /**
    * Message storage format for this thread's history.

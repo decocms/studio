@@ -310,6 +310,22 @@ export class SqlThreadStorage implements ThreadStoragePort {
       data.title = DEFAULT_THREAD_TITLE;
     }
 
+    const hasRoutingAuthorityEvidence =
+      data.harness_id != null ||
+      data.sandbox_provider_kind != null ||
+      (data.status !== undefined && data.status !== "completed") ||
+      data.context_start_message_id != null ||
+      data.run_owner_pod != null ||
+      data.run_config != null ||
+      data.run_started_at != null ||
+      data.last_progress_at != null;
+    const isHostedCompatibleRuntime =
+      (data.harness_id == null && data.sandbox_provider_kind == null) ||
+      (data.harness_id == null &&
+        data.sandbox_provider_kind === "agent-sandbox") ||
+      (data.harness_id === "decopilot" &&
+        data.sandbox_provider_kind === "agent-sandbox");
+
     const row = {
       id,
       organization_id: data.organization_id,
@@ -321,6 +337,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
       branch: data.branch ?? null,
       sandbox_provider_kind: data.sandbox_provider_kind ?? null,
       harness_id: data.harness_id ?? null,
+      routing_locked_at:
+        data.routing_locked_at ?? (hasRoutingAuthorityEvidence ? now : null),
+      hosted_execution_disabled_at:
+        data.hosted_execution_disabled_at ??
+        (isHostedCompatibleRuntime ? null : now),
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -451,6 +472,13 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.harness_id !== undefined) {
       updateData.harness_id = data.harness_id;
     }
+    if (data.routing_locked_at !== undefined) {
+      updateData.routing_locked_at = data.routing_locked_at;
+    }
+    if (data.hosted_execution_disabled_at !== undefined) {
+      updateData.hosted_execution_disabled_at =
+        data.hosted_execution_disabled_at;
+    }
     if (data.message_storage_version !== undefined) {
       updateData.message_storage_version = data.message_storage_version;
     }
@@ -460,7 +488,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId);
     if (requireRuntimeUnlocked) {
-      query = query.where("harness_id", "is", null);
+      query = query
+        .where("routing_locked_at", "is", null)
+        .where("harness_id", "is", null);
     }
     const row = await query.returningAll().executeTakeFirst();
     return row ? this.threadFromDbRow(row) : null;
@@ -478,6 +508,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
         sandbox_provider_kind: sql<string | null>`coalesce(${sql.ref(
           "sandbox_provider_kind",
         )}, 'agent-sandbox')`,
+        routing_locked_at: sql<Date>`coalesce(${sql.ref(
+          "routing_locked_at",
+        )}, now())`,
         branch: sql<string | null>`coalesce(${sql.ref("branch")}, ${
           pin.branch
         })`,
@@ -1119,6 +1152,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     branch?: string | null;
     sandbox_provider_kind?: string | null;
     harness_id?: string | null;
+    routing_locked_at?: Date | string | null;
+    hosted_execution_disabled_at?: Date | string | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -1164,6 +1199,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
       branch: row.branch ?? null,
       sandbox_provider_kind: row.sandbox_provider_kind ?? null,
       harness_id: row.harness_id ?? null,
+      routing_locked_at: row.routing_locked_at
+        ? toIsoString(row.routing_locked_at)
+        : null,
+      hosted_execution_disabled_at: row.hosted_execution_disabled_at
+        ? toIsoString(row.hosted_execution_disabled_at)
+        : null,
       metadata,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),

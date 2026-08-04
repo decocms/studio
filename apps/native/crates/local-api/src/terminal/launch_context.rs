@@ -2868,6 +2868,7 @@ mod tests {
             branch: Some(branch.to_string()),
             sandbox_provider_kind: None,
             harness_id: None,
+            routing_locked_at: None,
             metadata: None,
             run_config: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),

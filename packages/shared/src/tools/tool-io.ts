@@ -3461,6 +3461,8 @@ export interface StudioToolIO {
         branch?: string | null | undefined;
         sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
+        routing_locked_at?: string | null | undefined;
+        hosted_execution_disabled_at?: string | null | undefined;
         metadata?:
           | {
               [x: string]: unknown;
@@ -3527,6 +3529,8 @@ export interface StudioToolIO {
         branch?: string | null | undefined;
         sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
+        routing_locked_at?: string | null | undefined;
+        hosted_execution_disabled_at?: string | null | undefined;
         metadata?:
           | {
               [x: string]: unknown;
@@ -3570,6 +3574,8 @@ export interface StudioToolIO {
         branch?: string | null | undefined;
         sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
+        routing_locked_at?: string | null | undefined;
+        hosted_execution_disabled_at?: string | null | undefined;
         metadata?:
           | {
               [x: string]: unknown;
@@ -3639,6 +3645,8 @@ export interface StudioToolIO {
         branch?: string | null | undefined;
         sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
+        routing_locked_at?: string | null | undefined;
+        hosted_execution_disabled_at?: string | null | undefined;
         metadata?:
           | {
               [x: string]: unknown;
@@ -3680,6 +3688,8 @@ export interface StudioToolIO {
         branch?: string | null | undefined;
         sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
+        routing_locked_at?: string | null | undefined;
+        hosted_execution_disabled_at?: string | null | undefined;
         metadata?:
           | {
               [x: string]: unknown;

@@ -156,6 +156,7 @@ import * as migration154taskboardqaactivity from "./154-task-board-qa-activity.t
 import * as migration155taskboardreviewclaims from "./155-task-board-review-claims.ts";
 import * as migration156taskboardconflictactivity from "./156-task-board-conflict-activity.ts";
 import * as migration157dropthreadlinktransport from "./157-drop-thread-link-transport.ts";
+import * as migration158threadroutinglock from "./158-thread-routing-lock.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -338,6 +339,7 @@ const migrations: Record<string, Migration> = {
   "155-task-board-review-claims": migration155taskboardreviewclaims,
   "156-task-board-conflict-activity": migration156taskboardconflictactivity,
   "157-drop-thread-link-transport": migration157dropthreadlinktransport,
+  "158-thread-routing-lock": migration158threadroutinglock,
 };
 
 export default migrations;

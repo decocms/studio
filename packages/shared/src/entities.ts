@@ -47,6 +47,8 @@ export interface StudioThread {
   branch: string | null;
   sandbox_provider_kind: string | null;
   harness_id: string | null;
+  routing_locked_at?: string | null;
+  hosted_execution_disabled_at?: string | null;
   metadata: ThreadMetadata;
   message_storage_version: number;
 }

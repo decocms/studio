@@ -27,6 +27,8 @@ const BASE_THREAD: Thread = {
   branch: null,
   sandbox_provider_kind: null,
   harness_id: null,
+  routing_locked_at: null,
+  hosted_execution_disabled_at: null,
   metadata: {},
   message_storage_version: 1,
 };
@@ -139,5 +141,20 @@ describe("normalizeThreadForResponse", () => {
     expect(result).not.toHaveProperty("context_start_message_id");
     expect(result).not.toHaveProperty("run_owner_pod");
     expect(result).not.toHaveProperty("run_started_at");
+  });
+
+  test("preserves routing authority fields in API responses", () => {
+    const result = normalizeThreadForResponse(
+      {
+        ...BASE_THREAD,
+        routing_locked_at: "2026-08-04T12:00:00.000Z",
+        hosted_execution_disabled_at: "2026-08-04T12:01:00.000Z",
+      },
+      NOW,
+    );
+    expect(result.routing_locked_at).toBe("2026-08-04T12:00:00.000Z");
+    expect(result.hosted_execution_disabled_at).toBe(
+      "2026-08-04T12:01:00.000Z",
+    );
   });
 });

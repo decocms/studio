@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 /// Native owns this schema independently from Studio's Postgres migrations.
 /// The two stores intentionally share wire entities, not physical tables.
-const CURRENT_SCHEMA_VERSION: u32 = 12;
+const CURRENT_SCHEMA_VERSION: u32 = 13;
 
 const NATIVE_TERMINAL_SESSION_ID_PREFIX: &str = "native-terminal:";
 
@@ -683,6 +683,47 @@ WHERE provider_session_id IS NULL
   AND blocks_prior_provider_resume = 1;
 "#,
     },
+    Migration {
+        version: 13,
+        // A routing lock is the selector-free, public proof that this thread
+        // has claimed a runtime. Native keeps harness_id and
+        // sandbox_provider_kind as local terminal authority, but callers no
+        // longer need to infer immutability from either selector. Historical
+        // selector pins, lifecycle state, transcript rows, and terminal rows
+        // are all conservative evidence that routing must stay locked.
+        sql: r#"
+ALTER TABLE native_scoped_threads
+ADD COLUMN routing_locked_at TEXT
+CHECK (routing_locked_at IS NULL OR trim(routing_locked_at) <> '');
+
+UPDATE native_scoped_threads
+SET routing_locked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE harness_id IS NOT NULL
+   OR sandbox_provider_kind IS NOT NULL
+   OR status <> 'completed'
+   OR EXISTS (
+       SELECT 1
+       FROM native_scoped_messages
+       WHERE thread_id = native_scoped_threads.id
+   )
+   OR EXISTS (
+       SELECT 1
+       FROM native_terminal_sessions
+       WHERE account_scope = native_scoped_threads.account_scope
+         AND organization_id = native_scoped_threads.organization_id
+         AND thread_id = native_scoped_threads.id
+         AND thread_generation = native_scoped_threads.generation
+   );
+
+CREATE TRIGGER native_scoped_threads_routing_lock_immutable
+BEFORE UPDATE OF routing_locked_at ON native_scoped_threads
+WHEN OLD.routing_locked_at IS NOT NULL
+ AND NEW.routing_locked_at IS NOT OLD.routing_locked_at
+BEGIN
+    SELECT RAISE(ABORT, 'native_scoped_threads.routing_locked_at is immutable');
+END;
+"#,
+    },
 ];
 
 #[derive(Debug)]
@@ -829,6 +870,7 @@ pub struct RtThread {
     pub branch: Option<String>,
     pub sandbox_provider_kind: Option<String>,
     pub harness_id: Option<String>,
+    pub routing_locked_at: Option<String>,
     #[serde(skip_serializing_if = "thread_metadata_is_absent")]
     pub metadata: Option<Value>,
     pub run_config: Option<Value>,
@@ -1514,8 +1556,8 @@ impl ThreadsDb {
             params![account_scope, organization_id, id],
             |row| {
                 let thread = row_to_rt_thread(row)?;
-                let generation = row.get(18)?;
-                let delete_pending = row.get(19)?;
+                let generation = row.get(19)?;
+                let delete_pending = row.get(20)?;
                 Ok((
                     thread,
                     RtThreadFence {
@@ -1716,11 +1758,11 @@ impl ThreadsDb {
     }
 
     /// Preflights a workspace-identity patch while a caller holds the
-    /// process-local terminal start lock. Archiving must stop a live terminal
-    /// before it writes `hidden`; this check prevents that stop from erasing
-    /// the very `starting`/`running` evidence that should reject a combined
-    /// branch or virtual-MCP change. The update transaction repeats the gate
-    /// as the storage-level authority fence.
+    /// process-local terminal start lock. The durable routing timestamp stays
+    /// set after a terminal exits, so stopping a live terminal before archive
+    /// cannot make a combined branch or virtual-MCP change mutable again. The
+    /// update transaction repeats the gate as the storage-level authority
+    /// fence.
     pub fn rt_validate_workspace_identity_patch_fenced(
         &self,
         fence: &RtThreadFence,
@@ -1731,12 +1773,7 @@ impl ThreadsDb {
         let gate: Option<(bool, Option<String>, String, bool)> = tx
             .query_row(
                 "SELECT delete_pending, branch, virtual_mcp_id, \
-                     harness_id IS NOT NULL OR EXISTS(\
-                         SELECT 1 FROM native_terminal_sessions \
-                         WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
-                           AND thread_generation = ?4 \
-                           AND physical_state IN ('starting', 'running')\
-                     ) \
+                     routing_locked_at IS NOT NULL \
                  FROM native_scoped_threads \
                  WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3 \
                    AND generation = ?4",
@@ -1881,12 +1918,7 @@ impl ThreadsDb {
                 .is_some_and(|virtual_mcp_id| virtual_mcp_id != &current_virtual_mcp_id);
         if changes_workspace_identity {
             let workspace_locked: bool = tx.query_row(
-                "SELECT harness_id IS NOT NULL OR EXISTS(\
-                     SELECT 1 FROM native_terminal_sessions \
-                     WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
-                       AND thread_generation = native_scoped_threads.generation \
-                       AND physical_state IN ('starting', 'running')\
-                 ) FROM native_scoped_threads \
+                "SELECT routing_locked_at IS NOT NULL FROM native_scoped_threads \
                  WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3",
                 params![account_scope, organization_id, id],
                 |row| row.get(0),
@@ -2062,8 +2094,9 @@ impl ThreadsDb {
 
     /// First-terminal thread-lock pin:
     /// sets `harness_id`/`sandbox_provider_kind`/`branch` ONLY when each is
-    /// currently `NULL` — a later launch on the same thread leaves them
-    /// untouched even if it names a different harness.
+    /// currently `NULL` and permanently records the first routing claim — a
+    /// later launch on the same thread leaves them untouched even if it names
+    /// a different harness.
     #[cfg(test)]
     pub fn rt_pin_harness_if_unset_in_org(
         &self,
@@ -2073,17 +2106,20 @@ impl ThreadsDb {
         sandbox_provider_kind: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<()> {
+        let ts = now_rfc3339();
         let conn = self.lock();
         conn.execute(
             "UPDATE native_scoped_threads SET \
              harness_id = COALESCE(harness_id, ?1), \
              sandbox_provider_kind = COALESCE(sandbox_provider_kind, ?2), \
-             branch = COALESCE(branch, ?3) \
-             WHERE id = ?4 AND organization_id = ?5",
+             branch = COALESCE(branch, ?3), \
+             routing_locked_at = COALESCE(routing_locked_at, ?4) \
+             WHERE id = ?5 AND organization_id = ?6",
             params![
                 harness_id,
                 sandbox_provider_kind,
                 branch,
+                ts,
                 id,
                 organization_id
             ],
@@ -2098,18 +2134,21 @@ impl ThreadsDb {
         sandbox_provider_kind: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<bool> {
+        let ts = now_rfc3339();
         let conn = self.lock();
         Ok(conn.execute(
             "UPDATE native_scoped_threads SET \
              harness_id = COALESCE(harness_id, ?1), \
              sandbox_provider_kind = COALESCE(sandbox_provider_kind, ?2), \
-             branch = COALESCE(branch, ?3) \
-             WHERE id = ?4 AND organization_id = ?5 AND generation = ?6 \
-               AND account_scope = ?7 AND delete_pending = 0 AND hidden = 0",
+             branch = COALESCE(branch, ?3), \
+             routing_locked_at = COALESCE(routing_locked_at, ?4) \
+             WHERE id = ?5 AND organization_id = ?6 AND generation = ?7 \
+               AND account_scope = ?8 AND delete_pending = 0 AND hidden = 0",
             params![
                 harness_id,
                 sandbox_provider_kind,
                 branch,
+                ts,
                 fence.thread_id,
                 fence.organization_id,
                 fence.generation,
@@ -2234,7 +2273,8 @@ impl ThreadsDb {
         }
         let thread_changed = tx.execute(
             "UPDATE native_scoped_threads SET \
-                 status = ?1, updated_at = ?2 \
+                 status = ?1, updated_at = ?2, \
+                 routing_locked_at = COALESCE(routing_locked_at, ?2) \
              WHERE account_scope = ?3 AND organization_id = ?4 AND id = ?5 \
                AND generation = ?6 AND delete_pending = 0",
             params![
@@ -3151,7 +3191,8 @@ impl ThreadsDb {
 
 const RT_THREAD_COLUMNS: &str = "id, organization_id, title, description, hidden, status, \
      created_by, updated_by, virtual_mcp_id, trigger_id, branch, sandbox_provider_kind, \
-     harness_id, metadata, run_config, created_at, updated_at, updated_by_explicit";
+     harness_id, metadata, run_config, created_at, updated_at, routing_locked_at, \
+     updated_by_explicit";
 
 fn parse_stored_json(raw: String, column: usize) -> rusqlite::Result<Value> {
     serde_json::from_str(&raw).map_err(|error| {
@@ -3174,7 +3215,7 @@ fn row_to_rt_thread(row: &rusqlite::Row) -> rusqlite::Result<RtThread> {
     let metadata_raw: Option<String> = row.get(13)?;
     let run_config_raw: Option<String> = row.get(14)?;
     let updated_by_raw: String = row.get(7)?;
-    let updated_by_explicit = row.get::<_, i64>(17)? != 0;
+    let updated_by_explicit = row.get::<_, i64>(18)? != 0;
     Ok(RtThread {
         id: row.get(0)?,
         organization_id: row.get(1)?,
@@ -3189,6 +3230,7 @@ fn row_to_rt_thread(row: &rusqlite::Row) -> rusqlite::Result<RtThread> {
         branch: row.get(10)?,
         sandbox_provider_kind: row.get(11)?,
         harness_id: row.get(12)?,
+        routing_locked_at: row.get(17)?,
         metadata: parse_optional_stored_json(metadata_raw, 13)?,
         run_config: parse_optional_stored_json(run_config_raw, 14)?,
         created_at: row.get(15)?,
@@ -5255,9 +5297,30 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(mutable.branch.as_deref(), Some("feature"));
         assert_eq!(mutable.virtual_mcp_id, "vmcp-b");
 
-        created_terminal(
+        let starting = created_terminal(
             db.rt_create_terminal_session_fenced(&starting_fence, "terminal-starting", "codex")
                 .unwrap(),
+        );
+        let first_routing_lock = starting
+            .thread
+            .routing_locked_at
+            .clone()
+            .expect("a durable terminal reservation locks routing");
+        let exited = updated_terminal(
+            db.rt_compare_and_set_terminal_session_state(
+                &starting_fence,
+                "terminal-starting",
+                0,
+                RtTerminalPhysicalState::Exited,
+                RtTerminalLogicalState::Interrupted,
+                None,
+                Some("test exit"),
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            exited.thread.routing_locked_at.as_deref(),
+            Some(first_routing_lock.as_str())
         );
         let metadata_only = db
             .rt_update_thread_in_scope(
@@ -5309,6 +5372,12 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert!(db
             .rt_pin_harness_if_unset_fenced(&pinned_fence, "opencode", None, None)
             .unwrap());
+        assert!(db
+            .rt_thread_fenced(&pinned_fence)
+            .unwrap()
+            .unwrap()
+            .routing_locked_at
+            .is_some());
         assert!(matches!(
             db.rt_update_thread_in_scope(
                 &scope,
@@ -6154,6 +6223,11 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(created.session.revision, 0);
         assert_eq!(created.thread.status, RT_THREAD_STATUS_COMPLETED);
         assert_eq!(created.thread.harness_id, None);
+        let routing_locked_at = created
+            .thread
+            .routing_locked_at
+            .clone()
+            .expect("terminal reservation must claim routing before harness pin");
         assert!(db
             .rt_pin_harness_if_unset_fenced(&fence, "claude-code", None, None)
             .unwrap());
@@ -6163,6 +6237,14 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 .flatten()
                 .as_deref(),
             Some("claude-code")
+        );
+        assert_eq!(
+            db.rt_thread_fenced(&fence)
+                .unwrap()
+                .unwrap()
+                .routing_locked_at
+                .as_deref(),
+            Some(routing_locked_at.as_str())
         );
 
         let attached = db
@@ -6867,7 +6949,10 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         }
 
         let db = ThreadsDb::open(dir.path()).unwrap();
-        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
+        assert_eq!(
+            schema_version(&local_db_path(dir.path())),
+            CURRENT_SCHEMA_VERSION
+        );
         let fence = db
             .rt_thread_fence_in_scope(&scope, "v12-org", "v12-thread")
             .unwrap()
@@ -6915,6 +7000,115 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 .unwrap(),
             RtTerminalResumeDecision::Resume("provider-b".to_string())
         );
+    }
+
+    #[test]
+    fn version_thirteen_backfills_every_durable_routing_signal() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = RtAccountScope::new("studio.decocms.com", "v13-user").unwrap();
+        create_v7_fixture(dir.path(), &scope, "fixture-org", "fixture-thread");
+        {
+            let conn = Connection::open(local_db_path(dir.path())).unwrap();
+            conn.pragma_update(None, "foreign_keys", 1).unwrap();
+            for migration in MIGRATIONS
+                .iter()
+                .filter(|migration| (8..=12).contains(&migration.version))
+            {
+                conn.execute_batch(migration.sql).unwrap();
+                conn.pragma_update(None, "user_version", migration.version)
+                    .unwrap();
+            }
+            for (id, status, harness_id, sandbox_provider_kind) in [
+                ("unstarted", "completed", None, None),
+                ("selector-pinned", "completed", Some("codex"), None),
+                ("provider-pinned", "completed", None, Some("user-desktop")),
+                ("status-history", "failed", None, None),
+                ("message-history", "completed", None, None),
+                ("terminal-history", "completed", None, None),
+            ] {
+                conn.execute(
+                    "INSERT INTO native_scoped_threads (\
+                         id, organization_id, title, description, hidden, status, created_by, \
+                         updated_by, virtual_mcp_id, trigger_id, branch, sandbox_provider_kind, \
+                         harness_id, metadata, run_config, created_at, updated_at, generation, \
+                         account_scope, updated_by_explicit, delete_pending\
+                     ) VALUES (?1, 'v13-org', ?1, NULL, 0, ?2, 'v13-user', 'v13-user', \
+                         'vmcp', NULL, NULL, ?4, ?3, NULL, NULL, \
+                         '2026-08-04T10:00:00.000Z', '2026-08-04T10:00:00.000Z', \
+                         'generation-' || ?1, ?5, 0, 0)",
+                    params![
+                        id,
+                        status,
+                        harness_id,
+                        sandbox_provider_kind,
+                        scope.storage_key(),
+                    ],
+                )
+                .unwrap();
+            }
+            conn.execute(
+                "INSERT INTO native_scoped_messages (\
+                     id, thread_id, role, parts, metadata, seq, created_at, updated_at\
+                 ) VALUES ('history-message', 'message-history', 'user', '[]', NULL, 1, \
+                     '2026-08-04T10:01:00.000Z', '2026-08-04T10:01:00.000Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO native_terminal_sessions (\
+                     id, account_scope, organization_id, thread_id, thread_generation, \
+                     harness_id, physical_state, logical_state, provider_session_id, revision, \
+                     exit_code, last_error, started_at, ended_at, created_at, updated_at, \
+                     blocks_prior_provider_resume, rejected_provider_session_id\
+                 ) VALUES ('history-terminal', ?1, 'v13-org', 'terminal-history', \
+                     'generation-terminal-history', 'claude-code', 'exited', 'completed', \
+                     NULL, 0, 0, NULL, '2026-08-04T10:02:00.000Z', \
+                     '2026-08-04T10:03:00.000Z', '2026-08-04T10:02:00.000Z', \
+                     '2026-08-04T10:03:00.000Z', 0, NULL)",
+                [scope.storage_key()],
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 12).unwrap();
+            validate_foreign_keys(&conn).unwrap();
+        }
+
+        let db = ThreadsDb::open(dir.path()).unwrap();
+        assert_eq!(
+            schema_version(&local_db_path(dir.path())),
+            CURRENT_SCHEMA_VERSION
+        );
+        let unstarted = db
+            .rt_get_thread_in_scope(&scope, "v13-org", "unstarted")
+            .unwrap()
+            .unwrap();
+        assert!(unstarted.routing_locked_at.is_none());
+        for id in [
+            "selector-pinned",
+            "provider-pinned",
+            "status-history",
+            "message-history",
+            "terminal-history",
+        ] {
+            let thread = db
+                .rt_get_thread_in_scope(&scope, "v13-org", id)
+                .unwrap()
+                .unwrap();
+            let routing_locked_at = thread
+                .routing_locked_at
+                .unwrap_or_else(|| panic!("{id} was not routing-locked"));
+            assert!(
+                routing_locked_at.ends_with('Z'),
+                "{id}: {routing_locked_at}"
+            );
+        }
+        assert!(db
+            .lock()
+            .execute(
+                "UPDATE native_scoped_threads SET routing_locked_at = NULL \
+                 WHERE id = 'selector-pinned'",
+                [],
+            )
+            .is_err());
     }
 
     #[test]
@@ -6967,7 +7161,10 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         }
 
         let db = ThreadsDb::open(dir.path()).unwrap();
-        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
+        assert_eq!(
+            schema_version(&local_db_path(dir.path())),
+            CURRENT_SCHEMA_VERSION
+        );
         let fence = db
             .rt_thread_fence_in_scope(&scope, "v10-org", "v10-thread")
             .unwrap()

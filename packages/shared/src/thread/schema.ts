@@ -100,6 +100,22 @@ export const ThreadEntitySchema = z.object({
     .describe(
       "Pinned on first message; selects which harness runs the thread (e.g. 'claude-code', 'codex', 'decopilot').",
     ),
+  routing_locked_at: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .describe(
+      "Timestamp when the thread's hosted runtime routing became immutable.",
+    ),
+  hosted_execution_disabled_at: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .describe(
+      "Timestamp when hosted execution was disabled for a historical noncanonical runtime.",
+    ),
   metadata: ThreadMetadataSchema.optional().describe(
     "Free-form per-thread UI state (e.g. expanded_tools)",
   ),

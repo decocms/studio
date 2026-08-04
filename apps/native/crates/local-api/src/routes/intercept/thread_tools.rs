@@ -1165,6 +1165,7 @@ mod tests {
         assert_eq!(created["item"]["title"], "hello");
         assert_eq!(created["item"]["virtual_mcp_id"], "vmcp-1");
         assert_eq!(created["item"]["hidden"], false);
+        assert!(created["item"]["routing_locked_at"].is_null());
         assert!(!created["item"]
             .as_object()
             .unwrap()

@@ -86,6 +86,8 @@ export function normalizeThreadForResponse(
     branch: thread.branch,
     sandbox_provider_kind: thread.sandbox_provider_kind,
     harness_id: thread.harness_id,
+    routing_locked_at: thread.routing_locked_at,
+    hosted_execution_disabled_at: thread.hosted_execution_disabled_at,
     metadata:
       thread.metadata && Object.keys(thread.metadata).length > 0
         ? thread.metadata

@@ -193,6 +193,26 @@ describe("SqlThreadStorage", () => {
       expect(thread.harness_id).toBe("decopilot");
       expect(thread.sandbox_provider_kind).toBe("agent-sandbox");
       expect(thread.branch).toBe("main");
+      expect(thread.routing_locked_at).not.toBeNull();
+      expect(thread.hosted_execution_disabled_at).toBeNull();
+    });
+
+    it("keeps pristine drafts unlocked and retires incompatible creates", async () => {
+      const draft = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      expect(draft.routing_locked_at).toBeNull();
+      expect(draft.hosted_execution_disabled_at).toBeNull();
+
+      const retired = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        harness_id: "codex",
+        sandbox_provider_kind: "user-desktop",
+      });
+      expect(retired.routing_locked_at).not.toBeNull();
+      expect(retired.hosted_execution_disabled_at).not.toBeNull();
     });
 
     it("does not overwrite a concurrent native runtime claim", async () => {
@@ -211,6 +231,8 @@ describe("SqlThreadStorage", () => {
             harness_id: "codex",
             sandbox_provider_kind: "user-desktop",
             branch: "native",
+            routing_locked_at: sql`coalesce(routing_locked_at, now())`,
+            hosted_execution_disabled_at: sql`coalesce(hosted_execution_disabled_at, now())`,
             updated_at: new Date().toISOString(),
           })
           .where("id", "=", thread.id)
@@ -230,15 +252,40 @@ describe("SqlThreadStorage", () => {
           harness_id: "decopilot",
           sandbox_provider_kind: "agent-sandbox",
           branch: "hosted",
+          routing_locked_at: expect.any(String),
         });
       } else {
         expect(persisted).toMatchObject({
           harness_id: "codex",
           sandbox_provider_kind: "user-desktop",
           branch: "native",
+          routing_locked_at: expect.any(String),
+          hosted_execution_disabled_at: expect.any(String),
         });
       }
       expect(hostedClaim.thread).toEqual(persisted);
+    });
+
+    it("claims the routing lock exactly once with the hosted runtime", async () => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      expect(thread.routing_locked_at).toBeNull();
+
+      const first = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
+        branch: "main",
+      });
+      expect(first.claimed).toBe(true);
+      expect(first.thread?.routing_locked_at).not.toBeNull();
+      const lockedAt = first.thread?.routing_locked_at;
+
+      const second = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
+        branch: "other",
+      });
+      expect(second.claimed).toBe(false);
+      expect(second.thread?.routing_locked_at).toBe(lockedAt);
+      expect(second.thread?.hosted_execution_disabled_at).toBeNull();
     });
 
     it("preserves branch state written before the runtime claim", async () => {
@@ -288,6 +335,28 @@ describe("SqlThreadStorage", () => {
         virtual_mcp_id: "agent-after",
         branch: "feature",
         harness_id: null,
+      });
+
+      const selectorFreeLocked = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        virtual_mcp_id: "locked-agent",
+        branch: "locked-branch",
+        routing_locked_at: "2026-08-01T00:00:00.000Z",
+      });
+      expect(selectorFreeLocked.harness_id).toBeNull();
+      expect(
+        await storage.updateRoutingIfRuntimeUnlocked(
+          selectorFreeLocked.id,
+          "org_1",
+          { virtual_mcp_id: "too-late", branch: "too-late" },
+        ),
+      ).toBeNull();
+      expect(await storage.get(selectorFreeLocked.id, "org_1")).toMatchObject({
+        virtual_mcp_id: "locked-agent",
+        branch: "locked-branch",
+        harness_id: null,
+        routing_locked_at: "2026-08-01T00:00:00.000Z",
       });
 
       await storage.pinHostedRuntimeIfUnset(unlocked.id, "org_1", {

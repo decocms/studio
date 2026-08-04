@@ -413,6 +413,7 @@ pub(crate) fn emit_thread_status(
         "trigger_id": thread.trigger_id,
         "title": thread.title,
         "branch": thread.branch,
+        "routing_locked_at": thread.routing_locked_at,
         "created_at": thread.created_at,
         "updated_at": thread.updated_at,
     });
@@ -470,6 +471,7 @@ mod tests {
             branch: Some("feature/native".to_string()),
             sandbox_provider_kind: Some("user-desktop".to_string()),
             harness_id: Some("claude-code".to_string()),
+            routing_locked_at: Some("2026-07-24T11:30:00.000Z".to_string()),
             metadata: Some(json!({"kind": "agent"})),
             run_config: None,
             created_at: "2026-07-24T11:00:00.000Z".to_string(),
@@ -538,6 +540,10 @@ mod tests {
         assert_eq!(parsed["data"]["created_by"], "alice");
         assert_eq!(parsed["data"]["title"], "Local thread");
         assert_eq!(parsed["data"]["branch"], "feature/native");
+        assert_eq!(
+            parsed["data"]["routing_locked_at"],
+            "2026-07-24T11:30:00.000Z"
+        );
         assert_eq!(parsed["data"]["created_at"], "2026-07-24T11:00:00.000Z");
         assert_eq!(parsed["data"]["metadata"]["kind"], "agent");
 
