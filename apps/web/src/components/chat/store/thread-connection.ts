@@ -47,6 +47,9 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import { DECOPILOT_EVENTS } from "@decocms/shared/sdk";
+import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
+import type { SSESubscription } from "@/hooks/create-sse-subscription";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
@@ -275,8 +278,14 @@ interface ThreadConnectionOptions {
    * one terminal write buys nothing — the org-level `/watch` already reports the
    * thread's status change, and the transcript comes from
    * COLLECTION_THREAD_MESSAGES_LIST like any other page load.
+   *
+   * The org-level `/watch` is also how a batch thread stays live: each step the
+   * harness finishes emits `decopilot.step` (run-reactor), so the connection
+   * refetches the latest page on it instead of leaving the user to reload.
    */
   batch?: boolean;
+  /** Org-level `/watch` pool. Injectable for tests; defaults to the shared one. */
+  sse?: SSESubscription;
 }
 
 export class ThreadConnection {
@@ -316,6 +325,8 @@ export class ThreadConnection {
   private client: MCPClient | null;
   /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only. */
   private readonly batch: boolean;
+  /** Batch mode only: org-`/watch` unsubscribe, dropped on dispose. */
+  private watchUnsubscribe: (() => void) | null = null;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
   /**
@@ -345,6 +356,12 @@ export class ThreadConnection {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
     this.batch = opts.batch ?? false;
+    if (this.batch) {
+      const sse = opts.sse ?? decopilotSSE;
+      this.watchUnsubscribe = sse.subscribe(orgSlug, (e) =>
+        this.handleWatchEvent(e),
+      );
+    }
     this.ready = new Promise<void>((res) => {
       this.resolveReady = res;
     });
@@ -352,7 +369,35 @@ export class ThreadConnection {
   }
 
   dispose(): void {
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
     this.abort.abort();
+  }
+
+  /**
+   * Batch mode's only live signal: a step this thread's harness just persisted
+   * (`decopilot.step`), or its terminal status flip. Both mean "there are more
+   * parts in the DB than on screen" — refetch, don't reload the page.
+   *
+   * `refetchLatestPage` merges upsert-by-id, so an event that arrives while a
+   * fetch is in flight (or twice for the same step) costs a request, not a
+   * duplicated turn.
+   */
+  private handleWatchEvent(e: MessageEvent): void {
+    if (
+      e.type !== DECOPILOT_EVENTS.STEP &&
+      e.type !== DECOPILOT_EVENTS.THREAD_STATUS
+    ) {
+      return;
+    }
+    let subject: unknown;
+    try {
+      subject = (JSON.parse(e.data) as { subject?: unknown }).subject;
+    } catch {
+      return;
+    }
+    if (subject !== this.threadId) return;
+    void this.refetchLatestPage();
   }
 
   // ── Public mutator (single entry point) ─────────────────────────────────
