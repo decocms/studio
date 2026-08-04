@@ -165,6 +165,18 @@ cleanup() {
 # running process on its old inode; staging in the SAME directory is what keeps
 # that rename atomic. Shared by both verification paths so the install step
 # cannot drift between them.
+#
+# `$2` is the digest these bytes were proven at BY SIGNATURE, or empty on the
+# digest-only path. Written last, so a stamp can never outlive the install it
+# describes; cleared on the unsigned path so a downgrade in verification
+# strength is never left claiming the stronger one.
+#
+# NEVER fatal. The stamp is an optimisation — dropping it only costs the next
+# run a re-verify, which is the fail-closed direction. It sits AFTER the `mv`
+# and BEFORE the icon, the .desktop entry and the completion message, so on
+# `set -eu` an unwritable stamp would abort with the binary already in place
+# and no launcher entry: a half install that does not self-repair, because
+# every re-run takes the same path and dies at the same line.
 install_appimage() {
   mkdir -p "$BIN_DIR"
   STAGED="$BIN_DIR/.deco-studio.$$"
@@ -172,6 +184,12 @@ install_appimage() {
   chmod 755 "$STAGED"
   mv -f "$STAGED" "$BIN_PATH"
   STAGED=""
+  if [ -n "${2:-}" ]; then
+    { mkdir -p "$STAMP_DIR" && printf '%s\n' "$2" > "$STAMP_PATH"; } 2>/dev/null ||
+      say "could not record the verification stamp at $STAMP_PATH; the next run will re-verify the signature."
+  else
+    rm -f "$STAMP_PATH" 2>/dev/null || true
+  fi
   INSTALLED_NEW=true
   say "installed $BIN_PATH"
 }
@@ -207,6 +225,13 @@ install_linux() {
   DESKTOP_PATH="$DESKTOP_DIR/deco-studio.desktop"
   ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
   ICON_PATH="$ICON_DIR/deco-studio.png"
+  # Records WHICH bytes were proven by signature, not merely by digest. The
+  # installed AppImage carries no record of how it was verified, so without
+  # this a host that took the unsigned fallback and then installed minisign —
+  # exactly what that path tells the user to do — would hit the up-to-date
+  # shortcut below and never check the signature at all.
+  STAMP_DIR="$HOME/.local/share/deco-studio"
+  STAMP_PATH="$STAMP_DIR/verified.sha256"
 
   TMP=$(mktemp -d) || fail "could not create a temporary directory."
   trap 'cleanup; exit 130' INT
@@ -291,8 +316,17 @@ install_linux() {
 
   # A re-run against an install that already carries these exact bytes is a
   # no-op: skip the download and only re-assert the desktop integration below.
+  #
+  # Matching bytes are not enough on their own. A host that took the unsigned
+  # fallback, then installed minisign and re-ran — the remedy that path prints
+  # — would otherwise exit here having verified nothing, so the instruction
+  # would be a no-op against exactly the attacker it warns about (one who
+  # serves both the AppImage and its .sha256). So the shortcut also needs
+  # either nothing better available on this host, or a stamp proving these
+  # bytes already passed the signature check.
   INSTALLED_NEW=false
-  if [ -f "$BIN_PATH" ] && [ "$(sha256_of "$BIN_PATH")" = "$EXPECTED" ]; then
+  if [ -f "$BIN_PATH" ] && [ "$(sha256_of "$BIN_PATH")" = "$EXPECTED" ] &&
+    { [ -n "$SIG_MISSING" ] || [ "$(cat "$STAMP_PATH" 2>/dev/null)" = "$EXPECTED" ]; }; then
     say "already up to date at $VERSION"
   elif [ -z "$SIG_MISSING" ]; then
     # The signed path. `deco-$V-linux-x86_64.AppImage.tar.gz` is a gzipped tar
@@ -351,7 +385,7 @@ install_linux() {
     [ "$ACTUAL" = "$EXPECTED" ] ||
       fail "the AppImage inside the signature-verified $TARBALL does not match $SUM_ASSET on $TAG — expected $EXPECTED, got $ACTUAL. Those two assets describe different builds, so one of them is wrong; nothing was installed. Report this at $RELEASES."
 
-    install_appimage "$SRC"
+    install_appimage "$SRC" "$EXPECTED"
   else
     # The unsigned path: the digest is all this host can check, and it only
     # rules out a mangled transfer. Announced, never silent — an installer that

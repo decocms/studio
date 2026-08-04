@@ -60,6 +60,16 @@ export interface SmokeTarget {
    */
   requiredSidecars: string[];
   sweepPatterns: string[];
+  /**
+   * Absolute path to the platform's `tauri.<platform>.conf.json5` overlay, if
+   * it has one. The Tauri CLI auto-discovers and merge-patches it, so editing
+   * it changes the bundle — which makes it a freshness input for the staleness
+   * guard in `boot-smoke.ts`. `undefined` on macOS, which has no overlay:
+   * the file is committed on every platform, so keying this off `existsSync`
+   * instead would make a macOS smoke rebuild whenever only the Linux overlay
+   * moved.
+   */
+  configOverlayPath?: string;
 }
 
 /**
@@ -104,6 +114,11 @@ export function resolveSmokeTarget(
         ...SWEEP_PATTERNS,
         `${APPIMAGE_EXTRACT_DIR}/usr/bin/${APP_BINARY_NAME}([[:space:]]|$)`,
       ],
+      configOverlayPath: join(
+        desktopDir,
+        "src-tauri",
+        "tauri.linux.conf.json5",
+      ),
     };
   }
   throw new Error(`boot smoke does not support platform: ${platform}`);

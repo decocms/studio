@@ -443,11 +443,18 @@ jobs:
       # Two tripwires on the artifact users actually run, both fatal:
       #  - the exact `deco_<version>_amd64.AppImage` name the updater's
       #    version-pairing check parses out of the signed tarball;
-      #  - a statically linked AppImage runtime. A stale
+      #  - an AppImage runtime that does not REQUIRE libfuse2. A stale
       #    linuxdeploy-plugin-appimage emits a type-2 runtime dynamically
       #    linked against libfuse.so.2, which cannot even self-extract on a
       #    host without libfuse2. `ldd` exits non-zero on a static binary —
       #    that is the passing case, hence `|| true` around both probes.
+      #    Note the scope precisely: this greps for libfuse.so.2, it does NOT
+      #    prove the runtime is statically linked. Measured on a static-PIE
+      #    binary, the dynamic section has 22 entries and ZERO DT_NEEDED — so
+      #    "reject every DT_NEEDED entry" would PASS it, not false-fail it.
+      #    The rule that WOULD false-fail it is "require no dynamic section at
+      #    all", which only a fully static non-PIE satisfies. Not requiring
+      #    libfuse2 is the property that matters, so that is what is gated.
       #
       # Because both probes are `|| true`, "no output at all" (tool missing,
       # wrong path, non-ELF input) would make the `grep -q` below find no

@@ -6,7 +6,8 @@
 # Read by BOTH workflows, on purpose:
 #   - .github/workflows/release-native.yaml  (the shipped AppImage)
 #   - .github/workflows/native.yml           (the PR/main AppImage that gets
-#                                             boot-smoked and asserted static)
+#                                             boot-smoked and asserted not to
+#                                             require libfuse2)
 # Same reason `fetch-rclone.sh` next door is shared: a pin that only the
 # release leg exercises is first tested on release day, on a half-published
 # version, where the failure is maximally expensive and cannot go red on the
