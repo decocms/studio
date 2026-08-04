@@ -29,7 +29,11 @@
  * hosted live path.
  */
 
-import { applySubsidizedBilling } from "@/billing/subsidized-runs";
+import {
+  applySubsidizedBilling,
+  isSubscriptionBilledRun,
+  resolveSubsidizedApiKey,
+} from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
@@ -274,7 +278,14 @@ async function resolveSecretModelSource(
     organizationId,
   );
   // Subscription-billed runs (reports-task executions) swap the PAYER only:
-  // the org's resolved model/provider run as-is on the deco house key.
+  // the org's resolved model/provider run as-is on the org's subsidy key
+  // (per-client gateway org — exact COGS attribution), falling back to the
+  // house key, falling back to the org's own key.
+  const subsidyApiKey =
+    isSubscriptionBilledRun(ctx.metadata?.runMetadata) &&
+    keyInfo.providerId === "deco"
+      ? await resolveSubsidizedApiKey(ctx, organizationId)
+      : undefined;
   const source = applySubsidizedBilling(
     createSecretModelSource({
       providerId: keyInfo.providerId,
@@ -282,6 +293,7 @@ async function resolveSecretModelSource(
       modelId,
     }),
     ctx.metadata?.runMetadata,
+    subsidyApiKey,
   );
 
   // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a

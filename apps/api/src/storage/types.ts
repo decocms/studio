@@ -1190,6 +1190,14 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
+/** Per-org subsidy gateway key (migration 159) — vault-encrypted; see
+ *  storage/subsidized-gateway-keys.ts. */
+export interface SubsidizedGatewayKeyTable {
+  organization_id: string;
+  encrypted_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** Quota ledger for reports-pushed task executions (migration 158) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
 export interface TaskQuotaClaimTable {
@@ -1823,6 +1831,7 @@ export interface Database extends PrivateRegistryDatabase {
   // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
   organization_billing: OrganizationBillingTable;
   task_quota_claims: TaskQuotaClaimTable;
+  subsidized_gateway_keys: SubsidizedGatewayKeyTable;
 
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;

@@ -14,6 +14,9 @@
  * it reads one env-configured house key; swap its body, nothing else moves.
  */
 
+import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
+import { mintGatewayJwt } from "@/auth/jwt";
+import type { StudioContext } from "@/core/studio-context";
 import { getSettings } from "../settings";
 import { isReportsTask } from "./task-quota";
 
@@ -37,15 +40,65 @@ export function taskRunMetadata(task: {
   };
 }
 
-export function resolveSubsidizedApiKey(): string | undefined {
-  return getSettings().subsidizedGatewayApiKey;
+/** Whether a run's metadata carries the subscription-billing stamp. */
+export function isSubscriptionBilledRun(
+  runMetadata: Record<string, string> | undefined,
+): boolean {
+  return runMetadata?.[RUN_BILLING_METADATA_KEY] === SUBSCRIPTION_BILLING;
+}
+
+/** The synthetic gateway org a client org's subsidy key lives under —
+ *  internal on the gateway side (INTERNAL_ORG_PREFIXES=subsidy:), so it's
+ *  metered per client without holding deposits. */
+export function subsidyGatewayOrgId(organizationId: string): string {
+  return `subsidy:${organizationId}`;
 }
 
 /**
- * Applied after the org's credential resolves: swap ONLY the payer. The swap
- * requires all three of — the run is stamped, the resolved provider is the
- * deco gateway (a custom provider is the org's explicit choice and stays on
- * their bill), and a house key is configured (unset ⇒ feature dormant,
+ * The payer for a subsidized run, best first:
+ *  1. the org's cached PER-CLIENT subsidy key (exact COGS attribution);
+ *  2. provision one on the fly under `subsidy:<orgId>` (idempotent at the
+ *     gateway) and cache it;
+ *  3. the single house key (STUDIO_SUBSIDIZED_GATEWAY_KEY), if configured;
+ *  4. undefined — the run stays on the org's own key (never fail a run
+ *     over billing routing).
+ */
+export async function resolveSubsidizedApiKey(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<string | undefined> {
+  const settings = getSettings();
+  try {
+    const cached = await ctx.storage.subsidizedGatewayKeys.get(organizationId);
+    if (cached) return cached;
+    const userId = ctx.auth?.user?.id;
+    if (
+      userId &&
+      settings.aiGatewayEnabled &&
+      settings.studioProvisionSecretKey &&
+      decoAiGatewayAdapter.provisionKey
+    ) {
+      const jwt = await mintGatewayJwt(userId, ctx.auth?.user?.email);
+      const key = await decoAiGatewayAdapter.provisionKey(
+        jwt,
+        subsidyGatewayOrgId(organizationId),
+      );
+      await ctx.storage.subsidizedGatewayKeys.put(organizationId, key);
+      return key;
+    }
+  } catch (err) {
+    console.error(
+      "[subsidized-runs] per-org subsidy key unavailable — falling back:",
+      err,
+    );
+  }
+  return settings.subsidizedGatewayApiKey;
+}
+
+/**
+ * Pure payer swap, applied after the org's credential resolves. Requires the
+ * stamp, the deco provider (a custom provider is the org's explicit choice
+ * and stays on their bill), and a resolved subsidy key (none ⇒ dormant,
  * self-hosted unaffected).
  */
 export function applySubsidizedBilling<
@@ -53,12 +106,10 @@ export function applySubsidizedBilling<
 >(
   source: T,
   runMetadata: Record<string, string> | undefined,
-  houseApiKey: string | undefined = resolveSubsidizedApiKey(),
+  subsidyApiKey: string | undefined,
 ): T {
-  if (runMetadata?.[RUN_BILLING_METADATA_KEY] !== SUBSCRIPTION_BILLING) {
-    return source;
-  }
+  if (!isSubscriptionBilledRun(runMetadata)) return source;
   if (source.providerId !== "deco") return source;
-  if (!houseApiKey) return source;
-  return { ...source, apiKey: houseApiKey };
+  if (!subsidyApiKey) return source;
+  return { ...source, apiKey: subsidyApiKey };
 }

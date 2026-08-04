@@ -92,6 +92,7 @@ describe("Connection Tools", () => {
         connectionCredentialVault: new ConnectionCredentialVaultStorage(
           database.db,
         ),
+        subsidizedGatewayKeys: null as never,
         organizationSettings: {
           get: async () => null,
           upsert: async (_orgId: string) => ({

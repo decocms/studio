@@ -477,6 +477,7 @@ import {
 } from "@/storage/async-research-jobs";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
@@ -1364,6 +1365,7 @@ export async function createStudioContextFactory(
       vault,
       config.providerKeyCache,
     ),
+    subsidizedGatewayKeys: new SubsidizedGatewayKeyStorage(config.db, vault),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),

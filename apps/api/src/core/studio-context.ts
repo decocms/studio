@@ -302,6 +302,7 @@ import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import type { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
@@ -341,6 +342,7 @@ export interface StudioStorage {
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
+  subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
