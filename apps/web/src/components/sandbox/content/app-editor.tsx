@@ -212,6 +212,7 @@ export function AppEditor({
                 previewBaseUrl={previewBaseUrl}
                 onAddSectionItem={handleAddSectionItem}
                 onRequestAddSection={handleRequestAddSection}
+                sandbox={{ orgSlug, virtualMcpId, branch }}
               />
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">

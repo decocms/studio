@@ -682,6 +682,13 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
         ),
+      fieldDescriptionTooltips: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
+        ),
     })
     .loose()
     .describe("Metadata"),
@@ -788,6 +795,13 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
         ),
+      fieldDescriptionTooltips: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
+        ),
     })
     .loose()
     .nullable()
@@ -874,6 +888,13 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .optional()
         .describe(
           "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
+      fieldDescriptionTooltips: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
     })
     .loose()

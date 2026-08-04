@@ -1874,6 +1874,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2084,6 +2085,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               productionUrl?: string | null | undefined;
+              fieldDescriptionTooltips?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -2254,6 +2256,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2440,6 +2443,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2617,6 +2621,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2793,6 +2798,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               productionUrl?: string | null | undefined;
+              fieldDescriptionTooltips?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -2971,6 +2977,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3146,6 +3153,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -4152,6 +4160,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           productionUrl?: string | null | undefined;
+          fieldDescriptionTooltips?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;

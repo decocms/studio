@@ -64,6 +64,11 @@ export default defineConfig({
             find: /^@\/components\/file-picker\/file-picker-dialog$/,
             replacement: stub("file-picker-dialog.tsx"),
           },
+          // FieldLabel's useVirtualMCP call hits the same useProjectContext() issue as above.
+          {
+            find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
+            replacement: stub("use-virtual-mcp.ts"),
+          },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
           // only `@/`-prefixed ids, so `@deco/ui`, `@tanstack/*` etc. are

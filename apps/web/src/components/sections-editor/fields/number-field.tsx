@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 import { isPartialNumericInput } from "./partial-number-input";
 
 /**
@@ -18,6 +18,7 @@ export function NumberField({
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const externalStr = typeof value === "number" ? String(value) : "";
   const [raw, setRaw] = useState(externalStr);
@@ -34,14 +35,12 @@ export function NumberField({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
-      </div>
+      <FieldLabel
+        htmlFor={path}
+        label={label}
+        description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
+      />
       <Input
         id={path}
         type="text"

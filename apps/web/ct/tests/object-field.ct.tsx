@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 const ctaSchema = {
   type: "object",
@@ -86,7 +86,10 @@ test("editing two nested fields accumulates into one object", async ({
     .toEqual({ cta: { text: "Click", href: "/go" } });
 });
 
-test("object description is visible", async ({ mount }) => {
+test("object description is shown as a help tooltip", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     cta: {
       type: "object",
@@ -101,7 +104,15 @@ test("object description is visible", async ({ mount }) => {
     <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
-  await expect(component.getByText("Call to action button")).toBeVisible();
+  await expect(component.getByText("Call to action button")).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(
+      component,
+      page,
+      "CTA",
+      "Call to action button",
+    ),
+  ).toBeVisible();
 });
 
 test("pre-populated nested object renders existing value once expanded", async ({

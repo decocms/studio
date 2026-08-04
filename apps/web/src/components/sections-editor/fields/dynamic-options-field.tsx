@@ -17,11 +17,11 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { buildPreviewFetchUrl } from "../preview-fetch-url";
+import { FieldLabel } from "./field-label";
 import { fetchSpriteIcons } from "./icon-sprite";
 
 export interface DynamicOption {
@@ -245,27 +245,6 @@ function OptionPreview({
   );
 }
 
-function FieldHeader({
-  path,
-  label,
-  description,
-}: {
-  path: string;
-  label: string;
-  description?: string;
-}) {
-  return (
-    <div className="space-y-0.5">
-      <Label htmlFor={path}>{label}</Label>
-      {description && (
-        <p className="text-xs leading-normal text-muted-foreground">
-          {description}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function DynamicOptionsField({
   schema,
   value,
@@ -407,10 +386,11 @@ export function DynamicOptionsField({
   if (noOptionSource) {
     return (
       <div className="space-y-2">
-        <FieldHeader
-          path={path}
+        <FieldLabel
+          htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <Input
           id={path}
@@ -424,7 +404,12 @@ export function DynamicOptionsField({
 
   return (
     <div className="space-y-2">
-      <FieldHeader path={path} label={label} description={schema.description} />
+      <FieldLabel
+        htmlFor={path}
+        label={label}
+        description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
+      />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button

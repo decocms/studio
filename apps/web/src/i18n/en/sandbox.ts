@@ -512,6 +512,10 @@ export const sandbox = {
     "Shown in the preview while the dev server is starting, so you can view and edit right away.",
   "sandbox.productionUrlField.label": "Production URL",
   "sandbox.productionUrlField.placeholder": "https://example.com",
+  "sandbox.fieldDescriptionTooltipsField.label":
+    "Show field descriptions as tooltips",
+  "sandbox.fieldDescriptionTooltipsField.description":
+    "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":

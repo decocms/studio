@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 test("string enum renders a combobox trigger", async ({ mount }) => {
   const meta = sectionWithProps({
@@ -177,7 +177,10 @@ test("empty-string enum: selecting the empty option yields an empty string", asy
   await expect.poll(() => readFormValue(component)).toEqual({ size: "" });
 });
 
-test("enum: description renders next to the label", async ({ mount }) => {
+test("enum: description is shown as a help tooltip next to the label", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     size: {
       type: "string",
@@ -192,6 +195,14 @@ test("enum: description renders next to the label", async ({ mount }) => {
 
   await expect(
     component.getByText("Pick a size for the section"),
+  ).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(
+      component,
+      page,
+      "Size",
+      "Pick a size for the section",
+    ),
   ).toBeVisible();
 });
 

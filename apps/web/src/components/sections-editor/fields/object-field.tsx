@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "@untitledui/icons";
+import {
+  FieldDescriptionTooltip,
+  useFieldDescriptionTooltips,
+} from "./field-label";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
@@ -21,6 +25,7 @@ export function ObjectField({
   sandbox,
 }: FieldProps) {
   const [open, setOpen] = useState(false);
+  const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -52,10 +57,15 @@ export function ObjectField({
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">
           {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
-        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+        <FieldDescriptionTooltip
+          description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
+        >
+          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+        </FieldDescriptionTooltip>
       </button>
 
-      {schema.description && (
+      {!tooltipsEnabled && schema.description && (
         <p className="break-words pl-9 text-xs leading-normal text-muted-foreground">
           {schema.description}
         </p>

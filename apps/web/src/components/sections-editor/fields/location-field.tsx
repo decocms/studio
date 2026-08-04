@@ -11,6 +11,7 @@ import {
 } from "@deco/ui/components/command.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { FieldLabel } from "./field-label";
 import {
   Popover,
   PopoverContent,
@@ -122,7 +123,13 @@ const BRAZIL_STATE_OPTIONS: ComboboxOption[] = BRAZIL_STATES.map((s) => ({
  * an interactive map. City is free text since Cloudflare's cf-ipcity is an
  * arbitrary string matched exactly.
  */
-export function LocationField({ schema, value, onChange, path }: FieldProps) {
+export function LocationField({
+  schema,
+  value,
+  onChange,
+  path,
+  sandbox,
+}: FieldProps) {
   const t = useT();
   const current = readLocationValue(value);
   const { city, regionCode, country } = current;
@@ -143,16 +150,14 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-0.5">
-        <Label htmlFor={`${path}.country`}>
-          {schema.title ?? t("sectionsEditor.locationField.locationDefault")}
-        </Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
-      </div>
+      <FieldLabel
+        htmlFor={`${path}.country`}
+        label={
+          schema.title ?? t("sectionsEditor.locationField.locationDefault")
+        }
+        description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
+      />
 
       {/* Step 1 — country */}
       <div className="space-y-1.5">

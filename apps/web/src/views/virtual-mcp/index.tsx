@@ -80,6 +80,7 @@ import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/sub
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { ProductionUrlField } from "@/components/sandbox/runtime-card/production-url-field";
+import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -1147,6 +1148,7 @@ function VirtualMcpDetailViewWithData({
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
                   <ProductionUrlField control={form.control} />
+                  <FieldDescriptionTooltipsField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}

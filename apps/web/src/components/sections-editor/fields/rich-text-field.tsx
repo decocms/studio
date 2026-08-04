@@ -16,7 +16,6 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
-import { Label } from "@deco/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
@@ -27,6 +26,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.js";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 import { RichTextColorControl } from "../rich-text-color-control";
 import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
 
@@ -60,6 +60,7 @@ export function RichTextField({
   onChange,
   path,
   label,
+  sandbox,
   inline = false,
 }: FieldProps & {
   /**
@@ -172,14 +173,12 @@ export function RichTextField({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
-      </div>
+      <FieldLabel
+        htmlFor={path}
+        label={label}
+        description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
+      />
       <div className="overflow-hidden rounded-md border border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton

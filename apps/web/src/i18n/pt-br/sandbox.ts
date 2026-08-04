@@ -535,6 +535,10 @@ export const sandbox = {
     "Exibida no preview enquanto o servidor de desenvolvimento inicia, para você já visualizar e editar.",
   "sandbox.productionUrlField.label": "URL de produção",
   "sandbox.productionUrlField.placeholder": "https://exemplo.com",
+  "sandbox.fieldDescriptionTooltipsField.label":
+    "Mostrar descrições de campo como tooltip",
+  "sandbox.fieldDescriptionTooltipsField.description":
+    "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":

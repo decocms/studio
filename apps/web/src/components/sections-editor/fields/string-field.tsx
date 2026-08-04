@@ -3,7 +3,6 @@ import { Calendar as CalendarIcon } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Calendar } from "@deco/ui/components/calendar.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import {
   Popover,
   PopoverContent,
@@ -12,6 +11,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { FieldLabel } from "./field-label";
 import { RichTextField } from "./rich-text-field";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -168,31 +168,13 @@ function DatePickerInput({
   );
 }
 
-type FieldLabelProps = Readonly<{
-  htmlFor: string;
-  label: string;
-  description?: string;
-}>;
-
-function FieldLabel({ htmlFor, label, description }: FieldLabelProps) {
-  return (
-    <div className="space-y-0.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {description && (
-        <p className="text-xs leading-normal text-muted-foreground">
-          {description}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function StringField({
   schema,
   value,
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const t = useT();
   const strValue = typeof value === "string" ? value : "";
@@ -210,6 +192,7 @@ export function StringField({
         onChange={onChange}
         path={path}
         label={label}
+        sandbox={sandbox}
         inline={format === "rich-text-inline"}
       />
     );
@@ -222,6 +205,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <Textarea
           id={path}
@@ -240,6 +224,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <DatePickerInput
           id={path}
@@ -261,6 +246,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <div className="flex items-center gap-2">
           <input
@@ -287,6 +273,7 @@ export function StringField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Input
         id={path}
