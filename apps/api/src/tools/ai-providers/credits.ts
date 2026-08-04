@@ -9,6 +9,12 @@ import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 
+/** Guards against a malformed upstream gateway response (missing/NaN/Infinity
+ *  balance) silently reaching billing UI as an unusable number. */
+export function isValidBalanceCents(balanceCents: number): boolean {
+  return Number.isFinite(balanceCents);
+}
+
 export const AI_PROVIDER_CREDITS = defineTool({
   name: "AI_PROVIDER_CREDITS",
   description:
@@ -41,6 +47,16 @@ export const AI_PROVIDER_CREDITS = defineTool({
 
     const studioJwt = await mintGatewayJwt(userId);
 
-    return adapter.getCreditsBalance(studioJwt, org.id);
+    const result = await adapter.getCreditsBalance(studioJwt, org.id);
+    if (!isValidBalanceCents(result.balanceCents)) {
+      console.error(
+        `AI provider "${input.providerId}" returned a non-finite credits balance for org ${org.id}: ${result.balanceCents}`,
+      );
+      throw new Error(
+        `Provider ${input.providerId} returned an invalid credits balance`,
+      );
+    }
+
+    return result;
   },
 });
