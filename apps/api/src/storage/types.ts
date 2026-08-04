@@ -1582,6 +1582,20 @@ export interface TaskBoardItemPrTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** One comment on a task. `parent_id` NULL means a thread root; a reply always
+ *  points at a root (one level only). `resolved` is a thread property, so it is
+ *  only meaningful on roots. Org scope comes from the task. */
+export interface TaskBoardCommentTable {
+  id: string;
+  task_board_item_id: string;
+  parent_id: string | null;
+  author_id: string;
+  body: string;
+  resolved: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /** One review claim: a (task, reviewer, review-cycle) slot, minted at reviewer
  *  dispatch. The primary key dedups concurrent enqueues; `token` binds the
  *  reviewer's decision back to the run that was dispatched. */
@@ -1848,6 +1862,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
   task_board_review_claims: TaskBoardReviewClaimTable;
+  task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 

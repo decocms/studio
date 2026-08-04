@@ -36,43 +36,6 @@ test("an empty composer cannot be submitted", async ({ mount }) => {
   await expect(component.getByLabel("Send").last()).toBeEnabled();
 });
 
-test("typing @ opens the mention menu, grouped by users and tasks", async ({
-  mount,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-  const composer = component.getByPlaceholder("Leave a comment...");
-
-  await composer.fill("");
-  await composer.type("@");
-  await expect(component.getByText("Users")).toBeVisible();
-  await expect(component.getByText("Tasks")).toBeVisible();
-  await expect(component.getByText("Agent", { exact: true })).toBeVisible();
-  await expect(component.getByText("Error screens")).toBeVisible();
-});
-
-test("a mention filters, then completes the label into the comment", async ({
-  mount,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-  const composer = component.getByPlaceholder("Leave a comment...");
-
-  await composer.type("cc @bea");
-  await expect(component.getByText("Tasks")).toHaveCount(0);
-  await component.getByRole("button", { name: "beatriz.ramos" }).click();
-  await expect(composer).toHaveValue("cc @beatriz.ramos ");
-});
-
-test("Escape closes the mention menu without completing", async ({ mount }) => {
-  const component = await mount(<TaskCommentsHarness />);
-  const composer = component.getByPlaceholder("Leave a comment...");
-
-  await composer.type("@bea");
-  await expect(component.getByText("Users")).toBeVisible();
-  await composer.press("Escape");
-  await expect(component.getByText("Users")).toHaveCount(0);
-  await expect(composer).toHaveValue("@bea");
-});
-
 test("the reply composer appends to the thread it belongs to", async ({
   mount,
 }) => {

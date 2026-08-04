@@ -88,13 +88,12 @@ import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
 import { authClient } from "@/lib/auth-client";
 import {
-  buildMentionables,
   CommentThreadCard,
   NewCommentComposer,
-  useTaskCommentsDraft,
   type CommentAuthor,
   type TaskComment,
 } from "./task-comments";
+import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -132,7 +131,6 @@ export function TaskBoardItemDialog({
   onClose,
   item,
   defaultStatus,
-  tasks,
   onSubmit,
   onDelete,
   onOpenThread,
@@ -146,8 +144,6 @@ export function TaskBoardItemDialog({
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
-  /** The rest of the board, so a comment can `@`-mention another task. */
-  tasks?: TaskBoardItem[];
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -331,7 +327,6 @@ export function TaskBoardItemDialog({
                 <ActivitySection
                   item={item}
                   members={members}
-                  tasks={tasks ?? []}
                   startedBy={assignedBy ?? assignee}
                   onOpenThread={onOpenThread}
                 />
@@ -1263,13 +1258,11 @@ function LinksSection({
 function ActivitySection({
   item,
   members,
-  tasks,
   startedBy,
   onOpenThread,
 }: {
   item: TaskBoardItem;
   members: Member[];
-  tasks: TaskBoardItem[];
   startedBy?: Member;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
@@ -1283,20 +1276,33 @@ function ActivitySection({
     name: session?.user?.name ?? t("taskBoard.taskDialog.commentYouLabel"),
     image: (session?.user as { image?: string | null } | undefined)?.image,
   };
-  const superAgentLabel = t("taskBoard.taskDialog.superAgentLabel");
-  const mentionables = buildMentionables({
-    members,
-    tasks,
-    currentTaskId: item.id,
-    superAgentLabel,
-  });
-  // NOT IMPLEMENTED: comments are local-only until the backend lands. See the
-  // handoff notes at the top of ./task-comments.tsx.
-  const comments = useTaskCommentsDraft(me);
+  const comments = useTaskBoardComments(item.id);
 
-  // Watching a task is what turns comments into notifications, so the control
-  // belongs next to them. NOT IMPLEMENTED: no subscription is persisted.
-  const [subscribed, setSubscribed] = useState(true);
+  /** A comment's author, resolved from the org's members; falls back to the id
+   *  so a comment from a since-removed member still renders. */
+  const authorOf = (userId: string): CommentAuthor => {
+    if (userId === me.id) return me;
+    const member = memberByUserId.get(userId);
+    return {
+      id: userId,
+      name: member?.user?.name ?? userId,
+      image: member?.user?.image,
+    };
+  };
+  const threads: TaskComment[] = comments.threads.map((thread) => ({
+    id: thread.id,
+    author: authorOf(thread.authorId),
+    body: thread.body,
+    createdAt: thread.createdAt,
+    resolved: thread.resolved,
+    replies: thread.replies.map((reply) => ({
+      id: reply.id,
+      author: authorOf(reply.authorId),
+      body: reply.body,
+      createdAt: reply.createdAt,
+      replies: [],
+    })),
+  }));
 
   type Ev =
     | { kind: "activity"; at: number; activity: TaskBoardActivity }
@@ -1317,7 +1323,7 @@ function ActivitySection({
         thread,
       }),
     ),
-    ...comments.threads.map(
+    ...threads.map(
       (comment): Ev => ({
         kind: "comment",
         at: new Date(comment.createdAt).getTime(),
@@ -1348,30 +1354,9 @@ function ActivitySection({
 
   return (
     <div className="flex flex-col gap-5 pb-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-foreground">
-          {t("taskBoard.taskDialog.activityLabel")}
-        </span>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setSubscribed((prev) => !prev)}
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {subscribed
-              ? t("taskBoard.taskDialog.unsubscribeButton")
-              : t("taskBoard.taskDialog.subscribeButton")}
-          </button>
-          {subscribed && (
-            <Avatar
-              url={me.image ?? undefined}
-              fallback={getInitials(me.name)}
-              shape="circle"
-              size="xs"
-            />
-          )}
-        </div>
-      </div>
+      <span className="text-sm font-medium text-foreground">
+        {t("taskBoard.taskDialog.activityLabel")}
+      </span>
 
       {blocks.map((block, i) => {
         if (block.type === "timeline") {
@@ -1391,12 +1376,16 @@ function ActivitySection({
               key={`comment-${block.comment.id}`}
               thread={block.comment}
               me={me}
-              mentionables={mentionables}
-              onReply={(body) => comments.reply(block.comment.id, body)}
-              onDelete={(commentId) =>
-                comments.remove(block.comment.id, commentId)
+              onReply={(body) =>
+                comments.post.mutate({ body, parentId: block.comment.id })
               }
-              onToggleResolved={() => comments.toggleResolved(block.comment.id)}
+              onDelete={(commentId) => comments.remove.mutate(commentId)}
+              onToggleResolved={() =>
+                comments.setResolved.mutate({
+                  id: block.comment.id,
+                  resolved: !block.comment.resolved,
+                })
+              }
             />
           );
         }
@@ -1412,8 +1401,7 @@ function ActivitySection({
 
       <NewCommentComposer
         me={me}
-        mentionables={mentionables}
-        onSubmit={comments.post}
+        onSubmit={(body) => comments.post.mutate({ body })}
       />
     </div>
   );

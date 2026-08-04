@@ -3,7 +3,6 @@ import {
   CommentThreadCard,
   NewCommentComposer,
   type CommentAuthor,
-  type Mentionable,
   type TaskComment,
 } from "@/layouts/task-board/task-comments";
 
@@ -14,24 +13,10 @@ const AGENT: CommentAuthor = {
   isAgent: true,
 };
 
-const MENTIONABLES: Mentionable[] = [
-  { kind: "user", id: "super-agent", label: "Super Agent", isAgent: true },
-  { kind: "user", id: "u1", label: "valls" },
-  { kind: "user", id: "u2", label: "aline" },
-  { kind: "user", id: "u3", label: "beatriz.ramos" },
-  { kind: "task", id: "t1", label: "Error screens", status: "todo" },
-  {
-    kind: "task",
-    id: "t2",
-    label: "Fix the model picker",
-    status: "in_review",
-  },
-];
-
 const THREAD: TaskComment = {
   id: "c1",
   author: ME,
-  body: "@Super Agent can you take this one and open a PR?",
+  body: "Can you take this one and open a PR?",
   createdAt: new Date("2026-07-30T12:00:00Z").toISOString(),
   replies: [
     {
@@ -46,10 +31,9 @@ const THREAD: TaskComment = {
 
 /**
  * CT surface for task comments: one thread card (root + agent reply + inline
- * reply composer) and the new-comment composer, with a fixed mention list so
- * the `@` menu is deterministic. Mirrors the reply/delete/resolve semantics of
- * `useTaskCommentsDraft` on a single thread. Posted bodies are dumped into a
- * testid'd <pre> so specs can assert what the composer submitted.
+ * reply composer) and the new-comment composer. Mirrors the reply/delete/resolve
+ * semantics of `useTaskBoardComments` on a single thread. Posted bodies are
+ * dumped into a testid'd <pre> so specs can assert what the composer submitted.
  */
 export function TaskCommentsHarness() {
   const [thread, setThread] = useState<TaskComment | null>(THREAD);
@@ -61,7 +45,6 @@ export function TaskCommentsHarness() {
         <CommentThreadCard
           thread={thread}
           me={ME}
-          mentionables={MENTIONABLES}
           onReply={(body) =>
             setThread((prev) =>
               prev
@@ -102,7 +85,6 @@ export function TaskCommentsHarness() {
       )}
       <NewCommentComposer
         me={ME}
-        mentionables={MENTIONABLES}
         onSubmit={(body) => setPosted((prev) => [...prev, body])}
       />
       <pre data-testid="posted">{JSON.stringify(posted)}</pre>
