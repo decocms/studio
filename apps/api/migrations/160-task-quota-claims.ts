@@ -7,6 +7,11 @@ import { type Kysely, sql } from "kysely";
  * `period_key` buckets the count without a cron: "trial" while the org has
  * no subscription in good standing, else the subscription's current period
  * end (refreshed by invoice.paid — the monthly clock).
+ *
+ * `run_count` bounds what one claim can spend: every dispatch of the task
+ * increments it, and the claim stops authorizing runs past
+ * STUDIO_MAX_RUNS_PER_TASK. Without it, re-delegating a claimed task in a
+ * loop would buy unlimited subscription-billed runs off a single claim.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -18,6 +23,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.notNull().references("organization.id").onDelete("cascade"),
     )
     .addColumn("period_key", "text", (col) => col.notNull())
+    .addColumn("run_count", "integer", (col) => col.notNull().defaultTo(1))
     .addColumn("created_at", "timestamptz", (col) =>
       col.notNull().defaultTo(sql`now()`),
     )

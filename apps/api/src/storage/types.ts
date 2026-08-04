@@ -1204,6 +1204,9 @@ export interface TaskQuotaClaimTable {
   task_board_item_id: string;
   organization_id: string;
   period_key: string;
+  /** Dispatches funded by this claim — capped at STUDIO_MAX_RUNS_PER_TASK so
+   *  one claim can't fund a re-delegation loop. */
+  run_count: ColumnType<number, number | undefined, number>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 

@@ -17,6 +17,7 @@
  * (treated as untrusted input). Empty bodies are allowed.
  */
 
+import { sanitizeClientRunMetadata } from "@/billing/subsidized-runs";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { auth } from "@/auth";
@@ -105,7 +106,11 @@ function extractRunMetadata(
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof v === "string") out[k] = v;
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  // Strip the server-owned `srv.*` namespace: those keys assert facts the
+  // platform decides (e.g. that a run is subscription-billed, which spends
+  // deco's money). A caller must never be able to set one.
+  const safe = sanitizeClientRunMetadata(out);
+  return Object.keys(safe).length > 0 ? safe : undefined;
 }
 
 /**

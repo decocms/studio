@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   applySubsidizedBilling,
+  isSubscriptionBilledRun,
   RUN_BILLING_METADATA_KEY,
+  sanitizeClientRunMetadata,
   SUBSCRIPTION_BILLING,
+  subsidyGatewayOrgId,
   taskRunMetadata,
 } from "./subsidized-runs";
 
@@ -18,6 +21,39 @@ describe("taskRunMetadata", () => {
   });
 });
 
+describe("sanitizeClientRunMetadata", () => {
+  test("strips the reserved server-owned namespace, keeps caller keys", () => {
+    expect(
+      sanitizeClientRunMetadata({
+        // A webhook caller trying to award itself subsidized runs.
+        [RUN_BILLING_METADATA_KEY]: SUBSCRIPTION_BILLING,
+        "srv.anythingElse": "x",
+        taskBoardItemId: "t1",
+        myOwnKey: "keep me",
+      }),
+    ).toEqual({ taskBoardItemId: "t1", myOwnKey: "keep me" });
+  });
+
+  test("a sanitized bag can never read as subscription-billed", () => {
+    const forged = { [RUN_BILLING_METADATA_KEY]: SUBSCRIPTION_BILLING };
+    expect(isSubscriptionBilledRun(forged)).toBe(true); // pre-sanitize
+    expect(isSubscriptionBilledRun(sanitizeClientRunMetadata(forged))).toBe(
+      false,
+    );
+  });
+});
+
+describe("subsidyGatewayOrgId", () => {
+  test("namespaces the org under the gateway's internal prefix", () => {
+    expect(subsidyGatewayOrgId("org_1")).toBe("subsidy:org_1");
+  });
+
+  test("rejects ids that could escape the scheme", () => {
+    expect(() => subsidyGatewayOrgId("subsidy:org_2")).toThrow(/unsuitable/);
+    expect(() => subsidyGatewayOrgId("org 3")).toThrow(/unsuitable/);
+  });
+});
+
 describe("applySubsidizedBilling", () => {
   const source = {
     kind: "secret" as const,
@@ -25,28 +61,20 @@ describe("applySubsidizedBilling", () => {
     apiKey: "org-key",
     modelId: "anthropic/claude-sonnet-5",
   };
-  const stamped = { [RUN_BILLING_METADATA_KEY]: SUBSCRIPTION_BILLING };
 
-  test("swaps ONLY the payer on a stamped deco run", () => {
-    const out = applySubsidizedBilling(source, stamped, "subsidy-key");
-    expect(out).toEqual({ ...source, apiKey: "subsidy-key" });
+  test("swaps ONLY the payer when a subsidy key was resolved", () => {
+    expect(applySubsidizedBilling(source, "subsidy-key")).toEqual({
+      ...source,
+      apiKey: "subsidy-key",
+    });
   });
 
-  test("no stamp / interactive run → untouched", () => {
-    expect(applySubsidizedBilling(source, undefined, "subsidy-key")).toBe(
-      source,
-    );
-    expect(
-      applySubsidizedBilling(source, { taskBoardItemId: "t1" }, "subsidy-key"),
-    ).toBe(source);
+  test("no subsidy key (not subsidized, or unresolvable) → untouched", () => {
+    expect(applySubsidizedBilling(source, undefined)).toBe(source);
   });
 
   test("custom provider stays on the org's bill (their explicit choice)", () => {
     const custom = { ...source, providerId: "openai" };
-    expect(applySubsidizedBilling(custom, stamped, "subsidy-key")).toBe(custom);
-  });
-
-  test("no subsidy key resolved → dormant (run stays on the org's key)", () => {
-    expect(applySubsidizedBilling(source, stamped, undefined)).toBe(source);
+    expect(applySubsidizedBilling(custom, "subsidy-key")).toBe(custom);
   });
 });

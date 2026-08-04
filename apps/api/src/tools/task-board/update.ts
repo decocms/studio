@@ -159,6 +159,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
     }
+
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);

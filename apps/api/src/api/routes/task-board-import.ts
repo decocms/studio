@@ -1,3 +1,4 @@
+import { TaskQuotaError } from "@/billing/task-quota";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
@@ -235,13 +236,31 @@ export const createTaskBoardImportRoutes = () => {
     // broadcast cards or enqueue agent runs.
     for (const row of outcome.touched)
       emitTaskBoardUpdated(organizationId, row);
-    for (const row of outcome.delegations)
-      await reactToSuperAgentDelegation(ctx, row);
+    // A paywalled delegation must not leave the card looking delegated with
+    // no run behind it: un-assign it (the user sees the paywall when they
+    // delegate it themselves) and report it apart from the ones that ran.
+    let delegated = 0;
+    let quotaBlocked = 0;
+    for (const row of outcome.delegations) {
+      try {
+        await reactToSuperAgentDelegation(ctx, row);
+        delegated++;
+      } catch (err) {
+        if (!(err instanceof TaskQuotaError)) throw err;
+        quotaBlocked++;
+        await new TaskBoardStorage(ctx.db)
+          .update(row.id, organizationId, { assigneeId: null }, "system")
+          .catch((undoErr: unknown) => {
+            console.error("[task-board-import] un-delegate failed", undoErr);
+          });
+      }
+    }
 
     return c.json({
       created: outcome.created,
       updated: outcome.updated,
-      delegated: outcome.delegations.length,
+      delegated,
+      ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
     });
   });
 

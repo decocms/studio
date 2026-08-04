@@ -296,6 +296,11 @@ export function resolveConfig(
       envVars.STUDIO_MONTHLY_TASKS,
       10,
     ),
+    maxRunsPerTask: toPositiveIntegerOrDefault(
+      "STUDIO_MAX_RUNS_PER_TASK",
+      envVars.STUDIO_MAX_RUNS_PER_TASK,
+      5,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

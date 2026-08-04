@@ -56,17 +56,34 @@ describe("taskQuotaState", () => {
     ).toBe("sub:2026-10-01T00:00:00.000Z");
   });
 
-  test("canceled (or missing period end) falls back to the trial bucket", () => {
+  test("canceled falls back to the trial bucket", () => {
     expect(
       taskQuotaState(
         { status: "canceled", currentPeriodEnd: new Date() },
         LIMITS,
       ).periodKey,
     ).toBe("trial");
+  });
+
+  test("subscribed with no period end yet gets its own bucket at the MONTHLY limit", () => {
+    // checkout.session.completed flips status to active without a period end
+    // (and the invoice.paid carrying one can arrive before the bind, acked as
+    // "unknown subscription"). Dropping such an org into the already-spent
+    // trial bucket would paywall a customer who just paid.
     expect(
-      taskQuotaState({ status: "active", currentPeriodEnd: null }, LIMITS)
-        .periodKey,
-    ).toBe("trial");
+      taskQuotaState({ status: "active", currentPeriodEnd: null }, LIMITS),
+    ).toEqual({
+      periodKey: "sub:pending",
+      limit: 10,
+      exhaustedReason: "monthly_exhausted",
+    });
+  });
+
+  test("run-cap rejection has its own reason/message", () => {
+    expect(new TaskQuotaError("runs_exhausted").message).toContain(
+      "execution limit",
+    );
+    expect(new TaskQuotaError("runs_exhausted").reason).toBe("runs_exhausted");
   });
 });
 

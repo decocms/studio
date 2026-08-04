@@ -3,6 +3,10 @@
  * content immutability (UPDATE/DELETE) and the pre-write paywall on the
  * delegation flip — everything that fires BEFORE any thread/dispatch
  * machinery, so the ctx stub stays small.
+ *
+ * The paywall test drives `ensureTaskExecutionAllowed` directly with an
+ * explicit config: the tool reads the frozen global settings, which a test
+ * can't flip (STUDIO_TASK_QUOTA_ENFORCED is resolved once at first access).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -16,6 +20,10 @@ import {
 } from "../../database/test-db-pg";
 import { OrganizationBillingStorage } from "../../storage/organization-billing";
 import { TaskBoardStorage } from "../../storage/task-board";
+import {
+  claimTaskExecution,
+  ensureTaskExecutionAllowed,
+} from "../../billing/task-quota";
 import { TASK_BOARD_ITEM_DELETE } from "./delete";
 import { TASK_BOARD_ITEM_UPDATE } from "./update";
 
@@ -118,6 +126,35 @@ describe("reports-task guards", () => {
       ctx,
     );
     expect(renamed.item.title).toBe("renamed");
+  });
+
+  it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
+    const config = {
+      enforced: true,
+      freeTaskExecutions: 1,
+      monthlyTaskExecutions: 1,
+      maxRunsPerTask: 5,
+    };
+    const first = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-a",
+      by: "system",
+    });
+    const second = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-b",
+      by: "system",
+    });
+
+    // The org's single trial slot goes to the first task.
+    await claimTaskExecution(ctx, first, config);
+
+    // Delegating the second must be refused BEFORE any write: the tool's
+    // pre-check is what keeps the card from looking delegated.
+    await expect(
+      ensureTaskExecutionAllowed(ctx, second, config),
+    ).rejects.toThrow(/^\[SUBSCRIPTION_REQUIRED\]/);
+    expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
   });
 
   it("rejects deleting a reports task; user tasks delete fine", async () => {

@@ -98,6 +98,9 @@ export interface Settings {
   freeTaskExecutions: number;
   /** Executions per billing cycle while subscribed (default 10). */
   monthlyTaskExecutions: number;
+  /** Dispatches a single claimed task may fund — review bounces and conflict
+   *  re-runs are free within this cap (default 5). */
+  maxRunsPerTask: number;
 
   // Feature Flags
   enableDecoImport: boolean;

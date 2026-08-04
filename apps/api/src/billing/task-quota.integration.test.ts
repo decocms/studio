@@ -15,14 +15,17 @@ import {
 } from "./task-quota";
 
 // Real-Postgres coverage for the quota ledger: the trial bucket, the
-// per-cycle subscribed bucket (period_key = current period end), claim
-// idempotency per task (re-runs are free), and the reports-only scoping.
+// per-cycle subscribed bucket, the pending-period bucket a just-subscribed
+// org lands in, per-task run capping, reports-only scoping, and the atomic
+// burst behavior (including the no-billing-row org, whose lock anchor the
+// claim self-heals).
 const ORG = "org_quota_1";
 
 const CONFIG: TaskQuotaConfig = {
   enforced: true,
   freeTaskExecutions: 2,
   monthlyTaskExecutions: 3,
+  maxRunsPerTask: 2,
 };
 
 describe("task quota (integration)", () => {
@@ -31,31 +34,40 @@ describe("task quota (integration)", () => {
   let taskBoard: TaskBoardStorage;
   let ctx: StudioContext;
 
-  const makeTask = (by: string) =>
-    taskBoard.create({ organizationId: ORG, title: "t", by });
+  const makeTask = (by: string, org = ORG) =>
+    taskBoard.create({ organizationId: org, title: "t", by });
+
+  const ctxFor = (org: string) =>
+    ({
+      organization: { id: org, slug: org, name: org },
+      storage: { organizationBilling: billing },
+    }) as unknown as StudioContext;
+
+  const seedOrg = async (id: string, withBillingRow: boolean) => {
+    await database.db
+      .insertInto("organization")
+      .values({
+        id,
+        name: id,
+        slug: id.replaceAll("_", "-"),
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    if (withBillingRow) {
+      await database.db
+        .insertInto("organization_billing")
+        .values({ organization_id: id })
+        .execute();
+    }
+  };
 
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    await database.db
-      .insertInto("organization")
-      .values({
-        id: ORG,
-        name: ORG,
-        slug: "org-quota-1",
-        createdAt: new Date().toISOString(),
-      })
-      .execute();
-    await database.db
-      .insertInto("organization_billing")
-      .values({ organization_id: ORG })
-      .execute();
     billing = new OrganizationBillingStorage(database.db);
     taskBoard = new TaskBoardStorage(database.db);
-    ctx = {
-      organization: { id: ORG, slug: "org-quota-1", name: ORG },
-      storage: { organizationBilling: billing },
-    } as unknown as StudioContext;
+    await seedOrg(ORG, true);
+    ctx = ctxFor(ORG);
   });
 
   afterAll(async () => {
@@ -74,51 +86,71 @@ describe("task quota (integration)", () => {
     );
     expect(await billing.countTaskClaims(ORG, "trial")).toBe(2);
 
-    // The pre-write check sees the same answer and never claims.
+    // The pre-check sees the same answer and never claims.
     await expect(ensureTaskExecutionAllowed(ctx, t3, CONFIG)).rejects.toThrow(
       /^\[SUBSCRIPTION_REQUIRED\]/,
     );
     expect(await billing.countTaskClaims(ORG, "trial")).toBe(2);
   });
 
-  it("a claimed task re-dispatches free, even over quota (review/conflict re-runs)", async () => {
-    const claimed = (await billing.hasTaskClaim("nope")) === false;
-    expect(claimed).toBe(true);
-    // Quota is exhausted (2/2), but t1's claim already exists:
-    const [t1] = await database.db
+  it("a claimed task re-runs free within the per-task cap, then stops", async () => {
+    const [claimed] = await database.db
       .selectFrom("task_quota_claims")
-      .select("task_board_item_id")
+      .select(["task_board_item_id", "run_count"])
       .where("organization_id", "=", ORG)
       .limit(1)
       .execute();
-    await claimTaskExecution(
-      ctx,
-      { id: t1!.task_board_item_id, createdBy: "system" },
-      CONFIG,
-    );
+    const task = {
+      id: claimed!.task_board_item_id,
+      createdBy: "system",
+      organizationId: ORG,
+    };
+    expect(claimed!.run_count).toBe(1);
+
+    // Quota is exhausted (2/2) but this task is already claimed: the re-run
+    // (review bounce / conflict resolution) is free.
+    await claimTaskExecution(ctx, task, CONFIG);
+    expect(await billing.taskRunCount(task.id)).toBe(2);
     expect(await billing.countTaskClaims(ORG, "trial")).toBe(2);
+
+    // maxRunsPerTask = 2 — one claim must not fund an unbounded
+    // re-delegation loop.
+    await expect(claimTaskExecution(ctx, task, CONFIG)).rejects.toThrow(
+      /^\[SUBSCRIPTION_REQUIRED\].*execution limit/,
+    );
+    await expect(ensureTaskExecutionAllowed(ctx, task, CONFIG)).rejects.toThrow(
+      /execution limit/,
+    );
+    expect(await billing.taskRunCount(task.id)).toBe(2);
   });
 
   it("user-created tasks are never gated or counted", async () => {
     const userTask = await makeTask("user_1");
     await claimTaskExecution(ctx, userTask, CONFIG); // no throw, no claim
-    expect(await billing.hasTaskClaim(userTask.id)).toBe(false);
+    expect(await billing.taskRunCount(userTask.id)).toBeNull();
   });
 
   it("enforcement off = fully dormant", async () => {
     const t = await makeTask("system");
     await claimTaskExecution(ctx, t, { ...CONFIG, enforced: false });
-    expect(await billing.hasTaskClaim(t.id)).toBe(false);
+    expect(await billing.taskRunCount(t.id)).toBeNull();
   });
 
-  it("subscribing opens the monthly bucket; a new cycle (invoice.paid) resets it", async () => {
+  it("a just-subscribed org gets the monthly limit, not the spent trial bucket", async () => {
+    // checkout.session.completed flips status to active WITHOUT a period end;
+    // paywalling a customer who just paid would be the worse failure.
+    await billing.updateStripeState(ORG, { status: "active" });
+    const t = await makeTask("system");
+    await claimTaskExecution(ctx, t, CONFIG);
+    expect(await billing.countTaskClaims(ORG, "sub:pending")).toBe(1);
+  });
+
+  it("the monthly bucket resets when invoice.paid moves the period end", async () => {
     const periodOne = new Date("2026-09-01T00:00:00.000Z");
     await billing.updateStripeState(ORG, {
       status: "active",
       currentPeriodEnd: periodOne,
     });
-
-    // Monthly limit is 3 — trial claims don't count against it.
     const tasks = await Promise.all([
       makeTask("system"),
       makeTask("system"),
@@ -135,7 +167,6 @@ describe("task quota (integration)", () => {
       await billing.countTaskClaims(ORG, `sub:${periodOne.toISOString()}`),
     ).toBe(3);
 
-    // invoice.paid moves the period end → fresh bucket, the blocked task runs.
     await billing.updateStripeState(ORG, {
       currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
     });
@@ -153,47 +184,35 @@ describe("task quota (integration)", () => {
     );
   });
 
-  it("a concurrent BURST cannot race past the limit (the quota-cheat vector)", async () => {
-    // Fresh org so the bucket starts empty.
-    const org = "org_quota_burst";
-    await database.db
-      .insertInto("organization")
-      .values({
-        id: org,
-        name: org,
-        slug: "org-quota-burst",
-        createdAt: new Date().toISOString(),
-      })
-      .execute();
-    await database.db
-      .insertInto("organization_billing")
-      .values({ organization_id: org })
-      .execute();
-    const burstCtx = {
-      organization: { id: org, slug: "org-quota-burst", name: org },
-      storage: { organizationBilling: billing },
-    } as unknown as StudioContext;
-
-    const tasks = await Promise.all(
-      Array.from({ length: 10 }, () =>
-        taskBoard.create({ organizationId: org, title: "t", by: "system" }),
-      ),
-    );
-    // All 10 dispatch simultaneously against a limit of 2: the billing-row
-    // lock serializes the claims, so exactly 2 win and 8 hit the paywall —
-    // never 10 winners off the same stale count.
-    const results = await Promise.allSettled(
-      tasks.map((t) => claimTaskExecution(burstCtx, t, CONFIG)),
-    );
-    const claimed = results.filter((r) => r.status === "fulfilled").length;
-    expect(claimed).toBe(CONFIG.freeTaskExecutions);
-    expect(await billing.countTaskClaims(org, "trial")).toBe(
-      CONFIG.freeTaskExecutions,
-    );
-    for (const r of results) {
-      if (r.status === "rejected") {
-        expect(String(r.reason)).toContain("[SUBSCRIPTION_REQUIRED]");
+  // A burst is only serialized if the lock has a row to lock, so run it BOTH
+  // for a normal org and for one whose billing row was never seeded (a failed
+  // creation-time seed) — the claim self-heals that row before locking.
+  for (const withBillingRow of [true, false]) {
+    it(`a concurrent BURST cannot race past the limit (billing row seeded: ${withBillingRow})`, async () => {
+      const org = `org_burst_${withBillingRow}`;
+      await seedOrg(org, withBillingRow);
+      const burstCtx = ctxFor(org);
+      // 10 concurrent claims, limit 2. pg.Pool defaults to max 10 connections
+      // and Kysely pins one per transaction, so these ARE 10 concurrent
+      // transactions — the FOR UPDATE is genuinely exercised. (A future
+      // pool max < 2 would silently serialize them and void this test.)
+      const tasks = await Promise.all(
+        Array.from({ length: 10 }, () => makeTask("system", org)),
+      );
+      const results = await Promise.allSettled(
+        tasks.map((t) => claimTaskExecution(burstCtx, t, CONFIG)),
+      );
+      expect(results.filter((r) => r.status === "fulfilled").length).toBe(
+        CONFIG.freeTaskExecutions,
+      );
+      expect(await billing.countTaskClaims(org, "trial")).toBe(
+        CONFIG.freeTaskExecutions,
+      );
+      for (const r of results) {
+        if (r.status === "rejected") {
+          expect(String(r.reason)).toContain("[SUBSCRIPTION_REQUIRED]");
+        }
       }
-    }
-  });
+    });
+  }
 });

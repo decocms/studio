@@ -95,13 +95,14 @@ export class OrganizationBillingStorage {
   // Task-execution quota claims (billing/task-quota.ts): one row per
   // reports-pushed task ever dispatched; period_key buckets the count.
 
-  async hasTaskClaim(taskBoardItemId: string): Promise<boolean> {
+  /** Dispatches this task's claim has funded, or null when unclaimed. */
+  async taskRunCount(taskBoardItemId: string): Promise<number | null> {
     const row = await this.db
       .selectFrom("task_quota_claims")
-      .select("task_board_item_id")
+      .select("run_count")
       .where("task_board_item_id", "=", taskBoardItemId)
       .executeTakeFirst();
-    return !!row;
+    return row ? row.run_count : null;
   }
 
   async countTaskClaims(
@@ -122,30 +123,53 @@ export class OrganizationBillingStorage {
    * concurrent claims for the SAME org serialize — a burst of N parallel
    * dispatches can never read the same stale count and all pass (the
    * quota-cheat vector). Claims are rare events; the per-org lock is held
-   * for two indexed statements.
+   * for three indexed statements.
    *
-   * Returns "exists" for an already-claimed task (re-runs are free),
-   * "claimed" when a slot was consumed, "exhausted" when the bucket is full.
+   * The lock ANCHOR must exist or `FOR UPDATE` locks zero rows and the
+   * serialization silently degrades — so the billing row is self-healed
+   * first (orgs whose creation-time seed failed have none).
+   *
+   * Outcomes:
+   *  - "claimed": a fresh claim consumed a period slot (run_count = 1);
+   *  - "rerun": the task was already claimed and its run_count incremented
+   *    (review bounces / conflict resolutions cost nothing extra);
+   *  - "runs_exhausted": the task's own run_count hit `maxRunsPerTask` — one
+   *    claim must not fund unlimited dispatches (re-delegation loop);
+   *  - "exhausted": the period bucket is full.
    */
   async claimTaskUnderLimit(
     organizationId: string,
     taskBoardItemId: string,
     periodKey: string,
     limit: number,
-  ): Promise<"claimed" | "exists" | "exhausted"> {
+    maxRunsPerTask: number,
+  ): Promise<"claimed" | "rerun" | "runs_exhausted" | "exhausted"> {
     return await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto("organization_billing")
+        .values({ organization_id: organizationId })
+        .onConflict((oc) => oc.column("organization_id").doNothing())
+        .execute();
       await trx
         .selectFrom("organization_billing")
         .select("organization_id")
         .where("organization_id", "=", organizationId)
         .forUpdate()
-        .execute();
+        .executeTakeFirstOrThrow();
       const existing = await trx
         .selectFrom("task_quota_claims")
-        .select("task_board_item_id")
+        .select("run_count")
         .where("task_board_item_id", "=", taskBoardItemId)
         .executeTakeFirst();
-      if (existing) return "exists";
+      if (existing) {
+        if (existing.run_count >= maxRunsPerTask) return "runs_exhausted";
+        await trx
+          .updateTable("task_quota_claims")
+          .set({ run_count: existing.run_count + 1 })
+          .where("task_board_item_id", "=", taskBoardItemId)
+          .execute();
+        return "rerun";
+      }
       const used = await trx
         .selectFrom("task_quota_claims")
         .select((eb) => eb.fn.countAll().as("count"))
