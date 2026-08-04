@@ -171,11 +171,6 @@ export interface Settings {
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */
   sandboxReleaseGraceMs: number;
 
-  /** OAuth client id used to link a user's Claude subscription. Overridable
-   *  because it is Anthropic's, not ours, and can be rotated or replaced by a
-   *  client of our own without a release. */
-  claudeSubscriptionClientId: string;
-
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;

@@ -4,7 +4,9 @@ import type { Database } from "./types";
 
 /** A linked subscription, as callers see it. The token is never in the shape. */
 export interface ClaudeSubscriptionInfo {
-  expiresAt: string;
+  linkedAt: string;
+  /** Null when the token carries no expiry we can read — see migration 162. */
+  expiresAt: string | null;
 }
 
 export class ClaudeSubscriptionStorage {
@@ -13,47 +15,58 @@ export class ClaudeSubscriptionStorage {
     private vault: CredentialVault,
   ) {}
 
-  /** Link (or re-link) a user's subscription. One row per user. */
+  /** Link (or re-link) a user's subscription token. One row per user. */
   async upsert(params: {
     userId: string;
     accessToken: string; // plaintext — encrypted before storage
-    expiresAt: Date;
+    expiresAt?: Date | null;
   }): Promise<ClaudeSubscriptionInfo> {
     const encrypted = await this.vault.encrypt(params.accessToken);
+    const expiresAt = params.expiresAt ?? null;
+    const createdAt = new Date();
     await this.db
       .insertInto("claude_subscriptions")
       .values({
         user_id: params.userId,
         encrypted_access_token: encrypted,
-        expires_at: params.expiresAt,
-        created_at: new Date(),
+        expires_at: expiresAt,
+        created_at: createdAt,
       })
       .onConflict((oc) =>
         oc.column("user_id").doUpdateSet({
           encrypted_access_token: encrypted,
-          expires_at: params.expiresAt,
-          created_at: new Date(),
+          expires_at: expiresAt,
+          created_at: createdAt,
         }),
       )
       .execute();
-    return { expiresAt: params.expiresAt.toISOString() };
+    return {
+      linkedAt: createdAt.toISOString(),
+      expiresAt: expiresAt?.toISOString() ?? null,
+    };
   }
 
-  /** Expiry only — for the settings UI, which must never see the token. */
+  /** Metadata only — for the settings UI, which must never see the token. */
   async find(userId: string): Promise<ClaudeSubscriptionInfo | null> {
     const row = await this.db
       .selectFrom("claude_subscriptions")
-      .select("expires_at")
+      .select(["created_at", "expires_at"])
       .where("user_id", "=", userId)
       .executeTakeFirst();
     if (!row) return null;
-    return { expiresAt: new Date(row.expires_at).toISOString() };
+    return {
+      linkedAt: new Date(row.created_at).toISOString(),
+      expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    };
   }
 
   /**
-   * The decrypted token, or null when it is absent or expired. Expired rows
-   * are not deleted here: the dispatch path is a reader, and the row is what
-   * lets the UI say "expired, re-link" rather than "never linked".
+   * The decrypted token, or null when absent or known-expired. A null
+   * `expires_at` is live: it means the token's lifetime is unknown, not zero.
+   *
+   * Expired rows are not deleted here — the dispatch path is a reader, and the
+   * row is what lets the UI say "expired, paste a new one" rather than "never
+   * linked".
    */
   async findLiveToken(userId: string): Promise<string | null> {
     const row = await this.db
@@ -62,7 +75,9 @@ export class ClaudeSubscriptionStorage {
       .where("user_id", "=", userId)
       .executeTakeFirst();
     if (!row) return null;
-    if (new Date(row.expires_at).getTime() <= Date.now()) return null;
+    if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+      return null;
+    }
     return this.vault.decrypt(row.encrypted_access_token);
   }
 

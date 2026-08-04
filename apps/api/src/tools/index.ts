@@ -173,7 +173,6 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
-  ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_LOGIN_URL,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_DISCONNECT,

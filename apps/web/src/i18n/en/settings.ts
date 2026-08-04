@@ -219,6 +219,20 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Bring your own keys to use specific models alongside Deco's gateway.",
   "settings.connectedProvidersSection.sectionTitle": "Connected providers",
+  "settings.claudeSubscription.active":
+    "Your Claude plan is running these coding tasks.",
+  "settings.claudeSubscription.connect": "Link",
+  "settings.claudeSubscription.connected": "Claude subscription linked",
+  "settings.claudeSubscription.description":
+    "Run coding tasks on your own Claude Pro or Max plan instead of the organization's AI credit.",
+  "settings.claudeSubscription.disconnect": "Disconnect",
+  "settings.claudeSubscription.disconnected": "Claude subscription unlinked",
+  "settings.claudeSubscription.expired":
+    "Anthropic no longer accepts your token. Generate a new one to keep using your plan.",
+  "settings.claudeSubscription.howTo":
+    "Generate a token on your own machine with",
+  "settings.claudeSubscription.title": "Your Claude subscription",
+  "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
   "settings.decoCreditsHero.accessModels": "Access to 100+ models",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
@@ -235,21 +249,6 @@ export const settings = {
   "settings.decoCreditsHero.disconnectError": "Failed to disconnect: {message}",
   "settings.decoCreditsHero.disconnectSuccess": "Deco AI Gateway disconnected",
   "settings.decoCreditsHero.disconnectTitle": "Disconnect Deco AI Gateway",
-  "settings.claudeSubscription.activeUntil":
-    "Your Claude plan is running these tasks until {expiresAt}.",
-  "settings.claudeSubscription.codePlaceholder":
-    "Paste the code Anthropic showed you",
-  "settings.claudeSubscription.connected": "Claude subscription linked",
-  "settings.claudeSubscription.description":
-    "Run coding tasks on your own Claude Pro or Max plan instead of the organization's AI credit.",
-  "settings.claudeSubscription.disconnect": "Disconnect",
-  "settings.claudeSubscription.disconnected": "Claude subscription unlinked",
-  "settings.claudeSubscription.expired":
-    "Your Claude login expired. Log in again to keep using your plan.",
-  "settings.claudeSubscription.finish": "Finish",
-  "settings.claudeSubscription.login": "Log in with Claude",
-  "settings.claudeSubscription.relink": "Log in again",
-  "settings.claudeSubscription.title": "Your Claude subscription",
   "settings.decoCreditsHero.refreshBalance": "Refresh balance",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",

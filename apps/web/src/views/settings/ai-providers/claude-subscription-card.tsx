@@ -2,9 +2,9 @@
  * Link your own Claude subscription, so sandbox-hosted claude-code runs bill
  * against your plan instead of the org's AI credit.
  *
- * Anthropic's OAuth flow redirects to its own console page, which we cannot
- * receive a callback on, so this is the same copy/paste flow the `claude` CLI
- * uses: open the URL, authorize, paste back the code it shows.
+ * The token is minted by Anthropic's own client (`claude setup-token`) and
+ * pasted here — so the user picks which account pays, in Anthropic's UI, and
+ * Studio never has to guess.
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,8 +21,7 @@ export function ClaudeSubscriptionCard() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
-  const [code, setCode] = useState("");
-  const [stateToken, setStateToken] = useState<string | null>(null);
+  const [token, setToken] = useState("");
 
   const status = useQuery({
     queryKey: KEYS.claudeSubscription(org.id),
@@ -34,24 +33,10 @@ export function ClaudeSubscriptionCard() {
       queryKey: KEYS.claudeSubscription(org.id),
     });
 
-  const start = useMutation({
-    mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_LOGIN_URL", {}),
-    onSuccess: (res) => {
-      setStateToken(res.stateToken);
-      window.open(res.url, "_blank", "noopener,noreferrer");
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
   const connect = useMutation({
-    mutationFn: () =>
-      studio.call("CLAUDE_SUBSCRIPTION_CONNECT", {
-        code,
-        stateToken: stateToken!,
-      }),
+    mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
     onSuccess: async () => {
-      setCode("");
-      setStateToken(null);
+      setToken("");
       await invalidate();
       toast.success(t("settings.claudeSubscription.connected"));
     },
@@ -68,9 +53,9 @@ export function ClaudeSubscriptionCard() {
   });
 
   const connected = status.data?.connected === true;
-  // A row that exists but is not `connected` is an expired link — the only
-  // state where "re-link" is the honest label.
-  const expired = !connected && Boolean(status.data?.expiresAt);
+  // A row that exists but is not `connected` is a token Anthropic has aged
+  // out — the only state where "paste a new one" is the honest label.
+  const expired = !connected && Boolean(status.data?.linkedAt);
 
   return (
     <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
@@ -81,9 +66,7 @@ export function ClaudeSubscriptionCard() {
           </p>
           <p className="text-sm text-muted-foreground">
             {connected
-              ? t("settings.claudeSubscription.activeUntil", {
-                  expiresAt: new Date(status.data!.expiresAt!).toLocaleString(),
-                })
+              ? t("settings.claudeSubscription.active")
               : expired
                 ? t("settings.claudeSubscription.expired")
                 : t("settings.claudeSubscription.description")}
@@ -97,33 +80,32 @@ export function ClaudeSubscriptionCard() {
           >
             {t("settings.claudeSubscription.disconnect")}
           </Button>
-        ) : (
-          <Button
-            variant="outline"
-            disabled={start.isPending}
-            onClick={() => start.mutate()}
-          >
-            {expired
-              ? t("settings.claudeSubscription.relink")
-              : t("settings.claudeSubscription.login")}
-          </Button>
-        )}
+        ) : null}
       </div>
-      {stateToken ? (
-        <div className="flex items-center gap-2">
-          <Input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder={t("settings.claudeSubscription.codePlaceholder")}
-          />
-          <Button
-            disabled={code.trim().length === 0 || connect.isPending}
-            onClick={() => connect.mutate()}
-          >
-            {t("settings.claudeSubscription.finish")}
-          </Button>
+      {connected ? null : (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            {t("settings.claudeSubscription.howTo")}{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              claude setup-token
+            </code>
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
+            />
+            <Button
+              disabled={token.trim().length === 0 || connect.isPending}
+              onClick={() => connect.mutate()}
+            >
+              {t("settings.claudeSubscription.connect")}
+            </Button>
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

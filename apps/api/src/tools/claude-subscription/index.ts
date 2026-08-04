@@ -1,3 +1,17 @@
+/**
+ * Linking a user's own Claude subscription to their sandbox-hosted
+ * `claude-code` runs.
+ *
+ * The token is minted OUTSIDE Studio, by Anthropic's own client:
+ * `claude setup-token` on the user's machine. Studio deliberately does not
+ * drive the OAuth flow itself — doing so would mean borrowing Anthropic's
+ * client id, and for an account with both a claude.ai subscription and a
+ * Console organization that client is reported to resolve to the Console org
+ * and bill API credit (anthropics/claude-code#39445). Letting the user
+ * authorize in Anthropic's UI makes "which account pays" their explicit
+ * choice, visible to them, instead of something Studio infers silently.
+ */
+
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -5,114 +19,75 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import {
-  generateCodeChallenge,
-  generateCodeVerifier,
-} from "../../ai-providers/pkce";
-import {
-  claudeSubscriptionAuthorizeUrl,
-  exchangeClaudeSubscriptionCode,
-  splitPastedCode,
-} from "../../ai-providers/claude-subscription-oauth";
 
 const statusSchema = z.object({
   connected: z.boolean(),
+  linkedAt: z.string().nullable(),
   expiresAt: z
     .string()
     .nullable()
-    .describe("When the linked token stops working; re-link after that"),
+    .describe("Known expiry, or null when the token carries none we can read"),
 });
 
-export const CLAUDE_SUBSCRIPTION_LOGIN_URL = defineTool({
-  name: "CLAUDE_SUBSCRIPTION_LOGIN_URL",
-  description:
-    "Start linking the caller's Claude subscription (Pro/Max) so their " +
-    "claude-code runs bill against it. Returns an authorization URL to open; " +
-    "Anthropic shows a code to paste into CLAUDE_SUBSCRIPTION_CONNECT.",
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    url: z.string(),
-    stateToken: z
-      .string()
-      .describe("Opaque token — pass to CLAUDE_SUBSCRIPTION_CONNECT"),
-  }),
-  handler: async (_input, ctx) => {
-    requireAuth(ctx);
-    const org = requireOrganization(ctx);
-    await ctx.access.check();
-    const userId = getUserId(ctx);
-    if (!userId) throw new Error("Unable to determine user ID");
+/**
+ * `sk-ant-api…` is a Console API key: pasting one would work and would bill
+ * per-token API usage — the exact outcome this feature exists to avoid — so it
+ * is rejected by name rather than silently accepted. Any other shape is let
+ * through: only Anthropic can really validate the token, and guessing at the
+ * OAuth prefix would reject valid tokens the day the format changes.
+ */
+const CONSOLE_API_KEY_PREFIX = "sk-ant-api";
 
-    const codeVerifier = generateCodeVerifier();
-    const stateToken = await ctx.storage.oauthPkceStates.create(
-      codeVerifier,
-      org.id,
-      userId,
+/** Returns the token to store, or throws with what the user should do instead. */
+export function normalizeSubscriptionToken(pasted: string): string {
+  const token = pasted.trim();
+  if (token.startsWith(CONSOLE_API_KEY_PREFIX)) {
+    throw new Error(
+      "That looks like a Console API key, which bills per-token API usage " +
+        "instead of your subscription. Run `claude setup-token` and paste " +
+        "the token it prints.",
     );
-    return {
-      url: claudeSubscriptionAuthorizeUrl({
-        codeChallenge: generateCodeChallenge(codeVerifier),
-        state: stateToken,
-      }),
-      stateToken,
-    };
-  },
-});
+  }
+  if (/\s/.test(token)) {
+    throw new Error("The token must not contain spaces or line breaks");
+  }
+  if (token.length === 0) throw new Error("The token must not be empty");
+  return token;
+}
 
 export const CLAUDE_SUBSCRIPTION_CONNECT = defineTool({
   name: "CLAUDE_SUBSCRIPTION_CONNECT",
   description:
-    "Finish linking a Claude subscription with the code Anthropic showed " +
-    "after authorization. The credential is stored encrypted for the caller " +
-    "only, for at most 24 hours.",
+    "Link the caller's Claude subscription with a token from " +
+    "`claude setup-token`, so their claude-code runs bill against their own " +
+    "Pro/Max plan. Stored encrypted, for the caller only.",
   inputSchema: z.object({
-    code: z
+    token: z
       .string()
       .min(1)
-      .describe("The code Anthropic displayed; the `code#state` form is fine"),
-    stateToken: z
-      .string()
-      .describe("The stateToken returned by CLAUDE_SUBSCRIPTION_LOGIN_URL"),
+      .describe("The token printed by `claude setup-token` (sk-ant-oat…)"),
   }),
   outputSchema: statusSchema,
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    const org = requireOrganization(ctx);
+    requireOrganization(ctx);
     await ctx.access.check();
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
 
-    const pasted = splitPastedCode(input.code);
-    // The pasted half is what Anthropic will verify against the token request;
-    // it must be the state this user started the flow with, not a third
-    // party's, so the verifier lookup below is the authoritative check.
-    if (pasted.state && pasted.state !== input.stateToken) {
-      throw new Error("The pasted code does not belong to this login attempt");
-    }
-
-    const codeVerifier = await ctx.storage.oauthPkceStates.consume(
-      input.stateToken,
-      org.id,
-      userId,
-    );
-    const token = await exchangeClaudeSubscriptionCode({
-      code: pasted.code,
-      state: input.stateToken,
-      codeVerifier,
-    });
+    const token = normalizeSubscriptionToken(input.token);
     const stored = await ctx.storage.claudeSubscriptions.upsert({
       userId,
-      accessToken: token.accessToken,
-      expiresAt: token.expiresAt,
+      accessToken: token,
     });
-    return { connected: true, expiresAt: stored.expiresAt };
+    return { connected: true, ...stored };
   },
 });
 
 export const CLAUDE_SUBSCRIPTION_STATUS = defineTool({
   name: "CLAUDE_SUBSCRIPTION_STATUS",
   description:
-    "Whether the caller has a linked Claude subscription, and when it expires.",
+    "Whether the caller has a linked Claude subscription token, and since when.",
   inputSchema: z.object({}),
   outputSchema: statusSchema,
   handler: async (_input, ctx) => {
@@ -123,17 +98,18 @@ export const CLAUDE_SUBSCRIPTION_STATUS = defineTool({
     if (!userId) throw new Error("Unable to determine user ID");
 
     const found = await ctx.storage.claudeSubscriptions.find(userId);
-    return {
-      connected: found !== null && new Date(found.expiresAt) > new Date(),
-      expiresAt: found?.expiresAt ?? null,
-    };
+    if (!found) return { connected: false, linkedAt: null, expiresAt: null };
+    // A null expiry is live — unknown lifetime, not zero.
+    const expired =
+      found.expiresAt !== null && new Date(found.expiresAt) <= new Date();
+    return { connected: !expired, ...found };
   },
 });
 
 export const CLAUDE_SUBSCRIPTION_DISCONNECT = defineTool({
   name: "CLAUDE_SUBSCRIPTION_DISCONNECT",
   description:
-    "Unlink the caller's Claude subscription and delete the stored credential.",
+    "Unlink the caller's Claude subscription and delete the stored token.",
   inputSchema: z.object({}),
   outputSchema: statusSchema,
   handler: async (_input, ctx) => {
@@ -144,6 +120,6 @@ export const CLAUDE_SUBSCRIPTION_DISCONNECT = defineTool({
     if (!userId) throw new Error("Unable to determine user ID");
 
     await ctx.storage.claudeSubscriptions.delete(userId);
-    return { connected: false, expiresAt: null };
+    return { connected: false, linkedAt: null, expiresAt: null };
   },
 });

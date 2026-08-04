@@ -393,9 +393,6 @@ export function resolveConfig(
     ),
 
     // External service credentials
-    claudeSubscriptionClientId:
-      envVars.CLAUDE_SUBSCRIPTION_CLIENT_ID ||
-      "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,

@@ -559,6 +559,17 @@ export interface StudioToolIO {
     input: { id: string };
     output: { success: boolean };
   };
+  TASK_ADD_REPO: {
+    input: { connectionId?: string | undefined };
+    output: {
+      success: boolean;
+      message: string;
+      repositories?: { connectionId: string; repo: string }[] | undefined;
+      repo?: string | undefined;
+      cloned?: boolean | undefined;
+      files?: string | undefined;
+    };
+  };
   BRAND_CONTEXT_LIST: {
     input: { includeArchived?: boolean | undefined };
     output: {
@@ -3508,6 +3519,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3574,6 +3586,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3617,6 +3630,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3647,6 +3661,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -3686,6 +3701,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3727,6 +3743,7 @@ export interface StudioToolIO {
                     expandedAt: string;
                   }[]
                 | undefined;
+              read_only?: boolean | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4401,21 +4418,29 @@ export interface StudioToolIO {
     };
     output: { balanceCents: number };
   };
-  CLAUDE_SUBSCRIPTION_LOGIN_URL: {
-    input: { [x: string]: never };
-    output: { url: string; stateToken: string };
-  };
   CLAUDE_SUBSCRIPTION_CONNECT: {
-    input: { code: string; stateToken: string };
-    output: { connected: boolean; expiresAt: string | null };
+    input: { token: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
   };
   CLAUDE_SUBSCRIPTION_STATUS: {
     input: { [x: string]: never };
-    output: { connected: boolean; expiresAt: string | null };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
   };
   CLAUDE_SUBSCRIPTION_DISCONNECT: {
     input: { [x: string]: never };
-    output: { connected: boolean; expiresAt: string | null };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
   };
   SECRET_CREATE: {
     input: {

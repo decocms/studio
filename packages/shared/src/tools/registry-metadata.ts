@@ -151,7 +151,6 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_CREDITS",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
-  "CLAUDE_SUBSCRIPTION_LOGIN_URL",
   "CLAUDE_SUBSCRIPTION_CONNECT",
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
@@ -764,18 +763,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "AI Providers",
   },
   {
-    name: "CLAUDE_SUBSCRIPTION_LOGIN_URL",
-    description: "Start linking your own Claude subscription",
-    category: "AI Providers",
-  },
-  {
     name: "CLAUDE_SUBSCRIPTION_CONNECT",
-    description: "Finish linking your own Claude subscription",
+    description: "Link your own Claude subscription with a setup token",
     category: "AI Providers",
   },
   {
     name: "CLAUDE_SUBSCRIPTION_STATUS",
-    description: "Whether your Claude subscription is linked, and until when",
+    description: "Whether your Claude subscription is linked, and since when",
     category: "AI Providers",
   },
   {
@@ -1368,7 +1362,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
-      "CLAUDE_SUBSCRIPTION_LOGIN_URL",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
