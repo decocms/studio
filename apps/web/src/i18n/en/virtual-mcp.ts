@@ -88,6 +88,9 @@ export const virtualMcp = {
   "virtualMcp.filesSection.description":
     "Attach files and skills the agent can always reference.",
   "virtualMcp.filesSection.failedUploadFile": "Failed to upload file.",
+  "virtualMcp.filesSection.fileTooLargeDescription":
+    "Exceeds the 25MB limit, not uploaded: {names}",
+  "virtualMcp.filesSection.fileTooLargeTitle": "File too large",
   "virtualMcp.filesSection.filesAndSkills": "Files and skills",
   "virtualMcp.filesSection.kindFile": "File",
   "virtualMcp.filesSection.kindSkill": "Skill",
