@@ -107,19 +107,33 @@ export class OrganizationBillingStorage {
     return row ? { runCount: row.run_count, state: row.state } : null;
   }
 
-  async countTaskClaims(
+  /** Claims charged against a period — the ONE definition of "counts"
+   *  (released ones were refunded), shared by the read and the claim
+   *  transaction so the two can never drift. */
+  private static liveClaimCount(
+    db: Kysely<Database>,
     organizationId: string,
     periodKey: string,
   ): Promise<number> {
-    const row = await this.db
+    return db
       .selectFrom("task_quota_claims")
       .select((eb) => eb.fn.countAll().as("count"))
       .where("organization_id", "=", organizationId)
       .where("period_key", "=", periodKey)
-      // Released holds produced nothing and gave the slot back.
       .where("state", "<>", "released")
-      .executeTakeFirst();
-    return Number(row?.count ?? 0);
+      .executeTakeFirst()
+      .then((row) => Number(row?.count ?? 0));
+  }
+
+  async countTaskClaims(
+    organizationId: string,
+    periodKey: string,
+  ): Promise<number> {
+    return await OrganizationBillingStorage.liveClaimCount(
+      this.db,
+      organizationId,
+      periodKey,
+    );
   }
 
   /**
@@ -133,15 +147,15 @@ export class OrganizationBillingStorage {
    * serialization silently degrades — so the billing row is self-healed
    * first (orgs whose creation-time seed failed have none).
    *
-   * A dispatch takes a HOLD (counted, charge pending); `commitTaskClaim`
-   * confirms it when the run opens a PR and `releaseTaskClaim` gives the slot
-   * back when it produces nothing. A released claim keeps its `run_count`, so
-   * re-dispatching it re-takes a slot but can never reset the per-task cap.
+   * A dispatch CHARGES (state `held`, counted); `releaseTaskClaim` refunds it
+   * only when the run demonstrably produced nothing. A released claim keeps
+   * its `run_count`, so re-dispatching it re-takes a slot but can never reset
+   * the per-task cap.
    *
    * Outcomes:
-   *  - "claimed": a fresh (or re-held) claim consumed a period slot;
-   *  - "rerun": the task was already held/committed and its run_count
-   *    incremented (review bounces / conflict resolutions cost nothing extra);
+   *  - "claimed": a fresh (or re-charged) claim consumed a period slot;
+   *  - "rerun": the task was already charged and its run_count incremented
+   *    (review bounces / conflict resolutions cost nothing extra);
    *  - "runs_exhausted": the task's own run_count hit `maxRunsPerTask` — one
    *    claim must not fund unlimited dispatches (re-delegation loop);
    *  - "exhausted": the period bucket is full.
@@ -171,20 +185,16 @@ export class OrganizationBillingStorage {
         .where("task_board_item_id", "=", taskBoardItemId)
         .executeTakeFirst();
       // The per-task cap is checked FIRST and against the persisted tally, so
-      // a released claim can't be looped for free dispatches.
+      // a refunded claim can't be looped for free dispatches.
       if (existing && existing.run_count >= maxRunsPerTask) {
         return "runs_exhausted";
       }
-      const countedForPeriod = async () => {
-        const used = await trx
-          .selectFrom("task_quota_claims")
-          .select((eb) => eb.fn.countAll().as("count"))
-          .where("organization_id", "=", organizationId)
-          .where("period_key", "=", periodKey)
-          .where("state", "<>", "released")
-          .executeTakeFirst();
-        return Number(used?.count ?? 0);
-      };
+      const countedForPeriod = () =>
+        OrganizationBillingStorage.liveClaimCount(
+          trx,
+          organizationId,
+          periodKey,
+        );
       if (existing && existing.state !== "released") {
         await trx
           .updateTable("task_quota_claims")
@@ -195,8 +205,8 @@ export class OrganizationBillingStorage {
       }
       if ((await countedForPeriod()) >= limit) return "exhausted";
       if (existing) {
-        // Re-hold a released claim: it takes a slot again (this period's key)
-        // while the run tally carries over.
+        // Re-charge a refunded claim: it takes a slot again (under the
+        // CURRENT period's key) while the run tally carries over.
         await trx
           .updateTable("task_quota_claims")
           .set({
@@ -221,24 +231,19 @@ export class OrganizationBillingStorage {
     });
   }
 
-  /** The run produced a pull request — the charge is real. Idempotent; only a
-   *  held claim commits (a released one is re-held by a new dispatch). */
-  async commitTaskClaim(taskBoardItemId: string): Promise<void> {
-    await this.db
-      .updateTable("task_quota_claims")
-      .set({ state: "committed" })
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .where("state", "=", "held")
-      .execute();
-  }
-
-  /** The run ended without a pull request — give the period slot back. Only a
-   *  HELD claim releases: a committed task already delivered, and re-runs of
-   *  it must not refund. `run_count` is left intact on purpose. */
-  async releaseTaskClaim(taskBoardItemId: string): Promise<void> {
+  /** Refund a charged claim: the run produced nothing (see the single
+   *  decision site in tools/task-board/run-reactions.ts). Org-scoped so the
+   *  invariant doesn't rest on every future caller passing a scoped id.
+   *  Idempotent; `run_count` is left intact on purpose, so a refund can't be
+   *  looped into free dispatches. */
+  async releaseTaskClaim(
+    organizationId: string,
+    taskBoardItemId: string,
+  ): Promise<void> {
     await this.db
       .updateTable("task_quota_claims")
       .set({ state: "released" })
+      .where("organization_id", "=", organizationId)
       .where("task_board_item_id", "=", taskBoardItemId)
       .where("state", "=", "held")
       .execute();

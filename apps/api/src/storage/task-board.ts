@@ -67,7 +67,11 @@ function extractPartText(payload: unknown): string | null {
 
 /** Thread run statuses that mean the run is over (not running / not paused on a
  *  user_ask). `requires_action` and `in_progress` are deliberately excluded. */
-const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
+export const TERMINAL_THREAD_STATUSES = new Set([
+  "completed",
+  "failed",
+  "expired",
+]);
 
 /**
  * Should a task advance to In Review now that a thread finished? True iff it's

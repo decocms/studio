@@ -1200,6 +1200,11 @@ export interface SubsidizedGatewayKeyTable {
 
 /** Quota ledger for reports-pushed task executions (migration 158) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
+/** `held` = charged (counts toward the period); `released` = refunded
+ *  because the run produced nothing. A union, so a typo in a comparison is a
+ *  compile error rather than a silent money decision. */
+export type TaskQuotaClaimState = "held" | "released";
+
 export interface TaskQuotaClaimTable {
   task_board_item_id: string;
   organization_id: string;
@@ -1208,9 +1213,12 @@ export interface TaskQuotaClaimTable {
    *  one claim can't fund a re-delegation loop. Survives a release, so
    *  releasing is never a free reset. */
   run_count: ColumnType<number, number | undefined, number>;
-  /** "held" (dispatched, charge pending) | "committed" (the run opened a PR)
-   *  | "released" (ended with nothing — stops counting toward the period). */
-  state: ColumnType<string, string | undefined, string>;
+  /** Charge state — see TaskQuotaClaimState. */
+  state: ColumnType<
+    TaskQuotaClaimState,
+    TaskQuotaClaimState,
+    TaskQuotaClaimState
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 

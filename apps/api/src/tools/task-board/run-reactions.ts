@@ -19,11 +19,9 @@
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
-import {
-  commitTaskExecution,
-  releaseTaskExecution,
-} from "@/billing/task-quota";
+import { releaseTaskExecution } from "@/billing/task-quota";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
+import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
 import { sseHub } from "@/event-bus/sse-hub";
@@ -146,11 +144,6 @@ export async function advanceTaskBoardForRun(
         .catch((err) =>
           console.error("[task-board] activity log write failed", err),
         );
-      // Reaching In Review means this run opened a pull request — the moment
-      // the quota hold becomes a real charge (billing/task-quota.ts).
-      if (status === "in_review") {
-        await commitTaskExecution(ctx.storage.organizationBilling, itemId);
-      }
       emitTaskBoardUpdated(orgId, item);
     }
   } catch (err) {
@@ -205,10 +198,9 @@ export async function advanceTasksToReviewOnThreadFinish(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
-  /** Quota bookkeeping: a task the finished run left short of In Review
-   *  produced no pull request, so its held slot goes back (task-quota.ts).
-   *  Optional so callers without billing storage keep working. */
-  billing?: OrganizationBillingStorage,
+  /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
+   *  optional arg here is a silent way for a caller to stop refunding. */
+  billing: OrganizationBillingStorage,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
@@ -216,23 +208,52 @@ export async function advanceTasksToReviewOnThreadFinish(
       orgId,
     );
     for (const item of moved) emitTaskBoardUpdated(orgId, item);
-    // Committing the ADVANCED ones happens here (this path bypasses
-    // advanceTaskBoardForRun); the rest are released.
-    if (billing) {
-      const advanced = new Set(moved.map((item) => item.id));
-      for (const item of moved) {
-        await commitTaskExecution(billing, item.id);
-      }
-      for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
-        if (advanced.has(taskId)) continue;
-        const item = await taskBoard.getById(taskId, orgId);
-        // Already in review/done means an earlier PR-open committed it.
-        if (!item || RANK[item.status] >= RANK["in_review"]) continue;
-        await releaseTaskExecution(billing, taskId);
-      }
-    }
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
+  }
+  await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
+}
+
+/**
+ * The ONE place a task-quota charge is refunded (billing/task-quota.ts): a
+ * finished run whose task demonstrably produced nothing.
+ *
+ * All three conditions are DURABLE FACTS, never "did we observe an event":
+ *  - no linked pull request — the immutable proof of output, whatever lane the
+ *    card sits in (status is user-writable, so it can't be the discriminator);
+ *  - the card never reached In Review — a repo-less task's answer IS its
+ *    deliverable, and that transition is how the board records one;
+ *  - no other used thread on the task is still running — a task gets a fresh
+ *    thread per dispatch, so a sibling finishing must never refund a run
+ *    that's still spending.
+ *
+ * Anything unproven leaves the claim charged, which is the safe direction: a
+ * path that never reports its outcome (claude-code, a human dragging the card,
+ * stall recovery) costs the customer their execution rather than costing us an
+ * unbilled one.
+ */
+async function refundUnproductiveTaskClaims(
+  taskBoard: TaskBoardStorage,
+  billing: OrganizationBillingStorage,
+  threadId: string,
+  orgId: string,
+): Promise<void> {
+  try {
+    for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
+      const item = await taskBoard.getById(taskId, orgId);
+      if (!item) continue;
+      if (RANK[item.status] >= RANK.in_review) continue;
+      const stillRunning = item.threads.some(
+        (t) =>
+          t.hasMessages &&
+          (t.status === null || !TERMINAL_THREAD_STATUSES.has(t.status)),
+      );
+      if (stillRunning) continue;
+      if ((await taskBoard.listPrs(taskId, orgId)).length > 0) continue;
+      await releaseTaskExecution(billing, orgId, taskId);
+    }
+  } catch (err) {
+    console.error("[task-board] quota refund pass failed", err);
   }
 }
 
