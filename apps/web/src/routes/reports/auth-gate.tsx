@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { AuthEntry } from "@/components/auth-entry";
 import type {
   AuthFlowEvent,
@@ -15,6 +16,32 @@ import {
   updateReportAuthAttempt,
 } from "./track";
 import { DECK } from "./templates/tokens";
+
+/** The deck is a fixed-light "paper" surface (see `DECK` above) regardless of
+ *  the app's dark mode, but `AuthEntry`/`UnifiedAuthForm` are shadcn
+ *  components styled with the app's theme CSS variables, which still resolve
+ *  to dark-mode values here (the `.dark` class lives on `<html>`, above this
+ *  card). Pinning those variables to their light values keeps the card
+ *  readable instead of rendering washed-out dark-mode buttons/inputs on a
+ *  white card. Values mirror `:root` in `packages/ui/src/styles/global.css`. */
+const FORCE_LIGHT_AUTH_VARS = {
+  "--background": "oklch(0.99 0.003 73)",
+  "--foreground": "oklch(0.145 0.01 60)",
+  "--card": "oklch(1 0 0)",
+  "--card-foreground": "oklch(0.145 0.01 60)",
+  "--muted-foreground": "oklch(0.46 0.012 60)",
+  "--accent": "oklch(0.955 0.008 80)",
+  "--accent-foreground": "oklch(0.2 0.01 60)",
+  "--border": "oklch(0.915 0.005 80)",
+  "--input": "oklch(0.88 0.006 80)",
+  "--ring": "oklch(0.205 0.012 60)",
+  "--primary": "oklch(0.205 0.012 60)",
+  "--primary-foreground": "oklch(0.98 0.005 60)",
+  "--destructive": "oklch(0.58 0.22 27)",
+  "--destructive-foreground": "oklch(0.97 0.01 17)",
+  "--success": "oklch(0.6 0.17 149)",
+  "--success-foreground": "oklch(0.98 0.02 156)",
+} as CSSProperties;
 
 function getReportAuthCopy(
   t: ReturnType<typeof useT>,
@@ -414,6 +441,7 @@ function ReportAuthCard({ domain }: { domain: string }) {
       aria-modal="true"
       aria-label={t("reports.authGate.accessYourReport")}
       className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
+      style={FORCE_LIGHT_AUTH_VARS}
     >
       <AuthEntry
         callbackUrl={callbackUrl(domain)}
