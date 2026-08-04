@@ -117,21 +117,51 @@ export class OrganizationBillingStorage {
     return Number(row?.count ?? 0);
   }
 
-  /** Idempotent per task (PK) — a concurrent double-dispatch of the same
-   *  task claims once. */
-  async claimTask(
+  /**
+   * Atomic claim-under-limit: locks the org's billing row (FOR UPDATE) so
+   * concurrent claims for the SAME org serialize — a burst of N parallel
+   * dispatches can never read the same stale count and all pass (the
+   * quota-cheat vector). Claims are rare events; the per-org lock is held
+   * for two indexed statements.
+   *
+   * Returns "exists" for an already-claimed task (re-runs are free),
+   * "claimed" when a slot was consumed, "exhausted" when the bucket is full.
+   */
+  async claimTaskUnderLimit(
     organizationId: string,
     taskBoardItemId: string,
     periodKey: string,
-  ): Promise<void> {
-    await this.db
-      .insertInto("task_quota_claims")
-      .values({
-        task_board_item_id: taskBoardItemId,
-        organization_id: organizationId,
-        period_key: periodKey,
-      })
-      .onConflict((oc) => oc.column("task_board_item_id").doNothing())
-      .execute();
+    limit: number,
+  ): Promise<"claimed" | "exists" | "exhausted"> {
+    return await this.db.transaction().execute(async (trx) => {
+      await trx
+        .selectFrom("organization_billing")
+        .select("organization_id")
+        .where("organization_id", "=", organizationId)
+        .forUpdate()
+        .execute();
+      const existing = await trx
+        .selectFrom("task_quota_claims")
+        .select("task_board_item_id")
+        .where("task_board_item_id", "=", taskBoardItemId)
+        .executeTakeFirst();
+      if (existing) return "exists";
+      const used = await trx
+        .selectFrom("task_quota_claims")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("organization_id", "=", organizationId)
+        .where("period_key", "=", periodKey)
+        .executeTakeFirst();
+      if (Number(used?.count ?? 0) >= limit) return "exhausted";
+      await trx
+        .insertInto("task_quota_claims")
+        .values({
+          task_board_item_id: taskBoardItemId,
+          organization_id: organizationId,
+          period_key: periodKey,
+        })
+        .execute();
+      return "claimed";
+    });
   }
 }

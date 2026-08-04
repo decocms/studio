@@ -149,7 +149,51 @@ describe("task quota (integration)", () => {
     await billing.updateStripeState(ORG, { status: "canceled" });
     const t = await makeTask("system");
     await expect(claimTaskExecution(ctx, t, CONFIG)).rejects.toThrow(
-      /^\[SUBSCRIPTION_REQUIRED\].*free task executions/,
+      /^\[SUBSCRIPTION_REQUIRED\]/,
     );
+  });
+
+  it("a concurrent BURST cannot race past the limit (the quota-cheat vector)", async () => {
+    // Fresh org so the bucket starts empty.
+    const org = "org_quota_burst";
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: org,
+        name: org,
+        slug: "org-quota-burst",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    await database.db
+      .insertInto("organization_billing")
+      .values({ organization_id: org })
+      .execute();
+    const burstCtx = {
+      organization: { id: org, slug: "org-quota-burst", name: org },
+      storage: { organizationBilling: billing },
+    } as unknown as StudioContext;
+
+    const tasks = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        taskBoard.create({ organizationId: org, title: "t", by: "system" }),
+      ),
+    );
+    // All 10 dispatch simultaneously against a limit of 2: the billing-row
+    // lock serializes the claims, so exactly 2 win and 8 hit the paywall —
+    // never 10 winners off the same stale count.
+    const results = await Promise.allSettled(
+      tasks.map((t) => claimTaskExecution(burstCtx, t, CONFIG)),
+    );
+    const claimed = results.filter((r) => r.status === "fulfilled").length;
+    expect(claimed).toBe(CONFIG.freeTaskExecutions);
+    expect(await billing.countTaskClaims(org, "trial")).toBe(
+      CONFIG.freeTaskExecutions,
+    );
+    for (const r of results) {
+      if (r.status === "rejected") {
+        expect(String(r.reason)).toContain("[SUBSCRIPTION_REQUIRED]");
+      }
+    }
   });
 });

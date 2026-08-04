@@ -97,59 +97,65 @@ function quotaConfig(): TaskQuotaConfig {
   };
 }
 
-async function checkQuota(
+async function resolveGate(
   ctx: StudioContext,
-  item: { id: string; createdBy: string },
+  item: { createdBy: string },
   config: TaskQuotaConfig,
-): Promise<{ organizationId: string; periodKey: string } | null> {
+): Promise<{ organizationId: string; quota: TaskQuotaState } | null> {
   if (!config.enforced || !isReportsTask(item)) return null;
   const organizationId = ctx.organization?.id;
   if (!organizationId) return null;
-  // An already-claimed task (review bounce, conflict re-run, re-prompt) is
-  // always allowed and never double-counts.
-  if (await ctx.storage.organizationBilling.hasTaskClaim(item.id)) return null;
   const billing =
     await ctx.storage.organizationBilling.getBilling(organizationId);
-  const quota = taskQuotaState(billing, config);
-  const used = await ctx.storage.organizationBilling.countTaskClaims(
-    organizationId,
-    quota.periodKey,
-  );
-  if (used >= quota.limit) throw new TaskQuotaError(quota.exhaustedReason);
-  return { organizationId, periodKey: quota.periodKey };
+  return { organizationId, quota: taskQuotaState(billing, config) };
 }
 
 /**
  * Pre-write check for the delegation flip in TASK_BOARD_ITEM_UPDATE: throws
  * BEFORE anything persists, so the user sees the paywall and the task is not
- * left delegated-but-never-running. Claims nothing — the claim happens at
- * dispatch (claimTaskExecution).
+ * left delegated-but-never-running. Advisory (unlocked read) — the atomic
+ * claim at dispatch is the enforcement.
  */
 export async function ensureTaskExecutionAllowed(
   ctx: StudioContext,
   item: { id: string; createdBy: string },
   config: TaskQuotaConfig = quotaConfig(),
 ): Promise<void> {
-  await checkQuota(ctx, item, config);
+  const gate = await resolveGate(ctx, item, config);
+  if (!gate) return;
+  // An already-claimed task (review bounce, conflict re-run) is always free.
+  if (await ctx.storage.organizationBilling.hasTaskClaim(item.id)) return;
+  const used = await ctx.storage.organizationBilling.countTaskClaims(
+    gate.organizationId,
+    gate.quota.periodKey,
+  );
+  if (used >= gate.quota.limit) {
+    throw new TaskQuotaError(gate.quota.exhaustedReason);
+  }
 }
 
 /**
  * The consumption point, called at dispatch (enqueueSuperAgentForTask) so
  * every path into execution — update flip, import auto-delegation, stall
- * recovery — funnels through it. Check-then-insert is not serialized across
- * concurrent dispatches of DIFFERENT tasks; the accepted worst case is one
- * task of overshoot on the last slot.
+ * recovery — funnels through it. The claim is ATOMIC per org (the storage
+ * transaction locks the billing row before counting), so a burst of N
+ * concurrent dispatches consumes exactly the remaining slots and the rest
+ * get the paywall — the quota can't be raced past.
  */
 export async function claimTaskExecution(
   ctx: StudioContext,
   item: { id: string; createdBy: string },
   config: TaskQuotaConfig = quotaConfig(),
 ): Promise<void> {
-  const claim = await checkQuota(ctx, item, config);
-  if (!claim) return;
-  await ctx.storage.organizationBilling.claimTask(
-    claim.organizationId,
+  const gate = await resolveGate(ctx, item, config);
+  if (!gate) return;
+  const result = await ctx.storage.organizationBilling.claimTaskUnderLimit(
+    gate.organizationId,
     item.id,
-    claim.periodKey,
+    gate.quota.periodKey,
+    gate.quota.limit,
   );
+  if (result === "exhausted") {
+    throw new TaskQuotaError(gate.quota.exhaustedReason);
+  }
 }
