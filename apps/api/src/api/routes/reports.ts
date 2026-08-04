@@ -13,7 +13,7 @@
  * session.
  */
 
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { auth } from "@/auth";
 import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
 import {
@@ -86,6 +86,18 @@ app.use("*", async (c, next) => {
   return undefined;
 });
 
+const requireReportUser: MiddlewareHandler<ReportsEnv> = async (c, next) => {
+  if (!c.get("reportUser"))
+    return c.json({ error: "Authentication required" }, 401);
+  await next();
+  return undefined;
+};
+
+app.use("/run", requireReportUser);
+app.use("/status", requireReportUser);
+app.use("/link-token/*", requireReportUser);
+app.use("/suggest", requireReportUser);
+
 /** GET /api/_reports/site/:domain — the deck for an already-scanned domain.
  *  Unauthenticated callers get the cover slide only; starting a new scan
  *  still requires signing in (see POST /run). */
@@ -117,8 +129,7 @@ app.get("/site/:domain", async (c) => {
  *  optional `distinctId` is the visitor's PostHog id, so the engine's
  *  server-side funnel events attribute to the same person. */
 app.post("/run", async (c) => {
-  const user = c.get("reportUser");
-  if (!user) return c.json({ error: "Authentication required" }, 401);
+  const user = c.get("reportUser")!;
   let body: { domain?: unknown; distinctId?: unknown };
   try {
     body = await c.req.json();
@@ -166,8 +177,6 @@ app.post("/run", async (c) => {
 
 /** GET /api/_reports/status?id= — poll a durable run (master-key, server-only). */
 app.get("/status", async (c) => {
-  if (!c.get("reportUser"))
-    return c.json({ error: "Authentication required" }, 401);
   const id = c.req.query("id");
   if (!id) return c.json({ error: "id is required" }, 400);
   try {
@@ -189,8 +198,6 @@ app.get("/status", async (c) => {
  *  {domain, run_id} it was minted for. Session auth is still required even
  *  though the engine token itself is unguessable. Null on a 404. */
 app.get("/link-token/:id", async (c) => {
-  if (!c.get("reportUser"))
-    return c.json({ error: "Authentication required" }, 401);
   const id = c.req.param("id");
   try {
     const res = await engineFetch(
@@ -208,8 +215,6 @@ app.get("/link-token/:id", async (c) => {
 /** GET /api/_reports/suggest?q= — typo-tolerant domain suggestions for the URL
  *  input. Fail-soft: suggestions are a hint, never worth surfacing an error. */
 app.get("/suggest", async (c) => {
-  if (!c.get("reportUser"))
-    return c.json({ error: "Authentication required" }, 401);
   const q = (c.req.query("q") ?? "").trim().slice(0, 64);
   if (q.length < 2) return c.json({ suggestions: [] });
   try {
