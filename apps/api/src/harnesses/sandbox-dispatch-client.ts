@@ -535,7 +535,7 @@ async function* dispatchToDaemon(args: {
  * `withLivenessHeartbeat` keeps publishing on Studio's clock, so the run looks
  * healthy to the reaper and holds its thread's queue slot indefinitely.
  */
-async function* ndjsonLines(
+export async function* ndjsonLines(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
 ): AsyncIterable<unknown> {
@@ -545,7 +545,20 @@ async function* ndjsonLines(
     const lines = buffer.split("\n");
     buffer = rest ? (lines.pop() ?? "") : "";
     for (const line of lines) {
-      if (line.trim().length > 0) yield JSON.parse(line) as unknown;
+      if (line.trim().length === 0) continue;
+      try {
+        yield JSON.parse(line) as unknown;
+      } catch (err) {
+        // Not the daemon's keepalive (blank) and not valid JSON either — the
+        // stream itself is corrupt, distinct from a well-formed frame failing
+        // schema validation upstream. Surface which line, since a bare
+        // SyntaxError gives no way to tell which byte of a long-running turn
+        // broke.
+        throw new Error(
+          `sandbox dispatch produced a non-JSON line: ${err instanceof Error ? err.message : String(err)} ` +
+            `(line: ${line.slice(0, 256)})`,
+        );
+      }
     }
   };
   const reader = (body as unknown as AsyncIterable<Uint8Array>)[
