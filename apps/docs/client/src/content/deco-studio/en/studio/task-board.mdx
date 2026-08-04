@@ -19,6 +19,15 @@ The **Task Board** is a kanban-style workspace for tracking work items — cards
 
 Every task card's activity feed supports threaded comments: post a comment, and anyone can reply to it — one level of replies deep. A comment thread can be marked **resolved** once it's settled, and reopened later if needed. Comments are persisted per task and scoped to your organization.
 
+<Callout type="info">
+  Anyone in the organization can resolve or reopen a comment thread, but only
+  the comment's author can edit its body or delete it.
+</Callout>
+
+## Working across multiple repositories
+
+When a task is assigned to a **Super Agent**, it runs inside a sandbox that needs a checked-out repository to work in. If your organization has exactly one importable repository, the task run starts already checked out into it. If it has more than one, the run starts with an empty working directory and the Super Agent picks the right repository itself before reading files or running git — no manual repo selection step is required from you.
+
 ## Automated review before shipping
 
 Once a task's pull request is **In Review** (its checks are passing, or it has none), Studio can run automated reviewers on it before a human ships the change. Configure this under **Settings → Organization → Reviewers & merge**:

@@ -19,6 +19,16 @@ O **Task Board** é um workspace no estilo kanban para acompanhar itens de traba
 
 O feed de atividade de todo card de task suporta comentários em thread: publique um comentário, e qualquer pessoa pode responder a ele — até um nível de respostas. Uma thread de comentários pode ser marcada como **resolvida** quando estiver encerrada, e reaberta depois se necessário. Os comentários são persistidos por task e escopados à sua organização.
 
+<Callout type="info">
+  Qualquer pessoa da organização pode resolver ou reabrir uma thread de
+  comentários, mas apenas o autor do comentário pode editar o corpo dele ou
+  excluí-lo.
+</Callout>
+
+## Trabalhando com múltiplos repositórios
+
+Quando uma task é atribuída a um **Super Agent**, ele roda dentro de um sandbox que precisa de um repositório já clonado para trabalhar. Se sua organização tiver exatamente um repositório importável, a execução da task já começa com esse repositório clonado. Se houver mais de um, a execução começa com o diretório de trabalho vazio, e o próprio Super Agent escolhe o repositório correto antes de ler arquivos ou executar comandos git — nenhuma seleção manual de repositório é necessária.
+
 ## Revisão automatizada antes de ir para produção
 
 Quando o pull request de uma task fica **In Review** (seus checks estão passando, ou não há nenhum), o Studio pode executar revisores automatizados nele antes que um humano coloque a mudança em produção. Configure isso em **Settings → Organization → Reviewers & merge**:
