@@ -47,7 +47,8 @@ export function ReviewSettings() {
   );
 }
 
-function FlagToggle({
+/** One org flag as a switch. Shared with the other org-settings sections. */
+export function FlagToggle({
   flag,
   icon,
   titleKey,

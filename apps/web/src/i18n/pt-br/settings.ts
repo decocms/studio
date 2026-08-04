@@ -400,7 +400,13 @@ export const settings = {
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
   "settings.review.updateError":
-    "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o de revis\u00e3o",
+    "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.agentRuntime.title": "Runtime do agente",
+  "settings.agentRuntime.description":
+    "Qual harness executa as tarefas de agente desta organiza\u00e7\u00e3o.",
+  "settings.agentRuntime.claudeCodeTitle": "Executar tarefas com Claude Code",
+  "settings.agentRuntime.claudeCodeDescription":
+    "As tarefas do Super Agent rodam o harness do Claude Code junto ao checkout no sandbox gerenciado, em vez do Decopilot. Requer uma credencial de modelo Anthropic ou OpenRouter e um \u00fanico reposit\u00f3rio conectado.",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
