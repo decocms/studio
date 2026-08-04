@@ -148,9 +148,16 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         organizationId,
       );
       const pr = prs[0];
+      // Best-effort, like the auto-merge conflict path below — a dispatch
+      // failure (no model configured, queue error) must never fail this
+      // decision: the bounce-to-in_progress + activity write already
+      // committed, so surfacing an error here would report failure on an
+      // otherwise-successful reviewer decision.
       await enqueueSuperAgentForTask(ctx, updated, {
         feedback: `${REVIEWER_LABEL[reviewer]}: ${notes}`,
         pr: pr ? { number: pr.number, url: pr.url } : undefined,
+      }).catch((err) => {
+        console.error("[task-board] request_changes re-enqueue failed", err);
       });
       return { status: updated.status, merged: false };
     }
