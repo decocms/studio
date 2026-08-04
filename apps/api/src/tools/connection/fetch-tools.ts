@@ -15,11 +15,7 @@ import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
 } from "../registry/discover-tools";
-import type {
-  ConnectionParameters,
-  HttpConnectionParameters,
-  ToolDefinition,
-} from "./schema";
+import type { ConnectionParameters, ToolDefinition } from "./schema";
 import { isStdioParameters } from "./schema";
 
 /**
@@ -68,6 +64,30 @@ export async function fetchToolsFromMCP(
     default:
       return null;
   }
+}
+
+/**
+ * Builds the request headers (bearer token + custom headers) shared by the
+ * HTTP and SSE transports. `connection_headers` is typed as a union with
+ * STDIO params, so narrow it with `isStdioParameters` instead of casting.
+ */
+export function buildConnectionRequestHeaders(
+  connection: ConnectionForToolFetch,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (connection.connection_token) {
+    headers.Authorization = `Bearer ${connection.connection_token}`;
+  }
+
+  const params = connection.connection_headers;
+  if (params && !isStdioParameters(params) && params.headers) {
+    Object.assign(headers, params.headers);
+  }
+
+  return headers;
 }
 
 /**
@@ -123,20 +143,7 @@ async function fetchToolsFromHttpMCP(
   let client: Client | null = null;
 
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (connection.connection_token) {
-      headers.Authorization = `Bearer ${connection.connection_token}`;
-    }
-
-    // Add custom headers from connection_headers
-    const httpParams =
-      connection.connection_headers as HttpConnectionParameters | null;
-    if (httpParams?.headers) {
-      Object.assign(headers, httpParams.headers);
-    }
+    const headers = buildConnectionRequestHeaders(connection);
 
     const transport = new StreamableHTTPClientTransport(
       new URL(connection.connection_url),
@@ -214,19 +221,7 @@ async function fetchToolsFromSSEMCP(
   let client: Client | null = null;
 
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (connection.connection_token) {
-      headers.Authorization = `Bearer ${connection.connection_token}`;
-    }
-
-    const httpParams =
-      connection.connection_headers as HttpConnectionParameters | null;
-    if (httpParams?.headers) {
-      Object.assign(headers, httpParams.headers);
-    }
+    const headers = buildConnectionRequestHeaders(connection);
 
     const transport = new SSEClientTransport(
       new URL(connection.connection_url),
