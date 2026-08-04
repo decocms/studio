@@ -18,6 +18,7 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 function extractPartText(payload: unknown): string | null {
@@ -447,14 +448,20 @@ export class TaskBoardStorage {
 
   /**
    * Atomically claim a task for merge-conflict auto-resolution: move it from In
-   * Review to In Progress ONLY if it's still In Review, returning the updated
-   * item to the single winner and null to everyone else. The auto-resolve
-   * reaction fires from two triggers that can coincide — a reviewer's approval
-   * (`review-decision`) and the PR modal's poll (`prs-get`) — so, like
-   * `claimReviewer`, this fence must be atomic: a read-then-write would let both
-   * dispatch a Super Agent run on the same PR. A single conditional UPDATE is
-   * atomic under READ COMMITTED — the second writer re-checks `status` against
-   * the first's committed row and matches nothing.
+   * Review to In Progress ONLY if it's still In Review AND still assigned to
+   * the Super Agent, returning the updated item to the single winner and null
+   * to everyone else. The auto-resolve reaction fires from two triggers that
+   * can coincide — a reviewer's approval (`review-decision`) and the PR
+   * modal's poll (`prs-get`) — so, like `claimReviewer`, this fence must be
+   * atomic: a read-then-write would let both dispatch a Super Agent run on the
+   * same PR. The assignee re-check closes a second race: the caller's
+   * assignee check runs against a read taken before this write, so a human
+   * reassigning the task away from the Super Agent in between must still stop
+   * the claim — checking it only in the WHERE, not after, means neither
+   * caller can slip a stale-assignee claim through. A single conditional
+   * UPDATE is atomic under READ COMMITTED — the second writer re-checks
+   * `status`/`assignee_id` against the first's committed row and matches
+   * nothing.
    */
   async claimConflictResolution(
     id: string,
@@ -471,6 +478,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_review")
+      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
     if (!row) return null;
