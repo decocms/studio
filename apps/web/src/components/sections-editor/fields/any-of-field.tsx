@@ -437,7 +437,7 @@ export function AnyOfField({
             virtualMcpId={sandbox?.virtualMcpId}
           />
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
-            <SelectTrigger>
+            <SelectTrigger id={path}>
               <SelectValue
                 placeholder={t("sectionsEditor.anyOfField.selectPlaceholder")}
               />
