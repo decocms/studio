@@ -191,6 +191,7 @@ export function buildClusterEnvironmentTools(args: {
           temperature: streamInput.temperature,
           toolApprovalLevel: streamInput.toolApprovalLevel,
           branch: runContext.branch ?? null,
+          runMetadata: ctx.metadata.runMetadata,
         }),
         htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator

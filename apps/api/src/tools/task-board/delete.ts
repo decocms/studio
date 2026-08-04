@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
+import { isReportsTask } from "../../billing/task-quota";
 import { emitTaskBoardDeleted } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_DELETE = defineTool({
@@ -23,6 +24,15 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
     if (!organizationId) {
       throw new Error(
         "Organization ID required (no active organization in context)",
+      );
+    }
+
+    // Reports-pushed tasks are the report's findings — their lifecycle is
+    // owned by the reports sync, never deletable from the board.
+    const item = await ctx.storage.taskBoard.getById(input.id, organizationId);
+    if (item && isReportsTask(item)) {
+      throw new Error(
+        "This task was generated from your report and can't be deleted.",
       );
     }
 

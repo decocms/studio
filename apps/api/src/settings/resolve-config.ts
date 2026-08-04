@@ -285,6 +285,22 @@ export function resolveConfig(
       15,
       100,
     ),
+    taskQuotaEnforced: toBool(envVars.STUDIO_TASK_QUOTA_ENFORCED),
+    freeTaskExecutions: toPositiveIntegerOrDefault(
+      "STUDIO_FREE_TASKS",
+      envVars.STUDIO_FREE_TASKS,
+      3,
+    ),
+    monthlyTaskExecutions: toPositiveIntegerOrDefault(
+      "STUDIO_MONTHLY_TASKS",
+      envVars.STUDIO_MONTHLY_TASKS,
+      10,
+    ),
+    maxRunsPerTask: toPositiveIntegerOrDefault(
+      "STUDIO_MAX_RUNS_PER_TASK",
+      envVars.STUDIO_MAX_RUNS_PER_TASK,
+      5,
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

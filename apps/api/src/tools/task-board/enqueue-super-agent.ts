@@ -1,6 +1,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { claimTaskExecution, TaskQuotaError } from "../../billing/task-quota";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import {
   buildClaudeCodeTaskPrompt,
@@ -23,6 +24,10 @@ export async function reactToSuperAgentDelegation(
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
   await enqueueSuperAgentForTask(ctx, item).catch((err) => {
+    // A paywall rejection is NOT best-effort: swallowing it would leave the
+    // task delegated-but-never-running with only a log line. Callers decide
+    // (the update tool surfaces it; the import route un-delegates).
+    if (err instanceof TaskQuotaError) throw err;
     console.error("[task-board] Super Agent enqueue failed", err);
   });
 }
@@ -122,6 +127,18 @@ export async function enqueueSuperAgentForTask(
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
 ): Promise<void> {
+  // Quota claim at dispatch — the funnel every FRESH execution shares
+  // (update flip, import auto-delegation, review/conflict re-runs). A stall
+  // nudge re-prompts an existing thread directly (stall-recovery.ts) and
+  // deliberately doesn't re-claim: that task was claimed at first dispatch.
+  // Claimed
+  // BEFORE the harness choice below so both harnesses are gated. Idempotent
+  // per task, so re-runs of a claimed task pass free; an exhausted quota
+  // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
+  // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
+  // BEFORE the write; here the claim is the enforcement.
+  await claimTaskExecution(ctx, task);
+
   // Sandbox-hosted claude-code takes the task when the org opted in AND the
   // repo is unambiguous — it must be chosen before dispatch (see
   // `claude-code-task-run.ts`). Anything else runs Decopilot exactly as before,

@@ -51,6 +51,10 @@ export interface BackgroundToolSnapshot {
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
   branch: string | null;
+  /** The originating run's metadata, carried so the resumed half of a
+   *  subscription-billed task run bills the same payer instead of silently
+   *  falling back to the org's credits (billing/subsidized-runs.ts). */
+  runMetadata?: Record<string, string>;
 }
 
 export interface BackgroundToolContext extends BackgroundToolSnapshot {
@@ -231,6 +235,10 @@ function buildReactionRequest(
     models: ModelsConfig;
     nudge: string;
     harnessId: "decopilot";
+    /** The originating run's metadata — carried so a subscription-billed
+     *  task run's resumed half bills the same payer (billing/subsidized-runs)
+     *  instead of silently falling back to the org's own credits. */
+    runMetadata?: Record<string, string>;
   },
 ): ThreadGateContext["request"] {
   return {
@@ -255,6 +263,7 @@ function buildReactionRequest(
     resumedFromBackground: true,
     harnessId: opts.harnessId,
     sandboxProviderKind: "agent-sandbox",
+    runMetadata: opts.runMetadata,
   };
 }
 
@@ -635,6 +644,7 @@ async function reactStep(
         models,
         nudge: reactionNudge,
         harnessId: reaction.harnessId,
+        runMetadata: ctx.runMetadata,
       }),
       source: "background-tool",
     },

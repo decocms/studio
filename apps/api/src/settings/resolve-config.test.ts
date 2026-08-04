@@ -485,6 +485,29 @@ describe("resolveConfig reports internal API env rename", () => {
   });
 });
 
+describe("resolveConfig task quota", () => {
+  it("is dormant by default with the plan's limits", () => {
+    const { settings } = resolveConfig(flags, {});
+    expect(settings.taskQuotaEnforced).toBe(false);
+    expect(settings.freeTaskExecutions).toBe(3);
+    expect(settings.monthlyTaskExecutions).toBe(10);
+  });
+
+  it("honors overrides and rejects garbage at boot", () => {
+    const { settings } = resolveConfig(flags, {
+      STUDIO_TASK_QUOTA_ENFORCED: "true",
+      STUDIO_FREE_TASKS: "5",
+      STUDIO_MONTHLY_TASKS: "20",
+    });
+    expect(settings.taskQuotaEnforced).toBe(true);
+    expect(settings.freeTaskExecutions).toBe(5);
+    expect(settings.monthlyTaskExecutions).toBe(20);
+    expect(() => resolveConfig(flags, { STUDIO_FREE_TASKS: "many" })).toThrow(
+      "STUDIO_FREE_TASKS must be a positive integer",
+    );
+  });
+});
+
 describe("resolveConfig topup fee percent", () => {
   it("defaults to 15", () => {
     expect(resolveConfig(flags, {}).settings.topupFeePercent).toBe(15);

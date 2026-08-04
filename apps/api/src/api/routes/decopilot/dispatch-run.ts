@@ -29,6 +29,10 @@
  * hosted live path.
  */
 
+import {
+  applySubsidizedBilling,
+  resolveSubsidizedPayer,
+} from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
@@ -267,16 +271,25 @@ async function resolveSecretModelSource(
   organizationId: string,
   credentialId: string,
   modelId: string,
+  /** Subscription-billed runs (reports-task executions) swap the PAYER only:
+   *  the org's resolved model/provider run as-is on the org's subsidy key
+   *  (per-client gateway org — exact COGS attribution). Resolved ONCE per
+   *  dispatch by the caller and shared across slots; undefined leaves the
+   *  run on the org's own key. */
+  subsidyApiKey?: string,
 ): Promise<DecopilotSecretModelSource> {
   const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys.resolve(
     credentialId,
     organizationId,
   );
-  const source = createSecretModelSource({
-    providerId: keyInfo.providerId,
-    apiKey,
-    modelId,
-  });
+  const source = applySubsidizedBilling(
+    createSecretModelSource({
+      providerId: keyInfo.providerId,
+      apiKey,
+      modelId,
+    }),
+    subsidyApiKey,
+  );
 
   // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a
   // request out of the "Unknown" bucket in its dashboard/rankings); `X-Title`
@@ -899,6 +912,13 @@ async function prepareRun(
     // credentials in parallel — one resolution per configured slot, each
     // against its own credential. The harness receives serializable secret
     // sources and reconstructs SDK providers inside the hosted harness.
+    // ONE subsidy resolution per dispatch, shared by every slot below —
+    // resolving per slot would N-way race the first-use key provisioning.
+    const subsidyApiKey = await resolveSubsidizedPayer(
+      ctx,
+      input.organizationId,
+      ctx.metadata?.runMetadata,
+    );
     const resolveSlot = (slot?: ModelSelection) =>
       slot
         ? resolveSecretModelSource(
@@ -906,6 +926,7 @@ async function prepareRun(
             input.organizationId,
             slot.credentialId,
             slot.id,
+            subsidyApiKey,
           )
         : Promise.resolve(undefined);
     const [

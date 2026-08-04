@@ -1,3 +1,4 @@
+import { taskRunMetadata } from "../../billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { resolveTier } from "@/core/resolve-tier";
@@ -128,7 +129,9 @@ export async function enqueueAgentRunForTask(
       harnessId,
       sandboxProviderKind: "agent-sandbox",
       taskId: thread.id,
-      runMetadata: { taskBoardItemId: task.id },
+      // Reports tasks carry the subscription-billing stamp: their AI usage
+      // is included in the org subscription (billing/subsidized-runs.ts).
+      runMetadata: taskRunMetadata(task),
     },
   });
 
