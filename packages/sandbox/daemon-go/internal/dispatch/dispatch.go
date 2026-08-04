@@ -12,12 +12,20 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 )
 
 const tombstoneTTL = 60 * time.Second
+
+// How often a quiet dispatch writes an SSE comment. A harness buffers per turn,
+// so a long tool call or a slow model puts zero bytes on the wire for minutes;
+// Studio's fetch then dies on the transport's idle timeout and the run surfaces
+// as a bare "operation timed out" with nothing in the log to attribute it.
+// Variable only so the test can shorten it.
+var dispatchHeartbeat = 15 * time.Second
 
 type Deps struct {
 	DaemonToken      func() string
@@ -32,6 +40,13 @@ type Deps struct {
 	// falls back to a process-wide runner, so a caller that only exercises the
 	// gates does not have to build one.
 	Runner *Runner
+	// RunEnv is the tenant environment handed to the harness for one run — the
+	// model credential lives here. Read per dispatch, not at spawn, so a rotated
+	// credential takes effect on the next run instead of the next pod. Optional;
+	// nil means the harness sees only the daemon's own environment.
+	//
+	// ⚠️ SECURITY: the result holds a credential. Never log it.
+	RunEnv func() map[string]string
 	// BeforeRun prepares the workspace before the harness streams: org-fs links
 	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
 	// long and must not fail the run. Optional.
@@ -341,7 +356,11 @@ func (reg *Registry) streamHarnessRun(
 	if runner == nil {
 		runner = defaultRunner
 	}
-	body, err := runner.Stream(ctx, deps.HarnessRunnerCmd, harnessId, input)
+	var runEnv map[string]string
+	if deps.RunEnv != nil {
+		runEnv = deps.RunEnv()
+	}
+	body, err := runner.Stream(ctx, deps.HarnessRunnerCmd, harnessId, input, runEnv)
 	if err != nil {
 		// Spawn, ready-line and /run failures all land here. They are the same
 		// thing to the client as an in-process harness throw: the run produced
@@ -357,7 +376,8 @@ func (reg *Registry) streamHarnessRun(
 	defer body.Close()
 
 	sawDone := false
-	chunkCount := 0
+	var chunkCount atomic.Int64
+	defer startHeartbeat(ctx, sse, harnessId, runId, &chunkCount)()
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
@@ -378,7 +398,7 @@ func (reg *Registry) streamHarnessRun(
 			break
 		}
 		if typ == "ui-message-chunk" {
-			chunkCount++
+			chunkCount.Add(1)
 		}
 		sse.WriteEvent(event)
 	}
@@ -389,11 +409,51 @@ func (reg *Registry) streamHarnessRun(
 		if err := scanner.Err(); err != nil {
 			reason = err.Error()
 		}
-		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "err", reason)
+		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount.Load(), "err", reason)
 		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": reason})
 		return
 	}
-	slog.Info("dispatch done", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "aborted", ctx.Err() != nil)
+	slog.Info("dispatch done", "harness", harnessId, "run_id", runId, "chunks", chunkCount.Load(), "aborted", ctx.Err() != nil)
+}
+
+// startHeartbeat keeps a quiet dispatch alive and visible: an SSE comment (the
+// client's frame parser ignores anything that is not a `data:` line) plus a log
+// line naming how long the harness has produced nothing.
+//
+// The returned stop JOINS the goroutine. It has to: net/http forbids writing to
+// a ResponseWriter after the handler returns, and an async stop leaves a tick
+// racing the handler's last write.
+func startHeartbeat(
+	ctx context.Context,
+	sse *sseWriter,
+	harnessId, runId string,
+	chunks *atomic.Int64,
+) func() {
+	ctx, cancel := context.WithCancel(ctx)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(dispatchHeartbeat)
+		defer ticker.Stop()
+		startedAt := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				elapsed := int(time.Since(startedAt).Seconds())
+				if !sse.writeRaw(fmt.Sprintf(": heartbeat %ds\n\n", elapsed)) {
+					return
+				}
+				slog.Info("dispatch waiting", "harness", harnessId, "run_id", runId,
+					"elapsed_s", elapsed, "chunks", chunks.Load())
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-stopped
+	}
 }
 
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)

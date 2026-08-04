@@ -30,27 +30,11 @@ import {
   type SdkResultMessage,
 } from "./to-ui-chunks";
 
-/**
- * Name the Studio MCP server is mounted under. Tools reach the model as
- * `mcp__studio__<TOOL_NAME>`; changing this renames every tool the model has
- * learned, so treat it as wire.
- */
-const STUDIO_MCP_SERVER_NAME = "studio";
-
-/**
- * Model override. Unset means Claude Code's own default, which is the honest
- * v1 behavior: Studio's model picker selects credential-scoped ids that do not
- * map onto the slugs this SDK's endpoint expects. An env var lets ops pin a
- * model without a code change.
- */
-const MODEL_ENV = "CLAUDE_CODE_MODEL";
-
-/**
- * Explicit path to the `claude` binary. The image sets it (the CLI is installed
- * globally, in a different node_modules tree than the SDK), so the SDK never
- * has to guess where its executable lives.
- */
-const EXECUTABLE_ENV = "CLAUDE_CODE_PATH";
+const ENVS = {
+  STUDIO_MCP_SERVER_NAME: "studio",
+  MODEL_ENV: "CLAUDE_CODE_MODEL",
+  EXECUTABLE_ENV: "CLAUDE_CODE_PATH",
+};
 
 /** Extract the prompt text from Studio's opaque `userMessage` wire object. */
 export function promptFromUserMessage(userMessage: unknown): string {
@@ -71,20 +55,43 @@ export function promptFromUserMessage(userMessage: unknown): string {
   return typeof content === "string" ? content : "";
 }
 
+/**
+ * This process's environment merged with the run's, for the CLI the SDK spawns.
+ *
+ * The daemon spawns this runner once and reuses it across runs, so the model
+ * credential arrives per run on the wire rather than in this process's env —
+ * which is why it has to be merged in here. `Options.env` REPLACES the
+ * subprocess environment rather than merging, so the inherited half (PATH,
+ * HOME, the CLI's own config) has to be carried explicitly.
+ */
+function runEnvironment(
+  runEnv: Record<string, string> | undefined,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return Object.assign(merged, runEnv);
+}
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
   sessionId: string;
   resume: boolean;
   abortController: AbortController;
+  /** The run's tenant env (model credential). Wins over this process's. */
+  runEnv?: Record<string, string>;
 }): Options {
   const { input, sessionId, resume } = args;
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
-  const model = process.env[MODEL_ENV];
-  const executable = process.env[EXECUTABLE_ENV];
+  const env = runEnvironment(args.runEnv);
+  const model = env[ENVS.MODEL_ENV];
+  const executable = env[ENVS.EXECUTABLE_ENV];
   return {
     abortController: args.abortController,
+    env,
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     // The pod is the isolation boundary and no approval UI exists upstream.
@@ -104,7 +111,7 @@ export function buildOptions(args: {
     ...(input.mcp.url
       ? {
           mcpServers: {
-            [STUDIO_MCP_SERVER_NAME]: {
+            [ENVS.STUDIO_MCP_SERVER_NAME]: {
               type: "http" as const,
               url: input.mcp.url,
               headers: input.mcp.headers,
@@ -128,6 +135,7 @@ function uiEvent(chunk: unknown): DispatchSSEEvent {
 export async function* runClaudeCode(
   input: HarnessStreamInputWire,
   signal: AbortSignal,
+  runEnv?: Record<string, string>,
 ): AsyncGenerator<DispatchSSEEvent> {
   const sessionId = sessionIdForThread(input.threadId);
   const cwd = input.workspace.cwd ?? undefined;
@@ -155,10 +163,35 @@ export async function* runClaudeCode(
         sessionId,
         resume: existing !== undefined,
         abortController,
+        runEnv,
       }),
     });
 
+    const startedAt = Date.now();
     for await (const message of stream) {
+      // Every SDK message, with the seconds it took to arrive. Without this a
+      // run stalled on the model, on a tool, or on MCP looks exactly like a run
+      // that is working — both are silence in the pod log.
+      console.error(
+        `[claude-code] sdk ${message.type}${
+          "subtype" in message && message.subtype ? `/${message.subtype}` : ""
+        } +${Math.round((Date.now() - startedAt) / 1000)}s`,
+      );
+      // A failed MCP connection is not an error the SDK raises — the tools just
+      // aren't in the model's list, and the run reads as "the agent ignored its
+      // instructions". The init message is the only place that distinguishes
+      // the two, so log it: stderr reaches the daemon's stdout (pod logs).
+      if (message.type === "system" && message.subtype === "init") {
+        console.error(
+          `[claude-code] mcp: ${
+            message.mcp_servers
+              .map((server) => `${server.name}=${server.status}`)
+              .join(" ") || "none configured"
+          } | studio tools: ${
+            message.tools.filter((tool) => tool.startsWith("mcp__")).length
+          }`,
+        );
+      }
       // First Anthropic message id of the turn becomes Studio's assistant
       // message id: stable if the same turn is delivered twice.
       if (!messageId && message.type === "assistant") {

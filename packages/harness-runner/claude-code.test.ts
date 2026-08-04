@@ -120,6 +120,38 @@ describe("buildOptions", () => {
     expect(resumed.sessionId).toBeUndefined();
   });
 
+  test("hands the run's credential to the CLI, alongside the inherited env", () => {
+    const opts = buildOptions({
+      input: input(),
+      sessionId: "sid",
+      resume: false,
+      abortController: new AbortController(),
+      runEnv: { ANTHROPIC_API_KEY: "sk-run" },
+    });
+    // Without this the SDK spawns the CLI with no credential at all, which
+    // surfaces as "Not logged in · Please run /login".
+    expect(opts.env?.ANTHROPIC_API_KEY).toBe("sk-run");
+    // `Options.env` REPLACES the subprocess env, so PATH has to survive.
+    expect(opts.env?.PATH).toBe(process.env.PATH);
+  });
+
+  test("the run's env wins over this process's", () => {
+    process.env.CLAUDE_CODE_MODEL = "from-process";
+    try {
+      expect(options().model).toBe("from-process");
+      const opts = buildOptions({
+        input: input(),
+        sessionId: "sid",
+        resume: false,
+        abortController: new AbortController(),
+        runEnv: { CLAUDE_CODE_MODEL: "from-run" },
+      });
+      expect(opts.model).toBe("from-run");
+    } finally {
+      delete process.env.CLAUDE_CODE_MODEL;
+    }
+  });
+
   test("mounts the run's Studio MCP endpoint with its headers", () => {
     const opts = options({
       mcp: {

@@ -122,6 +122,22 @@ COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 RUN chmod +x /mnt/skills/public/_bin/* \
   && ln -s /mnt/skills/public/_bin/* /usr/local/bin/
 
+# `gh`, so an agent can open the pull request its task prompt asks for. Pushing
+# already works off the credentialed `origin` git clone stored; `gh` is the half
+# that was missing, and the daemon hands it GH_TOKEN per run (see
+# daemon-go/main.go RunEnv). From the release tarball rather than the apt repo:
+# one layer, no extra keyring, and the version is pinned like every other tool
+# here. `dpkg --print-architecture` matches gh's asset naming (amd64/arm64), so
+# each leg of the multi-arch build takes its own.
+ARG GH_CLI_VERSION=2.97.0
+RUN arch="$(dpkg --print-architecture)" \
+  && curl -fsSL --retry 3 \
+       "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${arch}.tar.gz" \
+     | tar -xz -C /tmp \
+  && mv "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
+  && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}" \
+  && gh --version
+
 # The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
 # CLI it drives. The daemon spawns the runner over loopback HTTP — see
 # daemon-go/internal/dispatch/runner.go and packages/harness-runner/README.md.

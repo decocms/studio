@@ -108,6 +108,15 @@ describe("harness-runner wire", () => {
     expect(parsed.at(-1)).toEqual({ type: "done" });
   });
 
+  // Bun writes the response headers on the first enqueue, so the stream opens
+  // with a blank line the daemon's reader skips. Without it, a turn-buffered
+  // harness that thinks for 30s trips the daemon's ResponseHeaderTimeout and the
+  // run dies as "harness_crashed".
+  test("opens the stream immediately, before the harness emits anything", async () => {
+    const res = await post({ harnessId: "codex", input: {} });
+    expect(await res.text()).toStartWith("\n");
+  });
+
   test("malformed JSON is bad_input, terminated by done", async () => {
     const res = await post("{not json");
     const parsed = await events(res);

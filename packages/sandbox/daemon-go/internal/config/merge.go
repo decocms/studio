@@ -8,9 +8,14 @@ func DeepMerge(current *TenantConfig, patch *Patch) *TenantConfig {
 	if base == nil {
 		base = &TenantConfig{}
 	}
+	cloneOnly := base.CloneOnly
+	if patch.CloneOnly != nil {
+		cloneOnly = patch.CloneOnly
+	}
 	out := &TenantConfig{
 		Git:         mergeGit(base.Git, patch.Git),
 		Operator:    mergeOperator(base.Operator, patch.Operator),
+		CloneOnly:   cloneOnly,
 		Application: mergeApplication(base.Application, patch.Application),
 		Env:         mergeEnv(base.Env, patch),
 	}

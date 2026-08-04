@@ -266,6 +266,17 @@ function describe(action: SubmitAction): string {
 
 interface ThreadConnectionOptions {
   client?: MCPClient | null;
+  /**
+   * Skip the per-thread SSE and render from persisted parts only.
+   *
+   * A sandbox-hosted harness (`claude-code`) is a batch job: it runs its loop in
+   * the pod and flushes whole turns on the SDK's `result`, so there is no
+   * token-by-token stream to follow. Holding an SSE open per thread to watch for
+   * one terminal write buys nothing — the org-level `/watch` already reports the
+   * thread's status change, and the transcript comes from
+   * COLLECTION_THREAD_MESSAGES_LIST like any other page load.
+   */
+  batch?: boolean;
 }
 
 export class ThreadConnection {
@@ -303,6 +314,8 @@ export class ThreadConnection {
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
+  /** See `ThreadConnectionOptions.batch` — no SSE, persisted parts only. */
+  private readonly batch: boolean;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
   /**
@@ -331,6 +344,7 @@ export class ThreadConnection {
   ) {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
+    this.batch = opts.batch ?? false;
     this.ready = new Promise<void>((res) => {
       this.resolveReady = res;
     });
@@ -471,6 +485,13 @@ export class ThreadConnection {
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
+    // Batch threads have no stream to follow: load the transcript and stop.
+    // `loadInitialPage` resolves `ready` on every terminal path, so the chat
+    // unsuspends exactly as it does for a streaming thread.
+    if (this.batch) {
+      await this.loadInitialPage();
+      return;
+    }
     // Initial-page fetch and SSE loop run concurrently. Chunks arriving
     // before the page resolves are queued via `chunkBuffer` and drained
     // through `handleChunk` after the page lands.

@@ -35,16 +35,33 @@ type Application struct {
 }
 
 type TenantConfig struct {
-	Git         *GitConfig        `json:"git,omitempty"`
-	Operator    *Operator         `json:"operator,omitempty"`
+	Git      *GitConfig `json:"git,omitempty"`
+	Operator *Operator  `json:"operator,omitempty"`
+	// CloneOnly: prepare the checkout and stop — no dependency install, no dev
+	// server. For a consumer that only needs the files (the sandbox-hosted
+	// harness dispatch path), where an install is pure latency competing with
+	// the run for the pod's CPU.
+	//
+	// It has to be explicit. Omitting `application` does NOT mean "no app":
+	// `fillApplicationDefaults` deliberately autodetects a package manager from
+	// the lockfile so a tenant who configured nothing still gets a dev server,
+	// and that autodetect is what silently reinstated the install this flag
+	// exists to skip.
+	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
 	Application *Application      `json:"application,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+}
+
+// IsCloneOnly reports whether this sandbox should stop after the checkout.
+func (c *TenantConfig) IsCloneOnly() bool {
+	return c != nil && c.CloneOnly != nil && *c.CloneOnly
 }
 
 // Patch mirrors ConfigPatch: env values may be null (per-key delete).
 type Patch struct {
 	Git         *GitConfig
 	Operator    *Operator
+	CloneOnly   *bool
 	Application *Application
 	Env         map[string]*string
 	HasEnv      bool
@@ -59,6 +76,11 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	}
 	if v, ok := raw["operator"]; ok && !isNull(v) {
 		if err := json.Unmarshal(v, &p.Operator); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["cloneOnly"]; ok && !isNull(v) {
+		if err := json.Unmarshal(v, &p.CloneOnly); err != nil {
 			return nil, err
 		}
 	}

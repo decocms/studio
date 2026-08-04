@@ -8,7 +8,7 @@ package dispatch
 //	        per-spawn HARNESS_RUNNER_TOKEN
 //	ready   the runner prints `HARNESS_RUNNER_READY {"port":N}` on stdout
 //	run     POST http://127.0.0.1:N/run with that bearer, body
-//	        {harnessId, input}; answered 200 application/x-ndjson, one
+//	        {harnessId, input, env}; answered 200 application/x-ndjson, one
 //	        DispatchSSEEvent per line, always terminated by {"type":"done"}
 //	cancel  abort the request — the runner tears its CLI down with it
 //
@@ -75,19 +75,30 @@ func NewRunner() *Runner {
 
 // Stream starts a run and returns its NDJSON body. Cancelling ctx aborts the
 // request, which is how the runner learns to tear the harness down.
+// env is this run's tenant environment (the model credential, above all). It
+// travels per run rather than at spawn because the runner process is shared
+// across runs: a credential baked into the spawn env would outlive the run it
+// belongs to and a later run with a rotated one would silently reuse it.
+//
+// ⚠️ SECURITY: env holds a model credential. Never log it.
 func (r *Runner) Stream(
 	ctx context.Context,
 	argv []string,
 	harnessId string,
 	input json.RawMessage,
+	env map[string]string,
 ) (io.ReadCloser, error) {
 	handle, err := r.ensure(argv)
 	if err != nil {
 		return nil, err
 	}
-	// Matches protocol.ts: the runner reads harnessId + input and nothing else.
+	// Matches main.ts: the runner reads harnessId + input + env and nothing else.
 	// `signal` is not serializable and is reconstructed there from the request.
-	body, err := json.Marshal(map[string]any{"harnessId": harnessId, "input": input})
+	payload := map[string]any{"harnessId": harnessId, "input": input}
+	if len(env) > 0 {
+		payload["env"] = env
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}

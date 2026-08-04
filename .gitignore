@@ -32,6 +32,10 @@ dist-ssr
 # Operator-local backfill mapping (org/team ids) for scripts/backfill-org-sites.ts
 mapping.json
 **/.env
+# Local env variants (.env.claude-code, .env.bak, ...) — secrets, never committed.
+.env.*
+!.env.example
+!**/.env.example
 
 # Editor directories and files
 !.vscode/extensions.json

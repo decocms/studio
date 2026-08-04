@@ -1368,6 +1368,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       repo: opts?.repo ?? null,
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
+      // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
+      // previous claim's clone-only config gets it cleared on a normal one.
+      ...(opts ? { cloneOnly: opts.cloneOnly === true } : {}),
     });
   }
 
@@ -2142,8 +2145,17 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
       })
       .catch((err: unknown) => {
+        // Log the cause chain, not just the message. A bare "TLS handshake
+        // failed" from the WebSocket layer names neither the reason nor the
+        // certificate at fault, which makes this indistinguishable from an
+        // unreachable pod — the health probe then reports "daemon did not
+        // respond" and the real cause never reaches anyone.
+        // Serialized, not passed as an object: `console.warn`'s depth limit
+        // renders a nested cause as "[Object ...]", which hides the one field
+        // that identifies the failure.
         console.warn(
           `[${LOG_LABEL}] port-forward to ${podName}:${containerPort} failed: ${errMsg(err)}`,
+          JSON.stringify(describeErrorChain(err)),
         );
         this.invalidateRecord(handle);
         cleanup();
@@ -2197,6 +2209,61 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
       unit: "ms",
     }),
   };
+}
+
+/**
+ * Flatten an error's `name`/`code`/`cause` chain into one loggable object.
+ *
+ * Bun's WebSocket surfaces TLS failures as a bare "TLS handshake failed" whose
+ * detail (`ERR_TLS_CERT_ALTNAME_INVALID`, `SELF_SIGNED_CERT_IN_CHAIN`,
+ * `ECONNRESET`, …) lives only on `cause`. Depth-capped so a self-referential
+ * chain can't spin.
+ */
+function describeErrorChain(err: unknown): Record<string, unknown> {
+  const chain: Record<string, unknown>[] = [];
+  let cur: unknown = err;
+  for (let depth = 0; depth < 5 && cur instanceof Error; depth++) {
+    const e = cur as Error & { code?: unknown; errno?: unknown };
+    chain.push({
+      name: e.name,
+      message: e.message,
+      ...(e.code !== undefined ? { code: e.code } : {}),
+      ...(e.errno !== undefined ? { errno: e.errno } : {}),
+    });
+    if (e.cause === cur) break;
+    cur = e.cause;
+  }
+  if (cur !== undefined && !(cur instanceof Error) && cur !== null) {
+    // Bun's native WebSocket rejects with a DOM `ErrorEvent`, not an `Error`.
+    // `String(event)` is "[object ErrorEvent]" — the reason lives on `.error`
+    // / `.message`, so read those before giving up.
+    const ev = cur as {
+      type?: unknown;
+      message?: unknown;
+      error?: unknown;
+      code?: unknown;
+      reason?: unknown;
+    };
+    const unwrapped =
+      ev.error instanceof Error
+        ? describeErrorChain(ev.error).chain
+        : undefined;
+    chain.push({
+      nonError: String(cur),
+      ...(typeof ev.type === "string" ? { type: ev.type } : {}),
+      ...(typeof ev.message === "string" ? { message: ev.message } : {}),
+      ...(ev.code !== undefined ? { code: ev.code } : {}),
+      ...(typeof ev.reason === "string" ? { reason: ev.reason } : {}),
+      ...(unwrapped ? { error: unwrapped } : {}),
+      // Last resort: whatever own keys the event carries, so the next run
+      // never comes back with just "[object ErrorEvent]" again.
+      ...(unwrapped === undefined && ev.error !== undefined
+        ? { rawError: String(ev.error) }
+        : {}),
+      keys: Object.keys(ev),
+    });
+  }
+  return { chain };
 }
 
 function loadDefaultKubeConfig(): KubeConfig {

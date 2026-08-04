@@ -127,3 +127,20 @@ func StripCredentials(rawUrl string) string {
 	u.User = nil
 	return u.String()
 }
+
+// TokenFromCloneUrl returns the git token baked into a clone URL, empty when it
+// carries none. Studio embeds it as the password of a
+// `https://x-access-token:<token>@host/...` URL, and `git clone` stores that on
+// `origin` — so this is the same credential the working tree already pushes
+// with, read back rather than passed a second time. Empty for an SSH or
+// anonymous URL.
+//
+// ⚠️ SECURITY: the result is a credential. Never log it.
+func TokenFromCloneUrl(rawUrl string) string {
+	u, err := url.Parse(rawUrl)
+	if err != nil || u.User == nil {
+		return ""
+	}
+	token, _ := u.User.Password()
+	return token
+}

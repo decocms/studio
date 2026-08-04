@@ -31,14 +31,37 @@ import {
   type ClaudeCodeCredential,
 } from "@/harnesses/claude-code-env";
 import type { StudioContext } from "../core/studio-context";
+import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import {
+  getThreadGithubRepo,
+  syntheticBranchToGitRef,
+} from "@/tools/sandbox/thread-repo";
+
+/**
+ * Working directory the harness runs in, as the daemon names it.
+ *
+ * The daemon rebases exactly `/repo` onto its own app root (`RebaseWorkspaceCwd`
+ * in daemon-go), so this is the one value that lands on the checkout wherever
+ * the pod puts it. Any other path — including the real `/app/repo` — is
+ * rewritten to `null`, which would run the harness in the runner's cwd instead
+ * of the repository it was asked to work in.
+ */
+const SANDBOX_REPO_CWD = "/repo";
 
 /** Harnesses this client can dispatch. Decopilot is in-process, never here. */
 const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
 
-export function harnessRunsInSandbox(harnessId: HarnessId): boolean {
-  return SANDBOX_HOSTED_HARNESSES.has(harnessId);
+/**
+ * Widened past `HarnessId` so callers holding a raw `threads.harness_id` can ask
+ * without an `as`-cast — a cast there would hide a renamed harness until
+ * runtime. A Set lookup is total over strings, so nothing is lost.
+ */
+export function harnessRunsInSandbox(
+  harnessId: string | null | undefined,
+): boolean {
+  return SANDBOX_HOSTED_HARNESSES.has(harnessId as HarnessId);
 }
 
 export class SandboxDispatchClient implements SandboxClient {
@@ -72,6 +95,34 @@ export class SandboxDispatchClient implements SandboxClient {
     return this.stream(input);
   }
 
+  /**
+   * Where the harness works, and on what.
+   *
+   * `cwd: "/repo"` is only meaningful with a repo behind it — the wire shape
+   * makes that explicit, and it is the honest thing to send: a run whose thread
+   * has no bound repo got an `ephemeral` sandbox with no checkout, so naming a
+   * working directory there would describe a directory that doesn't exist.
+   */
+  private async resolveWorkspace(
+    threadId: string,
+  ): Promise<HarnessStreamInput["workspace"]> {
+    const repo = await getThreadGithubRepo(this.ctx, threadId);
+    if (!repo) return { cwd: null };
+    return {
+      cwd: SANDBOX_REPO_CWD,
+      repo: {
+        owner: repo.owner,
+        name: repo.name,
+        connectedGithub: Boolean(repo.connectionId),
+      },
+      // The synthetic sandbox key is not a git ref; the daemon checks out its
+      // derived branch, so that is the one the harness is standing on.
+      branch: this.branch.startsWith("thread:")
+        ? syntheticBranchToGitRef(this.branch)
+        : this.branch,
+    };
+  }
+
   private async *stream(
     input: HarnessStreamInput,
   ): AsyncIterable<UIMessageChunk> {
@@ -84,6 +135,13 @@ export class SandboxDispatchClient implements SandboxClient {
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
     const modelEnv = claudeCodeEnvFromCredential(this.credential);
+    const organization = this.ctx.organization;
+    if (!organization) {
+      throw new Error(
+        `the ${this.harnessId} harness needs an organization on the context ` +
+          `to mint its MCP endpoint; this run has none`,
+      );
+    }
 
     const { provider, kind } = await resolveSandboxProvider(this.ctx, {
       userId: input.user.id,
@@ -95,6 +153,10 @@ export class SandboxDispatchClient implements SandboxClient {
         virtualMcpId: this.virtualMcpId,
         branch: this.branch,
         sandboxProviderKind: kind,
+        // This pod runs one agent loop and returns its output. Nothing here
+        // opens a preview, so the tenant's install + dev server is pure boot
+        // latency — the harness only needs the checkout.
+        cloneOnly: true,
       },
       this.ctx,
     );
@@ -105,11 +167,27 @@ export class SandboxDispatchClient implements SandboxClient {
       provider,
       handle: sandbox.sandboxHandle,
       harnessId: this.harnessId,
+      input: {
+        ...input,
+        // Hosted Decopilot's in-process client ignores `mcp` and gets the
+        // sentinel `{url: "", ...}`. This harness is a real MCP client in
+        // another process, so it needs a real endpoint — without one the
+        // daemon rejects the envelope outright, and the org's tools (moving
+        // the task on the board, for one) would be unreachable anyway.
+        mcp: await mintMcpEndpoint(
+          this.ctx,
+          this.virtualMcpId,
+          organization,
+          `${this.harnessId}-run`,
+        ),
+        // Hosted Decopilot mounts no working directory; this harness edits the
+        // checkout the daemon prepared.
+        workspace: await this.resolveWorkspace(input.threadId),
+      },
       // The daemon keys cancellation (`DELETE /_sandbox/runs/:runId`) by this
       // id, and Studio's run identity is the thread — same key the rest of the
       // hosted pipeline uses for the run.
       runId: input.threadId,
-      input,
       signal: input.signal,
     });
   }
@@ -181,7 +259,33 @@ async function* dispatchToDaemon(args: {
       `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`,
     );
   }
-  yield* readDispatchSSE(res.body, args.signal);
+  // Attribute the end of the stream. A transport-level failure here arrives as
+  // a bare "operation timed out" with no run, no handle and no duration on it,
+  // which is indistinguishable from a model error until you go read pod logs.
+  const startedAt = Date.now();
+  let chunks = 0;
+  try {
+    for await (const chunk of readDispatchSSE(res.body, args.signal)) {
+      chunks++;
+      yield chunk;
+    }
+  } catch (err) {
+    console.error("[sandbox-dispatch] stream failed", {
+      runId: args.runId,
+      handle: args.handle,
+      chunks,
+      elapsedMs: Date.now() - startedAt,
+      aborted: args.signal?.aborted ?? false,
+      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    });
+    throw err;
+  }
+  console.log("[sandbox-dispatch] stream done", {
+    runId: args.runId,
+    handle: args.handle,
+    chunks,
+    elapsedMs: Date.now() - startedAt,
+  });
 }
 
 /**

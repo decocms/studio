@@ -18,6 +18,7 @@ import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
 import {
@@ -354,6 +355,32 @@ function assertHostedRuntime(
   sandboxProviderKind: string | null | undefined,
 ): void {
   normalizeHostedSandboxProviderKind(harnessId, sandboxProviderKind);
+}
+
+/**
+ * The queue list for a thread that ALREADY ran on a sandbox-hosted harness.
+ *
+ * Wider than `assertHostedRuntime` on purpose: a `claude-code` run happens in
+ * the sandbox pod, so its queue is hosted data this API owns and the web chat
+ * reads it on every thread mount. Gating it like a dispatch 409'd that read.
+ *
+ * Deliberately NOT used on the STREAM routes. A sandbox-hosted harness is a
+ * batch job — the web opens no SSE for it (see `isBatchHarness`) — so leaving
+ * `/stream` reachable would only let a regression quietly hold one SSE per
+ * claude-code thread. The 409 there is the louder failure.
+ *
+ * Also NOT used on any write path: `assertHostedRuntime` (messages POST) and
+ * `assertPersistedHostedRuntime` (cancel/flip/queue-cancel) stay Decopilot-only.
+ */
+export function assertReadableHostedRuntime(
+  harnessId: string | null | undefined,
+  sandboxProviderKind: string | null | undefined,
+): void {
+  if (harnessId === "claude-code") {
+    assertHostedSandboxProvider(sandboxProviderKind);
+    return;
+  }
+  assertHostedRuntime(harnessId, sandboxProviderKind);
 }
 
 /**
@@ -964,7 +991,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/queue/:threadId", async (c) => {
     const { ctx, taskId, thread } = await validateThreadOwnership(c);
-    assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+    assertReadableHostedRuntime(
+      thread.harness_id,
+      thread.sandbox_provider_kind,
+    );
     const items = await listThreadGateQueue(taskId);
     if (items.length === 0) return c.json({ items: [] });
     // Hydrate tray display text + attachment presence from the persisted
@@ -1070,7 +1100,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
-      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+      assertReadableHostedRuntime(
+        thread.harness_id,
+        thread.sandbox_provider_kind,
+      );
+      // A batch harness has no live tail: it runs in the pod and writes whole
+      // turns. Answer 204 — the same "nothing to tail" reply this route already
+      // gives below — instead of holding an SSE open or 409ing. The decision
+      // has to be made HERE to be race-free: the client cannot always know the
+      // harness before it opens this, because the thread row may still be
+      // loading. `isBatchHarness` in the web store skips the request whenever
+      // the row IS known; this is the backstop for when it isn't.
+      if (harnessRunsInSandbox(thread.harness_id)) {
+        return c.body(null, 204);
+      }
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy

@@ -364,6 +364,14 @@ func (o *Orchestrator) stepInstallInner() bool {
 	if cfg == nil {
 		return false
 	}
+	// Clone-only: the consumer wants the checkout, nothing else. Skipped here
+	// rather than by omitting `application`, because fillApplicationDefaults
+	// autodetects a package manager from the lockfile and would put the install
+	// back — silently, and in parallel with whatever is using the checkout.
+	if cfg.IsCloneOnly() {
+		o.chunk("[orchestrator] clone-only: skipping dependency install\r\n")
+		return true
+	}
 	if o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.broadcastDiscoveredScripts(cfg)
 		return true
@@ -455,6 +463,11 @@ func (o *Orchestrator) stepInstallInner() bool {
 func (o *Orchestrator) stepStartInner() startOutcome {
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
+		return startSkipped
+	}
+	// No install happened, so there is nothing to start — and the fingerprint
+	// check below would report it as a mismatch, which reads like a failure.
+	if cfg.IsCloneOnly() {
 		return startSkipped
 	}
 	if status := o.deps.GetStatus(); status.State != "running" {

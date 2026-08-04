@@ -58,8 +58,9 @@ func serveFakeRunner(mode string) {
 			return
 		}
 		var body struct {
-			HarnessId string         `json:"harnessId"`
-			Input     map[string]any `json:"input"`
+			HarnessId string            `json:"harnessId"`
+			Input     map[string]any    `json:"input"`
+			Env       map[string]string `json:"env"`
 		}
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			http.Error(w, `{"error":"bad_json"}`, 400)
@@ -80,6 +81,9 @@ func serveFakeRunner(mode string) {
 		emit(map[string]any{"type": "ui-message-chunk", "chunk": map[string]any{
 			"pid": os.Getpid(), "harnessId": body.HarnessId,
 			"threadId": body.Input["threadId"],
+			// Echoed so a test can prove the run env crossed the wire. A real
+			// runner never emits it — this one carries no real credential.
+			"env": body.Env,
 		}})
 		switch mode {
 		case fakeRunnerCrash:
@@ -118,7 +122,7 @@ func runViaRunner(t *testing.T, r *Runner, mode string, ctx context.Context) ([]
 	t.Helper()
 	t.Setenv(fakeRunnerEnv, mode)
 	body, err := r.Stream(ctx, fakeRunnerArgv(), "claude-code",
-		json.RawMessage(`{"threadId":"t-1"}`))
+		json.RawMessage(`{"threadId":"t-1"}`), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +138,46 @@ func runViaRunner(t *testing.T, r *Runner, mode string, ctx context.Context) ([]
 		if event["type"] == "done" {
 			return events, nil
 		}
+	}
+}
+
+// The run env has to travel per run, not in the runner's spawn environment: the
+// runner process is shared across runs, so a credential put there at spawn time
+// would still be in effect for a later run that rotated it.
+func TestRunnerForwardsTheRunEnvPerRun(t *testing.T) {
+	r := NewRunner()
+	t.Cleanup(r.Shutdown)
+	t.Setenv(fakeRunnerEnv, fakeRunnerOK)
+
+	envOf := func(key string) any {
+		t.Helper()
+		body, err := r.Stream(context.Background(), fakeRunnerArgv(), "claude-code",
+			json.RawMessage(`{"threadId":"t-1"}`), map[string]string{"ANTHROPIC_API_KEY": key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer body.Close()
+		var event map[string]any
+		if err := json.NewDecoder(body).Decode(&event); err != nil {
+			t.Fatal(err)
+		}
+		chunk, ok := event["chunk"].(map[string]any)
+		if !ok {
+			t.Fatalf("first event carried no chunk: %v", event)
+		}
+		env, ok := chunk["env"].(map[string]any)
+		if !ok {
+			t.Fatalf("the run env never reached the runner: %v", chunk)
+		}
+		return env["ANTHROPIC_API_KEY"]
+	}
+
+	if got := envOf("first-key"); got != "first-key" {
+		t.Errorf("run env not forwarded: got %v", got)
+	}
+	// Same runner process, rotated credential: the second run must see the new one.
+	if got := envOf("rotated-key"); got != "rotated-key" {
+		t.Errorf("the reused runner served a stale credential: got %v", got)
 	}
 }
 
@@ -223,7 +267,7 @@ func TestRunnerCancellationEndsTheRun(t *testing.T) {
 
 	t.Setenv(fakeRunnerEnv, fakeRunnerSlow)
 	body, err := r.Stream(ctx, fakeRunnerArgv(), "claude-code",
-		json.RawMessage(`{"threadId":"t-1"}`))
+		json.RawMessage(`{"threadId":"t-1"}`), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +312,7 @@ func TestRunnerFailsWhenReadyNeverArrives(t *testing.T) {
 
 	started := time.Now()
 	_, err := r.Stream(context.Background(), fakeRunnerArgv(), "claude-code",
-		json.RawMessage(`{"threadId":"t-1"}`))
+		json.RawMessage(`{"threadId":"t-1"}`), nil)
 	if err == nil {
 		t.Fatal("a runner that never reported ready was treated as usable")
 	}
@@ -287,7 +331,7 @@ func TestRunnerRejectsAMissingBinary(t *testing.T) {
 	t.Cleanup(r.Shutdown)
 	_, err := r.Stream(context.Background(),
 		[]string{"/nonexistent/harness-runner-" + strconv.Itoa(os.Getpid())},
-		"claude-code", json.RawMessage(`{"threadId":"t-1"}`))
+		"claude-code", json.RawMessage(`{"threadId":"t-1"}`), nil)
 	if err == nil {
 		t.Fatal("spawning a missing runner binary reported success")
 	}

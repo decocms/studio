@@ -1,10 +1,39 @@
 package dispatch
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// A run that produces nothing must still put bytes on the wire — that silence is
+// what kills Studio's fetch mid-run. Comments, so the client's frame parser
+// (which only reads `data:` lines) ignores them.
+func TestHeartbeatWritesCommentsWhileQuiet(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sse := newSseWriter(rec)
+	var chunks atomic.Int64
+
+	restore := dispatchHeartbeat
+	dispatchHeartbeat = 5 * time.Millisecond
+	defer func() { dispatchHeartbeat = restore }()
+
+	stop := startHeartbeat(context.Background(), sse, "claude-code", "run-1", &chunks)
+	time.Sleep(60 * time.Millisecond)
+	stop()
+
+	body := rec.Body.String()
+	if !strings.Contains(body, ": heartbeat ") {
+		t.Fatalf("expected heartbeat comments, got %q", body)
+	}
+	if strings.Contains(body, "data:") {
+		t.Fatalf("heartbeat must not emit data frames, got %q", body)
+	}
+}
 
 // Once the consumer is gone, further writes must be swallowed — never a panic,
 // never a bogus harness_crashed.

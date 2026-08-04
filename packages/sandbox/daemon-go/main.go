@@ -672,6 +672,30 @@ func main() {
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
 		Runner:           d.harnessRunner,
+		// The tenant env Studio pushed on the config channel — the harness's model
+		// credential lives there, and the runner subprocess does not inherit it.
+		// Plus GH_TOKEN, so the harness can open the pull request its prompt asks
+		// for: `git push` already works off the credentialed `origin`, but `gh`
+		// reads a token from the environment and there is none in the pod.
+		//
+		// Read back from the clone URL rather than pushed separately, so it cannot
+		// drift from what the working tree pushes with, and it grants the harness
+		// nothing it could not already read out of `.git/config`.
+		RunEnv: func() map[string]string {
+			cfg := d.store.Read()
+			if cfg == nil {
+				return nil
+			}
+			env := make(map[string]string, len(cfg.Env)+1)
+			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
+				env["GH_TOKEN"] = token
+			}
+			// Tenant env last: an explicit GH_TOKEN from Studio wins.
+			for k, v := range cfg.Env {
+				env[k] = v
+			}
+			return env
+		},
 		// Point `org/output` at this run's thread subtree, and refresh `.deco/tools/`
 		// from its MCP endpoint, before the harness can touch either. Degrades to no
 		// link; never blocks the run.

@@ -71,6 +71,16 @@ export interface Application {
 export interface TenantConfig {
   readonly git?: GitConfig;
   readonly operator?: OperatorIdentity;
+  /**
+   * Prepare the checkout and stop: no dependency install, no dev server. For a
+   * consumer that only needs the files (sandbox-hosted harness dispatch), where
+   * an install is pure latency competing with the run for the pod's CPU.
+   *
+   * Required because omitting `application` does NOT mean "no app" — the daemon
+   * autodetects a package manager from the lockfile so a tenant who configured
+   * nothing still gets a dev server.
+   */
+  readonly cloneOnly?: boolean;
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
 }

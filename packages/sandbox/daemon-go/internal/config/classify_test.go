@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -185,5 +186,66 @@ func TestDeepMergeNestedKeepsSiblings(t *testing.T) {
 	}
 	if merged.Git.Identity == nil || *merged.Git.Identity.UserName != "u" {
 		t.Fatalf("identity not merged")
+	}
+}
+
+// The harness's GH_TOKEN is read back out of the clone URL, so this is the only
+// thing standing between an agent and "gh: not authenticated".
+func TestTokenFromCloneUrl(t *testing.T) {
+	cases := []struct{ name, url, want string }{
+		{"studio's credentialed https url",
+			"https://x-access-token:ghs_abc123@github.com/acme/site.git", "ghs_abc123"},
+		{"anonymous https url carries none",
+			"https://github.com/acme/site.git", ""},
+		{"ssh url carries none",
+			"git@github.com:acme/site.git", ""},
+		{"user with no password carries none",
+			"https://someone@github.com/acme/site.git", ""},
+		{"unparseable url", "://nope", ""},
+		{"absent", "", ""},
+	}
+	for _, c := range cases {
+		if got := TokenFromCloneUrl(c.url); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// cloneOnly has to be an explicit wire field, and it has to be able to go back
+// to false: a warm-pool pod reused for a normal (dev-server) claim inherits the
+// previous claim's config, so a set-only flag would strip its dev server.
+func TestCloneOnlyPatchRoundTrip(t *testing.T) {
+	parse := func(body string) *Patch {
+		t.Helper()
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(body), &raw); err != nil {
+			t.Fatal(err)
+		}
+		p, err := ParsePatch(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	on := DeepMerge(nil, parse(`{"cloneOnly":true}`))
+	if !on.IsCloneOnly() {
+		t.Fatal("cloneOnly:true did not survive the patch")
+	}
+
+	// An unrelated patch must not clear it.
+	kept := DeepMerge(on, parse(`{"env":{"A":"1"}}`))
+	if !kept.IsCloneOnly() {
+		t.Error("an unrelated patch cleared cloneOnly")
+	}
+
+	off := DeepMerge(kept, parse(`{"cloneOnly":false}`))
+	if off.IsCloneOnly() {
+		t.Error("cloneOnly:false did not turn the flag back off")
+	}
+
+	// Absent is off, not an error — every pre-existing sandbox config.
+	if DeepMerge(nil, parse(`{"env":{"A":"1"}}`)).IsCloneOnly() {
+		t.Error("a config without cloneOnly reported clone-only")
 	}
 }

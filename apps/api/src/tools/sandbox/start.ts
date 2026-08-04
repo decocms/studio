@@ -227,6 +227,16 @@ export async function ensureSandbox(
     virtualMcpId: string;
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
+    /**
+     * Clone the repo but skip the application workload (install + dev server).
+     *
+     * For a sandbox-hosted harness the pod exists to run one agent loop and
+     * hand back its final output — nothing reads a preview URL, so booting the
+     * tenant's dev server only adds install time and a port to babysit. Drops
+     * the `application` block from the daemon config; `git` still applies, so
+     * the checkout the harness needs is there.
+     */
+    cloneOnly?: boolean;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -313,6 +323,7 @@ export async function ensureSandbox(
     existing: null,
     providerKind,
     runner,
+    ...(input.cloneOnly ? { cloneOnly: true } : {}),
   });
   return entry;
 }
@@ -334,6 +345,8 @@ type StartParams = {
   existing: SandboxRecord | null;
   providerKind: SandboxProviderKind;
   runner: SandboxProvider;
+  /** See `ensureSandbox`'s `cloneOnly`: checkout without install + dev server. */
+  cloneOnly?: boolean;
 };
 
 async function provisionSandbox(
@@ -350,6 +363,7 @@ async function provisionSandbox(
     githubRepo,
     existing,
     runner,
+    cloneOnly,
   } = params;
 
   let { runtime, packageManager, port, packageManagerPath } =
@@ -489,7 +503,7 @@ async function provisionSandbox(
   // multiple sandboxes on the user's machine share the host network and
   // can't all bind 3000).
   const workload: Workload | undefined =
-    runtime && packageManager
+    runtime && packageManager && !cloneOnly
       ? {
           runtime,
           packageManager,
@@ -565,6 +579,11 @@ async function provisionSandbox(
       branch,
       repo: repoOpts,
       workload,
+      // Explicit, not implied by the absent `workload`: the daemon autodetects a
+      // package manager from the lockfile when the config names none, so an
+      // omitted workload still installed (404 packages, competing with the run
+      // that only wanted the checkout).
+      cloneOnly: cloneOnly === true,
       tenant: {
         orgId,
         // The sandbox's owner, so the pod's `user_id` label/metric matches the

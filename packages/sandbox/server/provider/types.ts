@@ -91,6 +91,13 @@ export interface EnsureOptions {
   /** Image override. Non-image runners MUST ignore. */
   image?: string;
   workload?: Workload;
+  /**
+   * Prepare the checkout only — no dependency install, no dev server. Must be
+   * explicit and travel to the daemon: omitting `workload` is NOT enough,
+   * because the daemon autodetects a package manager from the lockfile when the
+   * config names none, and then installs.
+   */
+  cloneOnly?: boolean;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**
