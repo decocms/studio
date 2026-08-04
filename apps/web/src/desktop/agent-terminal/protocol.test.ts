@@ -4,6 +4,7 @@ import {
   chunkTerminalInput,
   fromTerminalHarnessId,
   normalizeTerminalDimensions,
+  parseTerminalBinaryServerFrame,
   parseTerminalServerFrame,
   shouldResetTerminalReplay,
   terminalPromptFitsWire,
@@ -14,6 +15,42 @@ import {
 } from "./protocol";
 
 describe("native terminal protocol", () => {
+  test("parses negotiated binary live, replay, and reset output", () => {
+    const binaryFrame = (tag: number, sequence: number, data: number[]) => {
+      const raw = new ArrayBuffer(9 + data.length);
+      const view = new DataView(raw);
+      view.setUint8(0, tag);
+      view.setUint32(1, Math.floor(sequence / 2 ** 32));
+      view.setUint32(5, sequence);
+      new Uint8Array(raw, 9).set(data);
+      return raw;
+    };
+
+    expect(
+      parseTerminalBinaryServerFrame(binaryFrame(1, 12, [255, 155])),
+    ).toEqual({
+      type: "output",
+      seq: 12,
+      data: new Uint8Array([255, 155]),
+      replay: false,
+    });
+    expect(
+      parseTerminalBinaryServerFrame(binaryFrame(2, 2 ** 32 + 3, [1])),
+    ).toEqual({
+      type: "output",
+      seq: 2 ** 32 + 3,
+      data: new Uint8Array([1]),
+      replay: true,
+    });
+    expect(parseTerminalBinaryServerFrame(binaryFrame(3, 9, []))).toEqual({
+      type: "reset",
+      seq: 9,
+      data: new Uint8Array(),
+    });
+    expect(parseTerminalBinaryServerFrame(binaryFrame(255, 0, []))).toBeNull();
+    expect(parseTerminalBinaryServerFrame(new ArrayBuffer(8))).toBeNull();
+  });
+
   test("parses camelCase and snake_case lifecycle frames", () => {
     expect(
       parseTerminalServerFrame(

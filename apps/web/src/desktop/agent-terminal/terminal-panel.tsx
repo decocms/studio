@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { NativeAgentEmptyState } from "@/components/chat/native-agent-empty-state";
 import { localHarnessBrand } from "@/components/chat/agent-icons";
 import { useChatTask } from "@/components/chat/context";
@@ -17,10 +17,9 @@ import {
   installTerminalCapabilityReplyHandlers,
 } from "./terminal-capability-replies";
 import { toTerminalHarnessId } from "./protocol";
-import type {
-  TerminalControllerOutputFrame,
-  TerminalControllerSnapshot,
-} from "./terminal-controller";
+import type { TerminalControllerSnapshot } from "./terminal-controller";
+import { TerminalOutputScheduler } from "./terminal-output-scheduler";
+import { attachTerminalTuiWheelNormalization } from "./terminal-tui-wheel";
 
 const TERMINAL_REVEAL_FALLBACK_MS = 1_750;
 
@@ -225,6 +224,8 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
         activate: activateTerminalLink,
         allowNonHttpProtocols: true,
       },
+      fastScrollSensitivity: 5,
+      scrollSensitivity: 1.15,
       scrollback: 10_000,
       theme: createTerminalTheme(),
     });
@@ -233,6 +234,14 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
     terminal.open(element);
+    attachTerminalTuiWheelNormalization(terminal);
+    try {
+      const webglAddon = new WebglAddon();
+      terminal.loadAddon(webglAddon);
+      webglAddon.onContextLoss(() => webglAddon.dispose());
+    } catch {
+      // xterm keeps its DOM renderer when WebGL2 is unavailable.
+    }
     terminal.textarea?.setAttribute("aria-label", terminalLabel);
     const syncTerminalTheme = () => {
       const theme = createTerminalTheme();
@@ -259,14 +268,12 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
 
     let disposed = false;
     let writing = false;
-    let repliesAllowed = false;
     let receivedOutput = false;
     let revealed = false;
+    let restoreUntilSeq = 0;
+    let waitingForRestorePaint = false;
+    let restorePaintFrame: number | null = null;
     let revealFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const outputQueue: Array<{
-      frame: TerminalControllerOutputFrame;
-      acknowledgeCapabilityReplies: () => void;
-    }> = [];
     const parserCapabilityQueryAuthority =
       createTerminalParserCapabilityQueryAuthority();
     const capabilityHandlers = installTerminalCapabilityReplyHandlers({
@@ -284,6 +291,11 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       clearTimeout(revealFallbackTimer);
       revealFallbackTimer = null;
     };
+    const cancelRestorePaint = () => {
+      if (restorePaintFrame === null) return;
+      cancelAnimationFrame(restorePaintFrame);
+      restorePaintFrame = null;
+    };
     const terminalUnavailable = () => {
       const current = controller.snapshot.get();
       return (
@@ -293,10 +305,16 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       );
     };
     const revealTerminal = (fallbackElapsed = false) => {
-      const visibleContent = hasVisibleTerminalContent(terminal);
       if (
         disposed ||
         revealed ||
+        restoreUntilSeq > 0 ||
+        waitingForRestorePaint
+      ) {
+        return;
+      }
+      const visibleContent = hasVisibleTerminalContent(terminal);
+      if (
         !shouldRevealTerminal(
           receivedOutput,
           visibleContent,
@@ -311,6 +329,20 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       terminal.options.cursorBlink = !readOnly;
       setIsTerminalRevealed(true);
       if (!readOnly) terminal.focus();
+    };
+    const revealAfterRestorePaint = () => {
+      cancelRestorePaint();
+      waitingForRestorePaint = true;
+      terminal.scrollToBottom();
+      terminal.refresh(0, terminal.rows - 1);
+      restorePaintFrame = requestAnimationFrame(() => {
+        restorePaintFrame = requestAnimationFrame(() => {
+          restorePaintFrame = null;
+          waitingForRestorePaint = false;
+          revealTerminal();
+          scheduleRevealFallback();
+        });
+      });
     };
     const scheduleRevealFallback = () => {
       if (disposed || revealed || revealFallbackTimer !== null) return;
@@ -333,51 +365,60 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       }
       controller.input(data);
     });
-    const drainOutput = () => {
-      if (disposed || writing) return;
-      const next = outputQueue.shift();
-      if (!next) return;
-      const { frame, acknowledgeCapabilityReplies } = next;
-      if (frame.kind === "reset") {
-        cancelRevealFallback();
-        receivedOutput = false;
-        revealed = false;
-        terminal.options.cursorBlink = false;
-        terminal.blur();
-        setIsTerminalRevealed(false);
-        terminal.reset();
-        parserCapabilityQueryAuthority.reset();
-        pixelSizeResponder.reset();
-      }
-      if (frame.data.byteLength === 0) {
-        acknowledgeCapabilityReplies();
-        drainOutput();
-        return;
-      }
-      writing = true;
-      receivedOutput = true;
-      repliesAllowed = !readOnly && frame.allowCapabilityReplies;
-      parserCapabilityQueryAuthority.observe(frame.data, repliesAllowed);
-      pixelSizeResponder.observe(frame.data, repliesAllowed);
-      if (frame.restorePendingCapabilityReplies) {
-        parserCapabilityQueryAuthority.restorePendingReplyAuthority();
-        pixelSizeResponder.restorePendingReplyAuthority();
-      }
-      terminal.write(frame.data, () => {
-        if (!disposed) {
-          acknowledgeCapabilityReplies();
-          revealTerminal();
-          scheduleRevealFallback();
+    const outputScheduler = new TerminalOutputScheduler({
+      write: (data, onParsed) => terminal.write(data, onParsed),
+      onWriteStateChange: (nextWriting) => {
+        writing = nextWriting;
+      },
+      onFrameStart: (frame) => {
+        if (
+          frame.restoreUntilSeq !== null &&
+          frame.restoreUntilSeq > restoreUntilSeq
+        ) {
+          restoreUntilSeq = frame.restoreUntilSeq;
+          waitingForRestorePaint = false;
+          cancelRestorePaint();
         }
-        repliesAllowed = false;
-        writing = false;
-        drainOutput();
-      });
-    };
+        if (frame.kind === "reset") {
+          cancelRevealFallback();
+          cancelRestorePaint();
+          restoreUntilSeq = frame.restoreUntilSeq ?? 0;
+          receivedOutput = false;
+          revealed = false;
+          waitingForRestorePaint = false;
+          terminal.options.cursorBlink = false;
+          terminal.blur();
+          setIsTerminalRevealed(false);
+          terminal.reset();
+          parserCapabilityQueryAuthority.reset();
+          pixelSizeResponder.reset();
+        }
+        if (frame.data.byteLength === 0) return;
+        receivedOutput = true;
+        const allowReplies = !readOnly && frame.allowCapabilityReplies;
+        parserCapabilityQueryAuthority.observe(frame.data, allowReplies);
+        pixelSizeResponder.observe(frame.data, allowReplies);
+        if (frame.restorePendingCapabilityReplies) {
+          parserCapabilityQueryAuthority.restorePendingReplyAuthority();
+          pixelSizeResponder.restorePendingReplyAuthority();
+        }
+      },
+      onFrameParsed: (frame) => {
+        if (disposed) return;
+        controller.acknowledgeOutput(frame.seq);
+        if (restoreUntilSeq > 0 && frame.seq >= restoreUntilSeq) {
+          restoreUntilSeq = 0;
+          revealAfterRestorePaint();
+          return;
+        }
+        revealTerminal();
+        scheduleRevealFallback();
+      },
+      onOverflow: () => controller.restartOutputReplay(),
+    });
     const outputSubscription = controller.subscribeOutput(
       (frame, acknowledgeCapabilityReplies) => {
-        outputQueue.push({ frame, acknowledgeCapabilityReplies });
-        drainOutput();
+        outputScheduler.enqueue(frame, acknowledgeCapabilityReplies);
       },
     );
     const syncInputState = () => {
@@ -396,8 +437,8 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
     return () => {
       disposed = true;
       cancelRevealFallback();
-      repliesAllowed = false;
-      outputQueue.length = 0;
+      cancelRestorePaint();
+      outputScheduler.dispose();
       observer.disconnect();
       themeObserver.disconnect();
       outputSubscription();
@@ -416,16 +457,8 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       aria-busy={!isTerminalRevealed && !unavailableBeforeOutput}
     >
       <div ref={containerRef} className="h-full bg-background" />
-      {!unavailableBeforeOutput && (
-        <div
-          aria-hidden={isTerminalRevealed}
-          className={cn(
-            "absolute inset-0 z-10 flex items-center justify-center bg-background transition-opacity duration-200 motion-reduce:transition-none",
-            isTerminalRevealed
-              ? "pointer-events-none opacity-0"
-              : "opacity-100",
-          )}
-        >
+      {!isTerminalRevealed && !unavailableBeforeOutput && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
           <div
             role="status"
             aria-live="polite"
@@ -451,7 +484,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
                 <span aria-hidden="true" className="text-success">
                   ›
                 </span>
-                <span className="lowercase">{loadingLabel}</span>
+                <span className="shimmer lowercase">{loadingLabel}</span>
                 <span
                   aria-hidden="true"
                   className="inline-block h-4 w-1.5 animate-pulse bg-foreground motion-reduce:animate-none"

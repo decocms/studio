@@ -56,6 +56,8 @@ const CODEX_RESTART_THREAD_ID = "terminal-codex-restart";
 const CODEX_RESTART_SESSION_ID = "studio-e2e-codex-restart-session";
 const CODEX_PREFLIGHT_FENCE_BRANCH = "terminal-e2e-codex-preflight-fence";
 const CODEX_PREFLIGHT_FENCE_THREAD_ID = "terminal-codex-preflight-fence";
+const FLOW_CONTROL_THREAD_ID = "terminal-flow-control";
+const FLOW_CONTROL_PROMPT = "__STUDIO_E2E_TERMINAL_FLOW_CONTROL__";
 const CODEX_HOOK_RPC_EVENTS = [
   "sessionStart",
   "userPromptSubmit",
@@ -79,6 +81,7 @@ type HarnessId = (typeof PROVIDERS)[number];
 
 interface ServerFrame {
   type: string;
+  seq?: number;
   sessionId?: string;
   harnessId?: string;
   physicalState?: string;
@@ -89,6 +92,7 @@ interface ServerFrame {
   expected?: boolean;
   code?: string;
   message?: string;
+  binary?: boolean;
 }
 
 interface LaunchRecord {
@@ -263,6 +267,45 @@ async function connectTerminal(
   const failure = { value: null as string | null };
   socket.addEventListener("message", (event) => {
     try {
+      const bytes =
+        event.data instanceof ArrayBuffer
+          ? new Uint8Array(event.data)
+          : ArrayBuffer.isView(event.data)
+            ? new Uint8Array(
+                event.data.buffer,
+                event.data.byteOffset,
+                event.data.byteLength,
+              )
+            : null;
+      if (bytes) {
+        if (bytes.byteLength < 9) throw new Error("short binary output frame");
+        const view = new DataView(
+          bytes.buffer,
+          bytes.byteOffset,
+          bytes.byteLength,
+        );
+        const tag = view.getUint8(0);
+        const seq = view.getUint32(1) * 2 ** 32 + view.getUint32(5);
+        const data = bytes.subarray(9);
+        const frame: ServerFrame =
+          tag === 3
+            ? { type: "reset", seq, binary: true }
+            : tag === 1 || tag === 2
+              ? {
+                  type: "output",
+                  seq,
+                  dataBase64: Buffer.from(data).toString("base64"),
+                  binary: true,
+                }
+              : (() => {
+                  throw new Error(`unknown binary output tag ${tag}`);
+                })();
+        frames.push(frame);
+        if (frame.type === "output") {
+          output.value += Buffer.from(data).toString("utf8");
+        }
+        return;
+      }
       const frame = JSON.parse(String(event.data)) as ServerFrame;
       frames.push(frame);
       if (frame.type === "output" && frame.dataBase64) {
@@ -927,6 +970,26 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
       },
     );
     expect(preflightFenceThread.status).toBe(200);
+
+    const flowControlThread = await fetch(
+      url(api, `/api/${ORG}/tools/COLLECTION_THREADS_CREATE`),
+      {
+        method: "POST",
+        headers: {
+          ...privateHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            id: FLOW_CONTROL_THREAD_ID,
+            title: "New chat",
+            virtual_mcp_id: VIRTUAL_MCP_ID,
+            branch: FIXTURE_BRANCH,
+          },
+        }),
+      },
+    );
+    expect(flowControlThread.status).toBe(200);
   }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -1190,6 +1253,80 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
       HOOK_TIMEOUT_MS,
     );
   }
+
+  it(
+    "bounds unparsed binary output and resumes after a cumulative ACK",
+    async () => {
+      if (!api) throw new Error("local-api did not start");
+      const terminal = await connectTerminal(
+        api,
+        FLOW_CONTROL_THREAD_ID,
+        privateHeaders,
+      );
+      try {
+        terminal.socket.send(
+          JSON.stringify({
+            type: "start",
+            harnessId: "codex",
+            rows: 30,
+            cols: 100,
+            initialPrompt: FLOW_CONTROL_PROMPT,
+            requestId: "flow-control-prompt",
+            outputAcks: true,
+            binaryOutput: true,
+          }),
+        );
+        await waitForFrame(
+          terminal,
+          (frame) => frame.type === "ready",
+          "flow-control ready frame",
+        );
+        await waitForOutput(terminal, "STUB_FLOW_BEGIN:codex:");
+
+        const minimumWindowBytes = 500 * 1024;
+        const deadline = Date.now() + FRAME_TIMEOUT_MS;
+        while (
+          terminal.output.value.length < minimumWindowBytes &&
+          Date.now() < deadline
+        ) {
+          if (terminal.failure.value) throw new Error(terminal.failure.value);
+          await sleep(20);
+        }
+        expect(terminal.output.value.length).toBeGreaterThanOrEqual(
+          minimumWindowBytes,
+        );
+
+        let stableLength = terminal.output.value.length;
+        for (let stableSamples = 0; stableSamples < 4; ) {
+          await sleep(75);
+          const currentLength = terminal.output.value.length;
+          if (currentLength === stableLength) stableSamples++;
+          else {
+            stableLength = currentLength;
+            stableSamples = 0;
+          }
+        }
+        expect(terminal.output.value).not.toContain("STUB_FLOW_END:codex");
+        expect(stableLength).toBeLessThan(600 * 1024);
+
+        const binaryOutput = terminal.frames.filter(
+          (frame) => frame.type === "output" && frame.binary,
+        );
+        expect(binaryOutput.length).toBeGreaterThan(0);
+        const processedSeq = Math.max(
+          ...binaryOutput.map((frame) => frame.seq ?? 0),
+        );
+        terminal.socket.send(
+          JSON.stringify({ type: "ack_output", processedSeq }),
+        );
+        await waitForOutput(terminal, "STUB_FLOW_END:codex");
+      } finally {
+        terminal.socket.send(JSON.stringify({ type: "terminate" }));
+        terminal.socket.close();
+      }
+    },
+    HOOK_TIMEOUT_MS,
+  );
 
   it(
     "Claude falls back from a missing resume to a fresh process on the same WebSocket",

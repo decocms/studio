@@ -47,6 +47,8 @@ const CODEX_PREFLIGHT_SECRET_ENV = [
   "STUDIO_OPENCODE_SESSION_ID",
 ];
 const CODEX_RESTART_SESSION_ID = "studio-e2e-codex-restart-session";
+const FLOW_CONTROL_PROMPT = "__STUDIO_E2E_TERMINAL_FLOW_CONTROL__";
+const FLOW_CONTROL_OUTPUT_BYTES = 768 * 1024;
 
 function fail(message) {
   process.stderr.write(`studio terminal e2e fixture: ${message}\n`);
@@ -1295,7 +1297,21 @@ function drainPrompts() {
         );
       } else {
         emitHook("UserPromptSubmit", { prompt });
-        process.stdout.write(`STUB_REPLY:${provider}:${prompt}\r\n`);
+        if (prompt === FLOW_CONTROL_PROMPT) {
+          await new Promise((resolveWrite, rejectWrite) => {
+            process.stdout.write(
+              `STUB_FLOW_BEGIN:${provider}:` +
+                "x".repeat(FLOW_CONTROL_OUTPUT_BYTES) +
+                `:STUB_FLOW_END:${provider}\r\n`,
+              (error) => {
+                if (error) rejectWrite(error);
+                else resolveWrite();
+              },
+            );
+          });
+        } else {
+          process.stdout.write(`STUB_REPLY:${provider}:${prompt}\r\n`);
+        }
         emitHook("Stop");
       }
       process.stdout.write(`STUB_COMPLETED:${provider}\r\n`);
