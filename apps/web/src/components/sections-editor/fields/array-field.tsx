@@ -462,7 +462,7 @@ export function ArrayField({
 
   return (
     <div className="space-y-2">
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1.5">
         <span className="min-w-0 truncate text-sm font-medium">{label}</span>
         {schema.description && (
           <FieldDescriptionTooltip description={schema.description} />

@@ -41,7 +41,7 @@ export function FieldLabel({
   labelClassName,
 }: FieldLabelProps) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <Label htmlFor={htmlFor} className={labelClassName}>
         {label}
       </Label>

@@ -43,7 +43,7 @@ export function ObjectField({
 
   return (
     <div className="min-w-0 space-y-2">
-      <div className="group flex w-full min-w-0 items-center gap-1 rounded-md py-1.5 pr-2 transition-colors hover:bg-accent hover:text-accent-foreground">
+      <div className="group flex w-full min-w-0 items-center gap-1.5 rounded-md py-1.5 pr-2 transition-colors hover:bg-accent hover:text-accent-foreground">
         <button
           type="button"
           aria-expanded={isOpen}

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 test("renders an unchecked switch by default", async ({ mount }) => {
   const meta = sectionWithProps({
@@ -81,7 +81,10 @@ test("clicking a checked switch sets the value to false", async ({ mount }) => {
   await expect(sw).not.toBeChecked();
 });
 
-test("renders the schema description", async ({ mount }) => {
+test("renders the schema description as a help tooltip", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     enabled: {
       type: "boolean",
@@ -95,6 +98,13 @@ test("renders the schema description", async ({ mount }) => {
 
   await expect(
     component.getByText("Toggle this feature on or off"),
+  ).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(
+      component,
+      page,
+      "Toggle this feature on or off",
+    ),
   ).toBeVisible();
 });
 

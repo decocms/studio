@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 test("renders an input[type=number] and round-trips an integer value", async ({
   mount,
@@ -144,7 +144,10 @@ test("reflects an initial value in the input", async ({ mount }) => {
   await expect(component.getByLabel("Count")).toHaveValue("99");
 });
 
-test("renders the schema description", async ({ mount }) => {
+test("renders the schema description as a help tooltip", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     count: {
       type: "number",
@@ -158,5 +161,8 @@ test("renders the schema description", async ({ mount }) => {
 
   await expect(
     component.getByText("How many widgets to display"),
+  ).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(component, page, "How many widgets to display"),
   ).toBeVisible();
 });

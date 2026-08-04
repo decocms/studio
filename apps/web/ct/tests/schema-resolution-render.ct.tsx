@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
+import { hoverFieldDescription } from "../harness/ct-utils";
 
 /**
  * Schema-resolution edge cases that change WHAT renders: nullable unions that
@@ -227,7 +228,10 @@ test("field with no title is humanized into a label", async ({ mount }) => {
   await expect(component.getByLabel("Hero Subtitle")).toBeVisible();
 });
 
-test("field description renders alongside the field", async ({ mount }) => {
+test("field description is shown as a help tooltip alongside the field", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     title: {
       type: "string",
@@ -242,11 +246,19 @@ test("field description renders alongside the field", async ({ mount }) => {
   await expect(component.getByLabel("Title", { exact: true })).toBeVisible();
   await expect(
     component.getByText("Shown in the page hero header."),
+  ).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(
+      component,
+      page,
+      "Shown in the page hero header.",
+    ),
   ).toBeVisible();
 });
 
 test("nullable image union inherits the leaf description", async ({
   mount,
+  page,
 }) => {
   const meta = sectionWithProps({
     hero: {
@@ -265,7 +277,9 @@ test("nullable image union inherits the leaf description", async ({
     <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
-  await expect(component.getByText("Recommended 1600x900.")).toBeVisible();
+  await expect(
+    await hoverFieldDescription(component, page, "Recommended 1600x900."),
+  ).toBeVisible();
   await expect(
     component.getByRole("button", {
       name: "Drop an image or click to browse",

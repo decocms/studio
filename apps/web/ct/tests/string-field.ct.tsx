@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 test("plain string renders a textbox and round-trips typed value", async ({
   mount,
@@ -247,7 +247,10 @@ test("date-time format renders input[type=datetime-local] and converts to an ISO
     .toBe(true);
 });
 
-test("description text is rendered alongside the field", async ({ mount }) => {
+test("description text is shown as a help tooltip alongside the field", async ({
+  mount,
+  page,
+}) => {
   const meta = sectionWithProps({
     title: { type: "string", title: "Title", description: "Help text" },
   });
@@ -255,5 +258,8 @@ test("description text is rendered alongside the field", async ({ mount }) => {
     <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
-  await expect(component.getByText("Help text")).toBeVisible();
+  await expect(component.getByText("Help text")).not.toBeVisible();
+  await expect(
+    await hoverFieldDescription(component, page, "Help text"),
+  ).toBeVisible();
 });
