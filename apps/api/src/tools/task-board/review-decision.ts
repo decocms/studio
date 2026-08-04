@@ -15,6 +15,7 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict } from "./prs-get";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
+import { TaskQuotaError } from "@/billing/task-quota";
 
 /**
  * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
@@ -175,6 +176,10 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         feedback: `${REVIEWER_LABEL[reviewer]}: ${notes}`,
         pr: pr ? { number: pr.number, url: pr.url } : undefined,
       }).catch((err) => {
+        // A paywall rejection is NOT best-effort — swallowing it would leave
+        // the task bounced-but-never-re-running with only a log line (same
+        // reasoning as reactToSuperAgentDelegation).
+        if (err instanceof TaskQuotaError) throw err;
         console.error("[task-board] request_changes re-enqueue failed", err);
       });
       return { status: updated.status, merged: false };
@@ -257,6 +262,9 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
             pr: { number: pr.number, url: pr.url },
             conflict: await fetchPrConflict(ctx, organizationId, pr),
           }).catch((err) => {
+            // Same paywall exception as above — a TaskQuotaError must
+            // surface, not be swallowed as a routine auto-resolve failure.
+            if (err instanceof TaskQuotaError) throw err;
             console.error("[task-board] conflict auto-resolve failed", err);
             return false;
           })
