@@ -911,21 +911,6 @@ export interface ConnectionAggregationTable {
 /** Stored thread statuses (persisted in DB). Canonical source: @decocms/shared/sdk */
 export type { ThreadStatus } from "@decocms/shared/sdk";
 
-export interface InflightAsyncJob {
-  /** Tool call that submitted this job (for diagnostics; not the resume key). */
-  toolCallId: string;
-  /** Adapter id that owns this job — must equal `StudioProvider.info.id`. */
-  provider: string;
-  /** Provider-side model id, e.g. `deep-research-preview-04-2026`. */
-  modelId: string;
-  /** Original query text — used together with provider+modelId to deduplicate on resume. */
-  query: string;
-  /** Adapter-opaque handle (e.g. Gemini interaction id) — passed back to `resume()`. */
-  jobId: string;
-  /** ISO timestamp set when the job was submitted. */
-  startedAt: string;
-}
-
 export interface ThreadTable {
   id: string;
   organization_id: string;
@@ -945,17 +930,6 @@ export interface ThreadTable {
     Date | null,
     Date | string | null,
     Date | string | null
-  >;
-  /**
-   * Long-running provider jobs (`AsyncResearchProvider`) still in flight for
-   * this thread. Each entry is removed when the underlying job reaches a
-   * terminal state. Surviving entries are how a fresh pod re-attaches to a
-   * job after a crash.
-   */
-  inflight_async_jobs: ColumnType<
-    InflightAsyncJob[] | null,
-    string | null,
-    string | null
   >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
