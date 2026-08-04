@@ -133,9 +133,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       // run concurrently, and either can independently decide changes are
       // needed; without this fence both would win a plain update and each
       // enqueue its own Super Agent run on the SAME PR, racing to push
-      // conflicting commits. The decision is still recorded either way (see
-      // below) — only the second reviewer's re-enqueue is skipped, since the
-      // first winner's run already carries the fix forward.
+      // conflicting commits. The claim also re-checks the assignee is still
+      // the Super Agent, so a human who took the task over mid-review isn't
+      // overridden by a reviewer run that started before the reassignment. The
+      // decision is still recorded either way (see below) — only the losing
+      // reviewer's re-enqueue is skipped, since either the first winner's run
+      // already carries the fix forward, or the task has a new owner now.
       const updated = await ctx.storage.taskBoard.claimReviewChangesBounce(
         taskBoardItemId,
         organizationId,

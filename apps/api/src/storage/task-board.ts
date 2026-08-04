@@ -489,12 +489,17 @@ export class TaskBoardStorage {
 
   /**
    * Atomically claim a task for a reviewer's `request_changes` bounce: move it
-   * from In Review to In Progress ONLY if it's still In Review, returning the
-   * updated item to the single winner and null to everyone else. QA and Code
-   * Reviewer run concurrently, and either can independently decide changes are
-   * needed — without this fence both would bounce the task and each enqueue
-   * its own Super Agent run on the SAME PR, racing to push conflicting commits.
-   * Same atomic-conditional-UPDATE pattern as `claimConflictResolution`.
+   * from In Review to In Progress ONLY if it's still In Review AND still
+   * assigned to the Super Agent, returning the updated item to the single
+   * winner and null to everyone else. QA and Code Reviewer run concurrently,
+   * and either can independently decide changes are needed — without this
+   * fence both would bounce the task and each enqueue its own Super Agent run
+   * on the SAME PR, racing to push conflicting commits. The assignee re-check
+   * closes a second race: a human can reassign the task away from the Super
+   * Agent while a reviewer run is still in flight, and that reviewer's later
+   * `request_changes` must not yank the task back and re-enqueue the Super
+   * Agent out from under the new owner. Same atomic-conditional-UPDATE pattern
+   * as `claimConflictResolution`.
    */
   async claimReviewChangesBounce(
     id: string,
@@ -511,6 +516,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_review")
+      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
     if (!row) return null;
