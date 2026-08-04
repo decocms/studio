@@ -40,6 +40,7 @@ func stripDerived(c *config.Enriched) *config.TenantConfig {
 	return &config.TenantConfig{
 		Git:         c.Git,
 		Operator:    c.Operator,
+		CloneOnly:   c.CloneOnly,
 		Application: c.Application,
 	}
 }

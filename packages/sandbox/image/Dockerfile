@@ -122,6 +122,53 @@ COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 RUN chmod +x /mnt/skills/public/_bin/* \
   && ln -s /mnt/skills/public/_bin/* /usr/local/bin/
 
+# `gh`, so an agent can open the pull request its task prompt asks for. Pushing
+# already works off the credentialed `origin` git clone stored; `gh` is the half
+# that was missing, and the daemon hands it GH_TOKEN per run (see
+# daemon-go/main.go RunEnv). From the release tarball rather than the apt repo:
+# one layer, no extra keyring, and the version is pinned like every other tool
+# here. `dpkg --print-architecture` matches gh's asset naming (amd64/arm64), so
+# each leg of the multi-arch build takes its own.
+ARG GH_CLI_VERSION=2.97.0
+RUN arch="$(dpkg --print-architecture)" \
+  && curl -fsSL --retry 3 \
+       "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${arch}.tar.gz" \
+     | tar -xz -C /tmp \
+  && mv "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
+  && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}" \
+  && gh --version
+
+# The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
+# CLI it drives. The daemon execs the runner once per run — see
+# daemon-go/internal/dispatch/runner.go and packages/harness-runner/README.md.
+#
+# The two versions are ONE release train and must move together: the SDK pins
+# `@anthropic-ai/claude-agent-sdk` in packages/harness-runner/package.json and
+# ships a manifest naming the CLI build it expects (0.3.<N> ↔ 2.1.<N>). Bumping
+# one without the other is how you get a runner that starts and then fails every
+# turn on a version handshake.
+#
+# The CLI is a ~270MB native binary delivered through per-platform
+# optionalDependencies, so npm resolves the right arch on each leg of the
+# multi-arch build. It is deliberately NOT a dependency of the harness-runner
+# workspace — that would put 270MB into every developer's `bun install`.
+ARG CLAUDE_CODE_CLI_VERSION=2.1.220
+COPY --chown=sandbox:sandbox dist/harness-runner.tgz /opt/sandbox-daemon/harness-runner.tgz
+RUN npm install -g /opt/sandbox-daemon/harness-runner.tgz \
+  && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}" \
+  && claude --version
+
+# Claude Code discovers skills as `<config-dir>/skills/<name>/SKILL.md`, so the
+# image's shared skills are symlinked in rather than copied. CLAUDE_CONFIG_DIR
+# keeps the whole config dir relocatable: pointing it at a persisted mount is
+# what lets a thread's session survive pod replacement, with no code change.
+ENV CLAUDE_CONFIG_DIR=/home/sandbox/.claude \
+    CLAUDE_CODE_PATH=/usr/local/bin/claude \
+    HARNESS_RUNNER_CMD=decocms-harness-runner
+RUN mkdir -p /home/sandbox/.claude \
+  && ln -s /mnt/skills/public /home/sandbox/.claude/skills \
+  && chown -R sandbox:sandbox /home/sandbox/.claude
+
 ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000

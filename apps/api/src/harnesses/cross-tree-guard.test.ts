@@ -45,15 +45,20 @@ describe("harness tree is cross-tree-free", () => {
 // What remains in this directory is the cluster island, which sits ABOVE
 // `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
 // not a layering violation — but we still keep that surface explicit and small.
-// Only the two dispatch/fs glue modules may bridge into sandbox:
+// Only the dispatch/fs glue modules may bridge into sandbox:
 //  - `in-process-sandbox-client.ts` implements the `SandboxClient` dispatch
 //    contract (`@decocms/sandbox/dispatch`) for in-process cluster dispatch.
+//  - `sandbox-dispatch-client.ts` implements the SAME contract for harnesses
+//    that run inside the sandbox (claude-code): it needs the provider to
+//    provision the pod and proxy the daemon request. Its sibling by design —
+//    one `SandboxClient` impl per execution location.
 //  - `cluster-sandbox-fs.ts` constructs the cluster `SandboxProvider` + fs hooks.
 // Every other production file consumes the harness-owned flat `SandboxFsHooks`
 // via DI and stays sandbox-free. (`desktop-sandbox-fs.ts` relocated into
 // `@decocms/sandbox/dispatch` with the desktop subtree in the package-move slice.)
 const SANDBOX_GLUE = new Set([
   "in-process-sandbox-client.ts",
+  "sandbox-dispatch-client.ts",
   "decopilot/built-in-tools/cluster-sandbox-fs.ts",
 ]);
 const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;

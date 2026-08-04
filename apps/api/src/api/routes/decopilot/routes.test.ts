@@ -16,6 +16,7 @@ import {
   applyThreadLock,
   assertHostedDecopilotHarness,
   assertPersistedHostedRuntime,
+  assertReadableHostedRuntime,
   assertHostedSandboxProvider,
   normalizeHostedSandboxProviderKind,
   computeIdempotencyKey,
@@ -249,6 +250,44 @@ describe("assertHostedSandboxProvider", () => {
         /unsupported desktop runtime/,
       );
     }
+  });
+});
+
+describe("assertReadableHostedRuntime", () => {
+  test("lets the web read a sandbox-hosted claude-code queue", () => {
+    // Regression: gating the queue GET like a dispatch 409'd it, so a
+    // claude-code chat rendered empty and erroring on the web.
+    expect(() =>
+      assertReadableHostedRuntime("claude-code", "agent-sandbox"),
+    ).not.toThrow();
+    expect(() =>
+      assertReadableHostedRuntime("claude-code", null),
+    ).not.toThrow();
+  });
+
+  test("still rejects the desktop-pinned and native harnesses", () => {
+    // claude-code + user-desktop is the NATIVE coding agent, not this harness.
+    expect(() =>
+      assertReadableHostedRuntime("claude-code", "user-desktop"),
+    ).toThrow(/unsupported desktop runtime/);
+    for (const harnessId of ["codex", "opencode", "future"]) {
+      expect(() =>
+        assertReadableHostedRuntime(harnessId, "agent-sandbox"),
+      ).toThrow(/Studio desktop app/);
+    }
+  });
+
+  test("keeps Decopilot and unpinned behaviour identical", () => {
+    expect(() =>
+      assertReadableHostedRuntime("decopilot", "agent-sandbox"),
+    ).not.toThrow();
+    expect(() => assertReadableHostedRuntime(null, null)).not.toThrow();
+    expect(() =>
+      assertReadableHostedRuntime("decopilot", "user-desktop"),
+    ).not.toThrow();
+    expect(() =>
+      assertReadableHostedRuntime("decopilot", "future-sandbox"),
+    ).toThrow(/unsupported desktop runtime/);
   });
 });
 

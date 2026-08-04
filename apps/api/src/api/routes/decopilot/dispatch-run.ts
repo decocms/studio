@@ -34,6 +34,12 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
+import {
+  harnessRunsInSandbox,
+  SandboxDispatchClient,
+} from "@/harnesses/sandbox-dispatch-client";
+import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
@@ -86,7 +92,7 @@ import {
 } from "./model-permissions";
 import { normalizeClientModels } from "./normalize-client-models";
 import type { RunRegistry } from "./run-registry";
-import { resolveThreadStatus } from "./status";
+import { resolveCleanRunStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
@@ -174,6 +180,26 @@ export interface AgentSandboxUiStreamInput {
    * does not pay the DB read.
    */
   loadOriginalMessages?: () => Promise<UIMessage[] | undefined>;
+  /**
+   * Seq this run's chunks continue from — the highest seq a PREVIOUS attempt of
+   * this same (runId, fenceToken) already published, 0 for a fresh run.
+   *
+   * Only a sandbox-hosted harness can have a previous attempt: its agent loop
+   * runs in a pod that outlives the Studio process, so when this pod dies mid-run
+   * another one resumes the same fence. Its chunks must EXTEND that log, never
+   * restart it: the projector requires a strictly contiguous seq sequence and
+   * drops anything at or below what it has folded
+   * (`assertContiguousAndDedup`), so a restarted counter republishes seqs the
+   * dead attempt owns — every one of them dropped, including the `{done}` that
+   * terminates the run.
+   */
+  startSeq?: number;
+  /** Mirrors `startSeq` into `ingestRun`'s contiguous-floor bookkeeping so the
+   *  first chunk after a resume is treated as contiguous rather than a hole. */
+  initialAckSeq?: number;
+  /** Persist the contiguous floor as it advances; awaited per chunk. This is
+   *  what makes `startSeq` available to the next attempt. */
+  onPublished?: (seq: number) => void | Promise<void>;
 }
 
 /**
@@ -197,7 +223,7 @@ export function buildAgentSandboxUiStream(
 ): ReadableStream {
   // Route through the shared ingestRun unit. Raw chunks → JetStream (seq-keyed
   // dedup); hooks + title injection fire once; ZERO DB writes here.
-  let seq = 0;
+  let seq = input.startSeq ?? 0;
   async function* seqChunks(): AsyncGenerator<{
     seq: number;
     chunk: UIMessageChunk;
@@ -217,6 +243,10 @@ export function buildAgentSandboxUiStream(
             chunks: seqChunks(),
             errorMessageId: input.errorMessageId,
             originalMessages,
+            ...(input.initialAckSeq !== undefined
+              ? { initialAckSeq: input.initialAckSeq }
+              : {}),
+            ...(input.onPublished ? { onPublished: input.onPublished } : {}),
           },
           {
             streamBuffer: input.streamBuffer,
@@ -327,8 +357,8 @@ export interface DispatchRunInput {
   branch?: string | null;
   /** Hosted runs always use the managed agent sandbox. */
   sandboxProviderKind: "agent-sandbox";
-  /** Hosted dispatch accepts only the explicit Decopilot harness. */
-  harnessId: "decopilot";
+  /** Hosted dispatch accepts an explicit hosted harness — never a default. */
+  harnessId: HostedHarnessId;
   /**
    * Single-writer fence token for this run. Durable submit callers mint and
    * persist it before starting DBOS, then thread it down here so `prepareRun`
@@ -357,7 +387,7 @@ export interface FrozenRunSnapshot {
   runMetadata?: Record<string, string>;
   branch?: string | null;
   sandboxProviderKind: "agent-sandbox";
-  harnessId: "decopilot";
+  harnessId: HostedHarnessId;
   /**
    * Per-turn system context the client attached to this user turn (the
    * `role:"system"` message in the POST body — e.g. the currently-open file,
@@ -386,14 +416,47 @@ export type DispatchRunRuntimeInput =
   | DispatchRunInput
   | DurableDispatchRunInput;
 
+/**
+ * Harnesses hosted dispatch can run.
+ *
+ * `decopilot` runs in this process; `claude-code` runs inside the sandbox via
+ * `SandboxDispatchClient`. Both are dispatched through the same pipeline, and
+ * both are named explicitly — an unknown or future harness must never fall
+ * through to whichever loop happens to be first.
+ */
+const HOSTED_HARNESS_IDS = ["decopilot", "claude-code"] as const;
+
+export type HostedHarnessId = (typeof HOSTED_HARNESS_IDS)[number];
+
 export function assertHostedDispatchHarness(
   harnessId: string | null | undefined,
-): asserts harnessId is "decopilot" {
-  if (harnessId !== "decopilot") {
+): asserts harnessId is HostedHarnessId {
+  if (!HOSTED_HARNESS_IDS.includes(harnessId as HostedHarnessId)) {
     throw new Error(
-      `hosted dispatch requires an explicit Decopilot harness; got ${JSON.stringify(harnessId)}`,
+      `hosted dispatch requires one of ${HOSTED_HARNESS_IDS.join(", ")}; got ${JSON.stringify(harnessId)}`,
     );
   }
+}
+
+/**
+ * Sandbox-hosted harnesses are gated per-org and default off.
+ *
+ * The gate lives here rather than at the HTTP entry because every entry point
+ * (POST, resume, automation fire, background tool) funnels through
+ * `prepareRun` — this is the one place that cannot be bypassed.
+ */
+async function assertHarnessEnabledForOrg(
+  harnessId: HostedHarnessId,
+  organizationId: string,
+  ctx: StudioContext,
+): Promise<void> {
+  if (harnessId === "decopilot") return;
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  if (settings?.flags?.claude_code_sandbox_enabled === true) return;
+  throw new Error(
+    `the ${harnessId} harness is not enabled for this organization ` +
+      `(set the claude_code_sandbox_enabled flag to allow it)`,
+  );
 }
 
 function isDurableDispatchRunInput(
@@ -749,6 +812,7 @@ async function prepareRun(
   const { runRegistry, streamBuffer } = deps;
   assertHostedDispatchHarness(input.harnessId);
   const harnessId = input.harnessId;
+  await assertHarnessEnabledForOrg(harnessId, input.organizationId, ctx);
 
   // Legacy/direct callers may still provide raw messages. Durable workflow
   // callers pass only a messageId and reload the already-persisted user turn.
@@ -1255,6 +1319,31 @@ async function prepareRun(
         PREPARE_RUN_STATUS_STAGES[2],
       );
     }
+    // Where this dispatch's chunks continue from, and whether it is continuing
+    // anything at all.
+    //
+    // `run_acked_seq` is the highest contiguous seq published for the CURRENT
+    // attempt's fence — durable, and cleared when the fence is minted
+    // (`setRunFence`), so it is per-attempt by construction. A non-zero value
+    // therefore means one thing: a previous Studio process published this run's
+    // first N chunks and then died before finishing the turn. This dispatch is
+    // that turn's continuation.
+    //
+    // Only a sandbox-hosted harness can be in that position. Decopilot's agent
+    // loop lives in this process and dies with it, so a recovered run has nothing
+    // still executing anywhere and starts over from seq 0 — its floor is never
+    // read and never written.
+    const sandboxHosted = harnessRunsInSandbox(harnessId);
+    const resumeFromSeq = sandboxHosted
+      ? await ctx.storage.threads.getAckedSeq(mem.thread.id)
+      : 0;
+    if (resumeFromSeq > 0) {
+      console.log("[dispatch] resuming a sandbox-hosted turn", {
+        runId: mem.thread.id,
+        fromSeq: resumeFromSeq,
+      });
+    }
+
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
@@ -1265,8 +1354,9 @@ async function prepareRun(
         };
         setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // The in-process SandboxClient returns the Decopilot chunk iterable;
-        // consumeHarnessStream consumes it verbatim.
+        // Either SandboxClient returns the same chunk iterable, and
+        // consumeHarnessStream consumes it verbatim: Decopilot's comes from an
+        // in-process call, claude-code's from the sandbox daemon over SSE.
         if (shouldPublishRunStatus) {
           await publishRunStatusStage(
             streamBuffer,
@@ -1274,7 +1364,46 @@ async function prepareRun(
             PREPARE_RUN_STATUS_STAGES[3],
           );
         }
-        const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
+        const sandboxClient = sandboxHosted
+          ? new SandboxDispatchClient({
+              ctx,
+              harnessId,
+              virtualMcpId: effectiveVirtualMcp.id,
+              // Tell the harness it is picking up an interrupted turn: its own
+              // context is gone, but the work is in the checkout and in git.
+              ...(resumeFromSeq > 0
+                ? {
+                    resume: {
+                      reason:
+                        "the Studio process driving the previous attempt stopped",
+                    },
+                  }
+                : {}),
+              // The one branch derivation every sandbox consumer shares. The
+              // sandbox proxy derives the claim handle from it too, so a
+              // divergence here provisions a second pod (or 404s the proxy).
+              branch: await resolveSandboxBranchForThread(ctx, {
+                threadId: mem.thread.id,
+                agentRepo: (
+                  effectiveVirtualMcp.metadata as {
+                    githubRepo?: GithubRepo | null;
+                  } | null
+                )?.githubRepo,
+                runBranch: input.branch,
+              }),
+              // The already-resolved thinking-slot credential becomes the
+              // sandbox's model env — resolved once, here, not again inside.
+              credential: thinkingSource
+                ? {
+                    providerId: thinkingSource.providerId,
+                    apiKey: thinkingSource.apiKey,
+                    ...(thinkingSource.baseUrl
+                      ? { baseUrl: thinkingSource.baseUrl }
+                      : {}),
+                  }
+                : null,
+            })
+          : new InProcessSandboxClient({ ctx, harnessId });
         const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
         yield* rawHarnessChunks;
       };
@@ -1315,6 +1444,29 @@ async function prepareRun(
         // through the exact same publish path as every other chunk (see
         // with-liveness-heartbeat.ts's module doc for the full contract).
         chunks: withLivenessHeartbeat(dispatchHarnessChunks()),
+        // Resume bookkeeping, sandbox-hosted runs only (see `resumeFromSeq`).
+        // `startSeq` makes this attempt EXTEND the dead attempt's log; the
+        // awaited `onPublished` write is what lets the next one do the same.
+        //
+        // Affordable per chunk here, unlike Decopilot's token-level stream: a
+        // sandbox-hosted harness reports whole steps, so a long turn is tens to
+        // hundreds of chunks. The one race left is a pod that dies between a
+        // chunk's publish ack and this write — the next attempt then re-uses that
+        // one seq, and JetStream/the projector keep the first chunk and drop the
+        // second. That chunk is always the continuation's `start`, whose loss
+        // just leaves its parts on the interrupted message. Cheap and benign.
+        ...(sandboxHosted
+          ? {
+              startSeq: resumeFromSeq,
+              initialAckSeq: resumeFromSeq,
+              onPublished: (seq: number) =>
+                ctx.storage.threads.bumpAckedSeq(
+                  mem.thread.id,
+                  runFenceToken,
+                  seq,
+                ),
+            }
+          : {}),
         // Deterministic per turn (runId + fence) so a synthesized error
         // message dedupes across the live write + projector retries while
         // distinct turns of the same thread never collide. See message-ids.ts.
@@ -1382,7 +1534,14 @@ async function prepareRun(
             const heapBefore = FINISH_TRACE ? safeMemoryUsage() : null;
             const saveStart = performance.now();
 
-            const threadStatus = resolveThreadStatus(
+            // `resolveCleanRunStatus`, NOT `resolveThreadStatus`: this hook
+            // only runs on a stream that reached its end without an in-band
+            // error chunk (that path is `hooks.onError`, which fails the run
+            // before this fires). A harness whose turn ends without an AI-SDK
+            // finish chunk therefore must not be failed here — see the
+            // function's doc for why disagreeing with the projector is
+            // unrecoverable.
+            const threadStatus = resolveCleanRunStatus(
               finishReason,
               responseMessage?.parts as {
                 type: string;

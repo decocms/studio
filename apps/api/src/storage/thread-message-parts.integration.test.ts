@@ -75,6 +75,53 @@ describe("SqlThreadMessagePartStorage", () => {
     ...p,
   });
 
+  // The whole point of per-step persistence: a turn being written step by step
+  // must be readable WHILE it runs. An anchor-only window hides it until the
+  // finish anchor lands, which is a run's worth of latency.
+  it("an unfinished message is invisible by default and visible with includeInFlight", async () => {
+    await parts.appendParts([
+      mk({
+        id: "r_live:m_done:0",
+        seq: 0,
+        run_id: "r_live",
+        message_id: "m_done",
+      }),
+      mk({
+        id: "r_live:m_done:1",
+        seq: 1,
+        run_id: "r_live",
+        message_id: "m_done",
+        kind: "finish",
+        payload: {},
+      }),
+      // Same run, no finish anchor yet — the turn is still going.
+      mk({
+        id: "r_live:m_live:0",
+        seq: 0,
+        run_id: "r_live",
+        message_id: "m_live",
+      }),
+    ]);
+
+    const settled = await parts.loadWindow(threadId, { limit: 50 });
+    expect(settled.messages.map((m) => m.id)).not.toContain("m_live");
+
+    const live = await parts.loadWindow(threadId, {
+      limit: 50,
+      includeInFlight: true,
+    });
+    const inFlight = live.messages.find((m) => m.id === "m_live");
+    expect(inFlight?.status).toBe("in_progress");
+    expect(live.messages.find((m) => m.id === "m_done")?.status).toBe(
+      "complete",
+    );
+    // `total` still counts settled messages only — paging is anchor-based.
+    expect(live.total).toBe(settled.total);
+
+    await parts.deleteMessageParts(threadId, "m_live");
+    await parts.deleteMessageParts(threadId, "m_done");
+  });
+
   it("C2: every part is persisted (no %5 sampling) — 7 parts → 7 rows", async () => {
     const seven = Array.from({ length: 7 }, (_, i) =>
       mk({

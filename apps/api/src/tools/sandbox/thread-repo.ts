@@ -168,6 +168,55 @@ export async function getThreadGithubRepo(
 }
 
 /**
+ * The sandbox isolation branch for a run — the key every sandbox consumer must
+ * agree on.
+ *
+ * Two keying regimes:
+ * - GitHub-linked agents (`githubRepo` set) need per-branch isolation so PR and
+ *   branch workflows don't trample each other, falling back to a synthetic
+ *   `thread:<id>` branch when no explicit branch is supplied yet. A repo bound
+ *   to the THREAD (`load_repo`) wins over the agent's and pins its own branch,
+ *   so switching repos yields a distinct sandbox.
+ * - Ephemeral agents (no repo at all) share one sandbox per (user, agent)
+ *   across threads, which cuts sandbox count linearly with thread count.
+ *
+ * Pure given its inputs, and shared: the decopilot fs tools and the
+ * sandbox-hosted dispatch path both derive their branch here, because two
+ * derivations that drift would provision two pods for one thread — or worse,
+ * make the sandbox proxy 404 on a handle nobody claimed.
+ */
+export function resolveSandboxBranch(args: {
+  threadId: string;
+  /** Repo bound to the thread by `load_repo`; wins over the agent's. */
+  threadRepo: GithubRepo | null;
+  /** Repo configured on the agent (`virtualMcp.metadata.githubRepo`). */
+  agentRepo?: GithubRepo | null;
+  /** Explicit branch for this run, when the caller has one. */
+  runBranch?: string | null;
+}): string {
+  if (args.threadRepo) {
+    return threadBranch(args.threadId, args.threadRepo.connectionId);
+  }
+  if (!args.agentRepo) return "ephemeral";
+  return args.runBranch ?? `thread:${args.threadId}`;
+}
+
+/** `resolveSandboxBranch` with the thread's bound repo read for you. */
+export async function resolveSandboxBranchForThread(
+  ctx: StudioContext,
+  args: {
+    threadId: string;
+    agentRepo?: GithubRepo | null;
+    runBranch?: string | null;
+  },
+): Promise<string> {
+  return resolveSandboxBranch({
+    ...args,
+    threadRepo: await getThreadGithubRepo(ctx, args.threadId),
+  });
+}
+
+/**
  * Persist a sandbox record on the THREAD's `metadata.sandboxMap`
  * ([userId][branch][kind]) via the shared {@link mergeSandboxMapEntry}. The
  * synthetic Decopilot agent's sandboxMap write is a no-op, so for thread-scoped

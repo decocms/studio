@@ -74,10 +74,10 @@ describe("claimRunFenceForDispatch", () => {
 });
 
 describe("assertHarnessRunsInCluster", () => {
-  it("throws for every native or unknown harness", () => {
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
+  it("throws for every desktop-only or unknown harness", () => {
+    for (const harnessId of ["codex", "opencode", "future"]) {
       expect(() => assertHarnessRunsInCluster(harnessId)).toThrow(
-        /explicit Decopilot/,
+        /hosted dispatch requires/,
       );
     }
   });
@@ -86,12 +86,18 @@ describe("assertHarnessRunsInCluster", () => {
     expect(() => assertHarnessRunsInCluster("decopilot")).not.toThrow();
   });
 
+  it("lets claude-code through — it is sandbox-hosted", () => {
+    // Was rejected here before the sandbox harness landed. The per-org gate
+    // for it lives in `prepareRun`, not in this structural guard.
+    expect(() => assertHarnessRunsInCluster("claude-code")).not.toThrow();
+  });
+
   it("rejects a missing harness instead of defaulting it", () => {
     expect(() => assertHarnessRunsInCluster(undefined)).toThrow(
-      /explicit Decopilot/,
+      /hosted dispatch requires/,
     );
     expect(() => assertHarnessRunsInCluster(null)).toThrow(
-      /explicit Decopilot/,
+      /hosted dispatch requires/,
     );
   });
 });

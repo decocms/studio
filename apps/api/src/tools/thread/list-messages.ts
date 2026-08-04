@@ -106,7 +106,10 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
     if (thread.message_storage_version === 2) {
       const { messages, total } = await ctx.storage.threads
         .messageParts()
-        .loadWindow(taskId, { limit, offset });
+        // The chat read: a turn being written step by step has to be visible
+        // WHILE it runs, not only once its finish anchor lands. Every other
+        // caller reconciles against settled messages and keeps the default.
+        .loadWindow(taskId, { limit, offset, includeInFlight: true });
       return {
         items: messages.map((m) => ({
           id: m.id,

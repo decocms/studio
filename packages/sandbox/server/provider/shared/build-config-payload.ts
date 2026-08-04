@@ -16,6 +16,8 @@ export function buildConfigPayload(args: {
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
   tenant?: EnsureOptions["tenant"];
+  /** Checkout only — the daemon skips install + dev server. */
+  cloneOnly?: boolean;
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -57,10 +59,14 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application && !operator) return null;
+  if (!git && !application && !operator && !args.cloneOnly) return null;
   return {
     ...(git ? { git } : {}),
     ...(operator ? { operator } : {}),
+    // Always sent when true, never as an absent-means-false: a sandbox reused
+    // from a warm pool carries the previous claim's config, so the flag has to
+    // be able to turn itself back off on a normal (dev-server) provision.
+    ...(args.cloneOnly !== undefined ? { cloneOnly: args.cloneOnly } : {}),
     ...(application ? { application } : {}),
   };
 }

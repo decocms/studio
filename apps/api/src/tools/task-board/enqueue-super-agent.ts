@@ -2,6 +2,11 @@ import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import {
+  buildClaudeCodeTaskPrompt,
+  claudeCodeEnabledForOrg,
+  resolveSoleTaskRepo,
+} from "./claude-code-task-run";
 
 /**
  * The shared post-write reaction for a task delegated to the Super Agent:
@@ -117,11 +122,28 @@ export async function enqueueSuperAgentForTask(
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
 ): Promise<void> {
-  const prompt = buildSuperAgentTaskPrompt(task, opts);
+  // Sandbox-hosted claude-code takes the task when the org opted in AND the
+  // repo is unambiguous — it must be chosen before dispatch (see
+  // `claude-code-task-run.ts`). Anything else runs Decopilot exactly as before,
+  // so no existing board behavior changes until both conditions hold.
+  const repo = (await claudeCodeEnabledForOrg(ctx, task.organizationId))
+    ? await resolveSoleTaskRepo(ctx, task.organizationId)
+    : null;
+
+  if (repo) {
+    await enqueueAgentRunForTask(ctx, task, {
+      title: `Super Agent: ${task.title}`,
+      prompt: buildClaudeCodeTaskPrompt(task, repo, opts),
+      temperature: 0.5,
+      harnessId: "claude-code",
+      repo,
+    });
+    return;
+  }
 
   await enqueueAgentRunForTask(ctx, task, {
     title: `Super Agent: ${task.title}`,
-    prompt,
+    prompt: buildSuperAgentTaskPrompt(task, opts),
     temperature: 0.5,
   });
 }

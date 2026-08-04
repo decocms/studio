@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { UIMessageChunk } from "ai";
 import {
   assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
+  buildAgentSandboxUiStream,
   buildDurableDispatchInput,
 } from "./dispatch-run";
 import type { ChatMessage } from "./types";
@@ -192,19 +194,146 @@ describe("buildDurableDispatchInput", () => {
 });
 
 describe("assertHostedDispatchHarness", () => {
-  test("accepts only explicit Decopilot", () => {
+  test("accepts the hosted harnesses", () => {
     expect(() => assertHostedDispatchHarness("decopilot")).not.toThrow();
+    // claude-code was rejected here until it became sandbox-hosted; the
+    // per-org gate for it is `prepareRun`'s flag check, not this one.
+    expect(() => assertHostedDispatchHarness("claude-code")).not.toThrow();
+  });
+
+  test("rejects desktop-only, unknown and missing harnesses", () => {
     for (const harnessId of [
       null,
       undefined,
-      "claude-code",
       "codex",
       "opencode",
       "future",
     ] as const) {
       expect(() => assertHostedDispatchHarness(harnessId)).toThrow(
-        /explicit Decopilot/,
+        /hosted dispatch requires/,
       );
     }
+  });
+});
+
+describe("buildAgentSandboxUiStream resume", () => {
+  /** Collects what a run publishes, the way JetStream would key it. */
+  function recorder() {
+    const published: string[] = [];
+    const done: number[] = [];
+    return {
+      published,
+      done,
+      streamBuffer: {
+        publishRawChunk: async (
+          runId: string,
+          _chunk: unknown,
+          dedup?: { fenceToken: string; seq: number },
+        ) => {
+          published.push(
+            dedup ? `${runId}:${dedup.fenceToken}:${dedup.seq}` : `${runId}:-`,
+          );
+          return true;
+        },
+        publishDone: async (
+          _runId: string,
+          _fenceToken: string,
+          finalSeq: number,
+        ) => {
+          done.push(finalSeq);
+          return true;
+        },
+      },
+    };
+  }
+
+  const chunks = (...items: UIMessageChunk[]) =>
+    (async function* () {
+      for (const chunk of items) yield chunk;
+    })();
+
+  const drain = async (stream: ReadableStream) => {
+    const reader = stream.getReader();
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  };
+
+  test("a fresh run numbers its chunks from 1", async () => {
+    const rec = recorder();
+    await drain(
+      buildAgentSandboxUiStream({
+        runId: "run_1",
+        fenceToken: "fence_1",
+        streamBuffer: rec.streamBuffer,
+        chunks: chunks(
+          { type: "start" } as UIMessageChunk,
+          { type: "finish", finishReason: "stop" } as UIMessageChunk,
+        ),
+        title: {
+          currentThreadTitle: null,
+          threadId: "run_1",
+          persistTitle: async () => {},
+        },
+        hooks: {},
+      }),
+    );
+    expect(rec.published).toEqual(["run_1:fence_1:1", "run_1:fence_1:2"]);
+    expect(rec.done).toEqual([2]);
+  });
+
+  test("a resumed run EXTENDS the dead attempt's log instead of restarting it", async () => {
+    // This is the pod-death path: another Studio process published seqs 1..5 for
+    // this same fence and then died. The projector requires a contiguous
+    // sequence and drops anything at or below what it has already folded
+    // (`assertContiguousAndDedup`), so restarting the counter would silently
+    // discard every chunk of this attempt — including the `{done}` that
+    // terminates the run, leaving the thread hung until the idle reaper.
+    const rec = recorder();
+    const acked: number[] = [];
+    await drain(
+      buildAgentSandboxUiStream({
+        runId: "run_1",
+        fenceToken: "fence_1",
+        streamBuffer: rec.streamBuffer,
+        // What a continuation actually streams: a fresh, self-contained turn.
+        // Its own `start` is dropped upstream (it would re-id the message being
+        // folded), but its parts still open and close normally — a continuation
+        // that resumed mid-part would fail the kernel's fold outright.
+        chunks: chunks(
+          { type: "start-step" } as UIMessageChunk,
+          { type: "text-start", id: "t2" } as UIMessageChunk,
+          { type: "text-delta", id: "t2", delta: "more" } as UIMessageChunk,
+          { type: "text-end", id: "t2" } as UIMessageChunk,
+          { type: "finish-step" } as UIMessageChunk,
+          { type: "finish", finishReason: "stop" } as UIMessageChunk,
+        ),
+        startSeq: 5,
+        initialAckSeq: 5,
+        onPublished: (seq) => {
+          acked.push(seq);
+        },
+        title: {
+          currentThreadTitle: null,
+          threadId: "run_1",
+          persistTitle: async () => {},
+        },
+        hooks: {},
+      }),
+    );
+    expect(rec.published).toEqual([
+      "run_1:fence_1:6",
+      "run_1:fence_1:7",
+      "run_1:fence_1:8",
+      "run_1:fence_1:9",
+      "run_1:fence_1:10",
+      "run_1:fence_1:11",
+    ]);
+    // The terminal sentinel has to cover the WHOLE run, not just this attempt's
+    // share of it — the projector checks it against the last seq it folded.
+    expect(rec.done).toEqual([11]);
+    // And the floor keeps advancing, so a THIRD attempt would pick up from 11.
+    expect(acked).toEqual([6, 7, 8, 9, 10, 11]);
   });
 });

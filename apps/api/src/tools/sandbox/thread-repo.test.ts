@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import {
+  resolveSandboxBranch,
   syntheticBranchToGitRef,
   threadBranch,
   threadIdFromBranch,
@@ -47,5 +49,68 @@ test("syntheticBranchToGitRef is deterministic and per-thread distinct (restore 
   );
   expect(syntheticBranchToGitRef(threadBranch("t1", "conn_a"))).not.toBe(
     syntheticBranchToGitRef(threadBranch("t2", "conn_a")),
+  );
+});
+
+// `resolveSandboxBranch` is the single derivation shared by the decopilot fs
+// tools and the sandbox-hosted dispatch path. Two derivations that drift
+// provision two pods for one thread, so each regime is pinned here.
+
+test("a thread-bound repo wins and pins its own branch", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      runBranch: "main",
+    }),
+  ).toBe("thread:t1/conn_a");
+});
+
+test("an agent with no repo at all shares one ephemeral sandbox", () => {
+  expect(resolveSandboxBranch({ threadId: "t1", threadRepo: null })).toBe(
+    "ephemeral",
+  );
+  expect(
+    resolveSandboxBranch({ threadId: "t2", threadRepo: null, agentRepo: null }),
+  ).toBe("ephemeral");
+});
+
+test("a repo-agent uses the run's branch when it has one", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      runBranch: "feature/x",
+    }),
+  ).toBe("feature/x");
+});
+
+test("a repo-agent with no branch yet falls back to a per-thread branch", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+    }),
+  ).toBe("thread:t1");
+  // Null and undefined must behave identically — the callers supply both.
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      runBranch: null,
+    }),
+  ).toBe("thread:t1");
+});
+
+test("different threads of one repo-agent never share a branch", () => {
+  const agentRepo = { connectionId: "conn_b" } as GithubRepo;
+  expect(
+    resolveSandboxBranch({ threadId: "t1", threadRepo: null, agentRepo }),
+  ).not.toBe(
+    resolveSandboxBranch({ threadId: "t2", threadRepo: null, agentRepo }),
   );
 });

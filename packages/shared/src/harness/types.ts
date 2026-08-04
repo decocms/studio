@@ -153,4 +153,11 @@ export interface HarnessStreamInput {
   signal: AbortSignal;
   traceparent?: string;
   runFenceToken?: string;
+  /**
+   * Set when this dispatch continues a turn a previous attempt started and
+   * infrastructure cut short (the Studio pod driving it died, or the sandbox
+   * did). See `harnessStreamInputSchema.resume` for the contract; in-process
+   * harnesses ignore it.
+   */
+  resume?: { reason: string };
 }

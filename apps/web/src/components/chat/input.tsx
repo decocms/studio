@@ -573,6 +573,12 @@ export function ChatInput({
     );
   }
 
+  // Autonomous runs (a sandbox-hosted claude-code task run) answer the one
+  // prompt they were dispatched with; a follow-up would queue forever.
+  if (task?.metadata?.read_only) {
+    return <ChatInputDisabledState message={t("chat.input.readOnlyThread")} />;
+  }
+
   if (hostedRuntimeBlocked) {
     return (
       <ChatInputDisabledState

@@ -174,6 +174,22 @@ export function addUsage(
 }
 
 /**
+ * Share of the prompt that came from cache, 0–1.
+ *
+ * `inputTokens` is the WHOLE prompt (cache included) — cache reads are a
+ * subset of it, not an addition to it. The `max` is a guard, not arithmetic: a
+ * provider that reports its cache counters outside `inputTokens` would
+ * otherwise produce a ratio in the thousands rather than a capped 100%.
+ */
+export function cacheHitRatio(stats: UsageStats): number {
+  const prompt = Math.max(
+    stats.inputTokens,
+    stats.cacheReadTokens + stats.cacheWriteTokens,
+  );
+  return prompt > 0 ? stats.cacheReadTokens / prompt : 0;
+}
+
+/**
  * Calculate aggregated usage stats from an array of messages.
  * Each message is expected to have an optional `metadata.usage` field.
  */

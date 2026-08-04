@@ -1,0 +1,542 @@
+/**
+ * SandboxDispatchClient — the `SandboxClient` for harnesses that run INSIDE the
+ * sandbox instead of in this process.
+ *
+ * Decopilot runs in-process (`InProcessSandboxClient`); the Claude Agent SDK
+ * cannot — it is a TS library that drives the `claude` CLI, and it belongs next
+ * to the checkout. So this client provisions the pod, POSTs the same
+ * `HarnessStreamInputWire` to the daemon's `/_sandbox/dispatch`, and yields the
+ * turn it answers with as the `UIMessageChunk` iterable every consumer upstream
+ * already expects. Nothing downstream of `dispatch()` can tell the difference.
+ *
+ * STUDIO-OWNED, like its in-process sibling: it closes over StudioContext, so
+ * it cannot live in `@decocms/sandbox`.
+ *
+ * Transport note: one request per run, held open for its whole length, with the
+ * daemon streaming newline-delimited `HarnessRunResult` frames as the harness
+ * produces them. Each frame's chunks are yielded on arrival, so the projector
+ * persists a long turn while it is still running instead of at its end. The
+ * response still ends when the run does, so Studio keeps knowing precisely when
+ * that was; `withLivenessHeartbeat` upstream covers the quiet stretches.
+ *
+ * Failure model: the pod holding the agent loop can disappear mid-turn — spot
+ * reclaim, an eviction, a node loss — and that is NOT the harness failing. The
+ * daemon marks its last frame `done`, so a body that ends without one means the
+ * transport died, and a run that goes silent past `DAEMON_SILENCE_TIMEOUT_MS`
+ * means the pod stopped answering (its keepalive is every 15s). Either way this
+ * client re-provisions and CONTINUES the turn once, telling the harness to pick
+ * up the work in the checkout rather than redo it — the dying daemon commits and
+ * pushes the worktree on SIGTERM, so a replacement pod clones it back.
+ */
+
+import type { UIMessageChunk } from "ai";
+import { sleep } from "@decocms/shared/std";
+import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
+import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
+import {
+  claudeCodeEnvFromCredential,
+  type ClaudeCodeCredential,
+} from "@/harnesses/claude-code-env";
+import type { StudioContext } from "../core/studio-context";
+import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
+import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { ensureSandbox } from "@/tools/sandbox/start";
+import {
+  getThreadGithubRepo,
+  syntheticBranchToGitRef,
+} from "@/tools/sandbox/thread-repo";
+
+/**
+ * Working directory the harness runs in, as the daemon names it.
+ *
+ * The daemon rebases exactly `/repo` onto its own app root (`RebaseWorkspaceCwd`
+ * in daemon-go), so this is the one value that lands on the checkout wherever
+ * the pod puts it. Any other path — including the real `/app/repo` — is
+ * rewritten to `null`, which would run the harness in the runner's cwd instead
+ * of the repository it was asked to work in.
+ */
+const SANDBOX_REPO_CWD = "/repo";
+
+/** Harnesses this client can dispatch. Decopilot is in-process, never here. */
+const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
+
+/**
+ * Dispatches per run: the first, plus ONE continuation after the sandbox goes
+ * away. A second failure is the run's failure — repeated re-provisioning of a
+ * sandbox that keeps dying burns model budget on a turn that never lands, and
+ * the durable path already retries at a higher level (DBOS recovery re-enters
+ * this client with the run's seq floor intact).
+ */
+const MAX_DISPATCH_ATTEMPTS = 2;
+
+/**
+ * How long Studio waits for ANY byte from the daemon before calling the pod
+ * gone. The daemon writes a keepalive newline every 15s while the harness is
+ * quiet, so silence past this is the pod not answering — not a slow model.
+ *
+ * This is the ONLY thing that bounds a lost node: `withLivenessHeartbeat`
+ * upstream injects its heartbeat on Studio's own clock, so it keeps a run that
+ * is reading from a dead socket looking alive to the reaper indefinitely.
+ */
+const DAEMON_SILENCE_TIMEOUT_MS = 90_000;
+
+/**
+ * The sandbox, not the harness, is what failed — so the turn can be continued
+ * on a replacement pod. A harness that crashes reports through its own terminal
+ * frame instead, and that is a real terminal we must not paper over by re-running
+ * the model.
+ */
+export class SandboxUnreachableError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "SandboxUnreachableError";
+  }
+}
+
+/**
+ * Is a non-2xx dispatch response the sandbox being gone, or the daemon rejecting
+ * the envelope? 404/410 is the proxy finding no pod (or a reprovisioned one that
+ * never adopted the claim) and 5xx is the pod failing to answer at all — both
+ * retriable on a fresh sandbox. A 4xx from the daemon itself (bad input,
+ * unauthorized, tombstoned) would fail the same way forever.
+ */
+export function isUnreachableStatus(status: number): boolean {
+  return status === 404 || status === 410 || status >= 500;
+}
+
+/**
+ * Widened past `HarnessId` so callers holding a raw `threads.harness_id` can ask
+ * without an `as`-cast — a cast there would hide a renamed harness until
+ * runtime. A Set lookup is total over strings, so nothing is lost.
+ */
+export function harnessRunsInSandbox(
+  harnessId: string | null | undefined,
+): boolean {
+  return SANDBOX_HOSTED_HARNESSES.has(harnessId as HarnessId);
+}
+
+export class SandboxDispatchClient implements SandboxClient {
+  private readonly ctx: StudioContext;
+  private readonly harnessId: HarnessId;
+  private readonly virtualMcpId: string;
+  private readonly branch: string;
+  private readonly credential: ClaudeCodeCredential | null;
+  private readonly resume: { reason: string } | null;
+
+  constructor(args: {
+    ctx: StudioContext;
+    harnessId: HarnessId;
+    virtualMcpId: string;
+    branch: string;
+    /** Resolved thinking-slot credential; becomes the sandbox's model env. */
+    credential: ClaudeCodeCredential | null;
+    /**
+     * Set when the caller knows this dispatch continues a turn a previous
+     * Studio process started (see `dispatch-run.ts`'s `resumeFromSeq`). A
+     * sandbox that dies mid-turn is handled inside this client instead, which
+     * supplies its own reason.
+     */
+    resume?: { reason: string };
+  }) {
+    if (!harnessRunsInSandbox(args.harnessId)) {
+      throw new Error(
+        `SandboxDispatchClient runs sandbox-hosted harnesses only; got "${args.harnessId}"`,
+      );
+    }
+    this.ctx = args.ctx;
+    this.harnessId = args.harnessId;
+    this.virtualMcpId = args.virtualMcpId;
+    this.branch = args.branch;
+    this.credential = args.credential;
+    this.resume = args.resume ?? null;
+  }
+
+  dispatch(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
+    return this.stream(input);
+  }
+
+  /**
+   * Where the harness works, and on what.
+   *
+   * `cwd: "/repo"` is only meaningful with a repo behind it — the wire shape
+   * makes that explicit, and it is the honest thing to send: a run whose thread
+   * has no bound repo got an `ephemeral` sandbox with no checkout, so naming a
+   * working directory there would describe a directory that doesn't exist.
+   */
+  private async resolveWorkspace(
+    threadId: string,
+  ): Promise<HarnessStreamInput["workspace"]> {
+    const repo = await getThreadGithubRepo(this.ctx, threadId);
+    if (!repo) return { cwd: null };
+    return {
+      cwd: SANDBOX_REPO_CWD,
+      repo: {
+        owner: repo.owner,
+        name: repo.name,
+        connectedGithub: Boolean(repo.connectionId),
+      },
+      // The synthetic sandbox key is not a git ref; the daemon checks out its
+      // derived branch, so that is the one the harness is standing on.
+      branch: this.branch.startsWith("thread:")
+        ? syntheticBranchToGitRef(this.branch)
+        : this.branch,
+    };
+  }
+
+  private async *stream(
+    input: HarnessStreamInput,
+  ): AsyncIterable<UIMessageChunk> {
+    if (!this.credential) {
+      throw new Error(
+        `the ${this.harnessId} harness needs a resolved model credential; ` +
+          `this run has none (check the agent's thinking model)`,
+      );
+    }
+    // Fail on an unusable provider BEFORE provisioning a pod: the alternative
+    // is a booted sandbox that dies on an opaque model error minutes later.
+    const modelEnv = claudeCodeEnvFromCredential(this.credential);
+    const organization = this.ctx.organization;
+    if (!organization) {
+      throw new Error(
+        `the ${this.harnessId} harness needs an organization on the context ` +
+          `to mint its MCP endpoint; this run has none`,
+      );
+    }
+
+    const { provider, kind } = await resolveSandboxProvider(this.ctx, {
+      userId: input.user.id,
+      branch: this.branch,
+      virtualMcpMetadata: null,
+    });
+    const wireInput = {
+      ...input,
+      // Hosted Decopilot's in-process client ignores `mcp` and gets the
+      // sentinel `{url: "", ...}`. This harness is a real MCP client in
+      // another process, so it needs a real endpoint — without one the
+      // daemon rejects the envelope outright, and the org's tools (moving
+      // the task on the board, for one) would be unreachable anyway.
+      //
+      // The management surface, NOT the agent's own: super-agent task runs
+      // dispatch as Decopilot, which by design aggregates no connections
+      // (`storage/virtual.ts` findById returns `connections: []`) because
+      // hosted Decopilot reaches TASK_BOARD_* by `subtask`-delegating to the
+      // Task Manager agent. This harness has no `subtask`, so pointing it at
+      // the agent's virtual MCP yielded `connected` with zero tools.
+      //
+      // ponytail: one surface, not both — the agent's aggregated connections
+      // are not merged in. Add a second MCP server on the wire if a
+      // claude-code run ever needs an agent's own external tools.
+      mcp: await mintMcpEndpoint(
+        this.ctx,
+        this.virtualMcpId,
+        organization,
+        `${this.harnessId}-run`,
+        "management",
+      ),
+      // Hosted Decopilot mounts no working directory; this harness edits the
+      // checkout the daemon prepared.
+      workspace: await this.resolveWorkspace(input.threadId),
+    };
+
+    // The daemon keys cancellation (`DELETE /_sandbox/runs/:runId`) by this id,
+    // and Studio's run identity is the thread — same key the rest of the hosted
+    // pipeline uses for the run. It is also what makes a re-dispatch a TAKEOVER
+    // rather than a second agent in the same checkout (see the daemon's
+    // `Registry.claim`).
+    const runId = input.threadId;
+    const { ctx, harnessId, virtualMcpId, branch } = this;
+
+    // Provisioning is re-done per attempt on purpose. On the continuation path
+    // the pod is gone, and `ensureSandbox` + `pushSandboxEnv` are what put a
+    // replacement behind the same handle: the ensure clones the branch the dying
+    // daemon pushed on its way out, and the env push is not optional either —
+    // the model credential lives in the daemon's own config, which a fresh pod
+    // boots without.
+    const dispatchOnce = (
+      resume: { reason: string } | null,
+    ): AsyncIterable<UIMessageChunk> =>
+      (async function* () {
+        const sandbox = await ensureSandbox(
+          {
+            virtualMcpId,
+            branch,
+            sandboxProviderKind: kind,
+            // This pod runs one agent loop and returns its output. Nothing here
+            // opens a preview, so the tenant's install + dev server is pure boot
+            // latency — the harness only needs the checkout.
+            cloneOnly: true,
+          },
+          ctx,
+        );
+        // The daemon deep-merges its config, so re-running on an already-claimed
+        // sandbox just rotates the credential.
+        await pushSandboxEnv(provider, sandbox.sandboxHandle, modelEnv);
+        yield* dispatchToDaemon({
+          provider,
+          handle: sandbox.sandboxHandle,
+          harnessId,
+          input: resume ? { ...wireInput, resume } : wireInput,
+          runId,
+          signal: input.signal,
+        });
+      })();
+
+    yield* dispatchWithContinuation({
+      runId,
+      resume: this.resume,
+      aborted: () => input.signal?.aborted === true,
+      dispatchOnce,
+    });
+  }
+}
+
+/**
+ * Dispatch a turn, continuing it on a replacement sandbox if the one running it
+ * disappears. The policy, with the provisioning injected as `dispatchOnce` so it
+ * is a unit.
+ *
+ * Two things make a continuation safe to splice into a run that is already
+ * streaming:
+ *
+ *  - Only `SandboxUnreachableError` is retried. A harness that crashed reported a
+ *    terminal, and re-running the model on it would bill a second full turn for a
+ *    failure that will repeat.
+ *  - The continuation's own `start` chunk is dropped. `start` RENAMES the message
+ *    being folded (AI SDK `processUIMessageStream` assigns `state.message.id`),
+ *    so forwarding a second one re-ids a message the projector has already
+ *    written parts for. The first `start` of the run wins.
+ *
+ * What it does NOT do is re-run the task: `resume` tells the harness its own
+ * context is gone but the work is in the checkout, so it continues from there.
+ */
+export async function* dispatchWithContinuation(args: {
+  runId: string;
+  /** Set when the CALLER already knows this run is a continuation. */
+  resume: { reason: string } | null;
+  /** True when the consumer asked us to stop — never something to route around. */
+  aborted: () => boolean;
+  dispatchOnce: (
+    resume: { reason: string } | null,
+  ) => AsyncIterable<UIMessageChunk>;
+  maxAttempts?: number;
+}): AsyncIterable<UIMessageChunk> {
+  const maxAttempts = args.maxAttempts ?? MAX_DISPATCH_ATTEMPTS;
+  let resume = args.resume;
+  let forwardedStart = resume !== null;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      for await (const chunk of args.dispatchOnce(resume)) {
+        if ((chunk as { type?: string }).type === "start") {
+          if (forwardedStart) continue;
+          forwardedStart = true;
+        }
+        yield chunk;
+      }
+      return;
+    } catch (err) {
+      if (args.aborted()) throw err;
+      if (!(err instanceof SandboxUnreachableError) || attempt >= maxAttempts) {
+        throw err;
+      }
+      console.warn("[sandbox-dispatch] sandbox lost mid-run; continuing", {
+        runId: args.runId,
+        attempt,
+        reason: err.message,
+      });
+      resume = {
+        reason: `the sandbox running the previous attempt stopped answering (${err.message})`,
+      };
+      // Whatever the interrupted attempt streamed already opened the run's
+      // message; the continuation must extend it, not re-open it.
+      forwardedStart = true;
+    }
+  }
+}
+
+/**
+ * PUT the run's model env onto the daemon's config channel.
+ *
+ * ⚠️ SECURITY: `env` holds a model credential. Never log it, and never include
+ * the request body in an error message.
+ */
+async function pushSandboxEnv(
+  provider: SandboxProvider,
+  handle: string,
+  env: Record<string, string | null>,
+): Promise<void> {
+  const res = await provider.proxyDaemonRequest(handle, "/_sandbox/config", {
+    method: "PUT",
+    headers: new Headers({ "content-type": "application/json" }),
+    body: JSON.stringify({ env }),
+  });
+  if (!res.ok) {
+    // Hard failure, unlike the tool-catalog sync: without the credential the
+    // harness cannot reach a model at all, so proceeding wastes a pod boot and
+    // reports a confusing model error instead of this one.
+    throw new Error(
+      `failed to push model env to the sandbox (${res.status} ${res.statusText})`,
+    );
+  }
+}
+
+/**
+ * `signal` is an AbortSignal and the run context is attached out-of-band; both
+ * are dropped here. Everything else on `HarnessStreamInput` is the wire shape.
+ */
+function toWireInput(input: HarnessStreamInput): unknown {
+  const { signal: _signal, ...wire } = input;
+  return wire;
+}
+
+async function* dispatchToDaemon(args: {
+  provider: SandboxProvider;
+  handle: string;
+  harnessId: HarnessId;
+  runId: string;
+  input: HarnessStreamInput;
+  signal?: AbortSignal;
+}): AsyncIterable<UIMessageChunk> {
+  // Attribute the outcome. A transport-level failure here arrives as a bare
+  // "operation timed out" with no run, no handle and no duration on it, which is
+  // indistinguishable from a model error until you go read pod logs.
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await args.provider.proxyDaemonRequest(
+      args.handle,
+      "/_sandbox/dispatch",
+      {
+        method: "POST",
+        headers: new Headers({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          harnessId: args.harnessId,
+          runId: args.runId,
+          input: toWireInput(args.input),
+        }),
+        ...(args.signal ? { signal: args.signal } : {}),
+      },
+    );
+  } catch (err) {
+    // The proxy could not reach the pod at all (port-forward gone, TLS to a
+    // dead node, ECONNRESET). Nothing ran, so this is always safe to continue
+    // on a replacement.
+    if (args.signal?.aborted) throw err;
+    throw new SandboxUnreachableError(
+      `could not reach the sandbox daemon: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    const summary = `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`;
+    // 404/410/5xx is the pod, not the envelope — retriable on a fresh sandbox.
+    // Anything else the daemon would reject the same way forever (bad input,
+    // unauthorized, tombstoned run), so it surfaces as the run's failure rather
+    // than an empty successful run.
+    if (isUnreachableStatus(res.status)) {
+      throw new SandboxUnreachableError(summary);
+    }
+    throw new Error(summary);
+  }
+  if (!res.body) throw new SandboxUnreachableError("dispatch returned no body");
+  let total = 0;
+  // Sticky, and only acted on after every frame's chunks are yielded: partial
+  // work first, THEN the throw, because the consumer's error path is what
+  // records the run as failed and it must not also lose the turn's work. Sticky
+  // because the daemon's terminal frame follows a harness's own error frame, and
+  // the FIRST reason is the real one.
+  let error: { code: string; message: string } | null = null;
+  let done = false;
+  for await (const line of ndjsonLines(res.body, args.signal)) {
+    const parsed = harnessRunResultSchema.safeParse(line);
+    if (!parsed.success) {
+      throw new Error(
+        `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
+      );
+    }
+    total += parsed.data.chunks.length;
+    yield* parsed.data.chunks as UIMessageChunk[];
+    error ??= parsed.data.error;
+    if (parsed.data.done) done = true;
+  }
+  console.log("[sandbox-dispatch] run ended", {
+    runId: args.runId,
+    handle: args.handle,
+    chunks: total,
+    elapsedMs: Date.now() - startedAt,
+    done,
+    error: error?.code ?? null,
+  });
+  // A body that ends without the daemon's terminal frame means the pod stopped
+  // mid-turn: the run is still owed an ending, and the work so far is in the
+  // checkout (and, if the daemon caught SIGTERM, pushed to the branch). Continue
+  // it rather than reporting a turn that simply stops.
+  if (!done && !error) {
+    throw new SandboxUnreachableError(
+      `the sandbox stopped streaming after ${total} chunks without finishing the run`,
+    );
+  }
+  if (error) throw new Error(`${error.code}: ${error.message}`);
+}
+
+/**
+ * Parse the daemon's response body as newline-delimited JSON.
+ *
+ * Blank lines are the daemon's keepalive (it writes a lone newline while the
+ * harness is quiet), so they are skipped rather than parsed — but they DO count
+ * as the pod being alive, which is the whole point of the silence window below.
+ *
+ * Every read races `DAEMON_SILENCE_TIMEOUT_MS`, because a lost node does not
+ * close the socket: without this the read hangs forever while
+ * `withLivenessHeartbeat` keeps publishing on Studio's clock, so the run looks
+ * healthy to the reaper and holds its thread's queue slot indefinitely.
+ */
+async function* ndjsonLines(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncIterable<unknown> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const drain = function* (rest: boolean) {
+    const lines = buffer.split("\n");
+    buffer = rest ? (lines.pop() ?? "") : "";
+    for (const line of lines) {
+      if (line.trim().length > 0) yield JSON.parse(line) as unknown;
+    }
+  };
+  const reader = (body as unknown as AsyncIterable<Uint8Array>)[
+    Symbol.asyncIterator
+  ]();
+  try {
+    for (;;) {
+      const idle = new AbortController();
+      const next = reader.next().then((r) => {
+        idle.abort();
+        return r;
+      });
+      const timeout = sleep(DAEMON_SILENCE_TIMEOUT_MS, { signal: idle.signal })
+        .then(() => "silent" as const)
+        .catch(() => "read-won" as const);
+      const step = await Promise.race([next, timeout]);
+      if (step === "silent") {
+        if (signal?.aborted) return;
+        throw new SandboxUnreachableError(
+          `no output from the sandbox for ${DAEMON_SILENCE_TIMEOUT_MS / 1000}s ` +
+            `(its keepalive is every 15s, so the pod is gone)`,
+        );
+      }
+      // The read resolved first and aborted the timer; loop for the next one.
+      if (step === "read-won") continue;
+      if (step.done) break;
+      buffer += decoder.decode(step.value, { stream: true });
+      yield* drain(true);
+    }
+    yield* drain(false);
+  } finally {
+    // Close the socket on every exit path — a thrown silence timeout otherwise
+    // leaves the request (and the daemon's run) hanging behind us.
+    await reader.return?.().catch(() => {});
+  }
+}

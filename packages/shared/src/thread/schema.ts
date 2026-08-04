@@ -49,6 +49,12 @@ const ThreadExpandedToolSchema = z.object({
 const ThreadMetadataSchema = z
   .object({
     expanded_tools: z.array(ThreadExpandedToolSchema).optional(),
+    read_only: z
+      .boolean()
+      .optional()
+      .describe(
+        "The thread takes no further input (an autonomous run the user cannot continue)",
+      ),
   })
   .catchall(z.unknown());
 

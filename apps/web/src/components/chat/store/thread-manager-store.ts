@@ -6,6 +6,7 @@ import type {
   ThreadUpdateData,
 } from "@decocms/shared/thread/schema";
 import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
+import { isBatchHarness } from "../hosted-runtime-guard";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
 import type { SSESubscription } from "@/hooks/create-sse-subscription";
@@ -149,8 +150,14 @@ export class ThreadManagerStore {
   }
 
   setActive(threadId: string): ThreadConnection {
+    // Decide `batch` here too, not just in chat-context: `getOrOpenStream` is
+    // idempotent by key, so whichever call lands first fixes the mode for the
+    // thread. Reading the row we already hold keeps both callers in agreement.
     const conn = getOrOpenStream(this.orgSlug, threadId, {
       client: this.client,
+      batch: isBatchHarness(
+        this.threads.get().find((t) => t.id === threadId)?.harness_id,
+      ),
     });
     if (this.active.get() !== conn) this.active.set(conn);
     return conn;

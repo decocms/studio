@@ -50,7 +50,6 @@ async function syncToolsCatalog(
       vm.virtualMcpId,
       organization,
       "tool-scripting",
-      vm.providerKind,
     );
     const res = await runner.proxyDaemonRequest(
       handle,

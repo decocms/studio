@@ -40,7 +40,9 @@ describe("ingestRun", () => {
         runId: "r",
         fenceToken: "f",
         chunks: src() as AsyncIterable<{ seq: number; chunk: UIMessageChunk }>,
-        onPublished: (s) => acked.push(s),
+        onPublished: (s) => {
+          acked.push(s);
+        },
       },
       {
         streamBuffer: {
@@ -234,7 +236,9 @@ describe("ingestRun onPublished contiguous floor", () => {
         runId: "run_1",
         fenceToken: "fence_a",
         chunks: outOfOrder(),
-        onPublished: (s) => acked.push(s),
+        onPublished: (s) => {
+          acked.push(s);
+        },
       },
       d.deps,
     );
@@ -276,7 +280,9 @@ describe("ingestRun initialAckSeq resume floor", () => {
             chunk: { type: "finish", finishReason: "stop" } as UIMessageChunk,
           },
         ),
-        onPublished: (s) => acked.push(s),
+        onPublished: (s) => {
+          acked.push(s);
+        },
       },
       d.deps,
     );

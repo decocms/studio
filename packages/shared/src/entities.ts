@@ -18,6 +18,13 @@ export interface ThreadExpandedTool {
 
 export interface ThreadMetadata {
   expanded_tools?: ThreadExpandedTool[];
+  /**
+   * The thread takes no further input. Set at creation for autonomous runs the
+   * user cannot continue — a sandbox-hosted `claude-code` task run is one
+   * dispatch with one prompt, so a follow-up message would queue against a run
+   * nothing will ever deliver it to.
+   */
+  read_only?: boolean;
   [key: string]: unknown;
 }
 

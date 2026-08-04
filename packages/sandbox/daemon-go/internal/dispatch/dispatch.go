@@ -1,10 +1,8 @@
 package dispatch
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,24 +12,42 @@ import (
 	"sync"
 	"time"
 
+	"github.com/decocms/studio/sandbox-daemon/internal/activity"
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 )
 
 const tombstoneTTL = 60 * time.Second
+
+// How long a takeover waits for the run it displaced to actually exit before
+// starting the new one. The displaced harness holds `claude` processes writing
+// into the checkout the new run is about to read, so overlapping them is how
+// two agents end up editing one worktree. Variable only so the test can
+// shorten it.
+var takeoverTimeout = 10 * time.Second
+
+// How often a quiet dispatch writes a keepalive byte. A run's whole output only
+// exists at its end, so a long tool call or a slow model puts zero bytes on the
+// wire for minutes; Studio's fetch then dies on the transport's idle timeout and
+// the run surfaces as a bare "operation timed out" with nothing in the log to
+// attribute it. Variable only so the test can shorten it.
+var dispatchHeartbeat = 15 * time.Second
 
 type Deps struct {
 	DaemonToken      func() string
 	AppRoot          string
 	AllowedHosts     []string
 	AllowSameHostDev bool
-	// HarnessRunnerCmd is the argv for the harness-runner subprocess
+	// HarnessRunnerCmd is the argv the harness runs as, one process per run
 	// (HARNESS_RUNNER_CMD env). Empty → every dispatch fails with
-	// unknown_harness over SSE.
+	// unknown_harness.
 	HarnessRunnerCmd []string
-	// Runner supervises the harness-runner subprocess. Optional: a zero Deps
-	// falls back to a process-wide runner, so a caller that only exercises the
-	// gates does not have to build one.
-	Runner *Runner
+	// RunEnv is the tenant environment handed to the harness for one run — the
+	// model credential lives here. Read per dispatch, so a rotated credential
+	// takes effect on the next run instead of the next pod. Optional; nil means
+	// the harness sees only the daemon's own environment.
+	//
+	// ⚠️ SECURITY: the result holds a credential. Never log it.
+	RunEnv func() map[string]string
 	// BeforeRun prepares the workspace before the harness streams: org-fs links
 	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
 	// long and must not fail the run. Optional.
@@ -49,15 +65,24 @@ type RunInfo struct {
 	McpExpiresAt int64
 }
 
+// activeRun is one in-flight run: the handle to stop it, plus a channel closed
+// when its handler has actually returned. The channel is what makes a takeover
+// safe — a replacement run must not exec its harness until the displaced one's
+// process group is gone.
+type activeRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 type Registry struct {
 	mu         sync.Mutex
-	activeRuns map[string]context.CancelFunc
+	activeRuns map[string]*activeRun
 	tombstones map[string]time.Time
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		activeRuns: map[string]context.CancelFunc{},
+		activeRuns: map[string]*activeRun{},
 		tombstones: map[string]time.Time{},
 	}
 }
@@ -76,16 +101,65 @@ func (reg *Registry) tombstoned(runId string) bool {
 	return false
 }
 
-func (reg *Registry) register(runId string, cancel context.CancelFunc) {
+// claim makes this run the single writer for `runId`, displacing whatever run
+// held it. Returns the new entry and a wait function the caller MUST call
+// before starting its harness: it blocks until the displaced run's handler has
+// returned (bounded by `takeoverTimeout`).
+//
+// Studio re-dispatches the same runId whenever the pod that owned the run died
+// and another picked the work up (DBOS recovery). Registering over the old
+// entry — what this used to do — dropped the old run's cancel on the floor and
+// left its `claude` running in the same checkout as the new one: two agents,
+// one worktree, and no way to stop the first.
+func (reg *Registry) claim(runId string, cancel context.CancelFunc) (*activeRun, func()) {
+	entry := &activeRun{cancel: cancel, done: make(chan struct{})}
 	reg.mu.Lock()
-	reg.activeRuns[runId] = cancel
+	prev := reg.activeRuns[runId]
+	reg.activeRuns[runId] = entry
 	reg.mu.Unlock()
+	if prev == nil {
+		return entry, func() {}
+	}
+	prev.cancel()
+	return entry, func() {
+		select {
+		case <-prev.done:
+			slog.Info("dispatch takeover", "run_id", runId)
+		case <-time.After(takeoverTimeout):
+			// Starting anyway is the lesser evil: the alternative is refusing a
+			// run whose thread is otherwise stuck forever. Loud, because it
+			// means two harnesses may briefly share the checkout.
+			slog.Error("dispatch takeover timed out; previous run may still be writing",
+				"run_id", runId, "waited_s", int(takeoverTimeout.Seconds()))
+		}
+	}
 }
 
-func (reg *Registry) unregister(runId string) {
+// CancelAll kills every in-flight run. Used on daemon shutdown: a running
+// harness holds CLIs writing into the tree the shutdown publish is about to
+// commit.
+func (reg *Registry) CancelAll() {
 	reg.mu.Lock()
-	delete(reg.activeRuns, runId)
+	entries := make([]*activeRun, 0, len(reg.activeRuns))
+	for _, entry := range reg.activeRuns {
+		entries = append(entries, entry)
+	}
 	reg.mu.Unlock()
+	for _, entry := range entries {
+		entry.cancel()
+	}
+}
+
+// release retires this run's claim. Only clears the map when the entry is still
+// the current one — a run that was taken over must not delete its successor's
+// claim on the way out.
+func (reg *Registry) release(runId string, entry *activeRun) {
+	reg.mu.Lock()
+	if reg.activeRuns[runId] == entry {
+		delete(reg.activeRuns, runId)
+	}
+	reg.mu.Unlock()
+	close(entry.done)
 }
 
 func jsonError(w http.ResponseWriter, status int, body map[string]string) {
@@ -96,49 +170,34 @@ func jsonError(w http.ResponseWriter, status int, body map[string]string) {
 	w.Write(data)
 }
 
-// sseWriter serializes SSE writes and guards against write-after-close —
-// the Go analogue of the TS closed-controller guard (the harness_crashed
-// re-dispatch-storm invariant).
-type sseWriter struct {
+// bodyWriter serializes writes to one response body and swallows them once it
+// has failed. Concurrent because the keepalive ticks while the harness runs.
+type bodyWriter struct {
 	mu      sync.Mutex
 	w       http.ResponseWriter
 	flusher http.Flusher
-	closed  bool
+	failed  bool
 }
 
-func newSseWriter(w http.ResponseWriter) *sseWriter {
+func newBodyWriter(w http.ResponseWriter) *bodyWriter {
 	flusher, _ := w.(http.Flusher)
-	return &sseWriter{w: w, flusher: flusher}
+	return &bodyWriter{w: w, flusher: flusher}
 }
 
-func (s *sseWriter) writeRaw(data string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+func (b *bodyWriter) write(data []byte) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.failed {
 		return false
 	}
-	if _, err := io.WriteString(s.w, data); err != nil {
-		s.closed = true
+	if _, err := b.w.Write(data); err != nil {
+		b.failed = true
 		return false
 	}
-	if s.flusher != nil {
-		s.flusher.Flush()
+	if b.flusher != nil {
+		b.flusher.Flush()
 	}
 	return true
-}
-
-func (s *sseWriter) WriteEvent(event map[string]any) bool {
-	data, err := json.Marshal(event)
-	if err != nil {
-		return false
-	}
-	return s.writeRaw("data: " + string(data) + "\n\n")
-}
-
-func (s *sseWriter) Close() {
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
 }
 
 func RebaseWorkspaceCwd(cwd, appRoot string) *string {
@@ -235,15 +294,11 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
-	reg.register(runId, cancel)
+	entry, awaitTakeover := reg.claim(runId, cancel)
 	slog.Info("dispatch received", "harness", harnessId, "run_id", runId)
+	awaitTakeover()
 
-	writeSseHeaders(w)
-	sse := newSseWriter(w)
-	sse.writeRaw(": dispatch accepted\n\n")
-
-	rebased := rebaseInput(input, deps.AppRoot)
-	reg.streamHarnessRun(ctx, sse, deps, harnessId, runId, rebased)
+	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(input, deps.AppRoot))
 }
 
 func (reg *Registry) handleOffloadDispatch(
@@ -254,23 +309,10 @@ func (reg *Registry) handleOffloadDispatch(
 	ref *MessagesRef,
 	harnessId, runId string,
 ) {
-	ctx, cancel := context.WithCancel(r.Context())
-	reg.register(runId, cancel)
-
-	writeSseHeaders(w)
-	sse := newSseWriter(w)
-	sse.writeRaw(": dispatch accepted\n\n")
-
-	fail := func(code, message string) {
-		sse.WriteEvent(map[string]any{"type": "error", "code": code, "message": message})
-		sse.WriteEvent(map[string]any{"type": "done"})
-		reg.unregister(runId)
-	}
-
 	messages, err := FetchOffloadedMessages(ref.URL, deps.AllowedHosts, deps.AllowSameHostDev, ref.Sha256)
 	if err != nil {
 		slog.Error("dispatch offload fetch failed", "harness", harnessId, "url", ref.URL, "err", err)
-		fail("offload_fetch_failed", err.Error())
+		jsonError(w, 400, map[string]string{"error": "offload_fetch_failed", "detail": err.Error()})
 		return
 	}
 
@@ -285,43 +327,41 @@ func (reg *Registry) handleOffloadDispatch(
 	merged, _ := json.Marshal(baseInput)
 
 	if reason := ValidateHarnessInput(merged); reason != "" {
-		fail("bad_input", reason)
+		jsonError(w, 400, map[string]string{"error": "bad_input", "detail": reason})
 		return
 	}
 
 	if reg.tombstoned(runId) {
-		fail("tombstoned", fmt.Sprintf("runId %s was cancelled", runId))
+		jsonError(w, 410, map[string]string{"error": "tombstoned"})
 		return
 	}
 
+	ctx, cancel := context.WithCancel(r.Context())
+	entry, awaitTakeover := reg.claim(runId, cancel)
 	slog.Info("dispatch received (offload)", "harness", harnessId, "run_id", runId, "bytes", ref.Bytes)
-	rebased := rebaseInput(merged, deps.AppRoot)
-	reg.streamHarnessRun(ctx, sse, deps, harnessId, runId, rebased)
+	awaitTakeover()
+	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(merged, deps.AppRoot))
 }
 
-func writeSseHeaders(w http.ResponseWriter) {
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-store")
-	h.Set("Connection", "keep-alive")
-	h.Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(200)
-}
-
-// streamHarnessRun runs the harness through the harness-runner subprocess (see
-// runner.go) and pipes its NDJSON events back as SSE data frames. Always emits
-// done; clears the run registry in defer.
-func (reg *Registry) streamHarnessRun(
+// runHarness runs the harness for one run and streams its frames as this
+// request's response body — newline-delimited HarnessRunResult JSON, flushed per
+// frame so Studio persists the turn as it happens. Always answers 200: a crash
+// is a final frame with `error`, because the partial work still has to reach the
+// projector. Clears the run registry in defer.
+//
+// Every run ends with a `done:true` frame, whatever ended it. Studio needs that
+// to tell "the run finished" from "the connection broke": the second case means
+// the pod is gone mid-turn and the turn has to be continued somewhere else,
+// while the first is a terminal it must report as-is.
+func (reg *Registry) runHarness(
 	ctx context.Context,
-	sse *sseWriter,
+	w http.ResponseWriter,
 	deps Deps,
 	harnessId, runId string,
+	entry *activeRun,
 	input json.RawMessage,
 ) {
-	defer func() {
-		sse.WriteEvent(map[string]any{"type": "done"})
-		reg.unregister(runId)
-	}()
+	defer reg.release(runId, entry)
 
 	// Per-run workspace state, before the harness can touch the workspace. Here
 	// rather than in each caller so the offloaded-messages path gets it too.
@@ -330,70 +370,135 @@ func (reg *Registry) streamHarnessRun(
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
-		sse.WriteEvent(map[string]any{
-			"type": "error", "code": "unknown_harness",
-			"message": "no harness runner configured (HARNESS_RUNNER_CMD unset)",
+		writeResult(w, terminalFrame("unknown_harness",
+			"no harness runner configured (HARNESS_RUNNER_CMD unset)"))
+		return
+	}
+
+	var runEnv map[string]string
+	if deps.RunEnv != nil {
+		runEnv = deps.RunEnv()
+	}
+
+	// Headers first, then frames as the harness produces them, with a keepalive
+	// byte while it is quiet — the transport between here and Studio hangs up on
+	// an idle body long before a real task finishes.
+	writeResultHeaders(w)
+	body := newBodyWriter(w)
+	startedAt := time.Now()
+	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
+
+	// One line per frame: without it a streaming run and a buffering one look
+	// identical in the pod log (both are silence until "dispatch done"), which is
+	// exactly the question you ask this log to answer.
+	seq := 0
+	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, harnessId, input, runEnv,
+		func(frame []byte) bool {
+			seq++
+			// A streaming run is working, so it counts as activity: the idle
+			// reaper polls `/idle`, and without this a run that streams for
+			// longer than the idle TTL reports as untouched since the dispatch
+			// request arrived and gets its pod evicted mid-turn.
+			activity.Bump()
+			slog.Info("dispatch frame", "harness", harnessId, "run_id", runId,
+				"seq", seq, "bytes", len(frame),
+				"elapsed_s", int(time.Since(startedAt).Seconds()))
+			return body.write(append(frame, '\n'))
 		})
+	stopKeepalive()
+	elapsed := int(time.Since(startedAt).Seconds())
+
+	if ctx.Err() != nil {
+		// Cancelled: either the client hung up (its half of the terminal is
+		// moot) or a DELETE/takeover stopped the run while it was still being
+		// read. Terminal either way, so the reader is never left guessing.
+		slog.Info("dispatch cancelled", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+		body.write(terminalFrame("cancelled", "run cancelled"))
 		return
 	}
-
-	runner := deps.Runner
-	if runner == nil {
-		runner = defaultRunner
-	}
-	body, err := runner.Stream(ctx, deps.HarnessRunnerCmd, harnessId, input)
 	if err != nil {
-		// Spawn, ready-line and /run failures all land here. They are the same
-		// thing to the client as an in-process harness throw: the run produced
-		// nothing and will not.
-		if ctx.Err() == nil {
-			slog.Error("harness runner unavailable", "harness", harnessId, "run_id", runId, "err", err)
-			sse.WriteEvent(map[string]any{
-				"type": "error", "code": "harness_crashed", "message": err.Error(),
-			})
-		}
+		slog.Error("harness crashed", "harness", harnessId, "run_id", runId,
+			"elapsed_s", elapsed, "err", err)
+		body.write(terminalFrame("harness_crashed", err.Error()))
 		return
 	}
-	defer body.Close()
+	slog.Info("dispatch done", "harness", harnessId, "run_id", runId,
+		"elapsed_s", elapsed, "frames", frames)
+	body.write(terminalFrame("", ""))
+}
 
-	sawDone := false
-	chunkCount := 0
-	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+// startKeepalive writes an insignificant byte into the JSON body while the
+// harness is quiet, plus a log line naming how long it has produced nothing.
+// A newline before the object is whitespace to every JSON parser, so the client
+// needs no framing to skip it.
+//
+// The returned stop JOINS the goroutine. It has to: net/http forbids writing to
+// a ResponseWriter after the handler returns, and an async stop leaves a tick
+// racing the handler's last write.
+func startKeepalive(
+	ctx context.Context,
+	body *bodyWriter,
+	harnessId, runId string,
+) func() {
+	ctx, cancel := context.WithCancel(ctx)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(dispatchHeartbeat)
+		defer ticker.Stop()
+		startedAt := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !body.write([]byte("\n")) {
+					return
+				}
+				// A quiet run is still a live run — see the frame callback's
+				// note on the idle reaper.
+				activity.Bump()
+				slog.Info("dispatch waiting", "harness", harnessId, "run_id", runId,
+					"elapsed_s", int(time.Since(startedAt).Seconds()))
+			}
 		}
-		var event map[string]any
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
-		}
-		if ctx.Err() != nil {
-			break
-		}
-		typ, _ := event["type"].(string)
-		if typ == "done" {
-			sawDone = true
-			break
-		}
-		if typ == "ui-message-chunk" {
-			chunkCount++
-		}
-		sse.WriteEvent(event)
+	}()
+	return func() {
+		cancel()
+		<-stopped
 	}
-	// A stream that ends without `done` means the runner (or the harness inside
-	// it) died mid-run. Cancellation is not that — the client asked for it.
-	if !sawDone && ctx.Err() == nil {
-		reason := "harness-runner stream ended before done"
-		if err := scanner.Err(); err != nil {
-			reason = err.Error()
-		}
-		slog.Error("harness crashed", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "err", reason)
-		sse.WriteEvent(map[string]any{"type": "error", "code": "harness_crashed", "message": reason})
-		return
+}
+
+func writeResultHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "application/json")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(200)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
-	slog.Info("dispatch done", "harness", harnessId, "run_id", runId, "chunks", chunkCount, "aborted", ctx.Err() != nil)
+}
+
+// terminalFrame closes a run: a HarnessRunResult carrying no chunks of its own,
+// flagged `done` so the reader knows the run is over rather than the connection.
+// An empty `code` is a clean finish; otherwise the frame also carries the reason
+// the run ended (it may have forwarded frames before dying — those already
+// reached the consumer, and the error accompanies them rather than replacing
+// them).
+func terminalFrame(code, message string) []byte {
+	frame := map[string]any{"chunks": []any{}, "done": true}
+	if code != "" {
+		frame["error"] = map[string]string{"code": code, "message": message}
+	}
+	body, _ := json.Marshal(frame)
+	return append(body, '\n')
+}
+
+// writeResult answers a dispatch that never started the harness.
+func writeResult(w http.ResponseWriter, body []byte) {
+	writeResultHeaders(w)
+	w.Write(body)
 }
 
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)
@@ -411,8 +516,8 @@ func (reg *Registry) HandleCancel(w http.ResponseWriter, r *http.Request, tokenF
 		return
 	}
 	reg.mu.Lock()
-	if cancel, ok := reg.activeRuns[runId]; ok {
-		cancel()
+	if entry, ok := reg.activeRuns[runId]; ok {
+		entry.cancel()
 	}
 	reg.tombstones[runId] = time.Now().Add(tombstoneTTL)
 	reg.mu.Unlock()

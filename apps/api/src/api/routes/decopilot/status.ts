@@ -52,3 +52,26 @@ export function resolveThreadStatus(
   // "length", "content-filter", "error", "other", "unknown", undefined
   return "failed";
 }
+
+/**
+ * Terminal status for a run whose stream ended CLEANLY — no in-band `error`
+ * chunk. The one rule both terminal writers must share: the live run-reactor
+ * (`dispatch-run`'s finish hook) and the durable projector.
+ *
+ * An ABSENT finishReason means "this stream carried no AI-SDK `finish` chunk",
+ * not "the run failed" — `resolveThreadStatus(undefined, …)` reports failed,
+ * which is right for a hosted stream that reported `unknown` but wrong for the
+ * desktop/relay path and for any harness whose turn ends on `{done}`.
+ *
+ * The two writers disagreeing is not a cosmetic drift, it is unrecoverable: the
+ * live write lands first and is what the projector's `in_progress`-guarded
+ * `completeRunIfNotCompleted` then refuses to overwrite. A whole successful turn
+ * — reply, PR and all — ends up stored as `failed` with no reason.
+ */
+export function resolveCleanRunStatus(
+  finishReason: string | undefined,
+  responseParts: ResponsePart[] = [],
+): Exclude<ThreadStatus, "in_progress"> {
+  if (finishReason == null) return "completed";
+  return resolveThreadStatus(finishReason, responseParts);
+}
