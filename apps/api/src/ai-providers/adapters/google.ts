@@ -89,8 +89,14 @@ export const googleAdapter: ProviderAdapter = {
       },
 
       async listModels(): Promise<ModelInfo[]> {
+        // Pass the key via header, not the `?key=` query param: outbound fetch
+        // calls are OTel-traced with the full URL (including query string,
+        // see observability/instrumentations/fetch.ts), so a query-param key
+        // would leak into every trace span. gemini-interactions.ts already
+        // uses this same header for the sibling Gemini API.
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+          "https://generativelanguage.googleapis.com/v1beta/models",
+          { headers: { "x-goog-api-key": apiKey } },
         );
         if (!res.ok) {
           throw new Error(`Google listModels failed: ${res.status}`);
