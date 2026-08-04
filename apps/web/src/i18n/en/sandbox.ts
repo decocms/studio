@@ -604,6 +604,50 @@ export const sandbox = {
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.resumeToContinue": "Resume to continue.",
   "sandbox.stateCard.retry": "Retry",
+  "sandbox.submoduleCredentialsField.addSubmoduleCredential":
+    "Add submodule credential",
+  "sandbox.submoduleCredentialsField.cancel": "Cancel",
+  "sandbox.submoduleCredentialsField.createNewSecret": "Create new secret",
+  "sandbox.submoduleCredentialsField.createNewSecretAriaLabel":
+    "Create new secret",
+  "sandbox.submoduleCredentialsField.createNewSecretDescription":
+    "Stored encrypted in the credential vault. The submodule credential will reference the new secret by id — its value never leaves the server.",
+  "sandbox.submoduleCredentialsField.createNewSecretTitle": "Create new secret",
+  "sandbox.submoduleCredentialsField.description":
+    "Personal access tokens for cloning private git submodules that live in other repositories. Reference an org/user secret per host; SSH submodule URLs are rewritten to HTTPS so the token applies.",
+  "sandbox.submoduleCredentialsField.descriptionLabel":
+    "Description (optional)",
+  "sandbox.submoduleCredentialsField.descriptionPlaceholder":
+    "What is this token used for?",
+  "sandbox.submoduleCredentialsField.failedToLoadSecrets":
+    "Failed to load secrets",
+  "sandbox.submoduleCredentialsField.failedToSaveSecret": "Failed to save",
+  "sandbox.submoduleCredentialsField.hostAriaLabel":
+    "Submodule credential {index} host",
+  "sandbox.submoduleCredentialsField.hostInvalidMessage":
+    "Bare hostname, e.g. github.com (no scheme or path).",
+  "sandbox.submoduleCredentialsField.hostPlaceholder": "github.com",
+  "sandbox.submoduleCredentialsField.nameLabel": "Name",
+  "sandbox.submoduleCredentialsField.namePlaceholder": "GITHUB_SUBMODULE_PAT",
+  "sandbox.submoduleCredentialsField.nameHelperText":
+    "Letters, digits, underscore, dot, hyphen.",
+  "sandbox.submoduleCredentialsField.noSecretsYet":
+    'No secrets yet. Use the "+" to create one.',
+  "sandbox.submoduleCredentialsField.pickSecretPlaceholder": "Pick a secret…",
+  "sandbox.submoduleCredentialsField.remove": "Remove",
+  "sandbox.submoduleCredentialsField.removeAriaLabel":
+    "Remove submodule credential",
+  "sandbox.submoduleCredentialsField.saveSecret": "Save secret",
+  "sandbox.submoduleCredentialsField.saving": "Saving…",
+  "sandbox.submoduleCredentialsField.scopeLabel": "Scope",
+  "sandbox.submoduleCredentialsField.scopeOrganization":
+    "Organization — visible to all members",
+  "sandbox.submoduleCredentialsField.scopePrivate":
+    "Private — only visible to me",
+  "sandbox.submoduleCredentialsField.secretSaved": 'Saved secret "{name}"',
+  "sandbox.submoduleCredentialsField.title": "Submodule credentials",
+  "sandbox.submoduleCredentialsField.tokenLabel": "Personal access token",
+  "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.toolbar.closeTab": "Close {tab}",
   "sandbox.toolbar.noScriptsFound": "No scripts found",
   "sandbox.toolbar.restart": "Restart",

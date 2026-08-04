@@ -631,6 +631,51 @@ export const sandbox = {
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",
   "sandbox.stateCard.retry": "Tentar Novamente",
+  "sandbox.submoduleCredentialsField.addSubmoduleCredential":
+    "Adicionar credencial de submódulo",
+  "sandbox.submoduleCredentialsField.cancel": "Cancelar",
+  "sandbox.submoduleCredentialsField.createNewSecret": "Criar novo segredo",
+  "sandbox.submoduleCredentialsField.createNewSecretAriaLabel":
+    "Criar novo segredo",
+  "sandbox.submoduleCredentialsField.createNewSecretDescription":
+    "Armazenado criptografado no cofre de credenciais. A credencial de submódulo fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
+  "sandbox.submoduleCredentialsField.createNewSecretTitle":
+    "Criar novo segredo",
+  "sandbox.submoduleCredentialsField.description":
+    "Tokens de acesso pessoal para clonar submódulos git privados hospedados em outros repositórios. Referencie um segredo de org/usuário por host; URLs SSH de submódulo são reescritas para HTTPS para que o token se aplique.",
+  "sandbox.submoduleCredentialsField.descriptionLabel": "Descrição (opcional)",
+  "sandbox.submoduleCredentialsField.descriptionPlaceholder":
+    "Para que este token é usado?",
+  "sandbox.submoduleCredentialsField.failedToLoadSecrets":
+    "Falha ao carregar segredos",
+  "sandbox.submoduleCredentialsField.failedToSaveSecret": "Falha ao salvar",
+  "sandbox.submoduleCredentialsField.hostAriaLabel":
+    "Host da credencial de submódulo {index}",
+  "sandbox.submoduleCredentialsField.hostInvalidMessage":
+    "Nome de host simples, ex.: github.com (sem esquema ou caminho).",
+  "sandbox.submoduleCredentialsField.hostPlaceholder": "github.com",
+  "sandbox.submoduleCredentialsField.nameLabel": "Nome",
+  "sandbox.submoduleCredentialsField.namePlaceholder": "GITHUB_SUBMODULE_PAT",
+  "sandbox.submoduleCredentialsField.nameHelperText":
+    "Letras, dígitos, underscore, ponto, hífen.",
+  "sandbox.submoduleCredentialsField.noSecretsYet":
+    'Nenhum segredo ainda. Use o "+" para criar um.',
+  "sandbox.submoduleCredentialsField.pickSecretPlaceholder":
+    "Escolha um segredo…",
+  "sandbox.submoduleCredentialsField.remove": "Remover",
+  "sandbox.submoduleCredentialsField.removeAriaLabel":
+    "Remover credencial de submódulo",
+  "sandbox.submoduleCredentialsField.saveSecret": "Salvar segredo",
+  "sandbox.submoduleCredentialsField.saving": "Salvando…",
+  "sandbox.submoduleCredentialsField.scopeLabel": "Escopo",
+  "sandbox.submoduleCredentialsField.scopeOrganization":
+    "Organização — visível para todos os membros",
+  "sandbox.submoduleCredentialsField.scopePrivate":
+    "Privado — visível apenas para mim",
+  "sandbox.submoduleCredentialsField.secretSaved": 'Segredo "{name}" salvo',
+  "sandbox.submoduleCredentialsField.title": "Credenciais de submódulo",
+  "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
+  "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.toolbar.closeTab": "Fechar {tab}",
   "sandbox.toolbar.noScriptsFound": "Nenhum script encontrado",
   "sandbox.toolbar.restart": "Reiniciar",
