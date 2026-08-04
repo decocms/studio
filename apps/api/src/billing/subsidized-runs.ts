@@ -10,8 +10,8 @@
  * happens at the single credential-fetch site in dispatch-run.
  *
  * `resolveSubsidizedApiKey` is the deliberate seam for future rules
- * (per-org overrides, dynamic key/model selection from a DB table): today
- * it reads one env-configured house key; swap its body, nothing else moves.
+ * (per-org overrides, dynamic key/model selection): today it resolves the
+ * org's per-client subsidy key; swap its body, nothing else moves.
  */
 
 import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
@@ -59,9 +59,8 @@ export function subsidyGatewayOrgId(organizationId: string): string {
  *  1. the org's cached PER-CLIENT subsidy key (exact COGS attribution);
  *  2. provision one on the fly under `subsidy:<orgId>` (idempotent at the
  *     gateway) and cache it;
- *  3. the single house key (STUDIO_SUBSIDIZED_GATEWAY_KEY), if configured;
- *  4. undefined — the run stays on the org's own key (never fail a run
- *     over billing routing).
+ *  3. undefined — the run stays on the org's own key (never fail a run
+ *     over billing routing; the next run retries the provision).
  */
 export async function resolveSubsidizedApiKey(
   ctx: StudioContext,
@@ -88,11 +87,11 @@ export async function resolveSubsidizedApiKey(
     }
   } catch (err) {
     console.error(
-      "[subsidized-runs] per-org subsidy key unavailable — falling back:",
+      "[subsidized-runs] per-org subsidy key unavailable — run stays on the org's key:",
       err,
     );
   }
-  return settings.subsidizedGatewayApiKey;
+  return undefined;
 }
 
 /**

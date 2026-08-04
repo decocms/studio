@@ -279,8 +279,8 @@ async function resolveSecretModelSource(
   );
   // Subscription-billed runs (reports-task executions) swap the PAYER only:
   // the org's resolved model/provider run as-is on the org's subsidy key
-  // (per-client gateway org — exact COGS attribution), falling back to the
-  // house key, falling back to the org's own key.
+  // (per-client gateway org — exact COGS attribution); if it can't be
+  // resolved, the run stays on the org's own key.
   const subsidyApiKey =
     isSubscriptionBilledRun(ctx.metadata?.runMetadata) &&
     keyInfo.providerId === "deco"

@@ -123,7 +123,15 @@ export async function enqueueSuperAgentForTask(
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
 ): Promise<void> {
-<<<<<<< HEAD
+  // Quota claim at dispatch — the single funnel every execution path shares
+  // (update flip, import auto-delegation, review/conflict re-runs). Claimed
+  // BEFORE the harness choice below so both harnesses are gated. Idempotent
+  // per task, so re-runs of a claimed task pass free; an exhausted quota
+  // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
+  // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
+  // BEFORE the write; here the claim is the enforcement.
+  await claimTaskExecution(ctx, task);
+
   // Sandbox-hosted claude-code takes the task when the org opted in AND the
   // repo is unambiguous — it must be chosen before dispatch (see
   // `claude-code-task-run.ts`). Anything else runs Decopilot exactly as before,
@@ -142,19 +150,6 @@ export async function enqueueSuperAgentForTask(
     });
     return;
   }
-||||||| parent of e7a75c589 (feat(billing): gate reports-task executions behind the org subscription)
-  const prompt = buildSuperAgentTaskPrompt(task, opts);
-=======
-  // Quota claim at dispatch — the single funnel every execution path shares
-  // (update flip, import auto-delegation, review/conflict re-runs, stall
-  // recovery). Idempotent per task, so re-runs of a claimed task pass free;
-  // an exhausted quota throws [SUBSCRIPTION_REQUIRED] and nothing enqueues.
-  // The interactive flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user
-  // sees the paywall BEFORE the write; here the claim is the enforcement.
-  await claimTaskExecution(ctx, task);
-
-  const prompt = buildSuperAgentTaskPrompt(task, opts);
->>>>>>> e7a75c589 (feat(billing): gate reports-task executions behind the org subscription)
 
   await enqueueAgentRunForTask(ctx, task, {
     title: `Super Agent: ${task.title}`,

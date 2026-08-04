@@ -98,10 +98,6 @@ export interface Settings {
   freeTaskExecutions: number;
   /** Executions per billing cycle while subscribed (default 10). */
   monthlyTaskExecutions: number;
-  /** Deco-owned gateway API key that pays for subsidized runs (reports-task
-   *  executions — included in the subscription). Unset ⇒ those runs bill the
-   *  org's own key like everything else. */
-  subsidizedGatewayApiKey: string | undefined;
 
   // Feature Flags
   enableDecoImport: boolean;

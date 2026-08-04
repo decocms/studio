@@ -28,23 +28,25 @@ describe("applySubsidizedBilling", () => {
   const stamped = { [RUN_BILLING_METADATA_KEY]: SUBSCRIPTION_BILLING };
 
   test("swaps ONLY the payer on a stamped deco run", () => {
-    const out = applySubsidizedBilling(source, stamped, "house-key");
-    expect(out).toEqual({ ...source, apiKey: "house-key" });
+    const out = applySubsidizedBilling(source, stamped, "subsidy-key");
+    expect(out).toEqual({ ...source, apiKey: "subsidy-key" });
   });
 
   test("no stamp / interactive run → untouched", () => {
-    expect(applySubsidizedBilling(source, undefined, "house-key")).toBe(source);
+    expect(applySubsidizedBilling(source, undefined, "subsidy-key")).toBe(
+      source,
+    );
     expect(
-      applySubsidizedBilling(source, { taskBoardItemId: "t1" }, "house-key"),
+      applySubsidizedBilling(source, { taskBoardItemId: "t1" }, "subsidy-key"),
     ).toBe(source);
   });
 
   test("custom provider stays on the org's bill (their explicit choice)", () => {
     const custom = { ...source, providerId: "openai" };
-    expect(applySubsidizedBilling(custom, stamped, "house-key")).toBe(custom);
+    expect(applySubsidizedBilling(custom, stamped, "subsidy-key")).toBe(custom);
   });
 
-  test("no house key configured → dormant (self-hosted unaffected)", () => {
+  test("no subsidy key resolved → dormant (run stays on the org's key)", () => {
     expect(applySubsidizedBilling(source, stamped, undefined)).toBe(source);
   });
 });
