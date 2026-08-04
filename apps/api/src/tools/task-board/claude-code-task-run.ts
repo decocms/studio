@@ -9,7 +9,8 @@
  * has a checkout.
  *
  * That constraint drives the eligibility rule below: this harness runs a task
- * only when the org has exactly ONE importable repo, so "which repo" has a
+ * only when the org has exactly ONE importable REPOSITORY (which is not the
+ * same as one connection — see `pickSoleTaskRepo`), so "which repo" has a
  * single correct answer. Every other case (no repos, several repos) falls back
  * to Decopilot, which can ask/choose at runtime. A task must never end up in a
  * sandbox with no checkout and a prompt telling it to open a PR.
@@ -17,6 +18,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
+import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
 
 /** The repo a claude-code task run works in. */
@@ -28,12 +30,70 @@ export interface TaskRepo {
   url: string;
 }
 
+/** The connection shape the repo pick needs (mirrors `selectLoadableRepos`). */
+type RepoConnection = {
+  id: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+};
+
+/** GitHub treats owner/repo case-insensitively; the identity key must too. */
+const repoKey = (owner: string, repo: string) =>
+  `${owner}/${repo}`.toLowerCase();
+
 /**
  * The org's single importable repo, or null when the answer is ambiguous.
  *
+ * "Single" counts REPOSITORIES, not connections. Importing one repo routinely
+ * leaves TWO loadable `mcp-github` children behind — the org-shared one and a
+ * per-agent import — both pointing at the same repository. Counting connections
+ * made a genuinely one-repo org look ambiguous and silently dropped every task
+ * to Decopilot.
+ *
+ * When one repository is backed by several connections, the org-shared one
+ * wins: the per-agent child is disposable (torn down with its agent), and the
+ * clone only needs one of the two equivalent tokens.
+ *
+ * Pure, so the counting rule is unit-tested without a StudioContext.
+ */
+export function pickSoleTaskRepo(
+  connections: RepoConnection[],
+): TaskRepo | null {
+  const byId = new Map(connections.map((c) => [c.id, c]));
+  const byRepo = new Map<
+    string,
+    ReturnType<typeof selectLoadableRepos>[number][]
+  >();
+  for (const repo of selectLoadableRepos(connections)) {
+    const key = repoKey(repo.owner, repo.repo);
+    byRepo.set(key, [...(byRepo.get(key) ?? []), repo]);
+  }
+  if (byRepo.size !== 1) return null;
+
+  const candidates = [...byRepo.values()][0]!;
+  const chosen =
+    candidates.find((c) => {
+      const conn = byId.get(c.connectionId);
+      return conn ? isOrgSharedConnection(conn) : false;
+    }) ?? candidates[0]!;
+
+  return {
+    connectionId: chosen.connectionId,
+    owner: chosen.owner,
+    name: chosen.repo,
+    installationId: chosen.installationId,
+    url: `https://github.com/${chosen.owner}/${chosen.repo}`,
+  };
+}
+
+/**
+ * `pickSoleTaskRepo` over the org's `mcp-github` connections.
+ *
  * Null means "not eligible for claude-code" — see the module doc. Never throws:
  * a lookup failure degrades to the Decopilot path rather than failing the
- * delegation that already persisted.
+ * delegation that already persisted. The null cases are logged: the fallback is
+ * otherwise invisible, and "why did this task run Decopilot?" is exactly the
+ * question an operator has.
  */
 export async function resolveSoleTaskRepo(
   ctx: StudioContext,
@@ -43,16 +103,16 @@ export async function resolveSoleTaskRepo(
     const { items } = await ctx.storage.connections.list(organizationId, {
       slug: "mcp-github",
     });
-    const repos = selectLoadableRepos(items);
-    if (repos.length !== 1) return null;
-    const repo = repos[0]!;
-    return {
-      connectionId: repo.connectionId,
-      owner: repo.owner,
-      name: repo.repo,
-      installationId: repo.installationId,
-      url: `https://github.com/${repo.owner}/${repo.repo}`,
-    };
+    const repo = pickSoleTaskRepo(items);
+    if (!repo) {
+      const repos = selectLoadableRepos(items);
+      const distinct = new Set(repos.map((r) => repoKey(r.owner, r.repo)));
+      console.warn(
+        `[task-board] claude-code skipped for org ${organizationId}: ` +
+          `${distinct.size} importable repos (needs exactly 1) — running Decopilot`,
+      );
+    }
+    return repo;
   } catch (err) {
     console.warn("[task-board] repo lookup for claude-code failed", err);
     return null;
