@@ -102,6 +102,36 @@ func TestValidateHarnessInputAcceptsMinimalFrame(t *testing.T) {
 	}
 }
 
+// A task run on the bare `thread:<id>` key mounts /repo with no repo behind it
+// yet — it clones one mid-run with TASK_ADD_REPO.
+func TestValidateHarnessInputAcceptsRepolessRepoCwd(t *testing.T) {
+	frame := func(ws string) json.RawMessage {
+		return json.RawMessage(`{
+			"threadId": "t1",
+			"userMessage": {"role": "user"},
+			"harness": {},
+			"workspace": ` + ws + `,
+			"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+			"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+			"mode": "default",
+			"temperature": 0.5,
+			"toolApprovalLevel": "auto",
+			"user": {"id": "u", "email": "u@example.com"},
+			"organizationId": "org",
+			"agent": {"id": "a"}
+		}`)
+	}
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b"}`)); reason != "" {
+		t.Fatalf("repo-less /repo workspace rejected: %s", reason)
+	}
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b", "repo": {"owner": "o"}}`)); reason == "" {
+		t.Fatal("partial repo must be rejected")
+	}
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo"}`)); reason == "" {
+		t.Fatal("missing branch must be rejected")
+	}
+}
+
 func TestRebaseWorkspaceCwd(t *testing.T) {
 	if got := RebaseWorkspaceCwd("/repo", "/work"); got == nil || *got != "/work/repo" {
 		t.Fatalf("got %v", got)

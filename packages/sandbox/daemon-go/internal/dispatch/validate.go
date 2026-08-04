@@ -156,8 +156,12 @@ func validateWorkspace(raw json.RawMessage) string {
 	if *ws.Cwd != "/repo" {
 		return "workspace.cwd: must be \"/repo\" or null"
 	}
-	if ws.Repo == nil || ws.Repo.Owner == nil || ws.Repo.Name == nil || ws.Repo.ConnectedGithub == nil {
-		return "workspace.repo: required"
+	// `repo` is optional: a task run on the bare `thread:<id>` key gets a
+	// repo-less sandbox and clones into /repo mid-run via TASK_ADD_REPO. When
+	// present it must be complete.
+	if ws.Repo != nil &&
+		(ws.Repo.Owner == nil || ws.Repo.Name == nil || ws.Repo.ConnectedGithub == nil) {
+		return "workspace.repo: owner, name and connectedGithub are required"
 	}
 	if _, ok := probe["branch"]; !ok {
 		return "workspace.branch: required"
