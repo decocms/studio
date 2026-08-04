@@ -123,7 +123,13 @@ const BRAZIL_STATE_OPTIONS: ComboboxOption[] = BRAZIL_STATES.map((s) => ({
  * an interactive map. City is free text since Cloudflare's cf-ipcity is an
  * arbitrary string matched exactly.
  */
-export function LocationField({ schema, value, onChange, path }: FieldProps) {
+export function LocationField({
+  schema,
+  value,
+  onChange,
+  path,
+  sandbox,
+}: FieldProps) {
   const t = useT();
   const current = readLocationValue(value);
   const { city, regionCode, country } = current;
@@ -150,6 +156,7 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
           schema.title ?? t("sectionsEditor.locationField.locationDefault")
         }
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
 
       {/* Step 1 — country */}

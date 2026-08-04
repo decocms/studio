@@ -91,6 +91,7 @@ export function InlineUnionField(props: FieldProps) {
             htmlFor={path}
             label={label}
             description={schema.description}
+            virtualMcpId={props.sandbox?.virtualMcpId}
           />
         )}
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>

@@ -155,12 +155,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
     ),
-  field_description_tooltips: z
-    .boolean()
-    .optional()
-    .describe(
-      "Blocks form: show a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

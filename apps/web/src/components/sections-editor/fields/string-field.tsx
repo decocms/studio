@@ -174,6 +174,7 @@ export function StringField({
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const t = useT();
   const strValue = typeof value === "string" ? value : "";
@@ -191,6 +192,7 @@ export function StringField({
         onChange={onChange}
         path={path}
         label={label}
+        sandbox={sandbox}
         inline={format === "rich-text-inline"}
       />
     );
@@ -203,6 +205,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <Textarea
           id={path}
@@ -221,6 +224,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <DatePickerInput
           id={path}
@@ -242,6 +246,7 @@ export function StringField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <div className="flex items-center gap-2">
           <input
@@ -268,6 +273,7 @@ export function StringField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Input
         id={path}

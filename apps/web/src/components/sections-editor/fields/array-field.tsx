@@ -127,7 +127,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
-  const tooltipsEnabled = useFieldDescriptionTooltips();
+  const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -467,7 +467,10 @@ export function ArrayField({
   return (
     <div className="space-y-2">
       <div className="flex min-w-0 items-center gap-1.5">
-        <FieldDescriptionTooltip description={schema.description}>
+        <FieldDescriptionTooltip
+          description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
+        >
           <span className="min-w-0 truncate text-sm font-medium">{label}</span>
         </FieldDescriptionTooltip>
         {items.length > 0 && (

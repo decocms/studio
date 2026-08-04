@@ -8,6 +8,7 @@ export function BooleanField({
   path,
   label,
   schema,
+  sandbox,
 }: FieldProps) {
   const checked = typeof value === "boolean" ? value : false;
 
@@ -17,6 +18,7 @@ export function BooleanField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Switch
         id={path}

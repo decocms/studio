@@ -41,6 +41,7 @@ export function SecretField({
   onChange,
   label,
   path,
+  sandbox,
 }: FieldProps) {
   const t = useT();
 
@@ -52,6 +53,7 @@ export function SecretField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <Input
           id={path}
@@ -81,6 +83,7 @@ export function SecretField({
         htmlFor={`${path}-name`}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Input
         id={`${path}-name`}

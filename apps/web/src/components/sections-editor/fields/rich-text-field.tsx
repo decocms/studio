@@ -60,6 +60,7 @@ export function RichTextField({
   onChange,
   path,
   label,
+  sandbox,
   inline = false,
 }: FieldProps & {
   /**
@@ -176,6 +177,7 @@ export function RichTextField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <div className="overflow-hidden rounded-md border border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">

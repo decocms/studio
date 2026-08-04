@@ -401,15 +401,6 @@ export const settings = {
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o de revis\u00e3o",
-  "settings.blocksForm.title": "Formul\u00e1rio de blocos",
-  "settings.blocksForm.description":
-    "Controla como as descri\u00e7\u00f5es de campo s\u00e3o exibidas no editor do formul\u00e1rio de blocos.",
-  "settings.blocksForm.descriptionTooltipsTitle":
-    "Mostrar descri\u00e7\u00f5es como tooltip",
-  "settings.blocksForm.descriptionTooltipsDescription":
-    "Exibe a descri\u00e7\u00e3o do campo como um tooltip ao passar o mouse sobre o t\u00edtulo, em vez de texto abaixo do t\u00edtulo.",
-  "settings.blocksForm.updateError":
-    "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o do formul\u00e1rio de blocos",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

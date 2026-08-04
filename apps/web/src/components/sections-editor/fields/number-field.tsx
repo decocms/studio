@@ -18,6 +18,7 @@ export function NumberField({
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const externalStr = typeof value === "number" ? String(value) : "";
   const [raw, setRaw] = useState(externalStr);
@@ -38,6 +39,7 @@ export function NumberField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Input
         id={path}

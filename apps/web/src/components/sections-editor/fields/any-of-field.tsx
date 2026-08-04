@@ -434,6 +434,7 @@ export function AnyOfField({
             htmlFor={path}
             label={label}
             description={schema.description}
+            virtualMcpId={sandbox?.virtualMcpId}
           />
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
             <SelectTrigger>
@@ -504,6 +505,7 @@ export function AnyOfField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <input
         id={path}

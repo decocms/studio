@@ -21,6 +21,7 @@ export function EnumField({
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const t = useT();
   const options = schema.enum ?? [];
@@ -32,6 +33,7 @@ export function EnumField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Select
         value={selectValue}

@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 
 const DESCRIPTION_AFFORDANCE_CLASS =
   "cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-4";
@@ -14,27 +14,34 @@ const DESCRIPTION_AFFORDANCE_CLASS =
 /**
  * Whether the blocks form shows a field's description as a hover tooltip on
  * its title, instead of the default inline text below the title — an
- * opt-in org-level preference (Settings → Blocks form).
+ * opt-in, per-virtual-MCP preference (Sandbox settings → "Show field
+ * descriptions as tooltips", next to the production URL field).
  */
-export function useFieldDescriptionTooltips(): boolean {
-  return useOrgFlag("field_description_tooltips");
+export function useFieldDescriptionTooltips(
+  virtualMcpId?: string | null,
+): boolean {
+  const virtualMcp = useVirtualMCP(virtualMcpId);
+  return virtualMcp?.metadata?.fieldDescriptionTooltips ?? false;
 }
 
 /**
  * Wraps `children` in a hover tooltip revealing `description`, marking it
  * with a dotted-underline affordance so it still reads as hoverable now that
  * there's no separate help icon. Renders `children` unchanged when there's
- * no description, or when the org hasn't opted into tooltip descriptions
- * (callers render the description themselves, inline, in that case).
+ * no description, or when the virtual MCP hasn't opted into tooltip
+ * descriptions (callers render the description themselves, inline, in that
+ * case).
  */
 export function FieldDescriptionTooltip({
   description,
+  virtualMcpId,
   children,
 }: {
   description?: string;
+  virtualMcpId?: string | null;
   children: ReactElement<{ className?: string }>;
 }) {
-  const tooltipsEnabled = useFieldDescriptionTooltips();
+  const tooltipsEnabled = useFieldDescriptionTooltips(virtualMcpId);
   if (!description || !tooltipsEnabled) return children;
   return (
     <Tooltip>
@@ -53,6 +60,7 @@ type FieldLabelProps = Readonly<{
   label: string;
   description?: string;
   labelClassName?: string;
+  virtualMcpId?: string | null;
 }>;
 
 export function FieldLabel({
@@ -60,8 +68,9 @@ export function FieldLabel({
   label,
   description,
   labelClassName,
+  virtualMcpId,
 }: FieldLabelProps) {
-  const tooltipsEnabled = useFieldDescriptionTooltips();
+  const tooltipsEnabled = useFieldDescriptionTooltips(virtualMcpId);
   if (!tooltipsEnabled) {
     return (
       <div className="space-y-0.5">
@@ -77,7 +86,10 @@ export function FieldLabel({
     );
   }
   return (
-    <FieldDescriptionTooltip description={description}>
+    <FieldDescriptionTooltip
+      description={description}
+      virtualMcpId={virtualMcpId}
+    >
       <Label htmlFor={htmlFor} className={labelClassName}>
         {label}
       </Label>

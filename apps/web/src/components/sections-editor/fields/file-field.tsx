@@ -128,6 +128,7 @@ export function FileField({
           label={label}
           description={schema.description}
           labelClassName="text-muted-foreground"
+          virtualMcpId={sandbox?.virtualMcpId}
         />
       </div>
 

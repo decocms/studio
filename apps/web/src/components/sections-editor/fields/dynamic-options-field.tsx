@@ -390,6 +390,7 @@ export function DynamicOptionsField({
           htmlFor={path}
           label={label}
           description={schema.description}
+          virtualMcpId={sandbox?.virtualMcpId}
         />
         <Input
           id={path}
@@ -407,6 +408,7 @@ export function DynamicOptionsField({
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>

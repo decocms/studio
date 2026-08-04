@@ -64,12 +64,12 @@ export default defineConfig({
             find: /^@\/components\/file-picker\/file-picker-dialog$/,
             replacement: stub("file-picker-dialog.tsx"),
           },
-          // FieldLabel (nearly every field widget) reads the
-          // field_description_tooltips org flag via useOrgFlag, which also
+          // FieldLabel (nearly every field widget) reads the per-virtual-MCP
+          // fieldDescriptionTooltips setting via useVirtualMCP, which also
           // calls useProjectContext() — same problem as above.
           {
-            find: /^@\/hooks\/use-organization-settings$/,
-            replacement: stub("use-organization-settings.ts"),
+            find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
+            replacement: stub("use-virtual-mcp.ts"),
           },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches

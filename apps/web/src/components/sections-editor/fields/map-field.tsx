@@ -73,7 +73,14 @@ function parseValue(
   };
 }
 
-export function MapField({ schema, value, onChange, path, label }: FieldProps) {
+export function MapField({
+  schema,
+  value,
+  onChange,
+  path,
+  label,
+  sandbox,
+}: FieldProps) {
   const apiKey = usePublicConfig().googleMapsApiKey;
 
   const onChangeRef = useRef(onChange);
@@ -195,6 +202,7 @@ export function MapField({ schema, value, onChange, path, label }: FieldProps) {
         htmlFor={path}
         label={label}
         description={schema.description}
+        virtualMcpId={sandbox?.virtualMcpId}
       />
       {!apiKey ? (
         <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
