@@ -77,6 +77,32 @@ describe("authEnvSchema", () => {
     ).toThrow(/AUTH_SSO_GOOGLE_CLIENT_SECRET/);
   });
 
+  it("rejects a negative AUTH_EMAIL_OTP_LENGTH", () => {
+    expect(() => authEnvSchema.parse({ AUTH_EMAIL_OTP_LENGTH: "-5" })).toThrow(
+      /AUTH_EMAIL_OTP_LENGTH/,
+    );
+  });
+
+  it("rejects a non-integer AUTH_EMAIL_OTP_LENGTH", () => {
+    expect(() => authEnvSchema.parse({ AUTH_EMAIL_OTP_LENGTH: "6.5" })).toThrow(
+      /AUTH_EMAIL_OTP_LENGTH/,
+    );
+  });
+
+  it("rejects a zero or negative AUTH_EMAIL_OTP_EXPIRES_IN", () => {
+    expect(() =>
+      authEnvSchema.parse({ AUTH_EMAIL_OTP_EXPIRES_IN: "0" }),
+    ).toThrow(/AUTH_EMAIL_OTP_EXPIRES_IN/);
+  });
+
+  it("accepts valid AUTH_EMAIL_OTP_LENGTH and AUTH_EMAIL_OTP_EXPIRES_IN", () => {
+    const config = authEnvSchema.parse({
+      AUTH_EMAIL_OTP_LENGTH: "8",
+      AUTH_EMAIL_OTP_EXPIRES_IN: "600",
+    });
+    expect(config).toBeTruthy();
+  });
+
   it("accepts Microsoft SSO when fully configured", () => {
     const config = authEnvSchema.parse({
       AUTH_SSO_DOMAIN: "acme.com",

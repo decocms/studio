@@ -143,6 +143,30 @@ export const authEnvSchema = z
           "AUTH_SSO_GOOGLE_CLIENT_ID and AUTH_SSO_DOMAIN are set but AUTH_SSO_GOOGLE_CLIENT_SECRET is not",
       });
     }
+
+    if (
+      env.AUTH_EMAIL_OTP_LENGTH !== undefined &&
+      (!Number.isInteger(env.AUTH_EMAIL_OTP_LENGTH) ||
+        env.AUTH_EMAIL_OTP_LENGTH < 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_EMAIL_OTP_LENGTH"],
+        message: "AUTH_EMAIL_OTP_LENGTH must be a positive integer",
+      });
+    }
+
+    if (
+      env.AUTH_EMAIL_OTP_EXPIRES_IN !== undefined &&
+      (!Number.isInteger(env.AUTH_EMAIL_OTP_EXPIRES_IN) ||
+        env.AUTH_EMAIL_OTP_EXPIRES_IN < 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_EMAIL_OTP_EXPIRES_IN"],
+        message: "AUTH_EMAIL_OTP_EXPIRES_IN must be a positive integer",
+      });
+    }
   })
   .transform((env) => {
     // ── Social providers ───────────────────────────────────────────
