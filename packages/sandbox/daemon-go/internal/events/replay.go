@@ -3,30 +3,34 @@ package events
 type ReplayBuffer struct {
 	maxBytes int
 	order    []string
-	buffers  map[string]string
+	buffers  map[string][]byte
 }
 
 func NewReplayBuffer(maxBytes int) *ReplayBuffer {
-	return &ReplayBuffer{maxBytes: maxBytes, buffers: map[string]string{}}
+	return &ReplayBuffer{maxBytes: maxBytes, buffers: map[string][]byte{}}
 }
 
+// Append grows the source's buffer in place (amortized O(len(data)) via
+// Go's slice growth) instead of reallocating and copying up to maxBytes on
+// every call, which mattered here since BroadcastChunk holds Broadcaster.mu
+// while appending on every log chunk.
 func (r *ReplayBuffer) Append(source, data string) {
 	if data == "" {
 		return
 	}
-	prev, ok := r.buffers[source]
+	buf, ok := r.buffers[source]
 	if !ok {
 		r.order = append(r.order, source)
 	}
-	next := prev + data
-	if len(next) > r.maxBytes {
-		next = next[len(next)-r.maxBytes:]
+	buf = append(buf, data...)
+	if len(buf) > r.maxBytes {
+		buf = buf[len(buf)-r.maxBytes:]
 	}
-	r.buffers[source] = next
+	r.buffers[source] = buf
 }
 
 func (r *ReplayBuffer) Read(source string) string {
-	return r.buffers[source]
+	return string(r.buffers[source])
 }
 
 func (r *ReplayBuffer) Sources() []string {
