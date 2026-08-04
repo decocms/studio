@@ -67,6 +67,11 @@ Defina estas no `.env` ao lado do arquivo de compose:
 | `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | URLs públicas da aplicação |
 | `DATABASE_URL` | veja abaixo | Connection string do PostgreSQL |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credenciais do Postgres embutido (apenas no compose postgres) |
+| `STUDIO_TOPUP_FEE_PERCENT` | `15` | Percentual de taxa aplicado a recargas de créditos do AI Gateway. Aceita `0`–`100`; defina `0` para dispensar a taxa completamente em um deployment self-hosted |
+
+<Callout type="tip">
+  `STUDIO_TOPUP_FEE_PERCENT` só importa se você habilitar o billing baseado em Stripe (`STRIPE_SECRET_KEY` / `STRIPE_ORG_PRICE_ID`). A maioria dos deployments self-hosted não define essas variáveis e pode ignorá-la.
+</Callout>
 
 O container roda como usuário `1001:1001` e persiste dados no volume `studio-data`; o Postgres embutido persiste em `postgres-data`.
 
