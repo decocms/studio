@@ -86,6 +86,15 @@ O conjunto de queues que um pod worker escuta é configurado por env (`listenQue
 
 O run executa in-process no worker e usa um **cloud sandbox**.
 
+### Harnesses: onde o agent loop de fato executa
+
+O passo acima é o caminho padrão — ele não cobre todo run hosted. Dois harnesses podem sustentar um run hosted:
+
+- **Decopilot** (padrão) — executa in-process no worker, como descrito acima.
+- **claude-code** — executa *dentro do pod da sandbox*, ao lado do checkout que o daemon já clonou, guiado pelo Claude Agent SDK. O daemon executa o `packages/harness-runner` uma vez por run através da superfície de controle `/_sandbox/dispatch` (um processo por run via stdin/stdout, não um servidor de longa duração) e transmite os frames de volta via NDJSON. O runner traduz o stream de mensagens do SDK para os mesmos `UIMessageChunk`s que o Decopilot produz, então o run projector, o `thread_message_parts` e a chat UI não precisam de novos tipos de part.
+
+O claude-code é opt-in por org (`claude_code_sandbox_enabled`, desligado por padrão). As tasks do Super Agent no Task Board só o usam quando a org optou por ele **e** tem exatamente um repo importável — o repo precisa ser resolvido antes do dispatch, já que o harness vincula seu checkout no início do run. Caso contrário, essas tasks rodam no Decopilot exatamente como antes.
+
 ## MCP: in-process vs. as rotas de proxy
 
 Essa distinção importa para raciocinar sobre o sistema:
@@ -126,3 +135,4 @@ O mount é conectado via um container **sidecar privilegiado** (o daemon não-pr
 - **As rotas de file/object-storage** são a superfície compartilhada entre API e worker.
 - **O NATS está ao vivo**; o recurso de event-bus de CloudEvents está dormente.
 - **As sandboxes** expõem um preview público e uma control API protegida por token na cloud (k8s).
+- **Runs hosted** usam por padrão o harness Decopilot (in-process no worker); o harness opt-in claude-code executa dentro do pod da sandbox, um processo `harness-runner` por run.
