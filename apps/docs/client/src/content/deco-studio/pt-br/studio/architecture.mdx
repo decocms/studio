@@ -93,7 +93,7 @@ O passo acima é o caminho padrão — ele não cobre todo run hosted. Dois harn
 - **Decopilot** (padrão) — executa in-process no worker, como descrito acima.
 - **claude-code** — executa *dentro do pod da sandbox*, ao lado do checkout que o daemon já clonou, guiado pelo Claude Agent SDK. O daemon executa o `packages/harness-runner` uma vez por run através da superfície de controle `/_sandbox/dispatch` (um processo por run via stdin/stdout, não um servidor de longa duração) e transmite os frames de volta via NDJSON. O runner traduz o stream de mensagens do SDK para os mesmos `UIMessageChunk`s que o Decopilot produz, então o run projector, o `thread_message_parts` e a chat UI não precisam de novos tipos de part.
 
-O claude-code é opt-in por org (`claude_code_sandbox_enabled`, desligado por padrão). As tasks do Super Agent no Task Board só o usam quando a org optou por ele **e** tem exatamente um repo importável — o repo precisa ser resolvido antes do dispatch, já que o harness vincula seu checkout no início do run. Caso contrário, essas tasks rodam no Decopilot exatamente como antes.
+O claude-code é opt-in por org (`claude_code_sandbox_enabled`, desligado por padrão). As tasks do Super Agent no Task Board só o usam quando a org optou por ele **e** tem pelo menos um repo importável. Com exatamente um repo, ele é resolvido e clonado antes do dispatch; com mais de um, a execução começa com o diretório de trabalho vazio, e a ferramenta `TASK_ADD_REPO` permite que o agent clone o repo correto no pod que já está em execução, depois de decidir qual usar. Caso contrário, essas tasks rodam no Decopilot exatamente como antes.
 
 ## MCP: in-process vs. as rotas de proxy
 
