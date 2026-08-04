@@ -248,6 +248,21 @@ export const settings = {
   "settings.decoCreditsHero.refreshBalance": "Atualizar saldo",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
+  "settings.claudeSubscription.activeUntil":
+    "Seu plano Claude est\u00e1 executando estas tarefas at\u00e9 {expiresAt}.",
+  "settings.claudeSubscription.codePlaceholder":
+    "Cole o c\u00f3digo que a Anthropic mostrou",
+  "settings.claudeSubscription.connected": "Assinatura Claude conectada",
+  "settings.claudeSubscription.description":
+    "Execute tarefas de c\u00f3digo no seu pr\u00f3prio plano Claude Pro ou Max, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
+  "settings.claudeSubscription.disconnect": "Desconectar",
+  "settings.claudeSubscription.disconnected": "Assinatura Claude desconectada",
+  "settings.claudeSubscription.expired":
+    "Seu login do Claude expirou. Entre novamente para continuar usando seu plano.",
+  "settings.claudeSubscription.finish": "Concluir",
+  "settings.claudeSubscription.login": "Entrar com Claude",
+  "settings.claudeSubscription.relink": "Entrar novamente",
+  "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.decoNudgeCard.connectDeco": "Conectar Deco",
   "settings.decoNudgeCard.connecting": "Conectando\u2026",
   "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",

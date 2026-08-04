@@ -4401,6 +4401,22 @@ export interface StudioToolIO {
     };
     output: { balanceCents: number };
   };
+  CLAUDE_SUBSCRIPTION_LOGIN_URL: {
+    input: { [x: string]: never };
+    output: { url: string; stateToken: string };
+  };
+  CLAUDE_SUBSCRIPTION_CONNECT: {
+    input: { code: string; stateToken: string };
+    output: { connected: boolean; expiresAt: string | null };
+  };
+  CLAUDE_SUBSCRIPTION_STATUS: {
+    input: { [x: string]: never };
+    output: { connected: boolean; expiresAt: string | null };
+  };
+  CLAUDE_SUBSCRIPTION_DISCONNECT: {
+    input: { [x: string]: never };
+    output: { connected: boolean; expiresAt: string | null };
+  };
   SECRET_CREATE: {
     input: {
       scope: "user" | "organization";

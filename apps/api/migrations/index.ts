@@ -160,6 +160,7 @@ import * as migration158dropgithubchildsingleparent from "./158-drop-github-chil
 import * as migration159taskboardcomments from "./159-task-board-comments.ts";
 import * as migration160taskquotabilling from "./160-task-quota-billing.ts";
 import * as migration161taskquotaclaimstate from "./161-task-quota-claim-state.ts";
+import * as migration162claudesubscriptions from "./162-claude-subscriptions.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -347,6 +348,7 @@ const migrations: Record<string, Migration> = {
   "159-task-board-comments": migration159taskboardcomments,
   "160-task-quota-billing": migration160taskquotabilling,
   "161-task-quota-claim-state": migration161taskquotaclaimstate,
+  "162-claude-subscriptions": migration162claudesubscriptions,
 };
 
 export default migrations;

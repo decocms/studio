@@ -25,6 +25,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
@@ -171,6 +172,11 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+  // Claude subscription (per-user OAuth credential for the claude-code harness)
+  ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_LOGIN_URL,
+  ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
+  ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
+  ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_DISCONNECT,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,

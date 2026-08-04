@@ -485,6 +485,7 @@ import { TaskBoardStorage } from "@/storage/task-board";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
+import { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import type { ProviderKeyCache } from "@/storage/provider-key-cache";
@@ -1372,6 +1373,7 @@ export async function createStudioContextFactory(
     taskBoard: new TaskBoardStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
+    claudeSubscriptions: new ClaudeSubscriptionStorage(config.db, vault),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),

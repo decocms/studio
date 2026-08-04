@@ -38,6 +38,7 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
+import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
 import {
   harnessRunsInSandbox,
   SandboxDispatchClient,
@@ -1365,6 +1366,14 @@ async function prepareRun(
       });
     }
 
+    // The dispatching user's own Claude subscription, when they linked one and
+    // it has not expired. It outranks the org's thinking-slot key for a
+    // sandbox-hosted run: they asked for their plan to pay. Expired or absent
+    // falls back to the org credential rather than failing the run.
+    const claudeSubscriptionToken = sandboxHosted
+      ? await ctx.storage.claudeSubscriptions.findLiveToken(input.userId)
+      : null;
+
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
@@ -1414,15 +1423,20 @@ async function prepareRun(
               }),
               // The already-resolved thinking-slot credential becomes the
               // sandbox's model env — resolved once, here, not again inside.
-              credential: thinkingSource
+              credential: claudeSubscriptionToken
                 ? {
-                    providerId: thinkingSource.providerId,
-                    apiKey: thinkingSource.apiKey,
-                    ...(thinkingSource.baseUrl
-                      ? { baseUrl: thinkingSource.baseUrl }
-                      : {}),
+                    providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+                    apiKey: claudeSubscriptionToken,
                   }
-                : null,
+                : thinkingSource
+                  ? {
+                      providerId: thinkingSource.providerId,
+                      apiKey: thinkingSource.apiKey,
+                      ...(thinkingSource.baseUrl
+                        ? { baseUrl: thinkingSource.baseUrl }
+                        : {}),
+                    }
+                  : null,
             })
           : new InProcessSandboxClient({ ctx, harnessId });
         const rawHarnessChunks = sandboxClient.dispatch(harnessInput);

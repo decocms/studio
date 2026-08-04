@@ -456,6 +456,14 @@ export interface OAuthPkceStateTable {
   created_at: ColumnType<Date, Date | string, never>;
 }
 
+/** A user's linked Claude subscription (migration 162). */
+export interface ClaudeSubscriptionTable {
+  user_id: string;
+  encrypted_access_token: string;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
+  created_at: ColumnType<Date, Date | string, Date | string>;
+}
+
 /**
 // ============================================================================
 // OAuth Table Definitions (for MCP OAuth server)
@@ -1865,6 +1873,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+  claude_subscriptions: ClaudeSubscriptionTable;
 
   // Automations tables
   automations: AutomationTable;
