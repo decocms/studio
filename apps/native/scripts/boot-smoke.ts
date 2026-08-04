@@ -262,6 +262,29 @@ function livingProcessesMatching(pattern: string): number[] {
     .filter((n) => Number.isFinite(n));
 }
 
+/** SIGKILLs `pid`, swallowing the case where it has already exited. */
+function killIfAlive(pid: number): void {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // already exited — nothing to clean up
+  }
+}
+
+/** Kills every process matched by `sweepForBinaries` that wasn't already
+ *  running before this smoke run (`preExisting`). `fail()` throws as soon as
+ *  a failure is detected — deadline timeout, non-zero exit, or a detected
+ *  orphan — well before the code that would otherwise notice these
+ *  processes, so a failed run needs its own reap or it leaks the app/
+ *  local-api/rclone processes it spawned into the next run. */
+function reapStrayProcesses(preExisting: Set<number>): void {
+  const stray = sweepForBinaries().filter((p) => !preExisting.has(p));
+  for (const p of stray) killIfAlive(p);
+  if (stray.length > 0) {
+    log(`reaped ${stray.length} stray process(es): ${stray.join(", ")}`);
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseBootSmokeOptions(process.argv.slice(2));
 
@@ -273,13 +296,14 @@ async function main(): Promise<void> {
   const smokePaths = resolveBootSmokePaths(outDir, tmpdir());
   const outFile = smokePaths.reportFile;
 
-  try {
-    // Snapshot matching PIDs that exist BEFORE our launch: another dev's
-    // running app, a parallel CI job, or a manually-started local-api must
-    // not fail OUR orphan check. Only processes that appear during the smoke
-    // and survive it count as orphans.
-    const preExisting = new Set(sweepForBinaries());
+  // Snapshot matching PIDs that exist BEFORE our launch: another dev's
+  // running app, a parallel CI job, or a manually-started local-api must
+  // not fail OUR orphan check. Only processes that appear during the smoke
+  // and survive it count as orphans.
+  const preExisting = new Set(sweepForBinaries());
+  let pid: number | undefined;
 
+  try {
     log(`isolated app data: ${smokePaths.appDataDir}`);
     log("launching with DESKTOP_SELFTEST=1 …");
     const proc = spawn(bin, [], {
@@ -308,7 +332,7 @@ async function main(): Promise<void> {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const pid = proc.pid;
+    pid = proc.pid;
     let stdout = "";
     let stderr = "";
     proc.stdout?.on("data", (c) => {
@@ -410,6 +434,8 @@ async function main(): Promise<void> {
     log(`  allPass:       ${report.allPass}`);
     log(`  orphan check:  clean`);
   } finally {
+    if (pid !== undefined) killIfAlive(pid);
+    reapStrayProcesses(preExisting);
     cleanupSmokeDir(smokePaths);
   }
 }
