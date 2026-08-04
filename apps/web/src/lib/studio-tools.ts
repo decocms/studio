@@ -59,7 +59,14 @@ export async function callStudioTool<N extends StudioToolName>(
     throw new StudioToolError(message, res.status);
   }
 
-  return (await res.json()) as StudioToolIO[N]["output"];
+  try {
+    return (await res.json()) as StudioToolIO[N]["output"];
+  } catch {
+    throw new StudioToolError(
+      `${name} returned a non-JSON response`,
+      res.status,
+    );
+  }
 }
 
 /**
