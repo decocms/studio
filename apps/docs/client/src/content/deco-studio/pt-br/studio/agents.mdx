@@ -60,6 +60,14 @@ Para criar um MCP app você usa o framework `@decocms/runtime` (React 19 + Tailw
 
 Em um release futuro, o Studio permitirá que você construa views simples diretamente dentro da UI do agent, sem precisar criar um repo. Para qualquer coisa custom ou de nível de produção hoje, comece pelo template repo acima.
 
+### Files and skills
+
+Na aba **Settings** de um agent, **Files and skills** permite anexar arquivos (docs de referência, dados) e skills que o agent sempre pode ler, junto com suas tools e instruções.
+
+<Callout type="tip">
+  Cada arquivo anexado tem um limite de 25MB. Selecionar um arquivo maior pula o upload e mostra um aviso citando o arquivo rejeitado — divida ou reduza arquivos grandes antes de anexá-los.
+</Callout>
+
 ### Sandbox
 
 Um agent pode ser respaldado por código. Vincule-o a um repositório do GitHub em **Settings → Sandbox** e o Studio executará o repo como um ambiente de dev isolado com escopo daquele agent — tipicamente o próprio MCP server do agent, mas pode ser qualquer serviço que o agent precise. O sandbox inicia sob demanda, vive apenas enquanto o agent precisar dele, e nunca vaza entre agents.
