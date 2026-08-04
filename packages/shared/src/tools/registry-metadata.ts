@@ -247,24 +247,6 @@ export interface ToolMetadata {
   dangerous?: boolean; // Requires extra confirmation
 }
 
-/**
- * Permission option for UI components
- */
-export interface PermissionOption {
-  value: ToolName;
-  label: string;
-  dangerous?: boolean;
-}
-
-/**
- * Grouped permissions by category for UI
- */
-export interface PermissionGroup {
-  category: ToolCategory;
-  label: string;
-  permissions: PermissionOption[];
-}
-
 // ============================================================================
 // Tool Metadata (static - no server imports)
 // ============================================================================
