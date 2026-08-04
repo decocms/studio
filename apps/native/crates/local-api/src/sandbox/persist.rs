@@ -129,10 +129,17 @@ fn config_handle(cfg: &GitSandboxConfig) -> Option<String> {
     SandboxManager::compute_handle(&cfg.clone_url, branch)
 }
 
+fn config_matches_handle(cfg: &GitSandboxConfig, handle: &str) -> bool {
+    let branch = crate::sandbox::normalize_branch(cfg.branch.as_deref());
+    config_handle(cfg).as_deref() == Some(handle)
+        || SandboxManager::legacy_compute_handle(&cfg.clone_url, branch).as_deref() == Some(handle)
+        || SandboxManager::hashed_compute_handle(&cfg.clone_url, branch).as_deref() == Some(handle)
+}
+
 /// Best-effort write of `cfg` as `handle`'s resurrection sidecar. Called by
 /// `SandboxManager::ensure` after a successful config apply.
 pub(crate) fn write_sidecar(app_root: &Path, handle: &str, cfg: &GitSandboxConfig) {
-    if !is_safe_handle_component(handle) || config_handle(cfg).as_deref() != Some(handle) {
+    if !is_safe_handle_component(handle) || !config_matches_handle(cfg, handle) {
         tracing::warn!(
             handle,
             "sandbox: refusing to persist mismatched sidecar identity"
@@ -165,7 +172,7 @@ pub(crate) fn read_sidecar(app_root: &Path, handle: &str) -> Option<GitSandboxCo
     }
     let bytes = std::fs::read(sidecar_path(app_root, handle)).ok()?;
     let cfg: GitSandboxConfig = serde_json::from_slice(&bytes).ok()?;
-    if config_handle(&cfg).as_deref() != Some(handle) {
+    if !config_matches_handle(&cfg, handle) {
         tracing::warn!(
             handle,
             "sandbox: resurrection sidecar identity does not match its path"
@@ -303,6 +310,22 @@ mod tests {
         assert_eq!(read_back.branch.as_deref(), Some("main"));
         assert_eq!(read_back.runtime.as_deref(), Some("node"));
         assert_eq!(read_back.package_manager.as_deref(), Some("npm"));
+    }
+
+    #[test]
+    fn legacy_lossy_handle_sidecar_remains_readable_after_hash_upgrade() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = sample_cfg();
+        config.branch = Some("feature/foo".to_string());
+        let branch = crate::sandbox::normalize_branch(config.branch.as_deref());
+        let legacy = SandboxManager::legacy_compute_handle(&config.clone_url, branch).unwrap();
+        assert_ne!(
+            Some(legacy.clone()),
+            SandboxManager::compute_handle(&config.clone_url, branch)
+        );
+
+        write_sidecar(dir.path(), &legacy, &config);
+        assert_eq!(read_sidecar(dir.path(), &legacy), Some(config));
     }
 
     #[test]

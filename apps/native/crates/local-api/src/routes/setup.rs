@@ -115,6 +115,15 @@ pub async fn ensure(
     State(state): State<AppState>,
     Json(body): Json<EnsureSandboxRequest>,
 ) -> ApiResult<Json<Value>> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    ensure_for_account(state, body, authorization.epoch()).await
+}
+
+pub(crate) async fn ensure_for_account(
+    state: AppState,
+    body: EnsureSandboxRequest,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> ApiResult<Json<Value>> {
     let workload = body.workload.unwrap_or_default();
     let config = crate::sandbox::GitSandboxConfig {
         // Daemon-parity route: its body carries no org. A sandbox that has
@@ -137,12 +146,12 @@ pub async fn ensure(
     }
     let sandbox = state
         .sandbox_manager
-        .provision(&config)
+        .provision_for_account(account_epoch, &config)
         .await
         .map_err(ApiError::conflict)?;
     let record = state
         .sandbox_manager
-        .registry_record(&sandbox.handle)
+        .registry_record_for_account(account_epoch, &sandbox.handle)
         .map_err(ApiError::internal)?
         .ok_or_else(|| ApiError::internal("ensured sandbox was not persisted"))?;
     Ok(Json(json!({
@@ -159,14 +168,21 @@ pub async fn ensure(
 /// by `clone`/`install`/[`stop`] — never resurrects (see [`stop`]'s doc
 /// comment for why; `clone`/`install` simply haven't needed it, unlike
 /// `start`, which uses [`resolve_for_start`] instead).
-fn resolve(state: &AppState, headers: &HeaderMap) -> Result<SandboxTarget, ApiError> {
+fn resolve(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<SandboxTarget, ApiError> {
     match crate::sandbox::handle_from_headers(headers) {
         Some(handle) => state
             .sandbox_manager
-            .get(handle)
+            .get_for_account(account_epoch, handle)
+            .map_err(ApiError::conflict)?
             .map(|sb| SandboxTarget::from_sandbox(&sb))
             .ok_or_else(|| ApiError::not_found(format!("unknown sandbox handle: {handle}"))),
-        None => Ok(state.resolve_sandbox_target(None)),
+        None => state
+            .resolve_sandbox_target_for_account(account_epoch, None)
+            .map_err(ApiError::conflict),
     }
 }
 
@@ -177,12 +193,21 @@ fn resolve(state: &AppState, headers: &HeaderMap) -> Result<SandboxTarget, ApiEr
 /// `ensure()` cascade already covers it, see `start`'s body).
 async fn resolve_for_start(
     state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
     headers: &HeaderMap,
 ) -> Result<(SandboxTarget, bool), ApiError> {
     match crate::sandbox::handle_from_headers(headers) {
         Some(handle) => {
-            let already_known = state.sandbox_manager.get(handle).is_some();
-            match state.sandbox_manager.resurrect(handle).await {
+            let already_known = state
+                .sandbox_manager
+                .get_for_account(account_epoch, handle)
+                .map_err(ApiError::conflict)?
+                .is_some();
+            match state
+                .sandbox_manager
+                .resurrect_for_account(account_epoch, handle)
+                .await
+            {
                 Ok(Some(sb)) => Ok((SandboxTarget::from_sandbox(&sb), !already_known)),
                 Ok(None) => Err(ApiError::not_found(format!(
                     "unknown sandbox handle: {handle}"
@@ -193,11 +218,28 @@ async fn resolve_for_start(
             }
         }
         None => {
-            let already_active = state.sandbox_manager.active().is_some();
-            match state.sandbox_manager.resurrect_active().await {
+            let already_active = state
+                .sandbox_manager
+                .active_for_account(account_epoch)
+                .map_err(ApiError::conflict)?
+                .is_some();
+            match state
+                .sandbox_manager
+                .resurrect_active_for_account(account_epoch)
+                .await
+            {
                 Ok(Some(sb)) => Ok((SandboxTarget::from_sandbox(&sb), !already_active)),
-                Ok(None) => Ok((state.resolve_sandbox_target(None), false)),
+                Ok(None) => Ok((
+                    state
+                        .resolve_sandbox_target_for_account(account_epoch, None)
+                        .map_err(ApiError::conflict)?,
+                    false,
+                )),
                 Err(err) => {
+                    state
+                        .sandbox_manager
+                        .validate_account_epoch(account_epoch)
+                        .map_err(ApiError::conflict)?;
                     // Byte-parity floor: a headerless request must still 200
                     // even when self-heal itself fails — fall back to the
                     // existing (global) resolution rather than hard-erroring
@@ -207,7 +249,12 @@ async fn resolve_for_start(
                         error = %err,
                         "headerless sandbox resurrection failed; falling back to the process-global target"
                     );
-                    Ok((state.resolve_sandbox_target(None), false))
+                    Ok((
+                        state
+                            .resolve_sandbox_target_for_account(account_epoch, None)
+                            .map_err(ApiError::conflict)?,
+                        false,
+                    ))
                 }
             }
         }
@@ -215,7 +262,21 @@ async fn resolve_for_start(
 }
 
 pub async fn clone(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
-    if !resolve(&state, &headers)?.setup.resume_from(Step::Clone) {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    clone_for_account(state, headers, authorization.epoch()).await
+}
+
+pub(crate) async fn clone_for_account(
+    state: AppState,
+    headers: HeaderMap,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> ApiResult<Json<Value>> {
+    let target = resolve(&state, account_epoch, &headers)?;
+    let accepted = state
+        .sandbox_manager
+        .with_account_epoch(account_epoch, || target.setup.resume_from(Step::Clone))
+        .map_err(ApiError::conflict)?;
+    if !accepted {
         return Err(ApiError::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "setup worker is unavailable",
@@ -225,7 +286,21 @@ pub async fn clone(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
 }
 
 pub async fn install(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
-    if !resolve(&state, &headers)?.setup.resume_from(Step::Install) {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    install_for_account(state, headers, authorization.epoch()).await
+}
+
+pub(crate) async fn install_for_account(
+    state: AppState,
+    headers: HeaderMap,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> ApiResult<Json<Value>> {
+    let target = resolve(&state, account_epoch, &headers)?;
+    let accepted = state
+        .sandbox_manager
+        .with_account_epoch(account_epoch, || target.setup.resume_from(Step::Install))
+        .map_err(ApiError::conflict)?;
+    if !accepted {
         return Err(ApiError::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "setup worker is unavailable",
@@ -235,8 +310,17 @@ pub async fn install(State(state): State<AppState>, headers: HeaderMap) -> ApiRe
 }
 
 pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    start_for_account(state, headers, authorization.epoch()).await
+}
+
+pub(crate) async fn start_for_account(
+    state: AppState,
+    headers: HeaderMap,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> ApiResult<Json<Value>> {
     let explicit_handle = crate::sandbox::handle_from_headers(&headers).map(str::to_owned);
-    let (target, resurrected) = resolve_for_start(&state, &headers).await?;
+    let (target, resurrected) = resolve_for_start(&state, account_epoch, &headers).await?;
     if resurrected {
         // `SandboxManager::ensure` (invoked by `resolve_for_start`'s
         // resurrection above) already ran its own clone/checkout -> install
@@ -255,16 +339,18 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
             "setup/start: target was just resurrected — its own ensure() cascade already covers this restart"
         );
     } else {
-        let durable_handle = explicit_handle.or_else(|| {
-            state
+        let durable_handle = match explicit_handle {
+            Some(handle) => Some(handle),
+            None => state
                 .sandbox_manager
-                .active()
-                .map(|sandbox| sandbox.handle.clone())
-        });
+                .active_for_account(account_epoch)
+                .map_err(ApiError::conflict)?
+                .map(|sandbox| sandbox.handle.clone()),
+        };
         if let Some(handle) = durable_handle {
             state
                 .sandbox_manager
-                .restart_registered(&handle)
+                .restart_registered_for_account(account_epoch, &handle)
                 .await
                 .map_err(ApiError::conflict)?
                 .ok_or_else(|| ApiError::not_found(format!("unknown sandbox handle: {handle}")))?;
@@ -274,7 +360,11 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
             crate::sandbox::manager::terminate_tasks_by_log_name(&target.tasks, &["dev", "start"])
                 .await
                 .map_err(ApiError::conflict)?;
-            if !target.setup.resume_from(Step::Start) {
+            let accepted = state
+                .sandbox_manager
+                .with_account_epoch(account_epoch, || target.setup.resume_from(Step::Start))
+                .map_err(ApiError::conflict)?;
+            if !accepted {
                 return Err(ApiError::new(
                     axum::http::StatusCode::SERVICE_UNAVAILABLE,
                     "setup worker is unavailable",
@@ -285,35 +375,47 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     Ok(Json(json!({ "enqueued": Step::Start.as_str() })))
 }
 
-/// `POST /_sandbox/setup/stop` kills the resolved target's running `dev`/`start`
-/// task(s) WITHOUT re-spawning (unlike `start` above, which
-/// kills-then-resumes). It gives native callers a local stop action while the
-/// selectorless `SANDBOX_DELETE` interception owns full sandbox teardown.
+/// `POST /_sandbox/setup/stop` stops the resolved target WITHOUT re-spawning
+/// it (unlike `start` above, which kills-then-resumes). A registered git
+/// sandbox is one process generation, so Stop closes its admission and reaps
+/// every setup, dev, exec, grep, and other registered child before eviction;
+/// no inaccessible task may survive a successful response.
 ///
 /// A registered handle forgotten by this process is already stopped: its old
 /// child lifetime ended with that process. We persist `desired=stopped` and
 /// return an idempotent success without materializing the sandbox (which
 /// would risk starting it). A truly unknown explicit handle remains a loud
-/// 404. Headerless non-git daemon compatibility retains the legacy 400 when
-/// there is no dev/start task to stop.
+/// 404. The headerless process-global fallback is not a registered sandbox
+/// generation and retains daemon compatibility: it stops only `dev`/`start`
+/// and returns the legacy 400 when neither is running.
 pub async fn stop(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    stop_for_account(state, headers, authorization.epoch()).await
+}
+
+pub(crate) async fn stop_for_account(
+    state: AppState,
+    headers: HeaderMap,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> ApiResult<Json<Value>> {
     let explicit_handle = crate::sandbox::handle_from_headers(&headers).map(str::to_owned);
     let durable_handle = match explicit_handle {
         Some(handle) => Some(handle),
         None => state
             .sandbox_manager
-            .active()
+            .active_for_account(account_epoch)
+            .map_err(ApiError::conflict)?
             .map(|sandbox| sandbox.handle.clone())
             .or(state
                 .sandbox_manager
-                .registered_active_handle()
-                .map_err(ApiError::internal)?),
+                .registered_active_handle_for_account(account_epoch)
+                .map_err(ApiError::conflict)?),
     };
 
     if let Some(handle) = durable_handle {
         let killed = state
             .sandbox_manager
-            .stop_registered(&handle)
+            .stop_registered_for_account(account_epoch, &handle)
             .await
             .map_err(ApiError::internal)?
             .ok_or_else(|| ApiError::not_found(format!("unknown sandbox handle: {handle}")))?;
@@ -326,16 +428,24 @@ pub async fn stop(State(state): State<AppState>, headers: HeaderMap) -> ApiResul
     }
 
     // Daemon-compatible plain-path fallback for a non-git workspace.
-    let target = state.resolve_sandbox_target(None);
+    let target = state
+        .resolve_sandbox_target_for_account(account_epoch, None)
+        .map_err(ApiError::conflict)?;
 
-    let mut killed = 0usize;
-    for t in target.tasks.list(Some(&[TaskStatus::Running])) {
-        if matches!(t.log_name.as_deref(), Some("dev") | Some("start"))
-            && target.tasks.kill(&t.id, KillSignal::Term) == Some(true)
-        {
-            killed += 1;
-        }
-    }
+    let killed = state
+        .sandbox_manager
+        .with_account_epoch(account_epoch, || {
+            let mut killed = 0usize;
+            for t in target.tasks.list(Some(&[TaskStatus::Running])) {
+                if matches!(t.log_name.as_deref(), Some("dev") | Some("start"))
+                    && target.tasks.kill(&t.id, KillSignal::Term) == Some(true)
+                {
+                    killed += 1;
+                }
+            }
+            killed
+        })
+        .map_err(ApiError::conflict)?;
     if killed == 0 {
         return Err(ApiError::bad_request(
             "nothing to stop: no running dev/start task for this sandbox",
@@ -345,9 +455,14 @@ pub async fn stop(State(state): State<AppState>, headers: HeaderMap) -> ApiResul
     // default (see `crate::setup`'s `LifecycleState` union), so the drawer's
     // SSE-driven status naturally reflects "stopped" without a wire-shape
     // change.
-    target
-        .setup
-        .transition_lifecycle(json!({ "phase": "idle" }));
+    state
+        .sandbox_manager
+        .with_account_epoch(account_epoch, || {
+            target
+                .setup
+                .transition_lifecycle(json!({ "phase": "idle" }));
+        })
+        .map_err(ApiError::conflict)?;
     Ok(Json(json!({
         "stopped": true,
         "killed": killed,
@@ -410,7 +525,12 @@ mod tests {
     #[test]
     fn headerless_resolve_falls_back_to_the_global_target_when_nothing_is_active() {
         let state = fresh_state();
-        let target = resolve(&state, &HeaderMap::new()).expect("headerless never errors");
+        let target = resolve(
+            &state,
+            state.sandbox_manager.account_epoch(),
+            &HeaderMap::new(),
+        )
+        .expect("headerless never errors");
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
     }
 
@@ -424,7 +544,7 @@ mod tests {
         );
         // `SandboxTarget` (the `Ok` side) isn't `Debug`, so `expect_err`
         // isn't available here — match explicitly instead.
-        match resolve(&state, &headers) {
+        match resolve(&state, state.sandbox_manager.account_epoch(), &headers) {
             Err(e) => {
                 assert_eq!(e.status, axum::http::StatusCode::NOT_FOUND);
                 assert_eq!(
@@ -441,7 +561,8 @@ mod tests {
         let state = fresh_state();
         let mut headers = HeaderMap::new();
         headers.insert("x-decocms-sandbox-handle", HeaderValue::from_static(""));
-        let target = resolve(&state, &headers).expect("empty handle is treated as absent");
+        let target = resolve(&state, state.sandbox_manager.account_epoch(), &headers)
+            .expect("empty handle is treated as absent");
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
     }
 
@@ -502,12 +623,15 @@ mod tests {
 
         state
             .sandbox_manager
-            .ensure(&crate::sandbox::GitSandboxConfig {
-                virtual_mcp_id: vmcp.to_string(),
-                clone_url: bare_str.to_string(),
-                branch: Some("work".to_string()),
-                ..Default::default()
-            })
+            .ensure_for_account(
+                state.sandbox_manager.account_epoch(),
+                &crate::sandbox::GitSandboxConfig {
+                    virtual_mcp_id: vmcp.to_string(),
+                    clone_url: bare_str.to_string(),
+                    branch: Some("work".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .expect("ensure succeeds against a real one-commit bare repo")
     }
@@ -561,18 +685,23 @@ mod tests {
             crate::sandbox::SandboxManager::compute_handle(&bare_dir.to_string_lossy(), "work")
                 .expect("scopeable clone url")
         );
-        assert!(state.sandbox_manager.get(handle).is_some());
+        let account_epoch = state.sandbox_manager.account_epoch();
+        assert!(state
+            .sandbox_manager
+            .get_for_account(account_epoch, handle)
+            .unwrap()
+            .is_some());
         assert_eq!(
             state
                 .sandbox_manager
-                .registered_active_handle()
+                .registered_active_handle_for_account(account_epoch)
                 .unwrap()
                 .as_deref(),
             Some(handle)
         );
         let record = state
             .sandbox_manager
-            .registry_record(handle)
+            .registry_record_for_account(account_epoch, handle)
             .unwrap()
             .unwrap();
         assert_eq!(record.config.package_manager.as_deref(), Some("bun"));
@@ -612,7 +741,7 @@ mod tests {
             loop {
                 let record = state
                     .sandbox_manager
-                    .registry_record(&handle)
+                    .registry_record_for_account(state.sandbox_manager.account_epoch(), &handle)
                     .unwrap()
                     .unwrap();
                 if record.observed_status == "failed" {
@@ -638,7 +767,8 @@ mod tests {
             "x-decocms-sandbox-handle",
             HeaderValue::from_str(&sandbox.handle).unwrap(),
         );
-        let target = resolve(&state, &headers).expect("known handle resolves");
+        let target = resolve(&state, state.sandbox_manager.account_epoch(), &headers)
+            .expect("known handle resolves");
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert_eq!(target.repo_dir, sandbox.workdir);
     }
@@ -653,7 +783,12 @@ mod tests {
         // stricter `resolve()` wrapper).
         let sandbox = ensure_one_sandbox(&state, "setup-resolve-active").await;
 
-        let target = resolve(&state, &HeaderMap::new()).expect("headerless never errors");
+        let target = resolve(
+            &state,
+            state.sandbox_manager.account_epoch(),
+            &HeaderMap::new(),
+        )
+        .expect("headerless never errors");
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert!(!Arc::ptr_eq(&target.setup, &state.setup));
     }
@@ -681,7 +816,12 @@ mod tests {
         // A FRESH state over the SAME app_root — simulates the restarted
         // process: `state.sandbox_manager` has never heard of `handle`.
         let state = fresh_state_at(app_root.path().to_path_buf());
-        assert!(state.sandbox_manager.get(&handle).is_none());
+        let account_epoch = state.sandbox_manager.account_epoch();
+        assert!(state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)
+            .unwrap()
+            .is_none());
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -693,7 +833,11 @@ mod tests {
             .expect("start resurrects the forgotten handle instead of 404ing");
         assert_eq!(res.0["enqueued"], "start");
         assert!(
-            state.sandbox_manager.get(&handle).is_some(),
+            state
+                .sandbox_manager
+                .get_for_account(account_epoch, &handle)
+                .unwrap()
+                .is_some(),
             "a successful resurrection must leave the handle known in memory afterward"
         );
     }
@@ -704,14 +848,23 @@ mod tests {
         let handle = ensure_then_forget(app_root.path(), "start-resurrect-headerless").await;
 
         let state = fresh_state_at(app_root.path().to_path_buf());
-        assert!(state.sandbox_manager.active().is_none());
+        let account_epoch = state.sandbox_manager.account_epoch();
+        assert!(state
+            .sandbox_manager
+            .active_for_account(account_epoch)
+            .unwrap()
+            .is_none());
 
         let res = start(State(state.clone()), HeaderMap::new())
             .await
             .expect("headerless start resurrects the persisted active handle");
         assert_eq!(res.0["enqueued"], "start");
         assert!(
-            state.sandbox_manager.get(&handle).is_some(),
+            state
+                .sandbox_manager
+                .get_for_account(account_epoch, &handle)
+                .unwrap()
+                .is_some(),
             "the persisted active handle must be the one resurrected"
         );
     }
@@ -774,7 +927,11 @@ mod tests {
             .expect("start on an already-known handle succeeds");
         assert_eq!(res.0["enqueued"], "start");
         assert!(Arc::ptr_eq(
-            &state.sandbox_manager.get(&sandbox.handle).unwrap(),
+            &state
+                .sandbox_manager
+                .get_for_account(state.sandbox_manager.account_epoch(), &sandbox.handle)
+                .unwrap()
+                .unwrap(),
             &sandbox
         ));
     }
@@ -963,12 +1120,16 @@ mod tests {
         assert_eq!(response.0["alreadyStopped"], true);
         assert_eq!(response.0["killed"], 0);
         assert!(
-            state.sandbox_manager.get(&handle).is_none(),
+            state
+                .sandbox_manager
+                .get_for_account(state.sandbox_manager.account_epoch(), &handle)
+                .unwrap()
+                .is_none(),
             "stop must not materialize or start the persisted sandbox"
         );
         let record = state
             .sandbox_manager
-            .registry_record(&handle)
+            .registry_record_for_account(state.sandbox_manager.account_epoch(), &handle)
             .unwrap()
             .unwrap();
         assert_eq!(record.desired_status, "stopped");

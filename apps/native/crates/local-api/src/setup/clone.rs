@@ -287,7 +287,16 @@ pub(crate) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
     let branch = get_str(config, &["git", "repository", "branch"])
         .filter(|b| !b.is_empty() && !is_synthetic_branch(b));
 
-    if !is_git_repo(&orch.repo_dir).await {
+    let repo_exists = match crate::routes::git::owned_is_git_repo(
+        orch.tasks.clone(),
+        orch.repo_dir.clone(),
+    )
+    .await
+    {
+        Ok(repo_exists) => repo_exists,
+        Err(_) => return false,
+    };
+    if !repo_exists {
         if orch.is_closed() {
             return false;
         }
@@ -304,7 +313,7 @@ pub(crate) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
     if !configure_git_identity(orch, config).await || orch.is_closed() {
         return false;
     }
-    emit_branch_event(&orch.repo_dir, &orch.broadcaster).await;
+    emit_branch_event(orch.tasks.clone(), &orch.repo_dir, &orch.broadcaster).await;
     !orch.is_closed()
 }
 

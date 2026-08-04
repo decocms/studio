@@ -95,7 +95,7 @@ pub(crate) fn emit_tasks_event(tasks: &TaskRegistry, broadcaster: &Broadcaster) 
 /// signal)`. For anchored groups prefer [`ProcessGroupChild::signal`], which
 /// spares the anchor; this raw variant backs the setup family's
 /// persisted-orphan reaping, where no live owner exists.
-#[cfg(unix)]
+#[cfg(all(test, unix))]
 pub(crate) async fn kill_group(pid: u32, signal: KillSignal) {
     let _ = tokio::process::Command::new("kill")
         .arg(signal.flag())
@@ -108,7 +108,7 @@ pub(crate) async fn kill_group(pid: u32, signal: KillSignal) {
         .await;
 }
 
-#[cfg(not(unix))]
+#[cfg(all(test, not(unix)))]
 pub(crate) async fn kill_group(pid: u32, _signal: KillSignal) {
     let _ = tokio::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])

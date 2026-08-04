@@ -21,11 +21,14 @@ use axum::Json;
 use serde_json::{json, Map, Value};
 
 use crate::error::ApiError;
+use crate::routes::threads::authority::{lock_account_scope, resolve_scoped_thread, ThreadAccess};
 use crate::routes::threads::db::{
     DbError, RtAccountScope, RtThreadListOptions, RtThreadPatch, ThreadsDb,
 };
 use crate::routes::threads::shared_db;
 use crate::state::AppState;
+
+use super::sandbox_authority::manager_error;
 
 #[cfg(test)]
 pub async fn dispatch(
@@ -34,7 +37,9 @@ pub async fn dispatch(
     tool_name: &str,
     body: &Bytes,
 ) -> Option<Response> {
-    let scope = current_account_scope().await?;
+    let scope = crate::routes::threads::authority::current_account_scope()
+        .await
+        .ok()?;
     dispatch_scoped(state, &scope, org, tool_name, body).await
 }
 
@@ -46,12 +51,12 @@ pub async fn dispatch_scoped(
     body: &Bytes,
 ) -> Option<Response> {
     match tool_name {
-        "COLLECTION_THREADS_LIST" => Some(list(state, scope, org, body)),
-        "COLLECTION_THREADS_GET" => Some(get(state, scope, org, body)),
+        "COLLECTION_THREADS_LIST" => Some(list(state, scope, org, body).await),
+        "COLLECTION_THREADS_GET" => Some(get(state, scope, org, body).await),
         "COLLECTION_THREADS_CREATE" => Some(create(state, scope, org, body).await),
         "COLLECTION_THREADS_UPDATE" => Some(update(state, scope, org, body).await),
         "COLLECTION_THREADS_DELETE" => Some(delete(state, scope, org, body).await),
-        "COLLECTION_THREAD_MESSAGES_LIST" => Some(messages_list(state, scope, org, body)),
+        "COLLECTION_THREAD_MESSAGES_LIST" => Some(messages_list(state, scope, org, body).await),
         _ => None,
     }
 }
@@ -342,67 +347,9 @@ fn db(state: &AppState) -> Result<&'static ThreadsDb, ApiError> {
     shared_db(state)
 }
 
-/// The user id local-api stamps on `created_by`/`updated_by`.
-///
-/// MUST match the real signed-in user's id: the production shell's own
-/// chat input (`components/chat/input.tsx`) renders read-only whenever
-/// `task.created_by !== userId`, so any value other than the actual
-/// signed-in user permanently locks every locally-created thread as
-/// "viewing someone else's chat" — verified live against the real UI
-/// (Gate C drive), which is what an earlier, always-opaque placeholder
-/// value did. Resolved via `upstream::global()`'s signed-in session (the
-/// SAME identity the real mesh backend's own `COLLECTION_THREADS_CREATE`
-/// stamps `created_by` with server-side, per `apps/api/src/tools/thread/
-/// create.ts`). Signed-out requests are rejected before dispatch; they never
-/// create placeholder-owned rows.
-///
-/// `#[cfg(not(test))]`/`#[cfg(test)]` split, not a richer runtime branch:
-/// `upstream::global()`'s `TokenStore` is the REAL macOS Keychain in every
-/// COMPILED build of this crate (there is no test-only override reachable
-/// from inside `routes/intercept/*` — unlike `routes/upstream.rs`'s own
-/// tests, which construct a throwaway `UpstreamSession` over a
-/// `MemoryTokenStore` instead of touching `upstream::global()` at all).
-/// Querying it from a plain `cargo test` unit test measurably hung this
-/// crate's test binary (a `keyring::Entry::new(..).get_password()` call
-/// against a real, possibly-unlocked/no-session Keychain took far longer
-/// than `KeychainTokenStore`'s own 4s async-level timeout bounds, because
-/// that timeout only abandons the FUTURE — the underlying `spawn_blocking`
-/// OS thread can still be stuck) — found empirically while writing this
-/// module's own tests, and the reason this file's tests must never take
-/// the `cfg(not(test))` branch below. `#[cfg(test)]` is a compile-time
-/// swap (this crate's own `cargo test` binary never links the
-/// Keychain-touching branch at all), not a runtime "are we testing"
-/// check, so it carries none of this repo's usual "workaround with a
-/// comment" smell.
-#[cfg(not(test))]
-pub(crate) async fn current_account_scope() -> Option<RtAccountScope> {
-    current_account_scope_result().await.ok().flatten()
-}
-
-#[cfg(not(test))]
-pub(crate) async fn current_account_scope_result(
-) -> Result<Option<RtAccountScope>, upstream::tokens::TokenStoreError> {
-    let session = upstream::global();
-    let Some(user_id) = session.current_user_sub_result().await? else {
-        return Ok(None);
-    };
-    Ok(RtAccountScope::new(session.host(), user_id))
-}
-
-#[cfg(test)]
-pub(crate) async fn current_account_scope() -> Option<RtAccountScope> {
-    RtAccountScope::new("test.invalid", "local-desktop-user")
-}
-
-#[cfg(test)]
-pub(crate) async fn current_account_scope_result(
-) -> Result<Option<RtAccountScope>, upstream::tokens::TokenStoreError> {
-    Ok(current_account_scope().await)
-}
-
 // --- COLLECTION_THREADS_LIST -------------------------------------------------
 
-fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
+async fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
     let input = match parse_json(body) {
         Ok(v) => v,
         Err(r) => return r.into_response(),
@@ -535,22 +482,29 @@ fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Re
         Err(r) => return r.into_response(),
     };
 
-    match db.rt_list_threads_scoped(
-        scope,
-        org,
-        RtThreadListOptions {
-            created_by,
-            hidden: Some(hidden),
-            search,
-            trigger_ids: trigger_ids.as_deref(),
-            virtual_mcp_id,
-            has_trigger,
-            start_date,
-            end_date,
-            status,
-            agent_id,
-        },
-    ) {
+    let result = {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        db.rt_list_threads_scoped(
+            scope,
+            org,
+            RtThreadListOptions {
+                created_by,
+                hidden: Some(hidden),
+                search,
+                trigger_ids: trigger_ids.as_deref(),
+                virtual_mcp_id,
+                has_trigger,
+                start_date,
+                end_date,
+                status,
+                agent_id,
+            },
+        )
+    };
+    match result {
         Ok((items, total_count)) => Json(json!({
             "items": items,
             "totalCount": total_count,
@@ -563,7 +517,7 @@ fn list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Re
 
 // --- COLLECTION_THREADS_GET --------------------------------------------------
 
-fn get(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
+async fn get(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
     let input = match parse_json(body) {
         Ok(v) => v,
         Err(r) => return r.into_response(),
@@ -575,7 +529,14 @@ fn get(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Res
     let Some(id) = input.get("id").and_then(Value::as_str) else {
         return ApiError::bad_request("id is required").into_response();
     };
-    match db.rt_get_thread_in_scope(scope, org, id) {
+    let result = {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        db.rt_get_thread_in_scope(scope, org, id)
+    };
+    match result {
         Ok(item) => Json(json!({ "item": item })).into_response(),
         Err(e) => ApiError::internal(format!("thread database error: {e}")).into_response(),
     }
@@ -625,22 +586,34 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
+    if let Some(branch) = branch {
+        if let Err(error) = validate_thread_branch_identity(branch, id, "data.id") {
+            return error.into_response();
+        }
+    }
     let db = match db(state) {
         Ok(d) => d,
         Err(r) => return r.into_response(),
     };
     let user = &scope.user_id;
 
-    match db.rt_create_thread_scoped(
-        scope,
-        id,
-        org,
-        title,
-        description,
-        virtual_mcp_id,
-        branch,
-        user,
-    ) {
+    let result = {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        db.rt_create_thread_scoped(
+            scope,
+            id,
+            org,
+            title,
+            description,
+            virtual_mcp_id,
+            branch,
+            user,
+        )
+    };
+    match result {
         Ok(item) => Json(json!({ "item": item })).into_response(),
         // An explicit id already owned by another account or organization is
         // neither returned nor described: expose only that this caller cannot
@@ -713,13 +686,14 @@ async fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Ok(value) => value.map(|value| value.map(String::from)),
         Err(error) => return error.into_response(),
     };
+    if let Some(Some(branch)) = branch.as_ref() {
+        if let Err(error) = validate_thread_branch_identity(branch, Some(id), "id") {
+            return error.into_response();
+        }
+    }
     let virtual_mcp_id = match optional_string(data, "virtual_mcp_id", "data") {
         Ok(value) => value.map(String::from),
         Err(error) => return error.into_response(),
-    };
-    let db = match db(state) {
-        Ok(d) => d,
-        Err(r) => return r.into_response(),
     };
     let patch = RtThreadPatch {
         title,
@@ -730,41 +704,235 @@ async fn update(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         branch,
         virtual_mcp_id,
     };
-    let archive_fence = if patch.hidden == Some(true) {
-        match db.rt_thread_fence_in_scope(scope, org, id) {
-            Ok(Some(fence)) => Some(fence),
-            Ok(None) => return ApiError::not_found("thread not found").into_response(),
+    let result = if patch_requires_workspace_lock(&patch) {
+        // This first read is only a lock-key hint. Authority is resolved again
+        // after taking the lifecycle lock and account-transition fence, before
+        // any side effect or durable mutation can use the captured scope.
+        let lock_hint = {
+            let _account_guard = match lock_account_scope(scope).await {
+                Ok(guard) => guard,
+                Err(error) => return error.into_response(),
+            };
+            match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+                Ok(resolved) => resolved.fence,
+                Err(error) => return error.into_response(),
+            }
+        };
+        let workspace_lock = state.agent_sessions.start_lock(&lock_hint);
+        let _workspace_guard = workspace_lock.lock().await;
+        let account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        let resolved =
+            match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+                Ok(resolved) if resolved.fence == lock_hint => resolved,
+                Ok(_) => return ApiError::not_found("thread not found").into_response(),
+                Err(error) => return error.into_response(),
+            };
+        let db = resolved.db;
+        let fence = resolved.fence;
+        let thread = resolved.thread;
+        match db.rt_validate_workspace_identity_patch_fenced(&fence, &patch) {
+            Ok(()) => {}
+            Err(DbError::ThreadWorkspaceLocked { .. }) => {
+                return ApiError::conflict(
+                    "The chat workspace cannot be changed after its coding agent starts.",
+                )
+                .into_response()
+            }
+            Err(DbError::ThreadDeletePending { .. }) => {
+                return ApiError::conflict("thread is being deleted").into_response()
+            }
+            Err(DbError::StaleThreadGeneration { .. }) => {
+                return ApiError::not_found("thread not found").into_response()
+            }
             Err(error) => {
                 return ApiError::internal(format!("thread database error: {error}"))
                     .into_response()
             }
         }
-    } else {
-        None
-    };
-    let archive_lock = archive_fence
-        .as_ref()
-        .map(|fence| state.agent_sessions.start_lock(fence));
-    let _archive_guard = match archive_lock.as_ref() {
-        Some(lock) => Some(lock.lock().await),
-        None => None,
-    };
-    if let Some(fence) = archive_fence.as_ref() {
-        if let Err(error) = state.agent_sessions.terminate_fence(fence).await {
-            return ApiError::internal(format!(
-                "chat was not archived because its coding agent could not be stopped: {error}"
-            ))
-            .into_response();
+        let changes_workspace_identity = workspace_identity_changes(&patch, &thread);
+        if patch.hidden == Some(true) || changes_workspace_identity {
+            let account_epoch = state.sandbox_manager.account_epoch();
+            // The per-thread lifecycle lock keeps this generation stable.
+            // Release the process-wide account transition gate before any
+            // bounded preparation or child-process drain.
+            drop(account_guard);
+            if let Err(error) = cancel_preparing_terminal(state, db, &fence).await {
+                return error.into_response();
+            }
+            if patch.hidden == Some(true) {
+                if let Err(error) = state.agent_sessions.terminate_fence(&fence).await {
+                    return ApiError::internal(format!(
+                        "chat was not archived because its coding agent could not be stopped: {error}"
+                    ))
+                    .into_response();
+                }
+            }
+            if let Err(error) =
+                quiesce_thread_sandbox(state, account_epoch, &thread.id, &thread.virtual_mcp_id)
+                    .await
+            {
+                return error.into_response();
+            }
+            let _account_guard = match lock_account_scope(scope).await {
+                Ok(guard) => guard,
+                Err(error) => return error.into_response(),
+            };
+            let resolved =
+                match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+                    Ok(resolved) if resolved.fence == fence => resolved,
+                    Ok(_) => return ApiError::not_found("thread not found").into_response(),
+                    Err(error) => return error.into_response(),
+                };
+            if let Err(error) = resolved
+                .db
+                .rt_validate_workspace_identity_patch_fenced(&fence, &patch)
+            {
+                return workspace_patch_error(error).into_response();
+            }
+            resolved
+                .db
+                .rt_update_thread_in_scope(scope, org, id, &scope.user_id, &patch)
+        } else {
+            db.rt_update_thread_in_scope(scope, org, id, &scope.user_id, &patch)
         }
-    }
-    match db.rt_update_thread_in_scope(scope, org, id, &scope.user_id, &patch) {
+    } else {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        let db = match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+            Ok(resolved) => resolved.db,
+            Err(error) => return error.into_response(),
+        };
+        db.rt_update_thread_in_scope(scope, org, id, &scope.user_id, &patch)
+    };
+    match result {
         Ok(Some(item)) => Json(json!({ "item": item })).into_response(),
         Ok(None) => ApiError::not_found("thread not found").into_response(),
         Err(DbError::ThreadDeletePending { .. }) => {
             ApiError::conflict("thread is being deleted").into_response()
         }
+        Err(DbError::ThreadWorkspaceLocked { .. }) => ApiError::conflict(
+            "The chat workspace cannot be changed after its coding agent starts.",
+        )
+        .into_response(),
         Err(e) => ApiError::internal(format!("thread database error: {e}")).into_response(),
     }
+}
+
+fn patch_requires_workspace_lock(patch: &RtThreadPatch) -> bool {
+    patch.hidden == Some(true) || patch.branch.is_some() || patch.virtual_mcp_id.is_some()
+}
+
+fn workspace_identity_changes(
+    patch: &RtThreadPatch,
+    thread: &crate::routes::threads::db::RtThread,
+) -> bool {
+    patch
+        .branch
+        .as_ref()
+        .is_some_and(|branch| branch != &thread.branch)
+        || patch
+            .virtual_mcp_id
+            .as_ref()
+            .is_some_and(|virtual_mcp_id| virtual_mcp_id != &thread.virtual_mcp_id)
+}
+
+fn validate_thread_branch_identity(
+    branch: &str,
+    expected_thread_id: Option<&str>,
+    expected_id_path: &str,
+) -> Result<(), ApiError> {
+    let Some(branch_thread_id) = crate::sandbox::synthetic_thread_id_from_input(branch)
+        .map_err(|error| ApiError::bad_request(format!("data.branch is invalid: {error}")))?
+    else {
+        return Ok(());
+    };
+    let expected_thread_id = expected_thread_id.ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "{expected_id_path} is required when data.branch is thread-backed"
+        ))
+    })?;
+    if branch_thread_id != expected_thread_id {
+        return Err(ApiError::bad_request(format!(
+            "data.branch must belong to {expected_id_path}"
+        )));
+    }
+    Ok(())
+}
+
+fn workspace_patch_error(error: DbError) -> ApiError {
+    match error {
+        DbError::ThreadWorkspaceLocked { .. } => ApiError::conflict(
+            "The chat workspace cannot be changed after its coding agent starts.",
+        ),
+        DbError::ThreadDeletePending { .. } => ApiError::conflict("thread is being deleted"),
+        DbError::StaleThreadGeneration { .. } => ApiError::not_found("thread not found"),
+        error => ApiError::internal(format!("thread database error: {error}")),
+    }
+}
+
+async fn cancel_preparing_terminal(
+    state: &AppState,
+    db: &'static ThreadsDb,
+    fence: &crate::routes::threads::db::RtThreadFence,
+) -> Result<(), ApiError> {
+    let preparation = state.agent_sessions.cancel_preparation(fence);
+    let had_preparation = preparation.had_preparations();
+    preparation.wait().await.map_err(|error| {
+        ApiError::internal(format!(
+            "could not stop coding agent preparation before cleanup: {error}"
+        ))
+    })?;
+    if had_preparation {
+        crate::terminal::launch_context::cleanup_managed_state(&state.app_root, fence)
+            .await
+            .map_err(|error| {
+                ApiError::internal(format!(
+                    "could not clean canceled coding agent preparation: {error}"
+                ))
+            })?;
+    }
+    let live = db
+        .rt_get_live_terminal_session_fenced(fence)
+        .map_err(|error| {
+            ApiError::internal(format!(
+                "could not inspect coding agent before cleanup: {error}"
+            ))
+        })?;
+    if let Some(session) = live {
+        crate::routes::terminal::mark_starting_session_exited_if_present(
+            db,
+            fence,
+            &session.id,
+            "coding agent start was canceled before process creation",
+            true,
+        );
+    }
+    Ok(())
+}
+
+/// Every live synthetic `thread:<id>[/...]` sandbox belongs only to that thread
+/// and is safe to quiesce with its lifecycle. The manager rechecks both the
+/// pre-patch virtual-MCP id and exact synthetic thread identity under each
+/// handle lock before closing the generation. Real git branches are shared by
+/// every native chat on that repository branch and must never be stopped when
+/// one chat is archived, deleted, or changes workspace identity.
+async fn quiesce_thread_sandbox(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    thread_id: &str,
+    virtual_mcp_id: &str,
+) -> Result<(), ApiError> {
+    state
+        .sandbox_manager
+        .delete_live_thread_sandboxes_for_account(account_epoch, virtual_mcp_id, thread_id)
+        .await
+        .map(|_| ())
+        .map_err(manager_error)
 }
 
 // --- COLLECTION_THREADS_DELETE -----------------------------------------------
@@ -774,29 +942,35 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Ok(v) => v,
         Err(r) => return r.into_response(),
     };
-    let db = match db(state) {
-        Ok(d) => d,
-        Err(r) => return r.into_response(),
-    };
     let Some(id) = input.get("id").and_then(Value::as_str) else {
         return ApiError::bad_request("id is required").into_response();
     };
 
-    // Read through the same organization predicate used by the delete. The
-    // collection binding returns the deleted entity, while an id owned by a
-    // different organization must be indistinguishable from an unknown id.
-    let item = match db.rt_get_thread_in_scope(scope, org, id) {
-        Ok(Some(item)) => item,
-        Ok(None) => return ApiError::not_found("thread not found").into_response(),
-        Err(e) => return ApiError::internal(format!("thread database error: {e}")).into_response(),
+    let resolved = {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+            Ok(resolved) => resolved,
+            Err(error) => return error.into_response(),
+        }
     };
-    let fence = match db.rt_thread_fence_in_scope(scope, org, id) {
-        Ok(Some(fence)) => fence,
-        Ok(None) => return ApiError::not_found("thread not found").into_response(),
-        Err(e) => return ApiError::internal(format!("thread database error: {e}")).into_response(),
-    };
+    let fence = resolved.fence;
     let start_lock = state.agent_sessions.start_lock(&fence);
     let _start_guard = start_lock.lock().await;
+    let account_guard = match lock_account_scope(scope).await {
+        Ok(guard) => guard,
+        Err(error) => return error.into_response(),
+    };
+    let resolved = match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+        Ok(resolved) if resolved.fence == fence => resolved,
+        Ok(_) => return ApiError::not_found("thread not found").into_response(),
+        Err(error) => return error.into_response(),
+    };
+    let db = resolved.db;
+    let item = resolved.thread;
+    let account_epoch = state.sandbox_manager.account_epoch();
     match db.rt_mark_thread_delete_pending(&fence) {
         Ok(true) => {}
         Ok(false) => return ApiError::not_found("thread not found").into_response(),
@@ -804,15 +978,37 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
             return ApiError::internal(format!("thread database error: {e}")).into_response();
         }
     }
+    // `delete_pending` durably closes new starts and the lifecycle lock keeps
+    // this generation stable, so process cleanup must not hold the global
+    // account transition gate.
+    drop(account_guard);
+    if let Err(error) = cancel_preparing_terminal(state, db, &fence).await {
+        return error.into_response();
+    }
     if let Err(error) = state.agent_sessions.terminate_fence(&fence).await {
         // `delete_pending` deliberately survives failed reaping. A retry can
         // complete the same generation-fenced cascade, while new terminal
         // starts remain closed by the durable marker.
         return ApiError::internal(format!("could not stop coding agent: {error}")).into_response();
     }
+    if let Err(error) =
+        quiesce_thread_sandbox(state, account_epoch, &item.id, &item.virtual_mcp_id).await
+    {
+        return error.into_response();
+    }
+    let account_guard = match lock_account_scope(scope).await {
+        Ok(guard) => guard,
+        Err(error) => return error.into_response(),
+    };
+    match resolve_scoped_thread(state, scope.clone(), org, id, ThreadAccess::Owner) {
+        Ok(resolved) if resolved.fence == fence => {}
+        Ok(_) => return ApiError::not_found("thread not found").into_response(),
+        Err(error) => return error.into_response(),
+    }
 
-    match db.rt_delete_thread_in_org_if_generation(&fence) {
+    match db.rt_delete_owned_thread_if_generation(&fence, &scope.user_id) {
         Ok(true) => {
+            drop(account_guard);
             state.agent_sessions.forget_fence(&fence);
             if let Err(error) =
                 crate::terminal::launch_context::cleanup_managed_state(&state.app_root, &fence)
@@ -836,7 +1032,12 @@ async fn delete(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
 
 // --- COLLECTION_THREAD_MESSAGES_LIST -----------------------------------------
 
-fn messages_list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Bytes) -> Response {
+async fn messages_list(
+    state: &AppState,
+    scope: &RtAccountScope,
+    org: &str,
+    body: &Bytes,
+) -> Response {
     let input = match parse_json(body) {
         Ok(v) => v,
         Err(r) => return r.into_response(),
@@ -884,7 +1085,14 @@ fn messages_list(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byt
 
     // Byte-parity with `list-messages.ts`'s own "unknown thread -> empty
     // page, not an error" behavior (see that file's handler).
-    match db.rt_list_messages_in_scope(scope, org, &thread_id, limit, offset, desc) {
+    let result = {
+        let _account_guard = match lock_account_scope(scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+        db.rt_list_messages_in_scope(scope, org, &thread_id, limit, offset, desc)
+    };
+    match result {
         Ok((items, total_count)) => {
             let has_more = offset + limit < total_count;
             Json(json!({
@@ -906,12 +1114,16 @@ mod tests {
     use axum::http::StatusCode;
     use std::sync::OnceLock;
 
-    /// `shared_db` is process-wide, so its backing directory must live for the
-    /// whole test binary too. A per-test `TempDir` let the first completed test
-    /// unlink the database underneath every later test's still-open handle.
+    /// `shared_db` and the native sandbox registry are process-wide test
+    /// resources. Cache the whole state so parallel tests neither unlink the
+    /// shared database nor race separate registry connections while enabling
+    /// SQLite WAL mode.
     fn persistent_test_state() -> AppState {
         static ROOT: OnceLock<tempfile::TempDir> = OnceLock::new();
-        test_state(ROOT.get_or_init(|| tempfile::tempdir().unwrap()).path())
+        static STATE: OnceLock<AppState> = OnceLock::new();
+        STATE
+            .get_or_init(|| test_state(ROOT.get_or_init(|| tempfile::tempdir().unwrap()).path()))
+            .clone()
     }
 
     async fn body_json(res: Response) -> Value {
@@ -961,6 +1173,90 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn reserved_thread_branches_require_the_matching_explicit_thread_id() {
+        let state = persistent_test_state();
+        let org = "thread-tools-reserved-branch";
+        for input in [
+            json!({"data": {
+                "virtual_mcp_id": "vmcp-reserved",
+                "branch": "thread:generated-id-is-not-authority"
+            }}),
+            json!({"data": {
+                "id": "reserved-whitespace",
+                "virtual_mcp_id": "vmcp-reserved",
+                "branch": " thread:reserved-whitespace "
+            }}),
+            json!({"data": {
+                "id": "reserved-mismatch",
+                "virtual_mcp_id": "vmcp-reserved",
+                "branch": "thread:another-thread"
+            }}),
+            json!({"data": {
+                "id": "reserved-malformed",
+                "virtual_mcp_id": "vmcp-reserved",
+                "branch": "thread:"
+            }}),
+        ] {
+            let response = dispatch(
+                &state,
+                org,
+                "COLLECTION_THREADS_CREATE",
+                &Bytes::from(input.to_string()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+
+        let thread_id = "reserved-exact";
+        let create = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_CREATE",
+            &Bytes::from(
+                json!({"data": {
+                    "id": thread_id,
+                    "virtual_mcp_id": "vmcp-reserved",
+                    "branch": format!("thread:{thread_id}/connection-1")
+                }})
+                .to_string(),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(create.status(), StatusCode::OK);
+
+        for branch in [
+            "thread:another-thread",
+            "thread:reserved-exact/",
+            " thread:reserved-exact ",
+        ] {
+            let update = dispatch(
+                &state,
+                org,
+                "COLLECTION_THREADS_UPDATE",
+                &Bytes::from(json!({"id": thread_id, "data": {"branch": branch}}).to_string()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(update.status(), StatusCode::BAD_REQUEST);
+        }
+
+        let get = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_GET",
+            &Bytes::from(json!({"id": thread_id}).to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            body_json(get).await["item"]["branch"],
+            format!("thread:{thread_id}/connection-1")
+        );
     }
 
     #[tokio::test]
@@ -1476,50 +1772,59 @@ mod tests {
     async fn routes_isolate_same_org_slug_by_upstream_and_authenticated_user() {
         let state = persistent_test_state();
         let org = "route-account-scope-shared-org";
-        let id = "route-account-scope-thread";
+        let id = "route-account-scope-local-thread";
+        let local = RtAccountScope::new("test.invalid", "local-desktop-user").unwrap();
         let prod_alice = RtAccountScope::new("studio.decocms.com", "alice").unwrap();
-        let prod_bob = RtAccountScope::new("studio.decocms.com", "bob").unwrap();
         let dev_alice = RtAccountScope::new("localhost:4000", "alice").unwrap();
         let body = Bytes::from(json!({"data": {"id": id, "virtual_mcp_id": "vmcp"}}).to_string());
-        let created = dispatch_scoped(&state, &prod_alice, org, "COLLECTION_THREADS_CREATE", &body)
+        let created = dispatch_scoped(&state, &local, org, "COLLECTION_THREADS_CREATE", &body)
             .await
             .unwrap();
         assert_eq!(created.status(), axum::http::StatusCode::OK);
         let created = body_json(created).await;
         assert_eq!(created["item"]["organization_id"], org);
-        assert_eq!(created["item"]["created_by"], "alice");
+        assert_eq!(created["item"]["created_by"], "local-desktop-user");
         assert_eq!(created["item"]["title"], "New chat");
 
+        let database = shared_db(&state).unwrap();
+        for (scope, foreign_id) in [
+            (&prod_alice, "route-account-scope-prod-alice"),
+            (&dev_alice, "route-account-scope-dev-alice"),
+        ] {
+            database
+                .rt_create_thread_scoped(
+                    scope,
+                    Some(foreign_id),
+                    org,
+                    "foreign",
+                    None,
+                    "vmcp",
+                    None,
+                    &scope.user_id,
+                )
+                .unwrap();
+        }
+
         let list_body = Bytes::from(json!({"where": {"created_by": "me"}}).to_string());
-        let alice_list = body_json(
-            dispatch_scoped(
-                &state,
-                &prod_alice,
-                org,
-                "COLLECTION_THREADS_LIST",
-                &list_body,
-            )
-            .await
-            .unwrap(),
+        let local_list = body_json(
+            dispatch_scoped(&state, &local, org, "COLLECTION_THREADS_LIST", &list_body)
+                .await
+                .unwrap(),
         )
         .await;
-        assert_eq!(alice_list["totalCount"], 1);
+        assert_eq!(local_list["totalCount"], 1);
 
-        for foreign in [&prod_bob, &dev_alice] {
-            let list = body_json(
-                dispatch_scoped(&state, foreign, org, "COLLECTION_THREADS_LIST", &list_body)
-                    .await
-                    .unwrap(),
-            )
-            .await;
-            assert_eq!(list["totalCount"], 0);
+        for foreign_id in [
+            "route-account-scope-prod-alice",
+            "route-account-scope-dev-alice",
+        ] {
             let get = body_json(
                 dispatch_scoped(
                     &state,
-                    foreign,
+                    &local,
                     org,
                     "COLLECTION_THREADS_GET",
-                    &Bytes::from(json!({"id": id}).to_string()),
+                    &Bytes::from(json!({"id": foreign_id}).to_string()),
                 )
                 .await
                 .unwrap(),
@@ -1527,6 +1832,17 @@ mod tests {
             .await;
             assert_eq!(get, json!({"item": null}));
         }
+
+        let stale_scope = dispatch_scoped(
+            &state,
+            &prod_alice,
+            org,
+            "COLLECTION_THREADS_LIST",
+            &list_body,
+        )
+        .await
+        .unwrap();
+        assert_eq!(stale_scope.status(), StatusCode::CONFLICT);
     }
 
     #[tokio::test]
@@ -1558,6 +1874,220 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn teammate_thread_update_and_delete_are_forbidden() {
+        let state = persistent_test_state();
+        let scope = RtAccountScope::new("test.invalid", "local-desktop-user").unwrap();
+        let org = "thread-tools-teammate-authority";
+        let id = "thread-tools-teammate-thread";
+        shared_db(&state)
+            .unwrap()
+            .rt_create_thread_scoped(
+                &scope,
+                Some(id),
+                org,
+                "Teammate chat",
+                None,
+                "vmcp",
+                None,
+                "teammate-user",
+            )
+            .unwrap();
+
+        let update = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_UPDATE",
+            &Bytes::from(json!({"id": id, "data": {"title": "hijacked"}}).to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(update.status(), StatusCode::FORBIDDEN);
+
+        let delete = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_DELETE",
+            &Bytes::from(json!({"id": id}).to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(delete.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            shared_db(&state)
+                .unwrap()
+                .rt_get_thread_in_scope(&scope, org, id)
+                .unwrap()
+                .unwrap()
+                .title,
+            "Teammate chat"
+        );
+    }
+
+    #[tokio::test]
+    async fn changing_a_reserved_terminal_workspace_returns_conflict() {
+        let state = persistent_test_state();
+        let org = "thread-tools-workspace-lock";
+        let created = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_CREATE",
+            &Bytes::from(json!({"data": {"virtual_mcp_id": "vmcp", "branch": "main"}}).to_string()),
+        )
+        .await
+        .unwrap();
+        let id = body_json(created).await["item"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let database = shared_db(&state).unwrap();
+        let fence = database.rt_thread_fence_in_org(org, &id).unwrap().unwrap();
+        database
+            .rt_create_terminal_session_fenced(&fence, "workspace-lock-terminal", "codex")
+            .unwrap();
+
+        let response = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_UPDATE",
+            &Bytes::from(
+                json!({"id": id, "data": {"branch": "feature", "hidden": true}}).to_string(),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            body_json(response).await,
+            json!({"error": "The chat workspace cannot be changed after its coding agent starts."})
+        );
+        assert!(database
+            .rt_get_live_terminal_session_fenced(&fence)
+            .unwrap()
+            .is_some());
+        assert!(
+            !database
+                .rt_get_thread_in_org(org, &id)
+                .unwrap()
+                .unwrap()
+                .hidden
+        );
+    }
+
+    #[tokio::test]
+    async fn routing_update_waits_for_the_workspace_lifecycle_lock() {
+        let state = persistent_test_state();
+        let org = "thread-tools-routing-linearization";
+        let id = "thread-tools-routing-linearization-thread";
+        let database = shared_db(&state).unwrap();
+        database
+            .rt_create_thread(
+                Some(id),
+                org,
+                "Routing chat",
+                None,
+                "vmcp-a",
+                Some("main"),
+                "local-desktop-user",
+            )
+            .unwrap();
+        let fence = database.rt_thread_fence_in_org(org, id).unwrap().unwrap();
+        let lifecycle_lock = state.agent_sessions.start_lock(&fence);
+        let lifecycle_guard = lifecycle_lock.lock().await;
+
+        let update_state = state.clone();
+        let update = tokio::spawn(async move {
+            dispatch(
+                &update_state,
+                org,
+                "COLLECTION_THREADS_UPDATE",
+                &Bytes::from(
+                    json!({"id": id, "data": {"branch": "feature", "virtual_mcp_id": "vmcp-b"}})
+                        .to_string(),
+                ),
+            )
+            .await
+            .unwrap()
+        });
+        tokio::task::yield_now().await;
+        assert!(!update.is_finished());
+        let before = database.rt_get_thread_in_org(org, id).unwrap().unwrap();
+        assert_eq!(before.branch.as_deref(), Some("main"));
+        assert_eq!(before.virtual_mcp_id, "vmcp-a");
+
+        drop(lifecycle_guard);
+        let response = tokio::time::timeout(std::time::Duration::from_secs(1), update)
+            .await
+            .expect("routing update should resume after the lifecycle lock")
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let after = body_json(response).await["item"].clone();
+        assert_eq!(after["branch"], "feature");
+        assert_eq!(after["virtual_mcp_id"], "vmcp-b");
+    }
+
+    #[tokio::test]
+    async fn routing_update_quiesces_the_pre_patch_synthetic_sandbox() {
+        let state = persistent_test_state();
+        let org = "thread-tools-routing-old-sandbox";
+        let id = "thread-tools-routing-old-sandbox-thread";
+        let branch = format!("thread:{id}");
+        let database = shared_db(&state).unwrap();
+        database
+            .rt_create_thread(
+                Some(id),
+                org,
+                "Routing chat",
+                None,
+                "test-agent",
+                Some(&branch),
+                "local-desktop-user",
+            )
+            .unwrap();
+        let handle = state
+            .sandbox_manager
+            .register_for_test("https://github.com/acme/routing-old-sandbox.git", &branch);
+        let account_epoch = state.sandbox_manager.account_epoch();
+        let old_generation = state
+            .sandbox_manager
+            .adopt_for_account(account_epoch, &handle)
+            .await
+            .unwrap()
+            .expect("synthetic sandbox is live before the identity patch");
+        assert!(!old_generation.tasks.is_admission_closed());
+
+        let response = dispatch(
+            &state,
+            org,
+            "COLLECTION_THREADS_UPDATE",
+            &Bytes::from(json!({"id": id, "data": {"virtual_mcp_id": "vmcp-b"}}).to_string()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            body_json(response).await["item"]["virtual_mcp_id"],
+            "vmcp-b"
+        );
+        assert!(state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)
+            .unwrap()
+            .is_none());
+        assert!(old_generation.tasks.is_admission_closed());
+        assert!(old_generation.tasks.list(None).is_empty());
+        assert_eq!(
+            state
+                .sandbox_manager
+                .registry_record_for_account(account_epoch, &handle)
+                .unwrap()
+                .unwrap()
+                .desired_status,
+            "stopped"
+        );
     }
 
     #[tokio::test]
@@ -1616,8 +2146,16 @@ mod tests {
         let owner_org = "thread-tools-scope-owner";
         let other_org = "thread-tools-scope-other";
         let id = "thread-tools-scoped-delete";
-        db.rt_create_thread(Some(id), owner_org, "original", None, "v", None, "u")
-            .unwrap();
+        db.rt_create_thread(
+            Some(id),
+            owner_org,
+            "original",
+            None,
+            "v",
+            None,
+            "local-desktop-user",
+        )
+        .unwrap();
         db.rt_append_message("scoped-u", id, "user", &json!([]), None)
             .unwrap();
         db.rt_append_message("scoped-a", id, "assistant", &json!([]), None)

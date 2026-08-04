@@ -397,11 +397,57 @@ impl TaskEntry {
 
 pub struct TaskRegistry {
     inner: Mutex<HashMap<String, TaskEntry>>,
+    admission: Mutex<AdmissionState>,
+    admission_changed: Notify,
     id_counter: AtomicU64,
     storage_namespace: uuid::Uuid,
     logs: Arc<LogStore>,
     child_lifetime_lock_path: PathBuf,
     terminal_changed: Notify,
+}
+
+#[derive(Default)]
+struct AdmissionState {
+    closed: bool,
+    active: usize,
+}
+
+/// One operation admitted to a single [`TaskRegistry`] generation.
+///
+/// Process owners acquire this before creating a child and consume it only
+/// after the child has a durable registry entry. Non-process workspace
+/// operations may retain the same lease for their whole critical section.
+/// Closing a generation rejects new leases and waits for every existing lease
+/// to drop before shutdown snapshots the registry.
+pub(crate) struct GenerationAdmission {
+    registry: Arc<TaskRegistry>,
+    active: bool,
+}
+
+impl GenerationAdmission {
+    /// Atomically transfers an admitted process into registry ownership.
+    /// An admission that predates `close_admission` is still allowed to
+    /// register: close waits for it, so the subsequent reap snapshot includes
+    /// the entry. No async cancellation point exists between an OS spawn and
+    /// this synchronous handoff at any production call site.
+    pub(crate) fn register(mut self, entry: TaskEntry) {
+        self.registry.insert_admitted(entry);
+        self.release();
+    }
+
+    fn release(&mut self) {
+        if !self.active {
+            return;
+        }
+        self.active = false;
+        self.registry.release_admission();
+    }
+}
+
+impl Drop for GenerationAdmission {
+    fn drop(&mut self) {
+        self.release();
+    }
 }
 
 impl TaskRegistry {
@@ -422,8 +468,28 @@ impl TaskRegistry {
         logs: Arc<LogStore>,
         child_lifetime_lock_path: PathBuf,
     ) -> Self {
+        Self::new_with_admission_state(logs, child_lifetime_lock_path, false)
+    }
+
+    /// Metadata-only stopped sandbox constructor. Admission is closed before
+    /// the registry can be published through the manager's generation map, so
+    /// no concurrent resolver can observe a transient runnable generation.
+    pub(crate) fn new_closed_with_child_lifetime_lock(
+        logs: Arc<LogStore>,
+        child_lifetime_lock_path: PathBuf,
+    ) -> Self {
+        Self::new_with_admission_state(logs, child_lifetime_lock_path, true)
+    }
+
+    fn new_with_admission_state(
+        logs: Arc<LogStore>,
+        child_lifetime_lock_path: PathBuf,
+        closed: bool,
+    ) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
+            admission: Mutex::new(AdmissionState { closed, active: 0 }),
+            admission_changed: Notify::new(),
             id_counter: AtomicU64::new(0),
             storage_namespace: uuid::Uuid::new_v4(),
             logs,
@@ -454,11 +520,76 @@ impl TaskRegistry {
         format!("task{n}")
     }
 
-    /// Register a new (or replace an existing) task entry by
-    /// `entry.summary.id`.
-    pub fn insert(&self, entry: TaskEntry) {
+    /// Admit work against this exact registry generation. The returned lease
+    /// must be acquired before a child is created and retained through its
+    /// synchronous [`GenerationAdmission::register`] handoff.
+    pub(crate) fn admit(self: &Arc<Self>) -> Option<GenerationAdmission> {
+        let mut state = self.lock_admission();
+        if state.closed {
+            return None;
+        }
+        state.active += 1;
+        Some(GenerationAdmission {
+            registry: Arc::clone(self),
+            active: true,
+        })
+    }
+
+    /// Permanently close this generation and wait until every operation that
+    /// won admission before the close has either registered its child or
+    /// abandoned the operation. Repeated callers share the same fence.
+    pub(crate) async fn close_admission(&self) -> bool {
+        let first = {
+            let mut state = self.lock_admission();
+            let first = !state.closed;
+            state.closed = true;
+            first
+        };
+
+        loop {
+            let changed = self.admission_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.lock_admission().active == 0 {
+                return first;
+            }
+            changed.await;
+        }
+    }
+
+    pub(crate) fn is_admission_closed(&self) -> bool {
+        self.lock_admission().closed
+    }
+
+    fn release_admission(&self) {
+        let quiescent = {
+            let mut state = self.lock_admission();
+            debug_assert!(state.active > 0, "generation admission underflow");
+            state.active = state.active.saturating_sub(1);
+            state.active == 0
+        };
+        if quiescent {
+            self.admission_changed.notify_waiters();
+        }
+    }
+
+    fn insert_admitted(&self, entry: TaskEntry) {
         let mut guard = self.lock();
         guard.insert(entry.summary.id.clone(), entry);
+    }
+
+    /// Fixture-only insertion for tests that exercise registry behavior
+    /// independently of process creation. Production process owners must use
+    /// [`Self::admit`] before spawn and hand off through
+    /// [`GenerationAdmission::register`].
+    #[cfg(test)]
+    pub(crate) fn insert(&self, entry: TaskEntry) -> bool {
+        let state = self.lock_admission();
+        if state.closed {
+            return false;
+        }
+        self.insert_admitted(entry);
+        true
     }
 
     /// Mutate a task's summary in place. Returns `false` if `id` is
@@ -769,6 +900,19 @@ impl TaskRegistry {
         }
     }
 
+    /// Close this generation's operation/task admission before taking the
+    /// all-inclusive process snapshot. Both exposed tasks and hidden internal
+    /// owners are reaped; no child can appear behind the snapshot because all
+    /// pre-close leases have quiesced and later admission is permanent-fail.
+    pub(crate) async fn close_and_kill_all_and_wait(
+        &self,
+        term_grace: Duration,
+        kill_grace: Duration,
+    ) -> KillAllResult {
+        self.close_admission().await;
+        self.kill_all_and_wait(term_grace, kill_grace).await
+    }
+
     fn running_ids(&self) -> Vec<String> {
         self.lock()
             .iter()
@@ -872,6 +1016,13 @@ impl TaskRegistry {
             Err(poisoned) => poisoned.into_inner(),
         }
     }
+
+    fn lock_admission(&self) -> std::sync::MutexGuard<'_, AdmissionState> {
+        match self.admission.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -936,6 +1087,67 @@ mod tests {
         assert_eq!(result.kill_signaled, 1);
         assert_eq!(result.remaining, vec!["internal"]);
         assert_eq!(controller.requested(), Some(KillSignal::Kill));
+    }
+
+    #[tokio::test]
+    async fn close_waits_for_pre_registration_admission_and_reaps_hidden_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = Arc::new(TaskRegistry::new(Arc::new(LogStore::new(
+            dir.path().to_path_buf(),
+        ))));
+        let admission = registry.admit().expect("fresh generation is open");
+        let controller = ProcessController::new();
+        let (register_tx, register_rx) = tokio::sync::oneshot::channel();
+        let owner_registry = registry.clone();
+        let owner_controller = controller.clone();
+        let owner = tokio::spawn(async move {
+            register_rx.await.unwrap();
+            admission.register(TaskEntry::new_internal(
+                summary("paused-hidden-owner", TaskStatus::Running),
+                Some(owner_controller.kill_handle()),
+            ));
+            let signal = owner_controller.wait_for_change(None).await;
+            owner_registry.finalize(
+                "paused-hidden-owner",
+                TaskStatus::Killed,
+                signal.exit_code(),
+                false,
+            );
+        });
+
+        let close_registry = registry.clone();
+        let close = tokio::spawn(async move {
+            close_registry
+                .close_and_kill_all_and_wait(Duration::from_secs(1), Duration::from_secs(1))
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !registry.is_admission_closed() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("close flips admission before waiting");
+        assert!(
+            !close.is_finished(),
+            "close must not snapshot before a pre-close spawn registers"
+        );
+        assert!(
+            registry.admit().is_none(),
+            "post-close process spawn is rejected"
+        );
+
+        register_tx.send(()).unwrap();
+        let result = close.await.unwrap();
+        owner.await.unwrap();
+        assert_eq!(result.initially_running, 1);
+        assert_eq!(result.term_signaled, 1);
+        assert!(result.remaining.is_empty());
+        assert!(registry.list(None).is_empty(), "hidden owner stays hidden");
+        assert_eq!(
+            registry.get("paused-hidden-owner").unwrap().status,
+            TaskStatus::Killed
+        );
     }
 
     #[test]

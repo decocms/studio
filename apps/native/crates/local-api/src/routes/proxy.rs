@@ -77,6 +77,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use futures_util::StreamExt;
 use serde_json::{json, Value};
 
 use super::ws_proxy;
@@ -121,13 +122,58 @@ pub(crate) struct PreviewCookieSelftest {
     pub cookie_value: Arc<str>,
 }
 
-pub async fn fallback(State(state): State<AppState>, req: Request) -> Response {
-    if is_websocket_upgrade(req.headers()) {
-        return handle_ws_upgrade(state, req).await;
+struct ResponseEpochFence {
+    expected: crate::sandbox::manager::AccountEpoch,
+    receiver: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+}
+
+impl ResponseEpochFence {
+    fn is_stale(&self) -> bool {
+        *self.receiver.borrow() != self.expected
     }
 
-    match resolve_preview(&state, req.headers()) {
-        PreviewResolution::Port(port) => proxy_to_port(port, req).await,
+    async fn changed(&mut self) {
+        if self.is_stale() {
+            return;
+        }
+        // Any version change closes the response, even if epoch saturation
+        // publishes the same numeric value to fail permanently closed.
+        let _ = self.receiver.changed().await;
+    }
+}
+
+pub async fn fallback(State(state): State<AppState>, req: Request) -> Response {
+    let authorization = match super::sandbox_account::authorize(&state).await {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
+    let account_epoch = authorization.epoch();
+    if is_websocket_upgrade(req.headers()) {
+        drop(authorization);
+        return handle_ws_upgrade(state, account_epoch, req).await;
+    }
+
+    let resolution = match resolve_preview(&state, account_epoch, req.headers()) {
+        Ok(resolution) => resolution,
+        Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+    };
+    drop(authorization);
+    match resolution {
+        PreviewResolution::Port(port) => {
+            let receiver = match state.sandbox_manager.watch_account_epoch(account_epoch) {
+                Ok(receiver) => receiver,
+                Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+            };
+            proxy_to_port_inner(
+                port,
+                req,
+                Some(ResponseEpochFence {
+                    expected: account_epoch,
+                    receiver,
+                }),
+            )
+            .await
+        }
         PreviewResolution::Starting => starting_response(),
         PreviewResolution::NoServer => no_upstream_response(),
     }
@@ -265,17 +311,23 @@ pub async fn set_preview_handle(
     State(state): State<AppState>,
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Response {
+    let authorization = match super::sandbox_account::authorize(&state).await {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
+    let account_epoch = authorization.epoch();
     match body.get("handle").and_then(Value::as_str) {
-        Some(handle) if !handle.is_empty() => match state.sandbox_manager.set_active(handle) {
+        Some(handle) if !handle.is_empty() => match state
+            .sandbox_manager
+            .set_active_for_account(account_epoch, handle)
+        {
             Ok(()) => (StatusCode::OK, axum::Json(json!({ "ok": true }))).into_response(),
             Err(error) if error.starts_with("unknown sandbox handle:") => {
                 (StatusCode::NOT_FOUND, axum::Json(json!({ "error": error }))).into_response()
             }
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(json!({ "error": error })),
-            )
-                .into_response(),
+            Err(error) => {
+                (StatusCode::CONFLICT, axum::Json(json!({ "error": error }))).into_response()
+            }
         },
         _ => (
             StatusCode::BAD_REQUEST,
@@ -317,38 +369,67 @@ pub async fn set_preview_handle(
 /// is tiny (one entry per worktree on this machine) and the alternative — a
 /// second persisted label->handle index — is a thing that can disagree with
 /// `preview_label`.
-fn handle_from_host(state: &AppState, headers: &HeaderMap) -> Option<String> {
-    let host = headers.get(header::HOST)?.to_str().ok()?;
-    let host = host.split(':').next()?;
-    let (label, rest) = host.split_once('.')?;
+fn handle_from_host(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<Option<String>, String> {
+    let Some(host) = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Ok(None);
+    };
+    let Some(host) = host.split(':').next() else {
+        return Ok(None);
+    };
+    let Some((label, rest)) = host.split_once('.') else {
+        return Ok(None);
+    };
     if label.is_empty() || rest.is_empty() {
-        return None;
+        return Ok(None);
     }
     // A cached in-memory lookup: this runs on EVERY preview asset request,
     // and the walk-the-worktrees version it replaces enumerated directories
     // and hashed every handle each time.
-    state.sandbox_manager.handle_for_preview_label(label)
+    state
+        .sandbox_manager
+        .handle_for_preview_label_for_account(account_epoch, label)
 }
 
-fn dev_port(state: &AppState, headers: &HeaderMap) -> Option<u16> {
+fn dev_port(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<Option<u16>, String> {
     if let Some(handle) = crate::sandbox::handle_from_headers(headers) {
-        let sandbox = state.sandbox_manager.get(handle)?;
-        return dev_port_for(&sandbox.setup, &sandbox.config);
+        let Some(sandbox) = state
+            .sandbox_manager
+            .get_for_account(account_epoch, handle)?
+        else {
+            return Ok(None);
+        };
+        return Ok(dev_port_for(&sandbox.setup, &sandbox.config));
     }
     // A preview iframe cannot set the handle header, but its Host names the
     // sandbox — this is the per-handle preview origin resolving itself.
-    if let Some(sandbox) =
-        handle_from_host(state, headers).and_then(|handle| state.sandbox_manager.get(&handle))
-    {
-        return dev_port_for(&sandbox.setup, &sandbox.config);
+    if let Some(handle) = handle_from_host(state, account_epoch, headers)? {
+        if let Some(sandbox) = state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)?
+        {
+            return Ok(dev_port_for(&sandbox.setup, &sandbox.config));
+        }
     }
     // Neither: serve the ACTIVE sandbox's dev server if a git-backed thread has
     // selected one, else the global (non-git) orchestrator — unchanged
     // behavior for the plain path.
-    match state.sandbox_manager.active() {
-        Some(sandbox) => dev_port_for(&sandbox.setup, &sandbox.config),
-        None => dev_port_for(&state.setup, &state.config),
-    }
+    Ok(
+        match state.sandbox_manager.active_for_account(account_epoch)? {
+            Some(sandbox) => dev_port_for(&sandbox.setup, &sandbox.config),
+            None => dev_port_for(&state.setup, &state.config),
+        },
+    )
 }
 
 /// `portSniffer.current() ?? application.port ?? null` for one
@@ -415,25 +496,39 @@ enum PreviewResolution {
 /// no-dev-port result to `Starting` vs `NoServer` by the resolved
 /// orchestrator's lifecycle phase. NOT shared with `dev_port` on purpose — see
 /// [`dev_port`]'s doc and plan D1/D4.
-fn resolve_preview(state: &AppState, headers: &HeaderMap) -> PreviewResolution {
+fn resolve_preview(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<PreviewResolution, String> {
     if let Some(handle) = crate::sandbox::handle_from_headers(headers) {
-        return match state.sandbox_manager.get(handle) {
-            Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
-            // Unknown explicit handle: never fall back to the wrong branch.
-            None => PreviewResolution::NoServer,
-        };
+        return Ok(
+            match state
+                .sandbox_manager
+                .get_for_account(account_epoch, handle)?
+            {
+                Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
+                // Unknown explicit handle: never fall back to the wrong branch.
+                None => PreviewResolution::NoServer,
+            },
+        );
     }
     // Per-handle preview origin (`<handle>.<preview-host>`): the iframe's Host
     // names the sandbox even though it cannot set the handle header.
-    if let Some(sandbox) =
-        handle_from_host(state, headers).and_then(|handle| state.sandbox_manager.get(&handle))
-    {
-        return preview_from(&sandbox.setup, &sandbox.config);
+    if let Some(handle) = handle_from_host(state, account_epoch, headers)? {
+        if let Some(sandbox) = state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)?
+        {
+            return Ok(preview_from(&sandbox.setup, &sandbox.config));
+        }
     }
-    match state.sandbox_manager.active() {
-        Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
-        None => preview_from(&state.setup, &state.config),
-    }
+    Ok(
+        match state.sandbox_manager.active_for_account(account_epoch)? {
+            Some(sandbox) => preview_from(&sandbox.setup, &sandbox.config),
+            None => preview_from(&state.setup, &state.config),
+        },
+    )
 }
 
 /// Maps one orchestrator/config pair to a [`PreviewResolution`]: a resolvable
@@ -466,8 +561,19 @@ fn is_websocket_upgrade(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("websocket"))
 }
 
-async fn handle_ws_upgrade(state: AppState, req: Request) -> Response {
-    let port = dev_port(&state, req.headers());
+async fn handle_ws_upgrade(
+    state: AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    req: Request,
+) -> Response {
+    let port = match dev_port(&state, account_epoch, req.headers()) {
+        Ok(port) => port,
+        Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+    };
+    let account_epoch_rx = match state.sandbox_manager.watch_account_epoch(account_epoch) {
+        Ok(receiver) => receiver,
+        Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+    };
     let (mut parts, _body) = req.into_parts();
     let path_and_query = parts
         .uri
@@ -484,12 +590,14 @@ async fn handle_ws_upgrade(state: AppState, req: Request) -> Response {
 
     match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
         Ok(upgrade) => {
-            ws_proxy::upgrade(
+            ws_proxy::upgrade_for_account(
                 upgrade,
                 port,
                 path_and_query,
                 requested_protocols,
                 request_headers,
+                account_epoch,
+                account_epoch_rx,
             )
             .await
         }
@@ -501,7 +609,16 @@ async fn handle_ws_upgrade(state: AppState, req: Request) -> Response {
 /// Split out from `fallback` so unit tests can drive it directly against a
 /// real loopback listener without needing `AppState`/`ConfigStore` — see
 /// this file's module doc.
+#[cfg(test)]
 async fn proxy_to_port(port: u16, req: Request) -> Response {
+    proxy_to_port_inner(port, req, None).await
+}
+
+async fn proxy_to_port_inner(
+    port: u16,
+    req: Request,
+    mut account_epoch: Option<ResponseEpochFence>,
+) -> Response {
     let (parts, body) = req.into_parts();
     let is_root = parts.uri.path() == "/";
     let path_and_query = parts
@@ -534,8 +651,16 @@ async fn proxy_to_port(port: u16, req: Request) -> Response {
     )
     .await
     {
-        Ok(upstream) => build_success_response(upstream, is_root).await,
+        Ok(upstream) => {
+            if account_epoch.as_mut().is_some_and(|fence| fence.is_stale()) {
+                return crate::error::ApiError::conflict("Studio account changed").into_response();
+            }
+            build_success_response(upstream, is_root, account_epoch).await
+        }
         Err(msg) => {
+            if account_epoch.as_mut().is_some_and(|fence| fence.is_stale()) {
+                return crate::error::ApiError::conflict("Studio account changed").into_response();
+            }
             tracing::warn!(port, path = %path_and_query, error = %msg, "proxy error");
             if is_root {
                 starting_response()
@@ -597,7 +722,11 @@ async fn send_to_loopback(
     Err(last_err.unwrap_or_else(|| "upstream unreachable".to_string()))
 }
 
-async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> Response {
+async fn build_success_response(
+    upstream: reqwest::Response,
+    is_root: bool,
+    mut account_epoch: Option<ResponseEpochFence>,
+) -> Response {
     let status = upstream.status();
     if status.as_u16() >= 500 {
         tracing::warn!(status = status.as_u16(), "proxy upstream error");
@@ -626,6 +755,9 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
                 return proxy_error_response(&format!("failed reading upstream body: {err}"))
             }
         };
+        if account_epoch.as_mut().is_some_and(|fence| fence.is_stale()) {
+            return crate::error::ApiError::conflict("Studio account changed").into_response();
+        }
         let injected = inject_bootstrap_script(&text);
         return build_response(status, resp_headers, Body::from(injected));
     }
@@ -637,10 +769,20 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
         // Drain the body so the connection can be reused/closed cleanly —
         // mirrors `upstream.body?.cancel()`.
         let _ = upstream.bytes().await;
+        if account_epoch.as_mut().is_some_and(|fence| fence.is_stale()) {
+            return crate::error::ApiError::conflict("Studio account changed").into_response();
+        }
         return no_web_page_response(resp_headers);
     }
 
-    let body = Body::from_stream(upstream.bytes_stream());
+    let body = match account_epoch {
+        Some(mut account_epoch) => Body::from_stream(
+            upstream
+                .bytes_stream()
+                .take_until(async move { account_epoch.changed().await }),
+        ),
+        None => Body::from_stream(upstream.bytes_stream()),
+    };
     build_response(status, resp_headers, body)
 }
 
@@ -831,6 +973,21 @@ mod tests {
             .uri(uri)
             .body(Body::empty())
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn response_epoch_fence_closes_on_same_value_fail_closed_notification() {
+        let epoch = crate::sandbox::manager::AccountEpoch::for_test();
+        let (sender, receiver) = tokio::sync::watch::channel(epoch);
+        let mut fence = ResponseEpochFence {
+            expected: epoch,
+            receiver,
+        };
+
+        sender.send_replace(epoch);
+        tokio::time::timeout(Duration::from_secs(1), fence.changed())
+            .await
+            .expect("same-value epoch closure must terminate the response");
     }
 
     #[tokio::test]
@@ -1390,7 +1547,14 @@ mod tests {
     fn dev_port_none_when_config_unset() {
         // Exercises `dev_port()` against a real (freshly booted) `AppState`.
         let state = fresh_state();
-        assert!(dev_port(&state, &HeaderMap::new()).is_none());
+        assert_eq!(
+            dev_port(
+                &state,
+                state.sandbox_manager.account_epoch(),
+                &HeaderMap::new(),
+            ),
+            Ok(None)
+        );
     }
 
     #[test]
@@ -1401,7 +1565,8 @@ mod tests {
             .patch(json!({"application": {"port": 4321}}))
             .expect("patch ok");
         // Static config alone: falls back to `application.port`.
-        assert_eq!(dev_port(&state, &HeaderMap::new()), Some(4321));
+        let epoch = state.sandbox_manager.account_epoch();
+        assert_eq!(dev_port(&state, epoch, &HeaderMap::new()), Ok(Some(4321)));
 
         // Orchestrator reaches `running` with a DIFFERENT (sniffed) port —
         // that must win, matching `getDevPort()`'s `portSniffer.current() ??
@@ -1409,7 +1574,7 @@ mod tests {
         state
             .setup
             .transition_lifecycle(json!({"phase": "running", "port": 9999, "htmlSupport": false}));
-        assert_eq!(dev_port(&state, &HeaderMap::new()), Some(9999));
+        assert_eq!(dev_port(&state, epoch, &HeaderMap::new()), Ok(Some(9999)));
     }
 
     #[test]
@@ -1427,15 +1592,22 @@ mod tests {
             crate::sandbox::SANDBOX_HANDLE_HEADER,
             HeaderValue::from_static("unknown-handle"),
         );
-        assert_eq!(dev_port(&state, &headers), None);
+        assert_eq!(
+            dev_port(&state, state.sandbox_manager.account_epoch(), &headers),
+            Ok(None)
+        );
     }
 
     #[test]
     fn resolve_preview_is_no_server_when_idle_and_unconfigured() {
         let state = fresh_state();
         assert!(matches!(
-            resolve_preview(&state, &HeaderMap::new()),
-            PreviewResolution::NoServer
+            resolve_preview(
+                &state,
+                state.sandbox_manager.account_epoch(),
+                &HeaderMap::new(),
+            ),
+            Ok(PreviewResolution::NoServer)
         ));
     }
 
@@ -1446,8 +1618,12 @@ mod tests {
             state.setup.transition_lifecycle(json!({ "phase": phase }));
             assert!(
                 matches!(
-                    resolve_preview(&state, &HeaderMap::new()),
-                    PreviewResolution::Starting
+                    resolve_preview(
+                        &state,
+                        state.sandbox_manager.account_epoch(),
+                        &HeaderMap::new(),
+                    ),
+                    Ok(PreviewResolution::Starting)
                 ),
                 "phase {phase} should map to Starting"
             );
@@ -1461,8 +1637,12 @@ mod tests {
             .setup
             .transition_lifecycle(json!({"phase": "running", "port": 8321, "htmlSupport": false}));
         assert!(matches!(
-            resolve_preview(&state, &HeaderMap::new()),
-            PreviewResolution::Port(8321)
+            resolve_preview(
+                &state,
+                state.sandbox_manager.account_epoch(),
+                &HeaderMap::new(),
+            ),
+            Ok(PreviewResolution::Port(8321))
         ));
     }
 
@@ -1475,8 +1655,12 @@ mod tests {
             .setup
             .transition_lifecycle(json!({"phase": "running", "htmlSupport": false}));
         assert!(matches!(
-            resolve_preview(&state, &HeaderMap::new()),
-            PreviewResolution::Starting
+            resolve_preview(
+                &state,
+                state.sandbox_manager.account_epoch(),
+                &HeaderMap::new(),
+            ),
+            Ok(PreviewResolution::Starting)
         ));
     }
 
@@ -1494,8 +1678,8 @@ mod tests {
             HeaderValue::from_static("unknown-handle"),
         );
         assert!(matches!(
-            resolve_preview(&state, &headers),
-            PreviewResolution::NoServer
+            resolve_preview(&state, state.sandbox_manager.account_epoch(), &headers,),
+            Ok(PreviewResolution::NoServer)
         ));
     }
 
@@ -1539,12 +1723,15 @@ mod tests {
 
         let sandbox = state
             .sandbox_manager
-            .ensure(&crate::sandbox::GitSandboxConfig {
-                virtual_mcp_id: "vmcp-proxy-test".to_string(),
-                clone_url: bare_str.to_string(),
-                branch: Some("main".to_string()),
-                ..Default::default()
-            })
+            .ensure_for_account(
+                state.sandbox_manager.account_epoch(),
+                &crate::sandbox::GitSandboxConfig {
+                    virtual_mcp_id: "vmcp-proxy-test".to_string(),
+                    clone_url: bare_str.to_string(),
+                    branch: Some("main".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .expect("ensure succeeds against a real one-commit bare repo");
         sandbox
@@ -1556,12 +1743,13 @@ mod tests {
             crate::sandbox::SANDBOX_HANDLE_HEADER,
             HeaderValue::from_str(&sandbox.handle).unwrap(),
         );
-        assert_eq!(dev_port(&state, &headers), Some(8123));
+        let epoch = state.sandbox_manager.account_epoch();
+        assert_eq!(dev_port(&state, epoch, &headers), Ok(Some(8123)));
         // Headerless (the preview iframe) now follows the ACTIVE handle, which
         // `ensure()` set to this sandbox — so it serves the branch just run
         // (8123), NOT the process-global config port. An explicit re-focus
         // still works and is honored the same way.
-        assert_eq!(dev_port(&state, &HeaderMap::new()), Some(8123));
+        assert_eq!(dev_port(&state, epoch, &HeaderMap::new()), Ok(Some(8123)));
         // A frontend-computed phantom cannot replace the durable active
         // sandbox. The known target remains selected after the rejection.
         assert_eq!(
@@ -1571,6 +1759,6 @@ mod tests {
                 .unwrap_err(),
             "unknown sandbox handle: never-ensured-handle"
         );
-        assert_eq!(dev_port(&state, &HeaderMap::new()), Some(8123));
+        assert_eq!(dev_port(&state, epoch, &HeaderMap::new()), Ok(Some(8123)));
     }
 }

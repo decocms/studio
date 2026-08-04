@@ -68,13 +68,17 @@ impl AppState {
     /// shape — but NEVER yields "nothing": an unknown handle falls back to the
     /// global target so an SSE stream is never dead (see this module's doc,
     /// plan D1/O3). An empty handle string is treated as absent.
-    pub fn resolve_sandbox_target(&self, handle: Option<&str>) -> SandboxTarget {
+    pub(crate) fn resolve_sandbox_target_for_account(
+        &self,
+        epoch: crate::sandbox::manager::AccountEpoch,
+        handle: Option<&str>,
+    ) -> Result<SandboxTarget, String> {
         let handle = handle.filter(|s| !s.is_empty());
         let sandbox = match handle {
-            Some(h) => self.sandbox_manager.get(h), // known handle -> that sandbox
-            None => self.sandbox_manager.active(),  // headerless -> active sandbox
+            Some(h) => self.sandbox_manager.get_for_account(epoch, h)?,
+            None => self.sandbox_manager.active_for_account(epoch)?,
         };
-        match sandbox {
+        Ok(match sandbox {
             Some(sb) => SandboxTarget::from_sandbox(&sb),
             // Unknown handle OR no active sandbox -> the process-global path
             // (unchanged plain-path behavior).
@@ -85,7 +89,7 @@ impl AppState {
                 config: self.config.clone(),
                 repo_dir: self.repo_dir.clone(),
             },
-        }
+        })
     }
 }
 
@@ -172,12 +176,15 @@ mod tests {
         // on the already-cloned workdir, never the origin again).
         state
             .sandbox_manager
-            .ensure(&GitSandboxConfig {
-                virtual_mcp_id: vmcp.to_string(),
-                clone_url: bare_str.to_string(),
-                branch: Some("main".to_string()),
-                ..Default::default()
-            })
+            .ensure_for_account(
+                state.sandbox_manager.account_epoch(),
+                &GitSandboxConfig {
+                    virtual_mcp_id: vmcp.to_string(),
+                    clone_url: bare_str.to_string(),
+                    branch: Some("main".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .expect("ensure succeeds against a real one-commit bare repo")
     }
@@ -186,8 +193,11 @@ mod tests {
     async fn known_handle_resolves_to_that_sandboxs_arcs() {
         let state = fresh_state();
         let sandbox = ensure_one_sandbox(&state, "vmcp-target-known").await;
+        let epoch = state.sandbox_manager.account_epoch();
 
-        let target = state.resolve_sandbox_target(Some(&sandbox.handle));
+        let target = state
+            .resolve_sandbox_target_for_account(epoch, Some(&sandbox.handle))
+            .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert!(Arc::ptr_eq(&target.tasks, &sandbox.tasks));
         assert!(Arc::ptr_eq(&target.broadcaster, &sandbox.broadcaster));
@@ -201,8 +211,11 @@ mod tests {
         // `ensure()` marks its handle active, so a headerless resolve follows
         // the active sandbox — NOT the global orchestrator.
         let sandbox = ensure_one_sandbox(&state, "vmcp-target-active").await;
+        let epoch = state.sandbox_manager.account_epoch();
 
-        let target = state.resolve_sandbox_target(None);
+        let target = state
+            .resolve_sandbox_target_for_account(epoch, None)
+            .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &sandbox.setup));
         assert!(Arc::ptr_eq(&target.tasks, &sandbox.tasks));
         assert!(Arc::ptr_eq(&target.broadcaster, &sandbox.broadcaster));
@@ -211,7 +224,9 @@ mod tests {
     #[test]
     fn no_handle_without_active_resolves_to_the_global_target() {
         let state = fresh_state();
-        let target = state.resolve_sandbox_target(None);
+        let target = state
+            .resolve_sandbox_target_for_account(state.sandbox_manager.account_epoch(), None)
+            .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         assert!(Arc::ptr_eq(&target.tasks, &state.tasks));
         assert!(Arc::ptr_eq(&target.broadcaster, &state.broadcaster));
@@ -227,7 +242,12 @@ mod tests {
         // which would return `None` here) — see this module's doc.
         let _sandbox = ensure_one_sandbox(&state, "vmcp-target-unknown").await;
 
-        let target = state.resolve_sandbox_target(Some("never-ensured-handle"));
+        let target = state
+            .resolve_sandbox_target_for_account(
+                state.sandbox_manager.account_epoch(),
+                Some("never-ensured-handle"),
+            )
+            .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         assert!(Arc::ptr_eq(&target.tasks, &state.tasks));
         assert!(Arc::ptr_eq(&target.broadcaster, &state.broadcaster));
@@ -237,7 +257,9 @@ mod tests {
     fn empty_handle_is_treated_as_absent() {
         let state = fresh_state();
         // Empty string -> global (no active sandbox in this fixture).
-        let target = state.resolve_sandbox_target(Some(""));
+        let target = state
+            .resolve_sandbox_target_for_account(state.sandbox_manager.account_epoch(), Some(""))
+            .unwrap();
         assert!(Arc::ptr_eq(&target.setup, &state.setup));
         // sanity: the global setup is idle
         assert_eq!(target.setup.lifecycle_snapshot(), json!({"phase": "idle"}));

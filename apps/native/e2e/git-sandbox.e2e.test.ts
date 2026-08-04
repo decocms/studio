@@ -43,6 +43,11 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, repoDirFor } from "./sandbox-handle";
 
 import {
+  signInAndCompleteSession,
+  startAuthenticatedUpstream,
+} from "./authenticated-upstream";
+
+import {
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
@@ -202,16 +207,20 @@ describeLocalApi(
   "local-api e2e: per-handle git sandbox (one workdir per branch)",
   () => {
     let a: LocalApi;
+    let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     let fixture: { root: string; bareDir: string };
     const virtualMcpId = "git-sandbox-e2e-vmcp";
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      a = await startLocalApi();
+      upstream = startAuthenticatedUpstream();
+      a = await startLocalApi({ DECOCMS_UPSTREAM_URL: upstream.url });
+      await signInAndCompleteSession(a);
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {
       await stopLocalApi(a);
+      upstream.server.stop(true);
       rmSync(fixture.root, { recursive: true, force: true });
     }, HOOK_TIMEOUT_MS);
 

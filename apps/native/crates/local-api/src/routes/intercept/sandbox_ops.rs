@@ -27,6 +27,7 @@ use axum::extract::{Path as AxumPath, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 
+use super::sandbox_authority::{authorize, manager_error, Access, Authorization};
 use super::sandbox_fs::{decode_identity_segment, state_for_sandbox};
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -34,6 +35,7 @@ use crate::state::AppState;
 pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
+    org: &str,
     rest: &[&str],
     query: Option<&str>,
     body: &Bytes,
@@ -54,13 +56,27 @@ pub(super) async fn try_dispatch(
         Ok(value) => value,
         Err(error) => return Some(error.into_response()),
     };
+    let authorization = match authorize(
+        state,
+        org,
+        &virtual_mcp_id,
+        &branch,
+        access_for(method, tail),
+    )
+    .await
+    {
+        Ok(authorization) => authorization,
+        Err(error) => return Some(error.into_response()),
+    };
+    let account_epoch = authorization.account_epoch();
 
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
-    let handle = match state
-        .sandbox_manager
-        .handle_for_agent(&virtual_mcp_id, &branch)
-    {
+    let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        account_epoch,
+        &virtual_mcp_id,
+        &branch,
+    ) {
         Ok(Some(handle)) => handle,
         Ok(None) => {
             return Some(
@@ -68,24 +84,34 @@ pub(super) async fn try_dispatch(
                     .into_response(),
             )
         }
-        Err(error) => return Some(ApiError::internal(error).into_response()),
+        Err(error) => return Some(manager_error(error).into_response()),
     };
-    let sandbox = match state.sandbox_manager.adopt(&handle).await {
+    let sandbox = match state
+        .sandbox_manager
+        .adopt_for_account(account_epoch, &handle)
+        .await
+    {
         Ok(Some(sandbox)) => sandbox,
         Ok(None) => {
             return Some(
                 ApiError::not_found(format!("sandbox not found: {handle}")).into_response(),
             )
         }
-        Err(error) => {
-            return Some(
-                ApiError::internal(format!("failed to adopt sandbox {handle}: {error}"))
-                    .into_response(),
-            )
-        }
+        Err(error) => return Some(manager_error(error).into_response()),
     };
     let target = state_for_sandbox(state, &sandbox);
-    Some(route(&target, method, tail, query, body.clone(), &handle).await)
+    Some(
+        route(
+            &target,
+            method,
+            tail,
+            query,
+            body.clone(),
+            &handle,
+            authorization,
+        )
+        .await,
+    )
 }
 
 /// Whether this module owns `tail`. Checked BEFORE the sandbox is adopted, so
@@ -103,6 +129,31 @@ fn is_handled(tail: &[&str]) -> bool {
     )
 }
 
+fn access_for(method: &Method, tail: &[&str]) -> Access {
+    if matches!(
+        (method, tail),
+        (&Method::POST, ["setup", "stop"]) | (&Method::POST, ["exec", _, "kill"])
+    ) {
+        Access::Recovery
+    } else if matches!(
+        (method, tail),
+        (&Method::PUT, ["config"])
+            | (
+                &Method::POST,
+                [
+                    "git",
+                    "publish" | "discard" | "rebase" | "suggest-commit" | "judge-review"
+                ]
+            )
+            | (&Method::POST, ["setup", "clone" | "install" | "start"])
+            | (&Method::POST, ["exec", _])
+    ) {
+        Access::WorkspaceMutation
+    } else {
+        Access::Viewer
+    }
+}
+
 async fn route(
     target: &AppState,
     method: &Method,
@@ -110,8 +161,10 @@ async fn route(
     query: Option<&str>,
     body: Bytes,
     handle: &str,
+    authorization: Authorization,
 ) -> Response {
     let state = State(target.clone());
+    let account_epoch = authorization.account_epoch();
     // The handle MUST be carried in the header, not left to `state_for_sandbox`.
     //
     // That helper retargets `repo_dir`/`config`/`setup`/`tasks`, which is
@@ -128,7 +181,25 @@ async fn route(
         headers.insert(crate::sandbox::SANDBOX_HANDLE_HEADER, value);
     }
 
-    match (method, tail) {
+    if let (&Method::POST, ["exec", name]) = (method, tail) {
+        return match crate::routes::scripts::exec_with_admission(
+            state,
+            headers,
+            AxumPath((*name).to_string()),
+            body,
+            account_epoch,
+            authorization,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => error.into_response(),
+        };
+    }
+    let _authorization = authorization;
+    let revalidate_response = access_for(method, tail) == Access::Viewer;
+
+    let response = match (method, tail) {
         (&Method::GET, ["config"]) => crate::routes::config::read(state).await.into_response(),
         (&Method::PUT, ["config"]) => crate::routes::config::update(state, body).await,
 
@@ -177,32 +248,35 @@ async fn route(
         (&Method::POST, ["git", "suggest-commit"]) => super::git_assist::suggest_commit(&body),
         (&Method::POST, ["git", "judge-review"]) => super::git_assist::judge_review(),
 
-        (&Method::POST, ["setup", "clone"]) => crate::routes::setup::clone(state, headers)
-            .await
-            .into_response(),
-        (&Method::POST, ["setup", "install"]) => crate::routes::setup::install(state, headers)
-            .await
-            .into_response(),
-        (&Method::POST, ["setup", "start"]) => crate::routes::setup::start(state, headers)
-            .await
-            .into_response(),
-        (&Method::POST, ["setup", "stop"]) => crate::routes::setup::stop(state, headers)
-            .await
-            .into_response(),
-
-        (&Method::POST, ["exec", name]) => {
-            match crate::routes::scripts::exec(state, headers, AxumPath((*name).to_string()), body)
-                .await
-            {
-                Ok(response) => response,
-                Err(error) => error.into_response(),
-            }
-        }
-        (&Method::POST, ["exec", name, "kill"]) => {
-            crate::routes::scripts::exec_kill(state, headers, AxumPath((*name).to_string()))
+        (&Method::POST, ["setup", "clone"]) => {
+            crate::routes::setup::clone_for_account(target.clone(), headers, account_epoch)
                 .await
                 .into_response()
         }
+        (&Method::POST, ["setup", "install"]) => {
+            crate::routes::setup::install_for_account(target.clone(), headers, account_epoch)
+                .await
+                .into_response()
+        }
+        (&Method::POST, ["setup", "start"]) => {
+            crate::routes::setup::start_for_account(target.clone(), headers, account_epoch)
+                .await
+                .into_response()
+        }
+        (&Method::POST, ["setup", "stop"]) => {
+            crate::routes::setup::stop_for_account(target.clone(), headers, account_epoch)
+                .await
+                .into_response()
+        }
+
+        (&Method::POST, ["exec", name, "kill"]) => crate::routes::scripts::exec_kill_for_account(
+            target.clone(),
+            headers,
+            (*name).to_string(),
+            _authorization.account_epoch(),
+        )
+        .await
+        .into_response(),
 
         // `is_handled` admitted the path but not this method.
         _ => ApiError::new(
@@ -210,7 +284,13 @@ async fn route(
             format!("method not allowed for this sandbox route: {method}"),
         )
         .into_response(),
+    };
+    if revalidate_response {
+        if let Err(error) = target.sandbox_manager.validate_account_epoch(account_epoch) {
+            return manager_error(error).into_response();
+        }
     }
+    response
 }
 
 /// `GET …/preview-fetch?path=…` — read one path off the sandbox's dev server.
@@ -260,5 +340,40 @@ mod tests {
         ] {
             assert!(!is_handled(&foreign), "should NOT own {foreign:?}");
         }
+    }
+
+    #[test]
+    fn distinguishes_viewer_reads_workspace_mutations_and_controls() {
+        for read in [
+            vec!["preview-fetch"],
+            vec!["git", "status"],
+            vec!["git", "diff"],
+        ] {
+            assert_eq!(access_for(&Method::GET, &read), Access::Viewer);
+            if read.first() == Some(&"git") {
+                assert_eq!(access_for(&Method::POST, &read), Access::Viewer);
+            }
+        }
+        for mutation in [
+            vec!["git", "publish"],
+            vec!["git", "discard"],
+            vec!["git", "suggest-commit"],
+            vec!["git", "judge-review"],
+            vec!["setup", "start"],
+            vec!["exec", "dev"],
+        ] {
+            assert_eq!(
+                access_for(&Method::POST, &mutation),
+                Access::WorkspaceMutation
+            );
+        }
+        for control in [vec!["setup", "stop"], vec!["exec", "dev", "kill"]] {
+            assert_eq!(access_for(&Method::POST, &control), Access::Recovery);
+        }
+        assert_eq!(
+            access_for(&Method::PUT, &["config"]),
+            Access::WorkspaceMutation
+        );
+        assert_eq!(access_for(&Method::GET, &["config"]), Access::Viewer);
     }
 }

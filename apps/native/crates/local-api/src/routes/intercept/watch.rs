@@ -198,6 +198,9 @@ impl Drop for Subscription {
 struct WatchStream {
     initial: Option<Bytes>,
     subscription: Subscription,
+    account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+    _account_epoch_keepalive:
+        Option<tokio::sync::watch::Sender<crate::sandbox::manager::AccountEpoch>>,
 }
 
 fn hub() -> &'static LocalWatchHub {
@@ -313,7 +316,24 @@ fn event_frame(event: &LocalWatchEvent) -> Result<Bytes, serde_json::Error> {
     )))
 }
 
-pub(crate) fn get(scope: &RtAccountScope, organization_id: &str, query: Option<&str>) -> Response {
+pub(crate) fn get_for_account(
+    scope: &RtAccountScope,
+    organization_id: &str,
+    query: Option<&str>,
+    account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+) -> Response {
+    get_inner(scope, organization_id, query, account_epoch_rx, None)
+}
+
+fn get_inner(
+    scope: &RtAccountScope,
+    organization_id: &str,
+    query: Option<&str>,
+    account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+    account_epoch_keepalive: Option<
+        tokio::sync::watch::Sender<crate::sandbox::manager::AccountEpoch>,
+    >,
+) -> Response {
     if organization_id.is_empty() {
         return ApiError::bad_request("organization id missing").into_response();
     }
@@ -339,22 +359,41 @@ pub(crate) fn get(scope: &RtAccountScope, organization_id: &str, query: Option<&
     let stream_state = WatchStream {
         initial: Some(initial),
         subscription,
+        account_epoch_rx,
+        _account_epoch_keepalive: account_epoch_keepalive,
     };
     let body_stream = stream::unfold(stream_state, |mut state| async move {
         if let Some(initial) = state.initial.take() {
+            if state.account_epoch_rx.has_changed().unwrap_or(true) {
+                return None;
+            }
             return Some((Ok::<_, Infallible>(initial), state));
         }
-        match tokio::time::timeout(KEEPALIVE_INTERVAL, state.subscription.receiver.recv()).await {
-            Ok(Some(frame)) => Some((Ok(frame), state)),
-            Ok(None) => None,
-            Err(_) => Some((
-                Ok(Bytes::from_static(b"event: keepalive\ndata: \n\n")),
-                state,
-            )),
+        tokio::select! {
+            biased;
+            _ = state.account_epoch_rx.changed() => None,
+            event = tokio::time::timeout(
+                KEEPALIVE_INTERVAL,
+                state.subscription.receiver.recv(),
+            ) => match event {
+                Ok(Some(frame)) => Some((Ok(frame), state)),
+                Ok(None) => None,
+                Err(_) => Some((
+                    Ok(Bytes::from_static(b"event: keepalive\ndata: \n\n")),
+                    state,
+                )),
+            },
         }
     });
 
     sse_response(Body::from_stream(body_stream))
+}
+
+#[cfg(test)]
+fn get(scope: &RtAccountScope, organization_id: &str, query: Option<&str>) -> Response {
+    let (sender, receiver) =
+        tokio::sync::watch::channel(crate::sandbox::manager::AccountEpoch::for_test());
+    get_inner(scope, organization_id, query, receiver, Some(sender))
 }
 
 /// Publishes the exact production-shaped status event after its SQLite
@@ -630,6 +669,37 @@ mod tests {
             .await
             .expect("a refusal must end rather than hang")
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn account_epoch_change_closes_before_connected_and_during_stream() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let account = scope("epoch-alice");
+        let org = format!("org-{}", Uuid::new_v4());
+
+        let epoch = manager.account_epoch();
+        let epoch_rx = manager.watch_account_epoch(epoch).unwrap();
+        let response = get_for_account(&account, &org, None, epoch_rx);
+        let transition = manager.begin_account_transition().await.unwrap();
+        let mut stream = response.into_body().into_data_stream();
+        assert!(tokio::time::timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("stale pre-connected watch must finish promptly")
+            .is_none());
+        drop(transition);
+
+        let epoch = manager.account_epoch();
+        let epoch_rx = manager.watch_account_epoch(epoch).unwrap();
+        let response = get_for_account(&account, &org, None, epoch_rx);
+        let mut stream = response.into_body().into_data_stream();
+        assert!(next_frame(&mut stream).await.contains("event: connected"));
+        let transition = manager.begin_account_transition().await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("open watch must finish promptly on account transition")
+            .is_none());
+        drop(transition);
     }
 
     #[test]

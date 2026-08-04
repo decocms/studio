@@ -12,6 +12,7 @@
  * mismatch. If this file and the Rust ever disagree, that is the bug — fix it
  * here, not by loosening the assertion.
  */
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 /** Sandbox workdirs live under this directory of the app root. */
@@ -118,7 +119,12 @@ export function computeHandle(cloneUrl: string, branch: string): string {
   if (scope === null) {
     throw new Error(`no repo scope for clone url ${cloneUrl}`);
   }
-  return [...scope, slugifyBranch(branch)].join("/");
+  const slug = slugifyBranch(branch);
+  const branchComponent =
+    slug === branch
+      ? slug
+      : `${slug}--${createHash("sha256").update(branch).digest("hex")}`;
+  return [...scope, branchComponent].join("/");
 }
 
 /** A handle's workdir under an app root. Handles nest — they contain `/`. */

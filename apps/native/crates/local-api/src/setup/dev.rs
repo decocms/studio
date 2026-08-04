@@ -27,15 +27,22 @@ use futures_util::FutureExt;
 use regex::Regex;
 use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
+use tokio::sync::oneshot;
 
 use super::install::{manifest_present, pm_root};
 use super::SetupOrchestrator;
 use crate::process_group::ProcessGroupChild;
-use crate::process_util::{classify_status, emit_tasks_event, exit_status_to_code, kill_group};
+#[cfg(test)]
+use crate::process_util::kill_group;
+use crate::process_util::{
+    classify_status, drive_group_to_exit, emit_tasks_event, exit_status_to_code, CancelOnDrop,
+    OutputSink,
+};
 use crate::routes::scripts::{build_command, discover_scripts, run_prefix_for};
 use crate::sandbox::persist::{DevProcessIdentity, DevProcessRecord};
 use crate::tasks::{
-    now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary,
+    now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskRegistry, TaskStatus,
+    TaskSummary,
 };
 
 const WELL_KNOWN_STARTERS: [&str; 2] = ["dev", "start"];
@@ -60,6 +67,7 @@ const PROBE_INTERVAL: Duration = Duration::from_millis(250);
 const IDENTITY_CAPTURE_ATTEMPTS: u32 = 20;
 const IDENTITY_CAPTURE_INTERVAL: Duration = Duration::from_millis(25);
 const IDENTITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const PROCESS_OBSERVER_TIMEOUT: Duration = Duration::from_secs(5);
 const STALE_TERM_GRACE: Duration = Duration::from_millis(800);
 const STALE_KILL_GRACE: Duration = Duration::from_secs(1);
 
@@ -170,7 +178,15 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
     let previous = crate::sandbox::persist::read_dev_process(&sandbox_root);
     let previous_port = previous.as_ref().and_then(|record| record.port);
     if let Some(record) = previous {
-        if let Err(error) = reap_persisted_dev_group(&record).await {
+        let Some(_cleanup_admission) = orch.tasks.admit() else {
+            orch.finish_dev_task(&id);
+            return;
+        };
+        if let Err(error) = reap_persisted_dev_group(orch.tasks.clone(), &record).await {
+            if orch.is_closed() || orch.tasks.is_admission_closed() {
+                orch.finish_dev_task(&id);
+                return;
+            }
             tracing::warn!(
                 pid = record.pid,
                 pgid = record.pgid,
@@ -274,8 +290,9 @@ pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) {
         return;
     };
     let record_started_at = now_ms() as u64;
+    let identity_tasks = orch.tasks.clone();
     let identities = match capture_process_group_identity(
-        || observe_process_group(pid),
+        || observe_process_group(identity_tasks.clone(), pid),
         IDENTITY_CAPTURE_ATTEMPTS,
         IDENTITY_CAPTURE_INTERVAL,
     )
@@ -498,6 +515,7 @@ async fn drain_and_watch(
             _ = identity_refresh.tick() => {
                 if let (Some(pid), Some(started_at)) = (pid, record_started_at) {
                     refresh_persisted_group_identities(
+                        orch.tasks.clone(),
                         &sandbox_root,
                         pid,
                         started_at,
@@ -590,8 +608,11 @@ async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u1
     }
 }
 
-async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), String> {
-    let current = observe_process_group(record.pgid).await?;
+async fn reap_persisted_dev_group(
+    tasks: Arc<TaskRegistry>,
+    record: &DevProcessRecord,
+) -> Result<(), String> {
+    let current = observe_process_group(tasks.clone(), record.pgid).await?;
     let authorized = match match_group_identity(&record.identities, current) {
         GroupIdentityMatch::Gone => return Ok(()),
         GroupIdentityMatch::Verified(current) => current,
@@ -605,21 +626,30 @@ async fn reap_persisted_dev_group(record: &DevProcessRecord) -> Result<(), Strin
         pgid = record.pgid,
         "stopping previous dev server before start"
     );
-    kill_group(record.pgid, KillSignal::Term).await;
+    signal_persisted_process_group(tasks.clone(), record.pgid, KillSignal::Term).await?;
     tokio::time::sleep(STALE_TERM_GRACE).await;
+    if tasks.is_admission_closed() {
+        return Err("sandbox generation stopped while reaping the previous dev server".to_string());
+    }
 
-    let after_term = observe_process_group(record.pgid).await?;
+    let after_term = observe_process_group(tasks.clone(), record.pgid).await?;
     match match_group_identity(&authorized, after_term) {
         GroupIdentityMatch::Gone => Ok(()),
         GroupIdentityMatch::Unverifiable => {
             Err("process group identity changed after TERM; refusing KILL".to_string())
         }
         GroupIdentityMatch::Verified(survivors) => {
-            kill_group(record.pgid, KillSignal::Kill).await;
+            signal_persisted_process_group(tasks.clone(), record.pgid, KillSignal::Kill).await?;
             let deadline = tokio::time::Instant::now() + STALE_KILL_GRACE;
             loop {
                 tokio::time::sleep(Duration::from_millis(50)).await;
-                let after_kill = observe_process_group(record.pgid).await?;
+                if tasks.is_admission_closed() {
+                    return Err(
+                        "sandbox generation stopped while reaping the previous dev server"
+                            .to_string(),
+                    );
+                }
+                let after_kill = observe_process_group(tasks.clone(), record.pgid).await?;
                 match match_group_identity(&survivors, after_kill) {
                     GroupIdentityMatch::Gone => return Ok(()),
                     GroupIdentityMatch::Unverifiable => {
@@ -669,8 +699,13 @@ where
     ))
 }
 
-async fn refresh_persisted_group_identities(sandbox_root: &Path, pid: u32, started_at: u64) {
-    let identities = match observe_process_group(pid).await {
+async fn refresh_persisted_group_identities(
+    tasks: Arc<TaskRegistry>,
+    sandbox_root: &Path,
+    pid: u32,
+    started_at: u64,
+) {
+    let identities = match observe_process_group(tasks, pid).await {
         Ok(identities) if !identities.is_empty() => identities,
         Ok(_) => return,
         Err(error) => {
@@ -692,13 +727,200 @@ async fn refresh_persisted_group_identities(sandbox_root: &Path, pid: u32, start
     crate::sandbox::persist::write_dev_process(sandbox_root, &record);
 }
 
-#[cfg(unix)]
-async fn observe_process_group(pgid: u32) -> Result<Vec<DevProcessIdentity>, String> {
-    let group = tokio::process::Command::new("pgrep")
-        .args(["-g", &pgid.to_string()])
-        .output()
+#[derive(Default)]
+struct ProcessObserverOutput {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+#[async_trait::async_trait]
+impl OutputSink for ProcessObserverOutput {
+    async fn write(&mut self, stream: OutputStream, bytes: &[u8]) {
+        match stream {
+            OutputStream::Stdout => self.stdout.extend_from_slice(bytes),
+            OutputStream::Stderr => self.stderr.extend_from_slice(bytes),
+        }
+    }
+}
+
+type ProcessObserverReceiver = oneshot::Receiver<Result<std::process::Output, String>>;
+
+/// Spawns one process-inspection helper under the sandbox generation's hidden
+/// task registry. Setup shutdown can therefore signal and positively join an
+/// in-flight `pgrep`/`ps` before Stop evicts the generation; aborting the setup
+/// worker merely cancels the waiter and leaves this detached owner responsible
+/// for the complete process-group reap.
+async fn spawn_process_observer(
+    tasks: Arc<TaskRegistry>,
+    program: &str,
+    args: Vec<String>,
+) -> Result<(crate::tasks::KillHandle, ProcessObserverReceiver), String> {
+    let admission = tasks
+        .admit()
+        .ok_or_else(|| "sandbox generation is stopped".to_string())?;
+    let command_label = format!("{program} {}", args.join(" "));
+    let mut command = tokio::process::Command::new(program);
+    command
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = ProcessGroupChild::spawn(&mut command, tasks.child_lifetime_lock_path())
         .await
-        .map_err(|error| format!("cannot enumerate process group {pgid}: {error}"))?;
+        .map_err(|error| format!("cannot spawn {program}: {error}"))?;
+    let (Some(stdout), Some(stderr)) = (child.take_stdout(), child.take_stderr()) else {
+        child
+            .kill_and_reap(
+                PROCESS_OBSERVER_TIMEOUT,
+                "process observer missing-stdio cleanup",
+            )
+            .await;
+        return Err(format!("cannot capture {program} output"));
+    };
+
+    let id = format!("internal-process-observer-{}", uuid::Uuid::new_v4());
+    let controller = ProcessController::new();
+    let kill_handle = controller.kill_handle();
+    admission.register(TaskEntry::new_internal(
+        TaskSummary {
+            id: id.clone(),
+            command: command_label,
+            status: TaskStatus::Running,
+            exit_code: None,
+            started_at: now_ms(),
+            finished_at: None,
+            timed_out: false,
+            truncated: false,
+            log_name: None,
+            intentional: None,
+        },
+        Some(kill_handle.clone()),
+    ));
+
+    let owner_tasks = tasks.clone();
+    let owner_id = id.clone();
+    let (result_tx, result_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let mut captured = ProcessObserverOutput::default();
+        let driven = std::panic::AssertUnwindSafe(drive_group_to_exit(
+            &mut child,
+            stdout,
+            stderr,
+            Some(PROCESS_OBSERVER_TIMEOUT),
+            &controller,
+            &mut captured,
+        ))
+        .catch_unwind()
+        .await;
+
+        let (result, status, exit_code, timed_out) = match driven {
+            Ok(outcome) => match outcome.exit_status {
+                Some(exit_status) if outcome.timed_out => (
+                    Err("process observer timed out".to_string()),
+                    TaskStatus::Timeout,
+                    exit_status_to_code(exit_status),
+                    true,
+                ),
+                Some(exit_status) => {
+                    let exit_code = exit_status_to_code(exit_status);
+                    (
+                        Ok(std::process::Output {
+                            status: exit_status,
+                            stdout: captured.stdout,
+                            stderr: captured.stderr,
+                        }),
+                        classify_status(false, exit_code),
+                        exit_code,
+                        false,
+                    )
+                }
+                None => (
+                    Err("process observer exited without status".to_string()),
+                    TaskStatus::Failed,
+                    -1,
+                    outcome.timed_out,
+                ),
+            },
+            Err(_) => {
+                child
+                    .kill_and_reap(PROCESS_OBSERVER_TIMEOUT, "process observer panic cleanup")
+                    .await;
+                (
+                    Err("process observer owner panicked".to_string()),
+                    TaskStatus::Failed,
+                    -1,
+                    false,
+                )
+            }
+        };
+        owner_tasks.finalize(&owner_id, status, exit_code, timed_out);
+        let _ = owner_tasks.remove(&owner_id).await;
+        let _ = result_tx.send(result);
+    });
+
+    Ok((kill_handle, result_rx))
+}
+
+async fn run_process_observer(
+    tasks: Arc<TaskRegistry>,
+    program: &str,
+    args: Vec<String>,
+) -> Result<std::process::Output, String> {
+    let (kill_handle, result_rx) = spawn_process_observer(tasks, program, args).await?;
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Kill);
+    let result = result_rx
+        .await
+        .map_err(|_| "process observer owner stopped unexpectedly".to_string())?;
+    cancel_on_drop.disarm();
+    result
+}
+
+#[cfg(unix)]
+async fn signal_persisted_process_group(
+    tasks: Arc<TaskRegistry>,
+    pgid: u32,
+    signal: KillSignal,
+) -> Result<(), String> {
+    let output = run_process_observer(
+        tasks,
+        "kill",
+        vec![signal.flag().to_string(), format!("-{pgid}")],
+    )
+    .await
+    .map_err(|error| format!("cannot signal process group {pgid}: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cannot signal process group {pgid}: kill exited {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(not(unix))]
+async fn signal_persisted_process_group(
+    _tasks: Arc<TaskRegistry>,
+    _pgid: u32,
+    _signal: KillSignal,
+) -> Result<(), String> {
+    Err("durable process-group signaling is unavailable on this platform".to_string())
+}
+
+#[cfg(unix)]
+async fn observe_process_group(
+    tasks: Arc<TaskRegistry>,
+    pgid: u32,
+) -> Result<Vec<DevProcessIdentity>, String> {
+    let group = run_process_observer(
+        tasks.clone(),
+        "pgrep",
+        vec!["-g".to_string(), pgid.to_string()],
+    )
+    .await
+    .map_err(|error| format!("cannot enumerate process group {pgid}: {error}"))?;
     if !group.status.success() {
         if group.status.code() == Some(1) {
             return Ok(Vec::new());
@@ -717,7 +939,7 @@ async fn observe_process_group(pgid: u32) -> Result<Vec<DevProcessIdentity>, Str
             .trim()
             .parse::<u32>()
             .map_err(|error| format!("pgrep returned invalid pid {raw_pid:?}: {error}"))?;
-        if let Some(identity) = observe_process_identity(pid, pgid).await? {
+        if let Some(identity) = observe_process_identity(tasks.clone(), pid, pgid).await? {
             identities.push(identity);
         }
     }
@@ -727,28 +949,31 @@ async fn observe_process_group(pgid: u32) -> Result<Vec<DevProcessIdentity>, Str
 
 #[cfg(unix)]
 async fn observe_process_identity(
+    tasks: Arc<TaskRegistry>,
     pid: u32,
     expected_pgid: u32,
 ) -> Result<Option<DevProcessIdentity>, String> {
-    let process = tokio::process::Command::new("ps")
-        .args([
-            "-ww",
-            "-p",
-            &pid.to_string(),
-            "-o",
-            "pid=",
-            "-o",
-            "pgid=",
-            "-o",
-            "state=",
-            "-o",
-            "lstart=",
-            "-o",
-            "comm=",
-        ])
-        .output()
-        .await
-        .map_err(|error| format!("cannot inspect process {pid}: {error}"))?;
+    let process = run_process_observer(
+        tasks,
+        "ps",
+        vec![
+            "-ww".to_string(),
+            "-p".to_string(),
+            pid.to_string(),
+            "-o".to_string(),
+            "pid=".to_string(),
+            "-o".to_string(),
+            "pgid=".to_string(),
+            "-o".to_string(),
+            "state=".to_string(),
+            "-o".to_string(),
+            "lstart=".to_string(),
+            "-o".to_string(),
+            "comm=".to_string(),
+        ],
+    )
+    .await
+    .map_err(|error| format!("cannot inspect process {pid}: {error}"))?;
     if !process.status.success() {
         if process.status.code() == Some(1) {
             return Ok(None);
@@ -787,13 +1012,22 @@ async fn observe_process_identity(
 }
 
 #[cfg(not(unix))]
-async fn observe_process_group(_pgid: u32) -> Result<Vec<DevProcessIdentity>, String> {
+async fn observe_process_group(
+    _tasks: Arc<TaskRegistry>,
+    _pgid: u32,
+) -> Result<Vec<DevProcessIdentity>, String> {
     Err("durable process-group identity is unavailable on this platform".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn observer_tasks(dir: &tempfile::TempDir) -> Arc<TaskRegistry> {
+        Arc::new(TaskRegistry::new(Arc::new(
+            crate::log_store::LogStore::new(dir.path().join("observer-logs")),
+        )))
+    }
 
     fn identity(pid: u32, birth: &str, executable: &str) -> DevProcessIdentity {
         DevProcessIdentity {
@@ -968,8 +1202,9 @@ mod tests {
         command.process_group(0);
         let mut child = command.spawn().unwrap();
         let pid = child.id().unwrap();
+        let tasks = observer_tasks(&dir);
         let observed = capture_process_group_identity(
-            || observe_process_group(pid),
+            || observe_process_group(tasks.clone(), pid),
             IDENTITY_CAPTURE_ATTEMPTS,
             IDENTITY_CAPTURE_INTERVAL,
         )
@@ -999,7 +1234,8 @@ mod tests {
         let pgid = leader.id().unwrap();
         let _ = leader.wait().await;
 
-        let identities = observe_process_group(pgid).await.unwrap();
+        let tasks = observer_tasks(&dir);
+        let identities = observe_process_group(tasks.clone(), pgid).await.unwrap();
         assert!(
             !identities.is_empty(),
             "the background child must survive its group leader"
@@ -1012,7 +1248,7 @@ mod tests {
             port: None,
             identities,
         };
-        let reaped = reap_persisted_dev_group(&record).await;
+        let reaped = reap_persisted_dev_group(tasks.clone(), &record).await;
         if reaped.is_err() {
             // Exact group created by this test; cleanup must not leak it even
             // if the assertion below reports an observation regression.
@@ -1020,7 +1256,30 @@ mod tests {
         }
 
         reaped.unwrap();
-        assert!(observe_process_group(pgid).await.unwrap().is_empty());
+        assert!(observe_process_group(tasks, pgid).await.unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn generation_stop_joins_an_in_flight_process_observer() {
+        let dir = tempfile::tempdir().unwrap();
+        let tasks = observer_tasks(&dir);
+        let (_kill_handle, result_rx) = spawn_process_observer(
+            tasks.clone(),
+            "sh",
+            vec!["-c".to_string(), "sleep 30".to_string()],
+        )
+        .await
+        .unwrap();
+
+        let stopped = tasks
+            .close_and_kill_all_and_wait(Duration::from_secs(1), Duration::from_secs(1))
+            .await;
+
+        assert_eq!(stopped.initially_running, 1);
+        assert!(stopped.remaining.is_empty());
+        let output = result_rx.await.unwrap().unwrap();
+        assert!(!output.status.success());
     }
 
     #[tokio::test]

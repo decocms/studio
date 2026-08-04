@@ -13,4 +13,4 @@ pub use registry::{
 // documented cross-family contract above) that `routes/bash.rs` reuses for
 // its own await-mode output capture, to avoid re-implementing the same
 // cap/truncate logic twice.
-pub(crate) use registry::{now_ms, RingBuffer};
+pub(crate) use registry::{now_ms, GenerationAdmission, RingBuffer};

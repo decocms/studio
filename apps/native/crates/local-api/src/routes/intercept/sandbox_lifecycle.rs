@@ -13,11 +13,12 @@
 //!
 //! ## Where the git config comes from
 //!
-//! [`SandboxManager::ensure`] needs a [`GitSandboxConfig`] — clone URL, branch,
-//! runtime. That used to ride along on the chat dispatch payload (the web
+//! [`SandboxManager::provision`] needs a [`GitSandboxConfig`] — clone URL,
+//! branch, runtime. That used to ride along on the chat dispatch payload (the web
 //! bundle's `build-sandbox-block.ts`), which meant the frontend carried desktop
 //! -specific plumbing. It no longer does, so we resolve it here from the
-//! cluster-side virtual-MCP registry via [`upstream::call_org_tool`] — the one
+//! cluster-side virtual-MCP registry via
+//! [`upstream::call_org_tool_for_identity`] — the one
 //! deliberate upstream read in an otherwise strictly-local table (see that
 //! function's doc comment). Field mapping mirrors what the dispatch block used
 //! to send, so the resulting sandbox is byte-identical to the one the old path
@@ -34,9 +35,12 @@ use serde_json::{json, Value};
 
 use crate::error::ApiError;
 use crate::routes::upstream;
+use crate::sandbox::manager::AccountEpoch;
 use crate::sandbox::GitSandboxConfig;
 use crate::setup::detect_runtime::runtime_for_package_manager;
 use crate::state::AppState;
+
+use super::sandbox_authority::{authorize, manager_error, Access};
 
 /// The preview listener's port, published by [`crate::start`] once it binds.
 ///
@@ -136,9 +140,13 @@ pub(crate) const EPHEMERAL_BRANCH: &str = "ephemeral";
 ///
 /// Returns [`EPHEMERAL_BRANCH`] when this agent has no sandbox — not-yet
 /// provisioned, or not git-backed at all.
-pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> String {
+pub(crate) fn branch_for_virtual_mcp(
+    state: &AppState,
+    virtual_mcp_id: &str,
+    account_epoch: AccountEpoch,
+) -> Result<String, String> {
     if virtual_mcp_id.is_empty() {
-        return EPHEMERAL_BRANCH.to_string();
+        return Ok(EPHEMERAL_BRANCH.to_string());
     }
     // Prefer whichever sandbox this agent has LIVE in this process; any
     // durable row is the fallback. Read from the registry — walking
@@ -147,21 +155,23 @@ pub(crate) fn branch_for_virtual_mcp(state: &AppState, virtual_mcp_id: &str) -> 
     let mut fallback = None;
     for record in state
         .sandbox_manager
-        .records_for_agent(virtual_mcp_id)
-        .unwrap_or_default()
+        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
     {
         let Some(branch) = record.config.branch.clone().filter(|b| !b.is_empty()) else {
             continue;
         };
-        if matches!(
-            state.sandbox_manager.is_registered(&record.handle),
-            Ok(true)
-        ) {
-            return branch;
+        if state
+            .sandbox_manager
+            .is_registered_for_account(account_epoch, &record.handle)?
+        {
+            return Ok(branch);
         }
         fallback.get_or_insert(branch);
     }
-    fallback.unwrap_or_else(|| EPHEMERAL_BRANCH.to_string())
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)?;
+    Ok(fallback.unwrap_or_else(|| EPHEMERAL_BRANCH.to_string()))
 }
 
 /// Build the sandbox config from a virtual MCP's `metadata`, or `None` when it
@@ -224,7 +234,7 @@ pub(crate) async fn try_dispatch(
     }
     match *tool_name {
         "SANDBOX_START" => Some(start(state, org, body).await),
-        "SANDBOX_DELETE" => Some(delete(state, body).await),
+        "SANDBOX_DELETE" => Some(delete(state, org, body).await),
         "COLLECTION_VIRTUAL_MCP_GET" | "COLLECTION_VIRTUAL_MCP_LIST" => {
             Some(virtual_mcp_read(state, org, tool_name, body).await)
         }
@@ -252,26 +262,69 @@ pub(crate) async fn try_dispatch(
 /// GET: the collection hooks seed the per-item cache from it, so an un-enriched
 /// list entry is what the shell would read for the active agent.
 async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &Bytes) -> Response {
+    let scope = match crate::routes::threads::authority::current_account_scope().await {
+        Ok(scope) => scope,
+        Err(error) => return error.into_response(),
+    };
     let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
 
-    let mut answer = match upstream::call_org_tool(org, tool_name, &input).await {
+    let initial_account_guard =
+        match crate::routes::threads::authority::lock_account_scope(&scope).await {
+            Ok(guard) => guard,
+            Err(error) => return error.into_response(),
+        };
+    let initial_account_epoch = state.sandbox_manager.account_epoch();
+    if let Err(error) =
+        crate::routes::sandbox_account::validate_expected_epoch(initial_account_epoch)
+    {
+        return error.into_response();
+    }
+    let initial_identity_generation = initial_account_guard.generation();
+    drop(initial_account_guard);
+
+    let mut answer = match upstream::call_org_tool_for_identity(
+        state,
+        initial_account_epoch,
+        initial_identity_generation,
+        org,
+        tool_name,
+        &input,
+    )
+    .await
+    {
         Ok(value) => value,
+        Err(upstream::OrgToolCallError::StaleIdentity) => {
+            return ApiError::conflict(
+                "Your Studio account changed while this request was running. Try again.",
+            )
+            .into_response();
+        }
         Err(error) => {
-            return ApiError::new(StatusCode::BAD_GATEWAY, error).into_response();
+            return ApiError::new(StatusCode::BAD_GATEWAY, error.to_string()).into_response();
         }
     };
 
-    let Some(user_id) = super::thread_tools::current_account_scope()
-        .await
-        .map(|scope| scope.user_id)
-    else {
-        // Not signed in: nothing to attribute sandboxes to, and the shell has
-        // nothing to render anyway. Pass upstream's answer through untouched.
-        return Json(answer).into_response();
+    // The upstream call can outlive a logout/account replacement. Recheck the
+    // captured scope before merging machine-local state into its response and
+    // retain the short transition fence through the synchronous merge, so an
+    // account-B response can never be enriched under account A's user key.
+    let _account_guard = match crate::routes::threads::authority::lock_account_scope(&scope).await {
+        Ok(guard) => guard,
+        Err(error) => return error.into_response(),
     };
+    let account_epoch = state.sandbox_manager.account_epoch();
+    if _account_guard.generation() != initial_identity_generation
+        || account_epoch != initial_account_epoch
+    {
+        return ApiError::conflict(
+            "Your Studio account changed while this request was running. Try again.",
+        )
+        .into_response();
+    }
+    let user_id = scope.user_id;
 
     // `{ items: [ … ] }`, `{ item: … }`, or a bare entity. Resolve which
     // BEFORE borrowing mutably, so there is only ever one live borrow.
@@ -283,28 +336,42 @@ async fn virtual_mcp_read(state: &AppState, org: &str, tool_name: &str, body: &B
         ""
     };
 
-    match envelope {
-        "items" => {
-            if let Some(items) = answer.get_mut("items").and_then(Value::as_array_mut) {
-                for entity in items.iter_mut() {
-                    enrich_entity(state, entity, &user_id);
+    let enrich_result = (|| -> Result<(), String> {
+        match envelope {
+            "items" => {
+                if let Some(items) = answer.get_mut("items").and_then(Value::as_array_mut) {
+                    for entity in items.iter_mut() {
+                        enrich_entity(state, entity, &user_id, account_epoch)?;
+                    }
                 }
             }
-        }
-        "item" => {
-            if let Some(item) = answer.get_mut("item") {
-                enrich_entity(state, item, &user_id);
+            "item" => {
+                if let Some(item) = answer.get_mut("item") {
+                    enrich_entity(state, item, &user_id, account_epoch)?;
+                }
             }
+            _ => enrich_entity(state, &mut answer, &user_id, account_epoch)?,
         }
-        _ => enrich_entity(state, &mut answer, &user_id),
+        Ok(())
+    })();
+    if let Err(error) = enrich_result {
+        return manager_error(error).into_response();
+    }
+    if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+        return manager_error(error).into_response();
     }
     Json(answer).into_response()
 }
 
 /// Publish this machine's sandboxes for one virtual-MCP entity, in place.
-fn enrich_entity(state: &AppState, entity: &mut Value, user_id: &str) {
+fn enrich_entity(
+    state: &AppState,
+    entity: &mut Value,
+    user_id: &str,
+    account_epoch: AccountEpoch,
+) -> Result<(), String> {
     let Some(id) = entity.get("id").and_then(Value::as_str).map(str::to_string) else {
-        return;
+        return Ok(());
     };
     // Cloud sandboxes are INVISIBLE on desktop, by design: every sandbox
     // route here resolves against local worktrees only, so a cloud entry in
@@ -313,10 +380,11 @@ fn enrich_entity(state: &AppState, entity: &mut Value, user_id: &str) {
     // this machine's own. `user-desktop` entries from OTHER users survive —
     // they are what tells the shell a teammate's desktop owns a branch.
     strip_hosted_sandbox_entries(entity);
-    let local = local_sandbox_entries(state, &id);
+    let local = local_sandbox_entries(state, &id, account_epoch)?;
     if !local.is_empty() {
         merge_sandbox_map(entity, user_id, local);
     }
+    Ok(())
 }
 
 /// Remove every non-`user-desktop` kind from `metadata.sandboxMap`, dropping
@@ -358,15 +426,18 @@ fn strip_hosted_sandbox_entries(entity: &mut Value) {
 /// session is a durable record: a stopped or failed sandbox is exactly what
 /// the shell needs to show, so this reads the registry rather than the live
 /// map.
-pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> Vec<Value> {
+pub(super) fn local_sandbox_sessions(
+    state: &AppState,
+    virtual_mcp_id: &str,
+    account_epoch: AccountEpoch,
+) -> Result<Vec<Value>, String> {
     if virtual_mcp_id.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut sessions = Vec::new();
     for record in state
         .sandbox_manager
-        .records_for_agent(virtual_mcp_id)
-        .unwrap_or_default()
+        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
     {
         let handle = record.handle.clone();
         let stored = record.config.branch.as_deref();
@@ -398,18 +469,24 @@ pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> 
             },
         ));
     }
-    sessions
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)?;
+    Ok(sessions)
 }
 
-fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String, Value)> {
+fn local_sandbox_entries(
+    state: &AppState,
+    virtual_mcp_id: &str,
+    account_epoch: AccountEpoch,
+) -> Result<Vec<(String, Value)>, String> {
     if virtual_mcp_id.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut entries = Vec::new();
     for record in state
         .sandbox_manager
-        .records_for_agent(virtual_mcp_id)
-        .unwrap_or_default()
+        .records_for_virtual_mcp_for_account(account_epoch, virtual_mcp_id)?
     {
         let handle = record.handle;
         let config = record.config;
@@ -421,8 +498,11 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
                 continue;
             }
         }
-        // Publish ONLY a sandbox that is live in this process — not merely one
-        // the registry still has a row for.
+        // Publish ONLY an open sandbox generation that is live in this
+        // process — not merely one the registry still has a row for. A
+        // metadata-only adoption of a durable stopped sandbox deliberately
+        // stays cached for retained reads, but its task gate is permanently
+        // closed and it must not suppress the shell's explicit Start.
         //
         // An entry in `sandboxMap` means "a VM is serving this branch": the
         // shell reads it as the preview origin, and its auto-start gate fires
@@ -431,12 +511,18 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
         // restart) therefore told the shell someone was already serving, which
         // suppressed the very auto-start that would have revived it — the
         // sandbox stayed dead and the UI sat on its provisioning label until a
-        // later sandbox ensure happened to revive it.
+        // later sandbox provision happened to revive it.
         //
         // Omitting a dead sandbox is self-correcting: the shell auto-starts,
-        // `SANDBOX_START` ensures/adopts it here, and the next read publishes
+        // `SANDBOX_START` provisions it here, and the next read publishes
         // it with a preview origin that is actually listening.
-        if state.sandbox_manager.get(&handle).is_none() {
+        let Some(sandbox) = state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)?
+        else {
+            continue;
+        };
+        if sandbox.tasks.is_admission_closed() {
             continue;
         }
         let branch = config
@@ -456,7 +542,10 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
             }),
         ));
     }
-    entries
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)?;
+    Ok(entries)
 }
 
 /// Merge `entries` into `entity.metadata.sandboxMap[user_id][branch]` under the
@@ -508,7 +597,7 @@ fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Va
 /// `removeWorktree` defaults to `false`, and absent means false: the shell's
 /// Restart is `await stop(); start()`, so a flipped default would delete the
 /// repository — and any uncommitted work in it — on every restart.
-async fn delete(state: &AppState, body: &Bytes) -> Response {
+async fn delete(state: &AppState, org: &str, body: &Bytes) -> Response {
     let input: Value = match crate::http_util::json_body(body) {
         Ok(value) => value,
         Err(error) => return error.into_response(),
@@ -527,29 +616,39 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
         .get("removeWorktree")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let authorization = match authorize(state, org, virtual_mcp_id, branch, Access::Recovery).await
+    {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
 
-    let Ok(Some(handle)) = state
-        .sandbox_manager
-        .handle_for_agent(virtual_mcp_id, branch)
-    else {
-        // Nothing registered for this agent+branch: deleting it is a no-op,
-        // not an error, so a repeated delete stays idempotent.
-        return Json(json!({ "success": true })).into_response();
+    let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        authorization.account_epoch(),
+        virtual_mcp_id,
+        branch,
+    ) {
+        Ok(Some(handle)) => handle,
+        Ok(None) => {
+            // Nothing registered for this agent+branch: deleting it is a
+            // no-op, so a repeated delete stays idempotent.
+            return Json(json!({ "success": true })).into_response();
+        }
+        Err(error) => return manager_error(error).into_response(),
     };
     let outcome = if remove_worktree {
-        state.sandbox_manager.remove_registered(&handle).await
+        state
+            .sandbox_manager
+            .remove_registered_for_account(authorization.account_epoch(), &handle)
+            .await
     } else {
-        state.sandbox_manager.stop_registered(&handle).await
+        state
+            .sandbox_manager
+            .delete_registered_for_account(authorization.account_epoch(), &handle)
+            .await
     };
     match outcome {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(error) if remove_worktree => {
-            ApiError::internal(format!("could not reclaim the local sandbox: {error}"))
-                .into_response()
-        }
-        Err(error) => {
-            ApiError::internal(format!("could not stop the local sandbox: {error}")).into_response()
-        }
+        Err(error) => manager_error(error).into_response(),
     }
 }
 
@@ -562,15 +661,53 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         return ApiError::bad_request("virtualMcpId is required").into_response();
     };
     let branch = input.get("branch").and_then(Value::as_str);
+    // Prove this request names an active owned thread before consulting the
+    // upstream virtual-MCP registry, but do not hold the thread lifecycle
+    // lock across that network call. Admission is rechecked under the lock
+    // immediately before the local provisioning side effect below.
+    let initial_authorization = match authorize(
+        state,
+        org,
+        virtual_mcp_id,
+        branch.unwrap_or(DEFAULT_BRANCH),
+        Access::ActiveOwner,
+    )
+    .await
+    {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
+    let initial_account_epoch = initial_authorization.account_epoch();
+    let initial_identity_generation = initial_authorization.identity_generation();
+    drop(initial_authorization);
 
-    let virtual_mcp = match upstream::call_org_tool(
+    let virtual_mcp_result = upstream::call_org_tool_for_identity(
+        state,
+        initial_account_epoch,
+        initial_identity_generation,
         org,
         "COLLECTION_VIRTUAL_MCP_GET",
         &json!({ "id": virtual_mcp_id }),
     )
-    .await
+    .await;
+    // The lookup can outlive account replacement. Never reinterpret an
+    // account-A request under whichever identity happens to be current when
+    // the network call returns, even when B has the same org/thread/agent
+    // identifiers. The response is discarded before any field is inspected.
+    if let Err(error) = state
+        .sandbox_manager
+        .validate_account_epoch(initial_account_epoch)
     {
+        return manager_error(error).into_response();
+    }
+    let virtual_mcp = match virtual_mcp_result {
         Ok(value) => value,
+        Err(upstream::OrgToolCallError::StaleIdentity) => {
+            return ApiError::conflict(
+                "Your Studio account changed while this request was running. Try again.",
+            )
+            .into_response();
+        }
         Err(error) => {
             return ApiError::new(
                 StatusCode::BAD_GATEWAY,
@@ -592,29 +729,74 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         .into_response();
     };
     let resolved_branch = crate::sandbox::normalize_branch(config.branch.as_deref()).to_string();
-    let Some(handle) =
-        crate::sandbox::SandboxManager::compute_handle(&config.clone_url, &resolved_branch)
-    else {
+    if crate::sandbox::SandboxManager::compute_handle(&config.clone_url, &resolved_branch).is_none()
+    {
         return ApiError::bad_request(format!(
             "this agent's repository URL cannot be scoped: {}",
             config.clone_url
         ))
         .into_response();
     };
-    let existed = state
-        .sandbox_manager
-        .is_registered(&handle)
-        .unwrap_or(false);
-
-    if let Err(error) = state.sandbox_manager.ensure(&config).await {
-        return ApiError::internal(format!("could not start the local sandbox: {error}"))
+    let authorization = match authorize(
+        state,
+        org,
+        virtual_mcp_id,
+        branch.unwrap_or(DEFAULT_BRANCH),
+        Access::WorkspaceMutation,
+    )
+    .await
+    {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
+    if authorization.account_epoch() != initial_account_epoch
+        || authorization.identity_generation() != initial_identity_generation
+    {
+        return manager_error("sandbox request belongs to a stale account epoch".to_string())
             .into_response();
     }
+    if let Err(error) = state
+        .sandbox_manager
+        .validate_account_epoch(initial_account_epoch)
+    {
+        return manager_error(error).into_response();
+    }
+    let existed = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        authorization.account_epoch(),
+        virtual_mcp_id,
+        &resolved_branch,
+    ) {
+        Ok(handle) => handle.is_some(),
+        Err(error) => return manager_error(error).into_response(),
+    };
+    let sandbox = match state
+        .sandbox_manager
+        .try_provision_for_account(authorization.account_epoch(), &config)
+        .await
+    {
+        Ok(Some(sandbox)) => sandbox,
+        Ok(None) => {
+            return ApiError::conflict(
+                "sandbox provisioning is already in progress; retry after it completes",
+            )
+            .into_response()
+        }
+        Err(error) => return manager_error(error).into_response(),
+    };
+    // Provision may deliberately reuse a pre-hash durable handle from an
+    // older app version. Always report the manager's resolved identity, never
+    // the new-algorithm candidate computed only for URL validation above.
+    let handle = sandbox.handle.clone();
 
-    // Derived from the manager AFTER `ensure`, so the value reported is the
-    // one actually registered rather than the one this request happened to
-    // ask for.
-    let reported_branch = branch_for_virtual_mcp(state, virtual_mcp_id);
+    // Derived from the manager AFTER `provision`, so the value reported is
+    // the one durably registered rather than the one this request happened
+    // to ask for. Clone/install/start continue on the serialized setup worker
+    // where Stop can cancel them.
+    let reported_branch =
+        match branch_for_virtual_mcp(state, virtual_mcp_id, authorization.account_epoch()) {
+            Ok(branch) => branch,
+            Err(error) => return manager_error(error).into_response(),
+        };
 
     Json(json!({
         "previewUrl": preview_url(&handle),
@@ -822,7 +1004,7 @@ mod tests {
     }
 
     async fn delete_body(state: &AppState, body: Value) -> (StatusCode, Value) {
-        let response = delete(state, &Bytes::from(body.to_string())).await;
+        let response = delete(state, "acme", &Bytes::from(body.to_string())).await;
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -848,7 +1030,10 @@ mod tests {
             assert_eq!(status, StatusCode::OK, "{body}");
             assert_eq!(answer, json!({ "success": true }), "{body}");
             assert!(worktree.is_dir(), "stop must never remove the worktree");
-            assert!(state.sandbox_manager.is_registered(&handle).unwrap());
+            assert!(state
+                .sandbox_manager
+                .is_registered_for_account(state.sandbox_manager.account_epoch(), &handle)
+                .unwrap());
         }
     }
 
@@ -866,7 +1051,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(answer, json!({ "success": true }));
         assert!(!worktree.exists());
-        assert!(!state.sandbox_manager.is_registered(&handle).unwrap());
+        assert!(!state
+            .sandbox_manager
+            .is_registered_for_account(state.sandbox_manager.account_epoch(), &handle)
+            .unwrap());
 
         // And it stays idempotent: the second call finds nothing to do.
         let (status, answer) = delete_body(

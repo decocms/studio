@@ -841,8 +841,7 @@ pub async fn start_with_client_auth(
 
     // Subscribe before listener admission starts so even an immediate
     // background hard sign-out has a process-owner waiting to reap terminals.
-    let auth_reaper_task =
-        auth_fence::spawn_identity_reaper(upstream::global(), state.agent_sessions.clone());
+    let auth_reaper_task = auth_fence::spawn_identity_reaper(upstream::global(), state.clone());
 
     let shutdown_notify = Arc::new(Notify::new());
     let notify_for_task = shutdown_notify.clone();

@@ -66,6 +66,7 @@ struct UpstreamHandshake {
 /// `Set-Cookie`, and other end-to-end response headers exist only on the
 /// upstream `101`, and browsers need them on their own `101`. Accepting the
 /// downstream first makes those headers impossible to propagate.
+#[cfg(test)]
 pub async fn upgrade(
     downstream: WebSocketUpgrade,
     port: Option<u16>,
@@ -73,11 +74,78 @@ pub async fn upgrade(
     requested_protocols: Vec<String>,
     request_headers: HeaderMap,
 ) -> Response {
+    upgrade_inner(
+        downstream,
+        port,
+        path_and_query,
+        requested_protocols,
+        request_headers,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn upgrade_for_account(
+    downstream: WebSocketUpgrade,
+    port: Option<u16>,
+    path_and_query: String,
+    requested_protocols: Vec<String>,
+    request_headers: HeaderMap,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+) -> Response {
+    upgrade_inner(
+        downstream,
+        port,
+        path_and_query,
+        requested_protocols,
+        request_headers,
+        Some(AccountEpochFence {
+            expected: account_epoch,
+            receiver: account_epoch_rx,
+        }),
+    )
+    .await
+}
+
+struct AccountEpochFence {
+    expected: crate::sandbox::manager::AccountEpoch,
+    receiver: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+}
+
+impl AccountEpochFence {
+    fn is_stale(&mut self) -> bool {
+        *self.receiver.borrow_and_update() != self.expected
+    }
+
+    async fn changed(&mut self) {
+        loop {
+            if self.is_stale() || self.receiver.changed().await.is_err() {
+                return;
+            }
+        }
+    }
+}
+
+async fn upgrade_inner(
+    downstream: WebSocketUpgrade,
+    port: Option<u16>,
+    path_and_query: String,
+    requested_protocols: Vec<String>,
+    request_headers: HeaderMap,
+    mut account_epoch: Option<AccountEpochFence>,
+) -> Response {
+    if account_epoch
+        .as_mut()
+        .is_some_and(AccountEpochFence::is_stale)
+    {
+        return failed_upgrade_response(downstream, requested_protocols, "Studio account changed");
+    }
     let Some(port) = port else {
         return failed_upgrade_response(downstream, requested_protocols, REASON_NO_UPSTREAM);
     };
 
-    let Some(upstream) = connect_upstream(
+    let Some(mut upstream) = connect_upstream(
         port,
         &path_and_query,
         &requested_protocols,
@@ -87,6 +155,13 @@ pub async fn upgrade(
     else {
         return failed_upgrade_response(downstream, requested_protocols, REASON_UNREACHABLE);
     };
+    if account_epoch
+        .as_mut()
+        .is_some_and(AccountEpochFence::is_stale)
+    {
+        let _ = upstream.socket.close(None).await;
+        return failed_upgrade_response(downstream, requested_protocols, "Studio account changed");
+    }
 
     let UpstreamHandshake {
         socket,
@@ -97,7 +172,7 @@ pub async fn upgrade(
         Some(protocol) => downstream.protocols([protocol]),
         None => downstream,
     };
-    let mut response = downstream.on_upgrade(move |client| bridge(client, socket));
+    let mut response = downstream.on_upgrade(move |client| bridge(client, socket, account_epoch));
     copy_upstream_response_headers(&headers, response.headers_mut());
     response
 }
@@ -121,11 +196,26 @@ fn failed_upgrade_response(
     })
 }
 
-async fn bridge(mut client: WebSocket, upstream: UpstreamSocket) {
+async fn bridge(
+    mut client: WebSocket,
+    upstream: UpstreamSocket,
+    mut account_epoch: Option<AccountEpochFence>,
+) {
     let (mut up_write, mut up_read) = upstream.split();
 
     loop {
         tokio::select! {
+            biased;
+            _ = async {
+                match account_epoch.as_mut() {
+                    Some(fence) => fence.changed().await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                let _ = up_write.close().await;
+                close_client(&mut client, 1008, "Studio account changed").await;
+                break;
+            }
             client_msg = client.recv() => {
                 match client_msg {
                     Some(Ok(AxumMessage::Close(frame))) => {

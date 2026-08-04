@@ -14,13 +14,14 @@ use terminal_session::{
     ManagerConfig, SessionExit, SessionKey, TerminalSession, TerminalSessionManager,
     TerminationPolicy,
 };
-use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
+use tokio::sync::{watch, Mutex as AsyncMutex, Notify, OwnedMutexGuard};
 
 use crate::routes::threads::db::{RtThreadFence, ThreadsDb};
 
 const TERM_GRACE: Duration = Duration::from_secs(2);
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const PROMPT_RECEIPT_CAPACITY: usize = 512;
+const PREPARATION_QUIESCE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Default)]
 struct OpenCodeTurnState {
@@ -277,6 +278,240 @@ pub(crate) struct WriterLeaseGuard {
     generation: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PreparationKey {
+    fence: RtThreadFence,
+    terminal_session_id: String,
+}
+
+#[derive(Debug, Default)]
+struct PreparationPhaseState {
+    cancelled: bool,
+    active_phases: usize,
+}
+
+#[derive(Debug)]
+struct PreparationState {
+    phase: Mutex<PreparationPhaseState>,
+    cancellation: watch::Sender<bool>,
+    phase_changed: Notify,
+}
+
+impl PreparationState {
+    fn new() -> Arc<Self> {
+        let (cancellation, _) = watch::channel(false);
+        Arc::new(Self {
+            phase: Mutex::new(PreparationPhaseState::default()),
+            cancellation,
+            phase_changed: Notify::new(),
+        })
+    }
+
+    fn lock_phase(&self) -> MutexGuard<'_, PreparationPhaseState> {
+        self.phase
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn cancel(&self) {
+        let changed = {
+            let mut phase = self.lock_phase();
+            if phase.cancelled {
+                false
+            } else {
+                phase.cancelled = true;
+                true
+            }
+        };
+        if changed {
+            self.cancellation.send_replace(true);
+            self.phase_changed.notify_waiters();
+        }
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.lock_phase().cancelled
+    }
+
+    fn begin_phase(self: &Arc<Self>) -> Option<PreparationPhase> {
+        let mut phase = self.lock_phase();
+        if phase.cancelled {
+            return None;
+        }
+        phase.active_phases += 1;
+        drop(phase);
+        Some(PreparationPhase {
+            state: self.clone(),
+        })
+    }
+
+    async fn wait_for_phase_completion(&self) {
+        self.wait_for_phase_completion_with(|| {}).await;
+    }
+
+    async fn wait_for_phase_completion_with<F>(&self, mut after_check: F)
+    where
+        F: FnMut(),
+    {
+        let changed = self.phase_changed.notified();
+        tokio::pin!(changed);
+        loop {
+            // `notify_waiters` does not retain a permit for a future waiter.
+            // Register this waiter before inspecting the phase count so a
+            // phase that completes between the check and `.await` cannot be
+            // missed.
+            changed.as_mut().enable();
+            let complete = self.lock_phase().active_phases == 0;
+            after_check();
+            if complete {
+                return;
+            }
+            changed.as_mut().await;
+            changed.set(self.phase_changed.notified());
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct PreparationCancellation {
+    state: Arc<PreparationState>,
+}
+
+impl PreparationCancellation {
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.state.is_cancelled()
+    }
+
+    pub(crate) async fn cancelled(&self) {
+        let mut cancellation = self.state.cancellation.subscribe();
+        if *cancellation.borrow() {
+            return;
+        }
+        while cancellation.changed().await.is_ok() {
+            if *cancellation.borrow() {
+                return;
+            }
+        }
+    }
+
+    pub(crate) fn subscribe(&self) -> watch::Receiver<bool> {
+        self.state.cancellation.subscribe()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_uncancelled() -> Self {
+        Self {
+            state: PreparationState::new(),
+        }
+    }
+}
+
+pub(crate) struct PreparationPhase {
+    state: Arc<PreparationState>,
+}
+
+impl PreparationPhase {
+    pub(crate) fn cancellation(&self) -> PreparationCancellation {
+        PreparationCancellation {
+            state: self.state.clone(),
+        }
+    }
+}
+
+impl Drop for PreparationPhase {
+    fn drop(&mut self) {
+        let mut phase = self.state.lock_phase();
+        debug_assert!(phase.active_phases > 0);
+        phase.active_phases = phase.active_phases.saturating_sub(1);
+        let complete = phase.active_phases == 0;
+        drop(phase);
+        if complete {
+            self.state.phase_changed.notify_waiters();
+        }
+    }
+}
+
+pub(crate) struct PreparationBarrier {
+    preparations: Vec<(PreparationKey, Arc<PreparationState>)>,
+}
+
+impl PreparationBarrier {
+    pub(crate) fn had_preparations(&self) -> bool {
+        !self.preparations.is_empty()
+    }
+
+    pub(crate) fn fences(&self) -> Vec<RtThreadFence> {
+        let mut fences = Vec::new();
+        for (key, _) in &self.preparations {
+            if !fences.contains(&key.fence) {
+                fences.push(key.fence.clone());
+            }
+        }
+        fences
+    }
+
+    pub(crate) async fn wait(&self) -> Result<(), String> {
+        self.wait_for(PREPARATION_QUIESCE_TIMEOUT).await
+    }
+
+    async fn wait_for(&self, timeout: Duration) -> Result<(), String> {
+        let wait = futures::future::join_all(
+            self.preparations
+                .iter()
+                .map(|(_, state)| state.wait_for_phase_completion()),
+        );
+        tokio::time::timeout(timeout, wait)
+            .await
+            .map(|_| ())
+            .map_err(|_| {
+                "coding agent preparation did not stop within 15 seconds after cancellation"
+                    .to_string()
+            })
+    }
+}
+
+/// Process-local proof that an exact durable `starting` row is still being
+/// prepared by this app instance. Durable rows without this proof are stale
+/// restart debris and may be self-healed by the next start request.
+pub(crate) struct PreparationReservation {
+    registry: Arc<AgentSessionRegistry>,
+    key: PreparationKey,
+    state: Arc<PreparationState>,
+}
+
+impl PreparationReservation {
+    pub(crate) fn is_active(&self) -> bool {
+        if self.state.is_cancelled() {
+            return false;
+        }
+        self.registry
+            .lock_preparations()
+            .get(&self.key)
+            .is_some_and(|state| Arc::ptr_eq(state, &self.state))
+    }
+
+    pub(crate) fn begin_phase(&self) -> Option<PreparationPhase> {
+        self.state.begin_phase()
+    }
+}
+
+impl Drop for PreparationReservation {
+    fn drop(&mut self) {
+        // Aborting or panicking the spawn owner must wake any manager-owned
+        // preparation it was awaiting. Publish the explicit cancellation
+        // before the last sender can disappear instead of making every
+        // receiver infer owner loss from channel closure.
+        self.state.cancel();
+        let mut preparations = self.registry.lock_preparations();
+        if preparations
+            .get(&self.key)
+            .is_some_and(|state| Arc::ptr_eq(state, &self.state))
+        {
+            preparations.remove(&self.key);
+        }
+    }
+}
+
 impl WriterLeaseGuard {
     /// Lock the mutation boundary and prove this attachment still owns input.
     /// Holding the returned guard across the PTY/DB operation prevents a new
@@ -308,6 +543,7 @@ pub struct AgentSessionRegistry {
     manager: TerminalSessionManager,
     sessions: Mutex<HashMap<RtThreadFence, ManagedTerminal>>,
     hooks: Mutex<HashMap<String, Arc<HookRegistration>>>,
+    preparations: Mutex<HashMap<PreparationKey, Arc<PreparationState>>>,
     start_locks: Mutex<HashMap<RtThreadFence, Arc<AsyncMutex<()>>>>,
     codex_home_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     claude_state_locks: Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>,
@@ -331,6 +567,7 @@ impl AgentSessionRegistry {
             manager: TerminalSessionManager::new(ManagerConfig::default()),
             sessions: Mutex::new(HashMap::new()),
             hooks: Mutex::new(HashMap::new()),
+            preparations: Mutex::new(HashMap::new()),
             start_locks: Mutex::new(HashMap::new()),
             codex_home_locks: Mutex::new(HashMap::new()),
             claude_state_locks: Mutex::new(HashMap::new()),
@@ -346,6 +583,12 @@ impl AgentSessionRegistry {
 
     fn lock_hooks(&self) -> MutexGuard<'_, HashMap<String, Arc<HookRegistration>>> {
         self.hooks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn lock_preparations(&self) -> MutexGuard<'_, HashMap<PreparationKey, Arc<PreparationState>>> {
+        self.preparations
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -398,6 +641,63 @@ impl AgentSessionRegistry {
 
     pub fn get(&self, fence: &RtThreadFence) -> Option<ManagedTerminal> {
         self.lock_sessions().get(fence).cloned()
+    }
+
+    pub(crate) fn reserve_preparation(
+        self: &Arc<Self>,
+        fence: RtThreadFence,
+        terminal_session_id: String,
+    ) -> Option<PreparationReservation> {
+        let key = PreparationKey {
+            fence,
+            terminal_session_id,
+        };
+        let state = PreparationState::new();
+        let mut preparations = self.lock_preparations();
+        if preparations.contains_key(&key) {
+            return None;
+        }
+        preparations.insert(key.clone(), state.clone());
+        drop(preparations);
+        Some(PreparationReservation {
+            registry: self.clone(),
+            key,
+            state,
+        })
+    }
+
+    pub(crate) fn is_preparing(&self, fence: &RtThreadFence, terminal_session_id: &str) -> bool {
+        self.lock_preparations()
+            .get(&PreparationKey {
+                fence: fence.clone(),
+                terminal_session_id: terminal_session_id.to_string(),
+            })
+            .is_some_and(|state| !state.is_cancelled())
+    }
+
+    pub(crate) fn cancel_preparation(&self, fence: &RtThreadFence) -> PreparationBarrier {
+        let preparations = self
+            .lock_preparations()
+            .iter()
+            .filter(|(key, _)| key.fence == *fence)
+            .map(|(key, state)| (key.clone(), state.clone()))
+            .collect::<Vec<_>>();
+        for (_, state) in &preparations {
+            state.cancel();
+        }
+        PreparationBarrier { preparations }
+    }
+
+    pub(crate) fn cancel_all_preparations(&self) -> PreparationBarrier {
+        let preparations = self
+            .lock_preparations()
+            .iter()
+            .map(|(key, state)| (key.clone(), state.clone()))
+            .collect::<Vec<_>>();
+        for (_, state) in &preparations {
+            state.cancel();
+        }
+        PreparationBarrier { preparations }
     }
 
     pub fn hook(&self, terminal_session_id: &str) -> Option<Arc<HookRegistration>> {
@@ -521,6 +821,10 @@ impl AgentSessionRegistry {
             self.unregister_hook(managed.session.id());
         }
         self.lock_hooks().retain(|_, hook| hook.fence != *fence);
+        let barrier = self.cancel_preparation(fence);
+        self.lock_preparations()
+            .retain(|preparation, _| preparation.fence != *fence);
+        drop(barrier);
         self.start_locks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -528,12 +832,30 @@ impl AgentSessionRegistry {
     }
 
     pub async fn shutdown(&self) -> terminal_session::ShutdownReport {
+        let barrier = self.cancel_all_preparations();
+        if let Err(error) = barrier.wait().await {
+            tracing::error!(%error, "coding agent preparation did not quiesce before shutdown");
+        }
         self.manager.shutdown(termination_policy()).await
     }
 
     /// Reap all current terminals without closing future admission. Logout
     /// and account switching use this; app shutdown uses [`Self::shutdown`].
     pub async fn terminate_all(&self) -> Vec<String> {
+        let barrier = self.cancel_all_preparations();
+        let preparation_failure = barrier.wait().await.err();
+        let mut failures = self.terminate_active_sessions().await;
+        if let Some(error) = preparation_failure {
+            failures.push(error);
+        }
+        failures
+    }
+
+    /// Reap registered PTYs after the caller has already canceled and awaited
+    /// its preparation barrier. Account transitions use this to keep the
+    /// cancellation wait single and bounded while still stopping older live
+    /// terminals when a preparation itself fails to quiesce.
+    pub(crate) async fn terminate_active_sessions(&self) -> Vec<String> {
         let sessions = self
             .lock_sessions()
             .values()
@@ -714,5 +1036,69 @@ mod tests {
         assert!(second.mutation_permit().await.is_some());
         drop(second);
         assert_eq!(lease.current_generation.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn preparation_barrier_cannot_miss_phase_completion_after_its_check() {
+        let state = PreparationState::new();
+        let phase = state.begin_phase().expect("phase should begin");
+        state.cancel();
+        let mut phase = Some(phase);
+
+        // Complete the phase in the exact interval that used to lose a
+        // `notify_waiters` wakeup: after the waiter observed a non-zero phase
+        // count but before it first awaited the notification.
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            state.wait_for_phase_completion_with(|| drop(phase.take())),
+        )
+        .await
+        .expect("registered waiter must observe phase completion");
+        assert!(phase.is_none());
+    }
+
+    #[tokio::test]
+    async fn timed_out_preparation_barrier_can_be_rechecked_before_artifact_cleanup() {
+        let registry = AgentSessionRegistry::new();
+        let fence = RtThreadFence {
+            account_scope: "account".to_string(),
+            organization_id: "org".to_string(),
+            thread_id: "thread".to_string(),
+            generation: "generation".to_string(),
+        };
+        let reservation = registry
+            .reserve_preparation(fence.clone(), "terminal".to_string())
+            .unwrap();
+        let phase = reservation.begin_phase().unwrap();
+        let barrier = registry.cancel_preparation(&fence);
+
+        assert!(barrier.wait_for(Duration::ZERO).await.is_err());
+        drop(phase);
+        barrier.wait_for(Duration::from_secs(1)).await.unwrap();
+        drop(reservation);
+    }
+
+    #[tokio::test]
+    async fn dropping_preparation_reservation_publishes_cancellation() {
+        let registry = AgentSessionRegistry::new();
+        let fence = RtThreadFence {
+            account_scope: "account".to_string(),
+            organization_id: "org".to_string(),
+            thread_id: "thread".to_string(),
+            generation: "generation".to_string(),
+        };
+        let reservation = registry
+            .reserve_preparation(fence.clone(), "terminal".to_string())
+            .unwrap();
+        let mut cancellation = reservation.state.cancellation.subscribe();
+
+        drop(reservation);
+
+        tokio::time::timeout(Duration::from_secs(1), cancellation.changed())
+            .await
+            .expect("reservation drop must wake the preparation owner")
+            .expect("the cancellation sender remains observable");
+        assert!(*cancellation.borrow());
+        assert!(!registry.is_preparing(&fence, "terminal"));
     }
 }

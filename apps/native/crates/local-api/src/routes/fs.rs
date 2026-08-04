@@ -68,6 +68,14 @@ const TRANSFER_DEADLINE: Duration = Duration::from_secs(5 * 60);
 
 static TOOLS_CATALOG_COMMIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+fn require_open_generation(state: &AppState) -> Result<(), ApiError> {
+    if state.tasks.is_admission_closed() {
+        Err(ApiError::conflict("sandbox generation is stopped"))
+    } else {
+        Ok(())
+    }
+}
+
 fn shutting_down() -> ApiError {
     ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -82,7 +90,20 @@ where
     Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
 {
     let mutations = state.shutdown.mutations();
-    match mutations.run_commit(operation).await {
+    let tasks = state.tasks.clone();
+    match mutations
+        .run_commit(move || async move {
+            // Preparation may happen before this helper, but the actual
+            // managed-worktree commit is generation-owned. Stop closes this
+            // gate, drains an already-running bounded commit, then snapshots
+            // tasks; a queued or late mutation cannot commit behind it.
+            let Some(_generation_admission) = tasks.admit() else {
+                return Err(ApiError::conflict("sandbox generation is stopped"));
+            };
+            operation().await
+        })
+        .await
+    {
         Ok(result) => result,
         Err(error) => Err(map_owner_error(error)),
     }
@@ -416,6 +437,9 @@ struct WriteBody {
 }
 
 pub async fn write(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: WriteBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -466,6 +490,9 @@ fn assert_unlink_allowed(normalized: &str, recursive: bool) -> Option<&'static s
 }
 
 pub async fn unlink(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: UnlinkBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -548,6 +575,9 @@ struct MkdirBody {
 }
 
 pub async fn mkdir(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: MkdirBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -587,6 +617,9 @@ struct RenameBody {
 }
 
 pub async fn rename(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: RenameBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -657,6 +690,9 @@ struct EditBody {
 }
 
 pub async fn edit(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: EditBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -775,11 +811,14 @@ async fn drive_owned_rg(
 }
 
 async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process::Output, ApiError> {
-    let Some(admission) = state.shutdown.admit_work().await else {
+    let Some(shutdown_admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "application is shutting down",
         ));
+    };
+    let Some(generation_admission) = state.tasks.admit() else {
+        return Err(ApiError::conflict("sandbox generation is stopped"));
     };
 
     let mut command = Command::new("rg");
@@ -806,7 +845,7 @@ async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process:
     let id = format!("internal-grep-{}", uuid::Uuid::new_v4());
     let controller = ProcessController::new();
     let kill_handle = controller.kill_handle();
-    state.tasks.insert(TaskEntry::new_internal(
+    generation_admission.register(TaskEntry::new_internal(
         TaskSummary {
             id: id.clone(),
             command: format!("rg {}", args.join(" ")),
@@ -854,7 +893,7 @@ async fn run_owned_rg(state: &AppState, args: &[String]) -> Result<std::process:
         let _ = tasks.remove(&owner_id).await;
         let _ = result_tx.send(output);
     });
-    drop(admission);
+    drop(shutdown_admission);
 
     // `rg` has no graceful-shutdown protocol. Use KILL on request
     // cancellation so an aborted HTTP future cannot leave an internal
@@ -1033,6 +1072,9 @@ fn http_client() -> reqwest::Client {
 }
 
 pub async fn write_from_url(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: WriteFromUrlBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -1282,7 +1324,8 @@ async fn commit_endpoint_file(state: &AppState, content: String) -> Result<(), A
         return Err(ApiError::internal("tools catalog path escapes app root"));
     };
     let endpoint = catalog_dir.join(tools_catalog::ENDPOINT_FILENAME);
-    let repo_dir = state.repo_dir.clone();
+    let exclude_path = git_exclude::resolve_git_exclude(state.tasks.clone(), &state.repo_dir).await;
+    let exclude_line = format!("/{}/", tools_catalog::CATALOG_DIR);
     let mutation_root = state.app_root.join(".decocms").join("mutations");
     run_commit_owned(state, move || async move {
         let commit_lock = TOOLS_CATALOG_COMMIT_LOCK.get_or_init(|| Mutex::new(()));
@@ -1290,8 +1333,9 @@ async fn commit_endpoint_file(state: &AppState, content: String) -> Result<(), A
         tokio::fs::create_dir_all(&catalog_dir)
             .await
             .map_err(|error| ApiError::internal(error.to_string()))?;
-        git_exclude::ensure_git_exclude(&repo_dir, &format!("/{}/", tools_catalog::CATALOG_DIR))
-            .await;
+        if let Some(exclude_path) = exclude_path.as_deref() {
+            git_exclude::ensure_git_exclude_path(exclude_path, &exclude_line).await;
+        }
         // Finish any prior catalog directory transaction before mutating a
         // file inside its target. Unrelated long mutation stages are retained.
         let endpoint_stage_sentinel = mutation_root.join(".endpoint-update");
@@ -1357,7 +1401,8 @@ async fn commit_catalog_dir(
     };
     let stage_dir = stage_dir.to_path_buf();
     let staged_catalog = staged_catalog.to_path_buf();
-    let repo_dir = state.repo_dir.clone();
+    let exclude_path = git_exclude::resolve_git_exclude(state.tasks.clone(), &state.repo_dir).await;
+    let exclude_line = format!("/{}/", tools_catalog::CATALOG_DIR);
     let mutation_root = state.app_root.join(".decocms").join("mutations");
     run_commit_owned(state, move || async move {
         let commit_lock = TOOLS_CATALOG_COMMIT_LOCK.get_or_init(|| Mutex::new(()));
@@ -1367,8 +1412,9 @@ async fn commit_catalog_dir(
                 .await
                 .map_err(|error| ApiError::internal(error.to_string()))?;
         }
-        git_exclude::ensure_git_exclude(&repo_dir, &format!("/{}/", tools_catalog::CATALOG_DIR))
-            .await;
+        if let Some(exclude_path) = exclude_path.as_deref() {
+            git_exclude::ensure_git_exclude_path(exclude_path, &exclude_line).await;
+        }
         tools_transaction::recover_catalog_transactions(&mutation_root, &target, &stage_dir)
             .await
             .map_err(|error| ApiError::internal(error.to_string()))?;
@@ -1386,6 +1432,9 @@ async fn commit_catalog_dir(
 /// The catalog lives under `<repo>/.deco/tools/` — distinct from local-api's
 /// own `<workdir>/.decocms/` (see the threads store doc).
 pub async fn tools_sync(State(state): State<AppState>, body: Bytes) -> Response {
+    if let Err(error) = require_open_generation(&state) {
+        return error.into_response();
+    }
     let body: ToolsSyncBody = match parse_body(&body) {
         Ok(b) => b,
         Err(e) => return e.into_response(),
@@ -1462,6 +1511,73 @@ pub async fn tools_sync(State(state): State<AppState>, body: Bytes) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn generation_close_waits_for_a_commit_and_rejects_the_delayed_next_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        tokio::fs::create_dir_all(&state.repo_dir).await.unwrap();
+        let staged = root.path().join("staged");
+        tokio::fs::write(&staged, b"prepared").await.unwrap();
+        let target = state.repo_dir.join("committed.txt");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let commit_state = state.clone();
+        let commit = tokio::spawn(async move {
+            run_commit_owned(&commit_state, move || async move {
+                entered_tx.send(()).unwrap();
+                release_rx.await.unwrap();
+                tokio::fs::rename(staged, target)
+                    .await
+                    .map_err(|error| ApiError::internal(error.to_string()))
+            })
+            .await
+        });
+        entered_rx
+            .await
+            .expect("commit owns generation admission before pausing");
+
+        let closing_tasks = state.tasks.clone();
+        let close = tokio::spawn(async move {
+            closing_tasks
+                .close_and_kill_all_and_wait(Duration::ZERO, Duration::ZERO)
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !state.tasks.is_admission_closed() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("close begins");
+        assert!(
+            !close.is_finished(),
+            "generation close must drain the bounded commit"
+        );
+        release_tx.send(()).unwrap();
+        commit.await.unwrap().unwrap();
+        close.await.unwrap();
+        assert_eq!(
+            tokio::fs::read(state.repo_dir.join("committed.txt"))
+                .await
+                .unwrap(),
+            b"prepared"
+        );
+
+        let late = state.repo_dir.join("late.txt");
+        let late_result = run_commit_owned(&state, move || async move {
+            tokio::fs::write(late, b"late")
+                .await
+                .map_err(|error| ApiError::internal(error.to_string()))
+        })
+        .await;
+        assert_eq!(
+            late_result.unwrap_err().status,
+            StatusCode::CONFLICT,
+            "a staged mutation reaching commit after Stop must be rejected"
+        );
+        assert!(!state.repo_dir.join("late.txt").exists());
+    }
 
     /// A fresh worktree has `.deco/blocks/*.json` but not the merged
     /// `blocks.gen.json` (repos gitignore it), and without this rebuild the

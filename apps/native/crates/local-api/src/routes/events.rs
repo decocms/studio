@@ -43,7 +43,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-use futures::stream;
+use futures::{stream, StreamExt};
 use serde::Deserialize;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
@@ -94,7 +94,10 @@ async fn initial_frames(target: &crate::sandbox::SandboxTarget) -> Vec<Bytes> {
         snapshot::frame("tasks", &snapshot::active_tasks(&running)),
         snapshot::frame("status", &snapshot::status()),
     ];
-    if let Some(meta) = crate::routes::git::branch_snapshot(&target.repo_dir).await {
+    if let Some(meta) =
+        crate::routes::git::owned_branch_snapshot(target.tasks.clone(), target.repo_dir.clone())
+            .await
+    {
         initial.push(snapshot::frame(
             "branch",
             &serde_json::json!({ "meta": meta }),
@@ -139,6 +142,20 @@ async fn initial_frames(target: &crate::sandbox::SandboxTarget) -> Vec<Bytes> {
 }
 
 pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>) -> Response {
+    let authorization = match super::sandbox_account::authorize(&state).await {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
+    let account_epoch = authorization.epoch();
+    drop(authorization);
+    events_for_account(state, q, account_epoch).await
+}
+
+pub(crate) async fn events_for_account(
+    state: AppState,
+    q: EventsQuery,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> Response {
     // Resolve WHICH orchestrator quadruple this stream observes: a strict,
     // metadata-only-adopted per-handle sandbox (`?handle=`), the active sandbox
     // (headerless), or the process-global one. Every per-target read below
@@ -146,7 +163,11 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
     // connect-time branch snapshot.
     let explicit_handle = q.handle.filter(|handle| !handle.is_empty());
     let target = match explicit_handle.as_deref() {
-        Some(handle) => match state.sandbox_manager.adopt(handle).await {
+        Some(handle) => match state
+            .sandbox_manager
+            .adopt_for_account(account_epoch, handle)
+            .await
+        {
             Ok(Some(sandbox)) => crate::sandbox::SandboxTarget::from_sandbox(&sandbox),
             Ok(None) => {
                 return (
@@ -164,7 +185,12 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
                     .into_response();
             }
         },
-        None => state.resolve_sandbox_target(None),
+        None => match state.resolve_sandbox_target_for_account(account_epoch, None) {
+            Ok(target) => target,
+            Err(error) => {
+                return crate::error::ApiError::conflict(error).into_response();
+            }
+        },
     };
 
     if target.broadcaster.subscriber_count() >= MAX_SSE_CLIENTS {
@@ -183,11 +209,29 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
     // observable even if another chat becomes active in between.
     let mut active_rx = state.sandbox_manager.watch_active();
     let mut generation_rx = match explicit_handle.as_deref() {
-        Some(handle) => state.sandbox_manager.watch_generation(handle),
+        Some(handle) => match state
+            .sandbox_manager
+            .watch_generation_for_account(account_epoch, handle)
+        {
+            Ok(receiver) => receiver,
+            Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+        },
         None => tokio::sync::watch::channel(None).1,
     };
+    let mut account_epoch_rx = match state.sandbox_manager.watch_account_epoch(account_epoch) {
+        Ok(receiver) => receiver,
+        Err(error) => return crate::error::ApiError::conflict(error).into_response(),
+    };
+    // The producer stops enqueueing on epoch change, while this second
+    // receiver fences consumption of frames already buffered in `out_rx`.
+    // Without both halves, a slow client could drain account A's replay from
+    // the channel after account B had been installed.
+    let mut body_account_epoch_rx = account_epoch_rx.clone();
 
     let initial = initial_frames(&target).await;
+    if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+        return crate::error::ApiError::conflict(error).into_response();
+    }
 
     let (tx, out_rx) = mpsc::channel::<Bytes>(OUT_CHANNEL_CAPACITY);
 
@@ -198,8 +242,27 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
     let task_state = state.clone();
     tokio::spawn(async move {
         for frame in initial {
-            if tx.send(frame).await.is_err() {
+            // `borrow()` deliberately does not mark a notification seen. A
+            // saturated epoch may publish the same numeric value; consuming
+            // that notification here would hide it from `changed()` below.
+            if *account_epoch_rx.borrow() != account_epoch {
                 return;
+            }
+            tokio::select! {
+                biased;
+                changed = account_epoch_rx.changed() => {
+                    // Any notification is terminal, even if a saturated
+                    // epoch has to publish the same numeric value again.
+                    // Treating only a value mismatch as stale would reopen
+                    // the stream in that fail-closed state.
+                    let _ = changed;
+                    return;
+                }
+                sent = tx.send(frame) => {
+                    if sent.is_err() {
+                        return;
+                    }
+                }
             }
         }
 
@@ -208,6 +271,14 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
 
         loop {
             tokio::select! {
+                biased;
+                changed = account_epoch_rx.changed() => {
+                    // A successful same-value notification is possible when
+                    // epoch advance saturates. Every notification closes the
+                    // account-A producer; channel closure does too.
+                    let _ = changed;
+                    return;
+                }
                 event = rx.recv() => {
                     match event {
                         Ok(ev) => {
@@ -240,7 +311,13 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
                         continue;
                     }
                     let now_active = active_rx.borrow_and_update().clone();
-                    let new_target = task_state.resolve_sandbox_target(now_active.as_deref());
+                    let new_target = match task_state.resolve_sandbox_target_for_account(
+                        account_epoch,
+                        now_active.as_deref(),
+                    ) {
+                        Ok(target) => target,
+                        Err(_) => return,
+                    };
                     if std::sync::Arc::ptr_eq(&new_target.broadcaster, &current_broadcaster) {
                         continue;
                     }
@@ -285,6 +362,16 @@ pub async fn events(State(state): State<AppState>, Query(q): Query<EventsQuery>)
             .await
             .map(|frame| (Ok::<_, Infallible>(frame), rx))
     });
+    let account_changed = async move {
+        if *body_account_epoch_rx.borrow() != account_epoch {
+            return;
+        }
+        // Terminate on any notification, not just a changed numeric value:
+        // saturation deliberately publishes the same maximum epoch while
+        // leaving account materialization permanently closed.
+        let _ = body_account_epoch_rx.changed().await;
+    };
+    let body_stream = body_stream.take_until(account_changed);
 
     crate::http_util::event_stream_response(Body::from_stream(body_stream), "SSE response")
 }
@@ -469,7 +556,11 @@ mod tests {
         // Opening a fresh manager imports the legacy sidecar into SQLite but
         // deliberately leaves its live object cache empty.
         let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
-        assert!(manager.get(&handle).is_none());
+        let account_epoch = manager.account_epoch();
+        assert!(manager
+            .get_for_account(account_epoch, &handle)
+            .unwrap()
+            .is_none());
         let state = state_with_manager(root.path(), manager.clone());
 
         let response = events(
@@ -480,7 +571,10 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::OK);
-        let adopted = manager.get(&handle).expect("metadata was adopted");
+        let adopted = manager
+            .get_for_account(account_epoch, &handle)
+            .unwrap()
+            .expect("metadata was adopted");
         assert!(
             adopted.tasks.list(None).is_empty(),
             "observing retained logs must not spawn setup/dev tasks"
@@ -531,5 +625,28 @@ mod tests {
         assert!(!main_frame.contains(r#""branch":"feature/two""#));
         assert!(feature_frame.contains(r#""branch":"feature/two""#));
         assert!(!feature_frame.contains(r#""branch":"main""#));
+    }
+
+    #[tokio::test]
+    async fn account_transition_discards_initial_frames_already_queued_for_the_body() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let state = state_with_manager(root.path(), manager.clone());
+        let epoch = manager.account_epoch();
+
+        let response = events_for_account(state, EventsQuery { handle: None }, epoch).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // `events_for_account` has already spawned its producer, which may
+        // have filled `out_rx` with the connect-time replay. Advancing before
+        // the HTTP body is first polled proves the consumer fence drops that
+        // backlog instead of leaking it into the next account.
+        let transition = manager.begin_account_transition().await.unwrap();
+        let mut body = response.into_body().into_data_stream();
+        assert!(tokio::time::timeout(Duration::from_secs(1), body.next())
+            .await
+            .expect("stale event stream must finish promptly")
+            .is_none());
+        drop(transition);
     }
 }

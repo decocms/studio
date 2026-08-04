@@ -264,11 +264,14 @@ impl SetupOrchestrator {
     /// durable signal state handles shutdown landing between registration and
     /// the subsequent `Command::spawn`.
     pub(crate) fn register_task(&self, entry: TaskEntry) -> bool {
+        let Some(admission) = self.tasks.admit() else {
+            return false;
+        };
         let _registration = self.lock_task_registration();
         if self.is_closed() {
             return false;
         }
-        self.tasks.insert(entry);
+        admission.register(entry);
         true
     }
 
@@ -313,7 +316,10 @@ impl SetupOrchestrator {
         kill_grace: Duration,
     ) -> SetupShutdownResult {
         self.close();
-        let tasks = self.tasks.kill_all_and_wait(term_grace, kill_grace).await;
+        let tasks = self
+            .tasks
+            .close_and_kill_all_and_wait(term_grace, kill_grace)
+            .await;
 
         let worker = self.lock_worker().take();
         let worker_stopped = match worker {

@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::routes::threads::db::{RtThread, RtThreadFence, ThreadsDb};
 use crate::state::AppState;
+use crate::terminal::registry::PreparationCancellation;
 
 const MCP_SERVER_NAME: &str = "cms";
 const MCP_URL_ENV: &str = "DECOCMS_MCP_URL";
@@ -318,6 +319,8 @@ impl PreparedLaunch {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LaunchContextError {
+    #[error("coding agent preparation was canceled")]
+    Canceled,
     #[error("thread is no longer available")]
     StaleThread,
     #[error("the selected agent is unavailable: {0}")]
@@ -349,6 +352,9 @@ pub struct LaunchRequest<'a> {
     pub mcp_token: &'a str,
     /// Newest checkpoint read before the new `starting` row is reserved.
     pub provider_session_id: Option<&'a str>,
+    pub cancellation: &'a PreparationCancellation,
+    pub account_epoch: crate::sandbox::manager::AccountEpoch,
+    pub identity_generation: u64,
 }
 
 pub async fn prepare(
@@ -356,6 +362,8 @@ pub async fn prepare(
     db: &'static ThreadsDb,
     request: LaunchRequest<'_>,
 ) -> Result<PreparedLaunch, LaunchContextError> {
+    require_account_epoch(state, request.account_epoch)?;
+    require_active_preparation(request.cancellation)?;
     let thread = db
         .rt_get_thread_for_fence(request.fence)
         .map_err(|error| LaunchContextError::Storage(error.to_string()))?
@@ -364,11 +372,40 @@ pub async fn prepare(
     // The picker consumes the same compatibility probe, but repeat it at the
     // process boundary so a stale renderer or direct WebSocket request cannot
     // launch an installed-yet-unsupported provider.
-    harness::detect::require_launch_ready(request.harness, &argv).await?;
-    let virtual_mcp = load_virtual_mcp(request.fence, &thread).await?;
-    let cwd = resolve_cwd(state, request.fence, &thread, &virtual_mcp).await?;
-    let system_prompt =
-        build_system_prompt(state, request.fence, &thread, &virtual_mcp, &cwd).await;
+    tokio::select! {
+        biased;
+        () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+        result = harness::detect::require_launch_ready(request.harness, &argv) => {
+            result?;
+        },
+    }
+    require_account_epoch(state, request.account_epoch)?;
+    let virtual_mcp = load_virtual_mcp(
+        state,
+        request.fence,
+        &thread,
+        request.cancellation,
+        request.account_epoch,
+        request.identity_generation,
+    )
+    .await?;
+    require_active_preparation(request.cancellation)?;
+    let cwd = resolve_cwd(
+        state,
+        request.fence,
+        &thread,
+        &virtual_mcp,
+        request.cancellation,
+        request.account_epoch,
+    )
+    .await?;
+    require_active_preparation(request.cancellation)?;
+    let system_prompt = tokio::select! {
+        biased;
+        () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+        prompt = build_system_prompt(state, request.fence, &thread, &virtual_mcp, &cwd) => prompt,
+    };
+    require_active_preparation(request.cancellation)?;
     let credentials = crate::sandbox::org_mount::local_credentials()
         .cloned()
         .ok_or(LaunchContextError::LocalEndpointUnavailable)?;
@@ -377,7 +414,13 @@ pub async fn prepare(
     let mut codex_hook_trust = None;
 
     let state_dir = managed_state_dir(&state.app_root, request.fence);
+    // Managed filesystem operations run to completion inside the preparation
+    // phase. Dropping a Tokio filesystem future on cancellation can leave its
+    // blocking worker writing after lifecycle cleanup has already returned.
+    require_account_epoch(state, request.account_epoch)?;
     create_private_dir(&state_dir).await?;
+    require_account_epoch(state, request.account_epoch)?;
+    require_active_preparation(request.cancellation)?;
     let hook_url = format!(
         "{}/_local/agent-hooks/{}",
         credentials.base_url, request.terminal_session_id
@@ -408,7 +451,11 @@ pub async fn prepare(
     let mut title_environment = harness::title::TitleEnvironment::default();
     match request.harness {
         HarnessId::ClaudeCode => {
-            let trust_roots = workspace_trust_roots(&cwd).await?;
+            let trust_roots = tokio::select! {
+                biased;
+                () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+                roots = workspace_trust_roots(&cwd) => roots?,
+            };
             let project_key = trust_roots
                 .claude
                 .to_str()
@@ -418,13 +465,20 @@ pub async fn prepare(
                     )
                 })?
                 .to_string();
+            let state_path = tokio::select! {
+                biased;
+                () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+                path = claude_state_path(&cwd) => path?,
+            };
             claude_workspace_trust = Some(ClaudeWorkspaceTrust {
-                state_path: claude_state_path(&cwd).await?,
+                state_path,
                 project_key,
             });
             // Claude settings are thread-owned, so deletion removes the
             // complete overlay without affecting another chat.
-            let hook_script = ensure_hook_forwarder(&state_dir).await?;
+            require_active_preparation(request.cancellation)?;
+            let hook_script = ensure_hook_forwarder(&state_dir, request.cancellation).await?;
+            require_active_preparation(request.cancellation)?;
             prepare_claude(
                 &state_dir,
                 &hook_script,
@@ -434,9 +488,14 @@ pub async fn prepare(
                 &mut argv,
             )
             .await?;
+            require_active_preparation(request.cancellation)?;
         }
         HarnessId::Codex => {
-            let trust_roots = workspace_trust_roots(&cwd).await?;
+            let trust_roots = tokio::select! {
+                biased;
+                () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+                roots = workspace_trust_roots(&cwd) => roots?,
+            };
             let codex_prefix_argv = argv.clone();
             // Codex refreshes auth.json by replacing it. All chats for one
             // Studio account therefore share a regular, account-owned home;
@@ -445,7 +504,12 @@ pub async fn prepare(
             let home_lock = state
                 .agent_sessions
                 .codex_home_lock(&request.fence.account_scope);
-            let home_guard = home_lock.lock_owned().await;
+            let home_guard = tokio::select! {
+                biased;
+                () = request.cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+                guard = home_lock.lock_owned() => guard,
+            };
+            require_active_preparation(request.cancellation)?;
             let codex_home = prepare_codex(
                 &state.app_root,
                 &system_prompt,
@@ -456,6 +520,7 @@ pub async fn prepare(
                 &trust_roots.codex,
             )
             .await?;
+            require_active_preparation(request.cancellation)?;
             let managed_hook_command = shell_quote_path(
                 &codex_home
                     .join("studio-runtime")
@@ -472,6 +537,7 @@ pub async fn prepare(
             env.push(("CODEX_HOME".to_string(), codex_home.display().to_string()));
         }
         HarnessId::OpenCode => {
+            require_active_preparation(request.cancellation)?;
             let config = prepare_opencode(
                 &state_dir,
                 &system_prompt,
@@ -480,6 +546,7 @@ pub async fn prepare(
                 provider_session_id.as_deref(),
             )
             .await?;
+            require_active_preparation(request.cancellation)?;
             env.push((OPENCODE_CONFIG_CONTENT_ENV.to_string(), config));
             // Override ambient shell/dev-runner state on fresh launches too.
             // Otherwise an inherited stale resume id would make the plugin
@@ -487,6 +554,9 @@ pub async fn prepare(
             env.push(opencode_resume_environment(provider_session_id.as_deref()));
         }
     }
+
+    require_account_epoch(state, request.account_epoch)?;
+    require_active_preparation(request.cancellation)?;
 
     Ok(PreparedLaunch {
         harness: request.harness,
@@ -503,16 +573,33 @@ pub async fn prepare(
 }
 
 async fn load_virtual_mcp(
+    state: &AppState,
     fence: &RtThreadFence,
     thread: &RtThread,
+    cancellation: &PreparationCancellation,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    identity_generation: u64,
 ) -> Result<Value, LaunchContextError> {
-    let response = crate::routes::upstream::call_org_tool(
-        &fence.organization_id,
-        "COLLECTION_VIRTUAL_MCP_GET",
-        &json!({ "id": thread.virtual_mcp_id }),
-    )
-    .await
-    .map_err(LaunchContextError::VirtualMcp)?;
+    let input = json!({ "id": thread.virtual_mcp_id });
+    let response = tokio::select! {
+        biased;
+        () = cancellation.cancelled() => return Err(LaunchContextError::Canceled),
+        response = crate::routes::upstream::call_org_tool_for_identity(
+            state,
+            account_epoch,
+            identity_generation,
+            &fence.organization_id,
+            "COLLECTION_VIRTUAL_MCP_GET",
+            &input,
+        ) => match response {
+            Ok(response) => response,
+            Err(crate::routes::upstream::OrgToolCallError::StaleIdentity) => {
+                return Err(LaunchContextError::Canceled);
+            }
+            Err(error) => return Err(LaunchContextError::VirtualMcp(error.to_string())),
+        },
+    };
+    require_active_preparation(cancellation)?;
     virtual_mcp_entity(response).map_err(|error| LaunchContextError::VirtualMcp(error.to_string()))
 }
 
@@ -541,7 +628,20 @@ async fn resolve_cwd(
     fence: &RtThreadFence,
     thread: &RtThread,
     virtual_mcp: &Value,
+    cancellation: &PreparationCancellation,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
 ) -> Result<PathBuf, LaunchContextError> {
+    let sandbox_branch = crate::sandbox::normalize_branch(thread.branch.as_deref());
+    let teardown_on_cancel = match crate::sandbox::synthetic_thread_id(sandbox_branch) {
+        Ok(Some(thread_id)) if thread_id == fence.thread_id => true,
+        Ok(Some(_)) => {
+            return Err(LaunchContextError::Workspace(
+                "thread-backed sandbox branch belongs to a different chat".to_string(),
+            ))
+        }
+        Ok(None) => false,
+        Err(error) => return Err(LaunchContextError::Workspace(error.to_string())),
+    };
     if let Some(mut config) = crate::routes::intercept::config_from_virtual_mcp(
         &thread.virtual_mcp_id,
         thread.branch.as_deref(),
@@ -553,17 +653,52 @@ async fn resolve_cwd(
             .get_or_insert_with(|| fence.organization_id.clone());
         return state
             .sandbox_manager
-            .ensure(&config)
+            .ensure_for_terminal(
+                account_epoch,
+                &config,
+                cancellation.subscribe(),
+                teardown_on_cancel,
+            )
             .await
             .map(|sandbox| sandbox.workdir.clone())
-            .map_err(LaunchContextError::Sandbox);
+            .map_err(|error| match error {
+                crate::sandbox::manager::TerminalEnsureError::Canceled => {
+                    LaunchContextError::Canceled
+                }
+                crate::sandbox::manager::TerminalEnsureError::Failed(error) => {
+                    LaunchContextError::Sandbox(error)
+                }
+            });
     }
 
+    require_active_preparation(cancellation)?;
+    require_account_epoch(state, account_epoch)?;
     let org_dir = crate::sandbox::org_view::org_mount_root(&state.app_root, &fence.organization_id)
         .ok_or_else(|| LaunchContextError::Workspace("invalid organization path".to_string()))?;
     crate::sandbox::org_mount::warm(&state.app_root, &fence.organization_id);
     tokio::fs::create_dir_all(&org_dir).await?;
+    require_active_preparation(cancellation)?;
     Ok(org_dir)
+}
+
+fn require_account_epoch(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> Result<(), LaunchContextError> {
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)
+        .map_err(|_| LaunchContextError::Canceled)
+}
+
+fn require_active_preparation(
+    cancellation: &PreparationCancellation,
+) -> Result<(), LaunchContextError> {
+    if cancellation.is_cancelled() {
+        Err(LaunchContextError::Canceled)
+    } else {
+        Ok(())
+    }
 }
 
 async fn build_system_prompt(
@@ -606,11 +741,14 @@ async fn prepare_claude(
     provider_session_id: Option<&str>,
     argv: &mut Vec<String>,
 ) -> Result<(), LaunchContextError> {
+    require_active_preparation(request.cancellation)?;
     let prompt_path = state_dir.join("claude-system-prompt.txt");
     write_private_file(&prompt_path, system_prompt.as_bytes(), false).await?;
+    require_active_preparation(request.cancellation)?;
     let settings_path = state_dir.join("claude-hooks.json");
     let settings = claude_hook_settings(hook_script);
     write_private_file(&settings_path, &serde_json::to_vec(&settings)?, false).await?;
+    require_active_preparation(request.cancellation)?;
 
     argv.extend([
         "--append-system-prompt-file".to_string(),
@@ -658,6 +796,7 @@ async fn prepare_codex(
         request.fence,
         codex_auth_source_path().as_deref(),
         &config,
+        request.cancellation,
     )
     .await?;
 
@@ -701,8 +840,10 @@ async fn prepare_opencode(
     argv: &mut Vec<String>,
     provider_session_id: Option<&str>,
 ) -> Result<String, LaunchContextError> {
+    require_active_preparation(request.cancellation)?;
     let plugin_path = state_dir.join("opencode-lifecycle.js");
     write_private_file(&plugin_path, OPENCODE_LIFECYCLE_PLUGIN.as_bytes(), false).await?;
+    require_active_preparation(request.cancellation)?;
     let plugin_url = reqwest::Url::from_file_path(&plugin_path).map_err(|()| {
         LaunchContextError::Workspace(format!(
             "could not encode OpenCode lifecycle plugin path: {}",
@@ -1573,10 +1714,16 @@ fn opencode_config(
     .to_string()
 }
 
-async fn ensure_hook_forwarder(state_dir: &Path) -> Result<PathBuf, std::io::Error> {
+async fn ensure_hook_forwarder(
+    state_dir: &Path,
+    cancellation: &PreparationCancellation,
+) -> Result<PathBuf, LaunchContextError> {
+    require_active_preparation(cancellation)?;
     create_private_dir(state_dir).await?;
+    require_active_preparation(cancellation)?;
     let path = state_dir.join(HOOK_FORWARDER_FILENAME);
     write_private_file(&path, HOOK_FORWARDER_SCRIPT.as_bytes(), true).await?;
+    require_active_preparation(cancellation)?;
     Ok(path)
 }
 
@@ -1676,18 +1823,23 @@ async fn prepare_codex_managed_files(
     fence: &RtThreadFence,
     auth_source: Option<&Path>,
     profile_config: &str,
+    cancellation: &PreparationCancellation,
 ) -> Result<(PathBuf, String), LaunchContextError> {
+    require_active_preparation(cancellation)?;
     let codex_home = managed_codex_home(app_root, &fence.account_scope);
-    initialize_codex_home(&codex_home, auth_source).await?;
+    initialize_codex_home(&codex_home, auth_source, cancellation).await?;
+    require_active_preparation(cancellation)?;
 
     let runtime_dir = codex_home.join("studio-runtime");
-    let hook_script = ensure_hook_forwarder(&runtime_dir).await?;
+    let hook_script = ensure_hook_forwarder(&runtime_dir, cancellation).await?;
+    require_active_preparation(cancellation)?;
     write_private_file(
         &codex_home.join("hooks.json"),
         &serde_json::to_vec(&codex_hook_settings(&hook_script))?,
         false,
     )
     .await?;
+    require_active_preparation(cancellation)?;
 
     let profile_name = codex_profile_name(fence);
     write_private_file(
@@ -1696,22 +1848,28 @@ async fn prepare_codex_managed_files(
         false,
     )
     .await?;
+    require_active_preparation(cancellation)?;
     Ok((codex_home, profile_name))
 }
 
 async fn initialize_codex_home(
     codex_home: &Path,
     auth_source: Option<&Path>,
-) -> Result<(), std::io::Error> {
+    cancellation: &PreparationCancellation,
+) -> Result<(), LaunchContextError> {
+    require_active_preparation(cancellation)?;
     create_private_dir(codex_home).await?;
+    require_active_preparation(cancellation)?;
     let marker = codex_home.join(CODEX_HOME_INITIALIZED_MARKER);
     let destination = codex_home.join("auth.json");
     let initialized = regular_file_if_present(&marker, "Codex home marker").await?;
     let destination_exists = regular_file_if_present(&destination, "managed Codex auth").await?;
+    require_active_preparation(cancellation)?;
 
     if initialized {
         if destination_exists {
             set_private_file_permissions(&destination, false).await?;
+            require_active_preparation(cancellation)?;
         }
         // Absence after initialization is authoritative (for example, Codex
         // logged out). Never silently restore an older system credential.
@@ -1728,20 +1886,25 @@ async fn initialize_codex_home(
                             "Codex auth source exceeds {MAX_CODEX_AUTH_BYTES} bytes: {}",
                             source.display()
                         ),
-                    ));
+                    )
+                    .into());
                 }
                 let contents = tokio::fs::read(source).await?;
+                require_active_preparation(cancellation)?;
                 write_private_file(&destination, &contents, false).await?;
+                require_active_preparation(cancellation)?;
             }
         }
     } else {
         set_private_file_permissions(&destination, false).await?;
+        require_active_preparation(cancellation)?;
     }
 
     // The marker lands last. A crash before it is safe: a complete regular
     // destination is preserved on retry, and a missing destination may be
     // seeded again before any provider process has been admitted.
-    write_private_file(&marker, b"initialized\n", false).await
+    write_private_file(&marker, b"initialized\n", false).await?;
+    require_active_preparation(cancellation)
 }
 
 async fn regular_file_if_present(path: &Path, description: &str) -> Result<bool, std::io::Error> {
@@ -2273,6 +2436,7 @@ mod tests {
     #[test]
     fn claude_normal_launches_bypass_permissions_before_resume() {
         let fence = test_fence("account", "thread");
+        let cancellation = PreparationCancellation::test_uncancelled();
         for approval_mode in ["default", "auto"] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2283,6 +2447,9 @@ mod tests {
                 hook_token: "hook",
                 mcp_token: "mcp",
                 provider_session_id: Some("session"),
+                cancellation: &cancellation,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             };
             let mut argv = Vec::new();
             append_claude_launch_args(request, Some("session"), &mut argv);
@@ -2306,6 +2473,7 @@ mod tests {
     #[test]
     fn claude_plan_and_readonly_launches_never_bypass_permissions() {
         let fence = test_fence("account", "thread");
+        let cancellation = PreparationCancellation::test_uncancelled();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2316,6 +2484,9 @@ mod tests {
                 hook_token: "hook",
                 mcp_token: "mcp",
                 provider_session_id: None,
+                cancellation: &cancellation,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             };
             let mut argv = Vec::new();
             append_claude_launch_args(request, None, &mut argv);
@@ -2331,6 +2502,7 @@ mod tests {
     #[test]
     fn codex_workspace_trust_override_is_launch_scoped_and_precedes_resume() {
         let fence = test_fence("account", "thread");
+        let cancellation = PreparationCancellation::test_uncancelled();
         let request = LaunchRequest {
             fence: &fence,
             terminal_session_id: "terminal",
@@ -2340,6 +2512,9 @@ mod tests {
             hook_token: "hook",
             mcp_token: "mcp",
             provider_session_id: Some("session"),
+            cancellation: &cancellation,
+            account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+            identity_generation: 0,
         };
         let trust_root = Path::new("/tmp/quote-\"-backslash-\\-café");
         let mut argv = Vec::new();
@@ -2376,6 +2551,7 @@ mod tests {
     #[test]
     fn codex_plan_and_readonly_launches_remain_sandboxed_read_only() {
         let fence = test_fence("account", "thread");
+        let cancellation = PreparationCancellation::test_uncancelled();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let request = LaunchRequest {
                 fence: &fence,
@@ -2386,6 +2562,9 @@ mod tests {
                 hook_token: "hook",
                 mcp_token: "mcp",
                 provider_session_id: None,
+                cancellation: &cancellation,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             };
             let mut argv = Vec::new();
             append_codex_launch_args(
@@ -2409,6 +2588,7 @@ mod tests {
     #[test]
     fn codex_auto_launch_is_yolo_without_separate_approval_or_sandbox_flags() {
         let fence = test_fence("account", "thread");
+        let cancellation = PreparationCancellation::test_uncancelled();
         let request = LaunchRequest {
             fence: &fence,
             terminal_session_id: "terminal",
@@ -2418,6 +2598,9 @@ mod tests {
             hook_token: "hook",
             mcp_token: "mcp",
             provider_session_id: None,
+            cancellation: &cancellation,
+            account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+            identity_generation: 0,
         };
         let mut argv = Vec::new();
         append_codex_launch_args(
@@ -2647,9 +2830,74 @@ mod tests {
         }
     }
 
+    fn test_thread(fence: &RtThreadFence, virtual_mcp_id: &str, branch: &str) -> RtThread {
+        RtThread {
+            id: fence.thread_id.clone(),
+            organization_id: fence.organization_id.clone(),
+            title: "Chat".to_string(),
+            description: None,
+            hidden: false,
+            status: "active".to_string(),
+            created_by: "user".to_string(),
+            updated_by: None,
+            virtual_mcp_id: virtual_mcp_id.to_string(),
+            trigger_id: None,
+            branch: Some(branch.to_string()),
+            sandbox_provider_kind: None,
+            harness_id: None,
+            metadata: None,
+            run_config: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn mismatched_reserved_branch_is_rejected_before_sandbox_materialization() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let fence = test_fence("account", "expected-thread");
+        let clone_url = "https://github.com/acme/reserved-branch.git";
+        let mismatched_branch = "thread:another-thread/connection-1";
+        let thread = test_thread(&fence, "vmcp-reserved", mismatched_branch);
+        let virtual_mcp = json!({
+            "metadata": {
+                "githubRepo": { "url": clone_url }
+            }
+        });
+        let cancellation = PreparationCancellation::test_uncancelled();
+        let account_epoch = state.sandbox_manager.account_epoch();
+
+        let error = resolve_cwd(
+            &state,
+            &fence,
+            &thread,
+            &virtual_mcp,
+            &cancellation,
+            account_epoch,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(error, LaunchContextError::Workspace(_)));
+        let handle = crate::sandbox::SandboxManager::compute_handle(clone_url, mismatched_branch)
+            .expect("test clone URL is scopeable");
+        assert!(!state
+            .sandbox_manager
+            .is_registered_for_account(account_epoch, &handle)
+            .unwrap());
+        assert!(state
+            .sandbox_manager
+            .get_for_account(account_epoch, &handle)
+            .unwrap()
+            .is_none());
+        assert!(!crate::sandbox::worktree_root(root.path(), &handle).exists());
+    }
+
     #[tokio::test]
     async fn codex_threads_share_regular_account_auth_but_keep_distinct_profiles() {
         let root = tempfile::tempdir().unwrap();
+        let cancellation = PreparationCancellation::test_uncancelled();
         let system_home = root.path().join("system-codex");
         tokio::fs::create_dir_all(&system_home).await.unwrap();
         let source_auth = system_home.join("auth.json");
@@ -2664,6 +2912,7 @@ mod tests {
             &first_fence,
             Some(&source_auth),
             "developer_instructions = \"first\"\n",
+            &cancellation,
         )
         .await
         .unwrap();
@@ -2672,6 +2921,7 @@ mod tests {
             &second_fence,
             Some(&source_auth),
             "developer_instructions = \"second\"\n",
+            &cancellation,
         )
         .await
         .unwrap();
@@ -2719,6 +2969,7 @@ mod tests {
     #[tokio::test]
     async fn opencode_normal_launches_enable_auto_before_exact_session_resume() {
         let fence = test_fence("account", "thread-one");
+        let cancellation = PreparationCancellation::test_uncancelled();
         for approval_mode in ["default", "auto"] {
             let root = tempfile::tempdir().unwrap();
             let request = LaunchRequest {
@@ -2730,6 +2981,9 @@ mod tests {
                 hook_token: "hook-token",
                 mcp_token: "mcp-token",
                 provider_session_id: Some("ses_exact"),
+                cancellation: &cancellation,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             };
             let mut argv = Vec::new();
             let config = prepare_opencode(
@@ -2761,6 +3015,7 @@ mod tests {
 
     #[tokio::test]
     async fn opencode_readonly_and_plan_launches_never_enable_auto() {
+        let cancellation = PreparationCancellation::test_uncancelled();
         for (approval_mode, plan_mode) in [("readonly", false), ("default", true), ("auto", true)] {
             let root = tempfile::tempdir().unwrap();
             let fence = test_fence("account", "thread-one");
@@ -2773,6 +3028,9 @@ mod tests {
                 hook_token: "hook-token",
                 mcp_token: "mcp-token",
                 provider_session_id: None,
+                cancellation: &cancellation,
+                account_epoch: crate::sandbox::manager::AccountEpoch::for_test(),
+                identity_generation: 0,
             };
             let mut argv = Vec::new();
             let config = prepare_opencode(root.path(), "instructions", request, &mut argv, None)
@@ -2795,6 +3053,7 @@ mod tests {
     #[tokio::test]
     async fn initialized_codex_home_does_not_reseed_deleted_auth() {
         let root = tempfile::tempdir().unwrap();
+        let cancellation = PreparationCancellation::test_uncancelled();
         let source_auth = root.path().join("system-auth.json");
         tokio::fs::write(&source_auth, br#"{"token":"first"}"#)
             .await
@@ -2805,6 +3064,7 @@ mod tests {
             &fence,
             Some(&source_auth),
             "developer_instructions = \"first\"\n",
+            &cancellation,
         )
         .await
         .unwrap();
@@ -2820,6 +3080,7 @@ mod tests {
             &fence,
             Some(&source_auth),
             "developer_instructions = \"second\"\n",
+            &cancellation,
         )
         .await
         .unwrap();
@@ -2833,6 +3094,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let root = tempfile::tempdir().unwrap();
+        let cancellation = PreparationCancellation::test_uncancelled();
         let actual_auth = root.path().join("actual-auth.json");
         tokio::fs::write(&actual_auth, b"{}").await.unwrap();
         let source_link = root.path().join("source-auth.json");
@@ -2843,6 +3105,7 @@ mod tests {
             &source_fence,
             Some(&source_link),
             "developer_instructions = \"source\"\n",
+            &cancellation,
         )
         .await
         .unwrap_err();
@@ -2857,6 +3120,7 @@ mod tests {
             &destination_fence,
             Some(&actual_auth),
             "developer_instructions = \"destination\"\n",
+            &cancellation,
         )
         .await
         .unwrap_err();

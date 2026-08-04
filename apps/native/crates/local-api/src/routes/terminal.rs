@@ -20,17 +20,16 @@ use terminal_session::{
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
-use crate::routes::intercept::thread_tools;
+use crate::routes::threads::authority::{self, ThreadAccess};
 use crate::routes::threads::db::{
-    RtAccountScope, RtTerminalLogicalState, RtTerminalPhysicalState, RtTerminalResumeDecision,
-    RtTerminalSession, RtTerminalSessionCasOutcome, RtTerminalSessionCreateOutcome, RtThreadFence,
-    ThreadsDb,
+    RtTerminalLogicalState, RtTerminalPhysicalState, RtTerminalResumeDecision, RtTerminalSession,
+    RtTerminalSessionCasOutcome, RtTerminalSessionCreateOutcome, RtThreadFence, ThreadsDb,
 };
-use crate::routes::threads::shared_db;
 use crate::state::AppState;
 use crate::terminal::launch_context::{self, LaunchRequest, PreparedLaunch};
 use crate::terminal::registry::{
-    generate_hook_token, generate_mcp_token, ManagedTerminal, PromptRequestStatus, WriterLeaseGuard,
+    generate_hook_token, generate_mcp_token, ManagedTerminal, PreparationReservation,
+    PromptRequestStatus, WriterLeaseGuard,
 };
 
 const MAX_CONTROL_FRAME_BYTES: usize = 256 * 1024;
@@ -47,7 +46,7 @@ const CLAUDE_RESUME_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartTerminalBody {
     pub harness_id: Option<String>,
     #[serde(default = "default_approval_mode")]
@@ -66,11 +65,11 @@ fn default_approval_mode() -> String {
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase"
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
 )]
 enum ClientFrame {
     Start {
-        #[serde(alias = "harness_id")]
         harness_id: String,
         #[serde(default = "default_approval_mode")]
         approval_mode: String,
@@ -130,6 +129,11 @@ struct SpawnFences {
     _claude_state: Option<tokio::sync::OwnedMutexGuard<()>>,
 }
 
+struct SpawnAdmissionFences {
+    account: upstream::SessionTransitionGuard,
+    claude_state: Option<tokio::sync::OwnedMutexGuard<()>>,
+}
+
 enum SpawnFenceError {
     Account(String),
     WorkspaceTrust(String),
@@ -144,11 +148,11 @@ struct SessionSpawnOwner {
     provider_session_id: Option<String>,
     hook_token: String,
     mcp_token: String,
-    launch: PreparedLaunch,
-    command: CommandSpec,
     key: SessionKey,
-    start_guard: tokio::sync::OwnedMutexGuard<()>,
+    preparation: PreparationReservation,
     upstream_session: upstream::UpstreamSession,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    identity_generation: u64,
 }
 
 impl SpawnFenceError {
@@ -171,6 +175,18 @@ struct Handshake {
 enum ClientFrameError {
     Invalid(String),
     StaleAttachment { request_id: Option<String> },
+}
+
+#[derive(Debug)]
+enum HandshakeError {
+    AccountChanged,
+    Invalid(String),
+}
+
+impl From<String> for HandshakeError {
+    fn from(error: String) -> Self {
+        Self::Invalid(error)
+    }
 }
 
 #[derive(Debug)]
@@ -260,7 +276,9 @@ pub async fn get(
     State(state): State<AppState>,
     Path((org, thread_id)): Path<(String, String)>,
 ) -> ApiResult<Json<Value>> {
-    let (db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
+    let upstream_session = upstream::global();
+    let _account_transition = upstream_session.begin_transition().await;
+    let (db, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
     let session = db
         .rt_get_live_terminal_session_fenced(&fence)
         .map_err(|error| terminal_storage_error("load live coding agent session", error))?
@@ -295,7 +313,7 @@ pub async fn start(
     })?)?;
     let size = terminal_size(parsed.rows.unwrap_or(30), parsed.cols.unwrap_or(100))?;
     validate_approval_mode(&parsed.approval_mode)?;
-    let (db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
+    let (db, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
     let managed = ensure_session(
         &state,
         db,
@@ -319,9 +337,56 @@ pub async fn delete(
     State(state): State<AppState>,
     Path((org, thread_id)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    let (_db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
+    // Resolve once to choose the lifecycle lock, then resolve the exact same
+    // incarnation again after winning it under the account-transition fence.
+    // An account switch can therefore never terminate the prior account's PTY.
+    let initial =
+        authority::resolve_current_thread(&state, &org, &thread_id, ThreadAccess::Owner).await?;
+    let db = initial.db;
+    let fence = initial.fence;
     let start_lock = state.agent_sessions.start_lock(&fence);
-    let _guard = start_lock.lock().await;
+    let _start_guard = start_lock.lock().await;
+    let upstream_session = upstream::global();
+    let _account_transition = upstream_session.begin_transition().await;
+    let current =
+        authority::resolve_current_thread(&state, &org, &thread_id, ThreadAccess::Owner).await?;
+    if current.fence != fence {
+        return Err(ApiError::conflict(
+            "This chat changed while the coding agent was closing. Try again.",
+        ));
+    }
+
+    let preparation = state.agent_sessions.cancel_preparation(&fence);
+    let had_preparation = preparation.had_preparations();
+    preparation.wait().await.map_err(|error| {
+        tracing::warn!(%error, thread_id = %fence.thread_id, "coding agent preparation did not stop before close");
+        ApiError::internal(
+            "We couldn't close the coding agent preparation. Restart Studio and try again.",
+        )
+    })?;
+    if had_preparation {
+        launch_context::cleanup_managed_state(&state.app_root, &fence)
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, thread_id = %fence.thread_id, "could not clean canceled coding agent preparation");
+                ApiError::internal(
+                    "We couldn't clean up the canceled coding agent preparation. Restart Studio and try again.",
+                )
+            })?;
+    }
+    if let Some(session) = db
+        .rt_get_live_terminal_session_fenced(&fence)
+        .map_err(|error| terminal_storage_error("load closing coding agent session", error))?
+        .filter(|session| session.physical_state == RtTerminalPhysicalState::Starting)
+    {
+        mark_starting_session_exited_if_present(
+            db,
+            &fence,
+            &session.id,
+            "coding agent start was canceled before process creation",
+            true,
+        );
+    }
     state
         .agent_sessions
         .terminate_fence(&fence)
@@ -338,10 +403,26 @@ pub async fn websocket(
     State(state): State<AppState>,
     Path((org, thread_id)): Path<(String, String)>,
 ) -> ApiResult<Response> {
-    let (db, _scope, fence) = scoped_owned_thread(&state, &org, &thread_id).await?;
+    let scope = authority::current_account_scope().await?;
+    let account_guard = authority::lock_account_scope(&scope).await?;
+    let resolved = authority::resolve_scoped_thread(
+        &state,
+        scope,
+        &org,
+        &thread_id,
+        ThreadAccess::ActiveOwner,
+    )?;
+    let account_epoch = state.sandbox_manager.account_epoch();
+    let account_epoch_rx = state
+        .sandbox_manager
+        .watch_account_epoch(account_epoch)
+        .map_err(ApiError::conflict)?;
+    drop(account_guard);
+    let db = resolved.db;
+    let fence = resolved.fence;
     Ok(ws
         .max_message_size(MAX_CONTROL_FRAME_BYTES)
-        .on_upgrade(move |socket| serve_socket(socket, state, db, fence))
+        .on_upgrade(move |socket| serve_socket(socket, state, db, fence, account_epoch_rx))
         .into_response())
 }
 
@@ -350,23 +431,36 @@ async fn serve_socket(
     state: AppState,
     db: &'static ThreadsDb,
     fence: RtThreadFence,
+    mut account_epoch_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
 ) {
-    let handshake = match receive_handshake(&mut socket, db, &fence).await {
+    let handshake = match receive_handshake(&mut socket, db, &fence, &mut account_epoch_rx).await {
         Ok(handshake) => handshake,
-        Err(error) => {
+        Err(HandshakeError::AccountChanged) => return,
+        Err(HandshakeError::Invalid(error)) => {
             tracing::warn!(%error, "coding agent terminal handshake failed");
-            let _ = send_error_socket(
-                &mut socket,
-                "invalid_start",
-                "We couldn't open this coding agent. Refresh the chat and try again.",
-                false,
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(
+                    &mut socket,
+                    "invalid_start",
+                    "We couldn't open this coding agent. Refresh the chat and try again.",
+                    false,
+                ),
             )
             .await;
             return;
         }
     };
     let requested_size = handshake.options.size;
-    let managed = match ensure_session(&state, db, &fence, handshake.options).await {
+    let Some(managed_result) = until_account_change(
+        &mut account_epoch_rx,
+        ensure_session(&state, db, &fence, handshake.options),
+    )
+    .await
+    else {
+        return;
+    };
+    let managed = match managed_result {
         Ok(managed) => managed,
         Err(error) => {
             let retryable = error
@@ -379,45 +473,69 @@ async fn serve_socket(
                 .get("error")
                 .and_then(Value::as_str)
                 .unwrap_or("We couldn't start the coding agent. Restart Studio and try again.");
-            let _ = send_error_socket(&mut socket, "start_failed", message, retryable).await;
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(&mut socket, "start_failed", message, retryable),
+            )
+            .await;
             return;
         }
     };
+    if account_epoch_changed(&account_epoch_rx) {
+        return;
+    }
 
     let mut lifecycle = state.agent_sessions.subscribe_lifecycle();
     let row = match db.rt_get_terminal_session_fenced(&fence, managed.session.id()) {
         Ok(Some(row)) => row,
         Ok(None) => {
-            let _ = send_error_socket(
-                &mut socket,
-                "stale_session",
-                "This coding agent is no longer available. Reopen the chat and try again.",
-                false,
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(
+                    &mut socket,
+                    "stale_session",
+                    "This coding agent is no longer available. Reopen the chat and try again.",
+                    false,
+                ),
             )
             .await;
             return;
         }
         Err(error) => {
             tracing::warn!(%error, "could not load coding agent terminal state");
-            let _ = send_error_socket(
-                &mut socket,
-                "storage_error",
-                "We couldn't load this chat right now. Try again.",
-                true,
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(
+                    &mut socket,
+                    "storage_error",
+                    "We couldn't load this chat right now. Try again.",
+                    true,
+                ),
             )
             .await;
             return;
         }
     };
-    let writer = match managed.claim_writer_lease().await {
+    if account_epoch_changed(&account_epoch_rx) {
+        return;
+    }
+    let Some(writer_result) =
+        until_account_change(&mut account_epoch_rx, managed.claim_writer_lease()).await
+    else {
+        return;
+    };
+    let writer = match writer_result {
         Ok(writer) => writer,
         Err(error) => {
             tracing::warn!(%error, "could not claim coding agent terminal input ownership");
-            let _ = send_error_socket(
-                &mut socket,
-                "writer_unavailable",
-                "We couldn't open the coding agent terminal. Restart Studio and try again.",
-                false,
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(
+                    &mut socket,
+                    "writer_unavailable",
+                    "We couldn't open the coding agent terminal. Restart Studio and try again.",
+                    false,
+                ),
             )
             .await;
             return;
@@ -425,18 +543,37 @@ async fn serve_socket(
     };
     // Handshake dimensions belong to the new writer. Claim before resizing so
     // an older attachment cannot interleave input after this mutation.
-    if let Some(_permit) = writer.mutation_permit().await {
-        if let Err(error) = managed.session.resize(requested_size).await {
+    let Some(mutation_permit) =
+        until_account_change(&mut account_epoch_rx, writer.mutation_permit()).await
+    else {
+        return;
+    };
+    if let Some(_permit) = mutation_permit {
+        let Some(resize_result) = until_account_change(
+            &mut account_epoch_rx,
+            managed.session.resize(requested_size),
+        )
+        .await
+        else {
+            return;
+        };
+        if let Err(error) = resize_result {
             tracing::warn!(%error, "could not set coding agent terminal size");
-            let _ = send_error_socket(
-                &mut socket,
-                "resize_failed",
-                "We couldn't open the coding agent terminal. Reopen the chat and try again.",
-                true,
+            let _ = until_account_change(
+                &mut account_epoch_rx,
+                send_error_socket(
+                    &mut socket,
+                    "resize_failed",
+                    "We couldn't open the coding agent terminal. Reopen the chat and try again.",
+                    true,
+                ),
             )
             .await;
             return;
         }
+    }
+    if account_epoch_changed(&account_epoch_rx) {
+        return;
     }
     let initial_snapshot = managed.session.snapshot();
     let replay_until = initial_snapshot.next_offset;
@@ -450,21 +587,21 @@ async fn serve_socket(
         last_seq: replay_until,
         provider_session_available: row.provider_session_id.is_some(),
     });
-    if send_json(
-        &mut socket,
-        &json!({
-            "type": "ready",
-            "sessionId": ready.session_id,
-            "generation": ready.generation,
-            "harnessId": ready.harness_id,
-            "physicalState": ready.physical_state,
-            "logicalState": ready.logical_state,
-            "lastSeq": ready.last_seq,
-        }),
-    )
-    .await
-    .is_err()
-    {
+    let ready_frame = json!({
+        "type": "ready",
+        "sessionId": ready.session_id,
+        "generation": ready.generation,
+        "harnessId": ready.harness_id,
+        "physicalState": ready.physical_state,
+        "logicalState": ready.logical_state,
+        "lastSeq": ready.last_seq,
+    });
+    let Some(ready_result) =
+        until_account_change(&mut account_epoch_rx, send_json(&mut socket, &ready_frame)).await
+    else {
+        return;
+    };
+    if ready_result.is_err() {
         return;
     }
 
@@ -472,26 +609,58 @@ async fn serve_socket(
         let request_id = handshake
             .request_id
             .unwrap_or_else(|| Uuid::new_v4().to_string());
-        match writer.mutation_permit().await {
+        let Some(mutation_permit) =
+            until_account_change(&mut account_epoch_rx, writer.mutation_permit()).await
+        else {
+            return;
+        };
+        match mutation_permit {
             Some(permit) => {
-                let result =
-                    submit_prompt(&state, db, &fence, &managed, &prompt, &request_id).await;
+                let Some(result) = until_account_change(
+                    &mut account_epoch_rx,
+                    submit_prompt(&state, db, &fence, &managed, &prompt, &request_id),
+                )
+                .await
+                else {
+                    return;
+                };
                 drop(permit);
                 match result {
                     Ok(()) => {
-                        let _ = send_json(
-                            &mut socket,
-                            &json!({ "type": "prompt_accepted", "requestId": request_id }),
+                        let frame = json!({ "type": "prompt_accepted", "requestId": request_id });
+                        if until_account_change(
+                            &mut account_epoch_rx,
+                            send_json(&mut socket, &frame),
                         )
-                        .await;
+                        .await
+                        .is_none()
+                        {
+                            return;
+                        }
                     }
                     Err(error) => {
-                        let _ = send_prompt_error_socket(&mut socket, &request_id, &error).await;
+                        if until_account_change(
+                            &mut account_epoch_rx,
+                            send_prompt_error_socket(&mut socket, &request_id, &error),
+                        )
+                        .await
+                        .is_none()
+                        {
+                            return;
+                        }
                     }
                 }
             }
             None => {
-                let _ = send_stale_attachment_socket(&mut socket, Some(&request_id)).await;
+                if until_account_change(
+                    &mut account_epoch_rx,
+                    send_stale_attachment_socket(&mut socket, Some(&request_id)),
+                )
+                .await
+                .is_none()
+                {
+                    return;
+                }
             }
         }
     }
@@ -499,79 +668,118 @@ async fn serve_socket(
     let mut subscription = managed.session.subscribe(handshake.after_seq);
     loop {
         tokio::select! {
+            biased;
+            _ = account_epoch_rx.changed() => break,
             inbound = socket.recv() => {
                 let Some(inbound) = inbound else { break; };
                 match inbound {
                     Ok(Message::Text(text)) => {
-                        if let Err(error) = handle_client_frame(
-                            &state,
-                            db,
-                            &fence,
-                            &managed,
-                            &writer,
-                            &mut socket,
-                            &text,
-                        ).await {
+                        let Some(frame_result) = until_account_change(
+                            &mut account_epoch_rx,
+                            handle_client_frame(
+                                &state,
+                                db,
+                                &fence,
+                                &managed,
+                                &writer,
+                                &mut socket,
+                                &text,
+                            ),
+                        ).await else { break; };
+                        if let Err(error) = frame_result {
                             match error {
                                 ClientFrameError::Invalid(error) => {
                                     tracing::warn!(%error, "coding agent terminal command failed");
-                                    let _ = send_error_socket(
-                                        &mut socket,
-                                        "invalid_control",
-                                        "We couldn't complete that terminal action. Reopen the chat and try again.",
-                                        false,
-                                    ).await;
+                                    if until_account_change(
+                                        &mut account_epoch_rx,
+                                        send_error_socket(
+                                            &mut socket,
+                                            "invalid_control",
+                                            "We couldn't complete that terminal action. Reopen the chat and try again.",
+                                            false,
+                                        ),
+                                    ).await.is_none() { break; }
                                 }
                                 ClientFrameError::StaleAttachment { request_id } => {
-                                    let _ = send_stale_attachment_socket(&mut socket, request_id.as_deref()).await;
+                                    if until_account_change(
+                                        &mut account_epoch_rx,
+                                        send_stale_attachment_socket(&mut socket, request_id.as_deref()),
+                                    ).await.is_none() { break; }
                                 }
                             }
                         }
                     }
                     Ok(Message::Binary(data)) => {
-                        match writer.mutation_permit().await {
+                        let Some(mutation_permit) = until_account_change(
+                            &mut account_epoch_rx,
+                            writer.mutation_permit(),
+                        ).await else { break; };
+                        match mutation_permit {
                             Some(_permit) => {
-                                if let Err(error) = managed.session.write(data).await {
+                                let Some(write_result) = until_account_change(
+                                    &mut account_epoch_rx,
+                                    managed.session.write(data),
+                                ).await else { break; };
+                                if let Err(error) = write_result {
                                     tracing::warn!(%error, "could not write coding agent terminal input");
-                                    let _ = send_error_socket(
-                                        &mut socket,
-                                        "input_failed",
-                                        "We couldn't send input to the coding agent. Reopen the chat and try again.",
-                                        true,
-                                    ).await;
+                                    if until_account_change(
+                                        &mut account_epoch_rx,
+                                        send_error_socket(
+                                            &mut socket,
+                                            "input_failed",
+                                            "We couldn't send input to the coding agent. Reopen the chat and try again.",
+                                            true,
+                                        ),
+                                    ).await.is_none() { break; }
                                 }
                             }
                             None => {
-                                let _ = send_stale_attachment_socket(&mut socket, None).await;
+                                if until_account_change(
+                                    &mut account_epoch_rx,
+                                    send_stale_attachment_socket(&mut socket, None),
+                                ).await.is_none() { break; }
                             }
                         }
                     }
                     Ok(Message::Close(_)) | Err(_) => break,
                     Ok(Message::Ping(data)) => {
-                        if socket.send(Message::Pong(data)).await.is_err() { break; }
+                        let Some(result) = until_account_change(
+                            &mut account_epoch_rx,
+                            socket.send(Message::Pong(data)),
+                        ).await else { break; };
+                        if result.is_err() { break; }
                     }
                     Ok(Message::Pong(_)) => {}
                 }
             }
             event = subscription.recv() => {
                 let Ok(event) = event else { break; };
-                if forward_terminal_event(&mut socket, event, replay_until)
-                    .await
-                    .is_err()
-                {
+                let Some(result) = until_account_change(
+                    &mut account_epoch_rx,
+                    forward_terminal_event(&mut socket, event, replay_until),
+                ).await else { break; };
+                if result.is_err() {
                     break;
                 }
             }
             lifecycle_event = lifecycle.recv() => {
                 match lifecycle_event {
                     Ok(changed) if changed == fence => {
-                        if send_state(&mut socket, db, &fence, managed.session.id()).await.is_err() {
+                        let Some(result) = until_account_change(
+                            &mut account_epoch_rx,
+                            send_state(&mut socket, db, &fence, managed.session.id()),
+                        ).await else { break; };
+                        if result.is_err() {
                             break;
                         }
                     }
                     Ok(_) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        if send_state(&mut socket, db, &fence, managed.session.id()).await.is_err() {
+                        let Some(result) = until_account_change(
+                            &mut account_epoch_rx,
+                            send_state(&mut socket, db, &fence, managed.session.id()),
+                        ).await else { break; };
+                        if result.is_err() {
                             break;
                         }
                     }
@@ -582,17 +790,41 @@ async fn serve_socket(
     }
 }
 
+fn account_epoch_changed(
+    account_epoch_rx: &tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+) -> bool {
+    account_epoch_rx.has_changed().unwrap_or(true)
+}
+
+/// Await one potentially-stalled socket or terminal operation, but let an
+/// account transition win whenever both outcomes are ready. This is the
+/// common fence for pre-handshake waits, replay/live output, and control
+/// replies; a retained account-A socket can never resume sending under B.
+async fn until_account_change<T>(
+    account_epoch_rx: &mut tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+    future: impl Future<Output = T>,
+) -> Option<T> {
+    tokio::select! {
+        biased;
+        _ = account_epoch_rx.changed() => None,
+        output = future => Some(output),
+    }
+}
+
 async fn receive_handshake(
     socket: &mut WebSocket,
     db: &'static ThreadsDb,
     fence: &RtThreadFence,
-) -> Result<Handshake, String> {
+    account_epoch_rx: &mut tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+) -> Result<Handshake, HandshakeError> {
     loop {
-        let message = socket
-            .recv()
-            .await
-            .ok_or_else(|| "terminal connection closed before start".to_string())?
-            .map_err(|error| error.to_string())?;
+        let message = tokio::select! {
+            biased;
+            _ = account_epoch_rx.changed() => return Err(HandshakeError::AccountChanged),
+            message = socket.recv() => message
+                .ok_or_else(|| "terminal connection closed before start".to_string())?
+                .map_err(|error| error.to_string())?,
+        };
         match message {
             Message::Text(text) => {
                 let frame = parse_client_frame(&text)?;
@@ -652,22 +884,36 @@ async fn receive_handshake(
                         });
                     }
                     _ => {
-                        send_error_socket(
-                            socket,
-                            "start_required",
-                            "Choose a coding agent before using the terminal.",
-                            false,
+                        let Some(result) = until_account_change(
+                            account_epoch_rx,
+                            send_error_socket(
+                                socket,
+                                "start_required",
+                                "Choose a coding agent before using the terminal.",
+                                false,
+                            ),
                         )
                         .await
-                        .map_err(|error| error.to_string())?;
+                        else {
+                            return Err(HandshakeError::AccountChanged);
+                        };
+                        result.map_err(|error| error.to_string())?;
                     }
                 }
             }
-            Message::Close(_) => return Err("terminal connection closed before start".to_string()),
-            Message::Ping(data) => socket
-                .send(Message::Pong(data))
-                .await
-                .map_err(|error| error.to_string())?,
+            Message::Close(_) => {
+                return Err(HandshakeError::Invalid(
+                    "terminal connection closed before start".to_string(),
+                ))
+            }
+            Message::Ping(data) => {
+                let Some(result) =
+                    until_account_change(account_epoch_rx, socket.send(Message::Pong(data))).await
+                else {
+                    return Err(HandshakeError::AccountChanged);
+                };
+                result.map_err(|error| error.to_string())?;
+            }
             Message::Binary(_) | Message::Pong(_) => {}
         }
     }
@@ -680,40 +926,31 @@ async fn ensure_session(
     options: StartOptions,
 ) -> ApiResult<ManagedTerminal> {
     let start_lock = state.agent_sessions.start_lock(fence);
-    let start_guard = start_lock.lock_owned().await;
     let upstream_session = upstream::global();
+    {
+        let _start_guard = start_lock.clone().lock_owned().await;
+        let _account_transition = upstream_session.begin_transition().await;
+        validate_initial_start_admission(db, fence, options.harness).await?;
+        if let Some(managed) = reusable_managed_session(state, fence, options.harness) {
+            reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
+            state.agent_sessions.notify_lifecycle(fence);
+            return Ok(managed);
+        }
+    }
+
+    // CLI readiness may invoke a bounded subprocess, so it runs without the
+    // per-thread lifecycle lock. Admission is repeated afterward before any
+    // durable row is reserved.
+    require_supported_harness(options.harness).await?;
+
+    let start_guard = start_lock.lock_owned().await;
     let initial_account_transition = upstream_session.begin_transition().await;
-    require_current_account(fence)
-        .await
-        .map_err(|error| account_start_error(options.harness, error))?;
-    let current_thread = db
-        .rt_get_thread_for_fence(fence)
-        .map_err(|error| {
-            agent_start_internal_error(options.harness, "load chat before start", error)
-        })?
-        .ok_or_else(|| {
-            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
-        })?;
-    if current_thread.hidden {
-        return Err(ApiError::conflict(
-            "This chat is archived. Restore it before starting a coding agent.",
-        ));
-    }
-    if db.rt_thread_delete_pending(fence).map_err(|error| {
-        agent_start_internal_error(options.harness, "check chat deletion state", error)
-    })? {
-        return Err(ApiError::conflict(
-            "This chat is being deleted and can't start a coding agent.",
-        ));
-    }
-    if let Some(managed) = state.agent_sessions.get(fence).filter(|managed| {
-        !managed.session.snapshot().state.is_terminal() && managed.hook.harness == options.harness
-    }) {
+    validate_initial_start_admission(db, fence, options.harness).await?;
+    if let Some(managed) = reusable_managed_session(state, fence, options.harness) {
         reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
         state.agent_sessions.notify_lifecycle(fence);
         return Ok(managed);
     }
-    drop(initial_account_transition);
 
     let pinned = db
         .rt_harness_id_fenced(fence)
@@ -735,12 +972,6 @@ async fn ensure_session(
         )));
     }
 
-    // Fail before the durable session transaction pins this harness. The
-    // launch-context check repeats at the process boundary to close the
-    // executable/version TOCTOU window, but this preflight is what keeps a
-    // missing or unsupported selection on the fresh-chat picker.
-    require_supported_harness(options.harness).await?;
-
     let provider_session_id = match db
         .rt_terminal_resume_decision_fenced(fence, options.harness.wire_id())
         .map_err(|error| {
@@ -749,131 +980,269 @@ async fn ensure_session(
         RtTerminalResumeDecision::Fresh => None,
         RtTerminalResumeDecision::Resume(provider_session_id) => Some(provider_session_id),
     };
-    let terminal_session_id = Uuid::new_v4().to_string();
-    let commit = match db
-        .rt_create_terminal_session_fenced(fence, &terminal_session_id, options.harness.wire_id())
-        .map_err(|error| {
-            agent_start_internal_error(options.harness, "create coding agent session", error)
-        })? {
-        RtTerminalSessionCreateOutcome::Created(commit) => commit,
-        RtTerminalSessionCreateOutcome::ExistingLive(commit) => {
-            // A live durable row without an in-process PTY can only be an
-            // interrupted/failed start. Close it before admitting a retry.
-            if let Some(managed) = state.agent_sessions.get(fence) {
-                if managed.session.id() == commit.session.id
-                    && !managed.session.snapshot().state.is_terminal()
-                {
-                    reconcile_registered_session(db, fence, managed.session.id(), options.harness)?;
-                    state.agent_sessions.notify_lifecycle(fence);
-                    return Ok(managed);
-                }
-                if !managed.session.snapshot().state.is_terminal() {
-                    return Err(ApiError::conflict(format!(
-                        "We couldn't safely reopen {}. Restart Studio and try again.",
-                        agent_display_name(options.harness)
-                    )));
-                }
-            }
-            crate::terminal::lifecycle::mark_exited(
-                db,
-                fence,
-                &commit.session.id,
-                None,
-                false,
-                Some("terminal process was not present in the current app instance"),
-            )
-            .map_err(|error| {
-                agent_start_internal_error(
-                    options.harness,
-                    "close interrupted coding agent session",
-                    error,
-                )
-            })?;
-            let replacement_id = Uuid::new_v4().to_string();
-            match db
-                .rt_create_terminal_session_fenced(
-                    fence,
-                    &replacement_id,
-                    options.harness.wire_id(),
-                )
-                .map_err(|error| {
-                    agent_start_internal_error(
-                        options.harness,
-                        "replace interrupted coding agent session",
-                        error,
-                    )
-                })? {
-                RtTerminalSessionCreateOutcome::Created(commit) => commit,
-                RtTerminalSessionCreateOutcome::ExistingLive(_) => {
-                    return Err(retryable_start_error(ApiError::conflict(format!(
-                        "{} is already starting. Try again in a moment.",
-                        agent_display_name(options.harness)
-                    ))));
-                }
-            }
-        }
-    };
-    crate::terminal::lifecycle::emit_thread(fence, &commit.thread);
-
-    let hook_token = generate_hook_token();
-    let mcp_token = generate_mcp_token();
-    let launch = launch_context::prepare(
-        state,
-        db,
-        LaunchRequest {
-            fence,
-            terminal_session_id: &commit.session.id,
-            harness: options.harness,
-            approval_mode: &options.approval_mode,
-            plan_mode: options.plan_mode,
-            hook_token: &hook_token,
-            mcp_token: &mcp_token,
-            provider_session_id: provider_session_id.as_deref(),
-        },
-    )
-    .await;
-    let launch = match launch {
-        Ok(launch) => launch,
-        Err(error) => {
-            let diagnostic = error.to_string();
-            tracing::warn!(
-                harness = options.harness.wire_id(),
-                error = %diagnostic,
-                "coding agent launch preparation failed"
-            );
-            let _ = crate::terminal::lifecycle::mark_exited(
-                db,
-                fence,
-                &commit.session.id,
-                None,
-                false,
-                Some(&diagnostic),
-            );
-            return Err(launch_preparation_api_error(options.harness, &error));
-        }
-    };
-    let command = command_spec(state, &launch);
     let key = crate::terminal::AgentSessionRegistry::session_key(fence)
         .map_err(|error| terminal_start_error(options.harness, error))?;
+    let (terminal_session_id, preparation) =
+        reserve_durable_start(&state.agent_sessions, db, fence, options.harness)?;
+    let account_epoch = state.sandbox_manager.account_epoch();
+    let identity_generation = initial_account_transition.generation();
+    drop(initial_account_transition);
+    drop(start_guard);
+
+    // Once the durable reservation exists, a detached owner performs every
+    // preparation and finalizes or exits that exact row even if its HTTP or
+    // WebSocket waiter disconnects.
     run_spawn_owner(
         SessionSpawnOwner {
             state: state.clone(),
             db,
             fence: fence.clone(),
             options,
-            terminal_session_id: commit.session.id,
+            terminal_session_id,
             provider_session_id,
-            hook_token,
-            mcp_token,
-            launch,
-            command,
+            hook_token: generate_hook_token(),
+            mcp_token: generate_mcp_token(),
             key,
-            start_guard,
+            preparation,
             upstream_session,
+            account_epoch,
+            identity_generation,
         }
         .run(),
     )
     .await
+}
+
+async fn validate_initial_start_admission(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    harness: HarnessId,
+) -> ApiResult<()> {
+    require_current_account(fence)
+        .await
+        .map_err(|error| account_start_error(harness, error))?;
+    let current_thread = db
+        .rt_get_thread_for_fence(fence)
+        .map_err(|error| agent_start_internal_error(harness, "load chat before start", error))?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
+    if current_thread.hidden {
+        return Err(ApiError::conflict(
+            "This chat is archived. Restore it before starting a coding agent.",
+        ));
+    }
+    if db
+        .rt_thread_delete_pending(fence)
+        .map_err(|error| agent_start_internal_error(harness, "check chat deletion state", error))?
+    {
+        return Err(ApiError::conflict(
+            "This chat is being deleted and can't start a coding agent.",
+        ));
+    }
+    Ok(())
+}
+
+fn reusable_managed_session(
+    state: &AppState,
+    fence: &RtThreadFence,
+    harness: HarnessId,
+) -> Option<ManagedTerminal> {
+    state.agent_sessions.get(fence).filter(|managed| {
+        !managed.session.snapshot().state.is_terminal() && managed.hook.harness == harness
+    })
+}
+
+fn reserve_durable_start(
+    registry: &std::sync::Arc<crate::terminal::AgentSessionRegistry>,
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    harness: HarnessId,
+) -> ApiResult<(String, PreparationReservation)> {
+    if let Some(existing) = db
+        .rt_get_live_terminal_session_fenced(fence)
+        .map_err(|error| agent_start_internal_error(harness, "load live coding agent", error))?
+    {
+        if registry.is_preparing(fence, &existing.id) {
+            return Err(retryable_start_error(ApiError::conflict(format!(
+                "{} is already starting. Try again in a moment.",
+                agent_display_name(harness)
+            ))));
+        }
+        if registry
+            .get(fence)
+            .is_some_and(|managed| !managed.session.snapshot().state.is_terminal())
+        {
+            return Err(ApiError::conflict(format!(
+                "We couldn't safely reopen {}. Restart Studio and try again.",
+                agent_display_name(harness)
+            )));
+        }
+
+        // No process-local preparation or PTY owns this live durable row, so
+        // it is stale state left by a previous app process. Inspecting before
+        // create also heals an interrupted attempt for a different harness.
+        crate::terminal::lifecycle::mark_exited(
+            db,
+            fence,
+            &existing.id,
+            None,
+            false,
+            Some("terminal process was not present in the current app instance"),
+        )
+        .map_err(|error| {
+            agent_start_internal_error(harness, "close interrupted coding agent session", error)
+        })?;
+    }
+
+    let terminal_session_id = Uuid::new_v4().to_string();
+    let commit = match db
+        .rt_create_terminal_session_fenced(fence, &terminal_session_id, harness.wire_id())
+        .map_err(|error| {
+            agent_start_internal_error(harness, "create coding agent session", error)
+        })? {
+        RtTerminalSessionCreateOutcome::Created(commit) => commit,
+        RtTerminalSessionCreateOutcome::ExistingLive(_) => {
+            return Err(retryable_start_error(ApiError::conflict(format!(
+                "{} is already starting. Try again in a moment.",
+                agent_display_name(harness)
+            ))));
+        }
+    };
+    let terminal_session_id = commit.session.id.clone();
+    let preparation = registry
+        .reserve_preparation(fence.clone(), terminal_session_id.clone())
+        .ok_or_else(|| {
+            retryable_start_error(ApiError::conflict(format!(
+                "{} is already starting. Try again in a moment.",
+                agent_display_name(harness)
+            )))
+        })?;
+    crate::terminal::lifecycle::emit_thread(fence, &commit.thread);
+    Ok((terminal_session_id, preparation))
+}
+
+fn fail_launch_preparation(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    harness: HarnessId,
+    error: &launch_context::LaunchContextError,
+    context: &'static str,
+) {
+    let diagnostic = error.to_string();
+    tracing::warn!(
+        harness = harness.wire_id(),
+        error = %diagnostic,
+        "{context}"
+    );
+    mark_starting_session_exited_if_present(
+        db,
+        fence,
+        terminal_session_id,
+        &diagnostic,
+        matches!(error, launch_context::LaunchContextError::Canceled),
+    );
+}
+
+async fn validate_final_start_admission(
+    state: &AppState,
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    preparation: &PreparationReservation,
+) -> ApiResult<()> {
+    if !preparation.is_active() {
+        return Err(ApiError::conflict(
+            "This coding agent start was canceled. Reopen the chat and try again.",
+        ));
+    }
+    let resolved = authority::resolve_current_thread(
+        state,
+        &fence.organization_id,
+        &fence.thread_id,
+        ThreadAccess::ActiveOwner,
+    )
+    .await?;
+    if resolved.fence != *fence {
+        return Err(ApiError::conflict(
+            "This chat changed while the coding agent was preparing. Try again.",
+        ));
+    }
+    validate_exact_durable_start(db, fence, terminal_session_id, preparation)
+}
+
+fn validate_exact_durable_start(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    preparation: &PreparationReservation,
+) -> ApiResult<()> {
+    if !preparation.is_active() {
+        return Err(ApiError::conflict(
+            "This coding agent start was canceled. Reopen the chat and try again.",
+        ));
+    }
+    let thread = db
+        .rt_get_thread_for_fence(fence)
+        .map_err(|error| terminal_storage_error("recheck coding agent chat", error))?
+        .ok_or_else(|| {
+            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
+        })?;
+    if thread.hidden {
+        return Err(ApiError::conflict(
+            "This chat is archived. Restore it before starting a coding agent.",
+        ));
+    }
+    if db
+        .rt_thread_delete_pending(fence)
+        .map_err(|error| terminal_storage_error("recheck coding agent deletion state", error))?
+    {
+        return Err(ApiError::conflict(
+            "This chat is being deleted and can't start a coding agent.",
+        ));
+    }
+    let live = db
+        .rt_get_live_terminal_session_fenced(fence)
+        .map_err(|error| terminal_storage_error("recheck coding agent start", error))?;
+    if !live.is_some_and(|session| {
+        session.id == terminal_session_id
+            && session.physical_state == RtTerminalPhysicalState::Starting
+    }) {
+        return Err(ApiError::conflict(
+            "This coding agent start is no longer current. Reopen the chat and try again.",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn mark_starting_session_exited_if_present(
+    db: &'static ThreadsDb,
+    fence: &RtThreadFence,
+    terminal_session_id: &str,
+    diagnostic: &str,
+    requested: bool,
+) {
+    let row = match db.rt_get_terminal_session_fenced(fence, terminal_session_id) {
+        Ok(row) => row,
+        Err(error) => {
+            tracing::warn!(%error, terminal_session_id, "could not inspect canceled coding agent start");
+            return;
+        }
+    };
+    if !row.is_some_and(|row| row.physical_state == RtTerminalPhysicalState::Starting) {
+        return;
+    }
+    if let Err(error) = crate::terminal::lifecycle::mark_exited(
+        db,
+        fence,
+        terminal_session_id,
+        None,
+        requested,
+        Some(diagnostic),
+    ) {
+        tracing::warn!(%error, terminal_session_id, "could not close canceled coding agent start");
+    }
 }
 
 impl SessionSpawnOwner {
@@ -887,44 +1256,143 @@ impl SessionSpawnOwner {
             mut provider_session_id,
             mut hook_token,
             mut mcp_token,
-            mut launch,
-            mut command,
             key,
-            start_guard: _start_guard,
+            preparation,
             upstream_session,
+            account_epoch,
+            identity_generation,
         } = self;
         let mut may_recover_missing_claude_resume =
             options.harness == HarnessId::ClaudeCode && provider_session_id.is_some();
+        let Some(preparation_phase) = preparation.begin_phase() else {
+            mark_starting_session_exited_if_present(
+                db,
+                &fence,
+                &terminal_session_id,
+                "coding agent preparation was canceled before it began",
+                true,
+            );
+            return Err(ApiError::conflict(
+                "This coding agent start was canceled. Reopen the chat and try again.",
+            ));
+        };
+        let cancellation = preparation_phase.cancellation();
+        let launch_result = launch_context::prepare(
+            &state,
+            db,
+            LaunchRequest {
+                fence: &fence,
+                terminal_session_id: &terminal_session_id,
+                harness: options.harness,
+                approval_mode: &options.approval_mode,
+                plan_mode: options.plan_mode,
+                hook_token: &hook_token,
+                mcp_token: &mcp_token,
+                provider_session_id: provider_session_id.as_deref(),
+                cancellation: &cancellation,
+                account_epoch,
+                identity_generation,
+            },
+        )
+        .await;
+        drop(preparation_phase);
+        let mut launch = match launch_result {
+            Ok(launch) => launch,
+            Err(error) => {
+                fail_launch_preparation(
+                    db,
+                    &fence,
+                    &terminal_session_id,
+                    options.harness,
+                    &error,
+                    "coding agent launch preparation failed",
+                );
+                return Err(launch_preparation_api_error(options.harness, &error));
+            }
+        };
 
         loop {
+            let start_guard = state.agent_sessions.start_lock(&fence).lock_owned().await;
             // Linearize process creation with every sign-out/account replacement.
-            // Preparation above may perform network I/O and therefore stays outside
-            // this short gate; the account is rechecked before trust or a child can
-            // exist. Claude's path lock is acquired first so a concurrent config
-            // writer never makes logout wait while this request is merely queued.
+            // Both initial and Claude recovery preparation stay outside this
+            // short gate. The exact durable reservation and owner are rechecked
+            // before a hook or child process can exist.
+            let admission_fences = match acquire_spawn_admission_fences(
+                &state,
+                &upstream_session,
+                &fence,
+                &launch,
+                account_epoch,
+                identity_generation,
+            )
+            .await
+            {
+                Ok(fences) => fences,
+                Err(error) => {
+                    let diagnostic = error.message().to_string();
+                    tracing::warn!(
+                        harness = options.harness.wire_id(),
+                        error = %diagnostic,
+                        "coding agent account or workspace preparation failed"
+                    );
+                    let message = spawn_fence_message(options.harness, &error);
+                    let _ = crate::terminal::lifecycle::mark_exited(
+                        db,
+                        &fence,
+                        &terminal_session_id,
+                        None,
+                        false,
+                        Some(&diagnostic),
+                    );
+                    return Err(match error {
+                        SpawnFenceError::Account(_) => ApiError::conflict(message),
+                        SpawnFenceError::WorkspaceTrust(_) => ApiError::bad_gateway(message),
+                    });
+                }
+            };
+            if let Err(error) = validate_final_start_admission(
+                &state,
+                db,
+                &fence,
+                &terminal_session_id,
+                &preparation,
+            )
+            .await
+            {
+                let requested = !preparation.is_active();
+                tracing::warn!(
+                    harness = options.harness.wire_id(),
+                    terminal_session_id,
+                    "coding agent start admission changed during preparation"
+                );
+                mark_starting_session_exited_if_present(
+                    db,
+                    &fence,
+                    &terminal_session_id,
+                    "coding agent start admission changed during preparation",
+                    requested,
+                );
+                return Err(error);
+            }
             let spawn_fences =
-                match acquire_spawn_fences(&state, &upstream_session, &fence, &launch).await {
+                match establish_spawn_trust(&state, &fence, &launch, admission_fences).await {
                     Ok(fences) => fences,
                     Err(error) => {
                         let diagnostic = error.message().to_string();
                         tracing::warn!(
                             harness = options.harness.wire_id(),
                             error = %diagnostic,
-                            "coding agent account or workspace preparation failed"
+                            "coding agent workspace preparation failed"
                         );
                         let message = spawn_fence_message(options.harness, &error);
-                        let _ = crate::terminal::lifecycle::mark_exited(
+                        mark_starting_session_exited_if_present(
                             db,
                             &fence,
                             &terminal_session_id,
-                            None,
+                            &diagnostic,
                             false,
-                            Some(&diagnostic),
                         );
-                        return Err(match error {
-                            SpawnFenceError::Account(_) => ApiError::conflict(message),
-                            SpawnFenceError::WorkspaceTrust(_) => ApiError::bad_gateway(message),
-                        });
+                        return Err(ApiError::bad_gateway(message));
                     }
                 };
             let mut lifecycle = state.agent_sessions.subscribe_lifecycle();
@@ -948,7 +1416,7 @@ impl SessionSpawnOwner {
                 .start_or_attach_with_id(
                     key.clone(),
                     terminal_session_id.clone(),
-                    command,
+                    command_spec(&state, &launch),
                     options.size,
                 )
                 .await;
@@ -985,6 +1453,7 @@ impl SessionSpawnOwner {
                 state.agent_sessions.unregister_hook(&terminal_session_id);
                 drop(hook);
                 drop(spawn_fences);
+                drop(start_guard);
                 tracing::info!(
                     terminal_session_id,
                     "Claude resume target was missing; restarting the terminal fresh"
@@ -994,7 +1463,20 @@ impl SessionSpawnOwner {
                 provider_session_id = None;
                 hook_token = generate_hook_token();
                 mcp_token = generate_mcp_token();
-                launch = match launch_context::prepare(
+                let Some(preparation_phase) = preparation.begin_phase() else {
+                    mark_starting_session_exited_if_present(
+                        db,
+                        &fence,
+                        &terminal_session_id,
+                        "coding agent recovery preparation was canceled before it began",
+                        true,
+                    );
+                    return Err(ApiError::conflict(
+                        "This coding agent start was canceled. Reopen the chat and try again.",
+                    ));
+                };
+                let cancellation = preparation_phase.cancellation();
+                let launch_result = launch_context::prepare(
                     &state,
                     db,
                     LaunchRequest {
@@ -1006,30 +1488,27 @@ impl SessionSpawnOwner {
                         hook_token: &hook_token,
                         mcp_token: &mcp_token,
                         provider_session_id: None,
+                        cancellation: &cancellation,
+                        account_epoch,
+                        identity_generation,
                     },
                 )
-                .await
-                {
+                .await;
+                drop(preparation_phase);
+                launch = match launch_result {
                     Ok(launch) => launch,
                     Err(error) => {
-                        let diagnostic = error.to_string();
-                        tracing::warn!(
-                            harness = options.harness.wire_id(),
-                            error = %diagnostic,
-                            "coding agent fresh-session recovery preparation failed"
-                        );
-                        let _ = crate::terminal::lifecycle::mark_exited(
+                        fail_launch_preparation(
                             db,
                             &fence,
                             &terminal_session_id,
-                            None,
-                            false,
-                            Some(&diagnostic),
+                            options.harness,
+                            &error,
+                            "coding agent fresh-session recovery preparation failed",
                         );
                         return Err(launch_preparation_api_error(options.harness, &error));
                     }
                 };
-                command = command_spec(&state, &launch);
                 continue;
             }
 
@@ -1044,66 +1523,52 @@ impl SessionSpawnOwner {
                 started.session.clone(),
                 hook,
             );
-            let account_error = require_current_account(&fence)
-                .await
-                .err()
-                .map(|diagnostic| {
+            let pin_error = match db
+                .rt_pin_harness_if_unset_fenced(
+                    &fence,
+                    options.harness.wire_id(),
+                    Some(DESKTOP_SANDBOX_PROVIDER),
+                    None,
+                )
+                .and_then(|updated| {
+                    if updated {
+                        db.rt_harness_id_fenced(&fence)
+                    } else {
+                        Ok(None)
+                    }
+                }) {
+                Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
+                Ok(Some(Some(pinned))) => {
+                    let pinned_agent = HarnessId::from_wire_id(&pinned)
+                        .map(agent_display_name)
+                        .unwrap_or("another coding agent");
+                    Some((
+                        format!("chat is already using {pinned}"),
+                        format!("This chat is already using {pinned_agent}."),
+                        false,
+                    ))
+                }
+                Ok(_) => Some((
+                    "thread is no longer available".to_string(),
+                    "This chat is no longer available. Refresh Studio and try again.".to_string(),
+                    false,
+                )),
+                Err(error) => {
                     tracing::warn!(
                         harness = options.harness.wire_id(),
-                        error = %diagnostic,
-                        "coding agent account changed before harness pin"
+                        %error,
+                        "could not pin coding agent to chat"
                     );
-                    (diagnostic, account_start_message(options.harness), false)
-                });
-            let pin_error = account_error.or_else(|| {
-                match db
-                    .rt_pin_harness_if_unset_fenced(
-                        &fence,
-                        options.harness.wire_id(),
-                        Some(DESKTOP_SANDBOX_PROVIDER),
-                        None,
-                    )
-                    .and_then(|updated| {
-                        if updated {
-                            db.rt_harness_id_fenced(&fence)
-                        } else {
-                            Ok(None)
-                        }
-                    }) {
-                    Ok(Some(Some(ref pinned))) if pinned == options.harness.wire_id() => None,
-                    Ok(Some(Some(pinned))) => {
-                        let pinned_agent = HarnessId::from_wire_id(&pinned)
-                            .map(agent_display_name)
-                            .unwrap_or("another coding agent");
-                        Some((
-                            format!("chat is already using {pinned}"),
-                            format!("This chat is already using {pinned_agent}."),
-                            false,
-                        ))
-                    }
-                    Ok(_) => Some((
-                        "thread is no longer available".to_string(),
-                        "This chat is no longer available. Refresh Studio and try again."
-                            .to_string(),
-                        false,
-                    )),
-                    Err(error) => {
-                        tracing::warn!(
-                            harness = options.harness.wire_id(),
-                            %error,
-                            "could not pin coding agent to chat"
-                        );
-                        Some((
-                            error.to_string(),
-                            format!(
-                                "We couldn't finish starting {}. Try again.",
-                                agent_display_name(options.harness)
-                            ),
-                            true,
-                        ))
-                    }
+                    Some((
+                        error.to_string(),
+                        format!(
+                            "We couldn't finish starting {}. Try again.",
+                            agent_display_name(options.harness)
+                        ),
+                        true,
+                    ))
                 }
-            });
+            };
             if let Some((diagnostic, message, retryable)) = pin_error {
                 let exit = started
                     .session
@@ -1338,12 +1803,14 @@ where
     })?
 }
 
-async fn acquire_spawn_fences(
+async fn acquire_spawn_admission_fences(
     state: &AppState,
     upstream_session: &upstream::UpstreamSession,
     fence: &RtThreadFence,
     launch: &PreparedLaunch,
-) -> Result<SpawnFences, SpawnFenceError> {
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    identity_generation: u64,
+) -> Result<SpawnAdmissionFences, SpawnFenceError> {
     let claude_state = match launch.claude_state_path() {
         Some(path) => Some(
             state
@@ -1355,9 +1822,34 @@ async fn acquire_spawn_fences(
         None => None,
     };
     let account = upstream_session.begin_transition().await;
+    if account.generation() != identity_generation {
+        return Err(SpawnFenceError::Account(
+            "the upstream account changed while starting the coding agent".to_string(),
+        ));
+    }
     require_current_account(fence)
         .await
         .map_err(SpawnFenceError::Account)?;
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)
+        .map_err(SpawnFenceError::Account)?;
+    Ok(SpawnAdmissionFences {
+        account,
+        claude_state,
+    })
+}
+
+async fn establish_spawn_trust(
+    state: &AppState,
+    fence: &RtThreadFence,
+    launch: &PreparedLaunch,
+    admission: SpawnAdmissionFences,
+) -> Result<SpawnFences, SpawnFenceError> {
+    let SpawnAdmissionFences {
+        account,
+        claude_state,
+    } = admission;
     let account = launch
         .establish_managed_codex_hook_trust(state, &fence.account_scope, account)
         .await
@@ -1390,7 +1882,7 @@ async fn acquire_spawn_fences(
 }
 
 async fn require_current_account(fence: &RtThreadFence) -> Result<(), String> {
-    let current = thread_tools::current_account_scope_result()
+    let current = authority::current_account_scope_result()
         .await
         .map_err(|error| format!("session storage unavailable: {error}"))?
         .ok_or_else(|| {
@@ -1458,6 +1950,9 @@ fn launch_preparation_message(
 ) -> String {
     let agent = agent_display_name(harness_id);
     match error {
+        launch_context::LaunchContextError::Canceled => {
+            "This coding agent start was canceled. Reopen the chat and try again.".to_string()
+        }
         launch_context::LaunchContextError::StaleThread => {
             "This chat is no longer available. Refresh Studio and try again.".to_string()
         }
@@ -1503,6 +1998,7 @@ fn launch_preparation_api_error(
 ) -> ApiError {
     let message = launch_preparation_message(harness_id, error);
     let api_error = match error {
+        launch_context::LaunchContextError::Canceled => ApiError::conflict(message),
         launch_context::LaunchContextError::StaleThread => ApiError::not_found(message),
         launch_context::LaunchContextError::Storage(_)
         | launch_context::LaunchContextError::Workspace(_)
@@ -1891,48 +2387,10 @@ async fn scoped_owned_thread(
     state: &AppState,
     org: &str,
     thread_id: &str,
-) -> ApiResult<(&'static ThreadsDb, RtAccountScope, RtThreadFence)> {
-    let scope = thread_tools::current_account_scope_result()
-        .await
-        .map_err(|error| {
-            tracing::warn!(%error, "could not load the Studio account for a coding agent request");
-            ApiError::internal(
-                "We couldn't confirm your Studio account. Restart Studio and try again; if needed, sign in again.",
-            )
-        })?
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "Your Studio session expired. Sign in again.",
-            )
-        })?;
-    let db = shared_db(state).map_err(|error| {
-        terminal_storage_error("open coding agent storage", api_error_message(error))
-    })?;
-    let thread = db
-        .rt_get_thread_in_scope(&scope, org, thread_id)
-        .map_err(|error| terminal_storage_error("load chat for coding agent request", error))?
-        .ok_or_else(|| {
-            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
-        })?;
-    if thread.created_by != scope.user_id {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Only the chat owner can control this coding agent.",
-        ));
-    }
-    if thread.hidden {
-        return Err(ApiError::conflict(
-            "This chat is archived. Restore it before opening the coding agent.",
-        ));
-    }
-    let fence = db
-        .rt_thread_fence_in_scope(&scope, org, thread_id)
-        .map_err(|error| terminal_storage_error("load chat ownership state", error))?
-        .ok_or_else(|| {
-            ApiError::not_found("This chat is no longer available. Refresh Studio and try again.")
-        })?;
-    Ok((db, scope, fence))
+) -> ApiResult<(&'static ThreadsDb, RtThreadFence)> {
+    let resolved =
+        authority::resolve_current_thread(state, org, thread_id, ThreadAccess::ActiveOwner).await?;
+    Ok((resolved.db, resolved.fence))
 }
 
 fn metadata_for(
@@ -1987,7 +2445,7 @@ fn terminal_storage_error(context: &'static str, error: impl std::fmt::Display) 
 
 fn parse_harness(value: &str) -> ApiResult<HarnessId> {
     match value {
-        "claude" | "claude-code" => Ok(HarnessId::ClaudeCode),
+        "claude-code" => Ok(HarnessId::ClaudeCode),
         "codex" => Ok(HarnessId::Codex),
         "opencode" => Ok(HarnessId::OpenCode),
         _ => Err(ApiError::bad_request(
@@ -2114,14 +2572,71 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use crate::routes::threads::db::RtThreadPatch;
+
     use super::*;
 
+    fn terminal_preparation_fixture(
+        thread_id: &str,
+    ) -> (
+        &'static ThreadsDb,
+        RtThreadFence,
+        Arc<crate::terminal::AgentSessionRegistry>,
+    ) {
+        let db = Box::leak(Box::new(ThreadsDb::open_in_memory().unwrap()));
+        db.rt_create_thread(
+            Some(thread_id),
+            "org",
+            "",
+            None,
+            "vmcp",
+            None,
+            "local-desktop-user",
+        )
+        .unwrap();
+        let fence = db
+            .rt_thread_fence_in_org("org", thread_id)
+            .unwrap()
+            .unwrap();
+        (db, fence, crate::terminal::AgentSessionRegistry::new())
+    }
+
+    #[tokio::test]
+    async fn account_epoch_preempts_stalled_and_ready_terminal_delivery() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+
+        let epoch = manager.account_epoch();
+        let mut stalled_rx = manager.watch_account_epoch(epoch).unwrap();
+        let stalled = tokio::spawn(async move {
+            until_account_change(&mut stalled_rx, std::future::pending::<()>()).await
+        });
+        tokio::task::yield_now().await;
+        let transition = manager.begin_account_transition().await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_secs(1), stalled)
+            .await
+            .expect("stalled terminal wait must be canceled promptly")
+            .unwrap()
+            .is_none());
+        drop(transition);
+
+        let epoch = manager.account_epoch();
+        let mut ready_rx = manager.watch_account_epoch(epoch).unwrap();
+        let transition = manager.begin_account_transition().await.unwrap();
+        assert_eq!(
+            until_account_change(&mut ready_rx, std::future::ready("account-a-bytes")).await,
+            None,
+            "an epoch change must win over an already-ready sensitive frame"
+        );
+        drop(transition);
+    }
+
     #[test]
-    fn protocol_accepts_canonical_and_legacy_claude_ids() {
+    fn protocol_accepts_only_canonical_harness_ids() {
         assert_eq!(parse_harness("claude-code").unwrap(), HarnessId::ClaudeCode);
-        assert_eq!(parse_harness("claude").unwrap(), HarnessId::ClaudeCode);
         assert_eq!(parse_harness("codex").unwrap(), HarnessId::Codex);
         assert_eq!(parse_harness("opencode").unwrap(), HarnessId::OpenCode);
+        assert!(parse_harness("claude").is_err());
         assert!(parse_harness("decopilot").is_err());
     }
 
@@ -2306,6 +2821,11 @@ mod tests {
         let stale_error = launch_preparation_api_error(HarnessId::Codex, &stale);
         assert_eq!(stale_error.status, StatusCode::NOT_FOUND);
         assert_eq!(stale_error.body.get("retryable"), None);
+
+        let canceled = launch_context::LaunchContextError::Canceled;
+        let canceled_error = launch_preparation_api_error(HarnessId::Codex, &canceled);
+        assert_eq!(canceled_error.status, StatusCode::CONFLICT);
+        assert_eq!(canceled_error.body.get("retryable"), None);
     }
 
     #[test]
@@ -2339,6 +2859,215 @@ mod tests {
 
         // Reusing an already-running session remains idempotent.
         reconcile_registered_session(db, &fence, session_id, HarnessId::Codex).unwrap();
+    }
+
+    #[tokio::test]
+    async fn archive_can_win_while_terminal_preparation_is_blocked() {
+        let (db, fence, registry) = terminal_preparation_fixture("preparing-archive");
+        let start_lock = registry.start_lock(&fence);
+        let admission = start_lock.clone().lock_owned().await;
+        let (session_id, preparation) =
+            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+        drop(admission);
+
+        let (blocked_tx, blocked_rx) = tokio::sync::oneshot::channel();
+        let task_fence = fence.clone();
+        let task_session_id = session_id.clone();
+        let task_lock = start_lock.clone();
+        let prepared = tokio::spawn(async move {
+            let phase = preparation.begin_phase().unwrap();
+            let cancellation = phase.cancellation();
+            blocked_tx.send(()).unwrap();
+            cancellation.cancelled().await;
+            drop(phase);
+            let _spawn_guard = task_lock.lock_owned().await;
+            let result =
+                validate_exact_durable_start(db, &task_fence, &task_session_id, &preparation);
+            if result.is_err() {
+                mark_starting_session_exited_if_present(
+                    db,
+                    &task_fence,
+                    &task_session_id,
+                    "archive won terminal preparation",
+                    false,
+                );
+            }
+            result
+        });
+        blocked_rx.await.unwrap();
+
+        let archive_guard = tokio::time::timeout(Duration::from_secs(1), start_lock.lock_owned())
+            .await
+            .expect("preparation must not retain the thread lifecycle lock");
+        db.rt_update_thread_in_org(
+            "org",
+            "preparing-archive",
+            "local-desktop-user",
+            &RtThreadPatch {
+                hidden: Some(true),
+                ..RtThreadPatch::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        registry.cancel_preparation(&fence).wait().await.unwrap();
+        drop(archive_guard);
+
+        assert_eq!(
+            prepared.await.unwrap().unwrap_err().status,
+            StatusCode::CONFLICT
+        );
+        let row = db
+            .rt_get_terminal_session_fenced(&fence, &session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.physical_state, RtTerminalPhysicalState::Exited);
+        assert!(db.rt_get_thread_for_fence(&fence).unwrap().unwrap().hidden);
+    }
+
+    #[tokio::test]
+    async fn delete_can_win_while_terminal_preparation_is_blocked() {
+        let (db, fence, registry) = terminal_preparation_fixture("preparing-delete");
+        let start_lock = registry.start_lock(&fence);
+        let admission = start_lock.clone().lock_owned().await;
+        let (session_id, preparation) =
+            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+        drop(admission);
+
+        let (blocked_tx, blocked_rx) = tokio::sync::oneshot::channel();
+        let task_fence = fence.clone();
+        let task_session_id = session_id.clone();
+        let task_lock = start_lock.clone();
+        let prepared = tokio::spawn(async move {
+            let phase = preparation.begin_phase().unwrap();
+            let cancellation = phase.cancellation();
+            blocked_tx.send(()).unwrap();
+            cancellation.cancelled().await;
+            drop(phase);
+            let _spawn_guard = task_lock.lock_owned().await;
+            let result =
+                validate_exact_durable_start(db, &task_fence, &task_session_id, &preparation);
+            if result.is_err() {
+                mark_starting_session_exited_if_present(
+                    db,
+                    &task_fence,
+                    &task_session_id,
+                    "delete won terminal preparation",
+                    true,
+                );
+            }
+            result
+        });
+        blocked_rx.await.unwrap();
+
+        let delete_guard = tokio::time::timeout(Duration::from_secs(1), start_lock.lock_owned())
+            .await
+            .expect("preparation must not retain the thread lifecycle lock");
+        registry.cancel_preparation(&fence).wait().await.unwrap();
+        assert!(db.rt_delete_thread_in_org_if_generation(&fence).unwrap());
+        drop(delete_guard);
+
+        assert!(prepared.await.unwrap().is_err());
+        assert!(db
+            .rt_get_terminal_session_fenced(&fence, &session_id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn account_replacement_cancels_a_blocked_terminal_preparation() {
+        let (db, fence, registry) = terminal_preparation_fixture("preparing-account-switch");
+        let start_lock = registry.start_lock(&fence);
+        let admission = start_lock.clone().lock_owned().await;
+        let (session_id, preparation) =
+            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+        drop(admission);
+
+        let (blocked_tx, blocked_rx) = tokio::sync::oneshot::channel();
+        let task_fence = fence.clone();
+        let task_session_id = session_id.clone();
+        let task_lock = start_lock.clone();
+        let prepared = tokio::spawn(async move {
+            let phase = preparation.begin_phase().unwrap();
+            let cancellation = phase.cancellation();
+            blocked_tx.send(()).unwrap();
+            cancellation.cancelled().await;
+            drop(phase);
+            let _spawn_guard = task_lock.lock_owned().await;
+            let result =
+                validate_exact_durable_start(db, &task_fence, &task_session_id, &preparation);
+            if result.is_err() {
+                mark_starting_session_exited_if_present(
+                    db,
+                    &task_fence,
+                    &task_session_id,
+                    "account changed during terminal preparation",
+                    false,
+                );
+            }
+            result
+        });
+        blocked_rx.await.unwrap();
+
+        assert!(registry.terminate_all().await.is_empty());
+
+        assert_eq!(
+            prepared.await.unwrap().unwrap_err().status,
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, &session_id)
+                .unwrap()
+                .unwrap()
+                .physical_state,
+            RtTerminalPhysicalState::Exited
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_start_keeps_the_exact_in_process_preparation() {
+        let (db, fence, registry) = terminal_preparation_fixture("preparing-concurrent");
+        let _admission = registry.start_lock(&fence).lock_owned().await;
+        let (session_id, _preparation) =
+            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+
+        let error = match reserve_durable_start(&registry, db, &fence, HarnessId::Codex) {
+            Ok(_) => panic!("a concurrent start replaced an active preparation"),
+            Err(error) => error,
+        };
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        let live = db
+            .rt_get_live_terminal_session_fenced(&fence)
+            .unwrap()
+            .unwrap();
+        assert_eq!(live.id, session_id);
+        assert_eq!(live.physical_state, RtTerminalPhysicalState::Starting);
+    }
+
+    #[test]
+    fn stale_starting_row_without_a_process_reservation_self_heals() {
+        let (db, fence, registry) = terminal_preparation_fixture("preparing-stale-restart");
+        db.rt_create_terminal_session_fenced(&fence, "stale-session", "claude-code")
+            .unwrap();
+
+        let (replacement_id, _preparation) =
+            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+
+        assert_ne!(replacement_id, "stale-session");
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, "stale-session")
+                .unwrap()
+                .unwrap()
+                .physical_state,
+            RtTerminalPhysicalState::Exited
+        );
+        assert_eq!(
+            db.rt_get_terminal_session_fenced(&fence, &replacement_id)
+                .unwrap()
+                .unwrap()
+                .physical_state,
+            RtTerminalPhysicalState::Starting
+        );
     }
 
     #[test]
@@ -2450,6 +3179,27 @@ mod tests {
                 ..
             } if harness_id == "codex" && prompt == "hello"
         ));
+        assert!(parse_client_frame(
+            r#"{"type":"start","harness_id":"codex","rows":30,"cols":100}"#,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn terminal_protocol_rejects_mixed_canonical_and_retired_fields() {
+        assert!(serde_json::from_value::<StartTerminalBody>(json!({
+            "harnessId": "codex",
+            "harness_id": "claude-code",
+        }))
+        .is_err());
+        assert!(parse_client_frame(
+            r#"{"type":"start","harnessId":"codex","harness_id":"claude-code","rows":30,"cols":100}"#,
+        )
+        .is_err());
+        assert!(parse_client_frame(
+            r#"{"type":"attach","afterSeq":7,"after_seq":0,"rows":30,"cols":100}"#,
+        )
+        .is_err());
     }
 
     #[test]

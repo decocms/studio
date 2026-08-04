@@ -713,6 +713,10 @@ pub enum DbError {
         organization_id: String,
         thread_id: String,
     },
+    ThreadWorkspaceLocked {
+        organization_id: String,
+        thread_id: String,
+    },
     InvalidTerminalSessionData(String),
 }
 
@@ -755,6 +759,13 @@ impl std::fmt::Display for DbError {
             } => write!(
                 f,
                 "thread deletion is pending: {organization_id}/{thread_id}"
+            ),
+            DbError::ThreadWorkspaceLocked {
+                organization_id,
+                thread_id,
+            } => write!(
+                f,
+                "thread workspace identity is locked: {organization_id}/{thread_id}"
             ),
             DbError::InvalidTerminalSessionData(message) => {
                 write!(f, "invalid terminal session data: {message}")
@@ -1475,6 +1486,45 @@ impl ThreadsDb {
         rt_thread_by_id_in_scope(&conn, &scope.storage_key(), organization_id, id)
     }
 
+    /// Reads a thread, its generation fence, and durable deletion gate from
+    /// the same SQLite snapshot. Authority checks use this tuple so a later
+    /// side effect never combines state from two lifecycle moments.
+    pub fn rt_get_thread_and_fence_in_scope(
+        &self,
+        scope: &RtAccountScope,
+        organization_id: &str,
+        id: &str,
+    ) -> DbResult<Option<(RtThread, RtThreadFence, bool)>> {
+        self.adopt_legacy_account_rows(scope, organization_id)?;
+        let account_scope = scope.storage_key();
+        let conn = self.lock();
+        conn.query_row(
+            &format!(
+                "SELECT {RT_THREAD_COLUMNS}, generation, delete_pending \
+                 FROM native_scoped_threads \
+                 WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3"
+            ),
+            params![account_scope, organization_id, id],
+            |row| {
+                let thread = row_to_rt_thread(row)?;
+                let generation = row.get(18)?;
+                let delete_pending = row.get(19)?;
+                Ok((
+                    thread,
+                    RtThreadFence {
+                        account_scope: account_scope.clone(),
+                        organization_id: organization_id.to_string(),
+                        thread_id: id.to_string(),
+                        generation,
+                    },
+                    delete_pending,
+                ))
+            },
+        )
+        .optional()
+        .map_err(DbError::from)
+    }
+
     #[cfg(test)]
     pub fn rt_get_thread_in_org(
         &self,
@@ -1658,6 +1708,68 @@ impl ThreadsDb {
         Ok((out, total))
     }
 
+    /// Preflights a workspace-identity patch while a caller holds the
+    /// process-local terminal start lock. Archiving must stop a live terminal
+    /// before it writes `hidden`; this check prevents that stop from erasing
+    /// the very `starting`/`running` evidence that should reject a combined
+    /// branch or virtual-MCP change. The update transaction repeats the gate
+    /// as the storage-level authority fence.
+    pub fn rt_validate_workspace_identity_patch_fenced(
+        &self,
+        fence: &RtThreadFence,
+        patch: &RtThreadPatch,
+    ) -> DbResult<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let gate: Option<(bool, Option<String>, String, bool)> = tx
+            .query_row(
+                "SELECT delete_pending, branch, virtual_mcp_id, \
+                     harness_id IS NOT NULL OR EXISTS(\
+                         SELECT 1 FROM native_terminal_sessions \
+                         WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
+                           AND thread_generation = ?4 \
+                           AND physical_state IN ('starting', 'running')\
+                     ) \
+                 FROM native_scoped_threads \
+                 WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3 \
+                   AND generation = ?4",
+                params![
+                    fence.account_scope,
+                    fence.organization_id,
+                    fence.thread_id,
+                    fence.generation,
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()?;
+        let Some((delete_pending, branch, virtual_mcp_id, workspace_locked)) = gate else {
+            return Err(DbError::StaleThreadGeneration {
+                organization_id: fence.organization_id.clone(),
+                thread_id: fence.thread_id.clone(),
+                generation: fence.generation.clone(),
+            });
+        };
+        if delete_pending {
+            return Err(DbError::ThreadDeletePending {
+                organization_id: fence.organization_id.clone(),
+                thread_id: fence.thread_id.clone(),
+            });
+        }
+        let changes_workspace_identity = patch.branch.as_ref().is_some_and(|next| next != &branch)
+            || patch
+                .virtual_mcp_id
+                .as_ref()
+                .is_some_and(|next| next != &virtual_mcp_id);
+        if changes_workspace_identity && workspace_locked {
+            return Err(DbError::ThreadWorkspaceLocked {
+                organization_id: fence.organization_id.clone(),
+                thread_id: fence.thread_id.clone(),
+            });
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Applies `patch`'s present fields, bumps `updated_at`, and returns the
     /// resulting row — `None` if `id` doesn't exist. A patch with every
     /// field `None` still bumps `updated_at` (matches
@@ -1672,6 +1784,9 @@ impl ThreadsDb {
         patch: &RtThreadPatch,
     ) -> DbResult<Option<RtThread>> {
         self.adopt_legacy_account_rows(scope, organization_id)?;
+        if updated_by != scope.user_id {
+            return Ok(None);
+        }
         let ts = now_rfc3339();
         let mut sets = vec![
             "updated_at = ?1".to_string(),
@@ -1715,31 +1830,66 @@ impl ThreadsDb {
         let scope_placeholder = sql_params.len() + 1;
         let account_scope = scope.storage_key();
         sql_params.push(Box::new(account_scope.clone()));
+        let owner_placeholder = sql_params.len() + 1;
+        sql_params.push(Box::new(scope.user_id.clone()));
         let sql = format!(
             "UPDATE native_scoped_threads SET {} \
              WHERE id = ?{id_placeholder} AND organization_id = ?{org_placeholder} \
-               AND account_scope = ?{scope_placeholder}",
+               AND account_scope = ?{scope_placeholder} AND created_by = ?{owner_placeholder}",
             sets.join(", "),
         );
         let mut conn = self.lock();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let delete_pending: Option<bool> = tx
+        let gate: Option<(bool, String, Option<String>, String)> = tx
             .query_row(
-                "SELECT delete_pending FROM native_scoped_threads \
+                "SELECT delete_pending, created_by, branch, virtual_mcp_id \
+                 FROM native_scoped_threads \
                  WHERE id = ?1 AND organization_id = ?2 AND account_scope = ?3",
                 params![id, organization_id, account_scope],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
-        let Some(delete_pending) = delete_pending else {
+        let Some((delete_pending, created_by, current_branch, current_virtual_mcp_id)) = gate
+        else {
             tx.commit()?;
             return Ok(None);
         };
+        if created_by != scope.user_id {
+            tx.commit()?;
+            return Ok(None);
+        }
         if delete_pending {
             return Err(DbError::ThreadDeletePending {
                 organization_id: organization_id.to_string(),
                 thread_id: id.to_string(),
             });
+        }
+        let changes_workspace_identity = patch
+            .branch
+            .as_ref()
+            .is_some_and(|branch| branch != &current_branch)
+            || patch
+                .virtual_mcp_id
+                .as_ref()
+                .is_some_and(|virtual_mcp_id| virtual_mcp_id != &current_virtual_mcp_id);
+        if changes_workspace_identity {
+            let workspace_locked: bool = tx.query_row(
+                "SELECT harness_id IS NOT NULL OR EXISTS(\
+                     SELECT 1 FROM native_terminal_sessions \
+                     WHERE account_scope = ?1 AND organization_id = ?2 AND thread_id = ?3 \
+                       AND thread_generation = native_scoped_threads.generation \
+                       AND physical_state IN ('starting', 'running')\
+                 ) FROM native_scoped_threads \
+                 WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3",
+                params![account_scope, organization_id, id],
+                |row| row.get(0),
+            )?;
+            if workspace_locked {
+                return Err(DbError::ThreadWorkspaceLocked {
+                    organization_id: organization_id.to_string(),
+                    thread_id: id.to_string(),
+                });
+            }
         }
         let changed = tx.execute(
             &sql,
@@ -1785,28 +1935,51 @@ impl ThreadsDb {
         self.rt_delete_thread_in_org_if_generation(&fence)
     }
 
-    /// Generation-fenced delete for lifecycle shutdown. The durable tombstone,
-    /// thread deletion, and child-row cascades commit atomically: after a
-    /// successful return, neither a delayed request nor a process restart can
-    /// recreate this public id inside the same account + organization scope.
+    /// Test-only bypass for exercising generation/tombstone invariants without
+    /// a request authority layer.
+    #[cfg(test)]
     pub fn rt_delete_thread_in_org_if_generation(&self, fence: &RtThreadFence) -> DbResult<bool> {
+        self.rt_delete_thread_if_generation(fence, None)
+    }
+
+    /// User-facing generation-fenced delete. The owner predicate is checked
+    /// inside the same transaction that writes the tombstone and cascades the
+    /// thread, so a viewer can never advance the deletion lifecycle.
+    pub fn rt_delete_owned_thread_if_generation(
+        &self,
+        fence: &RtThreadFence,
+        owner_id: &str,
+    ) -> DbResult<bool> {
+        self.rt_delete_thread_if_generation(fence, Some(owner_id))
+    }
+
+    fn rt_delete_thread_if_generation(
+        &self,
+        fence: &RtThreadFence,
+        owner_id: Option<&str>,
+    ) -> DbResult<bool> {
         let mut conn = self.lock();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let owns_generation: bool = tx.query_row(
-            "SELECT EXISTS(\
-                 SELECT 1 FROM native_scoped_threads \
+        let created_by: Option<String> = tx
+            .query_row(
+                "SELECT created_by FROM native_scoped_threads \
                  WHERE id = ?1 AND organization_id = ?2 AND generation = ?3 \
-                   AND account_scope = ?4\
-             )",
-            params![
-                fence.thread_id,
-                fence.organization_id,
-                fence.generation,
-                fence.account_scope,
-            ],
-            |row| row.get(0),
-        )?;
-        if !owns_generation {
+                   AND account_scope = ?4",
+                params![
+                    fence.thread_id,
+                    fence.organization_id,
+                    fence.generation,
+                    fence.account_scope,
+                ],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let authorized = match (created_by.as_deref(), owner_id) {
+            (Some(_), None) => true,
+            (Some(created_by), Some(owner_id)) => created_by == owner_id,
+            (None, _) => false,
+        };
+        if !authorized {
             tx.commit()?;
             return Ok(false);
         }
@@ -4967,6 +5140,158 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(unchanged.harness_id, None);
         assert_eq!(unchanged.branch, None);
         assert!(db.rt_get_message("cross-org-message").unwrap().is_none());
+    }
+
+    #[test]
+    fn user_facing_thread_mutations_require_the_current_owner() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        let scope = RtAccountScope::test_default();
+        db.rt_create_thread_scoped(
+            &scope,
+            Some("teammate-thread"),
+            "org",
+            "Teammate chat",
+            None,
+            "vmcp",
+            None,
+            "teammate-user",
+        )
+        .unwrap();
+        let (_, fence, _) = db
+            .rt_get_thread_and_fence_in_scope(&scope, "org", "teammate-thread")
+            .unwrap()
+            .unwrap();
+
+        assert!(db
+            .rt_update_thread_in_scope(
+                &scope,
+                "org",
+                "teammate-thread",
+                &scope.user_id,
+                &RtThreadPatch {
+                    title: Some("hijacked".to_string()),
+                    ..RtThreadPatch::default()
+                },
+            )
+            .unwrap()
+            .is_none());
+        assert!(!db
+            .rt_delete_owned_thread_if_generation(&fence, &scope.user_id)
+            .unwrap());
+        assert_eq!(
+            db.rt_get_thread_in_scope(&scope, "org", "teammate-thread")
+                .unwrap()
+                .unwrap()
+                .title,
+            "Teammate chat"
+        );
+    }
+
+    #[test]
+    fn workspace_identity_locks_at_terminal_reservation_or_harness_pin() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        let scope = RtAccountScope::test_default();
+        let owner = scope.user_id.clone();
+        db.rt_create_thread_scoped(
+            &scope,
+            Some("starting-thread"),
+            "org",
+            "Starting chat",
+            None,
+            "vmcp-a",
+            Some("main"),
+            &owner,
+        )
+        .unwrap();
+        let (_, starting_fence, _) = db
+            .rt_get_thread_and_fence_in_scope(&scope, "org", "starting-thread")
+            .unwrap()
+            .unwrap();
+
+        let mutable = db
+            .rt_update_thread_in_scope(
+                &scope,
+                "org",
+                "starting-thread",
+                &owner,
+                &RtThreadPatch {
+                    branch: Some(Some("feature".to_string())),
+                    virtual_mcp_id: Some("vmcp-b".to_string()),
+                    ..RtThreadPatch::default()
+                },
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(mutable.branch.as_deref(), Some("feature"));
+        assert_eq!(mutable.virtual_mcp_id, "vmcp-b");
+
+        created_terminal(
+            db.rt_create_terminal_session_fenced(&starting_fence, "terminal-starting", "codex")
+                .unwrap(),
+        );
+        let metadata_only = db
+            .rt_update_thread_in_scope(
+                &scope,
+                "org",
+                "starting-thread",
+                &owner,
+                &RtThreadPatch {
+                    title: Some("Still mutable metadata".to_string()),
+                    branch: Some(Some("feature".to_string())),
+                    virtual_mcp_id: Some("vmcp-b".to_string()),
+                    ..RtThreadPatch::default()
+                },
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(metadata_only.title, "Still mutable metadata");
+        for patch in [
+            RtThreadPatch {
+                branch: Some(Some("other".to_string())),
+                ..RtThreadPatch::default()
+            },
+            RtThreadPatch {
+                virtual_mcp_id: Some("vmcp-c".to_string()),
+                ..RtThreadPatch::default()
+            },
+        ] {
+            assert!(matches!(
+                db.rt_update_thread_in_scope(&scope, "org", "starting-thread", &owner, &patch,),
+                Err(DbError::ThreadWorkspaceLocked { .. })
+            ));
+        }
+
+        db.rt_create_thread_scoped(
+            &scope,
+            Some("pinned-thread"),
+            "org",
+            "Pinned chat",
+            None,
+            "vmcp-a",
+            Some("main"),
+            &owner,
+        )
+        .unwrap();
+        let (_, pinned_fence, _) = db
+            .rt_get_thread_and_fence_in_scope(&scope, "org", "pinned-thread")
+            .unwrap()
+            .unwrap();
+        assert!(db
+            .rt_pin_harness_if_unset_fenced(&pinned_fence, "opencode", None, None)
+            .unwrap());
+        assert!(matches!(
+            db.rt_update_thread_in_scope(
+                &scope,
+                "org",
+                "pinned-thread",
+                &owner,
+                &RtThreadPatch {
+                    branch: Some(None),
+                    ..RtThreadPatch::default()
+                },
+            ),
+            Err(DbError::ThreadWorkspaceLocked { .. })
+        ));
     }
 
     #[test]

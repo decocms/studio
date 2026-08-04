@@ -26,11 +26,14 @@ use crate::error::ApiError;
 use crate::sandbox::manager::Sandbox;
 use crate::state::AppState;
 
+use super::sandbox_authority::{authorize, manager_error, Access};
+
 const OPERATIONS: &[&str] = &["read", "write", "unlink", "mkdir", "rename", "glob", "grep"];
 
 pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
+    org: &str,
     rest: &[&str],
     body: &Bytes,
 ) -> Option<Response> {
@@ -40,6 +43,21 @@ pub(super) async fn try_dispatch(
     if !OPERATIONS.contains(operation) {
         return None;
     }
+    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let branch = match decode_identity_segment("branch", encoded_branch) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let access = access_for(method, operation);
+    let read_only = matches!(*operation, "read" | "glob" | "grep");
+    let authorization = match authorize(state, org, &virtual_mcp_id, &branch, access).await {
+        Ok(authorization) => authorization,
+        Err(error) => return Some(error.into_response()),
+    };
+    let account_epoch = authorization.account_epoch();
     if *method != Method::POST {
         return Some(
             ApiError::new(
@@ -49,15 +67,6 @@ pub(super) async fn try_dispatch(
             .into_response(),
         );
     }
-
-    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
-    let branch = match decode_identity_segment("branch", encoded_branch) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
     if *operation == "read" {
         if let Some(error) = reject_absolute_read(body) {
             return Some(error.into_response());
@@ -65,10 +74,11 @@ pub(super) async fn try_dispatch(
     }
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
-    let handle = match state
-        .sandbox_manager
-        .handle_for_agent(&virtual_mcp_id, &branch)
-    {
+    let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        account_epoch,
+        &virtual_mcp_id,
+        &branch,
+    ) {
         Ok(Some(handle)) => handle,
         Ok(None) => {
             return Some(
@@ -76,44 +86,77 @@ pub(super) async fn try_dispatch(
                     .into_response(),
             )
         }
-        Err(error) => return Some(ApiError::internal(error).into_response()),
+        Err(error) => return Some(manager_error(error).into_response()),
     };
 
-    let record = match state.sandbox_manager.registry_record(&handle) {
+    let record = match state
+        .sandbox_manager
+        .registry_record_for_account(account_epoch, &handle)
+    {
         Ok(Some(record)) => record,
         Ok(None) => {
             return Some(
                 ApiError::not_found(format!("sandbox not found: {handle}")).into_response(),
             )
         }
-        Err(error) => return Some(ApiError::internal(error).into_response()),
+        Err(error) => return Some(manager_error(error).into_response()),
     };
-    if record.observed_status == "absent"
-        || !crate::routes::git::is_git_repo(&record.workdir_path).await
-    {
+    if record.observed_status == "absent" {
         return Some(
             ApiError::not_found(format!("sandbox worktree not found: {handle}")).into_response(),
         );
     }
 
-    let sandbox = match state.sandbox_manager.adopt(&handle).await {
+    let sandbox = match state
+        .sandbox_manager
+        .adopt_for_account(account_epoch, &handle)
+        .await
+    {
         Ok(Some(sandbox)) => sandbox,
         Ok(None) => {
             return Some(
                 ApiError::not_found(format!("sandbox not found: {handle}")).into_response(),
             )
         }
-        Err(error) => {
+        Err(error) => return Some(manager_error(error).into_response()),
+    };
+    let repo_probe = if read_only && sandbox.tasks.is_admission_closed() {
+        // Archive/stop closes generation task admission, but the durable
+        // worktree deliberately remains available for read-only inspection.
+        // Do not reopen the generation merely to spawn a Git probe; the fs
+        // handlers below still clamp every path to this exact worktree.
+        Ok(true)
+    } else {
+        crate::routes::git::owned_is_git_repo(sandbox.tasks.clone(), record.workdir_path.clone())
+            .await
+    };
+    match repo_probe {
+        Ok(true) => {}
+        Ok(false) if sandbox.tasks.is_admission_closed() => {
+            return Some(ApiError::conflict("sandbox generation is stopped").into_response())
+        }
+        Ok(false) => {
             return Some(
-                ApiError::internal(format!("failed to adopt sandbox {handle}: {error}"))
+                ApiError::not_found(format!("sandbox worktree not found: {handle}"))
                     .into_response(),
             )
         }
-    };
+        Err(_) if sandbox.tasks.is_admission_closed() => {
+            return Some(ApiError::conflict("sandbox generation is stopped").into_response())
+        }
+        Err(error) => {
+            return Some(
+                ApiError::internal(format!(
+                    "could not inspect sandbox worktree {handle}: {error}"
+                ))
+                .into_response(),
+            )
+        }
+    }
     let target_state = state_for_sandbox(state, &sandbox);
     let body = body.clone();
 
-    Some(match *operation {
+    let response = match *operation {
         "read" => crate::routes::fs::read(State(target_state), body).await,
         "write" => crate::routes::fs::write(State(target_state), body).await,
         "unlink" => crate::routes::fs::unlink(State(target_state), body).await,
@@ -122,7 +165,24 @@ pub(super) async fn try_dispatch(
         "glob" => crate::routes::fs::glob(State(target_state), body).await,
         "grep" => crate::routes::fs::grep(State(target_state), body).await,
         _ => unreachable!("operation was checked against OPERATIONS"),
-    })
+    };
+    if read_only {
+        if let Err(error) = state.sandbox_manager.validate_account_epoch(account_epoch) {
+            return Some(manager_error(error).into_response());
+        }
+    }
+    Some(response)
+}
+
+fn access_for(method: &Method, operation: &str) -> Access {
+    if *method != Method::POST {
+        return Access::Viewer;
+    }
+    match operation {
+        "write" | "unlink" | "mkdir" | "rename" => Access::WorkspaceMutation,
+        "read" | "glob" | "grep" => Access::Viewer,
+        _ => Access::Viewer,
+    }
 }
 
 pub(super) fn decode_identity_segment(label: &str, encoded: &str) -> Result<String, ApiError> {
@@ -172,6 +232,25 @@ mod tests {
     use super::*;
     use crate::sandbox::GitSandboxConfig;
 
+    #[test]
+    fn filesystem_access_distinguishes_reads_from_mutations() {
+        for operation in ["write", "unlink", "mkdir", "rename"] {
+            assert_eq!(
+                access_for(&Method::POST, operation),
+                Access::WorkspaceMutation,
+                "{operation} mutates the workspace"
+            );
+        }
+        for operation in ["read", "glob", "grep"] {
+            assert_eq!(
+                access_for(&Method::POST, operation),
+                Access::Viewer,
+                "{operation} is read-only"
+            );
+        }
+        assert_eq!(access_for(&Method::GET, "write"), Access::Viewer);
+    }
+
     fn git(dir: &Path, args: &[&str]) {
         let output = std::process::Command::new("git")
             .args(args)
@@ -212,14 +291,20 @@ mod tests {
             git(&bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
         }
 
+        let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         state
             .sandbox_manager
-            .ensure(&GitSandboxConfig {
-                virtual_mcp_id: virtual_mcp_id.to_string(),
-                clone_url: bare_string,
-                branch: Some(branch.to_string()),
-                ..Default::default()
-            })
+            .ensure_for_terminal(
+                state.sandbox_manager.account_epoch(),
+                &GitSandboxConfig {
+                    virtual_mcp_id: virtual_mcp_id.to_string(),
+                    clone_url: bare_string,
+                    branch: Some(branch.to_string()),
+                    ..Default::default()
+                },
+                cancel_rx,
+                false,
+            )
             .await
             .expect("sandbox ensure")
     }
@@ -242,6 +327,7 @@ mod tests {
         let response = try_dispatch(
             &state,
             &Method::POST,
+            "acme",
             &["sandbox", "vir_blocks", "feature%2Fblocks", "write"],
             &Bytes::from(
                 serde_json::to_vec(&json!({
@@ -263,7 +349,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persisted_sandbox_is_metadata_adopted_for_writes_after_restart() {
+    async fn stopped_metadata_adoption_rejects_writes_until_explicit_provision() {
         let root = tempfile::tempdir().unwrap();
         let first_state = super::super::test_state(root.path());
         let sandbox = ensure_sandbox(&first_state, "vir_restart", "main").await;
@@ -271,20 +357,26 @@ mod tests {
         let handle = sandbox.handle.clone();
         first_state
             .sandbox_manager
-            .stop_registered(&handle)
+            .stop_registered_for_account(first_state.sandbox_manager.account_epoch(), &handle)
             .await
             .expect("stop registered sandbox");
         drop(sandbox);
         drop(first_state);
 
         let restarted_state = super::super::test_state(root.path());
+        let restarted_epoch = restarted_state.sandbox_manager.account_epoch();
         assert!(
-            restarted_state.sandbox_manager.get(&handle).is_none(),
+            restarted_state
+                .sandbox_manager
+                .get_for_account(restarted_epoch, &handle)
+                .unwrap()
+                .is_none(),
             "fresh manager starts with an empty live-object cache"
         );
-        let response = try_dispatch(
+        let stopped_response = try_dispatch(
             &restarted_state,
             &Method::POST,
+            "acme",
             &["sandbox", "vir_restart", "main", "write"],
             &Bytes::from(
                 serde_json::to_vec(&json!({
@@ -297,11 +389,48 @@ mod tests {
         .await
         .expect("filesystem route is intercepted");
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(stopped_response.status(), StatusCode::CONFLICT);
         assert!(
-            restarted_state.sandbox_manager.get(&handle).is_some(),
+            restarted_state
+                .sandbox_manager
+                .get_for_account(restarted_epoch, &handle)
+                .unwrap()
+                .is_some(),
             "the durable sandbox was metadata-adopted"
         );
+        assert!(
+            !workdir.join(".deco/blocks/restarted.json").exists(),
+            "metadata adoption must not silently reopen write admission"
+        );
+
+        let config = restarted_state
+            .sandbox_manager
+            .registry_record_for_account(restarted_epoch, &handle)
+            .unwrap()
+            .unwrap()
+            .config;
+        let resumed = restarted_state
+            .sandbox_manager
+            .provision_for_account(restarted_epoch, &config)
+            .await
+            .expect("explicit provision installs a fresh open generation");
+        assert!(!resumed.tasks.is_admission_closed());
+        let resumed_response = try_dispatch(
+            &restarted_state,
+            &Method::POST,
+            "acme",
+            &["sandbox", "vir_restart", "main", "write"],
+            &Bytes::from(
+                serde_json::to_vec(&json!({
+                    "path": ".deco/blocks/restarted.json",
+                    "content": "{\"survived\":true}"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await
+        .expect("filesystem route is intercepted after resume");
+        assert_eq!(resumed_response.status(), StatusCode::OK);
         assert_eq!(
             std::fs::read_to_string(workdir.join(".deco/blocks/restarted.json")).unwrap(),
             "{\"survived\":true}"
@@ -318,6 +447,7 @@ mod tests {
         let response = try_dispatch(
             &state,
             &Method::POST,
+            "acme",
             &["sandbox", "never_seen", "main", "write"],
             &Bytes::from(
                 serde_json::to_vec(&json!({
@@ -350,6 +480,7 @@ mod tests {
         let response = try_dispatch(
             &state,
             &Method::POST,
+            "acme",
             &["sandbox", "vir_first", "main", "write"],
             &Bytes::from(
                 serde_json::to_vec(&json!({
@@ -387,6 +518,7 @@ mod tests {
         let bridged = try_dispatch(
             &state,
             &Method::POST,
+            "acme",
             &["sandbox", "vir_read", "main", "read"],
             &body,
         )
@@ -414,6 +546,7 @@ mod tests {
         let response = try_dispatch(
             &state,
             &Method::GET,
+            "acme",
             &["sandbox", "vir_blocks", "main", "write"],
             &Bytes::new(),
         )

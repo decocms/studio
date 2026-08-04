@@ -228,11 +228,14 @@ async fn run_await(
     env: Option<&HashMap<String, String>>,
     timeout_ms: u64,
 ) -> ApiResult<RunResult> {
-    let Some(admission) = state.shutdown.admit_work().await else {
+    let Some(shutdown_admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "application is shutting down",
         ));
+    };
+    let Some(generation_admission) = state.tasks.admit() else {
+        return Err(ApiError::conflict("sandbox generation is stopped"));
     };
 
     let mut cmd = build_command(command, cwd, env);
@@ -255,7 +258,7 @@ async fn run_await(
     let id = format!("internal-bash-{}", uuid::Uuid::new_v4());
     let controller = ProcessController::new();
     let kill_handle = controller.kill_handle();
-    state.tasks.insert(TaskEntry::new_internal(
+    generation_admission.register(TaskEntry::new_internal(
         TaskSummary {
             id: id.clone(),
             command: command.to_string(),
@@ -276,7 +279,7 @@ async fn run_await(
     // the owner; there is no spawn -> registry cancellation window.
     let (Some(stdout_pipe), Some(stderr_pipe)) = (child.take_stdout(), child.take_stderr()) else {
         spawn_missing_stdio_cleanup(state.clone(), id, child, false);
-        drop(admission);
+        drop(shutdown_admission);
         return Ok(RunResult {
             stdout: String::new(),
             stderr: "spawn error: missing stdio pipe\n".to_string(),
@@ -298,7 +301,7 @@ async fn run_await(
         Some(result_tx),
         false,
     );
-    drop(admission);
+    drop(shutdown_admission);
 
     let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
     let result = result_rx
@@ -315,11 +318,14 @@ async fn spawn_background(
     env: Option<HashMap<String, String>>,
     timeout_ms: u64,
 ) -> ApiResult<Json<Value>> {
-    let Some(admission) = state.shutdown.admit_work().await else {
+    let Some(shutdown_admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "application is shutting down",
         ));
+    };
+    let Some(generation_admission) = state.tasks.admit() else {
+        return Err(ApiError::conflict("sandbox generation is stopped"));
     };
     let mut cmd = build_command(&command, &cwd, env.as_ref());
     let id = state.tasks.next_id();
@@ -343,7 +349,7 @@ async fn spawn_background(
                     log_name: None,
                     intentional: None,
                 };
-                state.tasks.insert(TaskEntry::new(summary, None));
+                generation_admission.register(TaskEntry::new(summary, None));
                 emit_tasks_event(&state.tasks, &state.broadcaster);
                 return Ok(Json(json!({"taskId": id, "status": "failed"})));
             }
@@ -361,14 +367,12 @@ async fn spawn_background(
         log_name: None,
         intentional: None,
     };
-    state
-        .tasks
-        .insert(TaskEntry::new(summary, Some(kill_handle)));
+    generation_admission.register(TaskEntry::new(summary, Some(kill_handle)));
     emit_tasks_event(&state.tasks, &state.broadcaster);
 
     let (Some(stdout_pipe), Some(stderr_pipe)) = (child.take_stdout(), child.take_stderr()) else {
         spawn_missing_stdio_cleanup(state.clone(), id.clone(), child, true);
-        drop(admission);
+        drop(shutdown_admission);
         return Ok(Json(json!({"taskId": id, "status": "failed"})));
     };
 
@@ -383,7 +387,7 @@ async fn spawn_background(
         None,
         true,
     );
-    drop(admission);
+    drop(shutdown_admission);
 
     Ok(Json(json!({"taskId": id, "status": "running"})))
 }

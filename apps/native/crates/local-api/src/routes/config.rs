@@ -38,6 +38,9 @@ pub async fn read(State(state): State<AppState>) -> Json<Value> {
 }
 
 pub async fn update(State(state): State<AppState>, body: Bytes) -> Response {
+    let Some(_generation_admission) = state.tasks.admit() else {
+        return ApiError::conflict("sandbox generation is stopped").into_response();
+    };
     let raw: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => return ApiError::bad_request(format!("bad body: {e}")).into_response(),
@@ -111,6 +114,22 @@ fn reject_auth_patch(auth: &Value) -> Option<ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stopped_generation_rejects_config_patch_without_mutating_state() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        state.tasks.close_admission().await;
+
+        let response = update(
+            State(state.clone()),
+            Bytes::from_static(br#"{"application":{"runtime":"node"}}"#),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+        assert!(state.config.snapshot().config.is_none());
+        assert_eq!(state.setup.pending_count(), 0);
+    }
 
     #[test]
     fn reject_auth_patch_allows_object_without_rotate_token() {

@@ -30,11 +30,17 @@ use crate::tasks::{KillSignal, OutputStream, StreamEvent, TaskStatus};
 /// to the process-global registry. After a backend restart a known durable
 /// handle is metadata-adopted (no process spawn); a genuinely unknown handle
 /// is a truthful 404. Only an absent handle uses active/global compatibility.
-async fn resolve(state: &AppState, handle: Option<&str>) -> ApiResult<SandboxTarget> {
+async fn resolve(
+    state: &AppState,
+    epoch: crate::sandbox::manager::AccountEpoch,
+    handle: Option<&str>,
+) -> ApiResult<SandboxTarget> {
     let Some(handle) = handle.filter(|handle| !handle.is_empty()) else {
-        return Ok(state.resolve_sandbox_target(None));
+        return state
+            .resolve_sandbox_target_for_account(epoch, None)
+            .map_err(ApiError::conflict);
     };
-    match state.sandbox_manager.adopt(handle).await {
+    match state.sandbox_manager.adopt_for_account(epoch, handle).await {
         Ok(Some(sandbox)) => Ok(SandboxTarget::from_sandbox(&sandbox)),
         Ok(None) => Err(ApiError::not_found(format!(
             "unknown sandbox handle: {handle}"
@@ -45,8 +51,12 @@ async fn resolve(state: &AppState, handle: Option<&str>) -> ApiResult<SandboxTar
     }
 }
 
-async fn resolve_headers(state: &AppState, headers: &HeaderMap) -> ApiResult<SandboxTarget> {
-    resolve(state, crate::sandbox::handle_from_headers(headers)).await
+async fn resolve_headers(
+    state: &AppState,
+    epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> ApiResult<SandboxTarget> {
+    resolve(state, epoch, crate::sandbox::handle_from_headers(headers)).await
 }
 
 #[derive(Deserialize)]
@@ -70,6 +80,8 @@ pub async fn list(
     headers: HeaderMap,
     Query(q): Query<StatusQuery>,
 ) -> ApiResult<Json<Value>> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
     let parsed: Option<Vec<TaskStatus>> = q
         .status
         .as_deref()
@@ -78,7 +90,14 @@ pub async fn list(
         Some(v) if !v.is_empty() => Some(v.as_slice()),
         _ => None,
     };
-    let tasks = resolve_headers(&state, &headers).await?.tasks.list(filter);
+    let tasks = resolve_headers(&state, epoch, &headers)
+        .await?
+        .tasks
+        .list(filter);
+    state
+        .sandbox_manager
+        .validate_account_epoch(epoch)
+        .map_err(ApiError::conflict)?;
     Ok(Json(json!({ "tasks": tasks })))
 }
 
@@ -88,12 +107,18 @@ pub async fn get(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    let target = resolve_headers(&state, &headers).await?;
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
+    let target = resolve_headers(&state, epoch, &headers).await?;
     let summary = target
         .tasks
         .get_exposed(&id)
         .ok_or_else(|| ApiError::not_found("task not found"))?;
     let (stdout, stderr, truncated) = target.tasks.output_exposed(&id).await.unwrap_or_default();
+    state
+        .sandbox_manager
+        .validate_account_epoch(epoch)
+        .map_err(ApiError::conflict)?;
     let mut value = serde_json::to_value(&summary).unwrap_or_else(|_| json!({}));
     if let Value::Object(map) = &mut value {
         map.insert("stdout".to_string(), json!(stdout));
@@ -117,15 +142,18 @@ pub async fn kill(
     Path(id): Path<String>,
     Query(q): Query<SignalQuery>,
 ) -> ApiResult<Json<Value>> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
     let signal = match q.signal.as_deref() {
         Some("SIGKILL") => KillSignal::Kill,
         _ => KillSignal::Term,
     };
-    match resolve_headers(&state, &headers)
-        .await?
-        .tasks
-        .kill_exposed(&id, signal)
-    {
+    let target = resolve_headers(&state, epoch, &headers).await?;
+    let killed = state
+        .sandbox_manager
+        .with_account_epoch(epoch, || target.tasks.kill_exposed(&id, signal))
+        .map_err(ApiError::conflict)?;
+    match killed {
         Some(true) => Ok(Json(json!({"ok": true}))),
         _ => Err(ApiError::bad_request("task not running")),
     }
@@ -133,10 +161,13 @@ pub async fn kill(
 
 /// `POST /_sandbox/tasks/kill-all`.
 pub async fn kill_all(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
-    let killed = resolve_headers(&state, &headers)
-        .await?
-        .tasks
-        .kill_all(KillSignal::Term);
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
+    let target = resolve_headers(&state, epoch, &headers).await?;
+    let killed = state
+        .sandbox_manager
+        .with_account_epoch(epoch, || target.tasks.kill_all(KillSignal::Term))
+        .map_err(ApiError::conflict)?;
     Ok(Json(json!({"ok": true, "killed": killed})))
 }
 
@@ -148,12 +179,18 @@ pub async fn delete(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    match resolve_headers(&state, &headers)
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
+    let removed = resolve_headers(&state, epoch, &headers)
         .await?
         .tasks
         .remove_exposed(&id)
-        .await
-    {
+        .await;
+    state
+        .sandbox_manager
+        .validate_account_epoch(epoch)
+        .map_err(ApiError::conflict)?;
+    match removed {
         Some(true) => Ok(Json(json!({"ok": true}))),
         _ => Err(ApiError::bad_request("task not found or still running")),
     }
@@ -169,13 +206,19 @@ pub async fn stream(
     Path(id): Path<String>,
     Query(q): Query<HandleQuery>,
 ) -> Result<Response, ApiError> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let account_epoch = authorization.epoch();
     // Handle from the header (fetch/`FetchEventSource`) OR `?handle=` (native
     // `EventSource`), header winning. An explicit unknown handle is never
     // allowed to fall through to active/global.
     let handle = crate::sandbox::handle_from_headers(&headers)
         .map(str::to_string)
         .or(q.handle);
-    let target = resolve(&state, handle.as_deref()).await?;
+    let target = resolve(&state, account_epoch, handle.as_deref()).await?;
+    let mut account_epoch_rx = state
+        .sandbox_manager
+        .watch_account_epoch(account_epoch)
+        .map_err(ApiError::conflict)?;
 
     // Subscribe BEFORE reading the summary/output snapshot: if the task is
     // still running at that snapshot, this subscription is guaranteed to
@@ -189,6 +232,10 @@ pub async fn stream(
         return Err(ApiError::not_found("task not found"));
     };
     let (stdout, stderr, _truncated) = target.tasks.output_exposed(&id).await.unwrap_or_default();
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)
+        .map_err(ApiError::conflict)?;
 
     let mut frames: Vec<BodyBytes> = Vec::new();
     if !stdout.is_empty() {
@@ -218,6 +265,16 @@ pub async fn stream(
         let live = stream::unfold(LiveState::Recv(rx), live_step);
         Box::pin(stream::iter(frames.into_iter().map(Ok)).chain(live))
     };
+    let account_changed = async move {
+        if *account_epoch_rx.borrow() != account_epoch {
+            return;
+        }
+        // A same-value notification is the epoch-exhaustion fail-closed
+        // signal, so every observed version change terminates the stream.
+        let _ = account_epoch_rx.changed().await;
+    };
+    let body_stream = body_stream.take_until(account_changed);
+    drop(authorization);
 
     let mut response = Response::new(axum::body::Body::from_stream(body_stream));
     let headers = response.headers_mut();

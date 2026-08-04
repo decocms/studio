@@ -147,7 +147,8 @@ pub fn build(
         .route("/setup/ensure", post(routes::setup::ensure))
         .route("/setup/start", post(routes::setup::start))
         // NEW — no daemon precedent (see routes::setup::stop's own doc
-        // comment): kills the resolved target's running dev/start task
+        // comment): quiesces a registered sandbox generation; the legacy
+        // headerless non-git fallback stops its running dev/start task
         // WITHOUT respawning, giving the sandbox drawer's Stop button a
         // real desktop-local action to call.
         .route("/setup/stop", post(routes::setup::stop))
@@ -405,18 +406,28 @@ async fn preview_fence(
     next: Next,
 ) -> Response {
     crate::client_auth::remove_local_session_cookie(req.headers_mut());
+    let authorization = match routes::sandbox_account::authorize(&fence.state).await {
+        Ok(authorization) => authorization,
+        Err(error) => return error.into_response(),
+    };
     if let Some(base) = fence.base.as_deref() {
-        if !names_a_known_sandbox(&fence.state, req.headers(), base) {
+        if !names_a_known_sandbox(&fence.state, authorization.epoch(), req.headers(), base) {
             return ApiError::not_found("Not found").into_response();
         }
     }
+    drop(authorization);
     next.run(req).await
 }
 
 /// Whether `Host` is `<label>.<base>` for a `label` the sandbox manager
 /// currently maps to a handle. Deliberately strict: exactly one label, and the
 /// bare `base` itself is NOT accepted.
-fn names_a_known_sandbox(state: &AppState, headers: &axum::http::HeaderMap, base: &str) -> bool {
+fn names_a_known_sandbox(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &axum::http::HeaderMap,
+    base: &str,
+) -> bool {
     let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
         return false;
     };
@@ -435,8 +446,8 @@ fn names_a_known_sandbox(state: &AppState, headers: &axum::http::HeaderMap, base
         && !label.contains('.')
         && state
             .sandbox_manager
-            .handle_for_preview_label(label)
-            .is_some()
+            .handle_for_preview_label_for_account(account_epoch, label)
+            .is_ok_and(|handle| handle.is_some())
 }
 
 /// `{"error":"Not found: <full request path>"}` — byte-parity in spirit

@@ -76,7 +76,8 @@ use crate::process_group::ProcessGroupChild;
 use crate::process_util::CancelOnDrop;
 use crate::state::AppState;
 use crate::tasks::{
-    registry::now_ms, KillHandle, KillSignal, ProcessController, TaskEntry, TaskStatus, TaskSummary,
+    registry::now_ms, GenerationAdmission, KillHandle, KillSignal, ProcessController, TaskEntry,
+    TaskRegistry, TaskStatus, TaskSummary,
 };
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -168,7 +169,7 @@ async fn publish_inner(state: AppState, body: Bytes) -> ApiResult<Json<Value>> {
     match publish_internal(&state.repo_dir, &message).await {
         Ok(pushed) => {
             if pushed {
-                emit_branch_event(&state.repo_dir, &state.broadcaster).await;
+                emit_branch_event(state.tasks.clone(), &state.repo_dir, &state.broadcaster).await;
             }
             Ok(Json(json!({ "pushed": pushed })))
         }
@@ -193,7 +194,7 @@ async fn discard_inner(state: AppState, body: Bytes) -> ApiResult<Json<Value>> {
 
     match discard_files(&state.app_root, &state.repo_dir, &filepaths).await {
         Ok(()) => {
-            emit_branch_event(&state.repo_dir, &state.broadcaster).await;
+            emit_branch_event(state.tasks.clone(), &state.repo_dir, &state.broadcaster).await;
             Ok(Json(json!({ "success": true })))
         }
         // Byte-parity with `makeGitDiscardHandler`'s catch-all 500 (including
@@ -224,7 +225,7 @@ async fn rebase_inner(state: AppState, body: Bytes) -> ApiResult<Json<Value>> {
 
     match rebase_onto_base(&state.repo_dir, base).await {
         Ok(()) => {
-            emit_branch_event(&state.repo_dir, &state.broadcaster).await;
+            emit_branch_event(state.tasks.clone(), &state.repo_dir, &state.broadcaster).await;
             Ok(Json(json!({ "rebased": true })))
         }
         Err(e) => Err(route_error_response(e, true)),
@@ -237,9 +238,10 @@ async fn rebase_inner(state: AppState, body: Bytes) -> ApiResult<Json<Value>> {
 /// immediately afterward: every accepted operation is then enumerable through
 /// `TaskRegistry`, without holding a read-admission guard for its full runtime.
 fn spawn_git_operation_owner<T, F>(
-    state: AppState,
+    tasks: std::sync::Arc<TaskRegistry>,
     command: &str,
     operation: F,
+    generation_admission: GenerationAdmission,
 ) -> (KillHandle, oneshot::Receiver<Result<T, &'static str>>)
 where
     T: Send + 'static,
@@ -248,7 +250,7 @@ where
     let id = format!("internal-git-{}", uuid::Uuid::new_v4());
     let controller = ProcessController::new();
     let kill_handle = controller.kill_handle();
-    state.tasks.insert(TaskEntry::new_internal(
+    generation_admission.register(TaskEntry::new_internal(
         TaskSummary {
             id: id.clone(),
             command: command.to_string(),
@@ -264,8 +266,7 @@ where
         Some(kill_handle.clone()),
     ));
 
-    let tasks = state.tasks.clone();
-    let child_lifetime_lock_path = state.tasks.child_lifetime_lock_path().to_path_buf();
+    let child_lifetime_lock_path = tasks.child_lifetime_lock_path().to_path_buf();
     let owner_id = id.clone();
     let (result_tx, result_rx) = oneshot::channel();
     tokio::spawn(async move {
@@ -296,6 +297,78 @@ where
     (kill_handle, result_rx)
 }
 
+async fn await_git_operation<T>(
+    kill_handle: KillHandle,
+    result_rx: oneshot::Receiver<Result<T, &'static str>>,
+) -> ApiResult<T> {
+    await_git_operation_result(kill_handle, result_rx)
+        .await
+        .map_err(ApiError::internal)
+}
+
+async fn await_git_operation_result<T>(
+    kill_handle: KillHandle,
+    result_rx: oneshot::Receiver<Result<T, &'static str>>,
+) -> Result<T, String> {
+    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
+    let result = result_rx
+        .await
+        .map_err(|_| "git operation owner stopped unexpectedly".to_string())?
+        .map_err(str::to_string)?;
+    cancel_on_drop.disarm();
+    Ok(result)
+}
+
+/// Own a non-route Git observation in this exact sandbox generation. The
+/// hidden registry entry is installed synchronously before the detached owner
+/// can spawn any Git child; Stop can therefore signal and join probes from
+/// manager, bridge, and filesystem helper paths just like ordinary Git routes.
+pub(crate) async fn run_owned_git_probe<T, F>(
+    tasks: std::sync::Arc<TaskRegistry>,
+    command: &str,
+    operation: F,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: Future<Output = T> + Send + 'static,
+{
+    let generation = tasks.clone();
+    let generation_admission = tasks
+        .admit()
+        .ok_or_else(|| "sandbox generation is stopped".to_string())?;
+    let (kill_handle, result_rx) =
+        spawn_git_operation_owner(tasks, command, operation, generation_admission);
+    let result = await_git_operation_result(kill_handle, result_rx).await?;
+    if generation.is_admission_closed() {
+        return Err("sandbox generation stopped during Git probe".to_string());
+    }
+    Ok(result)
+}
+
+pub(crate) async fn owned_is_git_repo(
+    tasks: std::sync::Arc<TaskRegistry>,
+    repo_dir: PathBuf,
+) -> Result<bool, String> {
+    run_owned_git_probe(tasks, "git repository probe", async move {
+        is_git_repo(&repo_dir).await
+    })
+    .await
+}
+
+pub(crate) async fn prune_worktree_registrations(canonical_repo: &Path) -> Result<(), String> {
+    if GIT_PROCESS_CONTROLLER.try_with(|_| ()).is_err() {
+        return Err("worktree prune requires a generation-owned Git controller".to_string());
+    }
+    run_git_raw(
+        canonical_repo,
+        &["worktree", "prune"],
+        &route_env(canonical_repo),
+    )
+    .await
+    .map(|_| ())
+    .map_err(|error| error.message)
+}
+
 /// Admits only the spawn + hidden-owner registration critical section. The
 /// detached owner remains visible to coordinated shutdown until all of its Git
 /// process groups have been joined and the operation has finalized.
@@ -311,16 +384,18 @@ where
             "application is shutting down",
         ));
     };
-    let (kill_handle, result_rx) = spawn_git_operation_owner(state, command, operation);
+    let Some(generation_admission) = state.tasks.admit() else {
+        return Err(ApiError::conflict("sandbox generation is stopped"));
+    };
+    let (kill_handle, result_rx) = spawn_git_operation_owner(
+        state.tasks.clone(),
+        command,
+        operation,
+        generation_admission,
+    );
     drop(admission);
 
-    let mut cancel_on_drop = CancelOnDrop::new(kill_handle, KillSignal::Term);
-    let result = result_rx
-        .await
-        .map_err(|_| ApiError::internal("git operation owner stopped unexpectedly"))?
-        .map_err(ApiError::internal)?;
-    cancel_on_drop.disarm();
-    result
+    await_git_operation(kill_handle, result_rx).await?
 }
 
 async fn require_git_repo(repo_dir: &Path) -> ApiResult<()> {
@@ -1928,11 +2003,36 @@ async fn rebase_onto_base(repo_dir: &Path, base: &str) -> Result<(), RouteError>
 /// `branchStatus.refresh()` call) — hence taking `repo_dir`/`broadcaster`
 /// directly rather than a full `&AppState` (the setup module constructs its
 /// own view of these, not a route-extracted `AppState`).
-pub(crate) async fn emit_branch_event(repo_dir: &Path, broadcaster: &crate::events::Broadcaster) {
-    let Some(meta) = branch_snapshot(repo_dir).await else {
+pub(crate) async fn emit_branch_event(
+    tasks: std::sync::Arc<TaskRegistry>,
+    repo_dir: &Path,
+    broadcaster: &crate::events::Broadcaster,
+) {
+    let Some(meta) = owned_branch_snapshot(tasks, repo_dir.to_path_buf()).await else {
         return;
     };
     broadcaster.emit("branch", json!({ "meta": meta }));
+}
+
+/// Run an observational branch snapshot under the same hidden generation
+/// owner as mutating Git routes. SSE handshakes and background pollers are
+/// process-spawning paths too: a stopped metadata generation rejects them,
+/// while Stop can signal and await any snapshot admitted before close.
+pub(crate) async fn owned_branch_snapshot(
+    tasks: std::sync::Arc<TaskRegistry>,
+    repo_dir: PathBuf,
+) -> Option<Value> {
+    let generation_admission = tasks.admit()?;
+    let (kill_handle, result_rx) = spawn_git_operation_owner(
+        tasks,
+        "git branch snapshot",
+        async move { branch_snapshot(&repo_dir).await },
+        generation_admission,
+    );
+    await_git_operation(kill_handle, result_rx)
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Compute the current reconnect/live branch payload for exactly `repo_dir`.
@@ -2120,6 +2220,47 @@ mod tests {
         })
         .await
         .expect("detached owner finalized after its operation completed");
+    }
+
+    #[tokio::test]
+    async fn generation_close_reaps_owned_non_route_git_probe_and_rejects_late_probe() {
+        let root = TempDir::new().unwrap();
+        let state = test_app_state(root.path());
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let probe_tasks = state.tasks.clone();
+        let probe = tokio::spawn(async move {
+            run_owned_git_probe(probe_tasks, "git lifecycle probe", async move {
+                let controller = GIT_PROCESS_CONTROLLER
+                    .try_with(Clone::clone)
+                    .expect("owned probe installs its process controller");
+                started_tx.send(()).unwrap();
+                controller.wait_for_change(None).await
+            })
+            .await
+        });
+        started_rx.await.expect("probe owner is registered");
+
+        let result = state
+            .tasks
+            .close_and_kill_all_and_wait(Duration::from_secs(1), Duration::from_secs(1))
+            .await;
+        assert_eq!(result.initially_running, 1);
+        assert_eq!(result.term_signaled, 1);
+        assert!(result.remaining.is_empty());
+        assert!(
+            probe.await.unwrap().is_err(),
+            "a probe signaled by generation close cannot publish an observation"
+        );
+
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let late_ran = ran.clone();
+        let error = run_owned_git_probe(state.tasks.clone(), "late probe", async move {
+            late_ran.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .await
+        .expect_err("closed generation rejects a new raw Git probe");
+        assert!(error.contains("stopped"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -2318,7 +2459,10 @@ mod tests {
     /// point at the same directory) for tests that do not materialize a
     /// per-handle sandbox.
     fn test_app_state(dir: &Path) -> AppState {
-        let (app_root, repo_dir) = (dir, dir);
+        test_app_state_at(dir, dir)
+    }
+
+    fn test_app_state_at(app_root: &Path, repo_dir: &Path) -> AppState {
         let config = std::sync::Arc::new(crate::config::ConfigStore::new());
         let logs = std::sync::Arc::new(crate::log_store::LogStore::new(app_root.join("logs")));
         let tasks = std::sync::Arc::new(crate::tasks::TaskRegistry::new(logs));
@@ -2569,16 +2713,20 @@ mod tests {
     #[tokio::test]
     async fn branch_event_emitted_after_publish() {
         let repo = setup_repo();
+        let app_root = TempDir::new().unwrap();
         std::fs::write(repo.work_dir.join("evented.txt"), "x\n").unwrap();
 
-        let state = test_app_state(&repo.work_dir);
+        // Production task logs live under the native app root, never in the
+        // checkout. Keep that boundary in the fixture: the hidden owner for
+        // the branch probe must not make the repository appear dirty.
+        let state = test_app_state_at(app_root.path(), &repo.work_dir);
         let mut rx = state.broadcaster.subscribe();
 
         let pushed = publish_internal(&state.repo_dir, "evented publish")
             .await
             .unwrap();
         assert!(pushed);
-        emit_branch_event(&state.repo_dir, &state.broadcaster).await;
+        emit_branch_event(state.tasks.clone(), &state.repo_dir, &state.broadcaster).await;
 
         let evt = rx.recv().await.expect("branch event delivered");
         assert_eq!(evt.name, "branch");

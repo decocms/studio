@@ -1,11 +1,9 @@
 //! Ordering between process-global upstream credentials and account-scoped
 //! interactive agent processes.
 
-use std::sync::Arc;
-
 use upstream::{PreparedSession, SessionIdentityEvent, StatusResult, UpstreamSession};
 
-use crate::{AgentSessionRegistry, AppState};
+use crate::AppState;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AccountInstallError {
@@ -29,7 +27,7 @@ pub async fn install_upstream_session(
     let transition = session.begin_transition().await;
     let current_user_sub = transition.current_user_sub_result().await?;
     if should_reap_for_install(current_user_sub.as_deref(), prepared.user_sub()) {
-        reap_all(&state.agent_sessions).await?;
+        reap_all(state).await?;
     }
     Ok(transition.install(prepared).await?)
 }
@@ -42,33 +40,95 @@ pub async fn logout_upstream_session(state: &AppState) -> StatusResult {
     let transition = session.begin_transition().await;
     let status = transition.logout().await;
     if !status.signed_in {
-        log_reap_failure(reap_all(&state.agent_sessions).await, "logout");
+        log_reap_failure(reap_all(state).await, "logout");
     }
     status
 }
 
-/// Hard sign-out counterpart for request paths that directly observe a
-/// rejected refresh token. Other hard sign-outs (including background
-/// revalidation) are covered by [`spawn_identity_reaper`].
-pub(crate) async fn hard_sign_out_upstream_session(state: &AppState, reason: &str) -> StatusResult {
-    let session = upstream::global();
+/// Hard-sign-out a directly rejected refresh token only if the request that
+/// observed it still names the current account. A delayed account-A failure
+/// must never clear credentials installed for account B.
+pub(crate) async fn hard_sign_out_upstream_session_if_current(
+    state: &AppState,
+    session: &UpstreamSession,
+    expected_generation: u64,
+    expected_epoch: crate::sandbox::manager::AccountEpoch,
+    reason: &str,
+) -> bool {
     let transition = session.begin_transition().await;
-    let status = transition.hard_sign_out(reason).await;
-    log_reap_failure(reap_all(&state.agent_sessions).await, "hard sign-out");
-    status
+    if transition.generation() != expected_generation
+        || state
+            .sandbox_manager
+            .validate_account_epoch(expected_epoch)
+            .is_err()
+    {
+        return false;
+    }
+    transition.hard_sign_out(reason).await;
+    log_reap_failure(reap_all(state).await, "hard sign-out");
+    true
 }
 
-pub(crate) async fn reap_all(registry: &AgentSessionRegistry) -> Result<(), AccountInstallError> {
-    let failures = registry.terminate_all().await;
-    let remaining = registry.active_count();
+pub(crate) async fn reap_all(state: &AppState) -> Result<(), AccountInstallError> {
+    let sandbox_transition = state
+        .sandbox_manager
+        .begin_account_transition()
+        .await
+        .map_err(AccountInstallError::AgentReap)?;
+    let preparation = state.agent_sessions.cancel_all_preparations();
+    let preparation_fences = preparation.fences();
+    let mut failures = Vec::new();
+    let first_preparation_error = preparation.wait().await.err();
+    let first_sandbox_error = sandbox_transition.drain_and_stop_live().await.err();
+    let preparation_quiesced = match first_preparation_error {
+        None => true,
+        Some(first_error) => match preparation.wait().await {
+            Ok(()) => true,
+            Err(error) => {
+                failures.push(format!(
+                    "managed coding agent artifacts were not removed because preparation remained active after sandbox shutdown and was unsafe to clean: {first_error}; retry: {error}"
+                ));
+                false
+            }
+        },
+    };
+    if preparation_quiesced {
+        // The first sandbox drain can time out before taking a snapshot while
+        // a canceled preparation still owns a materialization admission. The
+        // successful preparation retry proves that admission is now gone, so
+        // one idempotent drain retry is required before the transition gate
+        // may reopen. A successful retry fully recovers the first timeout.
+        if let Some(first_error) = first_sandbox_error {
+            if let Err(error) = sandbox_transition.drain_and_stop_live().await {
+                failures.push(format!(
+                    "could not stop sandbox processes before changing accounts: {first_error}; retry: {error}"
+                ));
+            }
+        }
+        for fence in &preparation_fences {
+            if let Err(error) =
+                crate::terminal::launch_context::cleanup_managed_state(&state.app_root, fence).await
+            {
+                failures.push(format!(
+                    "could not clean canceled coding agent preparation for {}: {error}",
+                    fence.thread_id
+                ));
+            }
+        }
+    } else if let Some(error) = first_sandbox_error {
+        failures.push(format!(
+            "could not stop sandbox processes before changing accounts: {error}"
+        ));
+    }
+    failures.extend(state.agent_sessions.terminate_active_sessions().await);
+    let remaining = state.agent_sessions.active_count();
     if failures.is_empty() && remaining == 0 {
         return Ok(());
     }
-    let mut details = failures;
     if remaining != 0 {
-        details.push(format!("{remaining} terminal session(s) remain active"));
+        failures.push(format!("{remaining} terminal session(s) remain active"));
     }
-    Err(AccountInstallError::AgentReap(details.join("; ")))
+    Err(AccountInstallError::AgentReap(failures.join("; ")))
 }
 
 fn log_reap_failure(result: Result<(), AccountInstallError>, transition: &str) {
@@ -88,18 +148,18 @@ fn should_reap_for_install(current_user_sub: Option<&str>, next_user_sub: &str) 
 /// pre-commit reap.
 pub(crate) fn spawn_identity_reaper(
     session: UpstreamSession,
-    registry: Arc<AgentSessionRegistry>,
+    state: AppState,
 ) -> tokio::task::JoinHandle<()> {
     let mut events = session.subscribe_identity();
     tokio::spawn(async move {
         loop {
             match events.recv().await {
-                Ok(event) => reap_identity_event(&session, &registry, event).await,
+                Ok(event) => reap_identity_event(&session, &state, event).await,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                     let transition = session.begin_transition().await;
                     match transition.current_user_sub_result().await {
                         Ok(None) => {
-                            log_reap_failure(reap_all(&registry).await, "lagged hard sign-out");
+                            log_reap_failure(reap_all(&state).await, "lagged hard sign-out");
                         }
                         Ok(Some(_)) => {}
                         Err(error) => {
@@ -115,7 +175,7 @@ pub(crate) fn spawn_identity_reaper(
 
 async fn reap_identity_event(
     session: &UpstreamSession,
-    registry: &AgentSessionRegistry,
+    state: &AppState,
     event: SessionIdentityEvent,
 ) {
     if event.user_sub.is_some() {
@@ -125,7 +185,7 @@ async fn reap_identity_event(
     if !should_reap_identity_event(transition.generation(), &event) {
         return;
     }
-    log_reap_failure(reap_all(registry).await, "hard sign-out event");
+    log_reap_failure(reap_all(state).await, "hard sign-out event");
 }
 
 fn should_reap_identity_event(current_generation: u64, event: &SessionIdentityEvent) -> bool {
@@ -135,6 +195,10 @@ fn should_reap_identity_event(current_generation: u64, event: &SessionIdentityEv
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use upstream::tokens::{
+        host_key, test_support::MemoryTokenStore, StoredSession, TokenStore, UserInfo,
+    };
 
     #[test]
     fn account_replacement_and_post_signout_login_require_reap() {
@@ -164,5 +228,115 @@ mod tests {
             user_sub: Some("account-b".to_string()),
         };
         assert!(!should_reap_identity_event(5, &signed_in));
+    }
+
+    #[tokio::test]
+    async fn delayed_hard_sign_out_cannot_clear_replacement_credentials() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let expected_epoch = state.sandbox_manager.account_epoch();
+        let target = "http://replacement.invalid";
+        let host = host_key(target);
+        let store = Arc::new(MemoryTokenStore::new());
+        let account_a = StoredSession {
+            target: target.to_string(),
+            client_id: "client-a".to_string(),
+            user: UserInfo {
+                sub: "account-a".to_string(),
+                email: None,
+                name: None,
+            },
+            access_token: "token-a".to_string(),
+            refresh_token: Some("refresh-a".to_string()),
+            expires_at: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            cookie: None,
+        };
+        store.save(&host, account_a).await.unwrap();
+        let session = UpstreamSession::new(target.to_string(), store.clone());
+        let expected_generation = session.begin_transition().await.generation();
+
+        session
+            .begin_transition()
+            .await
+            .hard_sign_out("test replacement")
+            .await;
+        let account_b = StoredSession {
+            target: target.to_string(),
+            client_id: "client-b".to_string(),
+            user: UserInfo {
+                sub: "account-b".to_string(),
+                email: None,
+                name: None,
+            },
+            access_token: "token-b".to_string(),
+            refresh_token: Some("refresh-b".to_string()),
+            expires_at: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            cookie: None,
+        };
+        store.save(&host, account_b).await.unwrap();
+
+        assert!(
+            !hard_sign_out_upstream_session_if_current(
+                &state,
+                &session,
+                expected_generation,
+                expected_epoch,
+                "delayed account-a rejection",
+            )
+            .await
+        );
+        let stored = store.load(&host).await.unwrap().unwrap();
+        assert_eq!(stored.user.sub, "account-b");
+        assert_eq!(stored.access_token, "token-b");
+    }
+
+    #[tokio::test]
+    async fn account_reap_stops_real_and_synthetic_sandbox_generations() {
+        let root = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(root.path());
+        let real_handle = state
+            .sandbox_manager
+            .register_for_test("https://github.com/acme/auth-real.git", "feature/account-a");
+        let synthetic_handle = state.sandbox_manager.register_for_test(
+            "https://github.com/acme/auth-synthetic.git",
+            "thread:account-a-thread",
+        );
+        let account_epoch = state.sandbox_manager.account_epoch();
+        let real = state
+            .sandbox_manager
+            .adopt_for_account(account_epoch, &real_handle)
+            .await
+            .unwrap()
+            .unwrap();
+        let synthetic = state
+            .sandbox_manager
+            .adopt_for_account(account_epoch, &synthetic_handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        reap_all(&state).await.unwrap();
+        let current_epoch = state.sandbox_manager.account_epoch();
+
+        for (handle, generation) in [(&real_handle, real), (&synthetic_handle, synthetic)] {
+            assert!(state
+                .sandbox_manager
+                .get_for_account(current_epoch, handle)
+                .unwrap()
+                .is_none());
+            assert!(generation.tasks.is_admission_closed());
+            assert!(generation.tasks.list(None).is_empty());
+            assert_eq!(
+                state
+                    .sandbox_manager
+                    .registry_record_for_account(current_epoch, handle)
+                    .unwrap()
+                    .unwrap()
+                    .desired_status,
+                "stopped"
+            );
+        }
     }
 }

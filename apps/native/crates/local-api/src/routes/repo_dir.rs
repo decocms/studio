@@ -38,13 +38,19 @@ use crate::state::AppState;
 use std::sync::Arc;
 
 pub async fn get(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
-    let sandbox = resolve(&state, &headers)?;
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let account_epoch = authorization.epoch();
+    let sandbox = resolve(&state, account_epoch, &headers)?;
     if tokio::fs::metadata(&sandbox.workdir).await.is_err() {
         return Err(ApiError::not_found(format!(
             "repo dir does not exist: {}",
             sandbox.workdir.display()
         )));
     }
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)
+        .map_err(ApiError::conflict)?;
     Ok(Json(
         json!({ "repoDir": sandbox.workdir.to_string_lossy() }),
     ))
@@ -52,15 +58,21 @@ pub async fn get(State(state): State<AppState>, headers: HeaderMap) -> ApiResult
 
 /// `handle -> get(handle)` else `active()` — see this file's module doc for
 /// why this does NOT fall further to the process-global path.
-fn resolve(state: &AppState, headers: &HeaderMap) -> Result<Arc<Sandbox>, ApiError> {
+fn resolve(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<Arc<Sandbox>, ApiError> {
     match crate::sandbox::handle_from_headers(headers) {
         Some(handle) => state
             .sandbox_manager
-            .get(handle)
+            .get_for_account(account_epoch, handle)
+            .map_err(ApiError::conflict)?
             .ok_or_else(|| ApiError::not_found(format!("unknown sandbox handle: {handle}"))),
         None => state
             .sandbox_manager
-            .active()
+            .active_for_account(account_epoch)
+            .map_err(ApiError::conflict)?
             .ok_or_else(|| ApiError::not_found("no active sandbox")),
     }
 }
@@ -140,12 +152,15 @@ mod tests {
         git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
 
         manager
-            .ensure(&crate::sandbox::GitSandboxConfig {
-                virtual_mcp_id: vmcp.to_string(),
-                clone_url: bare_str.to_string(),
-                branch: Some("main".to_string()),
-                ..Default::default()
-            })
+            .ensure_for_account(
+                manager.account_epoch(),
+                &crate::sandbox::GitSandboxConfig {
+                    virtual_mcp_id: vmcp.to_string(),
+                    clone_url: bare_str.to_string(),
+                    branch: Some("main".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .expect("ensure succeeds against a real one-commit bare repo")
     }
@@ -157,7 +172,11 @@ mod tests {
         let state = fresh_state(manager);
         // `Arc<Sandbox>` (the `Ok` side) isn't `Debug`, so `expect_err` isn't
         // available here — match explicitly instead.
-        match resolve(&state, &HeaderMap::new()) {
+        match resolve(
+            &state,
+            state.sandbox_manager.account_epoch(),
+            &HeaderMap::new(),
+        ) {
             Err(e) => assert_eq!(e.status, axum::http::StatusCode::NOT_FOUND),
             Ok(_) => panic!("no active sandbox -> 404"),
         }
@@ -173,7 +192,7 @@ mod tests {
             "x-decocms-sandbox-handle",
             HeaderValue::from_static("never-ensured"),
         );
-        match resolve(&state, &headers) {
+        match resolve(&state, state.sandbox_manager.account_epoch(), &headers) {
             Err(e) => assert_eq!(e.status, axum::http::StatusCode::NOT_FOUND),
             Ok(_) => panic!("unknown handle -> 404"),
         }
@@ -191,7 +210,8 @@ mod tests {
             HeaderValue::from_str(&sandbox.handle).unwrap(),
         );
         let state = fresh_state(manager);
-        let resolved = resolve(&state, &headers).expect("known handle resolves");
+        let resolved = resolve(&state, state.sandbox_manager.account_epoch(), &headers)
+            .expect("known handle resolves");
         assert_eq!(resolved.workdir, sandbox.workdir);
     }
 
@@ -202,7 +222,12 @@ mod tests {
         let sandbox = ensure_one_sandbox(&manager, "repo-dir-active").await;
 
         let state = fresh_state(manager);
-        let resolved = resolve(&state, &HeaderMap::new()).expect("active sandbox resolves");
+        let resolved = resolve(
+            &state,
+            state.sandbox_manager.account_epoch(),
+            &HeaderMap::new(),
+        )
+        .expect("active sandbox resolves");
         assert_eq!(resolved.workdir, sandbox.workdir);
     }
 

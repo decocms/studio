@@ -17,6 +17,7 @@ pub mod mcp_callback;
 pub mod orgfs;
 pub mod proxy;
 pub mod repo_dir;
+pub(crate) mod sandbox_account;
 pub mod scripts;
 pub mod setup;
 pub mod tasks;

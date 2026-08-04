@@ -11,11 +11,12 @@
 //!
 //! [`try_intercept`] is [`crate::routes::upstream::proxy`]'s FIRST decision,
 //! before the `/api/auth/*` cookie-relay branch or the ordinary
-//! bearer-forwarding branch ever run: intercepted routes need neither — they
-//! never talk to upstream at all. Anything this module doesn't recognize
-//! returns `None`, and the caller falls through to the unmodified proxy
-//! behavior (bearer + persisted-cookie forwarding). See each submodule's own
-//! doc comment for its slice of the table:
+//! bearer-forwarding branch ever runs. Intercepted routes enforce their own
+//! current-account authority; the sandbox start path also performs one
+//! explicit upstream virtual-MCP lookup. Anything this module doesn't
+//! recognize returns `None`, and the caller falls through to the unmodified
+//! proxy behavior (bearer + persisted-cookie forwarding). See each
+//! submodule's own doc comment for its slice of the table:
 //!
 //! | Route(s) | Map section | Submodule |
 //! | --- | --- | --- |
@@ -50,16 +51,18 @@
 //!
 //! ## `:org` is opaque
 //!
-//! Neither this module nor its submodules validate the `:org` path segment
-//! against a real organization — it is stamped verbatim as
-//! `organization_id` on locally-created rows. Map §3.1 makes the same
-//! point about `virtual_mcp_id`: these are opaque strings scoping purely
-//! local data, never round-tripped against upstream.
+//! Local thread storage treats `:org` as an account-scoped opaque identifier;
+//! it does not perform a separate upstream membership lookup. Thread-backed
+//! sandbox routes verify that their virtual-MCP id matches the local thread.
+//! `SANDBOX_START` is the deliberate exception for remote data: it resolves
+//! that virtual MCP upstream to obtain repository metadata before provisioning
+//! the local worktree.
 
 mod agent_sessions;
 mod dev_server;
 mod git_assist;
 mod preview_invoke;
+mod sandbox_authority;
 mod sandbox_events;
 mod sandbox_fs;
 mod sandbox_lifecycle;
@@ -127,23 +130,24 @@ pub async fn try_intercept(
         crate::sandbox::org_mount::warm(&state.app_root, org);
     }
 
-    if let Some(response) = sandbox_fs::try_dispatch(state, method, &rest, body).await {
+    if let Some(response) = sandbox_fs::try_dispatch(state, method, org, &rest, body).await {
         return Some(response);
     }
 
-    if let Some(response) = sandbox_events::try_dispatch(state, method, &rest).await {
+    if let Some(response) = sandbox_events::try_dispatch(state, method, org, &rest).await {
         return Some(response);
     }
 
-    if let Some(response) = preview_invoke::try_dispatch(state, method, &rest, body).await {
+    if let Some(response) = preview_invoke::try_dispatch(state, method, org, &rest, body).await {
         return Some(response);
     }
 
-    if let Some(response) = sandbox_ops::try_dispatch(state, method, &rest, query, body).await {
+    if let Some(response) = sandbox_ops::try_dispatch(state, method, org, &rest, query, body).await
+    {
         return Some(response);
     }
 
-    if let Some(response) = agent_sessions::try_dispatch(state, method, &rest, query).await {
+    if let Some(response) = agent_sessions::try_dispatch(state, method, org, &rest, query).await {
         return Some(response);
     }
 
@@ -158,17 +162,40 @@ pub async fn try_intercept(
             // `EventSource` reconnect with 401/500/503 closes that stream for
             // the life of the page, and a native rebuild restarts the listener
             // under a webview that keeps running.
-            let scope = match thread_tools::current_account_scope_result().await {
-                Ok(Some(scope)) => scope,
-                Ok(None) => return Some(watch::retryable_refusal("no signed-in account yet")),
+            let scope =
+                match crate::routes::threads::authority::current_account_scope_result().await {
+                    Ok(Some(scope)) => scope,
+                    Ok(None) => return Some(watch::retryable_refusal("no signed-in account yet")),
+                    Err(error) => {
+                        tracing::warn!(%error, "native watch account scope storage unavailable");
+                        return Some(watch::retryable_refusal(
+                            "session storage temporarily unavailable",
+                        ));
+                    }
+                };
+            let account_guard =
+                match crate::routes::threads::authority::lock_account_scope(&scope).await {
+                    Ok(guard) => guard,
+                    Err(error) => {
+                        tracing::debug!(?error, "native watch account changed during admission");
+                        return Some(watch::retryable_refusal(
+                            "account changed while opening native watch",
+                        ));
+                    }
+                };
+            let account_epoch = state.sandbox_manager.account_epoch();
+            let account_epoch_rx = match state.sandbox_manager.watch_account_epoch(account_epoch) {
+                Ok(receiver) => receiver,
                 Err(error) => {
-                    tracing::warn!(%error, "native watch account scope storage unavailable");
+                    drop(account_guard);
+                    tracing::debug!(%error, "native watch sandbox account fence unavailable");
                     return Some(watch::retryable_refusal(
-                        "session storage temporarily unavailable",
+                        "account transition in progress while opening native watch",
                     ));
                 }
             };
-            Some(watch::get(&scope, org, query))
+            drop(account_guard);
+            Some(watch::get_for_account(&scope, org, query, account_epoch_rx))
         }
         Some("tools") if rest.len() == 2 && *method == Method::POST => match rest[1] {
             tool_name @ ("COLLECTION_THREADS_LIST"
@@ -177,8 +204,9 @@ pub async fn try_intercept(
             | "COLLECTION_THREADS_UPDATE"
             | "COLLECTION_THREADS_DELETE"
             | "COLLECTION_THREAD_MESSAGES_LIST") => {
-                let Some(scope) = thread_tools::current_account_scope().await else {
-                    return Some(ApiError::unauthorized().into_response());
+                let scope = match crate::routes::threads::authority::current_account_scope().await {
+                    Ok(scope) => scope,
+                    Err(error) => return Some(error.into_response()),
                 };
                 thread_tools::dispatch_scoped(state, &scope, org, tool_name, body).await
             }

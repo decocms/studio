@@ -6,6 +6,7 @@
 //! intentionally absent. The SQLite schema remains compatible with existing
 //! installations while its `rt_*` methods own the terminal-specific state.
 
+pub(crate) mod authority;
 pub(crate) mod db;
 
 use std::sync::OnceLock;

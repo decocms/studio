@@ -86,24 +86,51 @@ use crate::tasks::{
     TaskSummary,
 };
 
-/// Resolve the per-handle [`SandboxTarget`] from the request's
-/// `x-decocms-sandbox-handle` header (absent/unknown -> active/global) so a
-/// script runs in — and its logs/tasks are observed on — the RIGHT sandbox's
-/// workdir + orchestrator quadruple. See [`AppState::resolve_sandbox_target`].
-fn resolve(state: &AppState, headers: &HeaderMap) -> SandboxTarget {
-    state.resolve_sandbox_target(crate::sandbox::handle_from_headers(headers))
+/// Resolve an explicit sandbox identity without ever falling through to the
+/// process-global registry. A stopped durable sandbox is metadata-adopted with
+/// permanently closed task admission, so exec truthfully returns 409 until an
+/// explicit Start installs a fresh generation.
+async fn resolve(
+    state: &AppState,
+    epoch: crate::sandbox::manager::AccountEpoch,
+    headers: &HeaderMap,
+) -> Result<SandboxTarget, ApiError> {
+    let Some(handle) = crate::sandbox::handle_from_headers(headers) else {
+        return state
+            .resolve_sandbox_target_for_account(epoch, None)
+            .map_err(ApiError::conflict);
+    };
+    match state.sandbox_manager.adopt_for_account(epoch, handle).await {
+        Ok(Some(sandbox)) => Ok(SandboxTarget::from_sandbox(&sandbox)),
+        Ok(None) => Err(ApiError::not_found(format!(
+            "unknown sandbox handle: {handle}"
+        ))),
+        Err(error) => Err(ApiError::internal(format!(
+            "failed to resolve sandbox handle {handle}: {error}"
+        ))),
+    }
 }
 
 // --- GET /_sandbox/scripts ---------------------------------------------------
 
-pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Json<Value> {
-    let target = resolve(&state, &headers);
+pub async fn list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    let epoch = authorization.epoch();
+    let target = resolve(&state, epoch, &headers).await?;
     let snapshot = target.config.snapshot();
     let pm = pm_name(&snapshot.config);
     let cwd = pm_path(&snapshot.config).unwrap_or_else(|| target.repo_dir.clone());
     let scripts = discover_scripts(&cwd, pm.as_deref());
-    emit_if_changed(&target.broadcaster, &cwd, &scripts);
-    Json(json!({ "scripts": scripts }))
+    state
+        .sandbox_manager
+        .with_account_epoch(epoch, || {
+            emit_if_changed(&target.broadcaster, &cwd, &scripts)
+        })
+        .map_err(ApiError::conflict)?;
+    Ok(Json(json!({ "scripts": scripts })))
 }
 
 /// Compares against the last-discovered set for THIS cwd and emits `"scripts"`
@@ -149,7 +176,36 @@ pub async fn exec(
     AxumPath(name): AxumPath<String>,
     body: Bytes,
 ) -> Result<Response, ApiError> {
-    let target = resolve(&state, &headers);
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    exec_with_admission(
+        State(state),
+        headers,
+        AxumPath(name),
+        body,
+        authorization.epoch(),
+        (),
+    )
+    .await
+}
+
+/// Execute a script while retaining an upstream admission fence only until
+/// the spawned child has a durable [`TaskRegistry`] owner.
+///
+/// Intercepted thread-backed routes pass their workspace-lifecycle guard here
+/// by value. Every error before registration returns from this function and
+/// therefore drops the guard through RAII. Once registration succeeds, the
+/// explicit `drop` below releases it before any response path or process wait.
+/// The generic stays deliberately opaque: this module neither knows nor
+/// couples itself to the authority layer that produced the fence.
+pub(crate) async fn exec_with_admission<Admission>(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(name): AxumPath<String>,
+    body: Bytes,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    admission_guard: Admission,
+) -> Result<Response, ApiError> {
+    let target = resolve(&state, account_epoch, &headers).await?;
     let snapshot = target.config.snapshot();
     let Some(pm) = pm_name(&snapshot.config) else {
         return Err(ApiError::conflict(
@@ -192,11 +248,14 @@ pub async fn exec(
     );
     let env = build_env(&snapshot.config, exec_body.env.as_ref(), default_port);
 
-    let Some(admission) = state.shutdown.admit_work().await else {
+    let Some(shutdown_admission) = state.shutdown.admit_work().await else {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "application is shutting down",
         ));
+    };
+    let Some(generation_admission) = target.tasks.admit() else {
+        return Err(ApiError::conflict("sandbox generation is stopped"));
     };
 
     let mut cmd = build_command(&command, &cwd, &env);
@@ -225,7 +284,15 @@ pub async fn exec(
         log_name: Some(name.clone()),
         intentional: None,
     };
-    tasks.insert(TaskEntry::new(summary, Some(kill_handle.clone())));
+    generation_admission.register(TaskEntry::new(summary, Some(kill_handle.clone())));
+
+    // The process is now owned by TaskRegistry and can be controlled even if
+    // archive/delete wins the workspace lifecycle lock next. Release both
+    // admission fences before event delivery, stdio plumbing, the background
+    // response, or an `await`-mode process wait.
+    drop(admission_guard);
+    drop(shutdown_admission);
+
     emit_tasks_event(&tasks, &broadcaster);
 
     // Registration deliberately precedes these takes. Once spawn succeeds,
@@ -233,7 +300,6 @@ pub async fn exec(
     // cancellation point between process creation and TaskRegistry ownership.
     let (Some(stdout_pipe), Some(stderr_pipe)) = (child.take_stdout(), child.take_stderr()) else {
         spawn_missing_stdio_cleanup(tasks, broadcaster, id, child);
-        drop(admission);
         return Err(ApiError::internal("spawn error: missing stdio pipe"));
     };
 
@@ -250,7 +316,6 @@ pub async fn exec(
         controller,
         completion_tx,
     );
-    drop(admission);
 
     if background {
         return Ok(Json(json!({ "taskId": id, "status": "running" })).into_response());
@@ -266,6 +331,10 @@ pub async fn exec(
     let (exit_code, timed_out) = final_summary
         .map(|s| (s.exit_code, s.timed_out))
         .unwrap_or((None, false));
+    state
+        .sandbox_manager
+        .validate_account_epoch(account_epoch)
+        .map_err(ApiError::conflict)?;
     Ok(Json(json!({
         "taskId": id,
         "stdout": stdout,
@@ -283,8 +352,18 @@ pub async fn exec_kill(
     State(state): State<AppState>,
     headers: HeaderMap,
     AxumPath(name): AxumPath<String>,
-) -> Json<Value> {
-    let target = resolve(&state, &headers);
+) -> Result<Json<Value>, ApiError> {
+    let authorization = super::sandbox_account::authorize(&state).await?;
+    exec_kill_for_account(state, headers, name, authorization.epoch()).await
+}
+
+pub(crate) async fn exec_kill_for_account(
+    state: AppState,
+    headers: HeaderMap,
+    name: String,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> Result<Json<Value>, ApiError> {
+    let target = resolve(&state, account_epoch, &headers).await?;
     let matching: Vec<String> = target
         .tasks
         .list(Some(&[TaskStatus::Running]))
@@ -293,12 +372,17 @@ pub async fn exec_kill(
         .map(|s| s.id)
         .collect();
 
-    let killed = matching
-        .iter()
-        .filter(|id| matches!(target.tasks.kill(id, KillSignal::Term), Some(true)))
-        .count();
+    let killed = state
+        .sandbox_manager
+        .with_account_epoch(account_epoch, || {
+            matching
+                .iter()
+                .filter(|id| matches!(target.tasks.kill(id, KillSignal::Term), Some(true)))
+                .count()
+        })
+        .map_err(ApiError::conflict)?;
 
-    Json(json!({ "killed": killed }))
+    Ok(Json(json!({ "killed": killed })))
 }
 
 // --- process spawn / drain / kill ---------------------------------------------
@@ -562,6 +646,16 @@ fn build_env(
 mod tests {
     use super::*;
 
+    struct DropProbe(Option<oneshot::Sender<()>>);
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            if let Some(dropped) = self.0.take() {
+                let _ = dropped.send(());
+            }
+        }
+    }
+
     fn write(dir: &tempfile::TempDir, name: &str, contents: &str) {
         std::fs::write(dir.path().join(name), contents).expect("write fixture");
     }
@@ -758,6 +852,50 @@ mod tests {
             shutdown: Arc::new(crate::shutdown::ShutdownCoordinator::new()),
             setup,
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exec_releases_admission_before_await_mode_completes() {
+        let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+        std::fs::write(
+            state.repo_dir.join("package.json"),
+            r#"{"scripts":{"slow":"sleep 5"}}"#,
+        )
+        .expect("write package fixture");
+        state
+            .config
+            .patch(json!({
+                "application": { "packageManager": { "name": "bun" } }
+            }))
+            .expect("configure package manager");
+
+        let (dropped_tx, dropped_rx) = oneshot::channel();
+        let account_epoch = state.sandbox_manager.account_epoch();
+        let response_task = tokio::spawn(exec_with_admission(
+            State(state),
+            HeaderMap::new(),
+            AxumPath("slow".to_string()),
+            Bytes::from_static(br#"{"mode":"await","timeoutMs":1000}"#),
+            account_epoch,
+            DropProbe(Some(dropped_tx)),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("admission guard stayed held after process registration")
+            .expect("drop probe sender disappeared");
+        assert!(
+            !response_task.is_finished(),
+            "await-mode response completed before the child process"
+        );
+
+        let response = tokio::time::timeout(Duration::from_secs(5), response_task)
+            .await
+            .expect("await-mode exec did not time out and reap")
+            .expect("exec task panicked")
+            .expect("exec request failed");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[allow(clippy::type_complexity)]

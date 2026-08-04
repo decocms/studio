@@ -56,6 +56,7 @@ pub(crate) fn handle_is_path_safe(handle: &str) -> bool {
             .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
+#[cfg(test)]
 pub(crate) fn worktree_repo_dir(app_root: &std::path::Path, handle: &str) -> std::path::PathBuf {
     worktree_root(app_root, handle).join("repo")
 }
@@ -144,6 +145,86 @@ pub const PROTECTED_BRANCHES: [&str; 2] = ["main", "master"];
 /// up checking out a routing key the other side still treats as synthetic.
 pub(crate) fn is_synthetic_branch(branch: &str) -> bool {
     branch == "ephemeral" || branch.starts_with("thread:")
+}
+
+/// Parse the tenant-authority component of a reserved `thread:` routing key.
+///
+/// This is deliberately stricter than [`is_synthetic_branch`]. The latter is
+/// a cross-language git-routing predicate and must classify even malformed
+/// `thread:` prefixes as non-git refs. Authority boundaries need a complete
+/// identity: `thread:<id>` and `thread:<id>/<suffix>` are accepted only when
+/// the complete reserved ref and both path segments obey the same bounded,
+/// Git-safe vocabulary used by every authority caller.
+pub(crate) fn synthetic_thread_id(branch: &str) -> Result<Option<&str>, &'static str> {
+    let Some(path) = branch.strip_prefix("thread:") else {
+        return Ok(None);
+    };
+    if branch.len() > 255 {
+        return Err("thread-backed sandbox branch exceeds 255 bytes");
+    }
+    let (thread_id, suffix) = match path.split_once('/') {
+        Some((thread_id, suffix)) => (thread_id, Some(suffix)),
+        None => (path, None),
+    };
+    if suffix.is_some_and(|suffix| suffix.contains('/')) {
+        return Err("thread-backed sandbox branch has too many path segments");
+    }
+    validate_synthetic_thread_segment(
+        thread_id,
+        "thread-backed sandbox branch is missing its thread id",
+    )?;
+    if let Some(suffix) = suffix {
+        validate_synthetic_thread_segment(
+            suffix,
+            "thread-backed sandbox branch has an empty suffix",
+        )?;
+    }
+    Ok(Some(thread_id))
+}
+
+/// Strict ingress wrapper for branch values supplied by a request. Trimming
+/// remains part of ordinary branch normalization, but a whitespace-wrapped
+/// reserved key must not be persisted in a noncanonical form. Legacy rows are
+/// handled separately by normalizing before calling [`synthetic_thread_id`]
+/// on launch.
+pub(crate) fn synthetic_thread_id_from_input(branch: &str) -> Result<Option<&str>, &'static str> {
+    let trimmed = branch.trim();
+    if trimmed != branch && trimmed.starts_with("thread:") {
+        return Err("thread-backed sandbox branch has leading or trailing whitespace");
+    }
+    synthetic_thread_id(normalize_branch(Some(branch)))
+}
+
+fn validate_synthetic_thread_segment(
+    segment: &str,
+    empty_error: &'static str,
+) -> Result<(), &'static str> {
+    if segment.is_empty() {
+        return Err(empty_error);
+    }
+    if segment == "." || segment == ".." {
+        return Err("thread-backed sandbox branch contains a reserved path segment");
+    }
+    if !segment
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_alphanumeric)
+    {
+        return Err("thread-backed sandbox branch segments must start with an alphanumeric byte");
+    }
+    if !segment
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err("thread-backed sandbox branch contains an invalid byte");
+    }
+    if segment.contains("..") {
+        return Err("thread-backed sandbox branch contains two consecutive dots");
+    }
+    if segment.ends_with(".lock") {
+        return Err("thread-backed sandbox branch segment ends with .lock");
+    }
+    Ok(())
 }
 
 /// Longest DNS label the preview host may use. 63 is the protocol limit.
@@ -292,5 +373,58 @@ mod tests {
         assert!(!is_synthetic_branch("ephemeral-foo"));
         assert!(!is_synthetic_branch("Ephemeral"));
         assert!(!is_synthetic_branch("my-thread:1"));
+    }
+
+    #[test]
+    fn synthetic_thread_parser_requires_a_complete_reserved_identity() {
+        assert_eq!(
+            synthetic_thread_id("thread:chat-1").unwrap(),
+            Some("chat-1")
+        );
+        assert_eq!(
+            synthetic_thread_id("thread:chat-1/connection-2").unwrap(),
+            Some("chat-1")
+        );
+        assert_eq!(
+            synthetic_thread_id("thread:A0._-/9x._-").unwrap(),
+            Some("A0._-")
+        );
+        assert_eq!(synthetic_thread_id("feature/thread:chat-1").unwrap(), None);
+        assert!(synthetic_thread_id_from_input(" thread:chat-1 ").is_err());
+        assert_eq!(
+            synthetic_thread_id_from_input(" feature/chat-1 ").unwrap(),
+            None
+        );
+        assert!(synthetic_thread_id("thread:").is_err());
+        assert!(synthetic_thread_id("thread:/connection-2").is_err());
+        assert!(synthetic_thread_id("thread:chat-1/").is_err());
+        let longest_valid_id = "a".repeat(248);
+        assert_eq!(
+            synthetic_thread_id(&format!("thread:{longest_valid_id}")).unwrap(),
+            Some(longest_valid_id.as_str())
+        );
+        for branch in [
+            format!("thread:{}", "a".repeat(249)),
+            "thread:_chat".to_string(),
+            "thread:-chat".to_string(),
+            "thread:.chat".to_string(),
+            "thread:.".to_string(),
+            "thread:..".to_string(),
+            "thread:chat/_connection".to_string(),
+            "thread:chat/connection/extra".to_string(),
+            "thread:chat id".to_string(),
+            "thread:chat@id".to_string(),
+            "thread:chat..id".to_string(),
+            "thread:chat.lock".to_string(),
+            "thread:chat/.".to_string(),
+            "thread:chat/..".to_string(),
+            "thread:chat/connection..2".to_string(),
+            "thread:chat/connection.lock".to_string(),
+        ] {
+            assert!(
+                synthetic_thread_id(&branch).is_err(),
+                "invalid reserved branch was accepted: {branch}"
+            );
+        }
     }
 }

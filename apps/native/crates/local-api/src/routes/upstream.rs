@@ -98,6 +98,7 @@
 //! never reaches the webview" invariant uniform across every branch of this
 //! proxy even though this particular route would never trigger it.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
@@ -107,6 +108,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use futures::StreamExt;
 use serde_json::json;
 
 use crate::error::ApiError;
@@ -146,6 +148,219 @@ const UPSTREAM_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
 /// dev-server-sized responses).
 const MAX_UPSTREAM_BODY_BYTES: usize = 25 * 1024 * 1024;
 
+const STALE_UPSTREAM_IDENTITY: &str =
+    "Your Studio account changed while this request was running. Try again.";
+
+/// One generic upstream request's authenticated-account ticket.
+///
+/// Admission captures both independently-moving native boundaries while the
+/// upstream subject-transition gate is held: the upstream identity generation
+/// and the sandbox/materialization account epoch. Two subscriptions for each
+/// boundary avoid a validate/subscribe gap: one pair rejects stale credential
+/// selection and retries, while the untouched pair terminates the eventual
+/// response body even when bytes are already queued in reqwest.
+struct UpstreamRequestTicket {
+    identity_generation: u64,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    sandbox_manager: Arc<crate::sandbox::SandboxManager>,
+    validation_identity_rx: tokio::sync::broadcast::Receiver<upstream::SessionIdentityEvent>,
+    body_identity_rx: tokio::sync::broadcast::Receiver<upstream::SessionIdentityEvent>,
+    validation_account_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+    body_account_rx: tokio::sync::watch::Receiver<crate::sandbox::manager::AccountEpoch>,
+}
+
+impl UpstreamRequestTicket {
+    async fn capture(
+        state: &AppState,
+        session: &upstream::UpstreamSession,
+    ) -> Result<Self, ApiError> {
+        let authorization = super::sandbox_account::authorize(state).await?;
+        let account_epoch = authorization.epoch();
+        let identity_generation = authorization.identity_generation();
+
+        // Subscribe before releasing `authorization`'s subject-transition
+        // guard. Account replacement therefore either happened before this
+        // ticket was admitted or is observable by every receiver below.
+        let validation_identity_rx = session.subscribe_identity();
+        let body_identity_rx = session.subscribe_identity();
+        let validation_account_rx = state
+            .sandbox_manager
+            .watch_account_epoch(account_epoch)
+            .map_err(ApiError::conflict)?;
+        let body_account_rx = validation_account_rx.clone();
+
+        Ok(Self {
+            identity_generation,
+            account_epoch,
+            sandbox_manager: state.sandbox_manager.clone(),
+            validation_identity_rx,
+            body_identity_rx,
+            validation_account_rx,
+            body_account_rx,
+        })
+    }
+
+    /// Recreate subscriptions for a previously captured admission ticket.
+    /// Internal launch/sandbox flows carry the original generation+epoch
+    /// through long preparation phases; this rejects them before selecting a
+    /// credential if the account moved in the meantime.
+    async fn capture_expected(
+        state: &AppState,
+        session: &upstream::UpstreamSession,
+        account_epoch: crate::sandbox::manager::AccountEpoch,
+        identity_generation: u64,
+    ) -> Result<Self, ProxyError> {
+        let transition = session.begin_transition().await;
+        if transition.generation() != identity_generation
+            || state
+                .sandbox_manager
+                .validate_account_epoch(account_epoch)
+                .is_err()
+        {
+            return Err(ProxyError::StaleIdentity);
+        }
+
+        let validation_identity_rx = session.subscribe_identity();
+        let body_identity_rx = session.subscribe_identity();
+        let validation_account_rx = state
+            .sandbox_manager
+            .watch_account_epoch(account_epoch)
+            .map_err(|_| ProxyError::StaleIdentity)?;
+        let body_account_rx = validation_account_rx.clone();
+        drop(transition);
+
+        Ok(Self {
+            identity_generation,
+            account_epoch,
+            sandbox_manager: state.sandbox_manager.clone(),
+            validation_identity_rx,
+            body_identity_rx,
+            validation_account_rx,
+            body_account_rx,
+        })
+    }
+
+    fn expected_identity(&self) -> super::sandbox_account::ExpectedIdentity {
+        super::sandbox_account::ExpectedIdentity::new(self.account_epoch, self.identity_generation)
+    }
+
+    /// Reject token/cookie selection and every retry once either account
+    /// boundary has moved. `has_changed()` is deliberately checked without
+    /// comparing values: epoch saturation publishes the same maximum value
+    /// while leaving materialization closed, and must still fail closed.
+    fn validate(&mut self) -> Result<(), ProxyError> {
+        if self
+            .sandbox_manager
+            .validate_account_epoch(self.account_epoch)
+            .is_err()
+            || !matches!(self.validation_account_rx.has_changed(), Ok(false))
+        {
+            return Err(ProxyError::StaleIdentity);
+        }
+
+        match self.validation_identity_rx.try_recv() {
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => Ok(()),
+            Ok(event) => {
+                tracing::debug!(
+                    expected_generation = self.identity_generation,
+                    observed_generation = event.generation,
+                    "discarding an upstream request after account replacement"
+                );
+                Err(ProxyError::StaleIdentity)
+            }
+            Err(
+                tokio::sync::broadcast::error::TryRecvError::Lagged(_)
+                | tokio::sync::broadcast::error::TryRecvError::Closed,
+            ) => Err(ProxyError::StaleIdentity),
+        }
+    }
+
+    /// Async counterpart used while buffering a small response that must be
+    /// rewritten before it reaches the caller. A transition cancels the read;
+    /// if the read wins, the caller synchronously validates once more before
+    /// constructing its separately fenced response body.
+    async fn validation_changed(&mut self) {
+        if self.validate().is_err() {
+            return;
+        }
+        tokio::select! {
+            biased;
+            _ = self.validation_account_rx.changed() => {}
+            _ = self.validation_identity_rx.recv() => {}
+        }
+    }
+
+    /// Resolves on the first account notification or identity event. Channel
+    /// closure is terminal too. The caller uses this as a `take_until` fence,
+    /// whose stop future is polled before another upstream body item can be
+    /// yielded to the webview.
+    async fn changed(mut self) {
+        if self
+            .sandbox_manager
+            .validate_account_epoch(self.account_epoch)
+            .is_err()
+            || !matches!(self.body_account_rx.has_changed(), Ok(false))
+        {
+            return;
+        }
+        match self.body_identity_rx.try_recv() {
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
+            Ok(_)
+            | Err(
+                tokio::sync::broadcast::error::TryRecvError::Lagged(_)
+                | tokio::sync::broadcast::error::TryRecvError::Closed,
+            ) => return,
+        }
+
+        tokio::select! {
+            biased;
+            // Any account notification is terminal, including a successful
+            // same-value notification at epoch saturation.
+            _ = self.body_account_rx.changed() => {}
+            _ = self.body_identity_rx.recv() => {}
+        }
+    }
+}
+
+/// Clear an invalid credential only if the request that observed the failure
+/// still owns the current subject. Reacquiring the transition guard and
+/// comparing the captured generation closes the otherwise-dangerous gap where
+/// account B could be installed between account A's refresh error and cleanup.
+async fn hard_sign_out_if_ticket_current(
+    state: &AppState,
+    session: &upstream::UpstreamSession,
+    ticket: &mut UpstreamRequestTicket,
+    reason: &str,
+) -> bool {
+    if ticket.validate().is_err() {
+        return false;
+    }
+    // The helper reacquires the subject-transition guard and compares both
+    // captured boundaries before clearing anything.
+    crate::auth_fence::hard_sign_out_upstream_session_if_current(
+        state,
+        session,
+        ticket.identity_generation,
+        ticket.account_epoch,
+        reason,
+    )
+    .await
+}
+
+/// Apply the ingress fence to locally intercepted responses as well. Most
+/// interceptors return small JSON bodies, but wrapping the body stream matters
+/// for watch/SSE and closes the final gap where an account transition lands
+/// after a handler's last authorization check but before axum polls its body.
+fn fence_response_for_identity(response: Response, mut ticket: UpstreamRequestTicket) -> Response {
+    if ticket.validate().is_err() {
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+    }
+    let (mut parts, body) = response.into_parts();
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let body = Body::from_stream(body.into_data_stream().take_until(ticket.changed()));
+    Response::from_parts(parts, body)
+}
+
 pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let path = parts.uri.path().to_string();
@@ -157,36 +372,105 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
 
     tracing::debug!(method = %parts.method, path = %path, "app-api proxy: incoming request");
 
-    let body_bytes = match axum::body::to_bytes(body, MAX_UPSTREAM_BODY_BYTES).await {
+    let session = upstream::global();
+    let auth_path = path_and_query.split('?').next().unwrap_or(&path_and_query);
+    let is_auth_path = path.starts_with(AUTH_PATH_PREFIX);
+    let is_sign_out = parts.method == Method::POST && auth_path == AUTH_SIGN_OUT_PATH;
+    // Login/auth bootstrap and public config are deliberately sessionless.
+    // Sign-out is different: it mutates the current identity, so it must be
+    // admitted for the account that sent it before body buffering too.
+    let needs_identity_ticket = is_sign_out || (!is_auth_path && path != PUBLIC_NO_AUTH_PATH);
+    let mut identity_ticket = if needs_identity_ticket {
+        match UpstreamRequestTicket::capture(&state, &session).await {
+            Ok(ticket) => Some(ticket),
+            Err(error) => return error.into_response(),
+        }
+    } else {
+        None
+    };
+
+    let body_result = if let Some(ticket) = identity_ticket.as_mut() {
+        tokio::select! {
+            biased;
+            _ = ticket.validation_changed() => {
+                return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+            }
+            result = axum::body::to_bytes(body, MAX_UPSTREAM_BODY_BYTES) => result,
+        }
+    } else {
+        axum::body::to_bytes(body, MAX_UPSTREAM_BODY_BYTES).await
+    };
+    let body_bytes = match body_result {
         Ok(b) => b,
         Err(err) => {
             return ApiError::payload_too_large(format!("failed to read request body: {err}"))
                 .into_response()
         }
     };
-
-    // The interception table (`routes/intercept/`) is checked FIRST, before
-    // either the cookie-relay or bearer-forwarding branches below — an
-    // intercepted route never talks to upstream at all (not even to decide
-    // whether there's a valid session), so it must never wait on, or be
-    // gated by, this proxy's auth machinery. See that module's doc comment
-    // for the full route table and the map citations behind each entry.
-    if let Some(response) =
-        intercept::try_intercept(&state, &parts.method, &path, parts.uri.query(), &body_bytes).await
+    if identity_ticket
+        .as_mut()
+        .is_some_and(|ticket| ticket.validate().is_err())
     {
-        return response;
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
     }
 
-    let session = upstream::global();
+    // The interception table (`routes/intercept/`) is checked FIRST, before
+    // either proxy-auth branch below. Interceptors apply their own local
+    // account/thread authority and may make an explicit upstream data lookup;
+    // they never fall through into the generic cookie-relay or bearer-forward
+    // machinery after claiming a route. See that module's doc comment for the
+    // full route table and the map citations behind each entry.
+    if let Some(ticket) = identity_ticket.as_ref() {
+        let expected = ticket.expected_identity();
+        let intercepted = super::sandbox_account::with_expected_identity(
+            expected,
+            intercept::try_intercept(&state, &parts.method, &path, parts.uri.query(), &body_bytes),
+        )
+        .await;
+        if let Some(response) = intercepted {
+            let ticket = identity_ticket
+                .take()
+                .expect("intercepted identity-bound request has an ingress ticket");
+            return fence_response_for_identity(response, ticket);
+        }
+    }
 
-    if path.starts_with(AUTH_PATH_PREFIX) {
-        let auth_path = path_and_query.split('?').next().unwrap_or(&path_and_query);
-        let is_sign_out = parts.method == Method::POST && auth_path == AUTH_SIGN_OUT_PATH;
-        let sign_out_transition = if is_sign_out {
-            Some(session.begin_transition().await)
-        } else {
-            None
-        };
+    if is_auth_path {
+        if is_sign_out {
+            let mut ticket = identity_ticket
+                .take()
+                .expect("sign-out is admitted with an identity ticket");
+            if ticket.validate().is_err() {
+                return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+            }
+            let transition = session.begin_transition().await;
+            if transition.generation() != ticket.identity_generation
+                || ticket
+                    .sandbox_manager
+                    .validate_account_epoch(ticket.account_epoch)
+                    .is_err()
+            {
+                return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+            }
+            let response = proxy_auth_path(
+                &session,
+                &parts.method,
+                &path_and_query,
+                &parts.headers,
+                &body_bytes,
+            )
+            .await;
+            if response.status().is_success() {
+                transition.logout().await;
+                if let Err(error) = crate::auth_fence::reap_all(&state).await {
+                    tracing::error!(%error, "proxied logout did not reap every coding agent");
+                }
+                return response;
+            }
+            drop(transition);
+            return fence_response_for_identity(response, ticket);
+        }
+
         let response = proxy_auth_path(
             &session,
             &parts.method,
@@ -195,14 +479,6 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
             &body_bytes,
         )
         .await;
-        if response.status().is_success() {
-            if let Some(transition) = sign_out_transition {
-                transition.logout().await;
-                if let Err(error) = crate::auth_fence::reap_all(&state.agent_sessions).await {
-                    tracing::error!(%error, "proxied logout did not reap every coding agent");
-                }
-            }
-        }
         return response;
     }
 
@@ -225,7 +501,15 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         .await;
     }
 
-    let access_token = match session.access_token().await {
+    let mut identity_ticket = identity_ticket
+        .take()
+        .expect("generic upstream request has an ingress identity ticket");
+
+    let access_token_result = session.access_token().await;
+    if identity_ticket.validate().is_err() {
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+    }
+    let access_token = match access_token_result {
         Ok(token) => token,
         Err(err) if err.kind == upstream::refresh::RefreshErrorKind::Transient => {
             return ApiError::bad_gateway(format!("upstream unreachable: {}", err.message))
@@ -238,19 +522,27 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         // stale local credentials so the NEXT call doesn't repeat a
         // doomed refresh attempt.
         Err(err) => {
-            if err.kind == upstream::refresh::RefreshErrorKind::InvalidGrant {
-                crate::auth_fence::hard_sign_out_upstream_session(
+            if err.kind == upstream::refresh::RefreshErrorKind::InvalidGrant
+                && !hard_sign_out_if_ticket_current(
                     &state,
+                    &session,
+                    &mut identity_ticket,
                     "refresh token rejected while resolving an app-API request",
                 )
-                .await;
+                .await
+            {
+                return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
             }
             return unauthorized_upstream();
         }
     };
 
     let mut out_headers = build_forward_headers(&parts.headers);
-    let cookie_attached = attach_persisted_cookie(&mut out_headers, &session).await;
+    let selected_cookie = session.cookie_header().await;
+    if identity_ticket.validate().is_err() {
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+    }
+    let cookie_attached = attach_cookie_header(&mut out_headers, selected_cookie);
     // A payload we intend to rewrite must arrive uncompressed — reqwest is
     // built without `gzip`, so a compressed body would fail to parse and the
     // rewrite would silently fail open.
@@ -261,25 +553,37 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         );
     }
 
-    match send_with_retry(
+    match send_with_retry_for_identity(
         &session,
-        &parts.method,
-        &path_and_query,
-        &out_headers,
-        &body_bytes,
-        access_token,
-        cookie_attached,
+        RetriableUpstreamRequest {
+            method: parts.method.clone(),
+            path_and_query: &path_and_query,
+            headers: &out_headers,
+            body: &body_bytes,
+            token: access_token,
+            cookie_leads: cookie_attached,
+        },
+        &mut identity_ticket,
     )
     .await
     {
         Ok(upstream_resp) if is_protected_resource_metadata(&path) => {
-            localized_resource_metadata(upstream_resp, session.target(), &parts.headers).await
+            localized_resource_metadata_for_identity(
+                upstream_resp,
+                session.target(),
+                &parts.headers,
+                identity_ticket,
+            )
+            .await
         }
-        Ok(upstream_resp) => build_response(upstream_resp).await,
+        Ok(upstream_resp) => build_response_for_identity(upstream_resp, identity_ticket).await,
         Err(ProxyError::Network(msg)) => {
             ApiError::bad_gateway(format!("upstream unreachable: {msg}")).into_response()
         }
         Err(ProxyError::HardUnauthorized) => unauthorized_upstream(),
+        Err(ProxyError::StaleIdentity) => {
+            ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response()
+        }
     }
 }
 
@@ -305,16 +609,21 @@ fn is_protected_resource_metadata(path: &str) -> bool {
 /// `authorization_servers` is deliberately left pointing upstream: that IS
 /// where the authorization endpoints live, and this proxy has no OAuth
 /// endpoints of its own to offer instead.
-async fn localized_resource_metadata(
+/// Identity-fenced metadata localization for the generic catchall. Metadata
+/// has to be buffered for rewriting, so account
+/// replacement races both the read itself and the final one-item response
+/// body; both phases are fenced.
+async fn localized_resource_metadata_for_identity(
     upstream: reqwest::Response,
     target: &str,
     request_headers: &HeaderMap,
+    mut ticket: UpstreamRequestTicket,
 ) -> Response {
     if !upstream.status().is_success() {
-        return build_response(upstream).await;
+        return build_response_for_identity(upstream, ticket).await;
     }
     let Some(local_origin) = caller_origin(request_headers) else {
-        return build_response(upstream).await;
+        return build_response_for_identity(upstream, ticket).await;
     };
 
     let status = upstream.status();
@@ -322,19 +631,28 @@ async fn localized_resource_metadata(
     strip_hop_by_hop_headers(&mut headers);
     headers.remove(header::CONTENT_ENCODING);
 
-    let Ok(bytes) = upstream.bytes().await else {
+    let bytes_result = tokio::select! {
+        biased;
+        _ = ticket.validation_changed() => {
+            return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+        }
+        result = upstream.bytes() => result,
+    };
+    if ticket.validate().is_err() {
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+    }
+    let Ok(bytes) = bytes_result else {
         return ApiError::bad_gateway("upstream metadata body was unreadable").into_response();
     };
-    // Fail OPEN: an unparseable or unchanged body is forwarded verbatim, so a
-    // shape this does not recognize can never break OAuth outright.
+
     let body = rewrite_resource_field(&bytes, target.trim_end_matches('/'), &local_origin)
         .map(axum::body::Bytes::from)
         .unwrap_or(bytes);
     headers.remove(header::CONTENT_LENGTH);
-    let mut res = Response::new(Body::from(body));
-    *res.status_mut() = status;
-    *res.headers_mut() = headers;
-    res
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    *response.headers_mut() = headers;
+    fence_response_for_identity(response, ticket)
 }
 
 /// The origin the webview used to reach us — `Origin` when it sent one, else
@@ -479,6 +797,9 @@ async fn proxy_auth_path(
         // variant only exists for the bearer-retry branch above.
         Err(ProxyError::HardUnauthorized) => {
             unreachable!("send_once_no_bearer never returns ProxyError::HardUnauthorized")
+        }
+        Err(ProxyError::StaleIdentity) => {
+            unreachable!("send_once_no_bearer is not identity-fenced")
         }
     };
 
@@ -745,7 +1066,15 @@ async fn attach_persisted_cookie(
     headers: &mut HeaderMap,
     session: &upstream::UpstreamSession,
 ) -> bool {
-    let Some(cookie) = session.cookie_header().await else {
+    attach_cookie_header(headers, session.cookie_header().await)
+}
+
+/// Synchronous half of [`attach_persisted_cookie`], used by the generic
+/// proxy after it has selected a cookie and revalidated its account ticket.
+/// Keeping selection separate from attachment makes it impossible to send a
+/// cookie loaded from account B on a request admitted for account A.
+fn attach_cookie_header(headers: &mut HeaderMap, cookie: Option<String>) -> bool {
+    let Some(cookie) = cookie else {
         return false;
     };
     match HeaderValue::from_str(&cookie) {
@@ -798,6 +1127,9 @@ async fn proxy_public_config(
         }
         Err(ProxyError::HardUnauthorized) => {
             unreachable!("send_once_no_bearer never returns ProxyError::HardUnauthorized")
+        }
+        Err(ProxyError::StaleIdentity) => {
+            unreachable!("send_once_no_bearer is not identity-fenced")
         }
     }
 }
@@ -948,6 +1280,9 @@ enum ProxyError {
     /// The independent OAuth probe rejected the credential even after its
     /// normal refresh path. A resource-specific `401` never produces this.
     HardUnauthorized,
+    /// The request was admitted for an account that was replaced before its
+    /// credentials, retry, or response body could be safely consumed.
+    StaleIdentity,
 }
 
 fn proxy_client() -> &'static reqwest::Client {
@@ -978,16 +1313,39 @@ fn proxy_client() -> &'static reqwest::Client {
 /// before it can provision a local sandbox. It fails closed — a signed-out or
 /// unreachable upstream surfaces an error rather than provisioning a sandbox
 /// against a guessed repo.
-pub(crate) async fn call_org_tool(
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum OrgToolCallError {
+    #[error("{STALE_UPSTREAM_IDENTITY}")]
+    StaleIdentity,
+    #[error("{0}")]
+    Failed(String),
+}
+
+pub(crate) async fn call_org_tool_for_identity(
+    state: &AppState,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+    identity_generation: u64,
     org: &str,
     tool_name: &str,
     input: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, OrgToolCallError> {
     let session = upstream::global();
-    let token = session
-        .access_token()
-        .await
-        .map_err(|_| "not signed in to the upstream deployment".to_string())?;
+    let mut ticket = UpstreamRequestTicket::capture_expected(
+        state,
+        &session,
+        account_epoch,
+        identity_generation,
+    )
+    .await
+    .map_err(|_| OrgToolCallError::StaleIdentity)?;
+
+    let token_result = session.access_token().await;
+    ticket
+        .validate()
+        .map_err(|_| OrgToolCallError::StaleIdentity)?;
+    let token = token_result.map_err(|_| {
+        OrgToolCallError::Failed("not signed in to the upstream deployment".to_string())
+    })?;
 
     let path = format!(
         "/api/{}/tools/{}",
@@ -1001,41 +1359,66 @@ pub(crate) async fn call_org_tool(
     );
     headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
 
-    let body = axum::body::Bytes::from(serde_json::to_vec(input).map_err(|e| e.to_string())?);
+    let body = axum::body::Bytes::from(
+        serde_json::to_vec(input).map_err(|error| OrgToolCallError::Failed(error.to_string()))?,
+    );
     // Same browser-shaped credential rule as the proxy branch: cookie leads,
     // bearer in reserve — tool handlers upstream can make nested Better Auth
     // calls with these headers, and a bearer poisons those (api-key probe).
-    let cookie_attached = attach_persisted_cookie(&mut headers, &session).await;
-    let response = send_with_retry(
+    let selected_cookie = session.cookie_header().await;
+    ticket
+        .validate()
+        .map_err(|_| OrgToolCallError::StaleIdentity)?;
+    let cookie_attached = attach_cookie_header(&mut headers, selected_cookie);
+    let response = send_with_retry_for_identity(
         &session,
-        &Method::POST,
-        &path,
-        &headers,
-        &body,
-        token,
-        cookie_attached,
+        RetriableUpstreamRequest {
+            method: Method::POST,
+            path_and_query: &path,
+            headers: &headers,
+            body: &body,
+            token,
+            cookie_leads: cookie_attached,
+        },
+        &mut ticket,
     )
     .await
     .map_err(|error| match error {
-        ProxyError::Network(msg) => format!("upstream unreachable: {msg}"),
-        ProxyError::HardUnauthorized => "not signed in to the upstream deployment".to_string(),
+        ProxyError::Network(msg) => {
+            OrgToolCallError::Failed(format!("upstream unreachable: {msg}"))
+        }
+        ProxyError::HardUnauthorized => {
+            OrgToolCallError::Failed("not signed in to the upstream deployment".to_string())
+        }
+        ProxyError::StaleIdentity => OrgToolCallError::StaleIdentity,
     })?;
 
     let status = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("could not read {tool_name} response: {e}"))?;
+    let bytes_result = tokio::select! {
+        biased;
+        _ = ticket.validation_changed() => {
+            return Err(OrgToolCallError::StaleIdentity);
+        }
+        result = response.bytes() => result,
+    };
+    ticket
+        .validate()
+        .map_err(|_| OrgToolCallError::StaleIdentity)?;
+    let bytes = bytes_result.map_err(|error| {
+        OrgToolCallError::Failed(format!("could not read {tool_name} response: {error}"))
+    })?;
     if !status.is_success() {
-        return Err(format!(
+        return Err(OrgToolCallError::Failed(format!(
             "{tool_name} failed upstream ({status}): {}",
             String::from_utf8_lossy(&bytes)
                 .chars()
                 .take(300)
                 .collect::<String>()
-        ));
+        )));
     }
-    serde_json::from_slice(&bytes).map_err(|e| format!("{tool_name} returned invalid JSON: {e}"))
+    serde_json::from_slice(&bytes).map_err(|error| {
+        OrgToolCallError::Failed(format!("{tool_name} returned invalid JSON: {error}"))
+    })
 }
 
 /// Why an authenticated upstream call never produced a response at all. A
@@ -1053,7 +1436,7 @@ pub(crate) enum UpstreamCallError {
 /// raw response back — status, headers and an unconsumed body, so a caller
 /// serving a large object can stream it rather than buffering.
 ///
-/// [`call_org_tool`] above is the JSON-tool-shaped convenience over the same
+/// [`call_org_tool_for_identity`] above is the JSON-tool-shaped convenience over the same
 /// machinery; this is the general form, used by `routes/webdav.rs` for the
 /// org filesystem's REST contract (`/api/:org/fs/:volume/*`), which is not a
 /// tool call. Both share [`send_with_retry`], so both get the same
@@ -1088,6 +1471,7 @@ pub(crate) async fn send_org_request(
     .map_err(|error| match error {
         ProxyError::Network(msg) => UpstreamCallError::Unreachable(msg),
         ProxyError::HardUnauthorized => UpstreamCallError::NotSignedIn,
+        ProxyError::StaleIdentity => UpstreamCallError::NotSignedIn,
     })
 }
 
@@ -1146,6 +1530,82 @@ async fn send_with_retry(
     }
 
     send_once(method, &url, headers, body.clone(), &current).await
+}
+
+/// Identity-pinned form of [`send_with_retry`] for the generic app-API
+/// catchall. The ordinary helper remains for narrowly-scoped internal reads;
+/// this variant validates after every async credential operation and network
+/// attempt, so a response obtained while account replacement was in flight is
+/// discarded before its headers or body reach the webview.
+struct RetriableUpstreamRequest<'a> {
+    method: Method,
+    path_and_query: &'a str,
+    headers: &'a HeaderMap,
+    body: &'a axum::body::Bytes,
+    token: String,
+    cookie_leads: bool,
+}
+
+async fn send_with_retry_for_identity(
+    session: &upstream::UpstreamSession,
+    request: RetriableUpstreamRequest<'_>,
+    ticket: &mut UpstreamRequestTicket,
+) -> Result<reqwest::Response, ProxyError> {
+    let RetriableUpstreamRequest {
+        method,
+        path_and_query,
+        headers,
+        body,
+        token,
+        cookie_leads,
+    } = request;
+    let url = format!("{}{path_and_query}", session.target());
+    let mut headers = headers.clone();
+
+    if cookie_leads {
+        ticket.validate()?;
+        let first_result = send_once_no_bearer(&method, &url, &headers, body.clone()).await;
+        ticket.validate()?;
+        let first = first_result?;
+        if first.status() != StatusCode::UNAUTHORIZED {
+            return Ok(first);
+        }
+        headers.remove(header::COOKIE);
+    }
+
+    ticket.validate()?;
+    let first_result = send_once(&method, &url, &headers, body.clone(), &token).await;
+    ticket.validate()?;
+    let first = first_result?;
+    if first.status() != StatusCode::UNAUTHORIZED {
+        return Ok(first);
+    }
+
+    // Revalidation may itself refresh or hard-sign-out. The ticket check
+    // immediately afterward prevents a concurrent replacement's status or
+    // token from being reused for this request.
+    ticket.validate()?;
+    let status = session.force_revalidate().await;
+    ticket.validate()?;
+    if !status.signed_in {
+        return Err(ProxyError::HardUnauthorized);
+    }
+
+    let current_result = session.access_token().await;
+    ticket.validate()?;
+    let current = match current_result {
+        Ok(current) => current,
+        Err(_) => return Err(ProxyError::HardUnauthorized),
+    };
+    if current == token {
+        return Ok(first);
+    }
+
+    ticket.validate()?;
+    let retry_result = send_once(&method, &url, &headers, body.clone(), &current).await;
+    ticket.validate()?;
+    let retry = retry_result?;
+    Ok(retry)
 }
 
 async fn send_once(
@@ -1211,6 +1671,28 @@ async fn build_response(upstream: reqwest::Response) -> Response {
     strip_hop_by_hop_headers(&mut headers);
     headers.remove(header::SET_COOKIE);
     let body = Body::from_stream(upstream.bytes_stream());
+    let mut res = Response::new(body);
+    *res.status_mut() = status;
+    *res.headers_mut() = headers;
+    res
+}
+
+/// Generic bearer-branch response builder. In addition to the ordinary
+/// header hygiene, the body stops at the first identity/epoch notification.
+/// `take_until` fences bytes already queued by reqwest as well as future
+/// chunks, which is essential for SSE and other long-lived responses.
+async fn build_response_for_identity(
+    upstream: reqwest::Response,
+    mut ticket: UpstreamRequestTicket,
+) -> Response {
+    if ticket.validate().is_err() {
+        return ApiError::conflict(STALE_UPSTREAM_IDENTITY).into_response();
+    }
+    let status = upstream.status();
+    let mut headers = upstream.headers().clone();
+    strip_hop_by_hop_headers(&mut headers);
+    headers.remove(header::SET_COOKIE);
+    let body = Body::from_stream(upstream.bytes_stream().take_until(ticket.changed()));
     let mut res = Response::new(body);
     *res.status_mut() = status;
     *res.headers_mut() = headers;
@@ -1588,6 +2070,215 @@ mod tests {
         signed_in_session_with_store(target, access_token).await.0
     }
 
+    fn identity_ticket_for_test(
+        manager: Arc<crate::sandbox::SandboxManager>,
+        identity_generation: u64,
+    ) -> (
+        UpstreamRequestTicket,
+        tokio::sync::broadcast::Sender<upstream::SessionIdentityEvent>,
+    ) {
+        let account_epoch = manager.account_epoch();
+        let validation_account_rx = manager.watch_account_epoch(account_epoch).unwrap();
+        let body_account_rx = validation_account_rx.clone();
+        let (identity_tx, _) = tokio::sync::broadcast::channel(8);
+        let validation_identity_rx = identity_tx.subscribe();
+        let body_identity_rx = identity_tx.subscribe();
+        (
+            UpstreamRequestTicket {
+                identity_generation,
+                account_epoch,
+                sandbox_manager: manager,
+                validation_identity_rx,
+                body_identity_rx,
+                validation_account_rx,
+                body_account_rx,
+            },
+            identity_tx,
+        )
+    }
+
+    #[tokio::test]
+    async fn account_change_while_request_body_is_stalled_never_reaches_interception() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::routes::intercept::test_state(dir.path());
+        let manager = state.sandbox_manager.clone();
+        let body_started = Arc::new(tokio::sync::Notify::new());
+        let release_body = Arc::new(tokio::sync::Notify::new());
+        let started_for_body = body_started.clone();
+        let release_for_body = release_body.clone();
+        let body = Body::from_stream(futures::stream::once(async move {
+            started_for_body.notify_one();
+            release_for_body.notified().await;
+            Ok::<_, std::convert::Infallible>(axum::body::Bytes::from_static(b"{}"))
+        }));
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/api/acme/decopilot/retired")
+            .body(body)
+            .unwrap();
+
+        let request_task = tokio::spawn(proxy(State(state), request));
+        tokio::time::timeout(Duration::from_secs(1), body_started.notified())
+            .await
+            .expect("proxy never began reading the stalled body");
+        let transition = manager.begin_account_transition().await.unwrap();
+        release_body.notify_waiters();
+
+        let response = tokio::time::timeout(Duration::from_secs(1), request_task)
+            .await
+            .expect("stale request did not terminate")
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_ne!(
+            response.status(),
+            StatusCode::GONE,
+            "the retired-route interceptor must never run under the replacement account"
+        );
+        drop(transition);
+    }
+
+    #[tokio::test]
+    async fn queued_upstream_body_is_discarded_after_identity_change() {
+        let app = Router::new().route("/stream", get(|| async { "account-a-secret" }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let upstream = reqwest::Client::new()
+            .get(format!("http://{addr}/stream"))
+            .send()
+            .await
+            .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let (ticket, identity_tx) = identity_ticket_for_test(manager, 7);
+        let response = build_response_for_identity(upstream, ticket).await;
+
+        identity_tx
+            .send(upstream::SessionIdentityEvent {
+                generation: 8,
+                user_sub: Some("account-b".to_string()),
+            })
+            .unwrap();
+        let mut body = response.into_body().into_data_stream();
+        assert!(tokio::time::timeout(Duration::from_secs(1), body.next())
+            .await
+            .expect("identity-fenced body did not terminate")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn identity_change_during_first_401_prevents_retry_with_replacement_token() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen_auth = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let first_arrived = Arc::new(tokio::sync::Notify::new());
+        let release_first = Arc::new(tokio::sync::Notify::new());
+        let app = Router::new()
+            .route(
+                "/resource",
+                get({
+                    let calls = calls.clone();
+                    let seen_auth = seen_auth.clone();
+                    let first_arrived = first_arrived.clone();
+                    let release_first = release_first.clone();
+                    move |headers: HeaderMap| {
+                        let calls = calls.clone();
+                        let seen_auth = seen_auth.clone();
+                        let first_arrived = first_arrived.clone();
+                        let release_first = release_first.clone();
+                        async move {
+                            seen_auth.lock().unwrap().push(
+                                headers
+                                    .get(header::AUTHORIZATION)
+                                    .and_then(|value| value.to_str().ok())
+                                    .unwrap_or_default()
+                                    .to_string(),
+                            );
+                            let attempt = calls.fetch_add(1, Ordering::SeqCst);
+                            if attempt == 0 {
+                                first_arrived.notify_one();
+                                release_first.notified().await;
+                                StatusCode::UNAUTHORIZED
+                            } else {
+                                StatusCode::OK
+                            }
+                        }
+                    }
+                }),
+            )
+            .route("/api/links/me", get(|| async { StatusCode::OK }))
+            .route(
+                "/api/auth/get-session",
+                get(|| async { Json(json!({ "user": { "id": "account-b" } })) }),
+            );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let target = format!("http://{addr}");
+        let (session, store) = signed_in_session_with_store(&target, "token-a").await;
+        let root = tempfile::tempdir().unwrap();
+        let manager = crate::sandbox::SandboxManager::new(root.path().to_path_buf());
+        let (mut ticket, identity_tx) = identity_ticket_for_test(manager, 11);
+
+        let send_task = tokio::spawn(async move {
+            send_with_retry_for_identity(
+                &session,
+                RetriableUpstreamRequest {
+                    method: Method::GET,
+                    path_and_query: "/resource",
+                    headers: &HeaderMap::new(),
+                    body: &axum::body::Bytes::new(),
+                    token: "token-a".to_string(),
+                    cookie_leads: false,
+                },
+                &mut ticket,
+            )
+            .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), first_arrived.notified())
+            .await
+            .expect("first request never reached upstream");
+        store
+            .save(
+                &host_key(&target),
+                StoredSession {
+                    target: target.clone(),
+                    client_id: "client-b".to_string(),
+                    user: UserInfo {
+                        sub: "account-b".to_string(),
+                        email: None,
+                        name: None,
+                    },
+                    access_token: "token-b".to_string(),
+                    refresh_token: Some("refresh-b".to_string()),
+                    expires_at: Some(now_unix() + 3600),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                    cookie: Some("better-auth.session_token=b".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        identity_tx
+            .send(upstream::SessionIdentityEvent {
+                generation: 12,
+                user_sub: Some("account-b".to_string()),
+            })
+            .unwrap();
+        release_first.notify_waiters();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), send_task)
+            .await
+            .expect("identity-fenced retry did not terminate")
+            .unwrap();
+        assert!(matches!(result, Err(ProxyError::StaleIdentity)));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(seen_auth.lock().unwrap().as_slice(), ["Bearer token-a"]);
+    }
+
     #[tokio::test]
     async fn native_watch_is_intercepted_without_contacting_upstream() {
         let dir = tempfile::tempdir().unwrap();
@@ -1601,9 +2292,15 @@ mod tests {
         // The process-global upstream session is deliberately not configured
         // in this test. A fallthrough would return 401 (or block on credential
         // resolution); the local watch must answer immediately instead.
-        let response = tokio::time::timeout(Duration::from_secs(1), proxy(State(state), request))
-            .await
-            .expect("local watch attempted an upstream operation");
+        // Keep the router state alive while polling the returned streaming
+        // body, just as the real Axum router does. Dropping the last manager
+        // here must close the epoch channel and terminate the watch; retaining
+        // a clone in the response would weaken that production fail-closed
+        // behavior.
+        let response =
+            tokio::time::timeout(Duration::from_secs(1), proxy(State(state.clone()), request))
+                .await
+                .expect("local watch attempted an upstream operation");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             response.headers().get(header::CONTENT_TYPE).unwrap(),

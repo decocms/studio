@@ -31,14 +31,14 @@
 //! registry first and answers with the frame the shell is waiting for.
 
 use axum::body::Body;
-use axum::extract::{Query, State};
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::ApiError;
-use crate::routes::events::{events, EventsQuery};
+use crate::routes::events::{events_for_account, EventsQuery};
 use crate::state::AppState;
 
+use super::sandbox_authority::{authorize, manager_error, Access};
 use super::sandbox_fs::decode_identity_segment;
 
 /// One `event: gone` frame on a well-formed SSE response.
@@ -52,11 +52,26 @@ fn gone_stream() -> Response {
 pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
+    org: &str,
     rest: &[&str],
 ) -> Option<Response> {
     let ["sandbox", encoded_virtual_mcp_id, encoded_branch, "events"] = rest else {
         return None;
     };
+    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let branch = match decode_identity_segment("branch", encoded_branch) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let authorization = match authorize(state, org, &virtual_mcp_id, &branch, Access::Viewer).await
+    {
+        Ok(authorization) => authorization,
+        Err(error) => return Some(error.into_response()),
+    };
+    let account_epoch = authorization.account_epoch();
     if *method != Method::GET {
         return Some(
             ApiError::new(
@@ -67,37 +82,35 @@ pub(super) async fn try_dispatch(
         );
     }
 
-    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
-    let branch = match decode_identity_segment("branch", encoded_branch) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
-
     // Keyed by (virtualMcpId, branch); the handle comes from the repository,
     // so the registry bridges them. No row means never provisioned — the same
     // thing `is_registered(false)` means below.
-    let Ok(Some(handle)) = state
-        .sandbox_manager
-        .handle_for_agent(&virtual_mcp_id, &branch)
-    else {
-        return Some(gone_stream());
+    let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        account_epoch,
+        &virtual_mcp_id,
+        &branch,
+    ) {
+        Ok(Some(handle)) => handle,
+        Ok(None) => return Some(gone_stream()),
+        Err(error) => return Some(manager_error(error).into_response()),
     };
-    match state.sandbox_manager.is_registered(&handle) {
+    match state
+        .sandbox_manager
+        .is_registered_for_account(account_epoch, &handle)
+    {
         Ok(true) => {}
         // Never provisioned, or reaped: tell the shell so it can re-start it.
         Ok(false) => return Some(gone_stream()),
-        Err(error) => return Some(ApiError::internal(error).into_response()),
+        Err(error) => return Some(manager_error(error).into_response()),
     }
 
     Some(
-        events(
-            State(state.clone()),
-            Query(EventsQuery {
+        events_for_account(
+            state.clone(),
+            EventsQuery {
                 handle: Some(handle),
-            }),
+            },
+            account_epoch,
         )
         .await,
     )
@@ -119,14 +132,16 @@ mod tests {
 
         // Filesystem operations belong to `sandbox_fs`, not here.
         assert!(
-            try_dispatch(&state, &get(), &["sandbox", "vm", "main", "read"])
+            try_dispatch(&state, &get(), "acme", &["sandbox", "vm", "main", "read"])
                 .await
                 .is_none()
         );
         // A different family entirely.
-        assert!(try_dispatch(&state, &get(), &["tools", "SANDBOX_START"])
-            .await
-            .is_none());
+        assert!(
+            try_dispatch(&state, &get(), "acme", &["tools", "SANDBOX_START"])
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -134,7 +149,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let state = super::super::test_state(root.path());
 
-        let response = try_dispatch(&state, &get(), &["sandbox", "vm", "main", "events"])
+        let response = try_dispatch(&state, &get(), "acme", &["sandbox", "vm", "main", "events"])
             .await
             .expect("the events path is intercepted");
 
@@ -159,9 +174,14 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let state = super::super::test_state(root.path());
 
-        let response = try_dispatch(&state, &Method::POST, &["sandbox", "vm", "main", "events"])
-            .await
-            .expect("still intercepted, so it cannot silently proxy upstream");
+        let response = try_dispatch(
+            &state,
+            &Method::POST,
+            "acme",
+            &["sandbox", "vm", "main", "events"],
+        )
+        .await
+        .expect("still intercepted, so it cannot silently proxy upstream");
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 }

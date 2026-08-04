@@ -29,6 +29,11 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { computeHandle, normalizeBranch, repoDirFor } from "./sandbox-handle";
 
 import {
+  signInAndCompleteSession,
+  startAuthenticatedUpstream,
+} from "./authenticated-upstream";
+
+import {
   describeLocalApi,
   HOOK_TIMEOUT_MS,
   jsonAuthHeaders,
@@ -42,6 +47,9 @@ const ORG = "blocks-native-e2e";
 const VIRTUAL_MCP_ID = "blocks/vmcp/with-slashes";
 const FEATURE_BRANCH = "feature/blocks/save";
 const OTHER_BRANCH = "main";
+const THREAD_ID = "sandbox-authority-thread";
+const THREAD_VIRTUAL_MCP_ID = "sandbox-authority-vmcp";
+const THREAD_BRANCH = `thread:${THREAD_ID}`;
 
 function git(cwd: string, args: string[]): void {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -104,12 +112,13 @@ async function ensureSandbox(
   a: LocalApi,
   cloneUrl: string,
   branch: string,
+  virtualMcpId = VIRTUAL_MCP_ID,
 ): Promise<string> {
   const response = await fetch(url(a, "/_sandbox/setup/ensure"), {
     method: "POST",
     headers: jsonAuthHeaders(),
     body: JSON.stringify({
-      virtualMcpId: VIRTUAL_MCP_ID,
+      virtualMcpId,
       repo: { cloneUrl, branch },
       workload: { runtime: "bun", packageManager: "bun" },
     }),
@@ -166,6 +175,7 @@ describeLocalApi(
   "local-api e2e: Blocks editor native sandbox filesystem bridge",
   () => {
     let a: LocalApi;
+    let upstream: ReturnType<typeof startAuthenticatedUpstream>;
     let fixture: { root: string; bareDir: string };
     let appRoot: string;
     let featureHandle: string;
@@ -175,7 +185,12 @@ describeLocalApi(
 
     beforeAll(async () => {
       fixture = setupFixtureRepo();
-      a = await startLocalApi({ LOCAL_API_TOKEN_STORE: "memory" });
+      upstream = startAuthenticatedUpstream();
+      a = await startLocalApi({
+        DECOCMS_UPSTREAM_URL: upstream.url,
+        LOCAL_API_TOKEN_STORE: "memory",
+      });
+      await signInAndCompleteSession(a);
       appRoot = a.workdir;
 
       featureHandle = await ensureSandbox(a, fixture.bareDir, FEATURE_BRANCH);
@@ -188,13 +203,115 @@ describeLocalApi(
       otherHandle = await ensureSandbox(a, fixture.bareDir, OTHER_BRANCH);
       otherRepo = repoDirFor(appRoot, otherHandle);
       await waitForFile(join(otherRepo, "BRANCH.txt"), "main\n");
+
+      const created = await fetch(
+        url(a, `/api/${ORG}/tools/COLLECTION_THREADS_CREATE`),
+        {
+          method: "POST",
+          headers: jsonAuthHeaders(),
+          body: JSON.stringify({
+            data: {
+              id: THREAD_ID,
+              title: "Sandbox authority",
+              virtual_mcp_id: THREAD_VIRTUAL_MCP_ID,
+            },
+          }),
+        },
+      );
+      expect(created.status).toBe(200);
+      const threadHandle = await ensureSandbox(
+        a,
+        fixture.bareDir,
+        THREAD_BRANCH,
+        THREAD_VIRTUAL_MCP_ID,
+      );
+      await waitForFile(
+        join(repoDirFor(appRoot, threadHandle), "BRANCH.txt"),
+        "main\n",
+      );
     }, HOOK_TIMEOUT_MS);
 
     afterAll(async () => {
       await stopLocalApi(a, { keepWorkdir: true });
+      upstream.server.stop(true);
       rmSync(appRoot, { recursive: true, force: true });
       rmSync(fixture.root, { recursive: true, force: true });
     }, HOOK_TIMEOUT_MS);
+
+    it("requires a signed-in Studio account in addition to the loopback bearer", async () => {
+      const signedOut = await startLocalApi({
+        DECOCMS_UPSTREAM_URL: upstream.url,
+        LOCAL_API_TOKEN_STORE: "memory",
+      });
+      try {
+        const response = await writeSandboxFile(
+          signedOut,
+          FEATURE_BRANCH,
+          "must-not-write.json",
+          "{}",
+        );
+        expect(response.status).toBe(401);
+      } finally {
+        await stopLocalApi(signedOut);
+      }
+    });
+
+    it("lets an owner mutate its active thread workspace, rejects a virtual MCP mismatch, and leaves archived workspaces read-only", async () => {
+      const path = "thread-authority.json";
+      const write = await writeSandboxFile(
+        a,
+        THREAD_BRANCH,
+        path,
+        '{"owner":true}',
+        THREAD_VIRTUAL_MCP_ID,
+      );
+      const writeBody = await write.json();
+      expect({ status: write.status, body: writeBody }).toMatchObject({
+        status: 200,
+        body: { ok: true },
+      });
+
+      const mismatchedVirtualMcp = await writeSandboxFile(
+        a,
+        THREAD_BRANCH,
+        "mismatched-virtual-mcp.json",
+        "{}",
+        "different-vmcp",
+      );
+      expect(mismatchedVirtualMcp.status).toBe(404);
+
+      const archived = await fetch(
+        url(a, `/api/${ORG}/tools/COLLECTION_THREADS_UPDATE`),
+        {
+          method: "POST",
+          headers: jsonAuthHeaders(),
+          body: JSON.stringify({ id: THREAD_ID, data: { hidden: true } }),
+        },
+      );
+      expect(archived.status).toBe(200);
+
+      const archivedWrite = await writeSandboxFile(
+        a,
+        THREAD_BRANCH,
+        "archived-write.json",
+        "{}",
+        THREAD_VIRTUAL_MCP_ID,
+      );
+      expect(archivedWrite.status).toBe(409);
+
+      const archivedRead = await readSandboxFile(
+        a,
+        THREAD_BRANCH,
+        path,
+        THREAD_VIRTUAL_MCP_ID,
+      );
+      expect(archivedRead.status).toBe(200);
+      expect(await archivedRead.json()).toMatchObject({
+        kind: "text",
+        content: '1\t{"owner":true}',
+        lineCount: 1,
+      });
+    });
 
     it("URL-decodes virtualMcpId + branch and never follows the other active sandbox", async () => {
       const path = ".deco/blocks/identity.json";
@@ -307,9 +424,13 @@ describeLocalApi(
 
       await stopLocalApi(a, { keepWorkdir: true });
       a = await startLocalApi(
-        { LOCAL_API_TOKEN_STORE: "memory" },
+        {
+          DECOCMS_UPSTREAM_URL: upstream.url,
+          LOCAL_API_TOKEN_STORE: "memory",
+        },
         { workdir: appRoot },
       );
+      await signInAndCompleteSession(a);
 
       // No setup/ensure call after relaunch: this request must recover the
       // explicit URL identity from the registry (studio.db). The persisted active

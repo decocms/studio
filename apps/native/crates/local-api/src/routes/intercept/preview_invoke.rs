@@ -26,18 +26,34 @@ use super::sandbox_fs::decode_identity_segment;
 use crate::error::ApiError;
 use crate::state::AppState;
 
+use super::sandbox_authority::{authorize, manager_error, Access};
+
 /// Cap on the invoke body, mirroring `PREVIEW_INVOKE_MAX_BODY_BYTES`.
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
+    org: &str,
     rest: &[&str],
     body: &Bytes,
 ) -> Option<Response> {
     let ["sandbox", encoded_virtual_mcp_id, encoded_branch, "preview-invoke"] = rest else {
         return None;
     };
+    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let branch = match decode_identity_segment("branch", encoded_branch) {
+        Ok(value) => value,
+        Err(error) => return Some(error.into_response()),
+    };
+    let authorization =
+        match authorize(state, org, &virtual_mcp_id, &branch, Access::ActiveOwner).await {
+            Ok(authorization) => authorization,
+            Err(error) => return Some(error.into_response()),
+        };
     if *method != Method::POST {
         return Some(
             ApiError::new(
@@ -52,19 +68,25 @@ pub(super) async fn try_dispatch(
             ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "Payload too large").into_response(),
         );
     }
-
-    let virtual_mcp_id = match decode_identity_segment("virtualMcpId", encoded_virtual_mcp_id) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
-    let branch = match decode_identity_segment("branch", encoded_branch) {
-        Ok(value) => value,
-        Err(error) => return Some(error.into_response()),
-    };
-    Some(invoke(state, &virtual_mcp_id, &branch, body).await)
+    Some(
+        invoke(
+            state,
+            &virtual_mcp_id,
+            &branch,
+            body,
+            authorization.account_epoch(),
+        )
+        .await,
+    )
 }
 
-async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Bytes) -> Response {
+async fn invoke(
+    state: &AppState,
+    virtual_mcp_id: &str,
+    branch: &str,
+    body: &Bytes,
+    account_epoch: crate::sandbox::manager::AccountEpoch,
+) -> Response {
     let Some(parsed) = serde_json::from_slice::<Value>(body)
         .ok()
         .and_then(|value| parse_invoke(&value))
@@ -77,17 +99,28 @@ async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Byt
 
     // Keyed by (virtualMcpId, branch); the worktree handle is derived from the
     // repository, so the registry is what bridges them.
-    let Ok(Some(handle)) = state
-        .sandbox_manager
-        .handle_for_agent(virtual_mcp_id, branch)
-    else {
-        return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response();
+    let handle = match state.sandbox_manager.handle_for_virtual_mcp_for_account(
+        account_epoch,
+        virtual_mcp_id,
+        branch,
+    ) {
+        Ok(Some(handle)) => handle,
+        Ok(None) => {
+            return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response()
+        }
+        Err(error) => return manager_error(error).into_response(),
     };
-    let Some(port) = state
+    let sandbox = match state
         .sandbox_manager
-        .get(&handle)
-        .and_then(|sandbox| crate::routes::proxy::sandbox_dev_port(&sandbox))
-    else {
+        .get_for_account(account_epoch, &handle)
+    {
+        Ok(Some(sandbox)) => sandbox,
+        Ok(None) => {
+            return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response()
+        }
+        Err(error) => return manager_error(error).into_response(),
+    };
+    let Some(port) = crate::routes::proxy::sandbox_dev_port(&sandbox) else {
         return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response();
     };
 
@@ -110,8 +143,15 @@ async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Byt
         .post(&url)
         .header(header::CONTENT_TYPE, "application/json")
         .body(payload);
-    super::dev_server::send_and_mirror(request, Some(HeaderValue::from_static("application/json")))
-        .await
+    let response = super::dev_server::send_and_mirror(
+        request,
+        Some(HeaderValue::from_static("application/json")),
+    )
+    .await;
+    match state.sandbox_manager.validate_account_epoch(account_epoch) {
+        Ok(()) => response,
+        Err(error) => manager_error(error).into_response(),
+    }
 }
 
 struct Invoke {

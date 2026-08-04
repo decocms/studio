@@ -4,23 +4,40 @@
 //! paths (the tool catalog, its endpoint credential file) onto the user's
 //! branch. Best-effort: an unwritable `.git` never blocks the caller.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tokio::fs;
 
-pub async fn ensure_git_exclude(repo_dir: &Path, line: &str) {
+use crate::tasks::TaskRegistry;
+
+/// Resolve the worktree-aware exclude path through a hidden generation-owned
+/// Git probe. Callers do this before acquiring the filesystem commit lease:
+/// Stop can preempt and reap the child, and if Stop wins between resolution
+/// and commit the later commit admission rejects the mutation.
+pub async fn resolve_git_exclude(tasks: Arc<TaskRegistry>, repo_dir: &Path) -> Option<PathBuf> {
+    let repo_dir = repo_dir.to_path_buf();
+    crate::routes::git::run_owned_git_probe(tasks, "git exclude-path probe", async move {
+        crate::routes::git::git_path(&repo_dir, "info/exclude").await
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Best-effort filesystem half of exclude registration. The Git child that
+/// produced `exclude_path` has already joined; callers run this mutation under
+/// `fs::run_commit_owned` so Stop drains or rejects it atomically.
+pub async fn ensure_git_exclude_path(exclude_path: &Path, line: &str) {
     // Resolved through git, not by joining `.git`: every sandbox workdir is a
     // linked worktree, where `.git` is a FILE pointing elsewhere. The old
     // `is_dir()` guard therefore returned early for every real sandbox, so
     // this never ran and `git add -A` at publish staged the tool catalog and
     // its endpoint CREDENTIAL file onto the user's branch.
-    let Some(exclude_path) = crate::routes::git::git_path(repo_dir, "info/exclude").await else {
-        return;
-    };
     let Some(info_dir) = exclude_path.parent().map(std::path::Path::to_path_buf) else {
         return;
     };
-    match fs::read_to_string(&exclude_path).await {
+    match fs::read_to_string(exclude_path).await {
         Ok(existing) => {
             if !existing.lines().any(|l| l == line) {
                 let appended = if existing.ends_with('\n') || existing.is_empty() {
@@ -28,14 +45,14 @@ pub async fn ensure_git_exclude(repo_dir: &Path, line: &str) {
                 } else {
                     format!("{existing}\n{line}\n")
                 };
-                let _ = fs::write(&exclude_path, appended).await;
+                let _ = fs::write(exclude_path, appended).await;
             }
         }
         Err(_) => {
             // Template-less clones (libgit2/JGit, bare templates) lack
             // info/exclude.
             if fs::create_dir_all(&info_dir).await.is_ok() {
-                let _ = fs::write(&exclude_path, format!("{line}\n")).await;
+                let _ = fs::write(exclude_path, format!("{line}\n")).await;
             }
         }
     }
@@ -46,6 +63,19 @@ mod tests {
     use super::*;
     use std::process::Command;
     use tempfile::tempdir;
+
+    async fn ensure_git_exclude(repo_dir: &Path, line: &str) {
+        let logs_root = repo_dir
+            .parent()
+            .unwrap_or(repo_dir)
+            .join("git-exclude-test-logs");
+        let tasks = Arc::new(TaskRegistry::new(Arc::new(
+            crate::log_store::LogStore::new(logs_root),
+        )));
+        if let Some(path) = resolve_git_exclude(tasks, repo_dir).await {
+            ensure_git_exclude_path(&path, line).await;
+        }
+    }
 
     fn git(cwd: &Path, args: &[&str]) {
         let status = Command::new("git")

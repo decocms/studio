@@ -201,14 +201,14 @@ impl SandboxRegistry {
         Ok(rows.pop())
     }
 
-    /// Every durable sandbox this agent has claimed, joined through
+    /// Every durable sandbox this virtual MCP has claimed, joined through
     /// `sandbox_agents` — the `virtual_mcp_id` COLUMN on `sandboxes` only
-    /// remembers whichever agent wrote last (see `handle_for_agent`).
+    /// remembers whichever virtual MCP wrote last (see `handle_for_virtual_mcp`).
     ///
     /// This is the registry-backed replacement for walking `worktrees/` and
     /// reading sidecars on request paths: one indexed query instead of a
     /// recursive directory scan per request.
-    pub(crate) fn records_for_agent(
+    pub(crate) fn records_for_virtual_mcp(
         &self,
         virtual_mcp_id: &str,
     ) -> Result<Vec<SandboxRecord>, String> {
@@ -310,15 +310,15 @@ impl SandboxRegistry {
             .map_err(|error| format!("failed to look up sandbox {handle}: {error}"))
     }
 
-    /// The handle of the worktree an agent is using for `branch`.
+    /// The handle of the worktree a virtual MCP is using for `branch`.
     ///
     /// The handle is derived from the REPOSITORY and branch, but the routes
     /// the shell calls are keyed by `(virtualMcpId, branch)` — they never see
     /// a clone URL. The registry stores all three, so it is the one place that
     /// can bridge them without a filesystem scan.
     ///
-    /// `None` when this agent has no worktree for that branch yet.
-    pub(crate) fn handle_for_agent(
+    /// `None` when this virtual MCP has no worktree for that branch yet.
+    pub(crate) fn handle_for_virtual_mcp(
         &self,
         virtual_mcp_id: &str,
         branch: &str,
@@ -902,7 +902,12 @@ fn validate_identity(handle: &str, config: &GitSandboxConfig) -> Result<(), Stri
             config.clone_url
         ));
     };
-    if handle != expected {
+    let legacy =
+        SandboxManager::legacy_compute_handle(&config.clone_url, normalized_branch(config));
+    let hashed =
+        SandboxManager::hashed_compute_handle(&config.clone_url, normalized_branch(config));
+    if handle != expected && legacy.as_deref() != Some(handle) && hashed.as_deref() != Some(handle)
+    {
         return Err(format!(
             "sandbox handle/config mismatch: expected {expected}, got {handle}"
         ));
@@ -971,14 +976,14 @@ mod tests {
         // Same repo + branch => one sandbox, reachable by BOTH agents.
         assert_eq!(
             registry
-                .handle_for_agent(&first.virtual_mcp_id, &branch)
+                .handle_for_virtual_mcp(&first.virtual_mcp_id, &branch)
                 .unwrap()
                 .as_deref(),
             Some(handle.as_str())
         );
         assert_eq!(
             registry
-                .handle_for_agent(&second.virtual_mcp_id, &branch)
+                .handle_for_virtual_mcp(&second.virtual_mcp_id, &branch)
                 .unwrap()
                 .as_deref(),
             Some(handle.as_str())
@@ -1131,7 +1136,7 @@ mod tests {
         assert!(registry.record(&handle).unwrap().is_none());
         assert!(registry.active_handle().unwrap().is_none());
         assert!(registry
-            .handle_for_agent(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap())
+            .handle_for_virtual_mcp(&cfg.virtual_mcp_id, cfg.branch.as_deref().unwrap())
             .unwrap()
             .is_none());
         let agent_rows: i64 = registry
