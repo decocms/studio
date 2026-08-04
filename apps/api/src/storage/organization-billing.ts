@@ -91,4 +91,47 @@ export class OrganizationBillingStorage {
       .executeTakeFirst();
     return (result.numUpdatedRows ?? 0n) > 0n;
   }
+
+  // Task-execution quota claims (billing/task-quota.ts): one row per
+  // reports-pushed task ever dispatched; period_key buckets the count.
+
+  async hasTaskClaim(taskBoardItemId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("task_quota_claims")
+      .select("task_board_item_id")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .executeTakeFirst();
+    return !!row;
+  }
+
+  async countTaskClaims(
+    organizationId: string,
+    periodKey: string,
+  ): Promise<number> {
+    const row = await this.db
+      .selectFrom("task_quota_claims")
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("organization_id", "=", organizationId)
+      .where("period_key", "=", periodKey)
+      .executeTakeFirst();
+    return Number(row?.count ?? 0);
+  }
+
+  /** Idempotent per task (PK) — a concurrent double-dispatch of the same
+   *  task claims once. */
+  async claimTask(
+    organizationId: string,
+    taskBoardItemId: string,
+    periodKey: string,
+  ): Promise<void> {
+    await this.db
+      .insertInto("task_quota_claims")
+      .values({
+        task_board_item_id: taskBoardItemId,
+        organization_id: organizationId,
+        period_key: periodKey,
+      })
+      .onConflict((oc) => oc.column("task_board_item_id").doNothing())
+      .execute();
+  }
 }

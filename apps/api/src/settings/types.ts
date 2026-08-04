@@ -91,6 +91,14 @@ export interface Settings {
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
 
+  // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
+  // self-hosted deployments never turn it on.
+  taskQuotaEnforced: boolean;
+  /** Lifetime free executions of reports-pushed tasks per org (default 3). */
+  freeTaskExecutions: number;
+  /** Executions per billing cycle while subscribed (default 10). */
+  monthlyTaskExecutions: number;
+
   // Feature Flags
   enableDecoImport: boolean;
   /** MCP read/list caching. On by default in production, off in development;

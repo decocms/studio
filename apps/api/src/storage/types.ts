@@ -1190,6 +1190,15 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
+/** Quota ledger for reports-pushed task executions (migration 158) — one
+ *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
+export interface TaskQuotaClaimTable {
+  task_board_item_id: string;
+  organization_id: string;
+  period_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** Per-org billing identity (migration 139). Platform-written only —
  *  never writable by org members. */
 export interface OrganizationBillingTable {
@@ -1813,6 +1822,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
   organization_billing: OrganizationBillingTable;
+  task_quota_claims: TaskQuotaClaimTable;
 
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;

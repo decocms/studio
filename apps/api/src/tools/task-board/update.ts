@@ -12,6 +12,10 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import {
+  ensureTaskExecutionAllowed,
+  isReportsTask,
+} from "../../billing/task-quota";
 
 /**
  * Fields whose change earns a from/to timeline entry, and the action it logs as.
@@ -162,6 +166,29 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // overriding any status the caller passed alongside the reassignment.
     const becameSuperAgent =
       assigneeChanged && input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+
+    if (previous && isReportsTask(previous)) {
+      // Reports-pushed tasks are the report's findings — their CONTENT is
+      // owned by the reports sync (which refreshes description/priority on
+      // open items), so users can't rewrite it. Board interactions stay
+      // free: status/drag, assignee (delegating IS how a run starts), due
+      // date, tags, thread links.
+      if (
+        input.title !== undefined ||
+        input.description !== undefined ||
+        input.priority !== undefined
+      ) {
+        throw new Error(
+          "This task was generated from your report and can't be edited — create your own task instead.",
+        );
+      }
+      // Paywall BEFORE the write: an exhausted quota must not leave the task
+      // delegated-but-never-running (the dispatch-side claim would throw
+      // after the assignee already persisted).
+      if (becameSuperAgent) {
+        await ensureTaskExecutionAllowed(ctx, previous);
+      }
+    }
 
     // Tags are a separate join table, applied before the item is (re)fetched
     // below so attachTags() picks up the new set either way. Every id must
