@@ -155,12 +155,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
     ),
-  claude_code_sandbox_enabled: z
-    .boolean()
-    .optional()
-    .describe(
-      "Allow the claude-code harness to run inside the managed sandbox (the Claude Agent SDK next to the checkout) instead of only on a user's desktop. Off by default: it dispatches through a different path than Decopilot and needs an Anthropic-compatible model credential on the org.",
-    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

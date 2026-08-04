@@ -451,27 +451,6 @@ export function assertHostedDispatchHarness(
   }
 }
 
-/**
- * Sandbox-hosted harnesses are gated per-org and default off.
- *
- * The gate lives here rather than at the HTTP entry because every entry point
- * (POST, resume, automation fire, background tool) funnels through
- * `prepareRun` — this is the one place that cannot be bypassed.
- */
-async function assertHarnessEnabledForOrg(
-  harnessId: HostedHarnessId,
-  organizationId: string,
-  ctx: StudioContext,
-): Promise<void> {
-  if (harnessId === "decopilot") return;
-  const settings = await ctx.storage.organizationSettings.get(organizationId);
-  if (settings?.flags?.claude_code_sandbox_enabled === true) return;
-  throw new Error(
-    `the ${harnessId} harness is not enabled for this organization ` +
-      `(set the claude_code_sandbox_enabled flag to allow it)`,
-  );
-}
-
 function isDurableDispatchRunInput(
   input: DispatchRunRuntimeInput,
 ): input is DurableDispatchRunInput {
@@ -825,7 +804,6 @@ async function prepareRun(
   const { runRegistry, streamBuffer } = deps;
   assertHostedDispatchHarness(input.harnessId);
   const harnessId = input.harnessId;
-  await assertHarnessEnabledForOrg(harnessId, input.organizationId, ctx);
 
   // Legacy/direct callers may still provide raw messages. Durable workflow
   // callers pass only a messageId and reload the already-persisted user turn.

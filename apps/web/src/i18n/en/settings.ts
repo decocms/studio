@@ -384,12 +384,6 @@ export const settings = {
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
   "settings.review.updateError": "Couldn't update the setting",
-  "settings.agentRuntime.title": "Agent runtime",
-  "settings.agentRuntime.description":
-    "Which harness runs this organization's agent tasks.",
-  "settings.agentRuntime.claudeCodeTitle": "Run tasks with Claude Code",
-  "settings.agentRuntime.claudeCodeDescription":
-    "Super Agent tasks run the Claude Code harness next to the checkout in the managed sandbox instead of Decopilot. Needs an Anthropic or OpenRouter model credential, and a single connected repository.",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
