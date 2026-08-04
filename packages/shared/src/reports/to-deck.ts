@@ -35,6 +35,9 @@ export interface ReportState {
   scanned_at: string | null;
   /** Slides dropped by the contract on this read (for `report_slide_dropped`). */
   drops: SlideDrop[];
+  /** True when `deck.slides` was cut down to the cover slide for an
+   *  unauthenticated caller — the rest requires signing in. */
+  truncated?: boolean;
 }
 
 /** Run response from POST /api/v2/diagnostics/run (idempotent + single-flight). */

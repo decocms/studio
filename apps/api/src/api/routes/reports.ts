@@ -1,13 +1,19 @@
 /**
- * Authenticated Report Routes — `/api/_reports/*`
+ * Report Routes — `/api/_reports/*`
  *
- * Session-gated proxy between the report page (`/report/:domain`) and the
- * reports engine (reports.decocms.com, `/api/v2`). The engine's master API key
- * stays server-side; the caller's session email is the only delivery
- * address accepted when a scan starts.
+ * Proxy between the report page (`/report/:domain`) and the reports engine
+ * (reports.decocms.com, `/api/v2`). The engine's master API key stays
+ * server-side; the caller's session email is the only delivery address
+ * accepted when a scan starts.
+ *
+ * `GET /site/:domain` is the one route that also serves unauthenticated
+ * callers — it returns only the cover slide of an already-completed scan, so
+ * the first card of a report is visible before login. Everything else
+ * (starting a scan, polling it, resolving email links) still requires a
+ * session.
  */
 
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { auth } from "@/auth";
 import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
 import {
@@ -25,7 +31,8 @@ function engineFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * Read an already-scanned domain's deck after the route's session gate.
+ * Read an already-scanned domain's deck. Callers without a session get the
+ * full state back too — the route handler truncates it to the cover slide.
  */
 async function fetchReport(
   domain: string,
@@ -61,7 +68,7 @@ const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
 
 type ReportsEnv = {
   Variables: {
-    reportUser: { email: string };
+    reportUser?: { email: string };
   };
 };
 
@@ -69,33 +76,47 @@ const app = new Hono<ReportsEnv>();
 
 app.use("*", async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (!session?.user?.id) {
-    return c.json({ error: "Authentication required" }, 401, {
-      "Cache-Control": "private, no-store",
-      Vary: "Cookie",
-    });
-  }
-
-  c.set("reportUser", {
-    email: session.user.email,
-  });
+  c.set(
+    "reportUser",
+    session?.user?.id ? { email: session.user.email } : undefined,
+  );
   await next();
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Cookie");
   return undefined;
 });
 
-/** GET /api/_reports/site/:domain — the deck for an already-scanned domain. */
+const requireReportUser: MiddlewareHandler<ReportsEnv> = async (c, next) => {
+  if (!c.get("reportUser"))
+    return c.json({ error: "Authentication required" }, 401);
+  await next();
+  return undefined;
+};
+
+app.use("/run", requireReportUser);
+app.use("/status", requireReportUser);
+app.use("/link-token/*", requireReportUser);
+app.use("/suggest", requireReportUser);
+
+/** GET /api/_reports/site/:domain — the deck for an already-scanned domain.
+ *  Unauthenticated callers get the cover slide only; starting a new scan
+ *  still requires signing in (see POST /run). */
 app.get("/site/:domain", async (c) => {
   const domain = c.req.param("domain").trim();
   if (!domain) return c.json({ error: "domain is required" }, 400);
+  const user = c.get("reportUser");
   const key = c.req.query("key")?.trim() || undefined;
   const lang = c.req.query("lang")?.trim() || undefined;
   try {
     const state = await fetchReport(domain, key, lang);
     // Never cached: the deck carries short-lived signed screenshot URLs.
     c.header("Cache-Control", "private, no-store");
-    return c.json(state);
+    if (user || !state.deck) return c.json(state);
+    return c.json({
+      ...state,
+      deck: { ...state.deck, slides: state.deck.slides.slice(0, 1) },
+      truncated: state.status === "ready",
+    });
   } catch {
     return c.json({ error: "report read failed" }, 502);
   }
@@ -108,6 +129,7 @@ app.get("/site/:domain", async (c) => {
  *  optional `distinctId` is the visitor's PostHog id, so the engine's
  *  server-side funnel events attribute to the same person. */
 app.post("/run", async (c) => {
+  const user = c.get("reportUser")!;
   let body: { domain?: unknown; distinctId?: unknown };
   try {
     body = await c.req.json();
@@ -116,7 +138,7 @@ app.post("/run", async (c) => {
   }
   const domain = typeof body.domain === "string" ? body.domain.trim() : "";
   if (!domain) return c.json({ error: "domain is required" }, 400);
-  const email = c.get("reportUser").email;
+  const email = user.email;
   const distinctId =
     typeof body.distinctId === "string" &&
     body.distinctId.trim() &&

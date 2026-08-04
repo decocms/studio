@@ -11,6 +11,7 @@ import { VALID_LOCALES } from "@/i18n/locale.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { authClient } from "@/lib/auth-client";
 import { resolveEmailLinkToken } from "./api";
+import { ReportAuthOverlay } from "./auth-gate";
 import Icon from "./icon";
 import { onboardingUrl, trackConnectCta } from "./onboarding";
 import { resolveLogoUrl } from "./source-logos";
@@ -28,11 +29,16 @@ const sharerPersonId = () =>
 export default function SignalDeck({
   deck,
   sessionUser,
+  authenticated = true,
 }: {
   deck: TemplateDeck;
   sessionUser?: { name?: string; email?: string; image?: string };
+  /** Unauthenticated visitors see the cover slide only — advancing past it
+   *  prompts login instead of navigating (see `go` below). */
+  authenticated?: boolean;
 }) {
   const t = useT();
+  const [authGateOpen, setAuthGateOpen] = useState(false);
   const [{ language }, setPreferences] = usePreferences();
   const total = deck.slides.length;
   const [index, setIndex] = useState(0);
@@ -60,6 +66,9 @@ export default function SignalDeck({
 
   const ctaHref = onboardingUrl(`https://${deck.meta.domain}/`);
   const slide = deck.slides[index];
+  // Template-based, not `index === total - 1`: a truncated (anonymous) deck
+  // has only the cover slide, which then sits at `total - 1` too.
+  const isCtaSlide = slide?.template.template === "cta";
   const lockRef = useRef(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +96,9 @@ export default function SignalDeck({
       surface: "deck_v2",
     });
     // Once per mount — revisiting the last slide is not a second completion.
-    if (i === total - 1 && !deckCompletedRef.current) {
+    // Unauthenticated visitors only ever see the cover, so "reaching slide 0"
+    // there isn't a real completion.
+    if (authenticated && i === total - 1 && !deckCompletedRef.current) {
       deckCompletedRef.current = true;
       captureReport("report_deck_completed", {
         domain: deck.meta.domain,
@@ -107,6 +118,12 @@ export default function SignalDeck({
   // Effect Events let the long-lived keyboard/wheel/touch listeners read the
   // latest slide index without render-time ref mutation or listener churn.
   const go = useEffectEvent((i: number) => {
+    // Every navigation path (keyboard, wheel/swipe, rail, footer, in-slide
+    // links) funnels through here, so gating it is enough to gate the deck.
+    if (!authenticated && i > 0) {
+      setAuthGateOpen(true);
+      return;
+    }
     const clamped = Math.min(Math.max(i, 0), total - 1);
     if (clamped === index) return;
     history.pushState({ slideIndex: clamped }, "");
@@ -695,7 +712,7 @@ export default function SignalDeck({
       <footer
         className="flex shrink-0 items-center gap-2 px-4 py-4 sm:px-6"
         style={
-          index === total - 1
+          isCtaSlide
             ? {
                 borderTop: "1px solid rgba(255,255,255,0.14)",
                 background: DECK.forest,
@@ -706,7 +723,7 @@ export default function SignalDeck({
         {/* On the last slide (the CTA): MOBILE shows Share + a full-width action
             (Figma). DESKTOP shows only a slide counter + Share — the primary CTA
             lives inside the slide there, so the footer stays light. */}
-        {index === total - 1 ? (
+        {isCtaSlide ? (
           <>
             {/* desktop: counter (left) */}
             <span
@@ -1134,6 +1151,13 @@ export default function SignalDeck({
         >
           {toast}
         </div>
+      )}
+
+      {authGateOpen && (
+        <ReportAuthOverlay
+          domain={deck.meta.domain}
+          onClose={() => setAuthGateOpen(false)}
+        />
       )}
     </div>
   );
