@@ -150,6 +150,15 @@ export interface Settings {
    *  Off by default — see `sandbox/head-ref.ts` for the boot-path change this
    *  gates and why it ships behind its own flag. */
   sandboxStickyHeadRefEnabled: boolean;
+  /** Bring a `cloneOnly` sandbox's shutdown forward when its harness run
+   *  finishes, instead of leaving it idle to the 15-min claim TTL
+   *  (SANDBOX_RELEASE_ON_RUN_END). Own flag because it changes the dispatch hot
+   *  path; off by default. */
+  sandboxReleaseOnRunEndEnabled: boolean;
+  /** Grace before that release takes effect, in ms
+   *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
+   *  follow-up turn adopts the warm pod rather than paying a cold clone. */
+  sandboxReleaseGraceMs: number;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

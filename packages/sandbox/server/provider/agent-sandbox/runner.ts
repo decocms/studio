@@ -2042,6 +2042,35 @@ export class AgentSandboxProvider implements SandboxProvider {
     return new Date(Date.now() + this.idleTtlMs).toISOString();
   }
 
+  /** See `SandboxProvider.releaseAfter`. */
+  async releaseAfter(handle: string, graceMs: number): Promise<void> {
+    const claim = await getSandboxClaim(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+    );
+    // Already gone — the operator reaped it, or a concurrent delete won.
+    if (!claim) return;
+    const next = earlierShutdown(
+      claim.spec?.lifecycle?.shutdownTime,
+      new Date(Date.now() + graceMs),
+    );
+    if (!next) return;
+    await patchSandboxClaimShutdown(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+      next,
+    ).catch((err) =>
+      // Best-effort: the claim's own TTL and the housekeeper's idle sweep are
+      // both still in play, so a failure here costs idle minutes, not
+      // correctness. Never fail a finished run over it.
+      console.warn(
+        `[${LOG_LABEL}] release failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
   // ---- Port-forwarding ------------------------------------------------------
 
   /**
@@ -2502,6 +2531,28 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
  * a given runner instance but included on every attrs set so downstream
  * dashboards can pivot across runners without re-aggregating.
  */
+/**
+ * The shutdownTime to patch so a claim dies at `target`, or null to leave it
+ * alone. Only ever moves shutdown EARLIER.
+ *
+ * Monotonicity is the safety property: `releaseAfter` fires when a run ends,
+ * and a concurrent turn on the same thread may have just adopted the same pod
+ * and pushed its TTL out. Overwriting unconditionally would kill a sandbox that
+ * is back in use. An unparseable or absent current value is treated as "no
+ * commitment", so the target wins.
+ */
+export function earlierShutdown(
+  current: string | undefined,
+  target: Date,
+): string | null {
+  if (current) {
+    const currentMs = new Date(current).getTime();
+    if (Number.isFinite(currentMs) && currentMs <= target.getTime())
+      return null;
+  }
+  return target.toISOString();
+}
+
 function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;
   user_id: string;

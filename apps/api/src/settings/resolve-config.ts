@@ -348,6 +348,12 @@ export function resolveConfig(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
+    sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
+    sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
+      "SANDBOX_RELEASE_GRACE_MS",
+      envVars.SANDBOX_RELEASE_GRACE_MS,
+      120_000,
+    ),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,

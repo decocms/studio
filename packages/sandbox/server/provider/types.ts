@@ -186,6 +186,25 @@ export interface SandboxProvider {
   alive(handle: string): Promise<boolean>;
 
   /**
+   * Bring this sandbox's shutdown forward to `graceMs` from now, because the
+   * work it was provisioned for is done.
+   *
+   * For a `cloneOnly` sandbox — one agent loop, no dev server, no preview — the
+   * pod is useless the moment its dispatch ends, but it would otherwise sit
+   * idle until the 15-min claim TTL or the housekeeper's idle sweep. That tail
+   * is most of its billed life.
+   *
+   * Deliberately a shutdown-time patch, not a delete: the operator stays the
+   * only thing that tears a claim down (one owner, one code path, same graceful
+   * SIGTERM that lets the daemon push the working tree to git), and the grace
+   * window lets an immediate follow-up turn adopt the still-running pod instead
+   * of paying a cold clone. Never brings shutdown LATER than it already is.
+   *
+   * Optional: callers must `?.()`.
+   */
+  releaseAfter?(handle: string, graceMs: number): Promise<void>;
+
+  /**
    * Drop this provider's in-process cache + persistent state for `handle`
    * WITHOUT contacting the daemon. Used by the auto-restart path when the
    * daemon is known-dead — `delete()` would try to reach the link and
