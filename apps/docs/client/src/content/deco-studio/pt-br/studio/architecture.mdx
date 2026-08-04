@@ -95,6 +95,8 @@ O passo acima é o caminho padrão — ele não cobre todo run hosted. Dois harn
 
 O claude-code é opt-in por org (`claude_code_sandbox_enabled`, desligado por padrão). As tasks do Super Agent no Task Board só o usam quando a org optou por ele **e** tem pelo menos um repo importável. Com exatamente um repo, ele é resolvido e clonado antes do dispatch; com mais de um, a execução começa com o diretório de trabalho vazio, e a ferramenta `TASK_ADD_REPO` permite que o agent clone o repo correto no pod que já está em execução, depois de decidir qual usar. Caso contrário, essas tasks rodam no Decopilot exatamente como antes.
 
+A resolução de credencial para um run claude-code hosted em sandbox verifica primeiro a assinatura Claude pessoal vinculada pelo usuário que despachou o run (veja [AI Providers](/pt-br/studio/ai-providers)) — um token válido e não expirado ali tem prioridade sobre o provider do tier Thinking da org, já que o usuário pediu para seu próprio plano pagar. Ele faz fallback para a credencial da org quando nenhuma assinatura pessoal está vinculada ou o token expirou, em vez de falhar o run.
+
 ## MCP: in-process vs. as rotas de proxy
 
 Essa distinção importa para raciocinar sobre o sistema:
