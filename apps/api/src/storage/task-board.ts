@@ -921,6 +921,11 @@ export class TaskBoardStorage {
     if (params.body !== undefined && existing.authorId !== params.callerId) {
       return null;
     }
+    // resolved is a thread property (see migration 159) — only a root carries
+    // it, so resolving a reply would silently no-op the intent.
+    if (params.resolved !== undefined && existing.parentId !== null) {
+      return null;
+    }
 
     const row = await this.db
       .updateTable("task_board_comments")
@@ -954,15 +959,15 @@ export class TaskBoardStorage {
   private async commentInOrg(
     id: string,
     organizationId: string,
-  ): Promise<{ authorId: string } | null> {
+  ): Promise<{ authorId: string; parentId: string | null } | null> {
     const row = await this.db
       .selectFrom("task_board_comments as c")
       .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
-      .select(["c.id", "c.author_id"])
+      .select(["c.id", "c.author_id", "c.parent_id"])
       .where("c.id", "=", id)
       .where("item.organization_id", "=", organizationId)
       .executeTakeFirst();
-    return row ? { authorId: row.author_id } : null;
+    return row ? { authorId: row.author_id, parentId: row.parent_id } : null;
   }
 
   private itemFromDbRow(row: {
