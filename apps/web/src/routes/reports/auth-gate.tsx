@@ -514,7 +514,7 @@ export function ReportAuthOverlay({
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
-      <div onClick={(e) => e.stopPropagation()}>
+      <div className="relative z-10" onClick={(e) => e.stopPropagation()}>
         <ReportAuthCard domain={domain} />
       </div>
     </div>
