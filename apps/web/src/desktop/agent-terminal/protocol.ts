@@ -12,6 +12,10 @@ const MAX_PROMPT_BYTES = TERMINAL_INPUT_BYTES - BRACKETED_PASTE_OVERHEAD_BYTES;
 // local-api WebSocket accepts 256 KiB JSON messages. A 32 KiB raw chunk stays
 // below both limits even when every byte needs JSON's longest escape sequence.
 const MAX_INPUT_CHUNK_BYTES = 32 * 1024;
+const BINARY_OUTPUT_HEADER_BYTES = 9;
+const BINARY_OUTPUT_LIVE = 1;
+const BINARY_OUTPUT_REPLAY = 2;
+const BINARY_OUTPUT_RESET = 3;
 
 export type TerminalHarnessId = "claude-code" | "codex" | "opencode";
 export type TerminalPhysicalState = "starting" | "running" | "exited";
@@ -30,14 +34,23 @@ export interface TerminalDimensions {
 
 export type TerminalClientFrame =
   | ({ type: "start"; harnessId: TerminalHarnessId } & TerminalDimensions & {
+        outputAcks: true;
+        binaryOutput: true;
         initialPrompt?: string;
         requestId?: string;
       })
-  | ({ type: "attach"; afterSeq?: number } & TerminalDimensions)
+  | ({
+      type: "attach";
+      afterSeq?: number;
+      processedSeq?: number;
+      outputAcks: true;
+      binaryOutput: true;
+    } & TerminalDimensions)
   | { type: "input"; data: string }
   | ({ type: "resize" } & TerminalDimensions)
   | { type: "interrupt" }
   | { type: "terminate" }
+  | { type: "ack_output"; processedSeq: number }
   | { type: "submit_prompt"; text: string; requestId: string };
 
 export type TerminalServerFrame =
@@ -363,6 +376,32 @@ export function parseTerminalServerFrame(
   }
 }
 
+/** Parse a negotiated binary output frame: tag byte, u64 BE sequence, bytes. */
+export function parseTerminalBinaryServerFrame(
+  raw: ArrayBuffer,
+): Extract<TerminalServerFrame, { type: "output" | "reset" }> | null {
+  if (
+    raw.byteLength < BINARY_OUTPUT_HEADER_BYTES ||
+    raw.byteLength > MAX_SERVER_FRAME_BYTES
+  ) {
+    return null;
+  }
+  const view = new DataView(raw);
+  const sequence = view.getUint32(1) * 2 ** 32 + view.getUint32(5);
+  if (!Number.isSafeInteger(sequence)) return null;
+  const data = new Uint8Array(raw.slice(BINARY_OUTPUT_HEADER_BYTES));
+  switch (view.getUint8(0)) {
+    case BINARY_OUTPUT_LIVE:
+      return { type: "output", seq: sequence, data, replay: false };
+    case BINARY_OUTPUT_REPLAY:
+      return { type: "output", seq: sequence, data, replay: true };
+    case BINARY_OUTPUT_RESET:
+      return { type: "reset", seq: sequence, data };
+    default:
+      return null;
+  }
+}
+
 export function normalizeTerminalDimensions(
   dimensions: TerminalDimensions,
 ): TerminalDimensions {
@@ -415,6 +454,8 @@ export function terminalPromptFitsWire(
     harnessId,
     rows: 500,
     cols: 1_000,
+    outputAcks: true,
+    binaryOutput: true,
     initialPrompt: text,
     requestId,
   } satisfies Extract<TerminalClientFrame, { type: "start" }>);

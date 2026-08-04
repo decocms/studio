@@ -15,6 +15,7 @@ class TestWebSocket {
 
   readonly sent: string[] = [];
   readyState = TestWebSocket.CONNECTING;
+  binaryType: BinaryType = "blob";
   onopen: ((event: Event) => unknown) | null = null;
   onmessage: ((event: MessageEvent) => unknown) | null = null;
   onerror: ((event: Event) => unknown) | null = null;
@@ -31,6 +32,10 @@ class TestWebSocket {
 
   receive(frame: unknown): void {
     this.onmessage?.({ data: JSON.stringify(frame) } as MessageEvent);
+  }
+
+  receiveBinary(data: ArrayBuffer): void {
+    this.onmessage?.({ data } as MessageEvent);
   }
 
   send(data: string): void {
@@ -51,8 +56,8 @@ class TestWebSocket {
 const originalWindow = globalThis.window;
 const originalWebSocket = globalThis.WebSocket;
 
-function frames(socket: TestWebSocket): Array<{ type?: string }> {
-  return socket.sent.map((raw) => JSON.parse(raw) as { type?: string });
+function frames(socket: TestWebSocket): Array<Record<string, unknown>> {
+  return socket.sent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
 }
 
 function runningReady(harnessId: "claude-code" | "codex") {
@@ -138,6 +143,10 @@ describe("native terminal prompt delivery", () => {
     const first = TestWebSocket.instances[0]!;
     first.open();
     expect(frames(first).map((frame) => frame.type)).toEqual(["start"]);
+    expect(frames(first)[0]).toMatchObject({
+      outputAcks: true,
+      binaryOutput: true,
+    });
 
     first.remoteClose();
     await expect(start).rejects.toBeInstanceOf(
@@ -211,6 +220,196 @@ describe("native terminal prompt delivery", () => {
       pendingPromptCount: 1,
     });
     expect(TestWebSocket.instances).toHaveLength(1);
+
+    unsubscribe();
+    controller.dispose();
+  });
+});
+
+describe("native terminal output flow control", () => {
+  test("marks a finite restore boundary for server and remount history", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const delivered: Array<{
+      kind: "output" | "reset";
+      seq: number;
+      restoreUntilSeq: number | null;
+    }> = [];
+    const unsubscribe = controller.subscribeOutput((frame) => {
+      delivered.push({
+        kind: frame.kind,
+        seq: frame.seq,
+        restoreUntilSeq: frame.restoreUntilSeq,
+      });
+    });
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ ...runningReady("codex"), lastSeq: 10 });
+    socket.receive({ type: "reset", seq: 2, data: "" });
+    socket.receive({ type: "output", seq: 5, data: "old", replay: true });
+    socket.receive({ type: "output", seq: 10, data: "state", replay: true });
+    socket.receive({ type: "output", seq: 14, data: "live", replay: false });
+
+    expect(delivered).toEqual([
+      { kind: "reset", seq: 2, restoreUntilSeq: 10 },
+      { kind: "output", seq: 5, restoreUntilSeq: 10 },
+      { kind: "output", seq: 10, restoreUntilSeq: 10 },
+      { kind: "output", seq: 14, restoreUntilSeq: null },
+    ]);
+
+    unsubscribe();
+    const remounted: Array<{ seq: number; restoreUntilSeq: number | null }> =
+      [];
+    const unsubscribeRemount = controller.subscribeOutput((frame) => {
+      remounted.push({
+        seq: frame.seq,
+        restoreUntilSeq: frame.restoreUntilSeq,
+      });
+    });
+    expect(remounted).toEqual([
+      { seq: 2, restoreUntilSeq: 14 },
+      { seq: 5, restoreUntilSeq: 14 },
+      { seq: 10, restoreUntilSeq: 14 },
+      { seq: 14, restoreUntilSeq: 14 },
+    ]);
+
+    unsubscribeRemount();
+    controller.dispose();
+  });
+
+  test("sends cumulative output ACKs only for received parsed sequences", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const delivered: number[] = [];
+    const unsubscribe = controller.subscribeOutput((frame) => {
+      delivered.push(frame.seq);
+    });
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    expect(frames(socket)[0]).toMatchObject({
+      type: "attach",
+      outputAcks: true,
+    });
+    socket.receive(runningReady("codex"));
+    socket.receive({ type: "output", seq: 5, data: "hello", replay: false });
+
+    expect(delivered).toEqual([5]);
+    controller.acknowledgeOutput(5);
+    controller.acknowledgeOutput(5);
+    controller.acknowledgeOutput(4);
+    controller.acknowledgeOutput(6);
+    expect(
+      frames(socket).filter((frame) => frame.type === "ack_output"),
+    ).toEqual([{ type: "ack_output", processedSeq: 5 }]);
+
+    unsubscribe();
+    controller.dispose();
+  });
+
+  test("negotiates and accepts binary terminal output", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const delivered: Array<{ seq: number; data: number[] }> = [];
+    const unsubscribe = controller.subscribeOutput((frame) => {
+      delivered.push({ seq: frame.seq, data: [...frame.data] });
+    });
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    expect(socket.binaryType).toBe("arraybuffer");
+    socket.open();
+    expect(frames(socket)[0]).toMatchObject({
+      type: "attach",
+      binaryOutput: true,
+    });
+    socket.receive(runningReady("codex"));
+
+    const raw = new ArrayBuffer(11);
+    const view = new DataView(raw);
+    view.setUint8(0, 1);
+    view.setUint32(5, 2);
+    new Uint8Array(raw, 9).set([0xff, 0x9b]);
+    socket.receiveBinary(raw);
+
+    expect(delivered).toEqual([{ seq: 2, data: [0xff, 0x9b] }]);
+    unsubscribe();
+    controller.dispose();
+  });
+});
+
+describe("native terminal input flow control", () => {
+  test("keeps the first input immediate and coalesces a same-turn burst", async () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const unsubscribe = controller.subscribeOutput(() => {});
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+
+    controller.input("first");
+    controller.input("second");
+    controller.input("third");
+    expect(frames(socket).filter((frame) => frame.type === "input")).toEqual([
+      { type: "input", data: "first" },
+    ]);
+
+    await Promise.resolve();
+    expect(frames(socket).filter((frame) => frame.type === "input")).toEqual([
+      { type: "input", data: "first" },
+      { type: "input", data: "secondthird" },
+    ]);
+
+    unsubscribe();
+    controller.dispose();
+  });
+
+  test("flushes parser replies before their cumulative output ACK", () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const unsubscribe = controller.subscribeOutput(() => {});
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+    socket.receive({ type: "output", seq: 5, data: "hello", replay: false });
+
+    controller.input("reply-one");
+    controller.input("reply-two");
+    controller.acknowledgeOutput(5);
+
+    expect(
+      frames(socket).filter(
+        (frame) => frame.type === "input" || frame.type === "ack_output",
+      ),
+    ).toEqual([
+      { type: "input", data: "reply-one" },
+      { type: "input", data: "reply-two" },
+      { type: "ack_output", processedSeq: 5 },
+    ]);
+
+    unsubscribe();
+    controller.dispose();
+  });
+
+  test("drops queued input when its socket disconnects", async () => {
+    const controller = new TerminalController("org", "thread");
+    controller.retain();
+    const unsubscribe = controller.subscribeOutput(() => {});
+    controller.ensureAttached("codex");
+    const socket = TestWebSocket.instances[0]!;
+    socket.open();
+    socket.receive(runningReady("codex"));
+
+    controller.input("delivered");
+    controller.input("stale");
+    socket.remoteClose();
+    await Promise.resolve();
+
+    expect(frames(socket).filter((frame) => frame.type === "input")).toEqual([
+      { type: "input", data: "delivered" },
+    ]);
 
     unsubscribe();
     controller.dispose();

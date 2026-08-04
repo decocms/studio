@@ -5,6 +5,7 @@ import {
   appendTerminalReplay,
   chunkTerminalInput,
   normalizeTerminalDimensions,
+  parseTerminalBinaryServerFrame,
   parseTerminalServerFrame,
   shouldResetTerminalReplay,
   terminalLifecycleAfterExit,
@@ -19,6 +20,7 @@ import {
   type TerminalServerFrame,
 } from "./protocol";
 import { createTerminalCapabilityQueryBoundaryScanner } from "./terminal-capability-replies";
+import { TerminalInputCoalescer } from "./terminal-input-coalescer";
 
 export type TerminalConnectionState =
   | "disconnected"
@@ -66,6 +68,12 @@ type ConnectionIntent =
 
 export interface TerminalControllerOutputFrame extends TerminalReplayFrame {
   restorePendingCapabilityReplies: boolean;
+  /**
+   * A fixed replay watermark for rebuilding a newly mounted xterm. The
+   * renderer stays covered until this sequence has finished parsing so users
+   * never see retained history race through the viewport.
+   */
+  restoreUntilSeq: number | null;
 }
 
 type TerminalOutputListener = (
@@ -145,6 +153,7 @@ export class TerminalController {
   private replay: StoredTerminalReplayFrame[] = [];
   private replayComplete = true;
   private lastOutputSequence = 0;
+  private processedOutputSequence = 0;
   private outputListeners = new Set<TerminalOutputListener>();
   // null = available; a listener value = leased until its xterm write acks.
   private capabilityReplyAuthorities = new Map<
@@ -159,6 +168,7 @@ export class TerminalController {
     id: number;
   } | null = null;
   private startupReplySocket: WebSocket | null = null;
+  private readonly replayUntilBySocket = new WeakMap<WebSocket, number>();
   private pendingPrompts = new Map<string, PendingPrompt>();
   private startDeferred: Deferred | null = null;
   private reconnectAttempt = 0;
@@ -166,12 +176,17 @@ export class TerminalController {
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
   private retainCount = 0;
   private disposed = false;
+  private readonly inputCoalescer: TerminalInputCoalescer;
 
   constructor(
     readonly orgSlug: string,
     readonly threadId: string,
     private readonly onUnused?: (controller: TerminalController) => void,
-  ) {}
+  ) {
+    this.inputCoalescer = new TerminalInputCoalescer((data) =>
+      this.sendInputNow(data),
+    );
+  }
 
   retain(): void {
     if (this.disposed) return;
@@ -226,6 +241,8 @@ export class TerminalController {
     const frame: Extract<TerminalClientFrame, { type: "start" }> = {
       type: "start",
       harnessId,
+      outputAcks: true,
+      binaryOutput: true,
       ...dimensions,
       ...(options.initialPrompt
         ? { initialPrompt: options.initialPrompt }
@@ -303,9 +320,7 @@ export class TerminalController {
     ) {
       return;
     }
-    for (const chunk of chunkTerminalInput(data)) {
-      this.send({ type: "input", data: chunk });
-    }
+    this.inputCoalescer.enqueue(data);
   }
 
   resize(dimensions: TerminalDimensions): void {
@@ -342,8 +357,42 @@ export class TerminalController {
     this.patch({ error: null, retryable: false });
   }
 
+  restartOutputReplay(): void {
+    this.inputCoalescer.clear();
+    this.replay = [];
+    this.capabilityReplyAuthorities.clear();
+    this.capabilityQueryBoundaryScanner.reset();
+    this.pendingCapabilityReplyAuthority = null;
+    this.replayComplete = true;
+    this.lastOutputSequence = 0;
+    this.processedOutputSequence = 0;
+    const reset: TerminalControllerOutputFrame = {
+      kind: "reset",
+      seq: 0,
+      data: new Uint8Array(),
+      allowCapabilityReplies: false,
+      restorePendingCapabilityReplies: false,
+      restoreUntilSeq: null,
+    };
+    for (const listener of this.outputListeners) listener(reset, () => {});
+    this.intent = { kind: "attach" };
+    this.connect(true);
+  }
+
   reportError(error: Error, retryable = false): void {
     this.patch({ error, retryable });
+  }
+
+  acknowledgeOutput(sequence: number): void {
+    if (
+      !Number.isSafeInteger(sequence) ||
+      sequence <= this.processedOutputSequence ||
+      sequence > this.lastOutputSequence
+    ) {
+      return;
+    }
+    this.processedOutputSequence = sequence;
+    this.send({ type: "ack_output", processedSeq: sequence });
   }
 
   subscribeOutput(listener: TerminalOutputListener): () => void {
@@ -355,8 +404,12 @@ export class TerminalController {
       this.pendingCapabilityReplyAuthority = null;
       this.replayComplete = true;
       this.lastOutputSequence = 0;
+      this.processedOutputSequence = 0;
     }
-    for (const frame of this.replay) this.deliverOutput(listener, frame);
+    const restoreUntilSeq = this.replay.at(-1)?.seq ?? null;
+    for (const frame of this.replay) {
+      this.deliverOutput(listener, frame, restoreUntilSeq);
+    }
     this.connect();
     return () => {
       this.outputListeners.delete(listener);
@@ -369,6 +422,7 @@ export class TerminalController {
 
   dispose(): void {
     this.disposed = true;
+    this.inputCoalescer.clear();
     if (this.releaseTimer !== null) clearTimeout(this.releaseTimer);
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.releaseTimer = null;
@@ -401,6 +455,7 @@ export class TerminalController {
       this.reconnectTimer = null;
     }
     if (this.socket) {
+      this.inputCoalescer.clear();
       if (this.startupReplySocket === this.socket) {
         this.startupReplySocket = null;
       }
@@ -417,6 +472,7 @@ export class TerminalController {
     const socket = new WebSocket(
       terminalWebSocketUrl(window.location, this.orgSlug, this.threadId),
     );
+    socket.binaryType = "arraybuffer";
     this.socket = socket;
 
     socket.onopen = () => {
@@ -432,8 +488,13 @@ export class TerminalController {
     };
 
     socket.onmessage = (event) => {
-      if (this.socket !== socket || typeof event.data !== "string") return;
-      const frame = parseTerminalServerFrame(event.data);
+      if (this.socket !== socket) return;
+      const frame =
+        typeof event.data === "string"
+          ? parseTerminalServerFrame(event.data)
+          : event.data instanceof ArrayBuffer
+            ? parseTerminalBinaryServerFrame(event.data)
+            : null;
       if (frame) this.handleFrame(frame, socket);
     };
 
@@ -447,6 +508,7 @@ export class TerminalController {
 
     socket.onclose = () => {
       if (this.socket !== socket) return;
+      this.inputCoalescer.clear();
       this.socket = null;
       if (this.startupReplySocket === socket) {
         this.startupReplySocket = null;
@@ -479,6 +541,7 @@ export class TerminalController {
   private disconnectView(): void {
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+    this.inputCoalescer.clear();
     const socket = this.socket;
     this.socket = null;
     if (this.startupReplySocket === socket) {
@@ -526,17 +589,42 @@ export class TerminalController {
     }
     this.send({
       type: "attach",
+      outputAcks: true,
+      binaryOutput: true,
       ...(this.lastOutputSequence > 0
         ? { afterSeq: this.lastOutputSequence }
+        : {}),
+      ...(this.processedOutputSequence > 0
+        ? { processedSeq: this.processedOutputSequence }
         : {}),
       ...this.dimensions,
     });
   }
 
   private send(frame: TerminalClientFrame): WebSocket | null {
+    if (frame.type !== "input") this.inputCoalescer.flush();
+    return this.sendRaw(frame);
+  }
+
+  private sendRaw(frame: TerminalClientFrame): WebSocket | null {
     if (this.socket?.readyState !== WebSocket.OPEN) return null;
     this.socket.send(JSON.stringify(frame));
     return this.socket;
+  }
+
+  private sendInputNow(data: string): void {
+    const snapshot = this.snapshot.get();
+    if (
+      !data ||
+      !snapshot.hasSession ||
+      snapshot.connection !== "connected" ||
+      snapshot.physicalState !== "running"
+    ) {
+      return;
+    }
+    for (const chunk of chunkTerminalInput(data)) {
+      this.sendRaw({ type: "input", data: chunk });
+    }
   }
 
   private trackPrompt(
@@ -591,6 +679,7 @@ export class TerminalController {
           return;
         }
         this.intent = { kind: "attach" };
+        this.replayUntilBySocket.set(socket, frame.lastSeq);
         this.patch({
           hasSession: true,
           sessionId: frame.sessionId ?? null,
@@ -622,21 +711,27 @@ export class TerminalController {
         if (!frame.replay && this.startupReplySocket === socket) {
           this.startupReplySocket = null;
         }
-        this.acceptOutput({
-          kind: "output",
-          seq: frame.seq,
-          data: frame.data,
-          allowCapabilityReplies: !frame.replay || startupReplay,
-        });
+        this.acceptOutput(
+          {
+            kind: "output",
+            seq: frame.seq,
+            data: frame.data,
+            allowCapabilityReplies: !frame.replay || startupReplay,
+          },
+          frame.replay ? (this.replayUntilBySocket.get(socket) ?? null) : null,
+        );
         return;
       }
       case "reset":
-        this.acceptOutput({
-          kind: "reset",
-          seq: frame.seq,
-          data: frame.data,
-          allowCapabilityReplies: false,
-        });
+        this.acceptOutput(
+          {
+            kind: "reset",
+            seq: frame.seq,
+            data: frame.data,
+            allowCapabilityReplies: false,
+          },
+          this.replayUntilBySocket.get(socket) ?? null,
+        );
         return;
       case "state":
         this.patch({
@@ -747,7 +842,10 @@ export class TerminalController {
     }
   }
 
-  private acceptOutput(frame: TerminalReplayFrame): void {
+  private acceptOutput(
+    frame: TerminalReplayFrame,
+    restoreUntilSeq: number | null,
+  ): void {
     const currentSequence = this.lastOutputSequence;
     if (frame.seq <= currentSequence && frame.kind !== "reset") return;
     if (frame.kind === "reset" && frame.seq < currentSequence) return;
@@ -839,13 +937,14 @@ export class TerminalController {
       this.patch({ error: null, retryable: false });
     }
     for (const listener of this.outputListeners) {
-      this.deliverOutput(listener, retainedFrame);
+      this.deliverOutput(listener, retainedFrame, restoreUntilSeq);
     }
   }
 
   private deliverOutput(
     listener: TerminalOutputListener,
     frame: StoredTerminalReplayFrame,
+    restoreUntilSeq: number | null,
   ): void {
     const authorityId = frame.capabilityReplyAuthorityId;
     const allowCapabilityReplies =
@@ -874,6 +973,7 @@ export class TerminalController {
         data: frame.data,
         allowCapabilityReplies,
         restorePendingCapabilityReplies,
+        restoreUntilSeq,
       },
       () => {
         if (
@@ -987,12 +1087,14 @@ export class TerminalController {
   }
 
   private resetRendererReplay(): void {
+    this.inputCoalescer.clear();
     this.replay = [];
     this.capabilityReplyAuthorities.clear();
     this.capabilityQueryBoundaryScanner.reset();
     this.pendingCapabilityReplyAuthority = null;
     this.replayComplete = true;
     this.lastOutputSequence = 0;
+    this.processedOutputSequence = 0;
     this.patch({
       sessionId: null,
       generation: null,
@@ -1003,6 +1105,7 @@ export class TerminalController {
       data: new Uint8Array(),
       allowCapabilityReplies: false,
       restorePendingCapabilityReplies: false,
+      restoreUntilSeq: null,
     };
     for (const listener of this.outputListeners) listener(reset, () => {});
   }

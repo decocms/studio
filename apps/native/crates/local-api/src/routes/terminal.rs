@@ -45,6 +45,11 @@ const MIN_COLS: u16 = 2;
 const MAX_COLS: u16 = 1_000;
 const CLAUDE_RESUME_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_RESUME_DIAGNOSTIC_MAX_BYTES: u64 = 64 * 1024;
+const RENDERER_OUTPUT_HIGH_WATERMARK_BYTES: u64 = 512 * 1024;
+const BINARY_OUTPUT_LIVE: u8 = 1;
+const BINARY_OUTPUT_REPLAY: u8 = 2;
+const BINARY_OUTPUT_RESET: u8 = 3;
+const BINARY_OUTPUT_HEADER_BYTES: usize = 9;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -82,10 +87,20 @@ enum ClientFrame {
         initial_prompt: Option<String>,
         #[serde(default)]
         request_id: Option<String>,
+        #[serde(default)]
+        output_acks: bool,
+        #[serde(default)]
+        binary_output: bool,
     },
     Attach {
         #[serde(default)]
         after_seq: Option<u64>,
+        #[serde(default)]
+        processed_seq: Option<u64>,
+        #[serde(default)]
+        output_acks: bool,
+        #[serde(default)]
+        binary_output: bool,
         rows: u16,
         cols: u16,
     },
@@ -98,6 +113,9 @@ enum ClientFrame {
     },
     Interrupt,
     Terminate,
+    AckOutput {
+        processed_seq: u64,
+    },
     SubmitPrompt {
         text: String,
         request_id: String,
@@ -165,6 +183,42 @@ struct Handshake {
     after_seq: u64,
     initial_prompt: Option<String>,
     request_id: Option<String>,
+    processed_seq: u64,
+    output_acks: bool,
+    binary_output: bool,
+}
+
+#[derive(Debug)]
+struct RendererOutputCredit {
+    enabled: bool,
+    delivered_seq: u64,
+    processed_seq: u64,
+}
+
+impl RendererOutputCredit {
+    fn new(enabled: bool, delivered_seq: u64, processed_seq: u64) -> Self {
+        Self {
+            enabled,
+            delivered_seq,
+            processed_seq: processed_seq.min(delivered_seq),
+        }
+    }
+
+    fn can_pull(&self) -> bool {
+        !self.enabled
+            || self.delivered_seq.saturating_sub(self.processed_seq)
+                < RENDERER_OUTPUT_HIGH_WATERMARK_BYTES
+    }
+
+    fn record_delivery(&mut self, delivered_seq: u64) {
+        self.delivered_seq = self.delivered_seq.max(delivered_seq);
+    }
+
+    fn acknowledge(&mut self, processed_seq: u64) {
+        self.processed_seq = self
+            .processed_seq
+            .max(processed_seq.min(self.delivered_seq));
+    }
 }
 
 #[derive(Debug)]
@@ -497,13 +551,18 @@ async fn serve_socket(
     }
 
     let mut subscription = managed.session.subscribe(handshake.after_seq);
+    let mut output_credit = RendererOutputCredit::new(
+        handshake.output_acks,
+        handshake.after_seq,
+        handshake.processed_seq,
+    );
     loop {
         tokio::select! {
             inbound = socket.recv() => {
                 let Some(inbound) = inbound else { break; };
                 match inbound {
                     Ok(Message::Text(text)) => {
-                        if let Err(error) = handle_client_frame(
+                        match handle_client_frame(
                             &state,
                             db,
                             &fence,
@@ -512,7 +571,11 @@ async fn serve_socket(
                             &mut socket,
                             &text,
                         ).await {
-                            match error {
+                            Ok(Some(acknowledged_seq)) => {
+                                output_credit.acknowledge(acknowledged_seq);
+                            }
+                            Ok(None) => {}
+                            Err(error) => match error {
                                 ClientFrameError::Invalid(error) => {
                                     tracing::warn!(%error, "coding agent terminal command failed");
                                     let _ = send_error_socket(
@@ -525,7 +588,7 @@ async fn serve_socket(
                                 ClientFrameError::StaleAttachment { request_id } => {
                                     let _ = send_stale_attachment_socket(&mut socket, request_id.as_deref()).await;
                                 }
-                            }
+                            },
                         }
                     }
                     Ok(Message::Binary(data)) => {
@@ -553,13 +616,26 @@ async fn serve_socket(
                     Ok(Message::Pong(_)) => {}
                 }
             }
-            event = subscription.recv() => {
+            event = subscription.recv(), if output_credit.can_pull() => {
                 let Ok(event) = event else { break; };
-                if forward_terminal_event(&mut socket, event, replay_until)
+                let event_end = match &event {
+                    SessionEvent::Output(chunk) => Some(chunk.end),
+                    SessionEvent::ReplayGap { available, .. } => Some(*available),
+                    _ => None,
+                };
+                if forward_terminal_event(
+                    &mut socket,
+                    event,
+                    replay_until,
+                    handshake.binary_output,
+                )
                     .await
                     .is_err()
                 {
                     break;
+                }
+                if let Some(event_end) = event_end {
+                    output_credit.record_delivery(event_end);
                 }
             }
             lifecycle_event = lifecycle.recv() => {
@@ -605,6 +681,8 @@ async fn receive_handshake(
                         cols,
                         initial_prompt,
                         request_id,
+                        output_acks,
+                        binary_output,
                     } => {
                         let harness = parse_harness(&harness_id).map_err(api_error_message)?;
                         validate_approval_mode(&approval_mode).map_err(api_error_message)?;
@@ -624,10 +702,16 @@ async fn receive_handshake(
                             after_seq: 0,
                             initial_prompt,
                             request_id,
+                            processed_seq: 0,
+                            output_acks,
+                            binary_output,
                         });
                     }
                     ClientFrame::Attach {
                         after_seq,
+                        processed_seq,
+                        output_acks,
+                        binary_output,
                         rows,
                         cols,
                     } => {
@@ -649,6 +733,9 @@ async fn receive_handshake(
                             after_seq: after_seq.unwrap_or_default(),
                             initial_prompt: None,
                             request_id: None,
+                            processed_seq: processed_seq.unwrap_or_default(),
+                            output_acks,
+                            binary_output,
                         });
                     }
                     _ => {
@@ -1639,8 +1726,11 @@ async fn handle_client_frame(
     writer: &WriterLeaseGuard,
     socket: &mut WebSocket,
     raw: &str,
-) -> Result<(), ClientFrameError> {
+) -> Result<Option<u64>, ClientFrameError> {
     let frame = parse_client_frame(raw)?;
+    if let ClientFrame::AckOutput { processed_seq } = &frame {
+        return Ok(Some(*processed_seq));
+    }
     let request_id = match &frame {
         ClientFrame::SubmitPrompt { request_id, .. } => Some(request_id.clone()),
         _ => None,
@@ -1710,8 +1800,9 @@ async fn handle_client_frame(
                 "terminal session is already started".to_string(),
             ))
         }
+        ClientFrame::AckOutput { .. } => unreachable!("output ACK is handled before writer claim"),
     }
-    Ok(())
+    Ok(None)
 }
 
 async fn submit_prompt(
@@ -1817,9 +1908,18 @@ async fn forward_terminal_event(
     socket: &mut WebSocket,
     event: SessionEvent,
     replay_until: u64,
+    binary_output: bool,
 ) -> Result<(), axum::Error> {
     match event {
         SessionEvent::Output(chunk) => {
+            if binary_output {
+                let tag = if chunk.end <= replay_until {
+                    BINARY_OUTPUT_REPLAY
+                } else {
+                    BINARY_OUTPUT_LIVE
+                };
+                return send_binary_output(socket, tag, chunk.end, &chunk.data).await;
+            }
             send_json(
                 socket,
                 &json!({
@@ -1836,6 +1936,9 @@ async fn forward_terminal_event(
         // refill the renderer exactly once instead of re-snapshotting and
         // sending the same (up to 4 MiB) tail twice.
         SessionEvent::ReplayGap { available, .. } => {
+            if binary_output {
+                return send_binary_output(socket, BINARY_OUTPUT_RESET, available, &[]).await;
+            }
             send_json(
                 socket,
                 &json!({
@@ -1860,6 +1963,27 @@ async fn forward_terminal_event(
         }
         SessionEvent::Resized(_) | SessionEvent::StateChanged(_) => Ok(()),
     }
+}
+
+async fn send_binary_output(
+    socket: &mut WebSocket,
+    tag: u8,
+    sequence: u64,
+    data: &[u8],
+) -> Result<(), axum::Error> {
+    socket
+        .send(Message::Binary(
+            encode_binary_output(tag, sequence, data).into(),
+        ))
+        .await
+}
+
+fn encode_binary_output(tag: u8, sequence: u64, data: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(BINARY_OUTPUT_HEADER_BYTES + data.len());
+    payload.push(tag);
+    payload.extend_from_slice(&sequence.to_be_bytes());
+    payload.extend_from_slice(data);
+    payload
 }
 
 async fn send_state(
@@ -2450,6 +2574,73 @@ mod tests {
                 ..
             } if harness_id == "codex" && prompt == "hello"
         ));
+
+        let attach = parse_client_frame(
+            r#"{"type":"attach","rows":30,"cols":100,"afterSeq":2048,"processedSeq":1024,"outputAcks":true,"binaryOutput":true}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            attach,
+            ClientFrame::Attach {
+                after_seq: Some(2048),
+                processed_seq: Some(1024),
+                output_acks: true,
+                binary_output: true,
+                ..
+            }
+        ));
+
+        let ack = parse_client_frame(r#"{"type":"ack_output","processedSeq":1024}"#).unwrap();
+        assert!(matches!(
+            ack,
+            ClientFrame::AckOutput {
+                processed_seq: 1024
+            }
+        ));
+    }
+
+    #[test]
+    fn binary_output_uses_a_tag_and_big_endian_sequence_header() {
+        let sequence = u32::MAX as u64 + 7;
+        let payload = encode_binary_output(BINARY_OUTPUT_REPLAY, sequence, &[0xff, 0x9b]);
+
+        assert_eq!(payload[0], BINARY_OUTPUT_REPLAY);
+        assert_eq!(
+            u64::from_be_bytes(payload[1..BINARY_OUTPUT_HEADER_BYTES].try_into().unwrap()),
+            sequence
+        );
+        assert_eq!(&payload[BINARY_OUTPUT_HEADER_BYTES..], &[0xff, 0x9b]);
+    }
+
+    #[test]
+    fn renderer_output_credit_waits_for_cumulative_parse_acknowledgements() {
+        let mut credit = RendererOutputCredit::new(true, 0, 0);
+        credit.record_delivery(RENDERER_OUTPUT_HIGH_WATERMARK_BYTES);
+        assert!(!credit.can_pull());
+
+        credit.acknowledge(RENDERER_OUTPUT_HIGH_WATERMARK_BYTES / 2);
+        assert!(credit.can_pull());
+
+        credit.record_delivery(RENDERER_OUTPUT_HIGH_WATERMARK_BYTES * 2);
+        credit.acknowledge(u64::MAX);
+        assert_eq!(
+            credit.processed_seq,
+            RENDERER_OUTPUT_HIGH_WATERMARK_BYTES * 2
+        );
+        assert!(credit.can_pull());
+
+        credit.acknowledge(1);
+        assert_eq!(
+            credit.processed_seq,
+            RENDERER_OUTPUT_HIGH_WATERMARK_BYTES * 2
+        );
+    }
+
+    #[test]
+    fn legacy_renderer_output_is_not_credit_gated() {
+        let mut credit = RendererOutputCredit::new(false, 0, 0);
+        credit.record_delivery(RENDERER_OUTPUT_HIGH_WATERMARK_BYTES * 2);
+        assert!(credit.can_pull());
     }
 
     #[test]

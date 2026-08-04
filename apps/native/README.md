@@ -93,6 +93,14 @@ Key paths:
 The packaged UI is built by `apps/web`; the hosted Hono backend remains in
 `apps/api`. Browser-safe contracts shared by both live in `@decocms/shared`.
 
+### Native terminal performance
+
+Native terminals use bounded cooperative xterm writes, parse-confirmed output
+credit, raw binary PTY output frames, and WebGL2 rendering with automatic DOM
+fallback. Run `bun run --cwd=apps/web benchmark:terminal` for the repeatable
+synthetic scheduler baseline. The native terminal WebSocket E2E separately
+asserts that unparsed output is bounded and resumes after a cumulative ACK.
+
 ## Development
 
 Run the focused verification gates from the repository root:
