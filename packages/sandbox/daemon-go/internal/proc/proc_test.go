@@ -45,3 +45,34 @@ func TestPortSnifferLockIn(t *testing.T) {
 		t.Fatalf("got %d", s.Current())
 	}
 }
+
+// A bare `http://localhost:N` with no banner phrase must NOT lock — otherwise an
+// early line echoing the injected PORT (3000) hijacks the probe before vite's
+// real `Local: http://localhost:5173/` arrives. This is the granado regression:
+// the daemon dialed 3000 while vite served 5173.
+func TestPortSnifferIgnoresBareURLBeforeBanner(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "[deco] proxying dev server at http://localhost:3000\r\n")
+	if s.Current() != 0 {
+		t.Fatalf("bare URL without a banner phrase must not lock, got %d", s.Current())
+	}
+	s.Observe("dev", "  \x1b[32m➜\x1b[0m  Local:   http://localhost:5173/\r\n")
+	if s.Current() != 5173 {
+		t.Fatalf("expected the real vite bind port 5173, got %d", s.Current())
+	}
+}
+
+// PTY output isn't line-buffered: the bind line can split across chunks. The
+// sniffer must carry a per-source tail so the announcement still matches once
+// its continuation arrives (the other half of the granado regression).
+func TestPortSnifferSpansChunkBoundary(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "  ➜  Local:   http://localhost:51")
+	if s.Current() != 0 {
+		t.Fatal("partial bind line must not lock yet")
+	}
+	s.Observe("dev", "73/\r\n")
+	if s.Current() != 5173 {
+		t.Fatalf("split bind line must lock once completed, got %d", s.Current())
+	}
+}
