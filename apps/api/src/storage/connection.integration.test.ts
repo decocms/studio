@@ -510,6 +510,20 @@ describe("ConnectionStorage", () => {
       expect(result.healthy).toBe(false);
       expect(result.latencyMs).toBeGreaterThan(0);
     });
+
+    it("should return unhealthy instead of probing a private-network URL", async () => {
+      const created = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Private target",
+        connection_type: "HTTP",
+        connection_url: "http://169.254.169.254/latest/meta-data/",
+      });
+
+      const result = await storage.testConnection(created.id);
+
+      expect(result.healthy).toBe(false);
+    });
   });
 
   describe("JSON deserialization", () => {
