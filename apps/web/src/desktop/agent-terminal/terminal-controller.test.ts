@@ -67,6 +67,15 @@ function runningReady(harnessId: "claude-code" | "codex") {
   };
 }
 
+function outputFrame(seq: number, data: string, replay: boolean) {
+  return {
+    type: "output",
+    seq,
+    dataBase64: btoa(data),
+    replay,
+  };
+}
+
 beforeEach(() => {
   TestWebSocket.instances = [];
   Object.defineProperty(globalThis, "window", {
@@ -246,7 +255,7 @@ describe("native terminal capability reply authority", () => {
     const socket = TestWebSocket.instances[0]!;
     socket.open();
     socket.receive(runningReady("codex"));
-    socket.receive({ type: "output", seq: 5, data: "\x1b[", replay: false });
+    socket.receive(outputFrame(5, "\x1b[", false));
     unsubscribeInitial();
 
     const remountAuthority = createTerminalParserCapabilityQueryAuthority();
@@ -274,12 +283,7 @@ describe("native terminal capability reply authority", () => {
     const replacement = TestWebSocket.instances[1]!;
     replacement.open();
     replacement.receive({ ...runningReady("codex"), lastSeq: 5 });
-    replacement.receive({
-      type: "output",
-      seq: 10,
-      data: "c",
-      replay: false,
-    });
+    replacement.receive(outputFrame(10, "c", false));
     expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeTrue();
     unsubscribeRemount();
 
@@ -312,8 +316,8 @@ describe("native terminal capability reply authority", () => {
     const socket = TestWebSocket.instances[0]!;
     socket.open();
     socket.receive(runningReady("codex"));
-    socket.receive({ type: "output", seq: 5, data: "\x1b[", replay: false });
-    socket.receive({ type: "output", seq: 10, data: "0", replay: false });
+    socket.receive(outputFrame(5, "\x1b[", false));
+    socket.receive(outputFrame(10, "0", false));
     unsubscribeInitial();
 
     const remountAuthority = createTerminalParserCapabilityQueryAuthority();
@@ -331,7 +335,7 @@ describe("native terminal capability reply authority", () => {
     const replacement = TestWebSocket.instances[1]!;
     replacement.open();
     replacement.receive({ ...runningReady("codex"), lastSeq: 10 });
-    replacement.receive({ type: "output", seq: 15, data: "c", replay: false });
+    replacement.receive(outputFrame(15, "c", false));
     expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeTrue();
     expect(remountAuthority.takeReplyAuthority({ kind: "da1" })).toBeFalse();
 
@@ -349,12 +353,7 @@ describe("native terminal capability reply authority", () => {
     const socket = TestWebSocket.instances[0]!;
     socket.open();
     socket.receive(runningReady("codex"));
-    socket.receive({
-      type: "output",
-      seq: 5,
-      data: "\x1b[c",
-      replay: false,
-    });
+    socket.receive(outputFrame(5, "\x1b[c", false));
 
     let staleAcknowledge = () => {};
     let firstAllowed = false;
@@ -406,12 +405,7 @@ describe("native terminal capability reply authority", () => {
     const socket = TestWebSocket.instances[0]!;
     socket.open();
     socket.receive(runningReady("codex"));
-    socket.receive({
-      type: "output",
-      seq: 5,
-      data: "\x1b]10;?\x1b\\",
-      replay: true,
-    });
+    socket.receive(outputFrame(5, "\x1b]10;?\x1b\\", true));
 
     const firstFrames: Array<{
       seq: number;
@@ -444,12 +438,7 @@ describe("native terminal capability reply authority", () => {
       { seq: 5, allowCapabilityReplies: false },
     ]);
 
-    socket.receive({
-      type: "output",
-      seq: 10,
-      data: "\x1b[14t",
-      replay: false,
-    });
+    socket.receive(outputFrame(10, "\x1b[14t", false));
     expect(firstFrames.at(-1)).toEqual({
       seq: 10,
       allowCapabilityReplies: true,
@@ -488,8 +477,8 @@ describe("native terminal capability reply authority", () => {
     const first = TestWebSocket.instances[0]!;
     first.open();
     first.receive(runningReady("codex"));
-    first.receive({ type: "output", seq: 5, data: "history", replay: true });
-    first.receive({ type: "output", seq: 10, data: "live", replay: false });
+    first.receive(outputFrame(5, "history", true));
+    first.receive(outputFrame(10, "live", false));
     expect(received).toEqual([
       { seq: 5, allowCapabilityReplies: false },
       { seq: 10, allowCapabilityReplies: true },
@@ -500,18 +489,8 @@ describe("native terminal capability reply authority", () => {
     const replacement = TestWebSocket.instances[1]!;
     replacement.open();
     replacement.receive({ ...runningReady("codex"), lastSeq: 15 });
-    replacement.receive({
-      type: "output",
-      seq: 10,
-      data: "duplicate",
-      replay: true,
-    });
-    replacement.receive({
-      type: "output",
-      seq: 15,
-      data: "missed while disconnected",
-      replay: true,
-    });
+    replacement.receive(outputFrame(10, "duplicate", true));
+    replacement.receive(outputFrame(15, "missed while disconnected", true));
     expect(received).toEqual([
       { seq: 5, allowCapabilityReplies: false },
       { seq: 10, allowCapabilityReplies: true },

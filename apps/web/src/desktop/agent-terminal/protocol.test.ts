@@ -14,17 +14,17 @@ import {
 } from "./protocol";
 
 describe("native terminal protocol", () => {
-  test("parses camelCase and snake_case lifecycle frames", () => {
+  test("parses the canonical camelCase lifecycle frames", () => {
     expect(
       parseTerminalServerFrame(
         JSON.stringify({
           type: "ready",
-          session_id: "session-1",
+          sessionId: "session-1",
           generation: "thread-generation-3",
-          harness_id: "claude-code",
-          physical_state: "running",
-          logical_state: "idle",
-          last_seq: 12,
+          harnessId: "claude-code",
+          physicalState: "running",
+          logicalState: "idle",
+          lastSeq: 12,
         }),
       ),
     ).toEqual({
@@ -71,6 +71,101 @@ describe("native terminal protocol", () => {
       message: "coding agent is busy",
       retryable: false,
       requestId: "request-1",
+    });
+  });
+
+  test("rejects legacy snake_case lifecycle and output fields", () => {
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "ready",
+          session_id: "session-1",
+          generation: "thread-generation-3",
+          harness_id: "claude-code",
+          physical_state: "running",
+          logical_state: "idle",
+          last_seq: 12,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "ready",
+          sessionId: "session-1",
+          session_id: "retired-session",
+          generation: "thread-generation-3",
+          harnessId: "codex",
+          physicalState: "running",
+          logicalState: "idle",
+          lastSeq: 12,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "output",
+          seq: 1,
+          data_base64: btoa("legacy"),
+          replay: false,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "output",
+          seq: 1,
+          dataBase64: btoa("canonical"),
+          data_base64: btoa("retired"),
+          replay: false,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "output",
+          seq: 1,
+          data: "legacy plaintext",
+          replay: false,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "prompt_accepted",
+          request_id: "legacy-request",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  test("rejects the removed claude harness alias while allowing omission", () => {
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "state",
+          physicalState: "running",
+          logicalState: "idle",
+          harnessId: "claude",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseTerminalServerFrame(
+        JSON.stringify({
+          type: "state",
+          physicalState: "running",
+          logicalState: "idle",
+        }),
+      ),
+    ).toEqual({
+      type: "state",
+      physicalState: "running",
+      logicalState: "idle",
     });
   });
 
@@ -160,6 +255,7 @@ describe("native terminal protocol", () => {
     expect(toTerminalHarnessId("claude-code")).toBe("claude-code");
     expect(toTerminalHarnessId("codex")).toBe("codex");
     expect(toTerminalHarnessId("opencode")).toBe("opencode");
+    expect(toTerminalHarnessId("claude")).toBeNull();
     expect(toTerminalHarnessId("decopilot")).toBeNull();
     expect(fromTerminalHarnessId("claude-code")).toBe("claude-code");
     expect(fromTerminalHarnessId("opencode")).toBe("opencode");

@@ -113,6 +113,14 @@ function record(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
 function safeSequence(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -206,22 +214,11 @@ export function shouldResetTerminalReplay(
 }
 
 function terminalHarnessId(value: unknown): TerminalHarnessId | undefined {
-  if (value === "claude" || value === "claude-code") return "claude-code";
-  if (value === "codex") return "codex";
-  if (value === "opencode") return "opencode";
-  return undefined;
-}
-
-function field(
-  value: Record<string, unknown>,
-  camelCase: string,
-  snakeCase: string,
-): unknown {
-  return value[camelCase] ?? value[snakeCase];
+  return toTerminalHarnessId(value) ?? undefined;
 }
 
 function outputBytes(value: Record<string, unknown>): Uint8Array | null {
-  const base64 = field(value, "dataBase64", "data_base64");
+  const base64 = value.dataBase64;
   if (typeof base64 === "string") {
     try {
       const binary = atob(base64);
@@ -230,10 +227,7 @@ function outputBytes(value: Record<string, unknown>): Uint8Array | null {
       return null;
     }
   }
-  // Transitional compatibility for early fixtures and local-api builds.
-  return typeof value.data === "string"
-    ? new TextEncoder().encode(value.data)
-    : null;
+  return null;
 }
 
 /** Parse and validate the untrusted control frames received from local-api. */
@@ -253,14 +247,23 @@ export function parseTerminalServerFrame(
 
   switch (value.type) {
     case "ready": {
+      if (
+        !hasOnlyKeys(value, [
+          "type",
+          "sessionId",
+          "generation",
+          "harnessId",
+          "physicalState",
+          "logicalState",
+          "lastSeq",
+        ])
+      ) {
+        return null;
+      }
       const generation = value.generation;
-      const physical = physicalState(
-        field(value, "physicalState", "physical_state"),
-      );
-      const logical = logicalState(
-        field(value, "logicalState", "logical_state"),
-      );
-      const lastSeq = safeSequence(field(value, "lastSeq", "last_seq"));
+      const physical = physicalState(value.physicalState);
+      const logical = logicalState(value.logicalState);
+      const lastSeq = safeSequence(value.lastSeq);
       if (
         typeof generation !== "string" ||
         generation.length === 0 ||
@@ -270,24 +273,23 @@ export function parseTerminalServerFrame(
       ) {
         return null;
       }
-      const sessionId = field(value, "sessionId", "session_id");
+      const sessionId = value.sessionId;
+      const harnessId = terminalHarnessId(value.harnessId);
+      if (value.harnessId !== undefined && !harnessId) return null;
       return {
         type: "ready",
         ...(typeof sessionId === "string" ? { sessionId } : {}),
         generation,
-        ...(terminalHarnessId(field(value, "harnessId", "harness_id"))
-          ? {
-              harnessId: terminalHarnessId(
-                field(value, "harnessId", "harness_id"),
-              ),
-            }
-          : {}),
+        ...(harnessId ? { harnessId } : {}),
         physicalState: physical,
         logicalState: logical,
         lastSeq,
       };
     }
     case "output": {
+      if (!hasOnlyKeys(value, ["type", "seq", "dataBase64", "replay"])) {
+        return null;
+      }
       const seq = safeSequence(value.seq);
       const data = outputBytes(value);
       if (seq === null || !data) return null;
@@ -299,28 +301,35 @@ export function parseTerminalServerFrame(
       };
     }
     case "reset": {
+      if (!hasOnlyKeys(value, ["type", "seq", "dataBase64"])) return null;
       const seq = safeSequence(value.seq);
       const data = outputBytes(value);
       if (seq === null || !data) return null;
       return { type: "reset", seq, data };
     }
     case "state": {
-      const physical = physicalState(
-        field(value, "physicalState", "physical_state"),
-      );
-      const logical = logicalState(
-        field(value, "logicalState", "logical_state"),
-      );
+      if (
+        !hasOnlyKeys(value, [
+          "type",
+          "physicalState",
+          "logicalState",
+          "threadStatus",
+          "harnessId",
+        ])
+      ) {
+        return null;
+      }
+      const physical = physicalState(value.physicalState);
+      const logical = logicalState(value.logicalState);
       if (!physical || !logical) return null;
-      const rawThreadStatus = field(value, "threadStatus", "thread_status");
+      const rawThreadStatus = value.threadStatus;
       const threadStatus =
         typeof rawThreadStatus === "string" &&
         THREAD_STATUSES.has(rawThreadStatus as ThreadDisplayStatus)
           ? (rawThreadStatus as ThreadDisplayStatus)
           : undefined;
-      const harnessId = terminalHarnessId(
-        field(value, "harnessId", "harness_id"),
-      );
+      const harnessId = terminalHarnessId(value.harnessId);
+      if (value.harnessId !== undefined && !harnessId) return null;
       return {
         type: "state",
         physicalState: physical,
@@ -330,12 +339,16 @@ export function parseTerminalServerFrame(
       };
     }
     case "prompt_accepted": {
-      const requestId = field(value, "requestId", "request_id");
+      if (!hasOnlyKeys(value, ["type", "requestId"])) return null;
+      const requestId = value.requestId;
       return typeof requestId === "string" && requestId
         ? { type: "prompt_accepted", requestId }
         : null;
     }
     case "exit": {
+      if (!hasOnlyKeys(value, ["type", "code", "signal", "expected"])) {
+        return null;
+      }
       const code = value.code;
       const signal = value.signal;
       return {
@@ -346,10 +359,21 @@ export function parseTerminalServerFrame(
       };
     }
     case "error": {
+      if (
+        !hasOnlyKeys(value, [
+          "type",
+          "code",
+          "message",
+          "retryable",
+          "requestId",
+        ])
+      ) {
+        return null;
+      }
       if (typeof value.code !== "string" || typeof value.message !== "string") {
         return null;
       }
-      const requestId = field(value, "requestId", "request_id");
+      const requestId = value.requestId;
       return {
         type: "error",
         code: value.code,
