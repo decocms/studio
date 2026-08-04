@@ -1972,9 +1972,7 @@ async fn send_binary_output(
     data: &[u8],
 ) -> Result<(), axum::Error> {
     socket
-        .send(Message::Binary(
-            encode_binary_output(tag, sequence, data).into(),
-        ))
+        .send(Message::Binary(encode_binary_output(tag, sequence, data)))
         .await
 }
 
