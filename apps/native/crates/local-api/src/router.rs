@@ -165,6 +165,11 @@ pub fn build(
         .route("/exec/:name", post(routes::scripts::exec))
         .route("/exec/:name/kill", post(routes::scripts::exec_kill))
         .route("/events", get(routes::events::events))
+        // GET /_sandbox/decofile — the merged working-tree draft, for Fast
+        // Preview. Guarded like every route in this router (see
+        // routes::decofile's module doc for why this diverges from the
+        // daemon's unauthenticated route).
+        .route("/decofile", get(routes::decofile::decofile))
         .route("/preview-handle", post(routes::proxy::set_preview_handle))
         // GET /_sandbox/repo-dir — see routes::repo_dir's module doc (a
         // git-backed sandbox's absolute workdir, for the webview's

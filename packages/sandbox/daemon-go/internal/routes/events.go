@@ -20,10 +20,19 @@ type EventsDeps struct {
 	GetActiveTasks       func() []events.ActiveTaskSummary
 	GetStatus            func() events.DaemonStatus
 	GetBranchMeta        func() events.BranchMeta
+	// GetDecofileVersion returns the last announced draft decofile version,
+	// ok=false when none has been computed yet this boot.
+	GetDecofileVersion func() (string, bool)
+	// OnDecofileVersionUnknown is called (after this client is registered) when
+	// GetDecofileVersion reports none cached, so a daemon restarted over an
+	// already-cloned tree computes and broadcasts one instead of leaving a
+	// connecting client waiting forever.
+	OnDecofileVersionUnknown func()
 }
 
 // EventsStream serves the daemon SSE stream. Handshake order is contract:
-// lifecycle → per-source log replay → scripts → tasks → status → branch.
+// lifecycle → per-source log replay → scripts → tasks → status → branch →
+// decofile.
 func EventsStream(deps EventsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Broadcaster.Size() >= MaxSseClients {
@@ -79,10 +88,22 @@ func EventsStream(deps EventsDeps) http.HandlerFunc {
 		if !write(events.SseFrame("branch", map[string]any{"meta": deps.GetBranchMeta()})) {
 			return
 		}
-		flush()
 
+		// Register before checking the decofile version: when none is cached
+		// yet, OnDecofileVersionUnknown triggers an async recompute+broadcast,
+		// and this client must already be a registered listener to receive it —
+		// otherwise the announcement is fired before anyone can hear it.
 		client := deps.Broadcaster.Register()
 		defer deps.Broadcaster.Unregister(client)
+
+		if version, ok := deps.GetDecofileVersion(); ok {
+			if !write(events.SseFrame("decofile", map[string]any{"version": version})) {
+				return
+			}
+		} else {
+			deps.OnDecofileVersionUnknown()
+		}
+		flush()
 
 		heartbeat := time.NewTicker(heartbeatInterval)
 		defer heartbeat.Stop()

@@ -249,9 +249,26 @@ fn base64_encode(data: &[u8]) -> String {
 const DECOFILE_GEN_BASENAME: &str = "blocks.gen.json";
 const DECOFILE_BLOCKS_DIRNAME: &str = "blocks";
 
+/// Repeatedly percent-decodes a filename stem until it stops changing. Real
+/// repos carry both single- and double-encoded stems (`Compre%20Junto.json`,
+/// `Compre%2520Junto.json`); a single decode leaves the double-encoded one
+/// keyed `Compre%20Junto`, a key no `__resolveType` reference resolves.
+/// Mirrors the frontend's documented `decoBlockKeyFromFileStem` fallback: an
+/// invalid-encoding stem keeps its last successfully decoded form.
+fn decode_until_stable(stem: &str) -> String {
+    let mut key = stem.to_string();
+    while let Ok(decoded) = urlencoding::decode(&key) {
+        if decoded.as_ref() == key {
+            break;
+        }
+        key = decoded.into_owned();
+    }
+    key
+}
+
 /// Rebuild `.deco/blocks.gen.json` from the sibling `.deco/blocks/*.json`.
 ///
-/// Each file becomes `{ decodeURIComponent(<stem>): <file contents> }` — the
+/// Each file becomes `{ decode_until_stable(<stem>): <file contents> }` — the
 /// filename stem is the percent-encoded block id, which is what the deco
 /// runtime emits. Contents are spliced in as RAW TEXT rather than parsed and
 /// re-serialized: the payload is routinely multi-megabyte and only the small
@@ -261,7 +278,11 @@ const DECOFILE_BLOCKS_DIRNAME: &str = "blocks";
 /// the caller falls through to its normal not-found path. A malformed block is
 /// not rejected here — the client's own parse fails and it falls back to "no
 /// snapshot", exactly as when the file is genuinely absent.
-async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<String> {
+///
+/// `pub(super)` — also the merge source for `routes::decofile`'s
+/// `GET /_sandbox/decofile`, which serves the same artifact content-addressed
+/// (an ETag over these bytes) rather than as a plain file read.
+pub(super) async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<String> {
     let mut dir = tokio::fs::read_dir(blocks_dir).await.ok()?;
     let mut names: Vec<String> = Vec::new();
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -287,11 +308,7 @@ async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<S
     let mut parts: Vec<String> = Vec::with_capacity(names.len());
     for name in names {
         let stem = &name[..name.len() - ".json".len()];
-        // A stem that is not valid percent-encoding keeps its literal form,
-        // mirroring the frontend's own fallback.
-        let key = urlencoding::decode(stem)
-            .map(|decoded| decoded.into_owned())
-            .unwrap_or_else(|_| stem.to_string());
+        let key = decode_until_stable(stem);
         let Ok(raw) = tokio::fs::read_to_string(blocks_dir.join(&name)).await else {
             continue;
         };
@@ -439,6 +456,7 @@ pub async fn write(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": user_path }));
+    super::decofile::maybe_announce(&state, &user_path);
     Json(json!({ "ok": true, "bytesWritten": content.len() })).into_response()
 }
 
@@ -536,6 +554,7 @@ pub async fn unlink(State(state): State<AppState>, body: Bytes) -> Response {
         state
             .broadcaster
             .emit("file-changed", json!({ "path": raw_path }));
+        super::decofile::maybe_announce(&state, &raw_path);
     }
     Json(json!({ "ok": true, "existed": existed })).into_response()
 }
@@ -575,6 +594,7 @@ pub async fn mkdir(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": raw_path }));
+    super::decofile::maybe_announce(&state, &raw_path);
     Json(json!({ "ok": true })).into_response()
 }
 
@@ -643,6 +663,7 @@ pub async fn rename(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": raw_to }));
+    super::decofile::maybe_announce(&state, &raw_to);
     Json(json!({ "ok": true })).into_response()
 }
 
@@ -709,6 +730,7 @@ pub async fn edit(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": user_path }));
+    super::decofile::maybe_announce(&state, &user_path);
     Json(json!({
         "ok": true,
         "replacements": if replace_all { count } else { 1 },
@@ -1486,6 +1508,26 @@ mod tests {
         assert_eq!(merged, r#"{"Alpha":{"b":2},"Card config":{"a":1}}"#);
         // Valid JSON, and the space in the key really was decoded.
         let parsed: serde_json::Value = serde_json::from_str(&merged).expect("valid json");
+        assert!(parsed.get("Card config").is_some(), "{merged}");
+    }
+
+    /// Real repos carry both single- and double-encoded filenames. Both must
+    /// merge under the real key — a single decode would leave the
+    /// double-encoded one keyed `Compre%20Junto`, which no `__resolveType`
+    /// reference resolves.
+    #[tokio::test]
+    async fn decofile_merge_decodes_double_encoded_stems_until_stable() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let blocks = root.path().join("blocks");
+        std::fs::create_dir_all(&blocks).expect("mkdir");
+        std::fs::write(blocks.join("Compre%2520Junto.json"), r#"{"curated":true}"#).unwrap();
+        std::fs::write(blocks.join("Card%20config.json"), r#"{"plain":true}"#).unwrap();
+
+        let merged = generate_decofile_from_blocks(&blocks)
+            .await
+            .expect("blocks dir merges");
+        let parsed: serde_json::Value = serde_json::from_str(&merged).expect("valid json");
+        assert!(parsed.get("Compre Junto").is_some(), "{merged}");
         assert!(parsed.get("Card config").is_some(), "{merged}");
     }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/activity"
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
+	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 	"github.com/decocms/studio/sandbox-daemon/internal/dispatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
@@ -96,6 +97,10 @@ type daemon struct {
 	fileChangedTimer *time.Timer
 	pendingPaths     map[string]struct{}
 
+	decofileDeps        routes.DecofileDeps
+	decofileMu          sync.Mutex
+	lastDecofileVersion string
+
 	shuttingDown bool
 
 	// treeLock serializes every mutation of the shared working tree. Shared
@@ -112,7 +117,7 @@ type daemon struct {
 // sandboxHandlers is the daemon API's leaf handlers, built once and mounted
 // under each prefix by registerSandboxRoutes.
 type sandboxHandlers struct {
-	events, scripts                       http.HandlerFunc
+	events, scripts, decofile             http.HandlerFunc
 	configRead, configUpdate, orgfsConfig http.HandlerFunc
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
@@ -182,10 +187,43 @@ func (d *daemon) emitFileChanged(path string) {
 		d.pendingPaths = map[string]struct{}{}
 		d.fileChangedTimer = nil
 		d.fileChangedMu.Unlock()
+		touchedBlocks := false
 		for p := range paths {
 			d.broadcaster.Emit("file-changed", map[string]string{"path": p})
+			if decofile.IsBlockPath(p) {
+				touchedBlocks = true
+			}
+		}
+		if touchedBlocks {
+			go d.announceDecofileVersion()
 		}
 	})
+}
+
+// announceDecofileVersion recomputes the merged blocks' version and, if it
+// changed, broadcasts it. The single trigger point for both "tree just
+// landed" (lifecycle.OnTransition) and "a blocks file changed"
+// (emitFileChanged) — the unchanged-hash guard means the two paths can't
+// double-emit.
+func (d *daemon) announceDecofileVersion() {
+	merged, ok := routes.ReadDecofile(d.decofileDeps)
+	if !ok {
+		return
+	}
+	d.decofileMu.Lock()
+	if merged.Version == d.lastDecofileVersion {
+		d.decofileMu.Unlock()
+		return
+	}
+	d.lastDecofileVersion = merged.Version
+	d.decofileMu.Unlock()
+	d.broadcaster.Emit("decofile", map[string]any{"version": merged.Version})
+}
+
+func (d *daemon) getDecofileVersion() (string, bool) {
+	d.decofileMu.Lock()
+	defer d.decofileMu.Unlock()
+	return d.lastDecofileVersion, d.lastDecofileVersion != ""
 }
 
 func (d *daemon) onProbeChange(s probe.State) {
@@ -311,10 +349,12 @@ func (d *daemon) treeGuarded(fn http.HandlerFunc) http.HandlerFunc {
 // once per prefix: /_sandbox is canonical, /_decopilot_vm is served for one
 // release window.
 func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandboxHandlers) {
-	// Unauthenticated: liveness, the event stream, script discovery, preflight.
+	// Unauthenticated: liveness, the event stream, script discovery, the draft
+	// decofile pull, preflight.
 	mux.HandleFunc("GET "+pre+"/idle", routes.Idle())
 	mux.HandleFunc("GET "+pre+"/events", h.events)
 	mux.HandleFunc("GET "+pre+"/scripts", h.scripts)
+	mux.HandleFunc("GET "+pre+"/decofile", h.decofile)
 	mux.HandleFunc("OPTIONS "+pre, corsPreflight)
 	mux.HandleFunc("OPTIONS "+pre+"/", corsPreflight)
 
@@ -550,6 +590,7 @@ func main() {
 	}
 
 	d.store = config.NewStore()
+	d.decofileDeps = routes.DecofileDeps{RepoDir: repoDir, Store: d.store}
 	d.installState = setup.NewInstallState()
 	d.lifecycle = lifecycle.New(d.broadcaster)
 	d.lifecycle.OnStartPhase = func(status string, durationMs int64) {
@@ -573,6 +614,13 @@ func main() {
 			d.readyOnce.Do(func() {
 				telemetry.RecordReady(context.Background(), time.Since(processStartedAt).Milliseconds())
 			})
+		}
+		// Working tree just landed (see events.IsWorkingTreeReadyPhase). Announce
+		// the initial draft version here too, not only from emitFileChanged: a
+		// clone doesn't write through the daemon's fs routes, so on a fresh
+		// sandbox no `.deco/blocks` write is ever observed to trigger it.
+		if events.IsWorkingTreeReadyPhase(next.Phase) && !events.IsWorkingTreeReadyPhase(prev.Phase) {
+			go d.announceDecofileVersion()
 		}
 	}
 
@@ -762,13 +810,16 @@ func main() {
 			return proc.DiscoverScripts(cwd, cfg.PmName())
 		}),
 		events: routes.EventsStream(routes.EventsDeps{
-			Broadcaster:          d.broadcaster,
-			GetLifecycle:         d.lifecycle.Current,
-			GetDiscoveredScripts: d.orchestrator.DiscoveredScripts,
-			GetActiveTasks:       d.getActiveTasks,
-			GetStatus:            d.getStatus,
-			GetBranchMeta:        d.branchStatus.GetLast,
+			Broadcaster:              d.broadcaster,
+			GetLifecycle:             d.lifecycle.Current,
+			GetDiscoveredScripts:     d.orchestrator.DiscoveredScripts,
+			GetActiveTasks:           d.getActiveTasks,
+			GetStatus:                d.getStatus,
+			GetBranchMeta:            d.branchStatus.GetLast,
+			GetDecofileVersion:       d.getDecofileVersion,
+			OnDecofileVersionUnknown: func() { go d.announceDecofileVersion() },
 		}),
+		decofile: routes.Decofile(d.decofileDeps),
 		configRead: routes.ConfigRead(routes.ConfigDeps{
 			DaemonBootId:    bootId,
 			Store:           d.store,
