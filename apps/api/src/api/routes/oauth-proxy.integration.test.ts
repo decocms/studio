@@ -93,10 +93,6 @@ async function skipIfUpstreamUnreachable(
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
   { url: "https://sites-openrouter.deco.site/mcp", name: "OpenRouter" },
-  {
-    url: "https://server.smithery.ai/@exa-labs/exa-code-mcp/mcp",
-    name: "Smithery",
-  },
   { url: "https://mcp.notion.com/mcp", name: "Notion" },
   { url: "https://api.githubcopilot.com/mcp/", name: "GitHub Copilot" },
   { url: "https://mcp.vercel.com", name: "Vercel" },
