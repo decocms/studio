@@ -260,6 +260,6 @@ test("description text is shown as a help tooltip alongside the field", async ({
 
   await expect(component.getByText("Help text")).not.toBeVisible();
   await expect(
-    await hoverFieldDescription(component, page, "Help text"),
+    await hoverFieldDescription(component, page, "Title", "Help text"),
   ).toBeVisible();
 });

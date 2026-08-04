@@ -103,6 +103,7 @@ test("renders the schema description as a help tooltip", async ({
     await hoverFieldDescription(
       component,
       page,
+      "Enabled",
       "Toggle this feature on or off",
     ),
   ).toBeVisible();

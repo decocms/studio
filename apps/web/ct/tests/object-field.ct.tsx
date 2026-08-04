@@ -106,7 +106,12 @@ test("object description is shown as a help tooltip", async ({
 
   await expect(component.getByText("Call to action button")).not.toBeVisible();
   await expect(
-    await hoverFieldDescription(component, page, "Call to action button"),
+    await hoverFieldDescription(
+      component,
+      page,
+      "CTA",
+      "Call to action button",
+    ),
   ).toBeVisible();
 });
 

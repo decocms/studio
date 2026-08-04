@@ -384,6 +384,13 @@ export const settings = {
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
   "settings.review.updateError": "Couldn't update the review setting",
+  "settings.blocksForm.title": "Blocks form",
+  "settings.blocksForm.description":
+    "Controls how field descriptions render in the blocks form editor.",
+  "settings.blocksForm.inlineDescriptionsTitle": "Show descriptions inline",
+  "settings.blocksForm.inlineDescriptionsDescription":
+    "Render a field's description as text below its title instead of a hover tooltip on the title.",
+  "settings.blocksForm.updateError": "Couldn't update the blocks form setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

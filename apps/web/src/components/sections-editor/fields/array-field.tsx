@@ -48,7 +48,10 @@ import {
   removeEntryAt,
   resizeArrayEntries,
 } from "./array-entries";
-import { FieldDescriptionTooltip } from "./field-label";
+import {
+  FieldDescriptionTooltip,
+  useInlineFieldDescriptions,
+} from "./field-label";
 import type { FieldProps } from "./field-props";
 import { ArrayRowContent, SortableArrayRow } from "./array-row";
 import { SchemaForm, renderField } from "../schema-form";
@@ -124,6 +127,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
+  const inlineDescriptions = useInlineFieldDescriptions();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -463,16 +467,21 @@ export function ArrayField({
   return (
     <div className="space-y-2">
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
-        {schema.description && (
-          <FieldDescriptionTooltip description={schema.description} />
-        )}
+        <FieldDescriptionTooltip description={schema.description}>
+          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+        </FieldDescriptionTooltip>
         {items.length > 0 && (
           <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
             {items.length}
           </span>
         )}
       </div>
+
+      {inlineDescriptions && schema.description && (
+        <p className="break-words text-xs leading-normal text-muted-foreground">
+          {schema.description}
+        </p>
+      )}
 
       {items.length > 0 && (
         <div className={cn(activeEntryId && "cursor-grabbing")}>

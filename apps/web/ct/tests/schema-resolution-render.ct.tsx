@@ -251,6 +251,7 @@ test("field description is shown as a help tooltip alongside the field", async (
     await hoverFieldDescription(
       component,
       page,
+      "Title",
       "Shown in the page hero header.",
     ),
   ).toBeVisible();
@@ -278,7 +279,12 @@ test("nullable image union inherits the leaf description", async ({
   );
 
   await expect(
-    await hoverFieldDescription(component, page, "Recommended 1600x900."),
+    await hoverFieldDescription(
+      component,
+      page,
+      "Hero image",
+      "Recommended 1600x900.",
+    ),
   ).toBeVisible();
   await expect(
     component.getByRole("button", {

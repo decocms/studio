@@ -64,6 +64,13 @@ export default defineConfig({
             find: /^@\/components\/file-picker\/file-picker-dialog$/,
             replacement: stub("file-picker-dialog.tsx"),
           },
+          // FieldLabel (nearly every field widget) reads the
+          // inline_field_descriptions org flag via useOrgFlag, which also
+          // calls useProjectContext() — same problem as above.
+          {
+            find: /^@\/hooks\/use-organization-settings$/,
+            replacement: stub("use-organization-settings.ts"),
+          },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
           // only `@/`-prefixed ids, so `@deco/ui`, `@tanstack/*` etc. are

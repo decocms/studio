@@ -1,16 +1,18 @@
 import type { Locator, Page } from "@playwright/test";
 
 /**
- * Hover a field's help-circle button and return the Locator for the tooltip
- * content it reveals. Radix portals TooltipContent to `document.body`, so the
- * returned locator must be scoped to `page`, not the mounted `component`.
+ * Hover a field's title (the tooltip trigger) and return the Locator for the
+ * description tooltip it reveals. Radix portals TooltipContent to
+ * `document.body`, so the returned locator must be scoped to `page`, not the
+ * mounted `component`.
  */
 export async function hoverFieldDescription(
   component: Locator,
   page: Page,
+  titleText: string,
   description: string,
 ): Promise<Locator> {
-  await component.getByRole("button", { name: description }).hover();
+  await component.getByText(titleText, { exact: true }).hover();
   return page.getByText(description);
 }
 

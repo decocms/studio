@@ -163,6 +163,11 @@ test("renders the schema description as a help tooltip", async ({
     component.getByText("How many widgets to display"),
   ).not.toBeVisible();
   await expect(
-    await hoverFieldDescription(component, page, "How many widgets to display"),
+    await hoverFieldDescription(
+      component,
+      page,
+      "Count",
+      "How many widgets to display",
+    ),
   ).toBeVisible();
 });

@@ -197,7 +197,12 @@ test("enum: description is shown as a help tooltip next to the label", async ({
     component.getByText("Pick a size for the section"),
   ).not.toBeVisible();
   await expect(
-    await hoverFieldDescription(component, page, "Pick a size for the section"),
+    await hoverFieldDescription(
+      component,
+      page,
+      "Size",
+      "Pick a size for the section",
+    ),
   ).toBeVisible();
 });
 
