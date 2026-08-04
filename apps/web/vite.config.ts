@@ -38,8 +38,20 @@ const nativeTlsFiles = (() => {
   }
 })();
 
+// Must match the scheme local-api actually listens on, which follows the
+// shell's control origin. Linux keeps that origin plain http unless
+// DECOCMS_LINUX_SECURE_ORIGIN=1 (see src-tauri/src/setup.rs), so defaulting to
+// https there makes every proxied path fail: `secure: false` on a proxy entry
+// only skips certificate validation, it still opens a TLS handshake against a
+// plaintext socket. The page origin is unaffected — `nativeTlsFiles` above
+// reads a macOS-only path, so Vite already serves plain http on Linux.
+const nativeLocalApiDefaultTarget =
+  process.platform === "linux" &&
+  process.env.DECOCMS_LINUX_SECURE_ORIGIN !== "1"
+    ? "http://127.0.0.1:43121"
+    : "https://127.0.0.1:43121";
 const nativeLocalApiTarget =
-  process.env.NATIVE_LOCAL_API_TARGET ?? "https://127.0.0.1:43121";
+  process.env.NATIVE_LOCAL_API_TARGET ?? nativeLocalApiDefaultTarget;
 const appServerTarget = isNativeBuild ? nativeLocalApiTarget : bunServerTarget;
 
 // Native (Tauri) build ONLY: emit the entry as `index.html`, not

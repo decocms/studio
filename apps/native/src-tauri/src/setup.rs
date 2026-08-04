@@ -51,10 +51,15 @@ pub enum SetupError {
 /// require a new build. Off means the plain loopback http origin, which is the
 /// mode the self-test has always used.
 ///
-/// Also what W1.9's secure-mode self-test flips: with this set, the self-test
-/// keeps its own port but boots against the real leaf, which is the only way
-/// to exercise WebKitGTK's per-host allow-list (notably `wss://`, which no
-/// amount of source reading settles).
+/// Ignored under `DESKTOP_SELFTEST`, and deliberately so until three other
+/// things follow the selected origin: `selftest/bundle.js` hard-codes
+/// `http://localhost:<port>` and asserts `location.hostname === "localhost"`,
+/// `capabilities/default.json` lists no `https://local.studio.decocms.com:43122`
+/// entry (so `local_api_info` / `selftest_report` would be denied), and the
+/// selftest path runs `setup::run` under `block_on` on the main thread — which
+/// is the same thread `with_webview` needs to pump before `webview_trust::install`
+/// can resolve, so the boot would wedge rather than fail. Honouring the opt-in
+/// there would turn a documented mode into three silent failures.
 ///
 /// macOS ignores it entirely — its trust goes through the login keychain.
 #[cfg(target_os = "linux")]
@@ -74,7 +79,10 @@ fn control_origin_for(selftest: bool) -> control_origin::ControlOrigin {
     let mut origin = control_origin::current(selftest);
     #[cfg(target_os = "linux")]
     {
-        origin.secure = linux_secure_origin_enabled();
+        // `!selftest`: the selftest bundle and the capability allow-list are
+        // both pinned to the plain-localhost origin, so this opt-in cannot
+        // move it on its own — see [`LINUX_SECURE_ORIGIN_ENV`].
+        origin.secure = !selftest && linux_secure_origin_enabled();
     }
     origin
 }
@@ -316,8 +324,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             // gets a per-host exception once its window exists, and children
             // get a superset root store. `None` means none could be built.
             #[cfg(target_os = "linux")]
-            let child_ca_bundle =
-                crate::local_tls::ensure_child_ca_bundle(&tls_root, &tls.ca_cert)?;
+            let child_ca_bundle = crate::local_tls::ensure_child_ca_bundle(&tls_root, &tls.ca_pem)?;
             #[cfg(not(target_os = "linux"))]
             let child_ca_bundle: Option<std::path::PathBuf> = None;
             Ok::<_, crate::local_tls::TlsError>((tls, child_ca_bundle))
@@ -642,6 +649,37 @@ mod tests {
                 control_origin::current(selftest),
                 "selftest={selftest}"
             );
+        }
+    }
+
+    /// The opt-in moves the origin for a normal launch and is IGNORED under
+    /// `DESKTOP_SELFTEST` — the selftest bundle hard-codes
+    /// `http://localhost:<port>` and `capabilities/default.json` carries no
+    /// entry for the secure origin, so honouring it there fails silently
+    /// rather than loudly (see [`LINUX_SECURE_ORIGIN_ENV`]).
+    ///
+    /// Linux-gated because that is the only platform the wrapper does anything
+    /// on; the `cfg(not(linux))` test above covers the pass-through. Mutates
+    /// process env, and `cargo test -p deco` runs with `--test-threads=1` in
+    /// CI; no other test reads this variable.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_linux_secure_origin_opt_in_skips_the_selftest() {
+        let restore = std::env::var(LINUX_SECURE_ORIGIN_ENV).ok();
+        std::env::set_var(LINUX_SECURE_ORIGIN_ENV, "1");
+
+        assert!(
+            !control_origin_for(true).secure,
+            "the selftest must stay on the plain-localhost origin even with the opt-in set"
+        );
+        assert!(
+            control_origin_for(false).secure,
+            "a normal launch must honour the opt-in"
+        );
+
+        match restore {
+            Some(value) => std::env::set_var(LINUX_SECURE_ORIGIN_ENV, value),
+            None => std::env::remove_var(LINUX_SECURE_ORIGIN_ENV),
         }
     }
 

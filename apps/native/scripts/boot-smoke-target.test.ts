@@ -43,6 +43,10 @@ describe("resolveSmokeTarget(darwin)", () => {
   test("asserts no sidecar staging — macOS never gated externalBin", () => {
     expect(target.requiredSidecars).toEqual([]);
   });
+
+  test("has no config overlay, so the Linux one never forces a rebuild here", () => {
+    expect(target.configOverlayPath).toBeUndefined();
+  });
 });
 
 describe("resolveSmokeTarget(linux)", () => {
@@ -70,6 +74,15 @@ describe("resolveSmokeTarget(linux)", () => {
 
   test("gates the rclone sidecar staged next to the inner binary", () => {
     expect(target.requiredSidecars).toEqual(["rclone"]);
+  });
+
+  // The overlay sets bundle.targets/category/icon, so editing it changes the
+  // AppImage — the staleness guard must treat it as a build input or a
+  // packaging-only change smokes green against the previous bundle.
+  test("reports the merge-patch overlay as a freshness input", () => {
+    expect(target.configOverlayPath).toBe(
+      join(DESKTOP_DIR, "src-tauri/tauri.linux.conf.json5"),
+    );
   });
 
   test("keeps every legacy sweep pattern and adds the extraction one", () => {

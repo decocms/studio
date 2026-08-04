@@ -244,6 +244,23 @@ async function ensureBuilt(bundleMode: BootSmokeBundleMode): Promise<void> {
     const inputs = [
       join(DESKTOP_DIR, "target", "release", "deco"),
       join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
+      // The Tauri CLI merge-patches the platform overlay over the config
+      // above, so `bundle.targets`/`category`/`icon` edits change the artifact
+      // without touching anything else listed here. Per-platform (see
+      // `SmokeTarget.configOverlayPath`) — it is committed everywhere.
+      ...(TARGET.configOverlayPath ? [TARGET.configOverlayPath] : []),
+      // `beforeBuildCommand` runs this, and `externalBin` bundles what it
+      // fetches, on BOTH platforms — so a re-pinned RCLONE_VERSION changes the
+      // bundle while leaving every other input untouched.
+      join(DESKTOP_DIR, "scripts", "fetch-rclone.sh"),
+      // The selftest script itself, `include_str!`-ed into the shell by
+      // `src-tauri/src/selftest.rs` — and the thing this smoke reads its
+      // verdict from. It lives in `src-tauri/selftest/`, which no walk below
+      // covers (`src-tauri/src` does not reach it), so without this line
+      // editing a check and re-running smokes the PREVIOUSLY embedded
+      // selftest and reports "found fresh bundle": the exact stale-bundle
+      // false-green this guard exists to prevent.
+      join(DESKTOP_DIR, "src-tauri", "selftest", "bundle.js"),
       join(webDir, "index.native.html"),
       join(webDir, "vite.config.ts"),
       join(webDir, "package.json"),
@@ -442,12 +459,11 @@ async function main(): Promise<void> {
       "protectedRoute200WithCookie",
       "credentiallessMutationRejected",
       "eventSourceStatusEvent",
-      "controlCookieIsolation",
+      "controlCookieHttpOnly",
       "authStatusInvoke",
       "domMountedEarly",
-      "remoteImageLoads",
       "previewIframeLoads",
-      "previewFetchReachable",
+      "previewCookieRoundTrip",
       "noCspViolations",
     ]);
     for (const [name, check] of Object.entries(report.results)) {
