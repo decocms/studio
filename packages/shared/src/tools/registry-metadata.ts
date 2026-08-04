@@ -212,8 +212,6 @@ const ALL_TOOL_NAMES = [
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
 
-  // Link tools
-
   // Search tools
   "GLOBAL_SEARCH",
 
