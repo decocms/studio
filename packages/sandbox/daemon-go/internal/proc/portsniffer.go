@@ -29,16 +29,21 @@ func IsWellKnownStarter(name string) bool {
 //	bun:   `Listening on http://localhost:3000`
 //	fresh: `Listening on http://0.0.0.0:8000/`
 //
-// The port must be followed by a `/` or whitespace (incl. the trailing newline)
-// so a chunk that splits mid-number ("...:51" | "73/") waits for its
+// The port must be followed by a non-digit ("/" for vite/fresh, ")" / "," /
+// whitespace / newline for the no-trailing-slash frameworks, or a leftover ANSI
+// ESC when the URL is colored). A trailing non-digit is required — rather than
+// nothing — so a chunk that splits mid-number ("...:51" | "73/") waits for its
 // continuation instead of locking the truncated "51".
 var urlPattern = regexp.MustCompile(
-	`(?:Local:|Listening on)[^\n]*?\bhttps?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)[/\s]`,
+	`(?:Local:|Listening on)[^\n]*?\bhttps?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)[^\d]`,
 )
 
-// ansiPattern mirrors the TS regex, which matches bracket sequences without
-// requiring the ESC prefix.
-var ansiPattern = regexp.MustCompile(`\[[0-9;?]*[a-zA-Z]`)
+// ansiPattern strips SGR/cursor escapes. The ESC prefix is optional so it also
+// eats bare bracket sequences (mirroring the TS regex), but consuming the ESC
+// when present matters: a leftover "\x1b" between the port and the newline of a
+// colored, no-trailing-slash bind URL would otherwise sit where the terminator
+// is inspected.
+var ansiPattern = regexp.MustCompile(`\x1b?\[[0-9;?]*[a-zA-Z]`)
 
 // carryLimit bounds the per-source tail kept across Observe calls. The longest
 // phrase+URL we need to span is well under 100 chars, so 200 leaves headroom.

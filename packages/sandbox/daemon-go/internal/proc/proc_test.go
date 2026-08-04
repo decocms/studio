@@ -76,3 +76,61 @@ func TestPortSnifferSpansChunkBoundary(t *testing.T) {
 		t.Fatalf("split bind line must lock once completed, got %d", s.Current())
 	}
 }
+
+// The no-trailing-slash frameworks (next, bun) end the port with a newline, not
+// a "/". When the URL is also colored, the ANSI stripper must consume the ESC so
+// the port isn't shielded from the terminator check — otherwise the sniffer
+// misses and the daemon dials the wrong configured port.
+func TestPortSnifferColoredNoTrailingSlash(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "Listening on \x1b[1mhttp://localhost:3000\x1b[0m\r\n")
+	if s.Current() != 3000 {
+		t.Fatalf("colored no-slash bind URL must lock 3000, got %d", s.Current())
+	}
+}
+
+// A port terminated by a non-"/", non-space char (e.g. a closing paren) must
+// still lock — the terminator only has to be a non-digit so a split mid-number
+// keeps waiting.
+func TestPortSnifferNonSlashTerminator(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "  Local: (http://localhost:3000)\n")
+	if s.Current() != 3000 {
+		t.Fatalf("paren-terminated port must lock 3000, got %d", s.Current())
+	}
+}
+
+// Reset must clear the carry, not just the port — otherwise a partial bind line
+// carried from a previous cycle can splice with a new fragment into a false
+// match (e.g. a leftover "…:51" + a fresh "73/").
+func TestPortSnifferResetClearsCarry(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "  Local:   http://localhost:51")
+	s.Reset()
+	s.Observe("dev", "73/\r\n")
+	if s.Current() != 0 {
+		t.Fatalf("stale carry survived Reset and produced a false lock: %d", s.Current())
+	}
+}
+
+// The phrase gate + line-bound `[^\n]*?` must ignore an unrelated localhost URL
+// from a sibling line that precedes the real bind banner in the same chunk.
+func TestPortSnifferIgnoresSiblingURLBeforeBanner(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "API ready on http://localhost:4000/graphql\n  Local:   http://localhost:3000/\n")
+	if s.Current() != 3000 {
+		t.Fatalf("must lock the banner's port 3000, not the sibling 4000, got %d", s.Current())
+	}
+}
+
+// Each starter source carries independently: a chunk on `start` must not corrupt
+// a partial bind line carried on `dev`.
+func TestPortSnifferPerSourceCarryIsolation(t *testing.T) {
+	s := NewPortSniffer()
+	s.Observe("dev", "  Local:   http://localhost:51")
+	s.Observe("start", "Listening on http://localhost:80")
+	s.Observe("dev", "73/\r\n")
+	if s.Current() != 5173 {
+		t.Fatalf("dev carry corrupted by start chunk, got %d", s.Current())
+	}
+}
