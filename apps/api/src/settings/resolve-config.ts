@@ -296,6 +296,7 @@ export function resolveConfig(
       envVars.STUDIO_MONTHLY_TASKS,
       10,
     ),
+    subsidizedGatewayApiKey: envVars.STUDIO_SUBSIDIZED_GATEWAY_KEY,
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

@@ -23,6 +23,7 @@
  * the read.
  */
 
+import { taskRunMetadata } from "../../billing/subsidized-runs";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
@@ -123,7 +124,7 @@ async function nudgeThread(
         harnessId: "decopilot",
         sandboxProviderKind: "agent-sandbox",
         taskId: thread.threadId,
-        runMetadata: { taskBoardItemId: item.id },
+        runMetadata: taskRunMetadata(item),
       },
     },
     { workflowID: `stall-nudge:${item.id}:${thread.threadId}` },

@@ -29,6 +29,7 @@
  * hosted live path.
  */
 
+import { applySubsidizedBilling } from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
@@ -272,11 +273,16 @@ async function resolveSecretModelSource(
     credentialId,
     organizationId,
   );
-  const source = createSecretModelSource({
-    providerId: keyInfo.providerId,
-    apiKey,
-    modelId,
-  });
+  // Subscription-billed runs (reports-task executions) swap the PAYER only:
+  // the org's resolved model/provider run as-is on the deco house key.
+  const source = applySubsidizedBilling(
+    createSecretModelSource({
+      providerId: keyInfo.providerId,
+      apiKey,
+      modelId,
+    }),
+    ctx.metadata?.runMetadata,
+  );
 
   // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a
   // request out of the "Unknown" bucket in its dashboard/rankings); `X-Title`
