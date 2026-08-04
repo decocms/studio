@@ -246,17 +246,20 @@ export async function runClaudeCode(
               .join(" ") || "none configured"
           } | studio tools: ${studioToolCount}`,
         );
-        // Configured-but-empty is always a misconfiguration, never a valid run:
-        // the endpoint Studio mints for this harness is the org's management
-        // MCP, which always exposes its core tools. Zero means the run cannot
-        // touch Studio (no board update, no state change) while still producing
-        // a confident-looking answer — the exact failure that reads as success.
-        // Fail here so it surfaces as a broken run instead of a silent no-op.
-        if (input.mcp.url && studioToolCount === 0) {
+        // A run that cannot reach Studio (no board update, no state change)
+        // still produces a confident-looking answer — the failure that reads as
+        // success. Fail on it. Key off the server STATUS, not the tool count:
+        // an http MCP server connects asynchronously, so `pending` with zero
+        // mcp__ tools at init is the normal case, not a misconfiguration.
+        const broken = message.mcp_servers.filter((server) =>
+          ["failed", "needs-auth", "disabled"].includes(server.status),
+        );
+        if (input.mcp.url && broken.length > 0) {
           fail(
-            `studio MCP exposed no tools (${input.mcp.url}). The harness cannot ` +
-              `act on Studio; refusing to run rather than return a result that ` +
-              `changed nothing.`,
+            `studio MCP is unusable (${input.mcp.url}): ${broken
+              .map((server) => `${server.name}=${server.status}`)
+              .join(" ")}. The harness cannot act on Studio; refusing to run ` +
+              `rather than return a result that changed nothing.`,
           );
           return;
         }
