@@ -254,8 +254,8 @@ export function ImportFromDecoDialog({
         }
         decoConnId = connId;
 
-        const { childConnectionId } = await provisionRepoScopedGithubConnection(
-          {
+        const { childConnectionId, reused } =
+          await provisionRepoScopedGithubConnection({
             orgSlug: org.slug,
             sourceConnection: effectiveGithubConnection,
             installationId: githubInstallation.installationId,
@@ -263,9 +263,10 @@ export function ImportFromDecoDialog({
             repo: githubRepo.name,
             githubCallTool: (req) => githubClient.callTool(req),
             selfCallTool: (req) => client.callTool(req),
-          },
-        );
-        githubChildConnId = childConnectionId;
+          });
+        // Only a connection this import created may be rolled back — a reused
+        // one predates it and other agents may hold it.
+        githubChildConnId = reused ? null : childConnectionId;
 
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);

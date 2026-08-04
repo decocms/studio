@@ -28,6 +28,7 @@ import {
   findGithubInstallation,
 } from "@/lib/github-installations";
 import { provisionRepoScopedGithubConnection } from "@/lib/provision-repo-scoped-github-connection";
+import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
 import {
   parseRepoFullName,
   planAgentConnections,
@@ -297,8 +298,8 @@ export function GitHubConfigForm({
             t("commerceOnboarding.githubConfigForm.githubConnectionNotFound"),
           );
         }
-        const { childConnectionId } = await provisionRepoScopedGithubConnection(
-          {
+        const { childConnectionId, reused } =
+          await provisionRepoScopedGithubConnection({
             orgSlug: org.slug,
             sourceConnection,
             installationId,
@@ -306,10 +307,11 @@ export function GitHubConfigForm({
             repo: name,
             githubCallTool: (req) => companionClient.callTool(req),
             selfCallTool: (req) => selfClient.callTool(req),
-          },
-        );
+          });
         repoConnectionId = childConnectionId;
-        provisionedConnectionId = childConnectionId;
+        // Only roll back a connection this save created; a reused one predates
+        // it and other agents may hold it.
+        provisionedConnectionId = reused ? undefined : childConnectionId;
       }
 
       // Aggregate the repo-scoped connection onto the agent — `git publish`
@@ -344,13 +346,26 @@ export function GitHubConfigForm({
             },
           },
         });
+        // The previously-linked repo connection is only ours to delete when
+        // it's ours alone. An org-shared one ("Add repo") belongs to the org
+        // and has no aggregation row to protect it. A connection another agent
+        // aggregates IS protected — child_connection_id is ON DELETE RESTRICT,
+        // so the delete throws into the catch below and the row survives.
         if (staleConnectionId) {
-          await selfClient
-            .callTool({
-              name: "COLLECTION_CONNECTIONS_DELETE",
-              arguments: { id: staleConnectionId, force: true },
-            })
-            .catch(() => {});
+          const stale = unwrapToolResult<{ item: ConnectionEntity | null }>(
+            await selfClient.callTool({
+              name: "COLLECTION_CONNECTIONS_GET",
+              arguments: { id: staleConnectionId },
+            }),
+          ).item;
+          if (stale && !isOrgSharedConnection(stale)) {
+            await selfClient
+              .callTool({
+                name: "COLLECTION_CONNECTIONS_DELETE",
+                arguments: { id: staleConnectionId, force: true },
+              })
+              .catch(() => {});
+          }
         }
       } catch (err) {
         // The connectionId lives only on the metadata we just failed to write,

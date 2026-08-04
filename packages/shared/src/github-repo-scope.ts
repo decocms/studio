@@ -199,3 +199,32 @@ export function isOrgSharedConnection(connection: {
 }): boolean {
   return connection.metadata?.orgShared === true;
 }
+
+/** GitHub treats owner/repo case-insensitively; repo identity must too. */
+const repoIdentity = (owner: string, repo: string) =>
+  `${owner}/${repo}`.toLowerCase();
+
+/**
+ * An existing connection that already grants access to `owner/repo`, or null.
+ *
+ * One repository should have ONE connection. Provisioning used to mint and
+ * create unconditionally, so importing a repo org-wide and then again from an
+ * agent left two connections behind for the same repository — which every
+ * consumer of `getRepoScope` then had to dedupe (and mostly didn't: the task
+ * board read the duplicate as "which repo?" and refused to run).
+ *
+ * The org-shared connection wins when both exist: it outlives any single agent,
+ * so reusing it can't hand an agent a connection that disappears with a
+ * teammate's agent.
+ */
+export function findReusableRepoConnection<
+  T extends { status?: string; metadata: Record<string, unknown> | null },
+>(connections: T[] | undefined | null, owner: string, repo: string): T | null {
+  const wanted = repoIdentity(owner, repo);
+  const matches = (connections ?? []).filter((connection) => {
+    if (connection.status && connection.status !== "active") return false;
+    const scope = getRepoScope(connection);
+    return scope !== null && repoIdentity(scope.owner, scope.repo) === wanted;
+  });
+  return matches.find(isOrgSharedConnection) ?? matches[0] ?? null;
+}
