@@ -11,15 +11,9 @@ import type { Thread, ThreadMessage } from "@/storage/types";
 /**
  * Configuration for creating a Memory instance
  */
-export interface MemoryConfig {
+interface MemoryConfig {
   /** Thread ID (required — thread must exist) */
-  thread_id: string;
-
-  /** Organization scope */
-  organization_id: string;
-
-  /** User who owns/created the thread */
-  userId: string;
+  threadId: string;
 
   /** Default window size for pruning */
   defaultWindowSize?: number;
@@ -156,15 +150,15 @@ export async function createMemory(
   storage: OrgScopedThreadStorage,
   config: MemoryConfig,
 ): Promise<Memory> {
-  const { thread_id, defaultWindowSize } = config;
+  const { threadId, defaultWindowSize } = config;
 
-  if (!thread_id) {
-    throw new Error("createMemory: thread_id is required");
+  if (!threadId) {
+    throw new Error("createMemory: threadId is required");
   }
 
-  const thread = await storage.get(thread_id);
+  const thread = await storage.get(threadId);
   if (!thread) {
-    throw new Error(`Thread not found: ${thread_id}`);
+    throw new Error(`Thread not found: ${threadId}`);
   }
 
   return new Memory({

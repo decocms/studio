@@ -11,8 +11,11 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
+import type {
+  StudioToolInput,
+  StudioToolOutput,
+} from "@decocms/shared/tools/tool-io";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { callSandboxTool } from "./call-sandbox-tool";
 
@@ -25,19 +28,25 @@ interface MinimalMcpClient {
   }) => Promise<unknown>;
 }
 
-export interface SandboxStartArgs {
-  virtualMcpId: string;
-  /** Optional — SANDBOX_START generates one when omitted. */
-  branch?: string;
-}
+export type SandboxStartArgs = StudioToolInput<"SANDBOX_START">;
 
-export interface SandboxStartResult {
-  previewUrl: string | null;
-  sandboxHandle: string;
-  branch: string;
-  isNewVm: boolean;
-  sandboxProviderKind: SandboxProviderKind;
-}
+type HostedSandboxStartResult = StudioToolOutput<"SANDBOX_START">;
+
+/**
+ * The native local API intercepts SANDBOX_START before it reaches the hosted
+ * API and returns the same payload for its user-desktop runtime. Keep that
+ * local override explicit instead of widening the hosted wire contract.
+ */
+type NativeSandboxStartResult = Omit<
+  HostedSandboxStartResult,
+  "sandboxProviderKind"
+> & {
+  sandboxProviderKind: "user-desktop";
+};
+
+export type SandboxStartResult =
+  | HostedSandboxStartResult
+  | NativeSandboxStartResult;
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();
 const startKey = (args: SandboxStartArgs) =>

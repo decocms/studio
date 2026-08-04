@@ -99,17 +99,18 @@ curl -X POST "$STUDIO_BASE_URL/api/$STUDIO_ORG/decopilot/threads/$THREAD_ID/mess
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello!" }] }],
-    "agent": { "id": "'"$STUDIO_AGENT_ID"'" },
     "tier": "smart"
   }'
 # → 202 { "taskId": "thrd_..." }
 ```
 
 <Callout type="info">
-  O corpo da requisição é validado de forma estrita — envie apenas `messages`,
-  `agent` e os opcionais `tier` / `temperature`. Exatamente uma mensagem não-system
-  é permitida por chamada. O id da thread fica na URL; não coloque também um
-  `thread_id` divergente no corpo.
+  A criação da thread vincula o agent, e a URL fornece o id da thread. O corpo
+  da requisição é validado de forma estrita: envie `messages` e apenas as opções
+  suportadas (`tier`, `temperature`, `memory.windowSize`, `branch`,
+  `toolApprovalLevel` ou `mode`). Exatamente uma mensagem não-system é permitida
+  por chamada; não repita o agent, o harness, o provedor de sandbox ou
+  `thread_id` no corpo.
 </Callout>
 
 ### 3. Faça stream da resposta

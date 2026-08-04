@@ -3,9 +3,10 @@
  * persisted native thread rows consumed by shared UI code, but the hosted AI
  * SDK dispatcher has no wire contract for them.
  *
- * Gate on both persisted pins. Decopilot's null and retired `user-desktop`
- * sandboxes are readable legacy hosted tuples; unknown sandboxes and every
- * non-Decopilot harness are unavailable on hosted web.
+ * Gate on the complete persisted tuple. Hosted web accepts an unpinned thread
+ * before its first-message claim, or the exact Decopilot + agent-sandbox pin.
+ * Partial, retired, and native tuples remain readable through shared thread
+ * surfaces but cannot mount hosted chat execution.
  */
 export function shouldBlockHostedRuntime({
   isDesktopApp,
@@ -17,19 +18,12 @@ export function shouldBlockHostedRuntime({
   sandboxProviderKind: string | null | undefined;
 }): boolean {
   if (isDesktopApp) return false;
-  if (
-    harnessId !== null &&
-    harnessId !== undefined &&
-    harnessId !== "decopilot"
-  ) {
-    return true;
-  }
-  if (
-    sandboxProviderKind === null ||
-    sandboxProviderKind === undefined ||
-    sandboxProviderKind === "agent-sandbox"
-  ) {
-    return false;
-  }
-  return !(harnessId === "decopilot" && sandboxProviderKind === "user-desktop");
+  const isUnpinned =
+    (harnessId === null || harnessId === undefined) &&
+    (sandboxProviderKind === null ||
+      sandboxProviderKind === undefined ||
+      sandboxProviderKind === "agent-sandbox");
+  const isHosted =
+    harnessId === "decopilot" && sandboxProviderKind === "agent-sandbox";
+  return !isUnpinned && !isHosted;
 }

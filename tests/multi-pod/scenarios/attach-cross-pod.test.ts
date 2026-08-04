@@ -129,7 +129,6 @@ describe("cross-pod /attach", () => {
           parts: [{ type: "text", text: MOCK_HINT }],
         },
       ],
-      agent: { id: virtualMcpId },
       tier: "smart",
     };
 

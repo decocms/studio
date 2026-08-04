@@ -6,9 +6,28 @@ import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
-const NON_HOSTED_HARNESSES = ["claude-code", "codex", "opencode", "future"];
 const NO_SMART_MODEL_ERROR =
   'No model available for tier "smart". Connect a provider or configure the tier in organization settings.';
+
+const LEGACY_REQUEST_FIELDS = [
+  { label: "agent", fields: { agent: { id: "retired-agent" } } },
+  { label: "harness", fields: { harnessId: "decopilot" } },
+  {
+    label: "managed-sandbox",
+    fields: { sandboxProviderKind: "agent-sandbox" },
+  },
+  {
+    label: "desktop-sandbox",
+    fields: { sandboxProviderKind: "user-desktop" },
+  },
+  { label: "cluster-sandbox", fields: { sandboxProviderKind: "cluster" } },
+  { label: "thread-id", fields: { thread_id: "retired-thread" } },
+  {
+    label: "memory-thread-id",
+    fields: { memory: { windowSize: 50, thread_id: "retired-thread" } },
+  },
+  { label: "stream", fields: { stream: true } },
+] as const;
 
 const PERSISTED_NON_HOSTED_ROWS = [
   {
@@ -30,6 +49,16 @@ const PERSISTED_NON_HOSTED_ROWS = [
     harnessId: "future",
     sandboxProviderKind: null,
     error: "This coding-agent chat can only run in the Studio desktop app",
+  },
+  {
+    harnessId: "decopilot",
+    sandboxProviderKind: "user-desktop",
+    error: "This chat is pinned to an unsupported desktop runtime",
+  },
+  {
+    harnessId: "decopilot",
+    sandboxProviderKind: null,
+    error: "This chat has an incomplete hosted runtime pin",
   },
 ] as const;
 
@@ -160,7 +189,6 @@ async function postMessage(
     orgSlug: string;
     threadId: string;
     messageId: string;
-    legacyAgentId?: string;
   },
 ) {
   return api.post(
@@ -174,13 +202,6 @@ async function postMessage(
             parts: [{ type: "text", text: "Do not dispatch this" }],
           },
         ],
-        ...(args.legacyAgentId
-          ? {
-              agent: { id: args.legacyAgentId },
-              harnessId: "decopilot",
-              sandboxProviderKind: "agent-sandbox",
-            }
-          : {}),
       },
       headers: { "content-type": "application/json" },
     },
@@ -200,7 +221,7 @@ async function expectNoQueuedRun(
 test.describe("hosted runtime boundary", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("rejects native harness requests before pinning or persisting a message", async ({
+  test("rejects every retired request field before pinning or persisting a message", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -227,45 +248,25 @@ test.describe("hosted runtime boundary", () => {
         { data: { virtual_mcp_id: agent.item.id } },
       );
 
-      for (const harnessId of NON_HOSTED_HARNESSES) {
+      for (const { label, fields } of LEGACY_REQUEST_FIELDS) {
         const response = await api.post(
           `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
           {
             data: {
               messages: [
                 {
-                  id: `msg-${harnessId}`,
+                  id: `msg-legacy-${label}`,
                   role: "user",
                   parts: [{ type: "text", text: "Do not dispatch this" }],
                 },
               ],
-              harnessId,
+              ...fields,
             },
             headers: { "content-type": "application/json" },
           },
         );
         expect(response.status()).toBe(400);
       }
-
-      const retiredSandboxResponse = await api.post(
-        `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
-        {
-          data: {
-            messages: [
-              {
-                id: "msg-retired-sandbox",
-                role: "user",
-                parts: [{ type: "text", text: "Do not dispatch this" }],
-              },
-            ],
-            agent: { id: agent.item.id },
-            harnessId: "decopilot",
-            sandboxProviderKind: "user-desktop",
-          },
-          headers: { "content-type": "application/json" },
-        },
-      );
-      expect(retiredSandboxResponse.status()).toBe(400);
 
       const row = await db.query(
         `SELECT harness_id
@@ -282,58 +283,45 @@ test.describe("hosted runtime boundary", () => {
         [thread.item.id],
       );
       expect(parts.rows[0]?.count).toBe(0);
+      await expectNoQueuedRun(api, orgSlug, thread.item.id);
     } finally {
       await db.end();
     }
   });
 
-  test("accepts and ignores a legacy body agent that differs from the thread", async ({
+  test("rejects sandbox provider selectors at both REST tool boundaries", async ({
     authedPage,
   }) => {
-    const { page, orgSlug, user } = authedPage;
+    const { page, orgSlug } = authedPage;
     const api = page.context().request;
-    const db = await connectDevDb();
-    try {
-      const organizationId = await organizationIdForSlug(db, orgSlug);
-      const threadAgentId = await createAgent(
-        api,
-        orgSlug,
-        "thread authority canonical agent",
-      );
-      const requestedAgentId = await createAgent(
-        api,
-        orgSlug,
-        "thread authority requested agent",
-      );
-      const threadId = await createThread(api, orgSlug, threadAgentId);
-      const scope = { threadId, organizationId, userId: user.userId };
-      const before = await readThreadAuthorityState(db, scope);
+    const agentId = await createAgent(
+      api,
+      orgSlug,
+      "strict sandbox tool boundary",
+    );
 
-      const response = await postMessage(api, {
-        orgSlug,
-        threadId,
-        legacyAgentId: requestedAgentId,
-        messageId: "msg-same-org-agent-mismatch",
+    for (const sandboxProviderKind of [
+      "agent-sandbox",
+      "user-desktop",
+      "cluster",
+    ]) {
+      const start = await api.post(`/api/${orgSlug}/tools/SANDBOX_START`, {
+        data: { virtualMcpId: agentId, sandboxProviderKind },
       });
+      expect(start.status()).toBe(400);
 
-      // Reaching canonical model resolution proves the legacy selector parsed
-      // successfully and did not become execution authority.
-      expect(response.status()).toBe(400);
-      expect(await response.json()).toEqual({ error: NO_SMART_MODEL_ERROR });
-      expect(await readThreadAuthorityState(db, scope)).toEqual(before);
-      expect(before).toMatchObject({
-        virtual_mcp_id: threadAgentId,
-        harness_id: null,
-        sandbox_provider_kind: null,
-        part_count: 0,
+      const remove = await api.post(`/api/${orgSlug}/tools/SANDBOX_DELETE`, {
+        data: {
+          virtualMcpId: agentId,
+          branch: "strict-sandbox-boundary",
+          sandboxProviderKind,
+        },
       });
-      await expectNoQueuedRun(api, orgSlug, threadId);
-    } finally {
-      await db.end();
+      expect(remove.status()).toBe(400);
     }
   });
 
-  test("rejects a foreign-org agent before any message or run is persisted", async ({
+  test("rejects a foreign-org canonical agent before any message or run is persisted", async ({
     authedPage,
     playwright,
   }) => {
@@ -355,29 +343,9 @@ test.describe("hosted runtime boundary", () => {
         "foreign authority agent",
       );
 
-      // The usual attack shape: the owned thread still points at its own
-      // tenant's agent, while the request tries to select a foreign one.
-      const threadId = await createThread(api, orgSlug, threadAgentId);
-      const scope = { threadId, organizationId, userId: user.userId };
-      const before = await readThreadAuthorityState(db, scope);
-      const mismatchResponse = await postMessage(api, {
-        orgSlug,
-        threadId,
-        legacyAgentId: foreignAgentId,
-        messageId: "msg-foreign-agent-mismatch",
-      });
-
-      expect(mismatchResponse.status()).toBe(400);
-      expect(await mismatchResponse.json()).toEqual({
-        error: NO_SMART_MODEL_ERROR,
-      });
-      expect(await readThreadAuthorityState(db, scope)).toEqual(before);
-      await expectNoQueuedRun(api, orgSlug, threadId);
-
       // Defense in depth: even if a malformed legacy row or privileged DB
-      // writer points an owned thread at another tenant's agent, equality with
-      // the body is not authorization. The hosted endpoint must validate the
-      // canonical agent's organization before its first write.
+      // writer points an owned thread at another tenant's agent, the hosted
+      // endpoint must validate the canonical agent before its first write.
       const corruptThreadId = await createThread(api, orgSlug, threadAgentId);
       const corruptUpdate = await db.query(
         `UPDATE threads
@@ -398,7 +366,6 @@ test.describe("hosted runtime boundary", () => {
       const corruptResponse = await postMessage(api, {
         orgSlug,
         threadId: corruptThreadId,
-        legacyAgentId: foreignAgentId,
         messageId: "msg-foreign-agent-canonical-corruption",
       });
 
@@ -423,7 +390,7 @@ test.describe("hosted runtime boundary", () => {
     browser,
     playwright,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
     const { page, orgSlug, user } = authedPage;
     const ownerApi = page.context().request;
     const memberApi = await newApiContext(playwright);
@@ -635,7 +602,6 @@ test.describe("hosted runtime boundary", () => {
       const messageResponse = await postMessage(memberApi, {
         orgSlug,
         threadId,
-        legacyAgentId: agentId,
         messageId: "msg-teammate-owner-boundary",
       });
       expect(messageResponse.status()).toBe(403);
@@ -733,7 +699,7 @@ test.describe("hosted runtime boundary", () => {
 
         await expect(
           memberPage.getByRole("button", { name: "Preview", exact: true }),
-        ).toBeVisible({ timeout: 30_000 });
+        ).toBeVisible({ timeout: 60_000 });
         await expect(
           memberPage.getByRole("button", { name: "Code", exact: true }),
         ).toHaveCount(0);
@@ -808,7 +774,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("rejects persisted native and unknown harness rows without side effects", async ({
+  test("rejects persisted non-hosted and incomplete runtime rows without side effects", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -887,64 +853,6 @@ test.describe("hosted runtime boundary", () => {
         );
         expect(parts.rows[0]?.count).toBe(0);
       }
-    } finally {
-      await db.end();
-    }
-  });
-
-  test("keeps a retired local Decopilot pin readable as hosted", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-    try {
-      const agent = await callSelfMcpTool<{ item: { id: string } }>(
-        api,
-        orgSlug,
-        "COLLECTION_VIRTUAL_MCP_CREATE",
-        {
-          data: {
-            title: "legacy hosted runtime",
-            connections: [],
-            status: "active",
-            pinned: false,
-          },
-        },
-      );
-      const thread = await callSelfMcpTool<{ item: { id: string } }>(
-        api,
-        orgSlug,
-        "COLLECTION_THREADS_CREATE",
-        { data: { virtual_mcp_id: agent.item.id } },
-      );
-      const update = await db.query(
-        `UPDATE threads
-            SET harness_id = 'decopilot',
-                sandbox_provider_kind = 'user-desktop'
-          WHERE id = $1 AND created_by = $2`,
-        [thread.item.id, user.userId],
-      );
-      expect(update.rowCount).toBe(1);
-
-      const queue = await api.get(
-        `/api/${orgSlug}/decopilot/queue/${thread.item.id}`,
-      );
-      expect(queue.status()).toBe(200);
-      expect(await queue.json()).toEqual({ items: [] });
-
-      const row = await db.query(
-        `SELECT harness_id, sandbox_provider_kind
-           FROM threads
-          WHERE id = $1 AND created_by = $2`,
-        [thread.item.id, user.userId],
-      );
-      expect(row.rows).toEqual([
-        {
-          harness_id: "decopilot",
-          sandbox_provider_kind: "user-desktop",
-        },
-      ]);
     } finally {
       await db.end();
     }

@@ -63,16 +63,16 @@ describe("decideStallAction", () => {
     }
   });
 
-  test("legacy Decopilot with no sandbox pin remains hosted", () => {
+  test("a partial Decopilot pin is never nudged", () => {
     expect(
       decideStallAction(ran("failed", { sandboxProviderKind: null })),
-    ).toBe("nudge");
+    ).toBe("none");
   });
 
-  test("retired linked Decopilot rows continue as hosted", () => {
+  test("a retired linked Decopilot row is never nudged", () => {
     expect(
       decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
-    ).toBe("nudge");
+    ).toBe("none");
   });
 });
 

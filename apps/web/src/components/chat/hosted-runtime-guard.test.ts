@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
-describe("hosted terminal-only runtime guard", () => {
-  test("blocks every non-Decopilot harness from hosted legacy dispatch", () => {
+describe("hosted runtime guard", () => {
+  test("blocks every non-Decopilot harness from hosted dispatch", () => {
     for (const harnessId of [
       "claude-code",
       "codex",
@@ -31,11 +31,12 @@ describe("hosted terminal-only runtime guard", () => {
     }
   });
 
-  test("allows Decopilot and unpinned hosted runtimes on the web", () => {
+  test("allows only valid pre-pin tuples and the exact hosted tuple", () => {
     for (const [harnessId, sandboxProviderKind] of [
       [null, null],
       [undefined, undefined],
-      ["decopilot", null],
+      [null, "agent-sandbox"],
+      [undefined, "agent-sandbox"],
       ["decopilot", "agent-sandbox"],
     ] as const) {
       expect(
@@ -48,23 +49,22 @@ describe("hosted terminal-only runtime guard", () => {
     }
   });
 
-  test("keeps legacy Decopilot desktop pins readable as hosted", () => {
-    expect(
-      shouldBlockHostedRuntime({
-        isDesktopApp: false,
-        harnessId: "decopilot",
-        sandboxProviderKind: "user-desktop",
-      }),
-    ).toBeFalse();
-  });
-
-  test("blocks unknown sandbox runtimes on hosted web", () => {
-    expect(
-      shouldBlockHostedRuntime({
-        isDesktopApp: false,
-        harnessId: "decopilot",
-        sandboxProviderKind: "future-sandbox",
-      }),
-    ).toBeTrue();
+  test("blocks partial, retired, and unknown hosted tuples", () => {
+    for (const [harnessId, sandboxProviderKind] of [
+      ["decopilot", null],
+      ["decopilot", undefined],
+      ["decopilot", "user-desktop"],
+      ["decopilot", "future-sandbox"],
+      [null, "user-desktop"],
+      [null, "cluster"],
+    ] as const) {
+      expect(
+        shouldBlockHostedRuntime({
+          isDesktopApp: false,
+          harnessId,
+          sandboxProviderKind,
+        }),
+      ).toBeTrue();
+    }
   });
 });

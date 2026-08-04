@@ -309,6 +309,30 @@ describe("SANDBOX_START", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("only exposes the hosted agent-sandbox provider kind", () => {
+    const output = {
+      previewUrl: "https://stub.preview/",
+      sandboxHandle: "vm_xyz",
+      branch: BRANCH,
+      isNewVm: true,
+      sandboxProviderKind: "agent-sandbox",
+    };
+
+    expect(SANDBOX_START.outputSchema.safeParse(output).success).toBe(true);
+    expect(
+      SANDBOX_START.outputSchema.safeParse({
+        ...output,
+        sandboxProviderKind: "user-desktop",
+      }).success,
+    ).toBe(false);
+    expect(
+      SANDBOX_START.outputSchema.safeParse({
+        ...output,
+        unexpected: true,
+      }).success,
+    ).toBe(false);
+  });
+
   it("calls runner.ensure with composed projectRef + repo + workload", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
@@ -682,7 +706,23 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("strips legacy provider selectors and reuses the canonical agent sandbox", async () => {
+  it("rejects obsolete provider selectors from the input contract", () => {
+    for (const sandboxProviderKind of [
+      "agent-sandbox",
+      "user-desktop",
+      "cluster",
+    ]) {
+      expect(
+        SANDBOX_START.inputSchema.safeParse({
+          virtualMcpId: VMCP_ID,
+          branch: BRANCH,
+          sandboxProviderKind,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("reuses the canonical agent sandbox with selectorless input", async () => {
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
@@ -706,24 +746,9 @@ describe("SANDBOX_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    for (const sandboxProviderKind of [
-      "agent-sandbox",
-      "user-desktop",
-      "cluster",
-    ]) {
-      expect(
-        SANDBOX_START.inputSchema.parse({
-          virtualMcpId: VMCP_ID,
-          branch: BRANCH,
-          sandboxProviderKind,
-        }),
-      ).toEqual({ virtualMcpId: VMCP_ID, branch: BRANCH });
-    }
-
     const parsed = SANDBOX_START.inputSchema.parse({
       virtualMcpId: VMCP_ID,
       branch: BRANCH,
-      sandboxProviderKind: "user-desktop",
     });
     const result = await SANDBOX_START.handler(parsed, ctx);
 

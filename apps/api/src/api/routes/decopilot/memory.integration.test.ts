@@ -25,20 +25,16 @@ describe("createMemory", () => {
     });
 
     const memory = await createMemory(env.ctx.storage.threads, {
-      thread_id: thread.id,
-      organization_id: env.orgId,
-      userId: env.userId,
+      threadId: thread.id,
     });
 
     expect(memory.thread.id).toBe("thrd_existing");
   });
 
-  it("throws when thread_id is provided but thread does not exist", async () => {
+  it("throws when threadId is provided but thread does not exist", async () => {
     await expect(
       createMemory(env.ctx.storage.threads, {
-        thread_id: "thrd_does_not_exist",
-        organization_id: env.orgId,
-        userId: env.userId,
+        threadId: "thrd_does_not_exist",
       }),
     ).rejects.toThrow(/thread.*not.*found/i);
   });

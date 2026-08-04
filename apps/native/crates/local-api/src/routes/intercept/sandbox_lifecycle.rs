@@ -31,6 +31,7 @@ use axum::body::Bytes;
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::{de, Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 use crate::error::ApiError;
@@ -127,6 +128,53 @@ const DEFAULT_BRANCH: &str = crate::sandbox::DEFAULT_BRANCH;
 /// a real branch — which is exactly how a defaulted value came to overwrite a
 /// live one and strand the UI on `main` after a restart.
 pub(crate) const EPHEMERAL_BRANCH: &str = "ephemeral";
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SandboxStartInput {
+    virtual_mcp_id: String,
+    #[serde(default, deserialize_with = "deserialize_optional_nonempty_string")]
+    branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SandboxDeleteInput {
+    virtual_mcp_id: String,
+    #[serde(deserialize_with = "deserialize_nonempty_string")]
+    branch: String,
+    #[serde(default)]
+    remove_worktree: bool,
+}
+
+fn deserialize_nonempty_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    if value.is_empty() {
+        return Err(de::Error::custom("must not be empty"));
+    }
+    Ok(value)
+}
+
+/// Deserialize a string that may be omitted, but may not be `null` or empty
+/// when present. `Option<String>` alone would collapse an explicit `null` into
+/// the same value as an omitted field and weaken the hosted tool contract.
+fn deserialize_optional_nonempty_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_nonempty_string(deserializer).map(Some)
+}
+
+fn parse_start_input(body: &[u8]) -> Result<SandboxStartInput, ApiError> {
+    crate::http_util::json_body(body)
+}
+
+fn parse_delete_input(body: &[u8]) -> Result<SandboxDeleteInput, ApiError> {
+    crate::http_util::json_body(body)
+}
 
 /// The branch a thread's sandbox is actually on, according to the sandbox
 /// manager — the single source of truth.
@@ -601,24 +649,13 @@ fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Va
 /// Restart is `await stop(); start()`, so a flipped default would delete the
 /// repository — and any uncommitted work in it — on every restart.
 async fn delete(state: &AppState, org: &str, body: &Bytes) -> Response {
-    let input: Value = match crate::http_util::json_body(body) {
+    let input = match parse_delete_input(body) {
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
-    let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
-        return ApiError::bad_request("virtualMcpId is required").into_response();
-    };
-    let Some(branch) = input
-        .get("branch")
-        .and_then(Value::as_str)
-        .filter(|b| !b.is_empty())
-    else {
-        return ApiError::bad_request("branch is required").into_response();
-    };
-    let remove_worktree = input
-        .get("removeWorktree")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let virtual_mcp_id = input.virtual_mcp_id.as_str();
+    let branch = input.branch.as_str();
+    let remove_worktree = input.remove_worktree;
     let authorization = match authorize(state, org, virtual_mcp_id, branch, Access::Recovery).await
     {
         Ok(authorization) => authorization,
@@ -656,14 +693,12 @@ async fn delete(state: &AppState, org: &str, body: &Bytes) -> Response {
 }
 
 async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
-    let input: Value = match crate::http_util::json_body(body) {
+    let input = match parse_start_input(body) {
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
-    let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
-        return ApiError::bad_request("virtualMcpId is required").into_response();
-    };
-    let branch = input.get("branch").and_then(Value::as_str);
+    let virtual_mcp_id = input.virtual_mcp_id.as_str();
+    let branch = input.branch.as_deref();
     // Prove this request names an active owned thread before consulting the
     // upstream virtual-MCP registry, but do not hold the thread lifecycle
     // lock across that network call. Admission is rechecked under the lock
@@ -816,6 +851,84 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_input_accepts_an_omitted_or_nonempty_branch() {
+        assert_eq!(
+            parse_start_input(br#"{"virtualMcpId":"vm-1"}"#).unwrap(),
+            SandboxStartInput {
+                virtual_mcp_id: "vm-1".to_string(),
+                branch: None,
+            }
+        );
+        assert_eq!(
+            parse_start_input(br#"{"virtualMcpId":"vm-1","branch":"feature"}"#).unwrap(),
+            SandboxStartInput {
+                virtual_mcp_id: "vm-1".to_string(),
+                branch: Some("feature".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn start_input_rejects_null_and_empty_branches() {
+        for body in [
+            br#"{"virtualMcpId":"vm-1","branch":null}"#.as_slice(),
+            br#"{"virtualMcpId":"vm-1","branch":""}"#.as_slice(),
+        ] {
+            assert!(parse_start_input(body).is_err(), "{body:?}");
+        }
+    }
+
+    #[test]
+    fn delete_input_requires_a_nonempty_branch() {
+        assert_eq!(
+            parse_delete_input(br#"{"virtualMcpId":"vm-1","branch":"feature"}"#).unwrap(),
+            SandboxDeleteInput {
+                virtual_mcp_id: "vm-1".to_string(),
+                branch: "feature".to_string(),
+                remove_worktree: false,
+            }
+        );
+        assert!(
+            parse_delete_input(
+                br#"{"virtualMcpId":"vm-1","branch":"feature","removeWorktree":true}"#,
+            )
+            .unwrap()
+            .remove_worktree
+        );
+
+        for body in [
+            br#"{"virtualMcpId":"vm-1"}"#.as_slice(),
+            br#"{"virtualMcpId":"vm-1","branch":null}"#.as_slice(),
+            br#"{"virtualMcpId":"vm-1","branch":""}"#.as_slice(),
+            br#"{"virtualMcpId":"vm-1","branch":"feature","removeWorktree":null}"#.as_slice(),
+            br#"{"virtualMcpId":"vm-1","branch":"feature","removeWorktree":"true"}"#.as_slice(),
+        ] {
+            assert!(parse_delete_input(body).is_err(), "{body:?}");
+        }
+    }
+
+    #[test]
+    fn lifecycle_inputs_reject_retired_provider_selectors() {
+        for sandbox_provider_kind in ["agent-sandbox", "user-desktop", "cluster"] {
+            let start = format!(
+                r#"{{"virtualMcpId":"vm-1","sandboxProviderKind":"{sandbox_provider_kind}"}}"#
+            );
+            assert!(
+                parse_start_input(start.as_bytes()).is_err(),
+                "{sandbox_provider_kind}"
+            );
+
+            let delete = format!(
+                r#"{{"virtualMcpId":"vm-1","branch":"feature","sandboxProviderKind":"{sandbox_provider_kind}"}}"#
+            );
+            assert!(
+                parse_delete_input(delete.as_bytes()).is_err(),
+                "{sandbox_provider_kind}"
+            );
+        }
+    }
 
     #[test]
     fn maps_repo_and_runtime_the_way_the_dispatch_block_did() {
@@ -1034,8 +1147,6 @@ mod tests {
         for body in [
             json!({ "virtualMcpId": "test-agent", "branch": "feature-x" }),
             json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": false }),
-            // A non-boolean is not a yes.
-            json!({ "virtualMcpId": "test-agent", "branch": "feature-x", "removeWorktree": "true" }),
         ] {
             let (status, answer) = delete_body(&state, body.clone()).await;
             assert_eq!(status, StatusCode::OK, "{body}");
@@ -1046,6 +1157,29 @@ mod tests {
                 .is_registered_for_account(&account, &handle)
                 .unwrap());
         }
+    }
+
+    #[tokio::test]
+    async fn delete_rejects_a_non_boolean_remove_worktree_without_mutating_state() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, account, handle, worktree) = registered_sandbox(root.path());
+
+        let (status, _) = delete_body(
+            &state,
+            json!({
+                "virtualMcpId": "test-agent",
+                "branch": "feature-x",
+                "removeWorktree": "true",
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(worktree.is_dir());
+        assert!(state
+            .sandbox_manager
+            .is_registered_for_account(&account, &handle)
+            .unwrap());
     }
 
     #[tokio::test]

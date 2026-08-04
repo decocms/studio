@@ -1,5 +1,20 @@
-import { describe, expect, it } from "bun:test";
-import { isRetryableSandboxStartError } from "./use-sandbox-start";
+import { describe, expect, expectTypeOf, it } from "bun:test";
+import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
+import {
+  isRetryableSandboxStartError,
+  type SandboxStartResult,
+} from "./use-sandbox-start";
+
+describe("SandboxStartResult", () => {
+  it("widens the hosted result only for the native desktop interceptor", () => {
+    expectTypeOf<
+      StudioToolOutput<"SANDBOX_START">["sandboxProviderKind"]
+    >().toEqualTypeOf<"agent-sandbox">();
+    expectTypeOf<SandboxStartResult["sandboxProviderKind"]>().toEqualTypeOf<
+      "agent-sandbox" | "user-desktop"
+    >();
+  });
+});
 
 // Pins the retry predicate to the exact "retry shortly" marker the server
 // appends to transient lifecycle/lock errors (apps/api/src/storage/

@@ -183,8 +183,8 @@ async function requireStudioContext(
 export function isHostedDecopilotThread(
   thread:
     | {
-        harness_id?: string | null;
-        sandbox_provider_kind?: string | null;
+        harness_id: string | null;
+        sandbox_provider_kind: string | null;
       }
     | null
     | undefined,

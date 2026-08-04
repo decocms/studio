@@ -28,7 +28,7 @@ describe("StreamRequestSchema", () => {
     for (const windowSize of [0, -1, 1.5, 100_000]) {
       const result = StreamRequestSchema.safeParse({
         ...baseRequest,
-        memory: { windowSize, thread_id: "thread-1" },
+        memory: { windowSize },
       });
       expect(result.success).toBe(false);
     }
@@ -37,20 +37,56 @@ describe("StreamRequestSchema", () => {
   it("accepts a valid memory.windowSize", () => {
     const result = StreamRequestSchema.safeParse({
       ...baseRequest,
-      memory: { windowSize: 100, thread_id: "thread-1" },
+      memory: { windowSize: 100 },
     });
     expect(result.success).toBe(true);
   });
 
-  it("keeps strict unknown-field rejection after stripping legacy selectors", () => {
+  it("rejects every retired top-level routing alias", () => {
+    for (const legacyField of [
+      { agent: { id: "legacy-agent" } },
+      { harnessId: "decopilot" },
+      { sandboxProviderKind: "agent-sandbox" },
+      { thread_id: "thread-1" },
+      { stream: true },
+    ]) {
+      expect(
+        StreamRequestSchema.safeParse({ ...baseRequest, ...legacyField })
+          .success,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects memory.thread_id instead of accepting a second thread authority", () => {
     const result = StreamRequestSchema.safeParse({
       ...baseRequest,
-      agent: { id: "legacy-agent" },
-      harnessId: "decopilot",
-      sandboxProviderKind: "agent-sandbox",
-      unknownSelector: "future-runtime",
+      memory: { windowSize: 100, thread_id: "thread-1" },
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects unknown fields on the request and memory objects", () => {
+    expect(
+      StreamRequestSchema.safeParse({
+        ...baseRequest,
+        unknownSelector: "future-runtime",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      StreamRequestSchema.safeParse({
+        ...baseRequest,
+        memory: { windowSize: 100, unknownOption: true },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps AI SDK message objects extensible", () => {
+    expect(
+      StreamRequestSchema.safeParse({
+        messages: [{ ...baseRequest.messages[0], providerMetadata: {} }],
+      }).success,
+    ).toBe(true);
   });
 });

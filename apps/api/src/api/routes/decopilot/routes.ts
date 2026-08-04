@@ -43,7 +43,7 @@ import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import { publishRunStatusStage } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import { isRetiredLinkedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
+import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
@@ -280,16 +280,16 @@ async function resolvePerRequestModels(
 
 /**
  * The thread owns the hosted branch. The request branch remains a temporary
- * compatibility fallback only for an older client creating an unbranched row.
+ * request hint only while pinning an unbranched, unlocked row for the first time.
  */
 export function resolveHostedThreadBranch(
   thread: Pick<Thread, "branch" | "harness_id">,
-  legacyRequestBranch: string | null | undefined,
+  requestBranch: string | null | undefined,
 ): string | null {
   if (thread.branch !== null && thread.branch !== undefined) {
     return thread.branch;
   }
-  return thread.harness_id ? null : (legacyRequestBranch ?? null);
+  return thread.harness_id ? null : (requestBranch ?? null);
 }
 
 /**
@@ -298,13 +298,9 @@ export function resolveHostedThreadBranch(
  * cloud route must reject those rows before model resolution or any write.
  */
 export function assertHostedDecopilotHarness(
-  harnessId: string | null | undefined,
-): asserts harnessId is "decopilot" | null | undefined {
-  if (
-    harnessId !== null &&
-    harnessId !== undefined &&
-    harnessId !== "decopilot"
-  ) {
+  harnessId: string | null,
+): asserts harnessId is "decopilot" | null {
+  if (harnessId !== null && harnessId !== "decopilot") {
     throw new HTTPException(409, {
       message: "This coding-agent chat can only run in the Studio desktop app",
     });
@@ -312,13 +308,9 @@ export function assertHostedDecopilotHarness(
 }
 
 export function assertHostedSandboxProvider(
-  sandboxProviderKind: string | null | undefined,
-): asserts sandboxProviderKind is "agent-sandbox" | null | undefined {
-  if (
-    sandboxProviderKind !== null &&
-    sandboxProviderKind !== undefined &&
-    sandboxProviderKind !== "agent-sandbox"
-  ) {
+  sandboxProviderKind: string | null,
+): asserts sandboxProviderKind is "agent-sandbox" | null {
+  if (sandboxProviderKind !== null && sandboxProviderKind !== "agent-sandbox") {
     throw new HTTPException(409, {
       message: "This chat is pinned to an unsupported desktop runtime",
     });
@@ -326,14 +318,21 @@ export function assertHostedSandboxProvider(
 }
 
 export function assertHostedRuntime(
-  harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
+  harnessId: string | null,
+  sandboxProviderKind: string | null,
 ): void {
   assertHostedDecopilotHarness(harnessId);
-  if (isRetiredLinkedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
+  assertHostedSandboxProvider(sandboxProviderKind);
+  if (
+    isHostedDecopilotRuntime({ harnessId, sandboxProviderKind }) ||
+    (harnessId === null &&
+      (sandboxProviderKind === null || sandboxProviderKind === "agent-sandbox"))
+  ) {
     return;
   }
-  assertHostedSandboxProvider(sandboxProviderKind);
+  throw new HTTPException(409, {
+    message: "This chat has an incomplete hosted runtime pin",
+  });
 }
 
 /**
@@ -344,11 +343,12 @@ export function assertHostedRuntime(
  * hosted mutation landed.
  */
 export function assertPersistedHostedRuntime(
-  harnessId: string | null | undefined,
-  sandboxProviderKind: string | null | undefined,
+  harnessId: string | null,
+  sandboxProviderKind: string | null,
 ): asserts harnessId is "decopilot" {
-  assertHostedRuntime(harnessId, sandboxProviderKind);
-  if (harnessId !== "decopilot") {
+  assertHostedDecopilotHarness(harnessId);
+  assertHostedSandboxProvider(sandboxProviderKind);
+  if (!isHostedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
     throw new HTTPException(409, {
       message: "This chat has not started a hosted run",
     });
@@ -363,8 +363,8 @@ export function assertPersistedHostedRuntime(
  * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
  * for caller-visible problems.
  *
- * The canonical thread id comes from `/threads/:threadId/...`. A legacy body
- * `thread_id`, when present during the compatibility window, must match it.
+ * The canonical thread id comes exclusively from `/threads/:threadId/...`.
+ * The request body cannot select or override a thread or its runtime.
  */
 async function validate(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
@@ -379,18 +379,11 @@ async function validate(
     requestMessage,
     temperature,
     memory: memoryConfig,
-    thread_id,
     branch,
     toolApprovalLevel,
     mode,
   } = await validateRequest(c);
 
-  const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
-  if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
-    throw new HTTPException(400, {
-      message: "threadId in URL does not match thread_id in body",
-    });
-  }
   const taskIdInput = threadIdParam;
   if (isUnsafeThreadId(taskIdInput)) {
     throw new HTTPException(400, { message: "Invalid thread ID" });
@@ -402,9 +395,8 @@ async function validate(
   }
 
   // Resolve authority before model selection or any message/runtime write.
-  // The thread row owns both the user and Virtual MCP identities. Legacy
-  // request selectors were stripped by StreamRequestSchema and cannot affect
-  // execution.
+  // The URL selects the thread; its persisted row owns both the user and
+  // Virtual MCP identities. The strict request schema has no routing fields.
   const lockedThread = await ctx.storage.threads.get(taskIdInput);
   if (!lockedThread) {
     throw new HTTPException(404, { message: "Thread not found" });
@@ -415,8 +407,7 @@ async function validate(
   });
 
   // Persisted native rows are readable by the shared thread surfaces but can
-  // never enter hosted model resolution or dispatch. A retired
-  // decopilot+user-desktop row remains readable during its migration window.
+  // never enter hosted model resolution or dispatch.
   assertHostedRuntime(
     lockedThread.harness_id,
     lockedThread.sandbox_provider_kind,

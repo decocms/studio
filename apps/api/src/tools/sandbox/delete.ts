@@ -18,25 +18,29 @@ export const SANDBOX_DELETE = defineTool({
     openWorldHint: true,
   },
   _meta: { ui: { visibility: "app" } },
-  inputSchema: z.object({
-    virtualMcpId: z.string().describe("Virtual MCP ID that owns this VM"),
-    branch: z
-      .string()
-      .min(1)
-      .describe(
-        "Branch whose vm should be deleted (sandboxMap[userId][branch])",
-      ),
-    removeWorktree: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe(
-        "Also reclaim the sandbox's workspace (local worktree + disk). Ignored by providers whose teardown already destroys the filesystem.",
-      ),
-  }),
-  outputSchema: z.object({
-    success: z.boolean(),
-  }),
+  inputSchema: z
+    .object({
+      virtualMcpId: z.string().describe("Virtual MCP ID that owns this VM"),
+      branch: z
+        .string()
+        .min(1)
+        .describe(
+          "Branch whose vm should be deleted (sandboxMap[userId][branch])",
+        ),
+      removeWorktree: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Also reclaim the sandbox's workspace (local worktree + disk). Ignored by hosted teardown, whose filesystem is already destroyed.",
+        ),
+    })
+    .strict(),
+  outputSchema: z
+    .object({
+      success: z.boolean(),
+    })
+    .strict(),
 
   handler: async (input, ctx) => {
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;

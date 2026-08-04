@@ -97,17 +97,18 @@ curl -X POST "$STUDIO_BASE_URL/api/$STUDIO_ORG/decopilot/threads/$THREAD_ID/mess
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello!" }] }],
-    "agent": { "id": "'"$STUDIO_AGENT_ID"'" },
     "tier": "smart"
   }'
 # → 202 { "taskId": "thrd_..." }
 ```
 
 <Callout type="info">
-  The request body is validated strictly — send only `messages`, `agent`, and
-  optional `tier` / `temperature`. Exactly one non-system message is allowed per
-  call. The thread id lives in the URL; don't also put a mismatched `thread_id`
-  in the body.
+  Thread creation binds the agent, and the URL supplies the thread id. The
+  request body is validated strictly: send `messages` plus only the supported
+  options (`tier`, `temperature`, `memory.windowSize`, `branch`,
+  `toolApprovalLevel`, or `mode`). Exactly one non-system message is allowed per
+  call; do not repeat the agent, harness, sandbox provider, or `thread_id` in
+  the body.
 </Callout>
 
 ### 3. Stream the response

@@ -734,13 +734,10 @@ async function prepareRun(
 
     // The persisted thread is the authority for both ownership and agent
     // identity. Resolve it before credentials, model permissions, status
-    // publication, or run-state writes. Old DBOS payloads may still carry
-    // agent/harness/sandbox selector fields, but structural deserialization
-    // ignores them and none can select execution.
+    // publication, or run-state writes. Durable payloads carry only execution
+    // inputs; none can select the thread's persisted runtime.
     const mem = await createMemory(ctx.storage.threads, {
-      organization_id: input.organizationId,
-      thread_id: input.taskId,
-      userId: input.userId,
+      threadId: input.taskId,
       defaultWindowSize: windowSize,
     });
     const { agentId } = resolveThreadAuthority(mem.thread, {

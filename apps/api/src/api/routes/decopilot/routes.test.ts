@@ -1,7 +1,7 @@
 /**
  * Unit tests for the pure helpers exported from ./routes.
  *
- * The POST /messages dispatch/link-gating behavior that used to live here was
+ * The POST /messages dispatch/runtime-gating behavior that used to live here was
  * a route handler with every dependency mocked (resolveTier, model-permissions,
  * dispatch-queue, the sandbox-kind resolver, and a fabricated StudioContext) —
  * the bad zone. It now runs through the real front door in
@@ -21,7 +21,6 @@ import {
   resolveHostedThreadBranch,
   shouldPersistRequestMessage,
 } from "./routes";
-import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
 
 describe("computeIdempotencyKey", () => {
@@ -145,82 +144,10 @@ describe("computeIdempotencyKey", () => {
   });
 });
 
-describe("StreamRequestSchema", () => {
-  const base = {
-    messages: [
-      {
-        id: "user-123",
-        role: "user" as const,
-        parts: [{ type: "text", text: "hi" }],
-      },
-    ],
-  };
-
-  test("accepts the canonical request without routing selectors", () => {
-    expect(StreamRequestSchema.safeParse(base).success).toBe(true);
-  });
-
-  test("accepts and strips the complete legacy routing envelope", () => {
-    const result = StreamRequestSchema.parse({
-      ...base,
-      // This id deliberately need not match the thread: the compatibility
-      // field is parsed only for shape validation and never becomes authority.
-      agent: { id: "stale-agent", legacyExtra: true },
-      harnessId: "decopilot",
-      sandboxProviderKind: "cluster",
-    });
-
-    expect(result).not.toHaveProperty("agent");
-    expect(result).not.toHaveProperty("harnessId");
-    expect(result).not.toHaveProperty("sandboxProviderKind");
-  });
-
-  test("accepts only the known legacy Decopilot harness value", () => {
-    expect(
-      StreamRequestSchema.safeParse({ ...base, harnessId: "decopilot" })
-        .success,
-    ).toBe(true);
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
-      expect(
-        StreamRequestSchema.safeParse({ ...base, harnessId }).success,
-      ).toBe(false);
-    }
-  });
-
-  test("accepts only known legacy hosted sandbox values", () => {
-    expect(
-      StreamRequestSchema.safeParse({
-        ...base,
-        sandboxProviderKind: "agent-sandbox",
-      }).success,
-    ).toBe(true);
-    expect(
-      StreamRequestSchema.safeParse({
-        ...base,
-        sandboxProviderKind: "cluster",
-      }).success,
-    ).toBe(true);
-    for (const sandboxProviderKind of ["user-desktop", "future-sandbox"]) {
-      expect(
-        StreamRequestSchema.safeParse({ ...base, sandboxProviderKind }).success,
-      ).toBe(false);
-    }
-  });
-
-  test("rejects malformed legacy agent envelopes", () => {
-    for (const agent of [null, {}, { id: 42 }, "agent-123"]) {
-      expect(StreamRequestSchema.safeParse({ ...base, agent }).success).toBe(
-        false,
-      );
-    }
-  });
-});
-
 describe("assertHostedDecopilotHarness", () => {
   test("allows only Decopilot or an unpinned hosted request", () => {
     expect(() => assertHostedDecopilotHarness("decopilot")).not.toThrow();
     expect(() => assertHostedDecopilotHarness(null)).not.toThrow();
-    expect(() => assertHostedDecopilotHarness(undefined)).not.toThrow();
   });
 
   test("rejects persisted native, unknown, and future harness ids", () => {
@@ -236,7 +163,6 @@ describe("assertHostedSandboxProvider", () => {
   test("allows managed or legacy-unpinned hosted sandboxes", () => {
     expect(() => assertHostedSandboxProvider("agent-sandbox")).not.toThrow();
     expect(() => assertHostedSandboxProvider(null)).not.toThrow();
-    expect(() => assertHostedSandboxProvider(undefined)).not.toThrow();
   });
 
   test("rejects retired desktop and unknown sandbox ids", () => {
@@ -248,27 +174,51 @@ describe("assertHostedSandboxProvider", () => {
   });
 });
 
+describe("assertHostedRuntime", () => {
+  test("allows the exact hosted tuple", () => {
+    expect(() =>
+      assertHostedRuntime("decopilot", "agent-sandbox"),
+    ).not.toThrow();
+  });
+
+  test("allows only the two pre-pin tuples needed before persistence migration", () => {
+    expect(() => assertHostedRuntime(null, null)).not.toThrow();
+    expect(() => assertHostedRuntime(null, "agent-sandbox")).not.toThrow();
+  });
+
+  test("rejects a partially persisted Decopilot tuple", () => {
+    expect(() => assertHostedRuntime("decopilot", null)).toThrow(
+      /incomplete hosted runtime pin/,
+    );
+  });
+});
+
 describe("assertPersistedHostedRuntime", () => {
-  test("allows current and legacy Decopilot rows", () => {
+  test("allows only the exact persisted hosted tuple", () => {
     expect(() =>
       assertPersistedHostedRuntime("decopilot", "agent-sandbox"),
     ).not.toThrow();
-    expect(() => assertPersistedHostedRuntime("decopilot", null)).not.toThrow();
+  });
+
+  test("rejects every unpinned or partial tuple before a hosted control mutation", () => {
+    for (const [harnessId, sandboxProviderKind] of [
+      [null, null],
+      [null, "agent-sandbox"],
+      ["decopilot", null],
+    ] as const) {
+      expect(() =>
+        assertPersistedHostedRuntime(harnessId, sandboxProviderKind),
+      ).toThrow(/has not started a hosted run/);
+    }
+  });
+
+  test("rejects native and retired desktop runtime rows", () => {
     expect(() =>
       assertPersistedHostedRuntime("decopilot", "user-desktop"),
-    ).not.toThrow();
-    expect(() =>
-      assertHostedRuntime("decopilot", "user-desktop"),
-    ).not.toThrow();
-  });
-
-  test("rejects unpinned threads before a hosted control mutation", () => {
-    expect(() => assertPersistedHostedRuntime(null, null)).toThrow(
-      /has not started a hosted run/,
+    ).toThrow(/unsupported desktop runtime/);
+    expect(() => assertHostedRuntime("decopilot", "user-desktop")).toThrow(
+      /unsupported desktop runtime/,
     );
-  });
-
-  test("rejects native runtime rows", () => {
     expect(() => assertPersistedHostedRuntime("codex", "user-desktop")).toThrow(
       /Studio desktop app/,
     );
@@ -302,7 +252,7 @@ describe("shouldPersistRequestMessage", () => {
 });
 
 describe("resolveHostedThreadBranch", () => {
-  test("the thread branch wins over a stale compatibility value", () => {
+  test("the thread branch wins over a stale request hint", () => {
     expect(
       resolveHostedThreadBranch(
         { branch: "main", harness_id: "decopilot" },
@@ -311,7 +261,7 @@ describe("resolveHostedThreadBranch", () => {
     ).toBe("main");
   });
 
-  test("an older client may fill an unbranched thread during cutover", () => {
+  test("the request may fill an unbranched thread during first pin", () => {
     expect(
       resolveHostedThreadBranch(
         { branch: null, harness_id: null },

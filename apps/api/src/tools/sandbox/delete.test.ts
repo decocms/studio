@@ -223,24 +223,32 @@ describe("SANDBOX_DELETE", () => {
     expect(updated.sandboxMap["user-1"]).toBeUndefined();
   });
 
-  it("strips legacy provider selectors from the input contract", () => {
+  it("rejects obsolete provider selectors from the input contract", () => {
     for (const sandboxProviderKind of [
       "agent-sandbox",
       "user-desktop",
       "cluster",
     ]) {
       expect(
-        SANDBOX_DELETE.inputSchema.parse({
+        SANDBOX_DELETE.inputSchema.safeParse({
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
           sandboxProviderKind,
-        }),
-      ).toEqual({
-        virtualMcpId: "vmcp_1",
-        branch: BRANCH,
-        removeWorktree: false,
-      });
+        }).success,
+      ).toBe(false);
     }
+  });
+
+  it("rejects unexpected fields from the output contract", () => {
+    expect(
+      SANDBOX_DELETE.outputSchema.safeParse({ success: true }).success,
+    ).toBe(true);
+    expect(
+      SANDBOX_DELETE.outputSchema.safeParse({
+        success: true,
+        sandboxProviderKind: "agent-sandbox",
+      }).success,
+    ).toBe(false);
   });
 
   it("removes the canonical entry while preserving a desktop sibling", async () => {

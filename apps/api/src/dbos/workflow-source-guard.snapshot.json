@@ -5,6 +5,6 @@
   "dispatch-queue/hosted-harness-workflow.ts": "5a196c0348f238670f2b68297a7fe001128996003567ab87bb6c0c6ba9d38810",
   "dispatch-queue/thread-gate-workflow.ts": "ef4cb1191661f66fb2ddec25981162526275cd0a0dc20a3498e1f12bfb840865",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
-  "harnesses/decopilot/background-tool-workflow.ts": "b657240bde177bc90ef4a26f00511014050f5a7aba8e9ff91ea9fea78a58f00c",
+  "harnesses/decopilot/background-tool-workflow.ts": "19c2d3093a5a667cc9fd588f301c446c31bfdab46110c88673c90bfb780d0f1c",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8"
 }

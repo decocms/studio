@@ -162,7 +162,6 @@ describe("pod-death + DBOS replay", () => {
           parts: [{ type: "text", text: MOCK_HINT }],
         },
       ],
-      agent: { id: virtualMcpId },
       tier: "smart",
     };
     const postRes = await postJson(

@@ -41,9 +41,7 @@ export async function loadDecopilotContext(input: {
     ? []
     : await (
         await createMemory(input.ctx.storage.threads, {
-          thread_id: input.threadId,
-          organization_id: input.ctx.organization?.id ?? "",
-          userId: input.ctx.auth.user?.id ?? "",
+          threadId: input.threadId,
           defaultWindowSize: input.windowSize ?? DEFAULT_WINDOW_SIZE,
         })
       ).loadHistory(input.windowSize ?? DEFAULT_WINDOW_SIZE);

@@ -6598,7 +6598,7 @@ export interface StudioToolIO {
       sandboxHandle: string;
       branch: string;
       isNewVm: boolean;
-      sandboxProviderKind: "agent-sandbox" | "user-desktop";
+      sandboxProviderKind: "agent-sandbox";
     };
   };
   SANDBOX_DELETE: {

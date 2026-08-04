@@ -82,23 +82,27 @@ export const SANDBOX_START = defineTool({
     openWorldHint: true,
   },
   _meta: { ui: { visibility: "app" } },
-  inputSchema: z.object({
-    virtualMcpId: z.string().describe("Virtual MCP ID"),
-    branch: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
-      ),
-  }),
-  outputSchema: z.object({
-    previewUrl: z.string().nullable(),
-    sandboxHandle: z.string(),
-    branch: z.string(),
-    isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop"]),
-  }),
+  inputSchema: z
+    .object({
+      virtualMcpId: z.string().describe("Virtual MCP ID"),
+      branch: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
+        ),
+    })
+    .strict(),
+  outputSchema: z
+    .object({
+      previewUrl: z.string().nullable(),
+      sandboxHandle: z.string(),
+      branch: z.string(),
+      isNewVm: z.boolean(),
+      sandboxProviderKind: z.literal(AGENT_SANDBOX_KIND),
+    })
+    .strict(),
 
   handler: async (input, ctx) => {
     requireAuth(ctx);

@@ -80,7 +80,6 @@ async function runThroughRollingDeploy(): Promise<{
           parts: [{ type: "text", text: MOCK_HINT }],
         },
       ],
-      agent: { id: virtualMcpId },
       tier: "smart",
     },
     { auth: { apiKey: session.apiKey } },
