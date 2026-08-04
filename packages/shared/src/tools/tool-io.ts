@@ -4415,6 +4415,30 @@ export interface StudioToolIO {
     };
     output: { balanceCents: number };
   };
+  CLAUDE_SUBSCRIPTION_CONNECT: {
+    input: { token: string };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CLAUDE_SUBSCRIPTION_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
+  CLAUDE_SUBSCRIPTION_DISCONNECT: {
+    input: { [x: string]: never };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      expiresAt: string | null;
+    };
+  };
   SECRET_CREATE: {
     input: {
       scope: "user" | "organization";

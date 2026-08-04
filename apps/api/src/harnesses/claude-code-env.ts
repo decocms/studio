@@ -5,8 +5,11 @@
  * from an argument, so Studio's resolved credential has to be translated into
  * the variables the SDK reads and pushed to the sandbox before a run.
  *
- * Two supported shapes:
+ * Three supported shapes:
  *  - an Anthropic key, used directly;
+ *  - the dispatching user's own Claude subscription, linked over OAuth, which
+ *    the CLI takes on its own `CLAUDE_CODE_OAUTH_TOKEN` variable — the run then
+ *    bills that person's plan, not the org's API credit;
  *  - an OpenRouter key against OpenRouter's Anthropic-compatible endpoint
  *    ("Anthropic skin"), which speaks the Messages API natively — including
  *    thinking blocks and native tool use — so no translation layer is needed.
@@ -20,6 +23,13 @@
  * with a credential the SDK cannot use — surfaces as an opaque model error
  * several minutes later, which is much worse than a clear refusal now.
  */
+
+/**
+ * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
+ * stored per user). Not an `ai-providers` registry id — it never resolves to a
+ * model SDK, only to this harness's environment.
+ */
+export const CLAUDE_SUBSCRIPTION_PROVIDER_ID = "claude-subscription";
 
 /** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
@@ -71,7 +81,20 @@ export function claudeCodeEnvFromCredential(
       CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic,
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
+      CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: baseUrl ?? null,
+    };
+  }
+  if (providerId === CLAUDE_SUBSCRIPTION_PROVIDER_ID) {
+    // A user's own Claude plan, linked over OAuth. The CLI reads the OAuth
+    // token from its own variable; both key variables must be cleared or a
+    // leftover one outranks it and the run bills the org's API credit instead.
+    return {
+      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic,
+      CLAUDE_CODE_OAUTH_TOKEN: apiKey,
+      ANTHROPIC_API_KEY: null,
+      ANTHROPIC_AUTH_TOKEN: null,
+      ANTHROPIC_BASE_URL: null,
     };
   }
   if (providerId === "openrouter" || providerId === "deco") {
@@ -81,6 +104,7 @@ export function claudeCodeEnvFromCredential(
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: apiKey,
+      CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: baseUrl ?? OPENROUTER_ANTHROPIC_BASE_URL,
     };
   }

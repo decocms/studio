@@ -38,6 +38,7 @@ const createMockContext = (
     taskBoard: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,
+    claudeSubscriptions: null as never,
     automations: null as never,
     orgSsoConfig: null as never,
     orgSsoSessions: null as never,

@@ -13,6 +13,7 @@ import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
+import { ClaudeSubscriptionCard } from "./claude-subscription-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
@@ -72,6 +73,7 @@ function OrgAiProvidersContent() {
         <SimpleModeSection />
       </Suspense>
       {hasDeco ? <DecoCreditsHero /> : <DecoNudgeCard />}
+      <ClaudeSubscriptionCard />
       <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>

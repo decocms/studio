@@ -228,6 +228,20 @@ export const settings = {
   "settings.connectedProvidersSection.emptyState":
     "Traga suas pr\u00f3prias chaves para usar modelos espec\u00edficos junto com o gateway da Deco.",
   "settings.connectedProvidersSection.sectionTitle": "Provedores conectados",
+  "settings.claudeSubscription.active":
+    "Seu plano Claude est\u00e1 executando estas tarefas de c\u00f3digo.",
+  "settings.claudeSubscription.connect": "Vincular",
+  "settings.claudeSubscription.connected": "Assinatura Claude conectada",
+  "settings.claudeSubscription.description":
+    "Execute tarefas de c\u00f3digo no seu pr\u00f3prio plano Claude Pro ou Max, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
+  "settings.claudeSubscription.disconnect": "Desconectar",
+  "settings.claudeSubscription.disconnected": "Assinatura Claude desconectada",
+  "settings.claudeSubscription.expired":
+    "A Anthropic n\u00e3o aceita mais seu token. Gere um novo para continuar usando seu plano.",
+  "settings.claudeSubscription.howTo":
+    "Gere um token na sua pr\u00f3pria m\u00e1quina com",
+  "settings.claudeSubscription.title": "Sua assinatura Claude",
+  "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
   "settings.decoCreditsHero.accessModels": "Acesso a 100+ modelos",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
   claudeCodeEnvFromCredential,
   UnsupportedClaudeCodeProviderError,
 } from "./claude-code-env";
@@ -12,6 +13,7 @@ describe("claudeCodeEnvFromCredential", () => {
       CLAUDE_CODE_MODEL: "claude-opus-5",
       ANTHROPIC_API_KEY: "sk-a",
       ANTHROPIC_AUTH_TOKEN: null,
+      CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: null,
     });
   });
@@ -33,6 +35,7 @@ describe("claudeCodeEnvFromCredential", () => {
       CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "or-1",
+      CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
     });
   });
@@ -68,8 +71,35 @@ describe("claudeCodeEnvFromCredential", () => {
       CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "deco-1",
+      CLAUDE_CODE_OAUTH_TOKEN: null,
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
     });
+  });
+
+  test("a linked Claude subscription goes on the CLI's OAuth variable", () => {
+    expect(
+      claudeCodeEnvFromCredential({
+        providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+        apiKey: "sk-ant-oat-1",
+      }),
+    ).toEqual({
+      CLAUDE_CODE_MODEL: "claude-opus-5",
+      CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-1",
+      // Both cleared: either one left behind outranks the OAuth token and the
+      // run would silently bill the org's API credit instead of the plan.
+      ANTHROPIC_API_KEY: null,
+      ANTHROPIC_AUTH_TOKEN: null,
+      ANTHROPIC_BASE_URL: null,
+    });
+  });
+
+  test("a key credential clears a previous run's OAuth token", () => {
+    for (const providerId of ["anthropic", "openrouter", "deco"]) {
+      expect(
+        claudeCodeEnvFromCredential({ providerId, apiKey: "k" })
+          .CLAUDE_CODE_OAUTH_TOKEN,
+      ).toBeNull();
+    }
   });
 
   test("any other provider fails loudly, with the provider named", () => {
